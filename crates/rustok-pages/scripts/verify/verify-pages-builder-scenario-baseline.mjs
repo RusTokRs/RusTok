@@ -1,0 +1,95 @@
+import { readFile } from 'node:fs/promises';
+import process from 'node:process';
+
+const root = process.cwd();
+const read = (path) => readFile(`${root}/${path}`, 'utf8');
+
+const [
+  cargo,
+  entityMod,
+  entity,
+  migrationMod,
+  migration,
+  serviceMod,
+  service,
+  graphqlMod,
+  graphqlBaseline,
+  mutation,
+  adminAdapter,
+  adminTransport,
+  composition,
+  releaseCore,
+  releaseApi,
+] = await Promise.all([
+  read('crates/rustok-pages/Cargo.toml'),
+  read('crates/rustok-pages/src/entities/mod.rs'),
+  read('crates/rustok-pages/src/entities/page_builder_scenario_baseline.rs'),
+  read('crates/rustok-pages/src/migrations/mod.rs'),
+  read('crates/rustok-pages/src/migrations/m20260714_000001_create_page_builder_scenario_baselines.rs'),
+  read('crates/rustok-pages/src/services/mod.rs'),
+  read('crates/rustok-pages/src/services/scenario_baseline.rs'),
+  read('crates/rustok-pages/src/graphql/mod.rs'),
+  read('crates/rustok-pages/src/graphql/scenario_baseline.rs'),
+  read('crates/rustok-pages/src/graphql/mutation.rs'),
+  read('crates/rustok-pages/admin/src/transport/graphql_adapter.rs'),
+  read('crates/rustok-pages/admin/src/transport/mod.rs'),
+  read('crates/rustok-pages/admin/src/composition.rs'),
+  read('crates/fly/src/runtime_scenario_release.rs'),
+  read('crates/rustok-page-builder/src/runtime_scenario_release.rs'),
+]);
+
+const required = [
+  [cargo, 'rustok-page-builder = { path = "../rustok-page-builder", default-features = false }', 'Pages must depend on the Page Builder release contract'],
+  [entityMod, 'pub mod page_builder_scenario_baseline;', 'scenario baseline entity is not registered'],
+  [entity, 'table_name = "page_builder_scenario_baselines"', 'scenario baseline table mapping is missing'],
+  [entity, 'pub tenant_id: Uuid', 'scenario baseline entity is not tenant scoped'],
+  [entity, 'pub baseline_hash: String', 'scenario baseline integrity hash column is missing'],
+  [migrationMod, 'm20260714_000001_create_page_builder_scenario_baselines', 'scenario baseline migration is not registered'],
+  [migration, 'idx_page_builder_scenario_baselines_tenant_page', 'tenant/page uniqueness index is missing'],
+  [migration, '.unique()', 'scenario baseline must be unique per tenant/page'],
+  [migration, 'ForeignKeyAction::Cascade', 'scenario baseline must cascade with page deletion'],
+  [serviceMod, 'PageBuilderScenarioBaselineService', 'scenario baseline service is not exported'],
+  [service, 'enforce_owned_scope', 'scenario baseline service does not enforce page ownership'],
+  [service, 'baseline.validate()', 'scenario baseline service does not validate integrity'],
+  [service, 'baseline.baseline_hash != model.baseline_hash', 'stored baseline columns are not cross-checked'],
+  [service, 'RuntimeScenarioReleasePolicy::block_broken()', 'Pages publish evaluation does not block broken regressions'],
+  [graphqlMod, '#[derive(MergedObject, Default)]', 'baseline GraphQL objects are not merged into Pages schema'],
+  [graphqlBaseline, 'page_builder_scenario_baseline', 'baseline GraphQL query is missing'],
+  [graphqlBaseline, 'save_page_builder_scenario_baseline', 'baseline GraphQL save mutation is missing'],
+  [graphqlBaseline, 'delete_page_builder_scenario_baseline', 'baseline GraphQL delete mutation is missing'],
+  [mutation, '.ensure_publish_allowed(tenant_id, id)', 'publishPage does not enforce scenario regression gate'],
+  [adminAdapter, 'PAGE_BUILDER_SCENARIO_BASELINE_QUERY', 'Pages admin baseline query is missing'],
+  [adminAdapter, 'SAVE_PAGE_BUILDER_SCENARIO_BASELINE_MUTATION', 'Pages admin baseline save mutation is missing'],
+  [adminTransport, 'fetch_page_builder_scenario_baseline', 'Pages admin transport does not expose baseline load'],
+  [adminTransport, 'save_page_builder_scenario_baseline', 'Pages admin transport does not expose baseline save'],
+  [composition, 'with_runtime_scenarios(scenarios)', 'Pages builder host does not provide preview scenarios'],
+  [composition, 'with_runtime_scenario_baseline', 'Pages builder host does not load persisted baseline'],
+  [composition, 'on_runtime_scenario_baseline', 'Pages builder host does not persist baseline changes'],
+  [releaseCore, 'FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1', 'Fly release baseline format is missing'],
+  [releaseApi, 'SCENARIO_REGRESSION_BLOCKED', 'stable release rejection code is missing'],
+];
+
+const failures = required
+  .filter(([source, marker]) => !source.includes(marker))
+  .map(([, , message]) => message);
+
+const gateIndex = mutation.indexOf('.ensure_publish_allowed(tenant_id, id)');
+const publishIndex = mutation.indexOf('.publish(tenant_id, page_security(&auth), id)');
+if (gateIndex < 0 || publishIndex < 0 || gateIndex > publishIndex) {
+  failures.push('publishPage must evaluate the scenario baseline before publishing the page');
+}
+
+if (service.includes('project_data.get("nodes")')) {
+  failures.push('scenario release service must use canonical GrapesJS project data');
+}
+if (composition.includes('body_content_json: baseline')) {
+  failures.push('scenario baseline must remain separate from Pages body project_data');
+}
+
+if (failures.length > 0) {
+  console.error('Pages Page Builder scenario baseline verification failed:');
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
+
+console.log('Pages Page Builder scenario baseline wiring verified.');
