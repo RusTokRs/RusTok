@@ -1,7 +1,7 @@
 use crate::{
-    materialize_bindings, materialize_runtime, render_page, BindingMaterialization, FlyResult,
-    PageSelection, ProjectDocument, RenderPolicy, RenderedPage, RuntimeMaterialization,
-    ValidationDiagnostic,
+    materialize_bindings, materialize_context, materialize_runtime, render_page,
+    BindingMaterialization, ContextMaterialization, FlyResult, PageSelection, ProjectDocument,
+    RenderPolicy, RenderedPage, RuntimeMaterialization, ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -10,6 +10,11 @@ use serde_json::Value;
 pub struct RuntimeRenderResult {
     pub page: RenderedPage,
     pub diagnostics: Vec<ValidationDiagnostic>,
+    pub defaults_applied: usize,
+    pub computed_applied: usize,
+    pub computed_fallbacks: usize,
+    pub unresolved_computed: usize,
+    pub context_type_mismatches: usize,
     pub applied_bindings: usize,
     pub fallback_bindings: usize,
     pub unresolved_bindings: usize,
@@ -30,25 +35,40 @@ pub fn render_page_with_runtime_context(
     policy: &RenderPolicy,
     context: &Value,
 ) -> FlyResult<RuntimeRenderResult> {
+    let ContextMaterialization {
+        context,
+        mut diagnostics,
+        defaults_applied,
+        computed_applied,
+        computed_fallbacks,
+        unresolved_computed,
+        type_mismatches: context_type_mismatches,
+    } = materialize_context(document, context);
     let BindingMaterialization {
         document,
-        mut diagnostics,
+        diagnostics: binding_diagnostics,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
-    } = materialize_bindings(document, context);
+    } = materialize_bindings(document, &context);
+    diagnostics.extend(binding_diagnostics);
     let RuntimeMaterialization {
         document,
         diagnostics: dynamic_diagnostics,
         evaluated_conditions,
         hidden_components,
         repeated_nodes,
-    } = materialize_runtime(&document, context);
+    } = materialize_runtime(&document, &context);
     diagnostics.extend(dynamic_diagnostics);
     let page = render_page(&document, selection, policy)?;
     Ok(RuntimeRenderResult {
         page,
         diagnostics,
+        defaults_applied,
+        computed_applied,
+        computed_fallbacks,
+        unresolved_computed,
+        context_type_mismatches,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
@@ -65,7 +85,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn runtime_renderer_applies_bindings_and_expands_repeaters() {
+    fn runtime_renderer_applies_context_bindings_and_repeaters_in_order() {
         let document = GrapesJsV1Codec::decode_value(json!({
             "pages": [{
                 "id": "home",
@@ -81,6 +101,20 @@ mod tests {
                         "type": "text",
                         "content": "{{item.name}}"
                     }]
+                }
+            }],
+            "flyRuntimeContextSchema": [{
+                "id": "prefix",
+                "path": "page.prefix",
+                "kind": "string",
+                "default": "Featured"
+            }],
+            "flyRuntimeComputed": [{
+                "id": "title",
+                "path": "page.title",
+                "expression": {
+                    "op": "format",
+                    "template": "{{page.prefix}} products"
                 }
             }],
             "flyRuntimeBindings": [{
@@ -103,14 +137,15 @@ mod tests {
             &PageSelection::Id("home".to_string()),
             &RenderPolicy::default(),
             &json!({
-                "page": { "title": "Runtime title" },
                 "items": [{ "name": "One" }, { "name": "Two" }]
             }),
         )
         .expect("runtime render");
+        assert_eq!(result.defaults_applied, 1);
+        assert_eq!(result.computed_applied, 1);
         assert_eq!(result.applied_bindings, 1);
         assert_eq!(result.repeated_nodes, 2);
-        assert!(result.page.html.contains("RUNTIME TITLE"));
+        assert!(result.page.html.contains("FEATURED PRODUCTS"));
         assert!(result.page.html.contains("One"));
         assert!(result.page.html.contains("Two"));
         assert!(!result.page.html.contains("{{item.name}}"));
