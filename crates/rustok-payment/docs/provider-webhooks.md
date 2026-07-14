@@ -3,9 +3,9 @@
 ## Ownership
 
 `rustok-payment` owns provider webhook verification, durable inbox state,
-payment/refund lifecycle application, retry classification, safe operator reads,
-and dead-letter replay. `rustok-commerce` must not parse provider payloads or
-mutate payment state from a webhook controller.
+payment/refund lifecycle application, retry classification, bounded recovery,
+safe operator reads, and dead-letter replay. `rustok-commerce` must not parse
+provider payloads or mutate payment state from a webhook controller.
 
 The machine-readable contract is
 `contracts/payment-provider-webhook-v1.json`.
@@ -23,11 +23,12 @@ Tenant-scoped operator routes:
 ```text
 GET  /api/payment/provider-events/{event_id}
 GET  /api/payment/provider-events/dead-letter?limit=50
+POST /api/payment/provider-events/recovery/run?limit=50
 POST /api/payment/provider-events/{event_id}/replay
 ```
 
-Reading requires `payments:read` or `payments:manage`. Replay requires
-`payments:manage`.
+Reading requires `payments:read` or `payments:manage`. Recovery and dead-letter
+replay require `payments:manage`.
 
 ## Execution order
 
@@ -37,19 +38,22 @@ Reading requires `payments:read` or `payments:manage`. Replay requires
 3. `PaymentProviderRegistry::execute_webhook` invokes the registered provider's
    `handle_webhook` method. The provider verifies the signature and returns a
    normalized event. It must not mutate payment lifecycle state.
-4. `PaymentProviderEventJournal::receive` stores the SHA-256 payload hash and
-   immutable delivery identity. The raw body and signature are not persisted.
+4. `PaymentProviderEventJournal::receive_verified` atomically stores the
+   SHA-256 payload hash, immutable delivery identity, normalized event type,
+   external reference, and bounded normalized metadata. The raw body and
+   signature are not persisted.
 5. The event receives a bounded processing lease.
-6. The verified normalized event type, external reference, and metadata are
-   checkpointed while the lease is active.
-7. `PaymentDomainEventApplier` routes the normalized event to payment or refund
-   owner commands.
-8. The inbox event becomes `processed` only after the owner command succeeds.
-9. Retryable failures become `failed`; permanent failures or exhausted retries
+6. `PaymentDomainEventApplier` routes the durable normalized event to payment or
+   refund owner commands.
+7. The inbox event becomes `processed` only after the owner command succeeds.
+8. Retryable failures become `failed`; permanent failures or exhausted retries
    become `dead_letter`.
 
-Checkpointing before owner apply is what makes operator replay possible without
-retaining sensitive raw provider bytes.
+Writing verified normalized facts with the first inbox receipt removes the
+crash window in which the raw body was discarded before replayable facts became
+durable. A compatibility checkpoint method remains only for legacy rows and
+tests. Database triggers make normalized facts immutable after their first
+verified write.
 
 ## Normalized event contract
 
@@ -98,23 +102,26 @@ The inbox enforces both identities:
 (tenant_id, provider_id, idempotency_key)
 ```
 
-A replay with the same identity and payload hash returns the existing event. A
-reused identity with another payload hash is rejected.
+A replay with the same identity, payload hash, and normalized facts returns the
+existing event. A reused identity with another payload or different normalized
+facts is rejected.
 
 A `processed` replay does not run the owner command again. If the owner command
-succeeded but the final inbox update failed, provider redelivery is safe because
-owner payment/refund transitions accept the already-applied state.
+succeeded but the final inbox update failed, provider redelivery or the recovery
+worker is safe because owner payment/refund transitions accept the already
+applied state.
 
 ## Inbox statuses
 
-- `received`: verified and stored, not claimed.
+- `received`: verified normalized facts are stored, not claimed.
 - `processing`: claimed by one non-expired lease.
 - `failed`: retryable failure, no active lease.
 - `processed`: owner mutation committed.
 - `dead_letter`: permanent failure or retry budget exhausted.
 
-Expired `processing` rows and `failed` rows are retryable. They are not confused
-with `dead_letter`: automatic retry queries do not claim dead-letter rows.
+Expired `processing` rows, `failed` rows, and unclaimed `received` rows are
+eligible for bounded recovery. They are not confused with `dead_letter`:
+automatic recovery queries never claim dead-letter rows.
 
 The only allowed terminal replay transition is:
 
@@ -122,9 +129,29 @@ The only allowed terminal replay transition is:
 dead_letter -> processing -> processed | dead_letter
 ```
 
-It is initiated by the protected operator endpoint and requires a normalized
-checkpoint. A failed manual replay returns the event to `dead_letter` rather
-than creating an automatic retry loop.
+It is initiated by the protected operator replay endpoint and requires durable
+normalized facts. A failed manual replay returns the event to `dead_letter`
+rather than creating an automatic retry loop.
+
+## Bounded retry recovery
+
+The protected endpoint
+`POST /api/payment/provider-events/recovery/run?limit=N` performs a tenant-scoped
+bounded sweep. The journal clamps the limit to `1..100` and selects only:
+
+- `received` events;
+- `failed` events;
+- `processing` events whose lease expired.
+
+Each event is claimed with its own CAS lease and applied from the durable
+normalized checkpoint. The response reports only counts plus event id, status,
+and stable error code for failures. It does not return internal provider or SQL
+messages. A legacy row without normalized facts is moved to `dead_letter`
+instead of being retried forever.
+
+This HTTP endpoint is an operator recovery mechanism, not a replacement for a
+scheduled worker. A production scheduler may call the same
+`PaymentProviderEventRecoveryService::run` method.
 
 ## Safe operator projection
 
@@ -145,17 +172,23 @@ lease owner, lease expiry, raw error message, signature, and raw payload.
 - Never persist or log the raw provider body or signature.
 - Never mark `signature_verified` from an HTTP header alone. Only a successful
   provider SPI result may enter the inbox.
+- Persist verified normalized facts atomically with the first inbox receipt.
+- Never rewrite normalized facts after their verified receipt.
 - Never expose provider SDK, SQL, signature, raw payload, or internal error text
   in HTTP responses.
 - Keep normalized metadata below 64 KiB and depth 16.
 - Require tenant scope before provider lookup or inbox access.
-- Require `payments:manage` for a dead-letter replay.
+- Require `payments:manage` for recovery and dead-letter replay.
 - Production profiles must not expose the manual provider as a webhook adapter.
 
 ## Operator workflow
 
-For a retryable `failed` event, provider redelivery or a recovery worker may
-reclaim the event after the owner/provider dependency is available.
+For a retryable `received`, `failed`, or expired `processing` event:
+
+1. Resolve the temporary owner/storage dependency.
+2. Call `POST /api/payment/provider-events/recovery/run?limit=N` with
+   `payments:manage`, or run the same service from the scheduled worker.
+3. Review only stable failure codes; internal error messages remain private.
 
 For a `dead_letter` event:
 
@@ -173,6 +206,6 @@ For a `dead_letter` event:
 The implementation has source code, migrations, module-codegen routing, OpenAPI,
 and regression tests. The tests have not been executed in this change session,
 and there is no recorded live external-provider signature verification,
-PostgreSQL concurrency, provider redelivery, or HTTP dead-letter replay evidence.
-The boundary therefore remains `source_only` / `boundary_ready`, not
+PostgreSQL concurrency, scheduled recovery, provider redelivery, or HTTP replay
+evidence. The boundary therefore remains `source_only` / `boundary_ready`, not
 `transport_verified`.
