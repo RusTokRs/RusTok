@@ -54,7 +54,8 @@ struct CacheRefreshInner {
 /// Refresh identity is scoped by both backend instance and key. A global semaphore limits
 /// refresh concurrency, while a per-key lease prevents duplicate refresh tasks for the same
 /// cache entry and retains the backend allocation until its identity leaves the in-flight set.
-/// Failed refreshes leave the stale value untouched until its hard expiry.
+/// Failed, cancelled and panicked refreshes leave the stale value untouched until hard expiry and
+/// are reflected in the failure counter.
 #[derive(Clone)]
 pub struct CacheRefreshCoordinator {
     inner: Arc<CacheRefreshInner>,
@@ -134,6 +135,7 @@ impl CacheRefreshCoordinator {
         };
         runtime.spawn(async move {
             let _lease = lease;
+            let mut completion = CacheRefreshTaskCompletionGuard::new(Arc::clone(&inner));
             match refresh().await {
                 Ok(()) => {
                     inner.metrics.completed.fetch_add(1, Ordering::Relaxed);
@@ -143,6 +145,7 @@ impl CacheRefreshCoordinator {
                     tracing::warn!(%error, key, "Stale cache background refresh failed");
                 }
             }
+            completion.complete();
         });
 
         CacheRefreshSchedule::Spawned
@@ -195,6 +198,32 @@ impl Drop for CacheRefreshLease {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(&self.key);
+    }
+}
+
+struct CacheRefreshTaskCompletionGuard {
+    inner: Arc<CacheRefreshInner>,
+    completed: bool,
+}
+
+impl CacheRefreshTaskCompletionGuard {
+    fn new(inner: Arc<CacheRefreshInner>) -> Self {
+        Self {
+            inner,
+            completed: false,
+        }
+    }
+
+    fn complete(&mut self) {
+        self.completed = true;
+    }
+}
+
+impl Drop for CacheRefreshTaskCompletionGuard {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.inner.metrics.failed.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
 
@@ -570,6 +599,36 @@ mod tests {
         .await
         .expect("refresh task did not finish");
         assert!(weak_backend.upgrade().is_none());
+    }
+
+    #[test]
+    fn runtime_shutdown_counts_cancelled_refresh_as_failure() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 1);
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let (started_tx, started_rx) = oneshot::channel();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            assert_eq!(
+                coordinator.schedule(&backend, "shutdown", move || async move {
+                    let _ = started_tx.send(());
+                    std::future::pending::<rustok_core::Result<()>>().await
+                }),
+                CacheRefreshSchedule::Spawned
+            );
+            started_rx.await.unwrap();
+            assert_eq!(coordinator.stats().started, 1);
+            assert_eq!(coordinator.stats().in_flight, 1);
+        });
+
+        runtime.shutdown_timeout(Duration::from_millis(10));
+        assert_eq!(coordinator.stats().completed, 0);
+        assert_eq!(coordinator.stats().failed, 1);
+        assert_eq!(coordinator.stats().in_flight, 0);
     }
 
     #[tokio::test]
