@@ -69,10 +69,7 @@ impl RbacCacheInvalidationRuntime {
     fn is_running(&self) -> bool {
         self.local.is_running()
             && self.reconcile.is_running()
-            && self
-                .redis
-                .as_ref()
-                .is_none_or(AbortOnDropInvalidationTask::is_running)
+            && self.redis.as_ref().map_or(true, |redis| redis.is_running())
     }
 
     fn abort(&self) {
@@ -636,6 +633,7 @@ fn parse_rbac_invalidation_key(value: &str) -> Result<(Uuid, Uuid)> {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::time::Duration;
 
     use super::{
         acknowledge_rbac_applied_generation, acknowledge_rbac_recovery,
