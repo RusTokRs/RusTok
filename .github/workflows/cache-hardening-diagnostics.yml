@@ -71,7 +71,7 @@ jobs:
       - name: Publish diagnostics
         env:
           GH_TOKEN: ${{ github.token }}
-          DIAGNOSTICS_ISSUE: "1"
+          DIAGNOSTICS_ISSUE: "1754"
         run: gh issue comment "$DIAGNOSTICS_ISSUE" --body-file /tmp/diagnostics.md
       - name: Fail when diagnostics fail
         if: steps.diagnostics.outputs.fmt_status != '0' || steps.diagnostics.outputs.check_status != '0' || steps.diagnostics.outputs.test_status != '0'
