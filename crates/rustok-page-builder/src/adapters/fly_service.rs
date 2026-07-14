@@ -1,52 +1,97 @@
 use super::FlyProjectInspection;
 use crate::dto::PageBuilderContractMetadata;
+use crate::runtime_scenario_release::{
+    release_gate_error, NoopPageBuilderScenarioBaselineStore, PageBuilderScenarioBaselineStore,
+};
 use crate::service::{
     NoopPageBuilderAdapterTelemetry, PageBuilderAdapterCallEvidence, PageBuilderAdapterTelemetry,
     PageBuilderCapabilityService, PageBuilderProjectStore, PageBuilderRenderingAdapter,
     PageBuilderServiceError, PageBuilderServiceResult,
 };
 use async_trait::async_trait;
-use fly::{RegistrySet, ValidationLimits};
+use fly::{
+    evaluate_runtime_scenario_release, RegistrySet, RuntimeScenarioReleaseMode,
+    RuntimeScenarioReleasePolicy, ValidationLimits,
+};
 use rustok_api::PortContext;
 use serde_json::Value;
 
 /// Fly-backed reference provider that keeps the existing storage/rendering ports while making Fly
-/// authoritative for project decode, structural validation, layers traversal, and component lookup.
-pub struct FlyAdapterBackedPageBuilderService<S, R, T = NoopPageBuilderAdapterTelemetry> {
+/// authoritative for project decode, structural validation, layers traversal, component lookup,
+/// and optional runtime-scenario release gating.
+pub struct FlyAdapterBackedPageBuilderService<
+    S,
+    R,
+    T = NoopPageBuilderAdapterTelemetry,
+    B = NoopPageBuilderScenarioBaselineStore,
+> {
     store: S,
     renderer: R,
     telemetry: T,
+    baseline_store: B,
+    release_policy: RuntimeScenarioReleasePolicy,
     registries: RegistrySet,
     limits: ValidationLimits,
 }
 
-impl<S, R> FlyAdapterBackedPageBuilderService<S, R, NoopPageBuilderAdapterTelemetry> {
+impl<S, R>
+    FlyAdapterBackedPageBuilderService<
+        S,
+        R,
+        NoopPageBuilderAdapterTelemetry,
+        NoopPageBuilderScenarioBaselineStore,
+    >
+{
     pub fn new(store: S, renderer: R) -> Self {
         Self {
             store,
             renderer,
             telemetry: NoopPageBuilderAdapterTelemetry,
+            baseline_store: NoopPageBuilderScenarioBaselineStore,
+            release_policy: RuntimeScenarioReleasePolicy::disabled(),
             registries: RegistrySet::with_builtins(),
             limits: ValidationLimits::default(),
         }
     }
 }
 
-impl<S, R, T> FlyAdapterBackedPageBuilderService<S, R, T> {
+impl<S, R, T>
+    FlyAdapterBackedPageBuilderService<S, R, T, NoopPageBuilderScenarioBaselineStore>
+{
     pub fn with_telemetry(store: S, renderer: R, telemetry: T) -> Self {
         Self {
             store,
             renderer,
             telemetry,
+            baseline_store: NoopPageBuilderScenarioBaselineStore,
+            release_policy: RuntimeScenarioReleasePolicy::disabled(),
             registries: RegistrySet::with_builtins(),
             limits: ValidationLimits::default(),
         }
     }
+}
 
+impl<S, R, T, B> FlyAdapterBackedPageBuilderService<S, R, T, B> {
     pub fn with_policy(mut self, registries: RegistrySet, limits: ValidationLimits) -> Self {
         self.registries = registries;
         self.limits = limits;
         self
+    }
+
+    pub fn with_scenario_release_gate<B2>(
+        self,
+        baseline_store: B2,
+        release_policy: RuntimeScenarioReleasePolicy,
+    ) -> FlyAdapterBackedPageBuilderService<S, R, T, B2> {
+        FlyAdapterBackedPageBuilderService {
+            store: self.store,
+            renderer: self.renderer,
+            telemetry: self.telemetry,
+            baseline_store,
+            release_policy,
+            registries: self.registries,
+            limits: self.limits,
+        }
     }
 
     fn inspect(
@@ -66,11 +111,12 @@ impl<S, R, T> FlyAdapterBackedPageBuilderService<S, R, T> {
 }
 
 #[async_trait]
-impl<S, R, T> PageBuilderCapabilityService for FlyAdapterBackedPageBuilderService<S, R, T>
+impl<S, R, T, B> PageBuilderCapabilityService for FlyAdapterBackedPageBuilderService<S, R, T, B>
 where
     S: PageBuilderProjectStore,
     R: PageBuilderRenderingAdapter,
     T: PageBuilderAdapterTelemetry,
+    B: PageBuilderScenarioBaselineStore,
 {
     async fn preview(
         &self,
@@ -191,7 +237,22 @@ where
                 "revision_id must not be empty".to_string(),
             ));
         }
-        self.inspect(&input.schema_version, &input.project_data)?;
+        let inspection = self.inspect(&input.schema_version, &input.project_data)?;
+        if self.release_policy.mode != RuntimeScenarioReleaseMode::Disabled {
+            let baseline = self
+                .baseline_store
+                .load_scenario_baseline(context, &input.page_id)
+                .await?;
+            let evaluation = evaluate_runtime_scenario_release(
+                inspection.document(),
+                baseline.as_ref(),
+                self.release_policy,
+            );
+            if !evaluation.allowed {
+                return Err(release_gate_error(&evaluation));
+            }
+        }
+
         let evidence = PageBuilderAdapterCallEvidence::save_project(
             context,
             &input.page_id,
