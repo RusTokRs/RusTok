@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use once_cell::sync::Lazy;
@@ -117,13 +117,18 @@ pub async fn publish_user_rbac_invalidation(
     tenant_id: &Uuid,
     user_id: &Uuid,
 ) -> Result<()> {
-    let cache = RBAC_INVALIDATION_CACHE_SERVICE
+    let Some(cache) = RBAC_INVALIDATION_CACHE_SERVICE
         .read()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone()
-        .ok_or_else(|| {
-            Error::Cache("RBAC cache invalidation service is not initialized".to_string())
-        })?;
+    else {
+        tracing::warn!(
+            %tenant_id,
+            %user_id,
+            "RBAC distributed invalidation is not initialized; local cache invalidation only"
+        );
+        return Ok(());
+    };
     let generation = cache
         .bump_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX)
         .await
