@@ -17,6 +17,12 @@ Automated verification is recorded separately because direct pushes currently do
 - [ ] Persist revision rollback and all resulting events transactionally.
 - [ ] Persist bulk terminal state and terminal event transactionally.
 
+## Regression coverage
+
+- [x] Add an integration regression test proving that redirect data and delivery tracking roll back when the transactional event transport fails. (`1d5144c`, `c940afd`)
+- [ ] Add rollback coverage for sitemap generation when its transactional outbox write fails.
+- [ ] Add rollback coverage for metadata and revision transactions.
+
 ## P1 — performance and maintainability
 
 - [ ] Remove avoidable direct owner dependencies from the SEO crate.
