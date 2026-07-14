@@ -3,7 +3,8 @@ use rustok_api::{Action, Resource};
 use rustok_core::{SecurityContext, CONTENT_FORMAT_GRAPESJS_V1};
 use rustok_page_builder::runtime_scenario_release::{
     evaluate_page_builder_runtime_scenario_release, PageBuilderRuntimeScenarioReleaseRequest,
-    PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE,
+    RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation,
+    RuntimeScenarioReleasePolicy, PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
@@ -14,7 +15,6 @@ use uuid::Uuid;
 use crate::entities::{page, page_body, page_builder_scenario_baseline};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::enforce_owned_scope;
-use fly::{RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleasePolicy};
 
 pub struct PageBuilderScenarioBaselineService {
     db: DatabaseConnection,
@@ -69,8 +69,9 @@ impl PageBuilderScenarioBaselineService {
         }
 
         let now = Utc::now();
-        let baseline_json = serde_json::to_value(&baseline)
-            .map_err(|error| PagesError::validation(format!("Unable to encode scenario baseline: {error}")))?;
+        let baseline_json = serde_json::to_value(&baseline).map_err(|error| {
+            PagesError::validation(format!("Unable to encode scenario baseline: {error}"))
+        })?;
         match page_builder_scenario_baseline::Entity::find()
             .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
             .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
