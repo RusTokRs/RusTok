@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use rustok_core::security::{SsrfProtection, ValidationResult};
 use rustok_seo_targets::{SeoTargetCapabilityKind, SeoTargetSitemapRequest};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, Order, QueryFilter, QueryOrder};
@@ -32,6 +33,133 @@ use submission_aggregation::{
 
 const SITEMAP_SUBMIT_TIMEOUT_SECS: u64 = 5;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PublicOrigin(String);
+
+impl PublicOrigin {
+    fn resolve(tenant: &TenantContext) -> SeoResult<Self> {
+        let public_url = std::env::var("RUSTOK_PUBLIC_URL").ok();
+        let api_url = std::env::var("RUSTOK_API_URL").ok();
+        resolve_public_origin_from_values(
+            tenant.domain.as_deref(),
+            public_url.as_deref(),
+            api_url.as_deref(),
+        )
+    }
+
+    fn parse(raw: &str, source: &str) -> SeoResult<Self> {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return Err(SeoError::configuration(format!(
+                "SEO public origin from {source} must not be empty"
+            )));
+        }
+
+        let candidate = if raw.contains("://") {
+            raw.to_string()
+        } else {
+            format!("https://{raw}")
+        };
+        let mut parsed = Url::parse(candidate.as_str()).map_err(|error| {
+            SeoError::configuration(format!(
+                "invalid SEO public origin from {source}: {error}"
+            ))
+        })?;
+
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err(SeoError::configuration(format!(
+                "invalid SEO public origin from {source}: URL credentials are not allowed"
+            )));
+        }
+        if parsed.path() != "/" {
+            return Err(SeoError::configuration(format!(
+                "invalid SEO public origin from {source}: URL path must be empty"
+            )));
+        }
+        if parsed.query().is_some() || parsed.fragment().is_some() {
+            return Err(SeoError::configuration(format!(
+                "invalid SEO public origin from {source}: query and fragment are not allowed"
+            )));
+        }
+
+        let host = parsed
+            .host_str()
+            .ok_or_else(|| {
+                SeoError::configuration(format!(
+                    "invalid SEO public origin from {source}: URL host is required"
+                ))
+            })?
+            .trim_end_matches('.')
+            .to_ascii_lowercase();
+        if host.is_empty()
+            || host == "localhost"
+            || host.ends_with(".localhost")
+            || host.ends_with(".local")
+            || host.ends_with(".internal")
+            || host.ends_with(".home.arpa")
+        {
+            return Err(SeoError::configuration(format!(
+                "invalid SEO public origin from {source}: local or internal hosts are not allowed"
+            )));
+        }
+        parsed.set_host(Some(host.as_str())).map_err(|_| {
+            SeoError::configuration(format!(
+                "invalid SEO public origin from {source}: URL host could not be canonicalized"
+            ))
+        })?;
+
+        match SsrfProtection::new().validate_url(parsed.as_str()) {
+            ValidationResult::Valid => {}
+            ValidationResult::Invalid { reason } => {
+                return Err(SeoError::configuration(format!(
+                    "invalid SEO public origin from {source}: {reason}"
+                )));
+            }
+            ValidationResult::Sanitized { .. } => {
+                return Err(SeoError::configuration(format!(
+                    "invalid SEO public origin from {source}: unexpected validation result"
+                )));
+            }
+        }
+
+        Ok(Self(parsed.as_str().trim_end_matches('/').to_string()))
+    }
+
+    fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+fn resolve_public_origin_from_values(
+    tenant_domain: Option<&str>,
+    public_url: Option<&str>,
+    api_url: Option<&str>,
+) -> SeoResult<PublicOrigin> {
+    let candidate = tenant_domain
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| ("tenant domain", value))
+        .or_else(|| {
+            public_url
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| ("RUSTOK_PUBLIC_URL", value))
+        })
+        .or_else(|| {
+            api_url
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| ("RUSTOK_API_URL", value))
+        })
+        .ok_or_else(|| {
+            SeoError::configuration(
+                "SEO public origin is not configured; set a tenant domain, RUSTOK_PUBLIC_URL, or RUSTOK_API_URL",
+            )
+        })?;
+
+    PublicOrigin::parse(candidate.1, candidate.0)
+}
+
 impl SeoService {
     pub async fn generate_sitemaps(
         &self,
@@ -41,6 +169,7 @@ impl SeoService {
         if !settings.sitemap_enabled {
             return Ok(disabled_sitemap_status());
         }
+        let public_origin = PublicOrigin::resolve(tenant)?;
 
         let now = chrono::Utc::now().fixed_offset();
         let job = seo_sitemap_job::ActiveModel {
@@ -57,9 +186,16 @@ impl SeoService {
         .insert(&self.db)
         .await?;
 
-        let urls = self.collect_sitemap_urls(tenant).await?;
-        let file_models = self.persist_sitemap_files(tenant, &job, &urls, now).await?;
-        let submission_error = match self.submit_sitemap_endpoints(tenant, &settings).await {
+        let urls = self
+            .collect_sitemap_urls(tenant, &public_origin)
+            .await?;
+        let file_models = self
+            .persist_sitemap_files(tenant, &public_origin, &job, &urls, now)
+            .await?;
+        let submission_error = match self
+            .submit_sitemap_endpoints(&public_origin, &settings)
+            .await
+        {
             Ok(()) => None,
             Err(error) => {
                 tracing::warn!(tenant_id = %tenant.id, error = %error, "SEO sitemap submission failed");
@@ -186,10 +322,11 @@ impl SeoService {
 
     pub async fn render_robots(&self, tenant: &TenantContext) -> SeoResult<String> {
         let settings = self.load_settings(tenant.id).await?;
-        Ok(render_robots_body(
-            public_base_url(tenant).as_str(),
-            settings.sitemap_enabled,
-        ))
+        if !settings.sitemap_enabled {
+            return Ok(render_robots_body("", false));
+        }
+        let public_origin = PublicOrigin::resolve(tenant)?;
+        Ok(render_robots_body(public_origin.as_str(), true))
     }
 
     pub async fn robots_preview(
@@ -197,10 +334,11 @@ impl SeoService {
         tenant: &TenantContext,
     ) -> SeoResult<SeoRobotsPreviewRecord> {
         let settings = self.load_settings(tenant.id).await?;
-        let base_url = public_base_url(tenant);
+        let public_origin = PublicOrigin::resolve(tenant)?;
+        let base_url = public_origin.as_str();
 
         Ok(SeoRobotsPreviewRecord {
-            body: render_robots_body(base_url.as_str(), settings.sitemap_enabled),
+            body: render_robots_body(base_url, settings.sitemap_enabled),
             public_url: format!("{base_url}/robots.txt"),
             sitemap_index_url: settings
                 .sitemap_enabled
@@ -274,6 +412,7 @@ impl SeoService {
     async fn persist_sitemap_files(
         &self,
         tenant: &TenantContext,
+        public_origin: &PublicOrigin,
         job: &seo_sitemap_job::Model,
         urls: &[String],
         now: chrono::DateTime<chrono::FixedOffset>,
@@ -299,7 +438,13 @@ impl SeoService {
 
         let index_urls = files
             .iter()
-            .map(|file| format!("{}/sitemaps/{}", public_base_url(tenant), file.path))
+            .map(|file| {
+                format!(
+                    "{}/sitemaps/{}",
+                    public_origin.as_str(),
+                    file.path
+                )
+            })
             .collect::<Vec<_>>();
         files.insert(
             0,
@@ -320,8 +465,12 @@ impl SeoService {
         Ok(files)
     }
 
-    async fn collect_sitemap_urls(&self, tenant: &TenantContext) -> SeoResult<Vec<String>> {
-        let base_url = public_base_url(tenant);
+    async fn collect_sitemap_urls(
+        &self,
+        tenant: &TenantContext,
+        public_origin: &PublicOrigin,
+    ) -> SeoResult<Vec<String>> {
+        let base_url = public_origin.as_str();
         let mut urls = Vec::new();
         for provider in self
             .registry
@@ -363,13 +512,13 @@ impl SeoService {
 impl SeoService {
     async fn submit_sitemap_endpoints(
         &self,
-        tenant: &TenantContext,
+        public_origin: &PublicOrigin,
         settings: &crate::dto::SeoModuleSettings,
     ) -> Result<(), String> {
         if settings.sitemap_submission_endpoints.is_empty() {
             return Ok(());
         }
-        let sitemap_index_url = format!("{}/sitemap.xml", public_base_url(tenant));
+        let sitemap_index_url = format!("{}/sitemap.xml", public_origin.as_str());
         let runtime = SitemapSubmissionRuntime::default_with_timeout(SITEMAP_SUBMIT_TIMEOUT_SECS)?;
         self.submit_sitemap_endpoints_with_adapter(
             settings.sitemap_submission_endpoints.as_slice(),
@@ -457,25 +606,6 @@ fn disabled_sitemap_status() -> SeoSitemapStatusRecord {
     }
 }
 
-fn public_base_url(tenant: &TenantContext) -> String {
-    if let Some(domain) = tenant
-        .domain
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        if domain.starts_with("http://") || domain.starts_with("https://") {
-            return domain.trim_end_matches('/').to_string();
-        }
-        return format!("https://{}", domain.trim_end_matches('/'));
-    }
-    std::env::var("RUSTOK_PUBLIC_URL")
-        .or_else(|_| std::env::var("RUSTOK_API_URL"))
-        .unwrap_or_else(|_| "http://localhost:5150".to_string())
-        .trim_end_matches('/')
-        .to_string()
-}
-
 fn render_robots_body(base_url: &str, sitemap_enabled: bool) -> String {
     if sitemap_enabled {
         format!("User-agent: *\nAllow: /\nSitemap: {base_url}/sitemap.xml\n")
@@ -543,8 +673,8 @@ mod tests {
     };
     use super::{
         normalize_sitemap_submission_endpoints, record_invalid_endpoint, record_submission_failure,
-        record_submission_success, render_robots_body, SitemapSubmissionAdapter,
-        SitemapSubmissionSummary, SitemapSubmitEndpoint,
+        record_submission_success, render_robots_body, resolve_public_origin_from_values,
+        SitemapSubmissionAdapter, SitemapSubmissionSummary, SitemapSubmitEndpoint,
     };
     use crate::SeoService;
     use rustok_api::TenantContext;
@@ -683,6 +813,78 @@ mod tests {
             render_robots_body("https://example.com", true),
             "User-agent: *\nAllow: /\nSitemap: https://example.com/sitemap.xml\n"
         );
+    }
+
+    #[test]
+    fn public_origin_prefers_tenant_domain_and_defaults_to_https() {
+        let origin = resolve_public_origin_from_values(
+            Some(" Store.Example.com. "),
+            Some("https://fallback.example.com"),
+            Some("https://api.example.com"),
+        )
+        .expect("tenant domain should resolve");
+
+        assert_eq!(origin.as_str(), "https://store.example.com");
+    }
+
+    #[test]
+    fn public_origin_uses_environment_fallback_order() {
+        let public_origin = resolve_public_origin_from_values(
+            None,
+            Some("https://public.example.com/"),
+            Some("https://api.example.com"),
+        )
+        .expect("public URL should resolve");
+        assert_eq!(public_origin.as_str(), "https://public.example.com");
+
+        let api_origin = resolve_public_origin_from_values(
+            None,
+            Some("   "),
+            Some("api.example.com"),
+        )
+        .expect("API URL should resolve");
+        assert_eq!(api_origin.as_str(), "https://api.example.com");
+    }
+
+    #[test]
+    fn public_origin_requires_explicit_configuration() {
+        let error = resolve_public_origin_from_values(None, None, None)
+            .expect_err("missing public origin must fail closed");
+
+        assert!(error.to_string().contains("SEO public origin is not configured"));
+        assert!(error.to_string().contains("RUSTOK_PUBLIC_URL"));
+    }
+
+    #[test]
+    fn public_origin_rejects_non_origin_url_components() {
+        for value in [
+            "https://user:secret@example.com",
+            "https://example.com/store",
+            "https://example.com?tenant=1",
+            "https://example.com#fragment",
+        ] {
+            assert!(
+                resolve_public_origin_from_values(Some(value), None, None).is_err(),
+                "{value} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn public_origin_rejects_local_internal_and_private_hosts() {
+        for value in [
+            "http://localhost:5150",
+            "https://service.internal",
+            "https://service.local",
+            "http://127.0.0.1:5150",
+            "http://10.0.0.1",
+            "http://169.254.169.254",
+        ] {
+            assert!(
+                resolve_public_origin_from_values(Some(value), None, None).is_err(),
+                "{value} must be rejected"
+            );
+        }
     }
 
     #[tokio::test]
@@ -913,10 +1115,7 @@ mod tests {
         let db = test_db().await;
         let service = SeoService::new_memory(db);
         let adapter = TestSitemapSubmissionAdapter::new(HashMap::from([
-            (
-                "https://ok.example.com/ping".to_string(),
-                Ok(()),
-            ),
+            ("https://ok.example.com/ping".to_string(), Ok(())),
             (
                 "https://fail.example.com/ping".to_string(),
                 Err("endpoint `https://fail.example.com/ping` responded with status 500 Internal Server Error".to_string()),
