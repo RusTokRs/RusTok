@@ -1,4 +1,4 @@
-use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
+use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
 use rustok_cart::{
     bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_checkout_port,
     in_process_cart_storefront_port, CartStorefrontPort, CartStorefrontReadRequest,
@@ -8,7 +8,7 @@ use rustok_customer::{
     in_process_customer_read_port, CustomerReadPort, CustomerUserProjectionRequest,
 };
 use rustok_payment::providers::PaymentProviderRegistry;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -44,12 +44,15 @@ pub async fn complete_storefront_checkout(
         ));
     }
 
+    let auth_context = auth.0;
     let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());
     let cart = cart_storefront_port
         .read_storefront_cart(
-            crate::storefront_checkout_runtime::storefront_cart_port_context(
+            cart_context(
                 tenant.id,
                 command.cart_id,
+                request_context,
+                auth_context.as_ref(),
             ),
             CartStorefrontReadRequest {
                 cart_id: command.cart_id,
@@ -57,7 +60,6 @@ pub async fn complete_storefront_checkout(
         )
         .await
         .map_err(|_| StorefrontStagedCheckoutRuntimeError::CartAccess)?;
-    let auth_context = auth.0;
     let customer_id = resolve_customer_id(runtime, tenant.id, auth_context.as_ref()).await?;
     if cart.customer_id.is_some() && cart.customer_id != customer_id {
         return Err(StorefrontStagedCheckoutRuntimeError::CartAccess);
@@ -133,12 +135,7 @@ pub async fn complete_storefront_checkout(
     .with_payment_provider_registry(payment_provider_registry);
 
     crate::RecoveringStagedCheckoutService::new(staged, compensation)
-        .complete_checkout(
-            tenant.id,
-            actor_id,
-            idempotency_key,
-            checkout_input,
-        )
+        .complete_checkout(tenant.id, actor_id, idempotency_key, checkout_input)
         .await
         .map_err(map_checkout_error)
 }
@@ -153,13 +150,13 @@ async fn resolve_customer_id(
     };
     match in_process_customer_read_port(runtime.db_clone())
         .read_customer_projection_by_user(
-            rustok_api::PortContext::new(
+            PortContext::new(
                 tenant_id.to_string(),
-                rustok_api::PortActor::user(auth.user_id.to_string()),
+                PortActor::user(auth.user_id.to_string()),
                 rustok_api::PLATFORM_FALLBACK_LOCALE,
                 format!("storefront-checkout:customer:{}", auth.user_id),
             )
-            .with_deadline(std::time::Duration::from_secs(2)),
+            .with_deadline(Duration::from_secs(2)),
             CustomerUserProjectionRequest {
                 user_id: auth.user_id,
             },
@@ -170,6 +167,28 @@ async fn resolve_customer_id(
         Err(error) if error.code == "customer.customer_by_user_not_found" => Ok(None),
         Err(_) => Err(StorefrontStagedCheckoutRuntimeError::CartAccess),
     }
+}
+
+fn cart_context(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    request_context: &RequestContext,
+    auth: Option<&rustok_api::AuthContext>,
+) -> PortContext {
+    let actor = auth
+        .map(|auth| PortActor::user(auth.user_id.to_string()))
+        .unwrap_or_else(|| PortActor::service("storefront-native-checkout"));
+    let mut context = PortContext::new(
+        tenant_id.to_string(),
+        actor,
+        request_context.locale.clone(),
+        format!("storefront-native-checkout:cart:{cart_id}"),
+    )
+    .with_deadline(Duration::from_secs(2));
+    if let Some(channel) = request_context.channel_slug.as_deref() {
+        context = context.with_channel(channel.to_string());
+    }
+    context
 }
 
 fn map_checkout_error(
