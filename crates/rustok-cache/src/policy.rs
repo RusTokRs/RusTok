@@ -11,8 +11,9 @@ const MAX_JITTER_PERCENT: u8 = 50;
 
 /// TTL selection policy for a cache fill.
 ///
-/// Jitter is deterministic for a `(namespace, key)` pair. It spreads expiration
-/// without requiring randomness, keeps retries stable and makes unit tests reproducible.
+/// Jitter is deterministic for a `(namespace, key)` pair. It only shortens the configured TTL,
+/// spreading expiration without allowing cached data to outlive the caller's freshness bound.
+/// Stable inputs keep retries reproducible and make unit tests deterministic.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheTtlPolicy {
     None,
@@ -182,14 +183,8 @@ fn deterministic_jittered_ttl(
     }
 
     let hash = stable_fnv1a64(namespace.as_bytes(), key.as_bytes());
-    let width = max_delta.saturating_mul(2).saturating_add(1);
-    let offset = u128::from(hash) % width;
-    let adjusted = if offset <= max_delta {
-        base_nanos.saturating_sub(max_delta - offset)
-    } else {
-        base_nanos.saturating_add(offset - max_delta)
-    }
-    .max(1);
+    let offset = u128::from(hash) % max_delta.saturating_add(1);
+    let adjusted = base_nanos.saturating_sub(offset).max(1);
 
     duration_from_nanos_saturating(adjusted)
 }
@@ -236,7 +231,20 @@ mod tests {
         let second = policy.ttl_for("tenant-a").unwrap();
         assert_eq!(first, second);
         assert!(first >= Duration::from_secs(90));
-        assert!(first <= Duration::from_secs(110));
+        assert!(first <= Duration::from_secs(100));
+    }
+
+    #[test]
+    fn deterministic_jitter_never_extends_the_configured_ttl() {
+        let configured_ttl = Duration::from_secs(300);
+        let policy =
+            CacheTtlPolicy::deterministic_jitter(configured_ttl, 50, "authorization:v1").unwrap();
+
+        for index in 0..1_024 {
+            let jittered = policy.ttl_for(&format!("subject-{index}")).unwrap();
+            assert!(jittered <= configured_ttl);
+            assert!(jittered >= Duration::from_secs(150));
+        }
     }
 
     #[test]
