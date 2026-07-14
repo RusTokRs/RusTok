@@ -323,6 +323,11 @@ pub async fn start_tenant_cache_generation_listener(
 
     let redis_required = cache.redis_configuration_present();
     let state = TenantCacheGenerationListenerState::new(redis_required);
+    if !ctx.shared_insert_if_absent(TenantCacheGenerationListenerHandle {
+        state: Arc::clone(&state),
+    }) {
+        return Ok(());
+    }
     let listener = TenantCacheGenerationListener::new(cache.clone());
     match listener.recover_shared_generation().await {
         Ok(_) if !redis_required => state.mark_local_healthy().await,
