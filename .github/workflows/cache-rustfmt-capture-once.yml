@@ -1,9 +1,7 @@
 name: Cache rustfmt capture once
 
 on:
-  push:
-    branches:
-      - agent/cache-hardening-continuation
+  pull_request:
     paths:
       - "apps/server/src/services/tenant_cache_generation_status.rs"
       - "apps/server/tests/tenant_generation_readiness_guard.rs"
