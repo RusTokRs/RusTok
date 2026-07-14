@@ -25,6 +25,8 @@ pub enum RbacRoleAssignmentError {
     },
     #[error("RBAC role assignment does not support database backend {0}")]
     UnsupportedBackend(&'static str),
+    #[error("RBAC built-in role slug `{slug}` is occupied by a non-system role in tenant {tenant_id}")]
+    BuiltInRoleSlugCollision { tenant_id: Uuid, slug: String },
 }
 
 /// Database-backed writer for idempotent built-in role assignment.
@@ -164,15 +166,8 @@ where
         role: &UserRole,
     ) -> Result<Uuid, RbacRoleAssignmentError> {
         let slug = role.to_string();
-        if let Some(id) = self
-            .find_id(
-                "SELECT id FROM roles WHERE tenant_id = {tenant} AND slug = {slug} LIMIT 1",
-                tenant_id,
-                &slug,
-            )
-            .await?
-        {
-            return Ok(id);
+        if let Some((id, is_system)) = self.find_role(tenant_id, &slug).await? {
+            return validate_builtin_role(tenant_id, &slug, id, is_system);
         }
 
         self.execute(
@@ -186,13 +181,45 @@ where
         )
         .await?;
 
-        self.find_id(
-            "SELECT id FROM roles WHERE tenant_id = {tenant} AND slug = {slug} LIMIT 1",
-            tenant_id,
-            &slug,
-        )
-        .await?
-        .ok_or(RbacRoleAssignmentError::MissingPersistedRecord("role"))
+        let (id, is_system) = self
+            .find_role(tenant_id, &slug)
+            .await?
+            .ok_or(RbacRoleAssignmentError::MissingPersistedRecord("role"))?;
+        validate_builtin_role(tenant_id, &slug, id, is_system)
+    }
+
+    async fn find_role(
+        &self,
+        tenant_id: Uuid,
+        slug: &str,
+    ) -> Result<Option<(Uuid, bool)>, RbacRoleAssignmentError> {
+        let backend = self.db.get_database_backend();
+        let sql = match backend {
+            DbBackend::Sqlite => {
+                "SELECT id, is_system FROM roles WHERE tenant_id = ?1 AND slug = ?2 LIMIT 1"
+            }
+            DbBackend::Postgres | DbBackend::MySql => {
+                "SELECT id, is_system FROM roles WHERE tenant_id = $1 AND slug = $2 LIMIT 1"
+            }
+        };
+        self.db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                sql,
+                vec![tenant_id.into(), slug.into()],
+            ))
+            .await
+            .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?
+            .map(|row| {
+                let id = row
+                    .try_get("", "id")
+                    .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+                let is_system = row
+                    .try_get("", "is_system")
+                    .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+                Ok((id, is_system))
+            })
+            .transpose()
     }
 
     async fn ensure_permission(
@@ -340,23 +367,6 @@ where
         Ok(())
     }
 
-    async fn find_id(
-        &self,
-        template: &str,
-        tenant_id: Uuid,
-        slug: &str,
-    ) -> Result<Option<Uuid>, RbacRoleAssignmentError> {
-        let backend = self.db.get_database_backend();
-        let sql = match backend {
-            DbBackend::Sqlite => template.replace("{tenant}", "?1").replace("{slug}", "?2"),
-            DbBackend::Postgres | DbBackend::MySql => {
-                template.replace("{tenant}", "$1").replace("{slug}", "$2")
-            }
-        };
-        self.query_id(sql.as_str(), vec![tenant_id.into(), slug.into()])
-            .await
-    }
-
     async fn execute(
         &self,
         template: &str,
@@ -401,6 +411,22 @@ where
     }
 }
 
+fn validate_builtin_role(
+    tenant_id: Uuid,
+    slug: &str,
+    role_id: Uuid,
+    is_system: bool,
+) -> Result<Uuid, RbacRoleAssignmentError> {
+    if is_system {
+        Ok(role_id)
+    } else {
+        Err(RbacRoleAssignmentError::BuiltInRoleSlugCollision {
+            tenant_id,
+            slug: slug.to_string(),
+        })
+    }
+}
+
 fn ensure_supported_backend(backend: DbBackend) -> Result<(), RbacRoleAssignmentError> {
     match backend {
         DbBackend::Postgres | DbBackend::Sqlite => Ok(()),
@@ -440,7 +466,10 @@ fn render_insert_sql(template: &str, backend: DbBackend) -> String {
 mod tests {
     use std::collections::HashSet;
 
-    use super::{ensure_supported_backend, render_insert_sql, stale_role_permission_ids};
+    use super::{
+        ensure_supported_backend, render_insert_sql, stale_role_permission_ids,
+        validate_builtin_role,
+    };
     use sea_orm::DbBackend;
     use uuid::Uuid;
 
@@ -490,5 +519,14 @@ mod tests {
         assert!(ensure_supported_backend(DbBackend::Postgres).is_ok());
         assert!(ensure_supported_backend(DbBackend::Sqlite).is_ok());
         assert!(ensure_supported_backend(DbBackend::MySql).is_err());
+    }
+
+    #[test]
+    fn non_system_role_cannot_occupy_builtin_slug() {
+        let tenant_id = Uuid::new_v4();
+        let role_id = Uuid::new_v4();
+
+        assert!(validate_builtin_role(tenant_id, "admin", role_id, true).is_ok());
+        assert!(validate_builtin_role(tenant_id, "admin", role_id, false).is_err());
     }
 }
