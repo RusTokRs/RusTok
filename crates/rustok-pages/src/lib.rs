@@ -10,7 +10,8 @@
 
 //! Pages module for RusToK platform.
 //!
-//! The module owns storage for pages, page blocks, menus, and menu items.
+//! The module owns storage for pages, page blocks, menus, menu items, and Page Builder release
+//! baselines.
 //!
 //! # Example
 //!
@@ -52,10 +53,12 @@ mod seo_targets;
 pub mod services;
 
 pub use dto::*;
-pub use entities::{Block, Menu, Page};
+pub use entities::{Block, Menu, Page, PageBuilderScenarioBaseline};
 pub use error::{PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
-pub use services::{BlockService, MenuService, PageService};
+pub use services::{
+    BlockService, MenuService, PageBuilderScenarioBaselineService, PageService,
+};
 
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
