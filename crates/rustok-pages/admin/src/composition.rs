@@ -25,6 +25,8 @@ pub fn PagesAdmin() -> impl IntoView {
     let selected_page_query = use_route_query_value(AdminQueryKey::PageId.as_str());
     let token = use_token();
     let tenant = use_tenant();
+    let resource_token = token.clone();
+    let resource_tenant = tenant.clone();
     let default_locale = route_context.locale.clone().unwrap_or_default();
     let loading_label = t(
         route_context.locale.as_deref(),
@@ -44,8 +46,8 @@ pub fn PagesAdmin() -> impl IntoView {
 
     let builder_resource = LocalResource::new(move || {
         let page_id = selected_page_query.get();
-        let token = token.get();
-        let tenant = tenant.get();
+        let token = resource_token.get();
+        let tenant = resource_tenant.get();
         async move {
             let Some(page_id) = page_id.filter(|page_id| core::optional_ui_text(page_id).is_some())
             else {
@@ -78,8 +80,8 @@ pub fn PagesAdmin() -> impl IntoView {
                                 <PagesFlyBuilder
                                     page
                                     baseline
-                                    token
-                                    tenant
+                                    token=token.clone()
+                                    tenant=tenant.clone()
                                     default_locale=default_locale.clone()
                                 />
                             }.into_any(),
@@ -113,10 +115,11 @@ fn PagesFlyBuilder(
 ) -> impl IntoView {
     let seed = core::edit_form_seed_from_page(&page, &default_locale);
     let revision_id = builder::page_revision(&page);
+    let fallback_page_id = page.id.clone();
     let project_data = serde_json::from_str::<Value>(&seed.project_data_text).unwrap_or_else(|_| {
         json!({
             "pages": [{
-                "id": page.id,
+                "id": fallback_page_id,
                 "component": { "id": "root", "type": "wrapper" }
             }]
         })
@@ -143,8 +146,8 @@ fn PagesFlyBuilder(
         Ok(controller) => {
             let page_id = page.id.clone();
             let snapshot_default_locale = default_locale.clone();
-            let facade_token = token;
-            let facade_tenant = tenant;
+            let facade_token = token.clone();
+            let facade_tenant = tenant.clone();
             let facade: Arc<dyn PageBuilderAdminFacade> = Arc::new(PagesBuilderFacade::new(
                 move || PagesBuilderSaveSnapshot {
                     token: facade_token.get_untracked(),
@@ -157,8 +160,8 @@ fn PagesFlyBuilder(
 
             let persistence_error = RwSignal::new(None::<String>);
             let baseline_page_id = page.id.clone();
-            let baseline_token = token;
-            let baseline_tenant = tenant;
+            let baseline_token = token.clone();
+            let baseline_tenant = tenant.clone();
             let on_baseline = Callback::new(
                 move |baseline: Option<RuntimeScenarioReleaseBaseline>| {
                     let page_id = baseline_page_id.clone();
