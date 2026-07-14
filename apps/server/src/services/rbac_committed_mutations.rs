@@ -9,6 +9,7 @@ use crate::models::{
     users,
 };
 
+use super::rbac_cache_invalidation::publish_user_rbac_invalidation;
 use super::rbac_persistence::replace_user_role_via_store;
 use super::rbac_service::RbacService;
 
@@ -31,7 +32,7 @@ impl RbacService {
     }
 
     /// Replace a role outside an enclosing transaction and invalidate the
-    /// process-local authorization snapshot only after commit.
+    /// authorization snapshot only after commit, locally and across replicas.
     ///
     /// The tenant's built-in super-admin role row is locked before continuity
     /// is checked. Concurrent demotions therefore serialize instead of both
@@ -48,6 +49,7 @@ impl RbacService {
         Self::replace_user_role_in_transaction(&tx, user_id, tenant_id, role).await?;
         tx.commit().await?;
         Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
+        publish_user_rbac_invalidation(tenant_id, user_id).await?;
         Ok(())
     }
 
