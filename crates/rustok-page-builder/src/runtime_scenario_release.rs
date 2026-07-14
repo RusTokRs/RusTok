@@ -2,6 +2,7 @@ use fly::{evaluate_runtime_scenario_release, FlyResult, GrapesJsV1Codec};
 pub use fly::{
     RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation,
     RuntimeScenarioReleaseMode, RuntimeScenarioReleasePolicy, RuntimeScenarioReleaseStatus,
+    RuntimeScenarioRenderChange, RuntimeScenarioRenderChangeImpact,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
