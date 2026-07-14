@@ -41,7 +41,7 @@ pub use secrets::{
 };
 pub use seed::{
     execute_seed_profile, SeedExecutionError, SeedExecutionOutcome, SeedExecutionRequest,
-    SeedIdentityPort, SeedModulePort, SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest,
-    SeedUser, SeedUserRequest,
+    SeedIdentityPort, SeedModulePort, SeedPrincipalPort, SeedRolePort, SeedTenant, SeedTenantPort,
+    SeedTenantRequest, SeedUser, SeedUserRequest,
 };
 pub use state::{InstallState, InstallStep, StateTransitionError};
