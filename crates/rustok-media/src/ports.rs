@@ -130,6 +130,10 @@ fn media_error_to_port_error(error: MediaError) -> PortError {
             "media.unsupported_mime_type",
             format!("unsupported media type: {content_type}"),
         ),
+        MediaError::InvalidMediaContent { declared, reason } => PortError::validation(
+            "media.invalid_content",
+            format!("media content does not match declared type `{declared}`: {reason}"),
+        ),
         MediaError::FileTooLarge { size, max } => PortError::validation(
             "media.file_too_large",
             format!("file too large: {size} bytes; max {max} bytes"),
@@ -218,11 +222,16 @@ mod tests {
     fn media_error_to_port_error_maps_policy_errors_to_non_retryable_validation() {
         let unsupported =
             media_error_to_port_error(MediaError::UnsupportedMimeType("text/html".to_string()));
+        let invalid_content = media_error_to_port_error(MediaError::InvalidMediaContent {
+            declared: "image/png".to_string(),
+            reason: "signature mismatch".to_string(),
+        });
         let oversized = media_error_to_port_error(MediaError::FileTooLarge { size: 12, max: 10 });
         let invalid_locale =
             media_error_to_port_error(MediaError::InvalidLocale("bad/locale".to_string()));
 
-        for error in [unsupported, oversized, invalid_locale] {
+        assert_eq!(invalid_content.code, "media.invalid_content");
+        for error in [unsupported, invalid_content, oversized, invalid_locale] {
             assert_eq!(error.kind, PortErrorKind::Validation);
             assert!(error.code.starts_with("media."));
             assert!(!error.retryable);
