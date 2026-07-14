@@ -15,7 +15,7 @@ fn source(relative: &str) -> String {
 }
 
 #[test]
-fn rbac_invalidation_startup_is_serialized_and_committed_after_recovery() {
+fn rbac_invalidation_startup_is_serialized_and_publishable_after_recovery_attempt() {
     let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
     let event_runtime = source("apps/server/src/services/event_transport_factory.rs");
 
@@ -23,7 +23,8 @@ fn rbac_invalidation_startup_is_serialized_and_committed_after_recovery() {
         "RbacCacheInvalidationListenerStartLock",
         "shared_insert_if_absent(RbacCacheInvalidationListenerStartLock::default())",
         "let _start_guard = start_lock.0.lock().await;",
-        "listener.recover_generation_and_clear().await?;",
+        "if let Err(error) = listener.recover_generation_and_clear().await",
+        "startup_recovery_deferred",
         "RBAC_INVALIDATION_CACHE_SERVICE",
         "ctx.shared_insert(RbacCacheInvalidationListenerHandle);",
     ] {
@@ -31,14 +32,14 @@ fn rbac_invalidation_startup_is_serialized_and_committed_after_recovery() {
     }
 
     let recovery = rbac
-        .find("listener.recover_generation_and_clear().await?;")
-        .expect("RBAC listener must recover before becoming publishable");
+        .find("if let Err(error) = listener.recover_generation_and_clear().await")
+        .expect("RBAC listener must attempt recovery before becoming publishable");
     let publisher_commit = rbac
         .rfind("*RBAC_INVALIDATION_CACHE_SERVICE")
-        .expect("RBAC publisher must be installed after startup succeeds");
+        .expect("RBAC publisher must be installed after the recovery attempt");
     let handle_commit = rbac
         .rfind("ctx.shared_insert(RbacCacheInvalidationListenerHandle);")
-        .expect("RBAC listener handle must be committed after startup succeeds");
+        .expect("RBAC listener handle must be committed after startup");
 
     assert!(recovery < publisher_commit);
     assert!(publisher_commit < handle_commit);
@@ -51,28 +52,30 @@ fn rbac_invalidation_startup_is_serialized_and_committed_after_recovery() {
 }
 
 #[test]
-fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
+fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
     let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
+    let generation = source("apps/server/src/services/rbac_invalidation_generation.rs");
+    let committed = source("apps/server/src/services/rbac_committed_mutations.rs");
+    let admin = source("apps/server/src/services/auth_admin_mutation_provider/user_admin.rs");
     let repair = source("apps/server/src/services/rbac_repair.rs");
     let runtime = source("apps/server/src/services/rbac_runtime.rs");
     let tracker = source("crates/rustok-cache/src/bounded_invalidation.rs");
 
     for required in [
+        "read_rbac_invalidation_generation",
+        "RbacInvalidationGenerationState",
+        "durable_state.observe_applied(generation)",
         "RBAC_PERMISSION_RECONCILE_INTERVAL",
         "RBAC_PERMISSION_INVALIDATE_ALL_KEY",
         "RbacInvalidationTarget::All",
-        "publish_all_rbac_invalidation",
-        "namespace_wide_invalidation_key_is_explicit",
+        "publish_all_rbac_invalidation(generation: u64)",
         "reconcile_generation_if_advanced",
         "MissedTickBehavior::Skip",
         "periodic_reconciliation",
         "fanout_deferred",
         "redis_publish_deferred",
         "local_publish_deferred",
-        "RBAC invalidation fan-out deferred to generation reconciliation",
-        "RBAC invalidation publication deferred to generation reconciliation",
-        "Local RBAC invalidation delivery deferred to generation reconciliation",
-        "must not be retried blindly",
+        "durable generation reconciliation",
         "CacheInvalidationPayloadError::OffsetRegressed",
         "superseded_rbac_acknowledgements_are_safe_noops",
         "invalidate_all_user_permissions_cache().await",
@@ -83,33 +86,39 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
         );
     }
 
-    let publish_start = rbac
-        .find("pub async fn publish_user_rbac_invalidation")
-        .expect("RBAC invalidation publisher must exist");
-    let publish_end = rbac[publish_start..]
-        .find("pub async fn start_rbac_cache_invalidation_listener")
-        .map(|offset| publish_start + offset)
-        .expect("RBAC listener startup must follow the publisher");
-    let publish = &rbac[publish_start..publish_end];
-    assert!(publish.contains("let fanout: Result<CacheInvalidationOutcome> = async"));
-    assert!(publish.contains("let outcome = match fanout"));
-    assert!(publish.contains("Err(error) =>"));
-    assert!(publish.contains("return Ok(());"));
-    assert_eq!(
-        publish.matches("must not be retried blindly").count(),
-        1,
-        "only generation advance may remain a hard post-commit error"
-    );
+    assert!(generation.contains("reserve_rbac_invalidation_generation"));
+    assert!(generation.contains("UPDATE rbac_invalidation_state"));
+    assert!(generation.contains("shared_insert_if_absent(RbacInvalidationGenerationWatchdogHandle)"));
+    assert!(generation.contains("applied_generation_state_is_monotonic"));
 
-    assert!(rbac.contains(
-        "        });\n    }\n\n    let reconcile_listener = listener.clone();"
+    assert!(!rbac.contains("bump_cache_backend_generation"));
+    assert!(!rbac.contains("RBAC_PERMISSION_GENERATION_PREFIX"));
+    assert!(!rbac.contains("must not be retried blindly"));
+    assert!(rbac.contains("DurableCacheInvalidationRecord::new("));
+    assert!(rbac.contains("            generation,"));
+
+    for mutation in [&committed, &admin, &repair] {
+        let reserve = mutation
+            .find("reserve_rbac_invalidation_generation(&tx)")
+            .expect("committed RBAC mutation must reserve durable generation");
+        let commit = mutation[reserve..]
+            .find("tx.commit()")
+            .map(|offset| reserve + offset)
+            .expect("generation owner must commit after reservation");
+        assert!(reserve < commit);
+        assert!(mutation.contains("durable_generation reconciliation will recover")
+            || mutation.contains("durable generation reconciliation will recover"));
+    }
+
+    assert!(committed.contains(
+        "publish_user_rbac_invalidation(tenant_id, user_id, durable_generation)"
     ));
-    assert!(!rbac.contains(
-        "RBAC permission cache generation advanced but Redis publish failed"
+    assert!(admin.contains(
+        "publish_user_rbac_invalidation(&tenant_id, &user_id, durable_generation)"
     ));
-    assert!(!rbac.contains(
-        "RBAC permission cache generation advanced without a local subscriber"
-    ));
+    assert!(repair.contains("publish_all_rbac_invalidation(durable_generation)"));
+    assert!(!repair.contains("publish_user_rbac_invalidation"));
+
     assert!(!rbac.contains("users::Entity::find()"));
     assert!(runtime.contains("pub(crate) async fn invalidate_all_user_permissions_cache()"));
     assert!(runtime.contains("USER_PERMISSION_CACHE.invalidate_all();"));
@@ -121,27 +130,6 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
     assert!(tracker.contains(
         "applied_acknowledgement_rejects_unseeded_skipped_or_regressed_offsets"
     ));
-
-    assert!(repair.contains(
-        "use super::rbac_cache_invalidation::publish_all_rbac_invalidation;"
-    ));
-    assert!(!repair.contains("publish_user_rbac_invalidation"));
-    assert!(repair.contains("if !effective_affected_users.is_empty()"));
-    assert_eq!(
-        repair.matches("publish_all_rbac_invalidation().await?;").count(),
-        1,
-        "role repair must publish exactly one namespace-wide invalidation"
-    );
-    let affected_loop = repair
-        .find("for affected in report.affected_users.drain(..)")
-        .expect("role repair must filter and clear affected users locally");
-    let namespace_publish = repair
-        .find("publish_all_rbac_invalidation().await?;")
-        .expect("role repair must publish the namespace-wide invalidation");
-    assert!(
-        affected_loop < namespace_publish,
-        "namespace-wide publication must occur after the affected-user loop"
-    );
 }
 
 #[test]
