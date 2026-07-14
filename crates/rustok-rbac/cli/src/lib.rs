@@ -18,7 +18,7 @@ impl CommandProvider for RbacCommandProvider {
         vec![CommandDescriptor::new(
             "rbac",
             "consistency-report",
-            "Report orphaned, cross-tenant and reserved-slug RBAC corruption",
+            "Report structural and semantic RBAC persistence corruption",
         )]
     }
     async fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
@@ -43,6 +43,9 @@ impl RbacCommandProvider {
             "cross_tenant_user_roles_total": stats.cross_tenant_user_roles_total,
             "cross_tenant_role_permissions_total": stats.cross_tenant_role_permissions_total,
             "reserved_role_slug_collisions_total": stats.reserved_role_slug_collisions_total,
+            "system_roles_with_permission_drift_total": stats.system_roles_with_permission_drift_total,
+            "missing_system_role_permissions_total": stats.missing_system_role_permissions_total,
+            "extra_system_role_permissions_total": stats.extra_system_role_permissions_total,
         });
         if let Some(path) = args
             .get("options")
