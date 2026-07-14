@@ -295,7 +295,7 @@ impl CacheService {
         Fut: Future<Output = rustok_core::Result<CacheEnvelope<T>>> + Send + 'static,
     {
         let key = key.into();
-        validate_refresh_key(&key)?;
+        validate_refresh_request(&key, expected_schema_version, max_encoded_bytes)?;
 
         if let Some(observed_bytes) = backend.get(&key).await? {
             match CacheEnvelope::<T>::decode_with_limit(
@@ -443,6 +443,25 @@ where
             Ok(())
         }
     }
+}
+
+fn validate_refresh_request(
+    key: &str,
+    expected_schema_version: u32,
+    max_encoded_bytes: usize,
+) -> rustok_core::Result<()> {
+    validate_refresh_key(key)?;
+    if expected_schema_version == 0 {
+        return Err(rustok_core::Error::Cache(
+            "cache refresh expected schema version must be non-zero".to_string(),
+        ));
+    }
+    if max_encoded_bytes == 0 {
+        return Err(rustok_core::Error::Cache(
+            "cache refresh encoded size limit must be non-zero".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_refresh_key(key: &str) -> rustok_core::Result<()> {
@@ -627,6 +646,55 @@ mod tests {
         assert!(error.to_string().contains("maximum"));
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert_eq!(coordinator.in_flight(), 0);
+    }
+
+    #[tokio::test]
+    async fn invalid_swr_configuration_does_not_delete_a_valid_entry() {
+        let service = CacheService::from_url(None);
+        let backend = service
+            .backend_shared_client("refresh-invalid-config", Duration::from_secs(60), 16)
+            .await;
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let original = CacheEnvelope::new(1, 1_000, "cached".to_string())
+            .unwrap()
+            .with_expirations(Some(1_500), Some(10_000))
+            .unwrap()
+            .encode()
+            .unwrap();
+        backend
+            .set("document".to_string(), original.clone())
+            .await
+            .unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        for (expected_schema_version, max_encoded_bytes) in [(0, 1024), (1, 0)] {
+            let loader_calls = Arc::clone(&calls);
+            let error = service
+                .load_enveloped_stale_while_revalidate_with_limit_at(
+                    &coordinator,
+                    backend.clone(),
+                    "document",
+                    expected_schema_version,
+                    CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    max_encoded_bytes,
+                    2_000,
+                    move || {
+                        let loader_calls = Arc::clone(&loader_calls);
+                        async move {
+                            loader_calls.fetch_add(1, Ordering::SeqCst);
+                            CacheEnvelope::new(1, 2_000, "unexpected".to_string())
+                                .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                        }
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert!(matches!(error, rustok_core::Error::Cache(_)));
+            assert_eq!(backend.get("document").await.unwrap(), Some(original.clone()));
+            assert_eq!(coordinator.in_flight(), 0);
+        }
+
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
