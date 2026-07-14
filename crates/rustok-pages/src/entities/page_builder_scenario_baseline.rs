@@ -13,6 +13,10 @@ pub struct Model {
     pub baseline_hash: String,
     pub source_project_hash: String,
     pub baseline: Json,
+    pub previous_baseline_hash: Option<String>,
+    pub promoted_by: Option<Uuid>,
+    pub promotion_note: Option<String>,
+    pub promoted_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }
