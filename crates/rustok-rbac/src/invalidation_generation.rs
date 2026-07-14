@@ -89,9 +89,13 @@ mod tests {
             "CREATE TABLE rbac_invalidation_state (\
              scope TEXT PRIMARY KEY NOT NULL, \
              generation BIGINT NOT NULL, \
-             updated_at TEXT NOT NULL); \
-             INSERT INTO rbac_invalidation_state (scope, generation, updated_at) \
-             VALUES ('permissions', 0, CURRENT_TIMESTAMP);",
+             updated_at TEXT NOT NULL)",
+        )
+        .await
+        .unwrap();
+        db.execute_unprepared(
+            "INSERT INTO rbac_invalidation_state (scope, generation, updated_at) \
+             VALUES ('permissions', 0, CURRENT_TIMESTAMP)",
         )
         .await
         .unwrap();
