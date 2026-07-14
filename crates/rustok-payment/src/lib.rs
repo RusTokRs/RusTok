@@ -8,10 +8,14 @@ pub mod controllers;
 pub mod dto;
 pub mod entities;
 pub mod error;
+#[cfg(feature = "server")]
+pub mod http;
 pub mod migrations;
 #[cfg(feature = "server")]
 pub mod openapi;
 pub mod ports;
+#[cfg(feature = "server")]
+pub mod provider_event_recovery_controller;
 pub mod providers;
 pub mod services;
 
