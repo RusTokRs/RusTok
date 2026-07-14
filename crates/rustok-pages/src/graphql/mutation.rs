@@ -10,7 +10,8 @@ use uuid::Uuid;
 
 use crate::{
     BlockService, BlockTranslationInput, BlockType, CreateBlockInput, CreatePageInput,
-    PageBodyInput, PageService, PageTranslationInput, UpdateBlockInput, UpdatePageInput,
+    PageBodyInput, PageBuilderScenarioBaselineService, PageService, PageTranslationInput,
+    UpdateBlockInput, UpdatePageInput,
 };
 
 use super::types::*;
@@ -145,6 +146,11 @@ impl PagesMutation {
             require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        PageBuilderScenarioBaselineService::new(db.clone())
+            .ensure_publish_allowed(tenant_id, id)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
