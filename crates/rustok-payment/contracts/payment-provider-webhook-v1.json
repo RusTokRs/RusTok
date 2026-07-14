@@ -51,6 +51,8 @@
       "dead_letter"
     ],
     "lease_required_for": ["processing"],
+    "normalized_facts_atomic_with_receipt": true,
+    "normalized_facts_immutable_after_receipt": true,
     "normalized_checkpoint_before_owner_apply": true,
     "checkpoint_fields": [
       "event_type",
@@ -103,6 +105,7 @@
     "non_retryable_apply_failure": "dead_letter",
     "expired_processing_lease": "claimable",
     "processed_replay": "acknowledge-without-domain-reapply",
+    "retryable_recovery": "bounded_received_failed_or_expired_processing_sweep_from_normalized_checkpoint",
     "dead_letter_replay": "operator-only-dead_letter-to-processing-using-normalized-checkpoint"
   },
   "operator_api": {
@@ -116,6 +119,15 @@
       "path": "/api/payment/provider-events/dead-letter",
       "permissions_any": ["payments:read", "payments:manage"],
       "max_limit": 100
+    },
+    "run_recovery": {
+      "method": "POST",
+      "path": "/api/payment/provider-events/recovery/run",
+      "permissions_all": ["payments:manage"],
+      "max_limit": 100,
+      "eligible_statuses": ["received", "failed", "expired_processing"],
+      "dead_letter_claimed": false,
+      "raw_payload_required": false
     },
     "replay_dead_letter": {
       "method": "POST",
@@ -134,6 +146,7 @@
   },
   "security": {
     "signature_verification_before_inbox_insert": true,
+    "verified_normalized_facts_written_with_inbox_insert": true,
     "raw_provider_error_exposed_to_client": false,
     "raw_payload_logged_or_persisted": false,
     "provider_signature_exposed_to_operator_api": false,
