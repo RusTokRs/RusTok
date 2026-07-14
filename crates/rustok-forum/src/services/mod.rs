@@ -1,6 +1,7 @@
 mod bounded_compat;
 mod category;
 mod category_owner;
+mod category_tree;
 pub mod event;
 pub mod moderation;
 mod rbac;
