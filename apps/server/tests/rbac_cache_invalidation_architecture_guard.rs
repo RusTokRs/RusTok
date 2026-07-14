@@ -55,7 +55,10 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
         "MissedTickBehavior::Skip",
         "periodic_reconciliation",
         "redis_publish_deferred",
+        "local_publish_deferred",
         "RBAC invalidation publication deferred to generation reconciliation",
+        "Local RBAC invalidation delivery deferred to generation reconciliation",
+        "must not be retried blindly",
         "CacheInvalidationPayloadError::OffsetRegressed",
         "superseded_rbac_acknowledgements_are_safe_noops",
         "invalidate_all_user_permissions_cache().await",
@@ -66,8 +69,22 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
         );
     }
 
+    let redis_subscriber = rbac
+        .find("if cache.redis_client_initialized()")
+        .expect("Redis subscriber must remain conditional");
+    let reconciler = rbac
+        .find("let reconcile_listener = listener.clone();")
+        .expect("generation reconciliation must always be started");
+    assert!(
+        redis_subscriber < reconciler,
+        "generation reconciliation must be outside the Redis-only branch"
+    );
+
     assert!(!rbac.contains(
         "RBAC permission cache generation advanced but Redis publish failed"
+    ));
+    assert!(!rbac.contains(
+        "RBAC permission cache generation advanced without a local subscriber"
     ));
     assert!(!rbac.contains("users::Entity::find()"));
     assert!(runtime.contains("pub(crate) async fn invalidate_all_user_permissions_cache()"));
