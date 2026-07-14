@@ -1,6 +1,7 @@
 mod graphql_adapter;
 
 use crate::model::{CreatePageDraft, PageDetail, PageList, PageMutationResult};
+use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
 
 pub type TransportError = graphql_adapter::ApiError;
 
@@ -17,6 +18,37 @@ pub async fn fetch_page(
     id: String,
 ) -> Result<Option<PageDetail>, TransportError> {
     graphql_adapter::fetch_page(token, tenant_slug, id).await
+}
+
+pub async fn fetch_page_builder_scenario_baseline(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    page_id: String,
+) -> Result<Option<RuntimeScenarioReleaseBaseline>, TransportError> {
+    graphql_adapter::fetch_page_builder_scenario_baseline(token, tenant_slug, page_id).await
+}
+
+pub async fn save_page_builder_scenario_baseline(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    page_id: String,
+    baseline: RuntimeScenarioReleaseBaseline,
+) -> Result<RuntimeScenarioReleaseBaseline, TransportError> {
+    graphql_adapter::save_page_builder_scenario_baseline(
+        token,
+        tenant_slug,
+        page_id,
+        baseline,
+    )
+    .await
+}
+
+pub async fn delete_page_builder_scenario_baseline(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    page_id: String,
+) -> Result<bool, TransportError> {
+    graphql_adapter::delete_page_builder_scenario_baseline(token, tenant_slug, page_id).await
 }
 
 pub async fn create_page(
