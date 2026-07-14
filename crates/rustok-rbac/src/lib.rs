@@ -6,6 +6,7 @@ pub mod error;
 pub mod graphql;
 pub mod integration;
 pub mod ports;
+pub mod repair;
 pub mod services;
 
 pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
@@ -17,6 +18,10 @@ pub use integration::{
     RBAC_EVENT_USER_ROLE_REPLACED,
 };
 pub use ports::*;
+pub use repair::{
+    repair_system_roles, RbacAffectedUser, RbacSystemRoleRepairError,
+    RbacSystemRoleRepairOptions, RbacSystemRoleRepairReport,
+};
 pub use services::authz_mode::AuthzEngine;
 pub use services::permission_authorizer::{
     authorize_all_permissions, authorize_any_permission, authorize_permission,
