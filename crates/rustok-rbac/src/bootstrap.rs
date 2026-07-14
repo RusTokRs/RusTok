@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use thiserror::Error;
 use uuid::Uuid;
@@ -73,12 +75,17 @@ where
         role: UserRole,
     ) -> Result<(), RbacRoleAssignmentError> {
         let role_id = self.ensure_role(tenant_id, &role).await?;
-        self.ensure_user_role(user_id, role_id).await?;
+        let mut expected_permission_ids = HashSet::new();
 
         for permission in Rbac::permissions_for_role(&role) {
             let permission_id = self.ensure_permission(tenant_id, permission).await?;
             self.ensure_role_permission(role_id, permission_id).await?;
+            expected_permission_ids.insert(permission_id);
         }
+
+        self.remove_stale_role_permissions(role_id, &expected_permission_ids)
+            .await?;
+        self.ensure_user_role(user_id, role_id).await?;
 
         Ok(())
     }
@@ -195,6 +202,72 @@ where
         .await
     }
 
+    async fn remove_stale_role_permissions(
+        &self,
+        role_id: Uuid,
+        expected_permission_ids: &HashSet<Uuid>,
+    ) -> Result<(), RbacRoleAssignmentError> {
+        let existing_permission_ids = self.load_role_permission_ids(role_id).await?;
+        for permission_id in
+            stale_role_permission_ids(existing_permission_ids, expected_permission_ids)
+        {
+            self.delete_role_permission(role_id, permission_id).await?;
+        }
+        Ok(())
+    }
+
+    async fn load_role_permission_ids(
+        &self,
+        role_id: Uuid,
+    ) -> Result<Vec<Uuid>, RbacRoleAssignmentError> {
+        let backend = self.db.get_database_backend();
+        let sql = match backend {
+            DbBackend::Sqlite => {
+                "SELECT permission_id FROM role_permissions WHERE role_id = ?1"
+            }
+            _ => "SELECT permission_id FROM role_permissions WHERE role_id = $1",
+        };
+        let rows = self
+            .db
+            .query_all(Statement::from_sql_and_values(
+                backend,
+                sql,
+                vec![role_id.into()],
+            ))
+            .await
+            .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+
+        rows.into_iter()
+            .map(|row| {
+                row.try_get("", "permission_id")
+                    .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))
+            })
+            .collect()
+    }
+
+    async fn delete_role_permission(
+        &self,
+        role_id: Uuid,
+        permission_id: Uuid,
+    ) -> Result<(), RbacRoleAssignmentError> {
+        let backend = self.db.get_database_backend();
+        let sql = match backend {
+            DbBackend::Sqlite => {
+                "DELETE FROM role_permissions WHERE role_id = ?1 AND permission_id = ?2"
+            }
+            _ => "DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2",
+        };
+        self.db
+            .execute(Statement::from_sql_and_values(
+                backend,
+                sql,
+                vec![role_id.into(), permission_id.into()],
+            ))
+            .await
+            .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+        Ok(())
+    }
+
     async fn find_id(
         &self,
         template: &str,
@@ -245,6 +318,16 @@ where
     }
 }
 
+fn stale_role_permission_ids(
+    existing_permission_ids: Vec<Uuid>,
+    expected_permission_ids: &HashSet<Uuid>,
+) -> Vec<Uuid> {
+    existing_permission_ids
+        .into_iter()
+        .filter(|permission_id| !expected_permission_ids.contains(permission_id))
+        .collect()
+}
+
 fn render_insert_sql(template: &str, backend: DbBackend) -> String {
     let markers = match backend {
         DbBackend::Sqlite => ["?1", "?2", "?3", "?4"],
@@ -265,8 +348,11 @@ fn render_insert_sql(template: &str, backend: DbBackend) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::render_insert_sql;
+    use std::collections::HashSet;
+
+    use super::{render_insert_sql, stale_role_permission_ids};
     use sea_orm::DbBackend;
+    use uuid::Uuid;
 
     const ROLE_PERMISSION_INSERT: &str =
         "INSERT INTO role_permissions (id, role_id, permission_id) VALUES ({id}, {relation_role}, {permission}) ON CONFLICT (role_id, permission_id) DO NOTHING";
@@ -295,5 +381,17 @@ mod tests {
             .contains("VALUES ($1, $2, $3)"));
         assert!(render_insert_sql(USER_ROLE_INSERT, DbBackend::Sqlite)
             .contains("VALUES (?1, ?2, ?3)"));
+    }
+
+    #[test]
+    fn stale_permission_detection_removes_only_unexpected_links() {
+        let retained = Uuid::new_v4();
+        let stale = Uuid::new_v4();
+        let expected = HashSet::from([retained]);
+
+        assert_eq!(
+            stale_role_permission_ids(vec![retained, stale], &expected),
+            vec![stale]
+        );
     }
 }
