@@ -69,7 +69,7 @@ impl RbacService {
             Self::invalidate_user_rbac_caches(&affected.tenant_id, &affected.user_id).await;
         }
         if let Some(durable_generation) = durable_generation {
-            if let Err(error) = publish_all_rbac_invalidation().await {
+            if let Err(error) = publish_all_rbac_invalidation(durable_generation).await {
                 tracing::warn!(
                     %error,
                     durable_generation,
