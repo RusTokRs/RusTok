@@ -40,6 +40,9 @@ impl CacheTtlPolicy {
         max_jitter_percent: u8,
         namespace: impl Into<String>,
     ) -> Result<Self, CachePolicyError> {
+        if ttl.is_zero() {
+            return Err(CachePolicyError::ZeroTtl);
+        }
         if max_jitter_percent > MAX_JITTER_PERCENT {
             return Err(CachePolicyError::JitterPercentTooLarge {
                 value: max_jitter_percent,
@@ -111,6 +114,7 @@ impl Default for CacheLoadPolicy {
 pub enum CachePolicyError {
     EmptyNamespace,
     JitterPercentTooLarge { value: u8, maximum: u8 },
+    ZeroTtl,
     ZeroLoaderTimeout,
 }
 
@@ -122,6 +126,7 @@ impl std::fmt::Display for CachePolicyError {
                 formatter,
                 "cache jitter percent {value} exceeds maximum {maximum}"
             ),
+            Self::ZeroTtl => write!(formatter, "cache load TTL must be greater than zero"),
             Self::ZeroLoaderTimeout => {
                 write!(formatter, "cache loader timeout must be greater than zero")
             }
@@ -136,7 +141,8 @@ impl CacheService {
     /// an optional deadline around the source-of-truth loader.
     ///
     /// Cache reads and waiting for the local coalescing gate are not included in the
-    /// loader deadline. Only the leader's loader future is bounded.
+    /// loader deadline. Only the leader's loader future is bounded. A zero TTL is rejected
+    /// before cache I/O because cache backends consistently interpret it as deletion.
     pub async fn load_or_fill_with_policy<F, Fut>(
         &self,
         backend: Arc<dyn CacheBackend>,
@@ -151,6 +157,11 @@ impl CacheService {
         let key = key.into();
         validate_policy_key(&key)?;
         let ttl = policy.ttl.ttl_for(&key);
+        if ttl.is_some_and(|ttl| ttl.is_zero()) {
+            return Err(rustok_core::Error::Cache(
+                CachePolicyError::ZeroTtl.to_string(),
+            ));
+        }
         let loader_timeout = policy.loader_timeout;
 
         self.load_or_fill(backend, key, ttl, move || async move {
@@ -280,6 +291,10 @@ mod tests {
     #[test]
     fn jitter_validation_rejects_unsafe_configuration() {
         assert_eq!(
+            CacheTtlPolicy::deterministic_jitter(Duration::ZERO, 10, "cache").unwrap_err(),
+            CachePolicyError::ZeroTtl
+        );
+        assert_eq!(
             CacheTtlPolicy::deterministic_jitter(Duration::from_secs(1), 51, "cache").unwrap_err(),
             CachePolicyError::JitterPercentTooLarge {
                 value: 51,
@@ -319,6 +334,34 @@ mod tests {
         assert_eq!(stats.misses, 0);
         assert_eq!(stats.evictions, 0);
         assert_eq!(stats.entries, 0);
+    }
+
+    #[tokio::test]
+    async fn zero_ttl_policy_is_rejected_before_cache_or_loader_work() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        backend
+            .set("present".to_string(), b"cached".to_vec())
+            .await
+            .unwrap();
+        let calls = AtomicUsize::new(0);
+
+        let error = service
+            .load_or_fill_with_policy(
+                backend.clone(),
+                "present",
+                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::ZERO)),
+                || async {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(b"unexpected".to_vec())
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("TTL"));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(backend.get("present").await.unwrap(), Some(b"cached".to_vec()));
     }
 
     #[tokio::test]
