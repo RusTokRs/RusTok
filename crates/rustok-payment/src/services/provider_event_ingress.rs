@@ -10,9 +10,9 @@ use crate::providers::{
 };
 
 use super::{
-    CheckpointProviderEvent, CompleteProviderEvent, FailProviderEvent,
-    PaymentProviderEventJournal, ReceiveProviderEvent, PROVIDER_EVENT_DEAD_LETTER,
-    PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING,
+    CompleteProviderEvent, FailProviderEvent, PaymentProviderEventJournal, ReceiveProviderEvent,
+    VerifiedProviderEvent, PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_PROCESSED,
+    PROVIDER_EVENT_PROCESSING,
 };
 
 const DEFAULT_WEBHOOK_LEASE_SECONDS: i64 = 30;
@@ -130,14 +130,21 @@ impl PaymentProviderEventIngressService {
             .await?;
         let inbox_event = self
             .journal
-            .receive(ReceiveProviderEvent {
-                tenant_id: request.tenant_id,
-                provider_id: request.provider_id.clone(),
-                delivery_id: request.delivery_id.clone(),
-                idempotency_key: request.idempotency_key.clone(),
-                raw_payload: request.raw_payload.clone(),
-                signature_verified: true,
-            })
+            .receive_verified(
+                ReceiveProviderEvent {
+                    tenant_id: request.tenant_id,
+                    provider_id: request.provider_id.clone(),
+                    delivery_id: request.delivery_id.clone(),
+                    idempotency_key: request.idempotency_key.clone(),
+                    raw_payload: request.raw_payload.clone(),
+                    signature_verified: true,
+                },
+                VerifiedProviderEvent {
+                    event_type: normalized.event_type.clone(),
+                    external_reference: normalized.external_reference.clone(),
+                    event_metadata: normalized.metadata.clone(),
+                },
+            )
             .await?;
 
         if inbox_event.status == PROVIDER_EVENT_PROCESSED {
@@ -167,24 +174,10 @@ impl PaymentProviderEventIngressService {
                 .await;
         };
 
-        self.journal
-            .checkpoint_normalized(CheckpointProviderEvent {
-                tenant_id: request.tenant_id,
-                event_id: claimed.id,
-                lease_owner: lease_owner.clone(),
-                event_type: normalized.event_type.clone(),
-                external_reference: normalized.external_reference.clone(),
-                event_metadata: normalized.metadata.clone(),
-            })
-            .await?;
-
         self.apply_claimed(claimed, normalized, lease_owner, false)
             .await
     }
 
-    /// Replay a verified normalized event from the dead-letter queue. Raw
-    /// provider bytes are intentionally unavailable; the first verified parse
-    /// is the durable replay boundary.
     pub async fn replay_dead_letter(
         &self,
         tenant_id: Uuid,
