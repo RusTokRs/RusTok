@@ -8,6 +8,7 @@ pub mod auth_lifecycle_provider;
 pub mod auth_password_reset;
 pub mod build_event_hub;
 pub mod build_executor;
+pub mod cache_runtime;
 pub mod commerce_provider_runtime;
 pub mod dashboard_user_activity;
 pub mod effective_module_policy;
