@@ -7,8 +7,7 @@ use crate::providers::PaymentProviderWebhookResult;
 
 use super::{
     CompleteProviderEvent, FailProviderEvent, PaymentProviderEventApplier,
-    PaymentProviderEventJournal, PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_FAILED,
-    PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING,
+    PaymentProviderEventJournal, PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_PROCESSED,
 };
 
 const DEFAULT_RECOVERY_LEASE_SECONDS: i64 = 30;
@@ -30,6 +29,7 @@ pub struct PaymentProviderEventRecoveryReport {
     pub retryable: usize,
     pub dead_letter: usize,
     pub in_progress: usize,
+    pub errors: usize,
     pub failures: Vec<PaymentProviderEventRecoveryFailure>,
 }
 
@@ -181,17 +181,25 @@ impl PaymentProviderEventRecoveryService {
 
         for event in events {
             let lease_owner = format!("{worker_id}:{}:{}", event.id, Uuid::new_v4());
-            match self.resume(tenant_id, event.id, lease_owner).await? {
-                PaymentProviderEventRecoveryOutcome::Processed(_) => report.processed += 1,
-                PaymentProviderEventRecoveryOutcome::Retryable(current) => {
+            match self.resume(tenant_id, event.id, lease_owner).await {
+                Ok(PaymentProviderEventRecoveryOutcome::Processed(_)) => report.processed += 1,
+                Ok(PaymentProviderEventRecoveryOutcome::Retryable(current)) => {
                     report.retryable += 1;
                     report.failures.push(safe_failure(current));
                 }
-                PaymentProviderEventRecoveryOutcome::DeadLetter(current) => {
+                Ok(PaymentProviderEventRecoveryOutcome::DeadLetter(current)) => {
                     report.dead_letter += 1;
                     report.failures.push(safe_failure(current));
                 }
-                PaymentProviderEventRecoveryOutcome::InProgress(_) => report.in_progress += 1,
+                Ok(PaymentProviderEventRecoveryOutcome::InProgress(_)) => report.in_progress += 1,
+                Err(error) => {
+                    report.errors += 1;
+                    report.failures.push(PaymentProviderEventRecoveryFailure {
+                        event_id: event.id,
+                        status: event.status,
+                        error_code: Some(safe_recovery_error_code(&error).to_string()),
+                    });
+                }
             }
         }
         Ok(report)
@@ -231,5 +239,16 @@ fn safe_failure(event: provider_event::Model) -> PaymentProviderEventRecoveryFai
         event_id: event.id,
         status: event.status,
         error_code: event.error_code,
+    }
+}
+
+fn safe_recovery_error_code(error: &PaymentError) -> &'static str {
+    match error {
+        PaymentError::Database(_) => "payment.webhook_recovery_storage_unavailable",
+        PaymentError::InvalidTransition { .. } => "payment.webhook_recovery_state_conflict",
+        PaymentError::Validation(_) => "payment.webhook_recovery_validation_failed",
+        PaymentError::PaymentCollectionNotFound(_)
+        | PaymentError::PaymentNotFound(_)
+        | PaymentError::RefundNotFound(_) => "payment.webhook_recovery_owner_missing",
     }
 }
