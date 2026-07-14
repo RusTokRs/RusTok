@@ -41,6 +41,16 @@ pub struct ReceiveProviderEvent {
 }
 
 #[derive(Clone, Debug)]
+pub struct CheckpointProviderEvent {
+    pub tenant_id: Uuid,
+    pub event_id: Uuid,
+    pub lease_owner: String,
+    pub event_type: String,
+    pub external_reference: Option<String>,
+    pub event_metadata: Value,
+}
+
+#[derive(Clone, Debug)]
 pub struct CompleteProviderEvent {
     pub tenant_id: Uuid,
     pub event_id: Uuid,
@@ -71,9 +81,6 @@ impl PaymentProviderEventJournal {
         Self { db }
     }
 
-    /// Persist a verified provider delivery without retaining the raw body.
-    /// A replay with the same immutable identity and payload hash adopts the
-    /// existing event; a key collision with different content is rejected.
     pub async fn receive(
         &self,
         input: ReceiveProviderEvent,
@@ -186,8 +193,6 @@ impl PaymentProviderEventJournal {
             .map_err(Into::into)
     }
 
-    /// Claim a new/failed event or steal an expired processing lease. The
-    /// attempt count is incremented in the same conditional update.
     pub async fn claim_processing(
         &self,
         tenant_id: Uuid,
@@ -257,8 +262,124 @@ impl PaymentProviderEventJournal {
         self.get(tenant_id, event_id).await.map(Some)
     }
 
-    /// Commit the normalized event and terminal timestamp in one CAS update so
-    /// database state checks never observe a half-completed processed event.
+    pub async fn claim_dead_letter_replay(
+        &self,
+        tenant_id: Uuid,
+        event_id: Uuid,
+        lease_owner: impl Into<String>,
+        lease_seconds: i64,
+    ) -> PaymentResult<Option<provider_event::Model>> {
+        let lease_owner = normalize_required(
+            lease_owner.into(),
+            "lease_owner",
+            MAX_LEASE_OWNER_LENGTH,
+        )?;
+        let lease_seconds = lease_seconds.clamp(1, MAX_LEASE_SECONDS);
+        let now = Utc::now().fixed_offset();
+        let lease_expires_at = now + Duration::seconds(lease_seconds);
+        let update = provider_event::Entity::update_many()
+            .col_expr(
+                provider_event::Column::Status,
+                Expr::value(PROVIDER_EVENT_PROCESSING),
+            )
+            .col_expr(
+                provider_event::Column::LeaseOwner,
+                Expr::value(Some(lease_owner)),
+            )
+            .col_expr(
+                provider_event::Column::LeaseExpiresAt,
+                Expr::value(Some(lease_expires_at)),
+            )
+            .col_expr(
+                provider_event::Column::AttemptCount,
+                Expr::col(provider_event::Column::AttemptCount).add(1),
+            )
+            .col_expr(
+                provider_event::Column::ErrorCode,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                provider_event::Column::ErrorMessage,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                provider_event::Column::ProcessedAt,
+                Expr::value(Option::<DateTime<FixedOffset>>::None),
+            )
+            .col_expr(
+                provider_event::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(provider_event::Column::TenantId.eq(tenant_id))
+            .filter(provider_event::Column::Id.eq(event_id))
+            .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_DEAD_LETTER))
+            .filter(provider_event::Column::EventType.is_not_null())
+            .filter(provider_event::Column::EventMetadata.is_not_null())
+            .exec(&self.db)
+            .await?;
+        if update.rows_affected == 0 {
+            return Ok(None);
+        }
+        self.get(tenant_id, event_id).await.map(Some)
+    }
+
+    pub async fn checkpoint_normalized(
+        &self,
+        input: CheckpointProviderEvent,
+    ) -> PaymentResult<provider_event::Model> {
+        let lease_owner = normalize_required(
+            input.lease_owner,
+            "lease_owner",
+            MAX_LEASE_OWNER_LENGTH,
+        )?;
+        let event_type = normalize_required(
+            input.event_type,
+            "event_type",
+            MAX_EVENT_TYPE_LENGTH,
+        )?;
+        let external_reference = normalize_optional(
+            input.external_reference,
+            "external_reference",
+            MAX_EXTERNAL_REFERENCE_LENGTH,
+        )?;
+        let event_metadata = normalize_event_metadata(input.event_metadata)?;
+        let now = Utc::now().fixed_offset();
+        let update = provider_event::Entity::update_many()
+            .col_expr(
+                provider_event::Column::EventType,
+                Expr::value(Some(event_type)),
+            )
+            .col_expr(
+                provider_event::Column::ExternalReference,
+                Expr::value(external_reference),
+            )
+            .col_expr(
+                provider_event::Column::EventMetadata,
+                Expr::value(Some(event_metadata)),
+            )
+            .col_expr(
+                provider_event::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(provider_event::Column::TenantId.eq(input.tenant_id))
+            .filter(provider_event::Column::Id.eq(input.event_id))
+            .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_PROCESSING))
+            .filter(provider_event::Column::LeaseOwner.eq(lease_owner))
+            .filter(provider_event::Column::LeaseExpiresAt.gt(now))
+            .exec(&self.db)
+            .await?;
+        if update.rows_affected == 0 {
+            return self
+                .transition_conflict(
+                    input.tenant_id,
+                    input.event_id,
+                    PROVIDER_EVENT_PROCESSING,
+                )
+                .await;
+        }
+        self.get(input.tenant_id, input.event_id).await
+    }
+
     pub async fn mark_processed(
         &self,
         input: CompleteProviderEvent,
@@ -342,8 +463,6 @@ impl PaymentProviderEventJournal {
         self.get(input.tenant_id, input.event_id).await
     }
 
-    /// Record a retryable failure or dead-letter the event. A stale lease owner
-    /// cannot finish an event after another worker has reclaimed it.
     pub async fn mark_failed(
         &self,
         input: FailProviderEvent,
@@ -436,6 +555,21 @@ impl PaymentProviderEventJournal {
                     ),
             )
             .order_by_asc(provider_event::Column::UpdatedAt)
+            .limit(limit.clamp(1, 100))
+            .all(&self.db)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn list_dead_letters(
+        &self,
+        tenant_id: Uuid,
+        limit: u64,
+    ) -> PaymentResult<Vec<provider_event::Model>> {
+        provider_event::Entity::find()
+            .filter(provider_event::Column::TenantId.eq(tenant_id))
+            .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_DEAD_LETTER))
+            .order_by_desc(provider_event::Column::UpdatedAt)
             .limit(limit.clamp(1, 100))
             .all(&self.db)
             .await
