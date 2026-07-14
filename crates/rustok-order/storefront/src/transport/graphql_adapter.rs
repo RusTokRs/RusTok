@@ -8,7 +8,7 @@ use super::{
     CompleteCheckoutRequest,
 };
 
-const COMPLETE_STOREFRONT_CHECKOUT_MUTATION: &str = "mutation CompleteStorefrontCheckout($input: CompleteStorefrontCheckoutInput!) { completeStorefrontCheckout(input: $input) { order { id status currencyCode shippingTotal adjustmentTotal totalAmount adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } } paymentCollection { id status currencyCode } fulfillments { id } context { locale currencyCode } } }";
+const COMPLETE_STOREFRONT_CHECKOUT_MUTATION: &str = "mutation CompleteStorefrontCheckout($idempotencyKey: String!, $input: CompleteStorefrontCheckoutInput!) { completeStorefrontCheckout(idempotencyKey: $idempotencyKey, input: $input) { order { id status currencyCode shippingTotal adjustmentTotal totalAmount adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } } paymentCollection { id status currencyCode } fulfillments { id } context { locale currencyCode } } }";
 
 #[derive(Debug, Deserialize)]
 struct CompleteStorefrontCheckoutResponse {
@@ -18,6 +18,8 @@ struct CompleteStorefrontCheckoutResponse {
 
 #[derive(Debug, Serialize)]
 struct CompleteStorefrontCheckoutVariables {
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
     input: CompleteStorefrontCheckoutInput,
 }
 
@@ -93,12 +95,19 @@ pub(super) async fn complete_checkout(
     let cart_id = Uuid::parse_str(request.cart_id.trim()).map_err(|_| {
         CheckoutCompletionTransportError::Validation("cart_id must be a valid UUID".to_string())
     })?;
+    let idempotency_key = request.idempotency_key.trim().to_string();
+    if idempotency_key.is_empty() || idempotency_key.len() > 191 {
+        return Err(CheckoutCompletionTransportError::Validation(
+            "checkout idempotency key must contain 1 to 191 bytes".to_string(),
+        ));
+    }
     let metadata = request.metadata;
     let response: CompleteStorefrontCheckoutResponse = execute(
         &graphql_url(),
         GraphqlRequest::new(
             COMPLETE_STOREFRONT_CHECKOUT_MUTATION,
             Some(CompleteStorefrontCheckoutVariables {
+                idempotency_key,
                 input: CompleteStorefrontCheckoutInput {
                     cart_id,
                     create_fulfillment: metadata.create_fulfillment,
