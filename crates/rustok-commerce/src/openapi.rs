@@ -61,6 +61,9 @@ use utoipa::OpenApi;
         crate::controllers::admin::reopen_fulfillment,
         crate::controllers::admin::reship_fulfillment,
         crate::controllers::admin::cancel_fulfillment,
+        crate::controllers::checkout_operations::show_checkout_operation,
+        crate::controllers::checkout_operations::compensate_checkout_operation,
+        crate::controllers::checkout_operations::sweep_checkout_compensations,
     ),
     components(
         schemas(
@@ -129,12 +132,17 @@ use utoipa::OpenApi;
             crate::dto::CompleteCheckoutInput,
             crate::dto::CompleteCheckoutResponse,
             crate::controllers::admin::AdminOrderDetailResponse,
+            crate::controllers::checkout_operations::AdminCheckoutOperationResponse,
+            crate::controllers::checkout_operations::AdminCheckoutCompensationSweepInput,
+            crate::controllers::checkout_operations::AdminCheckoutCompensationSweepFailure,
+            crate::controllers::checkout_operations::AdminCheckoutCompensationSweepResponse,
         )
     ),
     modifiers(&CommerceOpenApiAddon),
     tags(
         (name = "commerce", description = "Ecommerce endpoints"),
-        (name = "store", description = "Storefront ecommerce endpoints")
+        (name = "store", description = "Storefront ecommerce endpoints"),
+        (name = "admin", description = "Administrative ecommerce endpoints")
     )
 )]
 pub struct CommerceApiDoc;
