@@ -6,8 +6,7 @@ use uuid::Uuid;
 use crate::entities::provider_event;
 use crate::error::PaymentError;
 use crate::providers::{
-    PaymentProviderError, PaymentProviderRegistry, PaymentProviderWebhookRequest,
-    PaymentProviderWebhookResult,
+    PaymentProviderRegistry, PaymentProviderWebhookRequest, PaymentProviderWebhookResult,
 };
 
 use super::{
@@ -68,8 +67,6 @@ pub struct PaymentProviderEventExecution {
 #[derive(Debug, Error)]
 pub enum PaymentProviderEventIngressError {
     #[error(transparent)]
-    Provider(#[from] PaymentProviderError),
-    #[error(transparent)]
     Payment(#[from] PaymentError),
     #[error("payment provider event {0} is currently processing")]
     InProgress(Uuid),
@@ -121,9 +118,8 @@ impl PaymentProviderEventIngressService {
         self
     }
 
-    /// Verifies/parses the provider request before storage, records only a
-    /// payload hash, claims the durable inbox event, applies the normalized
-    /// event through an owner command, and marks it processed afterward.
+    /// Verify and normalize the provider request before durable insertion,
+    /// then apply the normalized event through an owner command under a lease.
     pub async fn ingest(
         &self,
         request: PaymentProviderWebhookRequest,
