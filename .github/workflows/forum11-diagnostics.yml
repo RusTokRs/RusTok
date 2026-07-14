@@ -117,6 +117,13 @@ jobs:
               if old not in source:
                   raise SystemExit(f"replacement anchor missing in {path}")
               target.write_text(source.replace(old, new, 1))
+
+          counter = Path("crates/rustok-forum/tests/counter_integrity_postgres.rs")
+          source = counter.read_text()
+          old = "result.map_err(|error| test_error(error))?;"
+          if source.count(old) != 2:
+              raise SystemExit("expected two counter integrity closure anchors")
+          counter.write_text(source.replace(old, "result.map_err(test_error)?;"))
           PY
 
           targets=(
@@ -128,6 +135,7 @@ jobs:
             crates/rustok-forum/src/services/subscription/policy.rs
             crates/rustok-forum/src/services/subscription/topic.rs
             crates/rustok-forum/src/state_machine.rs
+            crates/rustok-forum/tests/counter_integrity_postgres.rs
             crates/rustok-forum/tests/known_regressions.rs
             crates/rustok-forum/tests/reply_position_integrity_postgres.rs
             crates/rustok-forum/tests/reply_position_integrity_sqlite.rs
