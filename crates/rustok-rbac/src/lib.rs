@@ -24,8 +24,8 @@ pub use integration::{
 };
 pub use ports::*;
 pub use repair::{
-    repair_system_roles, RbacAffectedUser, RbacSystemRoleRepairError,
-    RbacSystemRoleRepairOptions, RbacSystemRoleRepairReport,
+    RbacAffectedUser, RbacSystemRoleRepairError, RbacSystemRoleRepairOptions,
+    RbacSystemRoleRepairReport,
 };
 pub use services::authz_mode::AuthzEngine;
 pub use services::permission_authorizer::{
@@ -53,15 +53,37 @@ pub use services::relation_permission_resolver::{
 };
 pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
 
+/// Build a read-only canonical system-role repair plan.
+pub async fn plan_system_role_repair(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Option<uuid::Uuid>,
+) -> Result<RbacSystemRoleRepairReport, RbacSystemRoleRepairError> {
+    repair::repair_system_roles(
+        db,
+        RbacSystemRoleRepairOptions {
+            tenant_id,
+            apply: false,
+        },
+    )
+    .await
+}
+
 /// Apply canonical system-role repair inside a caller-owned database
 /// transaction. Restricting this public boundary to `DatabaseTransaction`
 /// prevents external callers from mutating role definitions without an atomic
 /// commit boundary for the accompanying invalidation generation.
-pub async fn repair_system_roles_in_transaction(
+pub async fn apply_system_role_repair_in_transaction(
     db: &sea_orm::DatabaseTransaction,
-    options: RbacSystemRoleRepairOptions,
+    tenant_id: Option<uuid::Uuid>,
 ) -> Result<RbacSystemRoleRepairReport, RbacSystemRoleRepairError> {
-    repair::repair_system_roles_in_transaction(db, options).await
+    repair::repair_system_roles_in_transaction(
+        db,
+        RbacSystemRoleRepairOptions {
+            tenant_id,
+            apply: true,
+        },
+    )
+    .await
 }
 
 use async_trait::async_trait;
