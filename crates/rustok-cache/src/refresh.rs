@@ -276,7 +276,8 @@ impl CacheService {
     ///
     /// A stale hit carries the exact encoded bytes observed by the request. The background
     /// loader uses the backend's atomic compare-and-set primitive, so a concurrent replacement
-    /// or invalidation wins without any read/write time-of-check gap.
+    /// or invalidation wins without any read/write time-of-check gap. The same injected clock is
+    /// used to validate the asynchronously refreshed envelope.
     pub async fn load_enveloped_stale_while_revalidate_with_limit_at<T, F, Fut>(
         &self,
         coordinator: &CacheRefreshCoordinator,
@@ -318,6 +319,7 @@ impl CacheService {
                                 expected_schema_version,
                                 refresh_policy,
                                 max_encoded_bytes,
+                                now_unix_ms,
                                 refresh_loader,
                             )
                             .await
@@ -380,6 +382,7 @@ async fn refresh_envelope<T, F, Fut>(
     expected_schema_version: u32,
     policy: CacheLoadPolicy,
     max_encoded_bytes: usize,
+    now_unix_ms: u64,
     loader: F,
 ) -> rustok_core::Result<()>
 where
@@ -415,7 +418,7 @@ where
             expected_schema_version
         )));
     }
-    if envelope.is_hard_expired(current_unix_ms()) {
+    if envelope.is_hard_expired(now_unix_ms) {
         return Err(rustok_core::Error::Cache(
             "cache refresh produced an already hard-expired envelope".to_string(),
         ));
@@ -624,6 +627,57 @@ mod tests {
         assert!(error.to_string().contains("maximum"));
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert_eq!(coordinator.in_flight(), 0);
+    }
+
+    #[tokio::test]
+    async fn injected_clock_is_used_for_background_refresh_validation() {
+        let service = CacheService::from_url(None);
+        let backend = service
+            .backend_shared_client("refresh-injected-clock", Duration::from_secs(60), 16)
+            .await;
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let stale = CacheEnvelope::new(1, 1_000, "stale".to_string())
+            .unwrap()
+            .with_expirations(Some(1_500), Some(10_000))
+            .unwrap()
+            .encode()
+            .unwrap();
+        backend.set("document".to_string(), stale).await.unwrap();
+
+        let result = service
+            .load_enveloped_stale_while_revalidate_with_limit_at(
+                &coordinator,
+                backend.clone(),
+                "document",
+                1,
+                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                1024,
+                2_000,
+                || async {
+                    CacheEnvelope::new(1, 2_000, "fresh".to_string())
+                        .unwrap()
+                        .with_expirations(Some(2_500), Some(5_000))
+                        .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.cache.value, "stale");
+        assert_eq!(result.refresh, CacheRefreshSchedule::Spawned);
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while coordinator.in_flight() != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("refresh task did not finish");
+
+        let bytes = backend.get("document").await.unwrap().unwrap();
+        let refreshed = CacheEnvelope::<String>::decode_with_limit(&bytes, 1, 1024).unwrap();
+        assert_eq!(refreshed.payload(), "fresh");
+        assert_eq!(coordinator.stats().completed, 1);
+        assert_eq!(coordinator.stats().failed, 0);
     }
 
     #[tokio::test]
