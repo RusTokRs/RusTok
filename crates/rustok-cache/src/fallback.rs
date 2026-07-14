@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 const MAX_DEGRADED_WRITE_KEYS: usize = 4_096;
 const MAX_DEGRADED_WRITE_KEY_BYTES: usize = 4 * 1_024;
 const DEGRADED_WRITE_PRUNE_SCAN: usize = 16;
+const MAX_PENDING_INVALIDATION_KEYS: usize = 4_096;
 const FALLBACK_KEY_LOCK_STRIPES: usize = 256;
 
 #[derive(Debug)]
@@ -48,12 +49,7 @@ impl DegradedWriteTracker {
         expected: &[u8],
         fallback: &InMemoryCacheBackend,
     ) -> rustok_core::Result<()> {
-        if key.len() > MAX_DEGRADED_WRITE_KEY_BYTES {
-            return Err(rustok_core::Error::Cache(format!(
-                "degraded cache write key is {} bytes; maximum is {MAX_DEGRADED_WRITE_KEY_BYTES}",
-                key.len()
-            )));
-        }
+        validate_degraded_key(key, "write")?;
         if fallback.get(key).await?.as_deref() != Some(expected) {
             return Err(rustok_core::Error::Cache(
                 "degraded cache write bytes were not retained by the local fallback".to_string(),
@@ -94,19 +90,71 @@ impl DegradedWriteTracker {
     }
 }
 
+#[derive(Debug)]
+struct PendingInvalidationTracker {
+    keys: Mutex<HashSet<String>>,
+    maximum_keys: usize,
+}
+
+impl PendingInvalidationTracker {
+    fn new(maximum_keys: usize) -> Self {
+        Self {
+            keys: Mutex::new(HashSet::new()),
+            maximum_keys,
+        }
+    }
+
+    async fn contains(&self, key: &str) -> bool {
+        self.keys.lock().await.contains(key)
+    }
+
+    async fn remove(&self, key: &str) {
+        self.keys.lock().await.remove(key);
+    }
+
+    async fn insert(&self, key: &str) -> rustok_core::Result<()> {
+        validate_degraded_key(key, "invalidation")?;
+        let mut keys = self.keys.lock().await;
+        if keys.contains(key) {
+            return Ok(());
+        }
+        if keys.len() >= self.maximum_keys {
+            return Err(rustok_core::Error::Cache(format!(
+                "pending cache invalidation tracker reached capacity {}",
+                self.maximum_keys
+            )));
+        }
+        keys.insert(key.to_string());
+        Ok(())
+    }
+}
+
+fn validate_degraded_key(key: &str, operation: &str) -> rustok_core::Result<()> {
+    if key.len() > MAX_DEGRADED_WRITE_KEY_BYTES {
+        return Err(rustok_core::Error::Cache(format!(
+            "degraded cache {operation} key is {} bytes; maximum is {MAX_DEGRADED_WRITE_KEY_BYTES}",
+            key.len()
+        )));
+    }
+    Ok(())
+}
+
 /// Availability-preserving fallback whose health and atomic mutations remain strict about the
 /// shared primary.
 ///
 /// Ordinary writes are mirrored locally before they reach Redis. A bounded fail-closed tracker
 /// records only writes whose primary operation failed, so those newer local bytes remain
-/// authoritative during reconnects instead of being overwritten by stale shared data. Tracker
-/// capacity is never recovered by evicting a live degraded write; new writes surface the primary
-/// error when they cannot be tracked safely. A fixed set of striped locks serializes operations for
-/// the same key without introducing an unbounded per-key registry.
+/// authoritative during reconnects instead of being overwritten by stale shared data. Failed
+/// invalidations retain a separate bounded process-local tombstone: reads never resurrect stale
+/// shared bytes and opportunistically retry the delete after Redis recovers. Tracker capacity is
+/// never recovered by evicting a live mutation; new mutations surface the primary error when they
+/// cannot be retained safely. A fixed set of striped locks serializes operations for the same key
+/// without introducing an unbounded per-key registry.
 pub(crate) struct DegradationAwareFallbackBackend {
     primary: Arc<dyn CacheBackend>,
     fallback: Arc<InMemoryCacheBackend>,
     degraded_writes: DegradedWriteTracker,
+    pending_invalidations: PendingInvalidationTracker,
     key_locks: Vec<Mutex<()>>,
 }
 
@@ -116,6 +164,9 @@ impl DegradationAwareFallbackBackend {
             primary,
             fallback,
             degraded_writes: DegradedWriteTracker::new(MAX_DEGRADED_WRITE_KEYS),
+            pending_invalidations: PendingInvalidationTracker::new(
+                MAX_PENDING_INVALIDATION_KEYS,
+            ),
             key_locks: (0..FALLBACK_KEY_LOCK_STRIPES)
                 .map(|_| Mutex::new(()))
                 .collect(),
@@ -138,6 +189,10 @@ impl DegradationAwareFallbackBackend {
         self.degraded_writes.remove(key).await;
     }
 
+    async fn clear_pending_invalidation(&self, key: &str) {
+        self.pending_invalidations.remove(key).await;
+    }
+
     async fn read_degraded_write(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
         if !self.degraded_writes.contains(key).await {
             return Ok(None);
@@ -152,6 +207,30 @@ impl DegradationAwareFallbackBackend {
                 Ok(None)
             }
         }
+    }
+
+    async fn retry_pending_invalidation(&self, key: &str) -> bool {
+        if !self.pending_invalidations.contains(key).await {
+            return false;
+        }
+
+        if let Err(error) = self.fallback.invalidate(key).await {
+            tracing::warn!(%error, key, "Failed to preserve local cache invalidation tombstone");
+        }
+        match self.primary.invalidate(key).await {
+            Ok(()) => {
+                self.clear_pending_invalidation(key).await;
+                tracing::debug!(key, "Retried pending shared cache invalidation successfully");
+            }
+            Err(error) => {
+                tracing::debug!(
+                    %error,
+                    key,
+                    "Shared cache invalidation is still pending; suppressing stale primary value"
+                );
+            }
+        }
+        true
     }
 
     async fn discard_local_write_if_unchanged(&self, key: &str, expected: &[u8]) {
@@ -202,6 +281,7 @@ impl DegradationAwareFallbackBackend {
             return Err(primary_error);
         }
 
+        self.clear_pending_invalidation(key).await;
         tracing::debug!(
             error = %primary_error,
             key,
@@ -216,14 +296,34 @@ impl DegradationAwareFallbackBackend {
         }
         self.clear_degraded_write(key).await;
 
-        self.primary.invalidate(key).await.map_err(|error| {
-            tracing::warn!(
-                %error,
-                key,
-                "Primary cache invalidation failed; stale shared data may remain"
-            );
-            error
-        })
+        match self.primary.invalidate(key).await {
+            Ok(()) => {
+                self.clear_pending_invalidation(key).await;
+                Ok(())
+            }
+            Err(error) => {
+                if let Err(tracker_error) = self.pending_invalidations.insert(key).await {
+                    tracing::warn!(
+                        %error,
+                        %tracker_error,
+                        key,
+                        "Primary cache invalidation failed and local tombstone retention was unavailable"
+                    );
+                } else {
+                    tracing::warn!(
+                        %error,
+                        key,
+                        "Primary cache invalidation failed; retained bounded local tombstone"
+                    );
+                }
+                Err(error)
+            }
+        }
+    }
+
+    async fn has_unsynchronized_mutation(&self, key: &str) -> bool {
+        self.degraded_writes.contains(key).await
+            || self.pending_invalidations.contains(key).await
     }
 }
 
@@ -235,6 +335,9 @@ impl CacheBackend for DegradationAwareFallbackBackend {
 
     async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
         let _guard = self.key_lock(key).lock().await;
+        if self.retry_pending_invalidation(key).await {
+            return Ok(None);
+        }
         if let Some(value) = self.read_degraded_write(key).await? {
             return Ok(Some(value));
         }
@@ -243,6 +346,9 @@ impl CacheBackend for DegradationAwareFallbackBackend {
             Ok(primary_value) => {
                 // Keep the defensive re-check even though same-key operations are serialized: a
                 // test or maintenance path may manipulate the concrete fallback directly.
+                if self.retry_pending_invalidation(key).await {
+                    return Ok(None);
+                }
                 if let Some(value) = self.read_degraded_write(key).await? {
                     return Ok(Some(value));
                 }
@@ -264,6 +370,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
                         // A successful primary miss is authoritative. Remove any older local mirror
                         // so a later Redis outage cannot resurrect stale bytes.
                         self.clear_degraded_write(key).await;
+                        self.clear_pending_invalidation(key).await;
                         if let Err(error) = self.fallback.invalidate(key).await {
                             tracing::warn!(%error, key, "Failed to discard stale local cache mirror");
                         }
@@ -287,6 +394,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         match self.primary.set(key.clone(), value.clone()).await {
             Ok(()) => {
                 self.clear_degraded_write(&key).await;
+                self.clear_pending_invalidation(&key).await;
                 Ok(())
             }
             Err(error) => {
@@ -305,7 +413,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         let _guard = self.key_lock(&key).lock().await;
         if ttl.is_zero() {
             // Zero TTL is a deletion, not an availability-preserving write. A failed shared delete
-            // must remain visible to callers or stale Redis bytes could be reported as removed.
+            // remains visible to the caller while a bounded local tombstone prevents resurrection.
             return self.invalidate_locked(&key).await;
         }
 
@@ -324,6 +432,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         {
             Ok(()) => {
                 self.clear_degraded_write(&key).await;
+                self.clear_pending_invalidation(&key).await;
                 Ok(())
             }
             Err(error) => {
@@ -341,6 +450,13 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         ttl: Option<Duration>,
     ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
         let _guard = self.key_lock(key).lock().await;
+        if self.has_unsynchronized_mutation(key).await {
+            return Err(rustok_core::Error::Cache(
+                "cache compare-and-set rejected while local and shared state are unsynchronized"
+                    .to_string(),
+            ));
+        }
+
         let outcome = self
             .primary
             .compare_and_set(key, expected, value.clone(), ttl)
@@ -348,10 +464,12 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         match outcome {
             CacheCompareAndSetOutcome::Applied => {
                 self.clear_degraded_write(key).await;
+                self.clear_pending_invalidation(key).await;
                 self.mirror_primary_cas(key, value, ttl).await;
             }
             CacheCompareAndSetOutcome::Mismatch => {
                 self.clear_degraded_write(key).await;
+                self.clear_pending_invalidation(key).await;
                 if let Err(error) = self.fallback.invalidate(key).await {
                     tracing::warn!(
                         %error,
@@ -742,6 +860,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn compare_and_set_rejects_a_tracked_degraded_write_after_primary_recovers() {
+        let primary = Arc::new(RecoveringStaleBackend {
+            fail_writes: AtomicBool::new(true),
+            value: StdMutex::new(Some(b"old".to_vec())),
+        });
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
+        let primary_backend: Arc<dyn CacheBackend> = primary.clone();
+        let backend = backend(primary_backend, Arc::clone(&fallback));
+
+        backend
+            .set("key".to_string(), b"local-new".to_vec())
+            .await
+            .unwrap();
+        primary.fail_writes.store(false, Ordering::SeqCst);
+
+        let error = backend
+            .compare_and_set("key", b"local-new", b"cas-value".to_vec(), None)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("unsynchronized"));
+        assert_eq!(backend.get("key").await.unwrap(), Some(b"local-new".to_vec()));
+        assert_eq!(
+            primary
+                .value
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_deref(),
+            Some(b"old".as_slice())
+        );
+    }
+
+    #[tokio::test]
     async fn primary_miss_prevents_stale_fallback_resurrection_during_later_outage() {
         let primary = Arc::new(MissThenFailBackend {
             failing: AtomicBool::new(false),
@@ -798,6 +948,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_invalidation_tombstone_prevents_stale_primary_resurrection() {
+        let primary = Arc::new(RecoveringStaleBackend {
+            fail_writes: AtomicBool::new(true),
+            value: StdMutex::new(Some(b"old".to_vec())),
+        });
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
+        fallback
+            .set("key".to_string(), b"old".to_vec())
+            .await
+            .unwrap();
+        let primary_backend: Arc<dyn CacheBackend> = primary.clone();
+        let backend = backend(primary_backend, Arc::clone(&fallback));
+
+        assert!(backend.invalidate("key").await.is_err());
+        assert!(backend.pending_invalidations.contains("key").await);
+        assert_eq!(backend.get("key").await.unwrap(), None);
+        assert_eq!(fallback.get("key").await.unwrap(), None);
+
+        primary.fail_writes.store(false, Ordering::SeqCst);
+        assert_eq!(backend.get("key").await.unwrap(), None);
+        assert!(!backend.pending_invalidations.contains("key").await);
+        assert!(primary
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn newer_degraded_write_supersedes_a_pending_invalidation() {
+        let primary = Arc::new(RecoveringStaleBackend {
+            fail_writes: AtomicBool::new(true),
+            value: StdMutex::new(Some(b"old".to_vec())),
+        });
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
+        let primary_backend: Arc<dyn CacheBackend> = primary.clone();
+        let backend = backend(primary_backend, Arc::clone(&fallback));
+
+        assert!(backend.invalidate("key").await.is_err());
+        assert!(backend.pending_invalidations.contains("key").await);
+        backend
+            .set("key".to_string(), b"new".to_vec())
+            .await
+            .unwrap();
+
+        assert!(!backend.pending_invalidations.contains("key").await);
+        assert!(backend.degraded_writes.contains("key").await);
+        assert_eq!(backend.get("key").await.unwrap(), Some(b"new".to_vec()));
+    }
+
+    #[tokio::test]
     async fn degraded_tracker_rotates_prune_candidates_without_tombstone_growth() {
         let tracker = DegradedWriteTracker::new(3);
         let fallback = InMemoryCacheBackend::new(Duration::from_secs(30), 64);
@@ -837,6 +1038,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pending_invalidation_tracker_is_bounded_and_never_evicts_live_tombstones() {
+        let tracker = PendingInvalidationTracker::new(1);
+        tracker.insert("first").await.unwrap();
+        assert!(tracker.insert("second").await.is_err());
+        assert!(tracker.contains("first").await);
+        assert!(!tracker.contains("second").await);
+
+        tracker.remove("first").await;
+        tracker.insert("second").await.unwrap();
+        assert!(!tracker.contains("first").await);
+        assert!(tracker.contains("second").await);
+    }
+
+    #[tokio::test]
     async fn zero_ttl_delete_fails_closed_when_shared_primary_is_unavailable() {
         let primary = Arc::new(RecoveringStaleBackend {
             fail_writes: AtomicBool::new(true),
@@ -849,5 +1064,7 @@ mod tests {
             .set_with_ttl("key".to_string(), Vec::new(), Duration::ZERO)
             .await
             .is_err());
+        assert!(backend.pending_invalidations.contains("key").await);
+        assert_eq!(backend.get("key").await.unwrap(), None);
     }
 }
