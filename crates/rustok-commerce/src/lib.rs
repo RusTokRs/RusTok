@@ -60,6 +60,7 @@ pub use services::{
     CheckoutOrderStageError, CheckoutOrderStageExecutor, CheckoutOrderStageResult,
     CheckoutPaymentCapturedState, CheckoutPaymentReadyState, CheckoutPaymentStageError,
     CheckoutPaymentStageExecutor, CheckoutPaymentStageResult, CheckoutResult, CheckoutService,
+    CheckoutStagePipeline, CheckoutStagePipelineError, CheckoutStagePipelineResult,
     CreateReturnDecisionInput, ExchangeDifferenceRefundInput,
     FulfillmentCreateLabelRecoveryService, FulfillmentReconciliationService,
     JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
