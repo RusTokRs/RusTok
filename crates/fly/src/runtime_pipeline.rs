@@ -1,6 +1,7 @@
 use crate::{
-    materialize_bindings, materialize_context, materialize_runtime, BindingMaterialization,
-    ContextMaterialization, ProjectDocument, RuntimeMaterialization, ValidationDiagnostic,
+    extract_runtime_context_contract, materialize_bindings, materialize_context,
+    materialize_runtime, BindingMaterialization, ContextMaterialization, ProjectDocument,
+    RuntimeMaterialization, ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -27,15 +28,39 @@ pub fn materialize_project_with_runtime_context(
     document: &ProjectDocument,
     input_context: &Value,
 ) -> RuntimeProjectMaterialization {
-    let ContextMaterialization {
-        context: effective_context,
-        mut diagnostics,
+    let contract = extract_runtime_context_contract(document);
+    let contract_is_valid = contract.is_valid();
+    let mut diagnostics = contract.definition_diagnostics;
+    let (
+        effective_context,
         defaults_applied,
         computed_applied,
         computed_fallbacks,
         unresolved_computed,
-        type_mismatches: context_type_mismatches,
-    } = materialize_context(document, input_context);
+        context_type_mismatches,
+    ) = if contract_is_valid {
+        let ContextMaterialization {
+            context,
+            diagnostics: context_diagnostics,
+            defaults_applied,
+            computed_applied,
+            computed_fallbacks,
+            unresolved_computed,
+            type_mismatches,
+        } = materialize_context(document, input_context);
+        diagnostics.extend(context_diagnostics);
+        (
+            context,
+            defaults_applied,
+            computed_applied,
+            computed_fallbacks,
+            unresolved_computed,
+            type_mismatches,
+        )
+    } else {
+        (input_context.clone(), 0, 0, 0, 0, 0)
+    };
+
     let BindingMaterialization {
         document,
         diagnostics: binding_diagnostics,
@@ -127,5 +152,37 @@ mod tests {
                 .and_then(Value::as_str),
             Some("Hello world")
         );
+    }
+
+    #[test]
+    fn invalid_context_contract_does_not_replace_root_context() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "title",
+                        "type": "text",
+                        "content": "Static"
+                    }]
+                }
+            }],
+            "flyRuntimeContextSchema": [{
+                "id": "invalid-root",
+                "path": "",
+                "kind": "object",
+                "default": { "replaced": true }
+            }]
+        }))
+        .expect("document");
+        let input = json!({ "safe": true });
+        let materialized = materialize_project_with_runtime_context(&document, &input);
+        assert_eq!(materialized.effective_context, input);
+        assert_eq!(materialized.defaults_applied, 0);
+        assert!(materialized
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid"));
     }
 }
