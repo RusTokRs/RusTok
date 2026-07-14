@@ -1,0 +1,81 @@
+name: Inventory SeaQuery compatibility once
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/inventory-sea-query-compat-once.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: inventory-sea-query-compat-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/cache-hardening-continuation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cache-hardening-continuation
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-hardening
+      - name: Apply compatibility fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          inventory_path = Path("crates/rustok-inventory/src/ports.rs")
+          inventory = inventory_path.read_text()
+          old_import = "sea_query::Expr, ActiveModelTrait"
+          if inventory.count(old_import) != 1:
+              raise SystemExit(
+                  f"inventory import: expected one match, found {inventory.count(old_import)}"
+              )
+          inventory = inventory.replace(
+              old_import,
+              "sea_query::{Expr, ExprTrait}, ActiveModelTrait",
+              1,
+          )
+          timestamp = "Expr::current_timestamp(),"
+          if inventory.count(timestamp) != 2:
+              raise SystemExit(
+                  f"current_timestamp: expected two matches, found {inventory.count(timestamp)}"
+              )
+          inventory = inventory.replace(timestamp, "Expr::current_timestamp().into(),")
+          inventory_path.write_text(inventory)
+
+          events_path = Path("crates/rustok-events/src/types.rs")
+          events = events_path.read_text()
+          old_field = "                size_bytes,\n            } => {"
+          if events.count(old_field) != 1:
+              raise SystemExit(
+                  f"unused size_bytes binding: expected one match, found {events.count(old_field)}"
+              )
+          events_path.write_text(events.replace(old_field, "                size_bytes: _,\n            } => {", 1))
+          PY
+          cargo check -p rustok-inventory --lib
+          cargo check -p rustok-events --lib
+      - name: Commit branch-only fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/cache-compile-diagnostics-once.yml
+          rm .github/workflows/inventory-sea-query-compat-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rustok-inventory/src/ports.rs crates/rustok-events/src/types.rs \
+            .github/workflows/cache-compile-diagnostics-once.yml \
+            .github/workflows/inventory-sea-query-compat-once.yml
+          git commit -m "fix(build): adapt inventory expressions to SeaQuery API"
+          git push origin HEAD:agent/cache-hardening-continuation
