@@ -6,7 +6,7 @@ pub mod error;
 pub mod graphql;
 pub mod integration;
 pub mod ports;
-pub mod repair;
+mod repair;
 pub mod services;
 
 pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
@@ -19,8 +19,8 @@ pub use integration::{
 };
 pub use ports::*;
 pub use repair::{
-    repair_system_roles, repair_system_roles_in_transaction, RbacAffectedUser,
-    RbacSystemRoleRepairError, RbacSystemRoleRepairOptions, RbacSystemRoleRepairReport,
+    repair_system_roles, RbacAffectedUser, RbacSystemRoleRepairError,
+    RbacSystemRoleRepairOptions, RbacSystemRoleRepairReport,
 };
 pub use services::authz_mode::AuthzEngine;
 pub use services::permission_authorizer::{
@@ -47,6 +47,17 @@ pub use services::relation_permission_resolver::{
     RelationPermissionStore,
 };
 pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
+
+/// Apply canonical system-role repair inside a caller-owned database
+/// transaction. Restricting this public boundary to `DatabaseTransaction`
+/// prevents external callers from mutating role definitions without an atomic
+/// commit boundary for the accompanying invalidation generation.
+pub async fn repair_system_roles_in_transaction(
+    db: &sea_orm::DatabaseTransaction,
+    options: RbacSystemRoleRepairOptions,
+) -> Result<RbacSystemRoleRepairReport, RbacSystemRoleRepairError> {
+    repair::repair_system_roles_in_transaction(db, options).await
+}
 
 use async_trait::async_trait;
 use rustok_api::Permission;
