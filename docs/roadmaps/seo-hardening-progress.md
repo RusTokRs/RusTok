@@ -20,7 +20,7 @@ Automated verification is recorded separately because direct pushes currently do
 ## Regression coverage
 
 - [x] Add an integration regression test proving that redirect data and delivery tracking roll back when the transactional event transport fails. (`1d5144c`, `c940afd`)
-- [ ] Add rollback coverage for sitemap generation when its transactional outbox write fails.
+- [x] Add an integration regression test proving that sitemap jobs, generated files, and delivery tracking roll back when the transactional outbox write fails. (`a4d9476`)
 - [ ] Add rollback coverage for metadata and revision transactions.
 
 ## P1 — performance and maintainability
