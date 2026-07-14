@@ -28,45 +28,85 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: cache-hardening
-      - name: Apply compatibility fixes
+      - name: Apply and verify compatibility fixes
+        id: verify
         shell: bash
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
+          set +e
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee "$RUNNER_TEMP/inventory-compat-apply.log"
           from pathlib import Path
+          import re
 
           inventory_path = Path("crates/rustok-inventory/src/ports.rs")
           inventory = inventory_path.read_text()
           old_import = "sea_query::Expr, ActiveModelTrait"
-          if inventory.count(old_import) != 1:
+          new_import = "sea_query::{Expr, ExprTrait}, ActiveModelTrait"
+          if new_import not in inventory:
+              count = inventory.count(old_import)
+              if count != 1:
+                  raise SystemExit(f"inventory import: expected one match, found {count}")
+              inventory = inventory.replace(old_import, new_import, 1)
+
+          old_timestamp = "Expr::current_timestamp(),"
+          new_timestamp = "Expr::current_timestamp().into(),"
+          old_count = inventory.count(old_timestamp)
+          new_count = inventory.count(new_timestamp)
+          if old_count not in (0, 2) or old_count + new_count != 2:
               raise SystemExit(
-                  f"inventory import: expected one match, found {inventory.count(old_import)}"
+                  f"current_timestamp: expected two total migration sites, old={old_count}, new={new_count}"
               )
-          inventory = inventory.replace(
-              old_import,
-              "sea_query::{Expr, ExprTrait}, ActiveModelTrait",
-              1,
-          )
-          timestamp = "Expr::current_timestamp(),"
-          if inventory.count(timestamp) != 2:
-              raise SystemExit(
-                  f"current_timestamp: expected two matches, found {inventory.count(timestamp)}"
-              )
-          inventory = inventory.replace(timestamp, "Expr::current_timestamp().into(),")
+          inventory = inventory.replace(old_timestamp, new_timestamp)
           inventory_path.write_text(inventory)
 
           events_path = Path("crates/rustok-events/src/types.rs")
           events = events_path.read_text()
-          old_field = "                size_bytes,\n            } => {"
-          if events.count(old_field) != 1:
-              raise SystemExit(
-                  f"unused size_bytes binding: expected one match, found {events.count(old_field)}"
-              )
-          events_path.write_text(events.replace(old_field, "                size_bytes: _,\n            } => {", 1))
+          pattern = re.compile(
+              r"(Self::ModuleArtifactAdmitted\s*\{\s*installation_id,\s*artifact_digest,\s*media_type,\s*)size_bytes,"
+          )
+          events, count = pattern.subn(r"\1size_bytes: _,", events, count=1)
+          if count != 1 and "size_bytes: _," not in events:
+              raise SystemExit(f"unused size_bytes binding: expected one match, found {count}")
+          events_path.write_text(events)
           PY
-          cargo check -p rustok-inventory --lib
-          cargo check -p rustok-events --lib
+          apply_status=${PIPESTATUS[0]}
+          echo "$apply_status" > "$RUNNER_TEMP/inventory-compat-apply.status"
+
+          if [[ "$apply_status" -eq 0 ]]; then
+            cargo check -p rustok-inventory --lib \
+              2>&1 | tee "$RUNNER_TEMP/rustok-inventory-check.log"
+            inventory_status=${PIPESTATUS[0]}
+            cargo check -p rustok-events --lib \
+              2>&1 | tee "$RUNNER_TEMP/rustok-events-check.log"
+            events_status=${PIPESTATUS[0]}
+          else
+            inventory_status=125
+            events_status=125
+            : > "$RUNNER_TEMP/rustok-inventory-check.log"
+            : > "$RUNNER_TEMP/rustok-events-check.log"
+          fi
+
+          echo "$inventory_status" > "$RUNNER_TEMP/rustok-inventory-check.status"
+          echo "$events_status" > "$RUNNER_TEMP/rustok-events-check.status"
+          if [[ "$apply_status" -eq 0 && "$inventory_status" -eq 0 && "$events_status" -eq 0 ]]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: inventory-sea-query-compat-diagnostics
+          path: |
+            ${{ runner.temp }}/inventory-compat-apply.log
+            ${{ runner.temp }}/inventory-compat-apply.status
+            ${{ runner.temp }}/rustok-inventory-check.log
+            ${{ runner.temp }}/rustok-inventory-check.status
+            ${{ runner.temp }}/rustok-events-check.log
+            ${{ runner.temp }}/rustok-events-check.status
+          if-no-files-found: error
       - name: Commit branch-only fixes
+        if: steps.verify.outputs.ok == 'true'
         shell: bash
         run: |
           set -euo pipefail
