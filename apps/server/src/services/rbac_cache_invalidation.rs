@@ -189,7 +189,11 @@ pub async fn publish_user_rbac_invalidation(
     let generation = cache
         .bump_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX)
         .await
-        .map_err(|error| Error::Cache(error.to_string()))?;
+        .map_err(|error| {
+            Error::Cache(format!(
+                "RBAC invalidation generation could not advance; an enclosing mutation may already be committed and must not be retried blindly: {error}"
+            ))
+        })?;
     let emitted_at_unix_ms = u64::try_from(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -228,9 +232,16 @@ pub async fn publish_user_rbac_invalidation(
             );
         }
     } else if outcome.local_subscribers == 0 {
-        return Err(Error::Cache(
-            "RBAC permission cache generation advanced without a local subscriber".to_string(),
-        ));
+        tracing::warn!(
+            %tenant_id,
+            %user_id,
+            generation = generation.generation,
+            "Local RBAC invalidation delivery deferred to generation reconciliation"
+        );
+        rustok_telemetry::metrics::record_event_error(
+            RBAC_PERMISSION_INVALIDATION_CHANNEL,
+            "local_publish_deferred",
+        );
     }
 
     Ok(())
@@ -323,31 +334,30 @@ pub async fn start_rbac_cache_invalidation_listener(
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
         });
+    }
 
-        let reconcile_listener = listener.clone();
-        tokio::spawn(async move {
-            let start = tokio::time::Instant::now() + RBAC_PERMISSION_RECONCILE_INTERVAL;
-            let mut interval =
-                tokio::time::interval_at(start, RBAC_PERMISSION_RECONCILE_INTERVAL);
-            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            loop {
-                interval.tick().await;
-                match reconcile_listener.reconcile_generation_if_advanced().await {
-                    Ok(Some(generation)) => {
-                        tracing::warn!(generation, "Reconciled missed RBAC cache invalidations");
-                    }
-                    Ok(None) => {}
-                    Err(error) => {
-                        tracing::error!(%error, "Periodic RBAC cache invalidation reconciliation failed");
-                        rustok_telemetry::metrics::record_event_error(
-                            RBAC_PERMISSION_INVALIDATION_CHANNEL,
-                            "periodic_reconciliation",
-                        );
-                    }
+    let reconcile_listener = listener.clone();
+    tokio::spawn(async move {
+        let start = tokio::time::Instant::now() + RBAC_PERMISSION_RECONCILE_INTERVAL;
+        let mut interval = tokio::time::interval_at(start, RBAC_PERMISSION_RECONCILE_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            match reconcile_listener.reconcile_generation_if_advanced().await {
+                Ok(Some(generation)) => {
+                    tracing::warn!(generation, "Reconciled missed RBAC cache invalidations");
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::error!(%error, "Periodic RBAC cache invalidation reconciliation failed");
+                    rustok_telemetry::metrics::record_event_error(
+                        RBAC_PERMISSION_INVALIDATION_CHANNEL,
+                        "periodic_reconciliation",
+                    );
                 }
             }
-        });
-    }
+        }
+    });
 
     *RBAC_INVALIDATION_CACHE_SERVICE
         .write()
