@@ -1,12 +1,12 @@
 use crate::{
-    validate_binding_definitions, validate_context_definitions, validate_dynamic_definitions,
+    extract_runtime_context_contract, validate_binding_definitions, validate_dynamic_definitions,
     ProjectDocument, ValidationDiagnostic, ValidationReport,
 };
 
 pub fn validate_runtime_extensions(
     document: &ProjectDocument,
 ) -> Vec<ValidationDiagnostic> {
-    let mut diagnostics = validate_context_definitions(document);
+    let mut diagnostics = extract_runtime_context_contract(document).definition_diagnostics;
     diagnostics.extend(validate_binding_definitions(document));
     diagnostics.extend(validate_dynamic_definitions(document));
     diagnostics
@@ -39,6 +39,10 @@ mod tests {
                 "path": "count",
                 "kind": "number",
                 "default": "invalid"
+            }, {
+                "id": "root-context",
+                "path": "",
+                "kind": "object"
             }],
             "flyRuntimeBindings": [{
                 "id": "binding",
@@ -58,6 +62,9 @@ mod tests {
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_context_default_type_mismatch"));
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid"));
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_binding_target_missing"));
