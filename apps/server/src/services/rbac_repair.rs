@@ -3,7 +3,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use crate::error::{Error, Result};
 use crate::models::users;
 
-use super::rbac_cache_invalidation::publish_user_rbac_invalidation;
+use super::rbac_cache_invalidation::publish_all_rbac_invalidation;
 use super::rbac_service::RbacService;
 
 impl RbacService {
@@ -53,8 +53,10 @@ impl RbacService {
             }
 
             Self::invalidate_user_rbac_caches(&affected.tenant_id, &affected.user_id).await;
-            publish_user_rbac_invalidation(&affected.tenant_id, &affected.user_id).await?;
             effective_affected_users.push(affected);
+        }
+        if !effective_affected_users.is_empty() {
+            publish_all_rbac_invalidation().await?;
         }
         report.affected_users = effective_affected_users;
         report.runtime_restart_required = false;
