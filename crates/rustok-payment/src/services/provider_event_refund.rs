@@ -15,7 +15,6 @@ use super::{
 
 const EVENT_REFUND_COMPLETED: &str = "refund.completed";
 
-#[derive(Clone)]
 pub struct RefundLifecycleEventApplier {
     payment_service: PaymentService,
 }
@@ -72,8 +71,25 @@ impl PaymentProviderEventApplier for RefundLifecycleEventApplier {
             ));
         }
 
+        let collection = self
+            .payment_service
+            .get_collection(context.tenant_id, refund.payment_collection_id)
+            .await
+            .map_err(map_payment_error)?;
+        if let Some(provider_id) = collection.provider_id.as_deref() {
+            if provider_id != context.provider_id {
+                return Err(non_retryable(
+                    "payment.webhook_provider_mismatch",
+                    format!(
+                        "refund {} belongs to a payment owned by another provider",
+                        refund.id
+                    ),
+                ));
+            }
+        }
+
         match refund.status.as_str() {
-            "completed" => return Ok(()),
+            "refunded" => return Ok(()),
             "pending" => {}
             "cancelled" => {
                 return Err(non_retryable(
@@ -91,25 +107,24 @@ impl PaymentProviderEventApplier for RefundLifecycleEventApplier {
                 ));
             }
         }
-        let provider_refund_id = event
+        if event
             .external_reference
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .map(str::to_string)
-            .ok_or_else(|| {
-                non_retryable(
-                    "payment.webhook_reference_required",
-                    "completed refund webhook requires an external reference",
-                )
-            })?;
+            .is_none()
+        {
+            return Err(non_retryable(
+                "payment.webhook_reference_required",
+                "completed refund webhook requires an external reference",
+            ));
+        }
 
         self.payment_service
             .complete_refund(
                 context.tenant_id,
                 refund.id,
                 CompleteRefundInput {
-                    provider_refund_id: Some(provider_refund_id),
                     metadata: owner_metadata(&context, &event, &payload.metadata),
                 },
             )
@@ -137,15 +152,14 @@ impl NormalizedRefundEvent {
                 "normalized refund webhook metadata must be an object",
             )
         })?;
-        let refund_id = required_string(metadata, "refund_id")
-            .and_then(|value| {
-                Uuid::parse_str(value.as_str()).map_err(|_| {
-                    non_retryable(
-                        "payment.webhook_refund_id_invalid",
-                        "normalized refund webhook refund_id must be a UUID",
-                    )
-                })
-            })?;
+        let refund_id = Uuid::parse_str(required_string(metadata, "refund_id")?.as_str()).map_err(
+            |_| {
+                non_retryable(
+                    "payment.webhook_refund_id_invalid",
+                    "normalized refund webhook refund_id must be a UUID",
+                )
+            },
+        )?;
         let amount = Decimal::from_str(required_string(metadata, "amount")?.as_str()).map_err(
             |_| {
                 non_retryable(
@@ -218,11 +232,11 @@ fn owner_metadata(
         "provider_webhook".to_string(),
         serde_json::json!({
             "event_id": context.event_id,
-            "provider_id": context.provider_id,
-            "delivery_id": context.delivery_id,
-            "idempotency_key": context.idempotency_key,
-            "event_type": event.event_type,
-            "external_reference": event.external_reference,
+            "provider_id": context.provider_id.clone(),
+            "delivery_id": context.delivery_id.clone(),
+            "idempotency_key": context.idempotency_key.clone(),
+            "event_type": event.event_type.clone(),
+            "external_reference": event.external_reference.clone(),
         }),
     );
     Value::Object(metadata)
@@ -241,9 +255,12 @@ fn map_payment_error(error: PaymentError) -> PaymentProviderEventApplyError {
         PaymentError::Validation(message) => {
             non_retryable("payment.webhook_validation_failed", message)
         }
-        PaymentError::CollectionNotFound(_) | PaymentError::RefundNotFound(_) => {
-            retryable("payment.webhook_owner_not_found", "payment owner record was not found")
-        }
+        PaymentError::PaymentCollectionNotFound(_)
+        | PaymentError::PaymentNotFound(_)
+        | PaymentError::RefundNotFound(_) => retryable(
+            "payment.webhook_owner_not_found",
+            "payment owner record was not found",
+        ),
     }
 }
 
