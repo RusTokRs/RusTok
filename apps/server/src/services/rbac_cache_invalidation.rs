@@ -150,12 +150,20 @@ impl RbacCacheInvalidationListener {
             }
             CacheInvalidationObservation::UnverifiedFirst { .. }
             | CacheInvalidationObservation::Gap { .. } => {
-                let recovered = self.recover_generation_and_clear().await?;
-                if recovered < event.generation {
-                    return Err(Error::Cache(format!(
-                        "durable RBAC invalidation generation {recovered} trails received {}",
-                        event.generation
-                    )));
+                if let Some(current) = self
+                    .durable_state
+                    .current()
+                    .filter(|current| *current >= event.generation)
+                {
+                    acknowledge_rbac_recovery(&self.tracker, current)?;
+                } else {
+                    let recovered = self.recover_generation_and_clear().await?;
+                    if recovered < event.generation {
+                        return Err(Error::Cache(format!(
+                            "durable RBAC invalidation generation {recovered} trails received {}",
+                            event.generation
+                        )));
+                    }
                 }
             }
         }
@@ -438,10 +446,12 @@ mod tests {
     use super::{
         acknowledge_rbac_applied_generation, acknowledge_rbac_recovery,
         parse_rbac_invalidation_key, parse_rbac_invalidation_target, rbac_invalidation_key,
-        RbacInvalidationTarget, RBAC_PERMISSION_INVALIDATE_ALL_KEY,
-        RBAC_PERMISSION_INVALIDATION_CHANNEL,
+        RbacCacheInvalidationListener, RbacInvalidationTarget,
+        RBAC_PERMISSION_INVALIDATE_ALL_KEY, RBAC_PERMISSION_INVALIDATION_CHANNEL,
     };
-    use rustok_cache::BoundedCacheInvalidationGapTracker;
+    use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationState;
+    use rustok_cache::{BoundedCacheInvalidationGapTracker, VersionedCacheInvalidation};
+    use sea_orm::Database;
     use uuid::Uuid;
 
     #[test]
@@ -481,6 +491,32 @@ mod tests {
         assert_eq!(
             tracker.last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL),
             Some(7)
+        );
+    }
+
+    #[tokio::test]
+    async fn watchdog_checkpoint_seeds_unverified_listener_without_database_recovery() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let durable_state = RbacInvalidationGenerationState::default();
+        durable_state.observe_applied(5);
+        let listener = RbacCacheInvalidationListener::new(db, durable_state);
+        let message = VersionedCacheInvalidation::new(
+            RBAC_PERMISSION_INVALIDATION_CHANNEL,
+            RBAC_PERMISSION_INVALIDATE_ALL_KEY,
+            5,
+            1,
+        )
+        .unwrap()
+        .to_message()
+        .unwrap();
+
+        listener.handle_message(message).await.unwrap();
+
+        assert_eq!(
+            listener
+                .tracker
+                .last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL),
+            Some(5)
         );
     }
 }
