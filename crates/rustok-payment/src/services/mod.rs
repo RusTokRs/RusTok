@@ -8,9 +8,10 @@ pub mod provider_operation;
 
 pub use payment::PaymentService;
 pub use provider_event::{
-    CompleteProviderEvent, FailProviderEvent, PaymentProviderEventJournal, ReceiveProviderEvent,
-    PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED,
-    PROVIDER_EVENT_PROCESSING, PROVIDER_EVENT_RECEIVED,
+    CheckpointProviderEvent, CompleteProviderEvent, FailProviderEvent,
+    PaymentProviderEventJournal, ReceiveProviderEvent, PROVIDER_EVENT_DEAD_LETTER,
+    PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING,
+    PROVIDER_EVENT_RECEIVED,
 };
 pub use provider_event_domain::PaymentDomainEventApplier;
 pub use provider_event_ingress::{
