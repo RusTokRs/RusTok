@@ -188,3 +188,27 @@ impl From<crate::CategoryTreeResponse> for GqlForumCategoryTree {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use async_graphql::{EmptyMutation, EmptySubscription, Schema};
+
+    use crate::graphql::ForumQuery;
+
+    #[test]
+    fn schema_exposes_recursive_forum_category_tree() {
+        let schema = Schema::build(
+            ForumQuery::default(),
+            EmptyMutation,
+            EmptySubscription,
+        )
+        .finish();
+        let sdl = schema.sdl();
+
+        assert!(sdl.contains("forumCategoryTree"));
+        assert!(sdl.contains("type GqlForumCategoryTree"));
+        assert!(sdl.contains("type GqlForumCategoryTreeNode"));
+        assert!(sdl.contains("children: [GqlForumCategoryTreeNode!]!"));
+        assert!(sdl.contains("breadcrumbs: [GqlForumCategoryBreadcrumb!]!"));
+    }
+}
