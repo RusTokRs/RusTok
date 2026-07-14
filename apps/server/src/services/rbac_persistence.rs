@@ -187,6 +187,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cross_tenant_role_assignment_is_rejected_without_side_effects() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (user_tenant_id, user_id) = insert_tenant_and_user(
+            &db,
+            "test-user-tenant-role-boundary",
+            "role-boundary-user@example.com",
+        )
+        .await;
+        let (foreign_tenant_id, _) = insert_tenant_and_user(
+            &db,
+            "test-foreign-tenant-role-boundary",
+            "role-boundary-foreign@example.com",
+        )
+        .await;
+
+        let error = assign_role_permissions_via_store(
+            &db,
+            &user_id,
+            &foreign_tenant_id,
+            UserRole::Manager,
+        )
+        .await
+        .expect_err("cross-tenant role assignment must fail");
+        let message = error.to_string();
+        assert!(message.contains(&user_id.to_string()));
+        assert!(message.contains(&user_tenant_id.to_string()));
+        assert!(message.contains(&foreign_tenant_id.to_string()));
+
+        let foreign_manager_role = roles::Entity::find()
+            .filter(roles::Column::TenantId.eq(foreign_tenant_id))
+            .filter(roles::Column::Slug.eq(UserRole::Manager.to_string()))
+            .one(&db)
+            .await
+            .expect("failed to query foreign tenant role");
+        assert!(foreign_manager_role.is_none());
+
+        let assignments = user_roles::Entity::find()
+            .filter(user_roles::Column::UserId.eq(user_id))
+            .all(&db)
+            .await
+            .expect("failed to query rejected user role assignments");
+        assert!(assignments.is_empty());
+    }
+
+    #[tokio::test]
     async fn assign_role_permissions_links_expected_permission_and_removes_stale_link() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let (tenant_id, user_id) = insert_tenant_and_user(
