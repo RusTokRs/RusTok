@@ -87,6 +87,10 @@ impl RbacCommandProvider {
             "mode".to_string(),
             if apply { "apply" } else { "dry_run" }.into(),
         );
+        object.insert(
+            "runtime_restart_required_if_applied".to_string(),
+            (!report.affected_users.is_empty()).into(),
+        );
         write_output_if_requested(&args, &data)?;
 
         let message = if apply {
