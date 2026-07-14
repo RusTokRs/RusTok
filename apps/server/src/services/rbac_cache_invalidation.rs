@@ -1,5 +1,5 @@
 use std::sync::{Arc, RwLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use once_cell::sync::Lazy;
 use rustok_cache::{
@@ -21,6 +21,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 pub const RBAC_PERMISSION_GENERATION_PREFIX: &str = "rustok:rbac:permissions:v1";
 pub const RBAC_PERMISSION_INVALIDATION_CHANNEL: &str = "rbac.permissions.generation.v1";
 const RBAC_PERMISSION_INVALIDATION_CAUSE: &str = "rbac.user.permissions.changed";
+const RBAC_PERMISSION_RECONCILE_INTERVAL: Duration = Duration::from_secs(30);
 
 static RBAC_INVALIDATION_CACHE_SERVICE: Lazy<RwLock<Option<CacheService>>> =
     Lazy::new(|| RwLock::new(None));
@@ -85,36 +86,56 @@ impl RbacCacheInvalidationListener {
         }
     }
 
-    async fn recover_generation_and_clear(&self) -> Result<u64> {
-        let generation = if self.cache.redis_configuration_present() {
+    async fn read_generation(&self) -> Result<u64> {
+        if self.cache.redis_configuration_present() {
             if !self.cache.redis_client_initialized() {
                 return Err(Error::Cache(
                     "Redis is configured but the RBAC invalidation client is unavailable"
                         .to_string(),
                 ));
             }
-            self.cache
+            return self
+                .cache
                 .namespace_generations()
                 .read(RBAC_PERMISSION_GENERATION_PREFIX)
                 .await
-                .map_err(|error| Error::Cache(error.to_string()))?
-                .value()
-        } else {
-            let snapshot = cache_backend_generation_snapshot(RBAC_PERMISSION_GENERATION_PREFIX)
-                .map_err(|error| Error::Cache(error.to_string()))?;
-            if snapshot.trusted {
-                snapshot.generation
-            } else {
-                observe_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX, 0)
-                    .map_err(|error| Error::Cache(error.to_string()))?
-                    .generation
-            }
-        };
+                .map(|generation| generation.value())
+                .map_err(|error| Error::Cache(error.to_string()));
+        }
 
+        let snapshot = cache_backend_generation_snapshot(RBAC_PERMISSION_GENERATION_PREFIX)
+            .map_err(|error| Error::Cache(error.to_string()))?;
+        if snapshot.trusted {
+            Ok(snapshot.generation)
+        } else {
+            observe_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX, 0)
+                .map(|snapshot| snapshot.generation)
+                .map_err(|error| Error::Cache(error.to_string()))
+        }
+    }
+
+    async fn recover_generation_and_clear(&self) -> Result<u64> {
+        let generation = self.read_generation().await?;
         let recovered_through = observe_rbac_backend_generation(generation)?;
         invalidate_all_user_permission_snapshots(&self.ctx).await?;
         acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
         Ok(recovered_through)
+    }
+
+    async fn reconcile_generation_if_advanced(&self) -> Result<Option<u64>> {
+        let generation = self.read_generation().await?;
+        let recovered_through = observe_rbac_backend_generation(generation)?;
+        if self
+            .tracker
+            .last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL)
+            .is_some_and(|current| current >= recovered_through)
+        {
+            return Ok(None);
+        }
+
+        invalidate_all_user_permission_snapshots(&self.ctx).await?;
+        acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
+        Ok(Some(recovered_through))
     }
 
     async fn handle_message(&self, message: CacheInvalidationMessage) -> Result<()> {
@@ -294,7 +315,31 @@ pub async fn start_rbac_cache_invalidation_listener(
                     )
                     .await;
                 tracing::warn!(?result, "RBAC Redis invalidation subscription stopped; restarting");
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+
+        let reconcile_listener = listener.clone();
+        tokio::spawn(async move {
+            let start = tokio::time::Instant::now() + RBAC_PERMISSION_RECONCILE_INTERVAL;
+            let mut interval =
+                tokio::time::interval_at(start, RBAC_PERMISSION_RECONCILE_INTERVAL);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                match reconcile_listener.reconcile_generation_if_advanced().await {
+                    Ok(Some(generation)) => {
+                        tracing::warn!(generation, "Reconciled missed RBAC cache invalidations");
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::error!(%error, "Periodic RBAC cache invalidation reconciliation failed");
+                        rustok_telemetry::metrics::record_event_error(
+                            RBAC_PERMISSION_INVALIDATION_CHANNEL,
+                            "periodic_reconciliation",
+                        );
+                    }
+                }
             }
         });
     }
