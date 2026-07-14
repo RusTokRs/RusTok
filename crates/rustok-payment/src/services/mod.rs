@@ -3,6 +3,7 @@ mod provider_event;
 mod provider_event_domain;
 mod provider_event_ingress;
 mod provider_event_lifecycle;
+mod provider_event_recovery;
 mod provider_event_refund;
 pub mod provider_operation;
 
@@ -20,6 +21,10 @@ pub use provider_event_ingress::{
     PaymentProviderEventIngressResult, PaymentProviderEventIngressService,
 };
 pub use provider_event_lifecycle::PaymentLifecycleEventApplier;
+pub use provider_event_recovery::{
+    PaymentProviderEventRecoveryFailure, PaymentProviderEventRecoveryOutcome,
+    PaymentProviderEventRecoveryReport, PaymentProviderEventRecoveryService,
+};
 pub use provider_event_refund::RefundLifecycleEventApplier;
 pub use provider_operation::{
     BeginProviderOperation, PaymentProviderOperationJournal, PROVIDER_OPERATION_COMMITTED,
