@@ -1,5 +1,6 @@
 pub mod checkout;
 mod checkout_compensation;
+mod checkout_compensation_sweep;
 mod checkout_finalization;
 mod checkout_fulfillment_stages;
 mod checkout_inventory_order_adoption;
@@ -33,6 +34,10 @@ mod staged_checkout;
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
 pub use checkout_compensation::{
     CheckoutCompensationError, CheckoutCompensationResult, CheckoutCompensationService,
+};
+pub use checkout_compensation_sweep::{
+    CheckoutCompensationSweepFailure, CheckoutCompensationSweepReport,
+    CheckoutCompensationSweepService,
 };
 pub use checkout_finalization::{
     CheckoutCompletedState, CheckoutFinalizationError, CheckoutFinalizationExecutor,
