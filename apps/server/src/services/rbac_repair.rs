@@ -1,6 +1,7 @@
-use sea_orm::DatabaseConnection;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 use crate::error::{Error, Result};
+use crate::models::users;
 
 use super::rbac_service::RbacService;
 
@@ -31,7 +32,7 @@ impl RbacService {
         tenant_id: Option<uuid::Uuid>,
     ) -> Result<rustok_rbac::RbacSystemRoleRepairReport> {
         Self::record_system_role_repair_entrypoint("repair_system_roles_committed");
-        let report = rustok_rbac::repair_system_roles(
+        let mut report = rustok_rbac::repair_system_roles(
             db,
             rustok_rbac::RbacSystemRoleRepairOptions {
                 tenant_id,
@@ -41,9 +42,22 @@ impl RbacService {
         .await
         .map_err(|error| Error::Message(error.to_string()))?;
 
-        for affected in &report.affected_users {
+        let mut effective_affected_users = Vec::with_capacity(report.affected_users.len());
+        for affected in report.affected_users.drain(..) {
+            let belongs_to_role_tenant = users::Entity::find_by_id(affected.user_id)
+                .filter(users::Column::TenantId.eq(affected.tenant_id))
+                .one(db)
+                .await?
+                .is_some();
+            if !belongs_to_role_tenant {
+                continue;
+            }
+
             Self::invalidate_user_rbac_caches(&affected.tenant_id, &affected.user_id).await;
+            effective_affected_users.push(affected);
         }
+        report.affected_users = effective_affected_users;
+        report.runtime_restart_required = !report.affected_users.is_empty();
         Ok(report)
     }
 
@@ -60,7 +74,7 @@ impl RbacService {
 mod tests {
     use super::RbacService;
     use crate::models::{
-        _entities::{permissions, role_permissions, roles},
+        _entities::{permissions, role_permissions, roles, user_roles},
         tenants, users,
     };
     use chrono::Utc;
@@ -118,11 +132,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn committed_repair_invalidates_all_affected_user_caches() {
+    async fn committed_repair_invalidates_only_effectively_affected_user_caches() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant_id = insert_tenant(&db, "system-role-repair-cache").await;
+        let other_tenant_id = insert_tenant(&db, "system-role-repair-cache-other").await;
         let first_user = insert_user(&db, tenant_id, "repair-first@example.com").await;
         let second_user = insert_user(&db, tenant_id, "repair-second@example.com").await;
+        let cross_tenant_user =
+            insert_user(&db, other_tenant_id, "repair-cross-tenant@example.com").await;
 
         for user_id in [first_user, second_user] {
             RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Manager)
@@ -137,6 +154,15 @@ mod tests {
             .await
             .expect("failed to load manager role")
             .expect("manager role should exist");
+        user_roles::Entity::insert(user_roles::ActiveModel {
+            id: Set(rustok_core::generate_id()),
+            user_id: Set(cross_tenant_user),
+            role_id: Set(manager_role.id),
+        })
+        .exec(&db)
+        .await
+        .expect("failed to insert cross-tenant role relation");
+
         let stale_permission_id = rustok_core::generate_id();
         permissions::Entity::insert(permissions::ActiveModel {
             id: Set(stale_permission_id),
@@ -178,6 +204,14 @@ mod tests {
         assert!(report.role_permission_links_removed >= 1);
         assert!(report.runtime_restart_required);
         assert_eq!(report.affected_users.len(), 2);
+        assert!(report
+            .affected_users
+            .iter()
+            .all(|affected| affected.tenant_id == tenant_id));
+        assert!(!report
+            .affected_users
+            .iter()
+            .any(|affected| affected.user_id == cross_tenant_user));
 
         for user_id in [first_user, second_user] {
             assert!(!RbacService::has_permission(
