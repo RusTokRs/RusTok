@@ -376,8 +376,9 @@ impl CacheBackend for SharedInstrumentedCacheBackend {
     }
 
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
+        self.inner.invalidate(key).await?;
         self.invalidations.fetch_add(1, Ordering::Relaxed);
-        self.inner.invalidate(key).await
+        Ok(())
     }
 
     fn stats(&self) -> CacheStats {
@@ -444,6 +445,42 @@ mod tests {
     use super::*;
     use uuid::Uuid;
 
+    struct FailingInvalidationBackend;
+
+    #[async_trait]
+    impl CacheBackend for FailingInvalidationBackend {
+        async fn health(&self) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn get(&self, _key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+            Ok(None)
+        }
+
+        async fn set(&self, _key: String, _value: Vec<u8>) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn set_with_ttl(
+            &self,
+            _key: String,
+            _value: Vec<u8>,
+            _ttl: Duration,
+        ) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn invalidate(&self, _key: &str) -> rustok_core::Result<()> {
+            Err(rustok_core::Error::Cache(
+                "simulated invalidation failure".to_string(),
+            ))
+        }
+
+        fn stats(&self) -> CacheStats {
+            CacheStats::default()
+        }
+    }
+
     #[tokio::test]
     async fn shared_client_factory_preserves_memory_contract_without_redis() {
         let service = CacheService::from_url(None);
@@ -482,6 +519,17 @@ mod tests {
             CacheCompareAndSetOutcome::Applied
         );
         assert_eq!(backend.get("key").await.unwrap(), Some(b"new".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn shared_instrumentation_counts_only_successful_invalidations() {
+        let backend = SharedInstrumentedCacheBackend::new(
+            "shared-failing-invalidation",
+            Arc::new(FailingInvalidationBackend),
+        );
+
+        assert!(backend.invalidate("key").await.is_err());
+        assert_eq!(backend.stats().evictions, 0);
     }
 
     #[tokio::test]
