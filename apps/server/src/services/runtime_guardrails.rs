@@ -62,16 +62,8 @@ fn observe_worker(
 ) {
     match running {
         Some(true) => {}
-        Some(false) => escalate_snapshot(
-            snapshot,
-            severity,
-            format!("{name} task has stopped"),
-        ),
-        None => escalate_snapshot(
-            snapshot,
-            severity,
-            format!("{name} handle is missing"),
-        ),
+        Some(false) => escalate_snapshot(snapshot, severity, format!("{name} task has stopped")),
+        None => escalate_snapshot(snapshot, severity, format!("{name} handle is missing")),
     }
 }
 

@@ -42,7 +42,7 @@ fn channel_cache_generations_are_bounded_and_fail_safe() {
     }
 
     assert!(!channel.contains("wrapping_add"));
-    assert!(!channel.contains("tenant_versions: Arc<RwLock<HashMap<Uuid, u64>>>") );
+    assert!(!channel.contains("tenant_versions: Arc<RwLock<HashMap<Uuid, u64>>>"));
     let exhaustion = channel
         .find("self.exhausted = true;")
         .expect("version exhaustion must be explicit");

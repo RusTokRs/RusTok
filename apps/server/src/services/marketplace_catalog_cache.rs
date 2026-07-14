@@ -9,9 +9,7 @@ use rustok_core::ModuleRegistry;
 use sha2::{Digest, Sha256};
 
 use crate::modules::{CatalogManifestModule, ModulesManifest};
-use crate::services::marketplace_catalog::{
-    MarketplaceCatalogProvider, MarketplaceCatalogQuery,
-};
+use crate::services::marketplace_catalog::{MarketplaceCatalogProvider, MarketplaceCatalogQuery};
 
 mod base {
     include!("marketplace_catalog_cache_base.rs");
@@ -117,9 +115,7 @@ impl HardenedRegistryMarketplaceProvider {
         maximum_weight: u64,
     ) -> Self {
         let positive_ttl = positive_ttl.max(Duration::from_millis(1));
-        let negative_ttl = negative_ttl
-            .max(Duration::from_millis(1))
-            .min(positive_ttl);
+        let negative_ttl = negative_ttl.max(Duration::from_millis(1)).min(positive_ttl);
         let module_cache = Cache::builder()
             .weigher(cached_registry_module_weight)
             .max_capacity(maximum_weight.max(1))
@@ -164,9 +160,7 @@ impl MarketplaceCatalogProvider for HardenedRegistryMarketplaceProvider {
         let query = query.clone();
         let slug = slug.trim().to_string();
         let cached = load_module_detail(&self.module_cache, cache_key, move || async move {
-            inner
-                .get_module(&manifest, &registry, &query, &slug)
-                .await
+            inner.get_module(&manifest, &registry, &query, &slug).await
         })
         .await?;
         Ok(cached.module.clone())
@@ -184,7 +178,9 @@ where
 {
     cache
         .try_get_with(cache_key, async move {
-            loader().await.map(|module| Arc::new(CachedRegistryModule::new(module)))
+            loader()
+                .await
+                .map(|module| Arc::new(CachedRegistryModule::new(module)))
         })
         .await
         .map_err(|error| anyhow::anyhow!(error.to_string()))
@@ -308,10 +304,10 @@ mod wrapper_tests {
         assert_eq!(key.len(), REGISTRY_DETAIL_CACHE_KEY_PREFIX.len() + 1 + 64);
         assert!(!key.contains("private-module"));
         assert!(registry_module_cache_key("").is_err());
-        assert!(registry_module_cache_key(
-            &"x".repeat(MAX_REGISTRY_DETAIL_CACHE_KEY_BYTES + 1)
-        )
-        .is_err());
+        assert!(
+            registry_module_cache_key(&"x".repeat(MAX_REGISTRY_DETAIL_CACHE_KEY_BYTES + 1))
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -357,10 +353,7 @@ mod wrapper_tests {
 
     #[tokio::test]
     async fn negative_module_details_expire_quickly() {
-        let cache = detail_cache(
-            Duration::from_secs(60),
-            Duration::from_millis(10),
-        );
+        let cache = detail_cache(Duration::from_secs(60), Duration::from_millis(10));
         let calls = Arc::new(AtomicUsize::new(0));
         let key = registry_module_cache_key("missing").unwrap();
 

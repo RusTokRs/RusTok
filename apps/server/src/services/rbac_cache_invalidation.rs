@@ -6,10 +6,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use futures_util::FutureExt;
 use once_cell::sync::Lazy;
 use rustok_cache::{
-    BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
-    CacheInvalidationMessage, CacheInvalidationObservation, CacheInvalidationOutcome,
-    CacheInvalidationPayloadError, CacheService, DurableCacheInvalidationRecord,
-    VersionedCacheInvalidation,
+    BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError, CacheInvalidationMessage,
+    CacheInvalidationObservation, CacheInvalidationOutcome, CacheInvalidationPayloadError,
+    CacheService, DurableCacheInvalidationRecord, VersionedCacheInvalidation,
 };
 use sea_orm::DatabaseConnection;
 use tokio::sync::broadcast;
@@ -82,9 +81,7 @@ impl RbacCacheInvalidationRuntime {
 }
 
 #[derive(Clone)]
-pub struct RbacCacheInvalidationListenerHandle(
-    Arc<RbacCacheInvalidationRuntime>,
-);
+pub struct RbacCacheInvalidationListenerHandle(Arc<RbacCacheInvalidationRuntime>);
 
 impl RbacCacheInvalidationListenerHandle {
     fn new(
@@ -156,10 +153,7 @@ struct RbacCacheInvalidationListener {
 }
 
 impl RbacCacheInvalidationListener {
-    fn new(
-        db: DatabaseConnection,
-        durable_state: RbacInvalidationGenerationState,
-    ) -> Self {
+    fn new(db: DatabaseConnection, durable_state: RbacInvalidationGenerationState) -> Self {
         Self {
             db,
             durable_state,
@@ -448,9 +442,7 @@ async fn run_redis_invalidation_worker(
     tracing::warn!(?result, "RBAC Redis invalidation subscription stopped");
 }
 
-async fn run_reconcile_invalidation_worker(
-    listener: RbacCacheInvalidationListener,
-) {
+async fn run_reconcile_invalidation_worker(listener: RbacCacheInvalidationListener) {
     let start = tokio::time::Instant::now() + RBAC_PERMISSION_RECONCILE_INTERVAL;
     let mut interval = tokio::time::interval_at(start, RBAC_PERMISSION_RECONCILE_INTERVAL);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -484,7 +476,10 @@ async fn supervise_rbac_invalidation_worker<F, Fut>(
     loop {
         let outcome = AssertUnwindSafe(worker_factory()).catch_unwind().await;
         if outcome.is_err() {
-            tracing::error!(worker, "RBAC cache invalidation worker panicked; restarting");
+            tracing::error!(
+                worker,
+                "RBAC cache invalidation worker panicked; restarting"
+            );
         } else {
             tracing::error!(worker, "RBAC cache invalidation worker exited; restarting");
         }
@@ -555,10 +550,8 @@ pub async fn start_rbac_cache_invalidation_listener(
     let first_local = Arc::new(Mutex::new(Some(initial_local)));
     let local_cache = cache.clone();
     let local_listener = listener.clone();
-    let local_task = spawn_supervised_rbac_invalidation_worker(
-        "local",
-        "local_worker_restart",
-        move || {
+    let local_task =
+        spawn_supervised_rbac_invalidation_worker("local", "local_worker_restart", move || {
             let receiver = first_local
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -569,8 +562,7 @@ pub async fn start_rbac_cache_invalidation_listener(
                         .subscribe_local_channel(RBAC_PERMISSION_INVALIDATION_CHANNEL)
                 });
             run_local_invalidation_worker(receiver, local_listener.clone())
-        },
-    );
+        });
 
     let redis_task = if cache.redis_client_initialized() {
         let redis_cache = cache.clone();
@@ -578,9 +570,7 @@ pub async fn start_rbac_cache_invalidation_listener(
         Some(spawn_supervised_rbac_invalidation_worker(
             "redis",
             "redis_worker_restart",
-            move || {
-                run_redis_invalidation_worker(redis_cache.clone(), redis_listener.clone())
-            },
+            move || run_redis_invalidation_worker(redis_cache.clone(), redis_listener.clone()),
         ))
     } else {
         None
@@ -593,11 +583,7 @@ pub async fn start_rbac_cache_invalidation_listener(
         move || run_reconcile_invalidation_worker(reconcile_listener.clone()),
     );
 
-    let runtime = RbacCacheInvalidationListenerHandle::new(
-        local_task,
-        redis_task,
-        reconcile_task,
-    );
+    let runtime = RbacCacheInvalidationListenerHandle::new(local_task, redis_task, reconcile_task);
     ctx.shared_insert(runtime);
     *RBAC_INVALIDATION_CACHE_SERVICE
         .write()
@@ -618,9 +604,9 @@ fn parse_rbac_invalidation_target(value: &str) -> Result<RbacInvalidationTarget>
 }
 
 fn parse_rbac_invalidation_key(value: &str) -> Result<(Uuid, Uuid)> {
-    let (tenant_id, user_id) = value.split_once(':').ok_or_else(|| {
-        Error::Validation("malformed RBAC cache invalidation key".to_string())
-    })?;
+    let (tenant_id, user_id) = value
+        .split_once(':')
+        .ok_or_else(|| Error::Validation("malformed RBAC cache invalidation key".to_string()))?;
     Ok((
         Uuid::parse_str(tenant_id)
             .map_err(|_| Error::Validation("invalid RBAC invalidation tenant id".to_string()))?,

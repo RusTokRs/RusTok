@@ -11,8 +11,7 @@ use crate::error::{Error, Result};
 use crate::services::rbac_runtime::invalidate_all_user_permissions_cache;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-pub(crate) const RBAC_DURABLE_GENERATION_CHANNEL: &str =
-    "rbac.permissions.durable_generation.v1";
+pub(crate) const RBAC_DURABLE_GENERATION_CHANNEL: &str = "rbac.permissions.durable_generation.v1";
 const RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
 const RBAC_DURABLE_GENERATION_WATCHDOG_RESTART_DELAY: Duration = Duration::from_secs(1);
 
@@ -27,9 +26,7 @@ impl Drop for AbortOnDropWatchdogTask {
 }
 
 #[derive(Clone)]
-pub struct RbacInvalidationGenerationWatchdogHandle(
-    Arc<AbortOnDropWatchdogTask>,
-);
+pub struct RbacInvalidationGenerationWatchdogHandle(Arc<AbortOnDropWatchdogTask>);
 
 impl RbacInvalidationGenerationWatchdogHandle {
     fn new(task: JoinHandle<()>) -> Self {
@@ -47,14 +44,10 @@ impl RbacInvalidationGenerationWatchdogHandle {
 }
 
 #[derive(Clone, Default)]
-struct RbacInvalidationGenerationWatchdogStartLock(
-    Arc<tokio::sync::Mutex<()>>,
-);
+struct RbacInvalidationGenerationWatchdogStartLock(Arc<tokio::sync::Mutex<()>>);
 
 #[derive(Clone, Default)]
-pub(crate) struct RbacInvalidationGenerationState(
-    Arc<RwLock<Option<u64>>>,
-);
+pub(crate) struct RbacInvalidationGenerationState(Arc<RwLock<Option<u64>>>);
 
 impl RbacInvalidationGenerationState {
     pub(crate) fn current(&self) -> Option<u64> {
@@ -90,9 +83,7 @@ pub(crate) fn ensure_rbac_invalidation_generation_state(
         .unwrap_or(candidate)
 }
 
-pub(crate) async fn reserve_rbac_invalidation_generation(
-    db: &DatabaseTransaction,
-) -> Result<u64> {
+pub(crate) async fn reserve_rbac_invalidation_generation(db: &DatabaseTransaction) -> Result<u64> {
     rustok_rbac::reserve_permission_invalidation_generation(db)
         .await
         .map_err(|error| Error::Cache(error.to_string()))
@@ -184,9 +175,7 @@ async fn supervise_rbac_invalidation_generation_watchdog<F, Fut>(
     loop {
         let outcome = AssertUnwindSafe(worker_factory()).catch_unwind().await;
         if outcome.is_err() {
-            tracing::error!(
-                "Durable RBAC invalidation generation watchdog panicked; restarting"
-            );
+            tracing::error!("Durable RBAC invalidation generation watchdog panicked; restarting");
         } else {
             tracing::error!(
                 "Durable RBAC invalidation generation watchdog exited unexpectedly; restarting"
@@ -205,9 +194,7 @@ fn spawn_rbac_invalidation_generation_watchdog(
     state: RbacInvalidationGenerationState,
 ) -> JoinHandle<()> {
     tokio::spawn(supervise_rbac_invalidation_generation_watchdog(
-        move || {
-            run_rbac_invalidation_generation_watchdog(db.clone(), state.clone())
-        },
+        move || run_rbac_invalidation_generation_watchdog(db.clone(), state.clone()),
         RBAC_DURABLE_GENERATION_WATCHDOG_RESTART_DELAY,
     ))
 }
@@ -218,12 +205,8 @@ fn spawn_rbac_invalidation_generation_watchdog(
 /// The worker is allowed to start before installation migrations complete. It
 /// remains dormant while the generation table is absent, then establishes a
 /// fail-safe cache baseline as soon as the migration becomes visible.
-pub async fn start_rbac_invalidation_generation_watchdog(
-    ctx: &ServerRuntimeContext,
-) -> Result<()> {
-    let _ = ctx.shared_insert_if_absent(
-        RbacInvalidationGenerationWatchdogStartLock::default(),
-    );
+pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeContext) -> Result<()> {
+    let _ = ctx.shared_insert_if_absent(RbacInvalidationGenerationWatchdogStartLock::default());
     let start_lock = ctx
         .shared_get::<RbacInvalidationGenerationWatchdogStartLock>()
         .ok_or_else(|| {
@@ -235,9 +218,7 @@ pub async fn start_rbac_invalidation_generation_watchdog(
         if existing.is_running() {
             return Ok(());
         }
-        tracing::warn!(
-            "Durable RBAC invalidation generation watchdog stopped; replacing runtime"
-        );
+        tracing::warn!("Durable RBAC invalidation generation watchdog stopped; replacing runtime");
     }
 
     let state = ensure_rbac_invalidation_generation_state(ctx);
@@ -261,10 +242,8 @@ mod tests {
 
     use super::{
         is_missing_generation_state, read_rbac_invalidation_generation,
-        reserve_rbac_invalidation_generation,
-        supervise_rbac_invalidation_generation_watchdog,
-        RbacInvalidationGenerationState,
-        RbacInvalidationGenerationWatchdogHandle,
+        reserve_rbac_invalidation_generation, supervise_rbac_invalidation_generation_watchdog,
+        RbacInvalidationGenerationState, RbacInvalidationGenerationWatchdogHandle,
     };
     use crate::error::Error;
     use rustok_migrations::Migrator;

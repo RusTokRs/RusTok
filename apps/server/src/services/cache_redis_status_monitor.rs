@@ -62,10 +62,7 @@ impl CacheRedisStatusMonitorHandle {
 #[derive(Clone, Default)]
 struct CacheRedisStatusMonitorStartLock(Arc<tokio::sync::Mutex<()>>);
 
-pub async fn start_cache_redis_status_monitor(
-    ctx: &ServerRuntimeContext,
-    cache: CacheService,
-) {
+pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache: CacheService) {
     let _ = ctx.shared_insert_if_absent(CacheRedisStatusMonitorStartLock::default());
     let Some(start_lock) = ctx.shared_get::<CacheRedisStatusMonitorStartLock>() else {
         tracing::error!("Cache Redis status monitor start lock is unavailable");
@@ -114,10 +111,7 @@ pub async fn start_cache_redis_status_monitor(
     ctx.shared_insert(CacheRedisStatusMonitorHandle::new(task));
 }
 
-async fn run_cache_redis_status_monitor(
-    cache: CacheService,
-    mut previous: RedisCacheStatus,
-) {
+async fn run_cache_redis_status_monitor(cache: CacheService, mut previous: RedisCacheStatus) {
     let mut interval = tokio::time::interval(CACHE_REDIS_STATUS_INTERVAL);
     // The startup or restart probe already populated the collector.
     interval.tick().await;
@@ -129,10 +123,8 @@ async fn run_cache_redis_status_monitor(
     }
 }
 
-async fn supervise_cache_redis_status_worker<F, Fut>(
-    mut worker_factory: F,
-    restart_delay: Duration,
-) where
+async fn supervise_cache_redis_status_worker<F, Fut>(mut worker_factory: F, restart_delay: Duration)
+where
     F: FnMut() -> Fut + Send,
     Fut: Future<Output = ()> + Send,
 {
@@ -157,10 +149,7 @@ async fn supervise_cache_redis_status_worker<F, Fut>(
 
 fn record_monitor_restart(reason: &'static str) {
     tracing::error!(reason, "Cache Redis status monitor stopped; restarting");
-    rustok_telemetry::metrics::record_event_error(
-        CACHE_REDIS_STATUS_MONITOR_CHANNEL,
-        reason,
-    );
+    rustok_telemetry::metrics::record_event_error(CACHE_REDIS_STATUS_MONITOR_CHANNEL, reason);
 }
 
 fn log_transition(previous: Option<&RedisCacheStatus>, current: &RedisCacheStatus) {

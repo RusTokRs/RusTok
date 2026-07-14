@@ -41,9 +41,7 @@ impl Drop for FieldDefinitionCacheInvalidationRuntime {
 }
 
 #[derive(Clone)]
-pub struct FieldDefinitionCacheInvalidationHandle(
-    Arc<FieldDefinitionCacheInvalidationRuntime>,
-);
+pub struct FieldDefinitionCacheInvalidationHandle(Arc<FieldDefinitionCacheInvalidationRuntime>);
 
 impl FieldDefinitionCacheInvalidationHandle {
     fn new(cache: Arc<FieldDefinitionCache>, task: JoinHandle<()>) -> Self {
@@ -264,11 +262,11 @@ async fn supervise_field_definition_cache_invalidation<F, Fut>(
 }
 
 fn record_field_definition_consumer_restart(reason: &'static str) {
-    tracing::error!(reason, "Field definition cache invalidation consumer stopped; restarting");
-    rustok_telemetry::metrics::record_event_error(
-        FIELD_DEFINITION_INVALIDATION_CHANNEL,
+    tracing::error!(
         reason,
+        "Field definition cache invalidation consumer stopped; restarting"
     );
+    rustok_telemetry::metrics::record_event_error(FIELD_DEFINITION_INVALIDATION_CHANNEL, reason);
 }
 
 #[async_trait]
