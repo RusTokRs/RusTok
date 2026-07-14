@@ -72,8 +72,7 @@ mod tests {
     use super::{
         read_permission_invalidation_generation, reserve_permission_invalidation_generation,
     };
-    use sea_orm::{Database, TransactionTrait};
-    use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
+    use sea_orm::{ConnectionTrait, Database, TransactionTrait};
 
     #[tokio::test]
     async fn reservation_requires_the_durable_generation_schema() {
@@ -86,17 +85,16 @@ mod tests {
     #[tokio::test]
     async fn reservation_is_rolled_back_with_the_owner_transaction() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
-        let manager = SchemaManager::new(&db);
-        rustok_auth::migrations::migrations()
-            .into_iter()
-            .find(|migration| {
-                migration.name()
-                    == "m20260714_900002_create_rbac_invalidation_state"
-            })
-            .expect("durable generation migration")
-            .up(&manager)
-            .await
-            .unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE rbac_invalidation_state (\
+             scope TEXT PRIMARY KEY NOT NULL, \
+             generation BIGINT NOT NULL, \
+             updated_at TEXT NOT NULL); \
+             INSERT INTO rbac_invalidation_state (scope, generation, updated_at) \
+             VALUES ('permissions', 0, CURRENT_TIMESTAMP);",
+        )
+        .await
+        .unwrap();
 
         let tx = db.begin().await.unwrap();
         assert_eq!(reserve_permission_invalidation_generation(&tx).await.unwrap(), 1);
