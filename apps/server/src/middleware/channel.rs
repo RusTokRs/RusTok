@@ -9,10 +9,9 @@ use moka::{future::Cache, Expiry};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::common::{extract_effective_host, peer_ip_from_extensions, RustokSettings};
@@ -33,11 +32,52 @@ const CHANNEL_SLUG_HEADER: &str = "X-Channel-Slug";
 const CHANNEL_CACHE_TTL: Duration = Duration::from_secs(60);
 const CHANNEL_NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(10);
 const CHANNEL_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
+const CHANNEL_CACHE_MAX_TENANT_VERSIONS: usize = 16 * 1024;
+
+#[derive(Default)]
+struct ChannelCacheVersionState {
+    global_epoch: u32,
+    tenant_epochs: HashMap<Uuid, u32>,
+}
+
+impl ChannelCacheVersionState {
+    fn token(&self, tenant_id: Uuid) -> u64 {
+        let tenant_epoch = self.tenant_epochs.get(&tenant_id).copied().unwrap_or(0);
+        (u64::from(self.global_epoch) << 32) | u64::from(tenant_epoch)
+    }
+
+    fn invalidate(&mut self, tenant_id: Uuid, maximum_tenants: usize) -> bool {
+        if let Some(epoch) = self.tenant_epochs.get_mut(&tenant_id) {
+            if let Some(next) = epoch.checked_add(1) {
+                *epoch = next;
+                return false;
+            }
+            self.rotate_all();
+            self.tenant_epochs.insert(tenant_id, 1);
+            return true;
+        }
+
+        if self.tenant_epochs.len() >= maximum_tenants.max(1) {
+            self.rotate_all();
+            self.tenant_epochs.insert(tenant_id, 1);
+            return true;
+        }
+
+        self.tenant_epochs.insert(tenant_id, 1);
+        false
+    }
+
+    fn rotate_all(&mut self) {
+        self.global_epoch = self.global_epoch.wrapping_add(1);
+        self.tenant_epochs.clear();
+    }
+}
 
 #[derive(Clone)]
 struct ChannelResolutionCache {
     cache: Cache<ChannelCacheKey, CachedChannelResolution>,
-    tenant_versions: Arc<RwLock<HashMap<Uuid, u64>>>,
+    versions: Arc<Mutex<ChannelCacheVersionState>>,
+    max_tenant_versions: usize,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -110,13 +150,18 @@ impl Expiry<ChannelCacheKey, CachedChannelResolution> for ChannelCacheExpiry {
 
 impl ChannelResolutionCache {
     fn new() -> Self {
+        Self::with_max_tenant_versions(CHANNEL_CACHE_MAX_TENANT_VERSIONS)
+    }
+
+    fn with_max_tenant_versions(max_tenant_versions: usize) -> Self {
         Self {
             cache: Cache::builder()
                 .expire_after(ChannelCacheExpiry)
                 .weigher(channel_cache_entry_weight)
                 .max_capacity(CHANNEL_CACHE_MAX_WEIGHT_BYTES)
                 .build(),
-            tenant_versions: Arc::new(RwLock::new(HashMap::new())),
+            versions: Arc::new(Mutex::new(ChannelCacheVersionState::default())),
+            max_tenant_versions: max_tenant_versions.max(1),
         }
     }
 
@@ -127,23 +172,32 @@ impl ChannelResolutionCache {
         }
     }
 
-    async fn tenant_version(&self, tenant_id: Uuid) -> u64 {
-        self.tenant_versions
-            .read()
-            .await
-            .get(&tenant_id)
-            .copied()
-            .unwrap_or(0)
+    fn tenant_version(&self, tenant_id: Uuid) -> u64 {
+        self.versions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .token(tenant_id)
     }
 
     async fn invalidate_tenant(&self, tenant_id: Uuid) {
-        let mut versions = self.tenant_versions.write().await;
-        let next_version = versions
-            .get(&tenant_id)
-            .copied()
-            .unwrap_or(0)
-            .saturating_add(1);
-        versions.insert(tenant_id, next_version);
+        let invalidate_all = self
+            .versions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .invalidate(tenant_id, self.max_tenant_versions);
+        if invalidate_all {
+            self.cache.invalidate_all();
+            self.cache.run_pending_tasks().await;
+        }
+    }
+
+    #[cfg(test)]
+    fn tracked_tenant_versions(&self) -> usize {
+        self.versions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .tenant_epochs
+            .len()
     }
 }
 
@@ -171,13 +225,10 @@ fn channel_cache_entry_weight(key: &ChannelCacheKey, value: &CachedChannelResolu
 }
 
 fn channel_cache(ctx: &ServerRuntimeContext) -> Arc<ChannelResolutionCache> {
-    if let Some(cache) = ctx.shared_get::<Arc<ChannelResolutionCache>>() {
-        return cache;
-    }
-
-    let cache = Arc::new(ChannelResolutionCache::new());
-    ctx.shared_insert(cache.clone());
-    cache
+    let candidate = Arc::new(ChannelResolutionCache::new());
+    let _ = ctx.shared_insert_if_absent(candidate.clone());
+    ctx.shared_get::<Arc<ChannelResolutionCache>>()
+        .unwrap_or(candidate)
 }
 
 pub async fn resolve(
@@ -200,8 +251,7 @@ pub async fn resolve(
         req.extensions(),
     );
     let cache = channel_cache(&ctx);
-    let cache_key =
-        channel_cache_key_from_facts(&facts, cache.tenant_version(facts.tenant_id).await);
+    let cache_key = channel_cache_key_from_facts(&facts, cache.tenant_version(facts.tenant_id));
 
     let cached = cache
         .cache
@@ -340,6 +390,41 @@ fn channel_slug_from_query(query: Option<&str>) -> Option<String> {
 
 pub async fn invalidate_tenant_channel_cache(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
     channel_cache(ctx).invalidate_tenant(tenant_id).await;
+}
+
+#[cfg(test)]
+mod version_registry_tests {
+    use super::ChannelResolutionCache;
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn tenant_version_registry_rotates_without_reusing_stale_tokens() {
+        let cache = ChannelResolutionCache::with_max_tenant_versions(2);
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+        let third = Uuid::new_v4();
+        let initial_first = cache.tenant_version(first);
+
+        cache.invalidate_tenant(first).await;
+        let invalidated_first = cache.tenant_version(first);
+        cache.invalidate_tenant(second).await;
+        cache.invalidate_tenant(third).await;
+
+        assert_ne!(initial_first, invalidated_first);
+        assert_ne!(initial_first, cache.tenant_version(first));
+        assert!(cache.tracked_tenant_versions() <= 2);
+        assert_ne!(cache.tenant_version(third), 0);
+    }
+
+    #[tokio::test]
+    async fn repeated_tenant_invalidation_does_not_grow_the_registry() {
+        let cache = ChannelResolutionCache::with_max_tenant_versions(2);
+        let tenant = Uuid::new_v4();
+        for _ in 0..32 {
+            cache.invalidate_tenant(tenant).await;
+        }
+        assert_eq!(cache.tracked_tenant_versions(), 1);
+    }
 }
 
 #[cfg(test)]
