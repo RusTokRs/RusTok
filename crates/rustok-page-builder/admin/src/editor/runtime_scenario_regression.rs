@@ -6,6 +6,7 @@ use fly::{
     RuntimeScenarioRenderChangeImpact, FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1,
 };
 use leptos::prelude::*;
+use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
 use rustok_ui_core::UiRouteContext;
 use std::sync::Arc;
 
@@ -13,7 +14,7 @@ use std::sync::Arc;
 pub fn RuntimeScenarioRegressionPanel(
     runtime: AdminEditorRuntime,
     #[prop(optional)] initial_baseline: Option<RuntimeScenarioReleaseBaseline>,
-    #[prop(optional)] on_baseline_change: Option<Callback<Option<RuntimeScenarioReleaseBaseline>>>,
+    #[prop(optional)] on_baseline_change: Option<Callback<PageBuilderScenarioBaselineChange>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
@@ -33,6 +34,11 @@ pub fn RuntimeScenarioRegressionPanel(
         "Use pasted baseline",
     );
     let clear_label = t(locale.as_deref(), "page_builder.action.clear", "Clear");
+    let promotion_note_label = t(
+        locale.as_deref(),
+        "page_builder.field.scenarioBaselinePromotionNote",
+        "Review note for replacing the persisted baseline",
+    );
     let scenarios = Arc::clone(&runtime.runtime_scenarios);
     let has_scenarios = !scenarios.is_empty();
     let initial_json = initial_baseline
@@ -41,6 +47,7 @@ pub fn RuntimeScenarioRegressionPanel(
         .unwrap_or_default();
     let baseline = RwSignal::new(initial_baseline);
     let baseline_json = RwSignal::new(initial_json);
+    let promotion_note = RwSignal::new(String::new());
     let callback = StoredValue::new(on_baseline_change);
     let capture_runtime = runtime.clone();
     let import_runtime = runtime.clone();
@@ -51,11 +58,28 @@ pub fn RuntimeScenarioRegressionPanel(
         <Show when=move || has_scenarios>
             <section class="space-y-3 rounded-xl border border-border bg-card p-3">
                 <h2 class="font-semibold">{title}</h2>
+                <input
+                    class="w-full rounded border border-input bg-background px-2 py-1 text-xs"
+                    placeholder=promotion_note_label
+                    prop:value=move || promotion_note.get()
+                    on:input=move |event| promotion_note.set(event_target_value(&event))
+                />
+                <p class="text-xs text-muted-foreground">
+                    "A review note is required when replacing an existing persisted baseline."
+                </p>
                 <div class="flex flex-wrap gap-2">
                     <button
                         type="button"
                         class="rounded border border-border px-2 py-1 text-xs"
                         on:click=move |_| {
+                            let replacing = baseline.get_untracked().is_some();
+                            let note = normalized_note(&promotion_note.get_untracked());
+                            if replacing && note.is_none() {
+                                capture_runtime.fail(
+                                    "A review note is required before replacing the scenario baseline",
+                                );
+                                return;
+                            }
                             let release_baseline = capture_runtime.controller.with(|controller| {
                                 let baseline_id = format!(
                                     "{}:{}",
@@ -82,8 +106,12 @@ pub fn RuntimeScenarioRegressionPanel(
                             );
                             baseline.set(Some(release_baseline.clone()));
                             if let Some(callback) = callback.get_value() {
-                                callback.run(Some(release_baseline));
+                                callback.run(PageBuilderScenarioBaselineChange::save(
+                                    release_baseline,
+                                    note,
+                                ));
                             }
+                            promotion_note.set(String::new());
                             capture_runtime.last_error.set(None);
                             capture_runtime.announce("Scenario release baseline captured");
                         }
@@ -92,6 +120,14 @@ pub fn RuntimeScenarioRegressionPanel(
                         type="button"
                         class="rounded border border-border px-2 py-1 text-xs"
                         on:click=move |_| {
+                            let replacing = baseline.get_untracked().is_some();
+                            let note = normalized_note(&promotion_note.get_untracked());
+                            if replacing && note.is_none() {
+                                import_runtime.fail(
+                                    "A review note is required before replacing the scenario baseline",
+                                );
+                                return;
+                            }
                             match serde_json::from_str::<RuntimeScenarioReleaseBaseline>(
                                 &baseline_json.get_untracked(),
                             ) {
@@ -102,8 +138,12 @@ pub fn RuntimeScenarioRegressionPanel(
                                 {
                                     baseline.set(Some(release_baseline.clone()));
                                     if let Some(callback) = callback.get_value() {
-                                        callback.run(Some(release_baseline));
+                                        callback.run(PageBuilderScenarioBaselineChange::save(
+                                            release_baseline,
+                                            note,
+                                        ));
                                     }
+                                    promotion_note.set(String::new());
                                     import_runtime.last_error.set(None);
                                     import_runtime.announce(
                                         "Scenario release baseline imported",
@@ -136,11 +176,13 @@ pub fn RuntimeScenarioRegressionPanel(
                         type="button"
                         class="rounded border border-border px-2 py-1 text-xs"
                         on:click=move |_| {
+                            let note = normalized_note(&promotion_note.get_untracked());
                             baseline.set(None);
                             baseline_json.set(String::new());
                             if let Some(callback) = callback.get_value() {
-                                callback.run(None);
+                                callback.run(PageBuilderScenarioBaselineChange::clear(note));
                             }
+                            promotion_note.set(String::new());
                         }
                     >{clear_label}</button>
                 </div>
@@ -273,6 +315,11 @@ pub fn RuntimeScenarioRegressionPanel(
             </section>
         </Show>
     }
+}
+
+fn normalized_note(value: &str) -> Option<String> {
+    let note = value.trim();
+    (!note.is_empty()).then(|| note.to_string())
 }
 
 fn impact_label(impact: RuntimeScenarioRenderChangeImpact) -> &'static str {
