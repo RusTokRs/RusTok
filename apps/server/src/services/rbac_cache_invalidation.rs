@@ -6,8 +6,8 @@ use rustok_cache::{
     cache_backend_generation_snapshot, observe_cache_backend_generation,
     BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
     CacheBackendGenerationError, CacheInvalidationMessage, CacheInvalidationObservation,
-    CacheInvalidationPayloadError, CacheService, DurableCacheInvalidationRecord,
-    VersionedCacheInvalidation,
+    CacheInvalidationOutcome, CacheInvalidationPayloadError, CacheService,
+    DurableCacheInvalidationRecord, VersionedCacheInvalidation,
 };
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -194,29 +194,51 @@ pub async fn publish_user_rbac_invalidation(
                 "RBAC invalidation generation could not advance; an enclosing mutation may already be committed and must not be retried blindly: {error}"
             ))
         })?;
-    let emitted_at_unix_ms = u64::try_from(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| Error::Cache(error.to_string()))?
-            .as_millis(),
-    )
-    .map_err(|_| Error::Cache("RBAC invalidation timestamp overflow".to_string()))?;
-    let record = DurableCacheInvalidationRecord::new(
-        Uuid::new_v4(),
-        Some(*tenant_id),
-        RBAC_PERMISSION_INVALIDATION_CHANNEL,
-        rbac_invalidation_key(*tenant_id, *user_id),
-        generation.generation,
-        emitted_at_unix_ms,
-        RBAC_PERMISSION_INVALIDATION_CAUSE,
-        None,
-    )
-    .map_err(|error| Error::Cache(error.to_string()))?;
-    let outcome = cache
-        .invalidations()
-        .publish_durable(&record)
-        .await
+
+    let fanout: Result<CacheInvalidationOutcome> = async {
+        let emitted_at_unix_ms = u64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|error| Error::Cache(error.to_string()))?
+                .as_millis(),
+        )
+        .map_err(|_| Error::Cache("RBAC invalidation timestamp overflow".to_string()))?;
+        let record = DurableCacheInvalidationRecord::new(
+            Uuid::new_v4(),
+            Some(*tenant_id),
+            RBAC_PERMISSION_INVALIDATION_CHANNEL,
+            rbac_invalidation_key(*tenant_id, *user_id),
+            generation.generation,
+            emitted_at_unix_ms,
+            RBAC_PERMISSION_INVALIDATION_CAUSE,
+            None,
+        )
         .map_err(|error| Error::Cache(error.to_string()))?;
+        cache
+            .invalidations()
+            .publish_durable(&record)
+            .await
+            .map_err(|error| Error::Cache(error.to_string()))
+    }
+    .await;
+
+    let outcome = match fanout {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            tracing::warn!(
+                %tenant_id,
+                %user_id,
+                generation = generation.generation,
+                %error,
+                "RBAC invalidation fan-out deferred to generation reconciliation"
+            );
+            rustok_telemetry::metrics::record_event_error(
+                RBAC_PERMISSION_INVALIDATION_CHANNEL,
+                "fanout_deferred",
+            );
+            return Ok(());
+        }
+    };
 
     if cache.redis_configuration_present() {
         if !outcome.redis_published {
