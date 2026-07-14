@@ -60,12 +60,15 @@ impl BoundedCacheInvalidationGapTracker {
     }
 
     /// Confirm that an in-order invalidation was applied successfully.
+    ///
+    /// Repeating the current offset is idempotent. Skipped generations require an explicit
+    /// `acknowledge_recovery` after the namespace has been rebuilt through the gap.
     pub fn acknowledge_applied(
         &self,
         channel: impl Into<String>,
         applied_generation: u64,
     ) -> Result<Option<u64>, BoundedInvalidationTrackerError> {
-        self.advance_monotonically(channel.into(), applied_generation)
+        self.acknowledge_contiguous(channel.into(), applied_generation)
     }
 
     pub fn acknowledge_recovery(
@@ -131,6 +134,38 @@ impl BoundedCacheInvalidationGapTracker {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(channel)
+    }
+
+    fn acknowledge_contiguous(
+        &self,
+        channel: String,
+        proposed: u64,
+    ) -> Result<Option<u64>, BoundedInvalidationTrackerError> {
+        validate_channel(&channel)?;
+        let mut generations = self
+            .last_by_channel
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(current) = generations.get(&channel).copied() else {
+            return Err(BoundedInvalidationTrackerError::Payload(
+                CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                    current: None,
+                    proposed,
+                },
+            ));
+        };
+        if proposed == current {
+            return Ok(Some(current));
+        }
+        if current.checked_add(1) != Some(proposed) {
+            return Err(BoundedInvalidationTrackerError::Payload(
+                CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                    current: Some(current),
+                    proposed,
+                },
+            ));
+        }
+        Ok(generations.insert(channel, proposed))
     }
 
     fn advance_monotonically(
@@ -265,6 +300,45 @@ mod tests {
             tracker.observe(&event("tenant.invalidate", 4)),
             CacheInvalidationObservation::Duplicate { generation: 4 }
         );
+    }
+
+    #[test]
+    fn applied_acknowledgement_rejects_unseeded_or_skipped_offsets() {
+        let tracker = BoundedCacheInvalidationGapTracker::new(1).unwrap();
+        assert_eq!(
+            tracker
+                .acknowledge_applied("tenant.invalidate", 1)
+                .unwrap_err(),
+            BoundedInvalidationTrackerError::Payload(
+                CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                    current: None,
+                    proposed: 1,
+                }
+            )
+        );
+        assert_eq!(tracker.channel_count(), 0);
+
+        tracker.seed("tenant.invalidate", 3).unwrap();
+        assert_eq!(
+            tracker
+                .acknowledge_applied("tenant.invalidate", 5)
+                .unwrap_err(),
+            BoundedInvalidationTrackerError::Payload(
+                CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                    current: Some(3),
+                    proposed: 5,
+                }
+            )
+        );
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(3));
+        assert_eq!(
+            tracker
+                .acknowledge_applied("tenant.invalidate", 3)
+                .unwrap(),
+            Some(3)
+        );
+        tracker.acknowledge_applied("tenant.invalidate", 4).unwrap();
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(4));
     }
 
     #[test]
