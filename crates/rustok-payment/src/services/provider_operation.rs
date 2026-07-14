@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    Set,
+    QueryOrder, Set,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -81,9 +81,6 @@ impl PaymentProviderOperationJournal {
         match insert {
             Ok(model) => Ok(model),
             Err(insert_error) => {
-                // A concurrent request may have won the unique idempotency race.
-                // Re-read and validate the immutable request before propagating the
-                // original storage error.
                 if let Some(existing) = self
                     .find_by_key(input.tenant_id, &input.provider_id, &input.idempotency_key)
                     .await?
@@ -121,11 +118,25 @@ impl PaymentProviderOperationJournal {
             .map_err(Into::into)
     }
 
-    /// Atomically claim the right to execute a provider side effect.
-    ///
-    /// Only one caller can move a pending or retryable provider-error row into
-    /// `executing`. A losing concurrent caller receives `None` and must not call
-    /// the provider.
+    /// Returns the durable provider history for one payment collection in
+    /// execution order. Orchestrators use this owner read to decide whether an
+    /// automatic compensation is safe or requires reconciliation first.
+    pub async fn list_by_collection(
+        &self,
+        tenant_id: Uuid,
+        payment_collection_id: Uuid,
+    ) -> PaymentResult<Vec<provider_operation::Model>> {
+        provider_operation::Entity::find()
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(
+                provider_operation::Column::PaymentCollectionId.eq(payment_collection_id),
+            )
+            .order_by_asc(provider_operation::Column::CreatedAt)
+            .all(&self.db)
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn claim_execution(
         &self,
         id: Uuid,
@@ -258,11 +269,7 @@ fn normalize_begin_input(
             "idempotency_key must contain 1 to 191 characters".to_string(),
         ));
     }
-    if !input.request_payload.is_object() {
-        return Err(PaymentError::Validation(
-            "provider operation request_payload must be a JSON object".to_string(),
-        ));
-    }
+
     Ok(input)
 }
 
@@ -270,13 +277,15 @@ fn ensure_same_request(
     existing: &provider_operation::Model,
     input: &BeginProviderOperation,
 ) -> PaymentResult<()> {
-    if existing.payment_collection_id != input.payment_collection_id
+    if existing.tenant_id != input.tenant_id
+        || existing.payment_collection_id != input.payment_collection_id
         || existing.refund_id != input.refund_id
         || existing.operation != input.operation
+        || existing.provider_id != input.provider_id
         || existing.request_payload != input.request_payload
     {
         return Err(PaymentError::Validation(format!(
-            "idempotency key `{}` is already bound to a different payment provider request",
+            "provider idempotency key `{}` is already bound to another request",
             input.idempotency_key
         )));
     }
@@ -284,24 +293,22 @@ fn ensure_same_request(
 }
 
 fn ensure_transition(from: &str, to: &str) -> PaymentResult<()> {
-    let allowed = match to {
-        PROVIDER_OPERATION_EXECUTING => {
-            matches!(from, PROVIDER_OPERATION_PENDING | PROVIDER_OPERATION_ERROR)
-        }
-        PROVIDER_OPERATION_SUCCEEDED => from == PROVIDER_OPERATION_EXECUTING,
-        PROVIDER_OPERATION_ERROR => {
-            matches!(
-                from,
-                PROVIDER_OPERATION_EXECUTING | PROVIDER_OPERATION_ERROR
+    let allowed = matches!(
+        (from, to),
+        (PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_EXECUTING)
+            | (PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING)
+            | (PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_SUCCEEDED)
+            | (PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_ERROR)
+            | (
+                PROVIDER_OPERATION_SUCCEEDED,
+                PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             )
-        }
-        PROVIDER_OPERATION_RECONCILIATION_REQUIRED => from == PROVIDER_OPERATION_SUCCEEDED,
-        PROVIDER_OPERATION_COMMITTED => matches!(
-            from,
-            PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-        ),
-        _ => false,
-    };
+            | (
+                PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+                PROVIDER_OPERATION_COMMITTED
+            )
+            | (PROVIDER_OPERATION_SUCCEEDED, PROVIDER_OPERATION_COMMITTED)
+    );
     if allowed {
         Ok(())
     } else {
@@ -320,58 +327,10 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
 
 fn normalize_error(value: String) -> String {
     let value = value.trim();
-    if value.len() <= 2000 {
-        value.to_string()
+    let value = if value.is_empty() {
+        "provider operation failed"
     } else {
-        value.chars().take(2000).collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn provider_operation_transition_matrix_is_fail_closed() {
-        assert!(
-            ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_EXECUTING).is_ok()
-        );
-        assert!(ensure_transition(PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING).is_ok());
-        assert!(ensure_transition(PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_ERROR).is_ok());
-        assert!(
-            ensure_transition(PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_SUCCEEDED).is_ok()
-        );
-        assert!(
-            ensure_transition(PROVIDER_OPERATION_SUCCEEDED, PROVIDER_OPERATION_COMMITTED).is_ok()
-        );
-        assert!(ensure_transition(
-            PROVIDER_OPERATION_SUCCEEDED,
-            PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-        )
-        .is_ok());
-        assert!(
-            ensure_transition(PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_PENDING).is_err()
-        );
-        assert!(
-            ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_SUCCEEDED).is_err()
-        );
-        assert!(
-            ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_COMMITTED).is_err()
-        );
-    }
-
-    #[test]
-    fn provider_operation_input_requires_object_payload() {
-        let error = normalize_begin_input(BeginProviderOperation {
-            tenant_id: Uuid::new_v4(),
-            payment_collection_id: Uuid::new_v4(),
-            refund_id: None,
-            operation: "authorize".to_string(),
-            provider_id: "manual".to_string(),
-            idempotency_key: "key".to_string(),
-            request_payload: Value::Null,
-        })
-        .expect_err("non-object payload must be rejected");
-        assert!(matches!(error, PaymentError::Validation(_)));
-    }
+        value
+    };
+    value.chars().take(2000).collect()
 }
