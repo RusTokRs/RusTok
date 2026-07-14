@@ -31,7 +31,12 @@ fn inventory_expressions_and_retry_ownership_match_current_apis() {
     let events = source("crates/rustok-events/src/types.rs");
 
     assert!(inventory.contains("sea_query::{Expr, ExprTrait}"));
-    assert_eq!(inventory.matches("Expr::current_timestamp().into()").count(), 2);
+    assert_eq!(
+        inventory
+            .matches("Expr::current_timestamp().into()")
+            .count(),
+        2
+    );
     assert!(inventory.contains("request.metadata.clone()"));
     assert!(events.contains("size_bytes: _,"));
 }
