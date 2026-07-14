@@ -114,7 +114,7 @@ pub struct GqlForumCategoryBreadcrumb {
 pub struct GqlForumCategoryTreeNode {
     pub id: Uuid,
     pub parent_id: Option<Uuid>,
-    pub depth: u16,
+    pub depth: i32,
     pub position: i32,
     pub requested_locale: String,
     pub effective_locale: String,
@@ -129,7 +129,7 @@ pub struct GqlForumCategoryTreeNode {
     pub reply_count: i32,
     pub is_subscribed: bool,
     pub has_children: bool,
-    pub children_count: u32,
+    pub children_count: i32,
     pub breadcrumbs: Vec<GqlForumCategoryBreadcrumb>,
     pub children: Vec<GqlForumCategoryTreeNode>,
 }
@@ -137,8 +137,8 @@ pub struct GqlForumCategoryTreeNode {
 #[derive(SimpleObject)]
 pub struct GqlForumCategoryTree {
     pub roots: Vec<GqlForumCategoryTreeNode>,
-    pub total_nodes: u32,
-    pub max_depth: u16,
+    pub total_nodes: i32,
+    pub max_depth: i32,
 }
 
 impl From<CategoryBreadcrumb> for GqlForumCategoryBreadcrumb {
@@ -156,7 +156,7 @@ impl From<CategoryTreeNode> for GqlForumCategoryTreeNode {
         Self {
             id: value.id,
             parent_id: value.parent_id,
-            depth: value.depth,
+            depth: i32::from(value.depth),
             position: value.position,
             requested_locale: value.requested_locale,
             effective_locale: value.effective_locale,
@@ -171,7 +171,7 @@ impl From<CategoryTreeNode> for GqlForumCategoryTreeNode {
             reply_count: value.reply_count,
             is_subscribed: value.is_subscribed,
             has_children: value.has_children,
-            children_count: value.children_count,
+            children_count: value.children_count as i32,
             breadcrumbs: value.breadcrumbs.into_iter().map(Into::into).collect(),
             children: value.children.into_iter().map(Into::into).collect(),
         }
@@ -182,8 +182,8 @@ impl From<crate::CategoryTreeResponse> for GqlForumCategoryTree {
     fn from(value: crate::CategoryTreeResponse) -> Self {
         Self {
             roots: value.roots.into_iter().map(Into::into).collect(),
-            total_nodes: value.total_nodes,
-            max_depth: value.max_depth,
+            total_nodes: value.total_nodes as i32,
+            max_depth: i32::from(value.max_depth),
         }
     }
 }
