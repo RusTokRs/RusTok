@@ -1,8 +1,8 @@
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rustok_core::generate_id;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, Set,
+    QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -24,6 +24,9 @@ const MAX_EXTERNAL_REFERENCE_LENGTH: usize = 191;
 const MAX_LEASE_OWNER_LENGTH: usize = 191;
 const MAX_ERROR_CODE_LENGTH: usize = 100;
 const MAX_ERROR_MESSAGE_LENGTH: usize = 2000;
+const MAX_RAW_PAYLOAD_BYTES: usize = 1024 * 1024;
+const MAX_EVENT_METADATA_BYTES: usize = 64 * 1024;
+const MAX_EVENT_METADATA_DEPTH: usize = 16;
 const MAX_LEASE_SECONDS: i64 = 300;
 const MAX_FAILURE_ATTEMPTS: i32 = 25;
 
@@ -68,9 +71,9 @@ impl PaymentProviderEventJournal {
         Self { db }
     }
 
-    /// Records a signature-verified provider delivery without retaining the
-    /// raw body. Replays with the same provider identity and payload hash are
-    /// adopted; a key collision with another payload is rejected.
+    /// Persist a verified provider delivery without retaining the raw body.
+    /// A replay with the same immutable identity and payload hash adopts the
+    /// existing event; a key collision with different content is rejected.
     pub async fn receive(
         &self,
         input: ReceiveProviderEvent,
@@ -183,8 +186,8 @@ impl PaymentProviderEventJournal {
             .map_err(Into::into)
     }
 
-    /// Claims a new/failed delivery or an expired processing lease. The
-    /// attempt counter is incremented atomically with the lease acquisition.
+    /// Claim a new/failed event or steal an expired processing lease. The
+    /// attempt count is incremented in the same conditional update.
     pub async fn claim_processing(
         &self,
         tenant_id: Uuid,
@@ -208,6 +211,7 @@ impl PaymentProviderEventJournal {
                     .add(provider_event::Column::Status.eq(PROVIDER_EVENT_PROCESSING))
                     .add(provider_event::Column::LeaseExpiresAt.lte(now)),
             );
+
         let update = provider_event::Entity::update_many()
             .col_expr(
                 provider_event::Column::Status,
@@ -234,6 +238,10 @@ impl PaymentProviderEventJournal {
                 Expr::value(Option::<String>::None),
             )
             .col_expr(
+                provider_event::Column::ProcessedAt,
+                Expr::value(Option::<DateTime<FixedOffset>>::None),
+            )
+            .col_expr(
                 provider_event::Column::UpdatedAt,
                 Expr::current_timestamp(),
             )
@@ -242,12 +250,15 @@ impl PaymentProviderEventJournal {
             .filter(claimable)
             .exec(&self.db)
             .await?;
+
         if update.rows_affected == 0 {
             return Ok(None);
         }
         self.get(tenant_id, event_id).await.map(Some)
     }
 
+    /// Commit the normalized event and terminal timestamp in one CAS update so
+    /// database state checks never observe a half-completed processed event.
     pub async fn mark_processed(
         &self,
         input: CompleteProviderEvent,
@@ -267,7 +278,9 @@ impl PaymentProviderEventJournal {
             "external_reference",
             MAX_EXTERNAL_REFERENCE_LENGTH,
         )?;
+        let event_metadata = normalize_event_metadata(input.event_metadata)?;
         let now = Utc::now().fixed_offset();
+
         let update = provider_event::Entity::update_many()
             .col_expr(
                 provider_event::Column::Status,
@@ -283,7 +296,7 @@ impl PaymentProviderEventJournal {
             )
             .col_expr(
                 provider_event::Column::EventMetadata,
-                Expr::value(Some(input.event_metadata)),
+                Expr::value(Some(event_metadata)),
             )
             .col_expr(
                 provider_event::Column::LeaseOwner,
@@ -291,7 +304,23 @@ impl PaymentProviderEventJournal {
             )
             .col_expr(
                 provider_event::Column::LeaseExpiresAt,
-                Expr::value(Option::<<provider_event::Model as sea_orm::ModelTrait>::Entity>::None),
+                Expr::value(Option::<DateTime<FixedOffset>>::None),
+            )
+            .col_expr(
+                provider_event::Column::ErrorCode,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                provider_event::Column::ErrorMessage,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                provider_event::Column::ProcessedAt,
+                Expr::value(Some(now)),
+            )
+            .col_expr(
+                provider_event::Column::UpdatedAt,
+                Expr::current_timestamp(),
             )
             .filter(provider_event::Column::TenantId.eq(input.tenant_id))
             .filter(provider_event::Column::Id.eq(input.event_id))
@@ -300,18 +329,21 @@ impl PaymentProviderEventJournal {
             .filter(provider_event::Column::LeaseExpiresAt.gt(now))
             .exec(&self.db)
             .await?;
-        if update.rows_affected == 0 {
-            return self.transition_conflict(input.tenant_id, input.event_id, "processed").await;
-        }
 
-        let mut active: provider_event::ActiveModel = self.get(input.tenant_id, input.event_id).await?.into();
-        active.error_code = Set(None);
-        active.error_message = Set(None);
-        active.updated_at = Set(Utc::now().into());
-        active.processed_at = Set(Some(Utc::now().into()));
-        active.update(&self.db).await.map_err(Into::into)
+        if update.rows_affected == 0 {
+            return self
+                .transition_conflict(
+                    input.tenant_id,
+                    input.event_id,
+                    PROVIDER_EVENT_PROCESSED,
+                )
+                .await;
+        }
+        self.get(input.tenant_id, input.event_id).await
     }
 
+    /// Record a retryable failure or dead-letter the event. A stale lease owner
+    /// cannot finish an event after another worker has reclaimed it.
     pub async fn mark_failed(
         &self,
         input: FailProviderEvent,
@@ -333,30 +365,56 @@ impl PaymentProviderEventJournal {
         )?;
         let max_attempts = input.max_attempts.clamp(1, MAX_FAILURE_ATTEMPTS);
         let current = self.get(input.tenant_id, input.event_id).await?;
-        if current.status != PROVIDER_EVENT_PROCESSING
-            || current.lease_owner.as_deref() != Some(lease_owner.as_str())
-        {
-            return Err(PaymentError::InvalidTransition {
-                from: current.status,
-                to: PROVIDER_EVENT_FAILED.to_string(),
-            });
-        }
         let dead_letter = !input.retryable || current.attempt_count >= max_attempts;
         let target = if dead_letter {
             PROVIDER_EVENT_DEAD_LETTER
         } else {
             PROVIDER_EVENT_FAILED
         };
-        let now = Utc::now();
-        let mut active: provider_event::ActiveModel = current.into();
-        active.status = Set(target.to_string());
-        active.lease_owner = Set(None);
-        active.lease_expires_at = Set(None);
-        active.error_code = Set(Some(error_code));
-        active.error_message = Set(Some(error_message));
-        active.updated_at = Set(now.into());
-        active.processed_at = Set(dead_letter.then(|| now.into()));
-        active.update(&self.db).await.map_err(Into::into)
+        let now = Utc::now().fixed_offset();
+        let processed_at = dead_letter.then_some(now);
+
+        let update = provider_event::Entity::update_many()
+            .col_expr(provider_event::Column::Status, Expr::value(target))
+            .col_expr(
+                provider_event::Column::LeaseOwner,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                provider_event::Column::LeaseExpiresAt,
+                Expr::value(Option::<DateTime<FixedOffset>>::None),
+            )
+            .col_expr(
+                provider_event::Column::ErrorCode,
+                Expr::value(Some(error_code)),
+            )
+            .col_expr(
+                provider_event::Column::ErrorMessage,
+                Expr::value(Some(error_message)),
+            )
+            .col_expr(
+                provider_event::Column::ProcessedAt,
+                Expr::value(processed_at),
+            )
+            .col_expr(
+                provider_event::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(provider_event::Column::TenantId.eq(input.tenant_id))
+            .filter(provider_event::Column::Id.eq(input.event_id))
+            .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_PROCESSING))
+            .filter(provider_event::Column::LeaseOwner.eq(lease_owner))
+            .filter(provider_event::Column::LeaseExpiresAt.gt(now))
+            .filter(provider_event::Column::AttemptCount.eq(current.attempt_count))
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            return self
+                .transition_conflict(input.tenant_id, input.event_id, target)
+                .await;
+        }
+        self.get(input.tenant_id, input.event_id).await
     }
 
     pub async fn list_retryable(
@@ -373,9 +431,7 @@ impl PaymentProviderEventJournal {
                     .add(provider_event::Column::Status.eq(PROVIDER_EVENT_FAILED))
                     .add(
                         Condition::all()
-                            .add(
-                                provider_event::Column::Status.eq(PROVIDER_EVENT_PROCESSING),
-                            )
+                            .add(provider_event::Column::Status.eq(PROVIDER_EVENT_PROCESSING))
                             .add(provider_event::Column::LeaseExpiresAt.lte(now)),
                     ),
             )
@@ -435,10 +491,10 @@ fn normalize_receive_input(mut input: ReceiveProviderEvent) -> PaymentResult<Rec
             "payment provider event signature must be verified before inbox insertion".to_string(),
         ));
     }
-    if input.raw_payload.is_empty() {
-        return Err(PaymentError::Validation(
-            "payment provider event payload must not be empty".to_string(),
-        ));
+    if input.raw_payload.is_empty() || input.raw_payload.len() > MAX_RAW_PAYLOAD_BYTES {
+        return Err(PaymentError::Validation(format!(
+            "payment provider event payload must contain 1 to {MAX_RAW_PAYLOAD_BYTES} bytes"
+        )));
     }
     input.provider_id = normalize_required(
         input.provider_id,
@@ -506,6 +562,33 @@ fn normalize_optional(
         .transpose()
 }
 
+fn normalize_event_metadata(value: Value) -> PaymentResult<Value> {
+    if !value.is_object() {
+        return Err(PaymentError::Validation(
+            "payment provider event metadata must be an object".to_string(),
+        ));
+    }
+    let encoded = serde_json::to_vec(&value).map_err(|error| {
+        PaymentError::Validation(format!(
+            "payment provider event metadata could not be encoded: {error}"
+        ))
+    })?;
+    if encoded.len() > MAX_EVENT_METADATA_BYTES || json_depth(&value) > MAX_EVENT_METADATA_DEPTH {
+        return Err(PaymentError::Validation(
+            "payment provider event metadata exceeds size or depth limits".to_string(),
+        ));
+    }
+    Ok(value)
+}
+
+fn json_depth(value: &Value) -> usize {
+    match value {
+        Value::Array(values) => 1 + values.iter().map(json_depth).max().unwrap_or(0),
+        Value::Object(values) => 1 + values.values().map(json_depth).max().unwrap_or(0),
+        _ => 1,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,7 +597,7 @@ mod tests {
     fn payload_hash_is_stable_and_lowercase() {
         assert_eq!(
             hash_payload(b"provider-event"),
-            "bd83c3ad78c28abfcdb04352f1f68cce58809ac757b22bf96b673c7cd8a16f5c"
+            "a205dcfc615aaecccec56e39b0ef2f028ac49c0cc4a94385549b4f73a0e88037"
         );
     }
 
@@ -530,5 +613,15 @@ mod tests {
         })
         .expect_err("unsigned provider delivery must fail");
         assert!(error.to_string().contains("signature"));
+    }
+
+    #[test]
+    fn metadata_is_bounded() {
+        assert!(normalize_event_metadata(serde_json::json!({"event": "captured"})).is_ok());
+        let mut nested = serde_json::json!({});
+        for _ in 0..20 {
+            nested = serde_json::json!({"next": nested});
+        }
+        assert!(normalize_event_metadata(nested).is_err());
     }
 }
