@@ -71,14 +71,17 @@ pub fn OrderCheckoutCompleteButton(
     labels: OrderCheckoutActionLabels,
     on_complete_checkout: Callback<CompleteCheckoutRequest>,
 ) -> impl IntoView {
+    // Build once per component instance so network retries reuse the exact same
+    // checkout idempotency key instead of opening a second operation.
+    let request = build_complete_checkout_request(cart_id);
     view! {
         <button
             type="button"
             class="inline-flex items-center justify-center rounded-full border border-primary bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 md:col-span-2"
             disabled=move || busy.get()
             on:click={
-                let cart_id = cart_id.clone();
-                move |_| on_complete_checkout.run(build_complete_checkout_request(cart_id.clone()))
+                let request = request.clone();
+                move |_| on_complete_checkout.run(request.clone())
             }
         >
             {move || order_checkout_action_label(busy.get(), &labels)}
