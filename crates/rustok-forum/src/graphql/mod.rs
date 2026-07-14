@@ -13,5 +13,6 @@ pub use connection::*;
 pub use mutation::ForumMutation;
 pub use types::*;
 
+// Diagnostic branch marker: keeps the focused forum workflow enabled.
 #[derive(MergedObject, Default)]
 pub struct ForumQuery(query::ForumQuery, category_tree_query::ForumCategoryTreeQuery);
