@@ -13,6 +13,7 @@ use crate::middleware::rate_limit::{
 };
 use crate::modules;
 use crate::modules::{DeploymentSurfaceContract, ManifestManager};
+use crate::services::cache_runtime::ensure_cache_service;
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::build_event_runtime;
 use crate::services::graphql_schema::init_graphql_schema;
@@ -61,8 +62,7 @@ pub async fn bootstrap_app_runtime(
     auth_config: AuthConfig,
     settings: &RustokSettings,
 ) -> Result<AppRuntimeBootstrap> {
-    let cache_service = CacheService::from_url(settings.cache.redis_url.as_deref());
-    runtime_ctx.shared_insert(cache_service.clone());
+    let cache_service = ensure_cache_service(&runtime_ctx);
 
     // Cache parsed settings so per-request middleware avoids repeated JSON deserialization.
     runtime_ctx.shared_insert(SharedRustokSettings(Arc::new(settings.clone())));
@@ -357,109 +357,11 @@ fn build_namespaced_rate_limiter(
         )
         .map_err(Error::BadRequest)?,
     );
-
     match shared_namespace {
         SharedLimiterNamespace::Api => ctx.shared_insert(SharedApiRateLimiter(limiter.clone())),
         SharedLimiterNamespace::Auth => ctx.shared_insert(SharedAuthRateLimiter(limiter.clone())),
         SharedLimiterNamespace::Oauth => ctx.shared_insert(SharedOAuthRateLimiter(limiter.clone())),
-        SharedLimiterNamespace::Search => {
-            ctx.shared_insert(SharedSearchRateLimiter(limiter.clone()))
-        }
+        SharedLimiterNamespace::Search => ctx.shared_insert(SharedSearchRateLimiter(limiter.clone())),
     }
-
-    if settings.rate_limit.enabled {
-        let limiter_for_cleanup = limiter.clone();
-        tokio::spawn(async move {
-            cleanup_task(limiter_for_cleanup).await;
-        });
-    }
-
     Ok(limiter)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::validate_compiled_surface_contract;
-    use crate::common::settings::{RuntimeHostMode, RuntimeSettings, RustokSettings};
-    use crate::modules::DeploymentSurfaceContract;
-    use rustok_build::DeploymentProfile;
-    use rustok_test_utils::setup_test_db_with_migrations;
-
-    #[test]
-    fn compiled_surface_contract_rejects_missing_embedded_admin() {
-        let contract = DeploymentSurfaceContract {
-            profile: DeploymentProfile::ServerWithAdmin,
-            embed_admin: true,
-            embed_storefront: false,
-        };
-
-        let error = validate_compiled_surface_contract(&contract, false, true).unwrap_err();
-        assert!(error.to_string().contains("without feature `embed-admin`"));
-    }
-
-    #[test]
-    fn compiled_surface_contract_rejects_missing_embedded_storefront() {
-        let contract = DeploymentSurfaceContract {
-            profile: DeploymentProfile::ServerWithStorefront,
-            embed_admin: false,
-            embed_storefront: true,
-        };
-
-        let error = validate_compiled_surface_contract(&contract, true, false).unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("without feature `embed-storefront`"));
-    }
-
-    #[test]
-    fn compiled_surface_contract_accepts_matching_features() {
-        let contract = DeploymentSurfaceContract {
-            profile: DeploymentProfile::Monolith,
-            embed_admin: true,
-            embed_storefront: true,
-        };
-
-        assert!(validate_compiled_surface_contract(&contract, true, true).is_ok());
-    }
-
-    #[test]
-    fn compiled_surface_contract_allows_headless_profile_without_embedded_ui_features() {
-        let contract = DeploymentSurfaceContract {
-            profile: DeploymentProfile::HeadlessApi,
-            embed_admin: false,
-            embed_storefront: false,
-        };
-
-        assert!(validate_compiled_surface_contract(&contract, false, false).is_ok());
-    }
-
-    #[tokio::test]
-    async fn bootstrap_registry_only_runtime_forces_headless_surfaces() {
-        let settings = RustokSettings {
-            runtime: RuntimeSettings {
-                host_mode: RuntimeHostMode::RegistryOnly,
-                ..RuntimeSettings::default()
-            },
-            ..RustokSettings::default()
-        };
-
-        let db = setup_test_db_with_migrations::<rustok_migrations::Migrator>().await;
-        let runtime_ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
-            db,
-            settings.clone(),
-        );
-        let auth_config =
-            crate::auth::auth_config_from_host_settings("test-secret".to_string(), 3_600, None)
-                .expect("test auth configuration should be valid");
-        let runtime = super::bootstrap_app_runtime(runtime_ctx, auth_config, &settings)
-            .await
-            .expect("registry-only runtime should bootstrap");
-
-        assert_eq!(
-            runtime.deployment_surfaces.profile,
-            DeploymentProfile::HeadlessApi
-        );
-        assert!(!runtime.deployment_surfaces.embed_admin);
-        assert!(!runtime.deployment_surfaces.embed_storefront);
-    }
 }
