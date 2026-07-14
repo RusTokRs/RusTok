@@ -14,6 +14,7 @@ async fn verified_normalized_facts_are_durable_before_processing_claim() {
     let journal = PaymentProviderEventJournal::new(db);
     let tenant_id = Uuid::new_v4();
     let collection_id = Uuid::new_v4();
+    let collection_id_text = collection_id.to_string();
     let received = journal
         .receive_verified(
             ReceiveProviderEvent {
@@ -52,7 +53,7 @@ async fn verified_normalized_facts_are_durable_before_processing_claim() {
             .as_ref()
             .and_then(|metadata| metadata.get("collection_id"))
             .and_then(|value| value.as_str()),
-        Some(collection_id.to_string().as_str())
+        Some(collection_id_text.as_str())
     );
     assert!(received.lease_owner.is_none());
     assert!(received.processed_at.is_none());
