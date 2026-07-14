@@ -40,3 +40,12 @@ fn inventory_expressions_and_retry_ownership_match_current_apis() {
     assert!(inventory.contains("request.metadata.clone()"));
     assert!(events.contains("size_bytes: _,"));
 }
+
+#[test]
+fn media_invalid_content_is_a_non_retryable_validation_port_error() {
+    let media_ports = source("crates/rustok-media/src/ports.rs");
+
+    assert!(media_ports.contains("MediaError::InvalidMediaContent { declared, reason }"));
+    assert!(media_ports.contains("PortError::validation(\n            \"media.invalid_content\""));
+    assert!(media_ports.contains("assert_eq!(invalid_content.code, \"media.invalid_content\")"));
+}
