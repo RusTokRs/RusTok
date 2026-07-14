@@ -1,4 +1,5 @@
 mod graphql_adapter;
+mod scenario_baseline_cas_adapter;
 mod scenario_release_adapter;
 
 use crate::model::{
@@ -44,12 +45,14 @@ pub async fn save_page_builder_scenario_baseline(
     tenant_slug: Option<String>,
     page_id: String,
     baseline: RuntimeScenarioReleaseBaseline,
+    expected_baseline_hash: Option<String>,
 ) -> Result<RuntimeScenarioReleaseBaseline, TransportError> {
-    graphql_adapter::save_page_builder_scenario_baseline(
+    scenario_baseline_cas_adapter::save(
         token,
         tenant_slug,
         page_id,
         baseline,
+        expected_baseline_hash,
     )
     .await
 }
@@ -58,8 +61,15 @@ pub async fn delete_page_builder_scenario_baseline(
     token: Option<String>,
     tenant_slug: Option<String>,
     page_id: String,
+    expected_baseline_hash: Option<String>,
 ) -> Result<bool, TransportError> {
-    graphql_adapter::delete_page_builder_scenario_baseline(token, tenant_slug, page_id).await
+    scenario_baseline_cas_adapter::delete(
+        token,
+        tenant_slug,
+        page_id,
+        expected_baseline_hash,
+    )
+    .await
 }
 
 pub async fn create_page(
