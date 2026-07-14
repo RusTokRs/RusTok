@@ -5,7 +5,7 @@ use rustok_commerce_foundation::entities::{
     inventory_item, inventory_level, product_variant, reservation_item, stock_location,
 };
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend,
+    sea_query::{Expr, ExprTrait}, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend,
     EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
@@ -321,7 +321,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                 )
                 .col_expr(
                     inventory_level::Column::UpdatedAt,
-                    Expr::current_timestamp(),
+                    Expr::current_timestamp().into(),
                 )
                 .filter(inventory_level::Column::Id.eq(level.id));
             if !allows_backorder {
@@ -353,7 +353,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         })?;
         let now = Utc::now();
         let metadata = reservation_metadata(
-            request.metadata,
+            request.metadata.clone(),
             request.reservation_id,
             request.external_id.as_str(),
             request.variant_id,
@@ -495,7 +495,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             )
             .col_expr(
                 inventory_level::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .filter(inventory_level::Column::InventoryItemId.eq(item.id))
             .filter(inventory_level::Column::LocationId.eq(reservation.location_id))
