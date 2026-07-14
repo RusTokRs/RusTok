@@ -59,9 +59,9 @@ pub use services::{
     CheckoutOrderPlanPayload, CheckoutOrderPlanRecord, CheckoutOrderPlanResult,
     CheckoutOrderStageError, CheckoutOrderStageExecutor, CheckoutOrderStageResult,
     CheckoutPaymentCapturedState, CheckoutPaymentReadyState, CheckoutPaymentStageError,
-    CheckoutPaymentStageExecutor, CheckoutPaymentStageResult, CheckoutResult, CheckoutService,
-    CheckoutStagePipeline, CheckoutStagePipelineError, CheckoutStagePipelineResult,
-    CreateReturnDecisionInput, ExchangeDifferenceRefundInput,
+    CheckoutPaymentStageExecutor, CheckoutPaymentStageResult, CheckoutPlanBuilder, CheckoutResult,
+    CheckoutService, CheckoutStagePipeline, CheckoutStagePipelineError,
+    CheckoutStagePipelineResult, CreateReturnDecisionInput, ExchangeDifferenceRefundInput,
     FulfillmentCreateLabelRecoveryService, FulfillmentReconciliationService,
     JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
     PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService, PaymentOrchestrationError,
@@ -69,7 +69,8 @@ pub use services::{
     PostOrderOrchestrationError, PostOrderOrchestrationService, RefundReconciliationService,
     ReturnClaimDecisionInput, ReturnDecisionInput, ReturnDecisionResponse,
     ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
-    StoreContextError, StoreContextResult, StoreContextService, DEFAULT_CHECKOUT_LEASE_SECONDS,
+    StagedCheckoutError, StagedCheckoutResult, StagedCheckoutService, StoreContextError,
+    StoreContextResult, StoreContextService, DEFAULT_CHECKOUT_LEASE_SECONDS,
     MAX_CHECKOUT_LEASE_SECONDS,
 };
 pub(crate) use services::{
