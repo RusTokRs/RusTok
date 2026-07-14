@@ -1,7 +1,7 @@
 use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError}, has_any_effective_permission, Action,
-    AuthContext, Permission, Resource, TenantContext,
+    graphql::{require_module_enabled, GraphQLError}, has_any_effective_permission, AuthContext,
+    Permission, TenantContext,
 };
 use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
 use sea_orm::DatabaseConnection;
@@ -148,11 +148,7 @@ fn require_pages_permission(ctx: &Context<'_>, permission: Permission) -> Result
         .clone();
     if !has_any_effective_permission(&auth.permissions, &[permission]) {
         return Err(<FieldError as GraphQLError>::permission_denied(
-            format!(
-                "Permission denied: {}:{} required",
-                Resource::Pages.as_str(),
-                Action::Update.as_str(),
-            ),
+            "Permission denied: pages read/update authority required",
         ));
     }
     Ok(auth)
