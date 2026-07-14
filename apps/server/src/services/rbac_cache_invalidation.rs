@@ -216,9 +216,16 @@ pub async fn publish_user_rbac_invalidation(
 
     if cache.redis_configuration_present() {
         if !outcome.redis_published {
-            return Err(Error::Cache(
-                "RBAC permission cache generation advanced but Redis publish failed".to_string(),
-            ));
+            tracing::warn!(
+                %tenant_id,
+                %user_id,
+                generation = generation.generation,
+                "RBAC invalidation publication deferred to generation reconciliation"
+            );
+            rustok_telemetry::metrics::record_event_error(
+                RBAC_PERMISSION_INVALIDATION_CHANNEL,
+                "redis_publish_deferred",
+            );
         }
     } else if outcome.local_subscribers == 0 {
         return Err(Error::Cache(
