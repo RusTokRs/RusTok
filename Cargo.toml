@@ -99,7 +99,7 @@ base64 = "0.22"
 
 # IDs
 uuid = { version = "1.23.3", features = ["v4", "serde", "js"] }
-ulid = "1.1"
+ulid = "2.0"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -193,10 +193,10 @@ prometheus = "0.14"
 lazy_static = "1.5"
 secrecy = { version = "0.10", features = ["serde"] }
 rig = { package = "rig-core", version = "=0.39.0", features = ["audio", "image", "rmcp"] }
-rig-bedrock = "=0.39.0"
-rig-fastembed = "=0.39.0"
-rig-gemini-grpc = "=0.39.0"
-rig-vertexai = "=0.39.0"
+rig-bedrock = "=0.40.0"
+rig-fastembed = "=0.40.0"
+rig-gemini-grpc = "=0.40.0"
+rig-vertexai = "=0.40.0"
 
 # Internal crates
 rustok-core = { path = "crates/rustok-core" }
