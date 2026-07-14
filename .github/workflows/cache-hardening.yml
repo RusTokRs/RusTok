@@ -102,6 +102,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.96.0"
@@ -109,8 +111,34 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: cache-hardening
-      - name: Format
-        run: cargo fmt --all --check
+      - name: Format changed Rust files
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed=/tmp/cache-hardening-changed-rust.txt
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --name-only --diff-filter=ACMRT \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}" \
+              -- '*.rs' > "$changed"
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            git diff --name-only --diff-filter=ACMRT HEAD^ HEAD -- '*.rs' > "$changed"
+          else
+            git ls-files '*.rs' > "$changed"
+          fi
+
+          cargo fmt --all
+          failed=0
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            if ! git diff --quiet -- "$file"; then
+              echo "::error file=$file::rustfmt changed this file"
+              git diff -- "$file"
+              failed=1
+            fi
+          done < "$changed"
+          git reset --hard HEAD
+          exit "$failed"
       - name: Compile cache and server
         run: |
           cargo check -p rustok-core --lib --features redis-cache
