@@ -1,12 +1,13 @@
 use crate::{
-    validate_binding_definitions, validate_dynamic_definitions, ProjectDocument,
-    ValidationDiagnostic, ValidationReport,
+    validate_binding_definitions, validate_context_definitions, validate_dynamic_definitions,
+    ProjectDocument, ValidationDiagnostic, ValidationReport,
 };
 
 pub fn validate_runtime_extensions(
     document: &ProjectDocument,
 ) -> Vec<ValidationDiagnostic> {
-    let mut diagnostics = validate_binding_definitions(document);
+    let mut diagnostics = validate_context_definitions(document);
+    diagnostics.extend(validate_binding_definitions(document));
     diagnostics.extend(validate_dynamic_definitions(document));
     diagnostics
 }
@@ -28,10 +29,16 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn runtime_validation_combines_binding_and_dynamic_diagnostics() {
+    fn runtime_validation_combines_context_binding_and_dynamic_diagnostics() {
         let document = GrapesJsV1Codec::decode_value(json!({
             "pages": [{
                 "component": { "id": "root", "type": "wrapper" }
+            }],
+            "flyRuntimeContextSchema": [{
+                "id": "count",
+                "path": "count",
+                "kind": "number",
+                "default": "invalid"
             }],
             "flyRuntimeBindings": [{
                 "id": "binding",
@@ -48,6 +55,9 @@ mod tests {
         }))
         .expect("document");
         let diagnostics = validate_runtime_extensions(&document);
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_context_default_type_mismatch"));
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_binding_target_missing"));
