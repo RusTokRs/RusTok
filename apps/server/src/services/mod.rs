@@ -38,6 +38,7 @@ pub mod event_transport_factory;
 pub mod order_field_service;
 pub mod product_field_service;
 pub mod rbac_authoritative;
+pub mod rbac_cache_invalidation;
 pub mod rbac_committed_mutations;
 pub mod rbac_consistency;
 pub mod rbac_persistence;
