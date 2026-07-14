@@ -13,7 +13,8 @@ use rustok_api::{Action, Permission, Resource};
 use rustok_rbac::{
     authorize_all_permissions, authorize_any_permission, authorize_permission,
     invalidate_cached_permissions, AuthorizationDecision, DeniedReasonKind, PermissionCache,
-    RelationPermissionStore, RoleAssignmentStore, RuntimePermissionResolver,
+    PermissionCacheLookup, RelationPermissionStore, RoleAssignmentStore,
+    RuntimePermissionResolver,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
@@ -76,10 +77,20 @@ static RBAC_CLAIM_ROLE_MISMATCH_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_DECISIONS_POLICY_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_EVAL_DURATION_MS_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_EVAL_DURATION_SAMPLES: AtomicU64 = AtomicU64::new(0);
+static RBAC_PERMISSION_CACHE_EPOCH: AtomicU64 = AtomicU64::new(1);
 
 const RBAC_PERMISSION_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
+const RBAC_PERMISSION_CACHE_LOOKUP_ATTEMPTS: usize = 4;
 
-static USER_PERMISSION_CACHE: Lazy<Cache<(uuid::Uuid, uuid::Uuid), Vec<Permission>>> =
+type PermissionCacheKey = (uuid::Uuid, uuid::Uuid);
+
+#[derive(Clone)]
+struct CachedPermissionSnapshot {
+    epoch: u64,
+    permissions: Vec<Permission>,
+}
+
+static USER_PERMISSION_CACHE: Lazy<Cache<PermissionCacheKey, CachedPermissionSnapshot>> =
     Lazy::new(|| {
         Cache::builder()
             .weigher(permission_cache_entry_weight)
@@ -89,28 +100,41 @@ static USER_PERMISSION_CACHE: Lazy<Cache<(uuid::Uuid, uuid::Uuid), Vec<Permissio
     });
 
 fn permission_cache_entry_weight(
-    _key: &(uuid::Uuid, uuid::Uuid),
-    permissions: &Vec<Permission>,
+    _key: &PermissionCacheKey,
+    snapshot: &CachedPermissionSnapshot,
 ) -> u32 {
-    let weight = std::mem::size_of::<(uuid::Uuid, uuid::Uuid)>()
-        .saturating_add(std::mem::size_of::<Vec<Permission>>())
+    let weight = std::mem::size_of::<PermissionCacheKey>()
+        .saturating_add(std::mem::size_of::<CachedPermissionSnapshot>())
         .saturating_add(
-            permissions
+            snapshot
+                .permissions
                 .len()
                 .saturating_mul(std::mem::size_of::<Permission>()),
         );
     weight.clamp(1, u32::MAX as usize) as u32
 }
 
+fn current_permission_cache_epoch() -> u64 {
+    RBAC_PERMISSION_CACHE_EPOCH.load(Ordering::Acquire)
+}
+
+fn advance_permission_cache_epoch() -> u64 {
+    RBAC_PERMISSION_CACHE_EPOCH
+        .fetch_add(1, Ordering::AcqRel)
+        .wrapping_add(1)
+}
+
 pub(crate) async fn invalidate_user_permissions_cache(
     tenant_id: &uuid::Uuid,
     user_id: &uuid::Uuid,
 ) {
+    advance_permission_cache_epoch();
     let cache = MokaPermissionCache;
     invalidate_cached_permissions(&cache, tenant_id, user_id).await;
 }
 
 pub(crate) async fn invalidate_all_user_permissions_cache() {
+    advance_permission_cache_epoch();
     USER_PERMISSION_CACHE.invalidate_all();
     USER_PERMISSION_CACHE.run_pending_tasks().await;
 }
@@ -277,7 +301,7 @@ pub(crate) struct ServerRoleAssignmentStore {
 #[async_trait]
 impl PermissionCache for MokaPermissionCache {
     async fn get(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) -> Option<Vec<Permission>> {
-        USER_PERMISSION_CACHE.get(&(*tenant_id, *user_id)).await
+        self.lookup(tenant_id, user_id).await.into_parts().0
     }
 
     async fn insert(
@@ -286,8 +310,8 @@ impl PermissionCache for MokaPermissionCache {
         user_id: &uuid::Uuid,
         permissions: Vec<Permission>,
     ) {
-        USER_PERMISSION_CACHE
-            .insert((*tenant_id, *user_id), permissions)
+        let token = current_permission_cache_epoch();
+        self.insert_if_current(tenant_id, user_id, token, permissions)
             .await;
     }
 
@@ -295,6 +319,54 @@ impl PermissionCache for MokaPermissionCache {
         USER_PERMISSION_CACHE
             .invalidate(&(*tenant_id, *user_id))
             .await;
+    }
+
+    async fn lookup(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> PermissionCacheLookup {
+        let key = (*tenant_id, *user_id);
+        for _ in 0..RBAC_PERMISSION_CACHE_LOOKUP_ATTEMPTS {
+            let token = current_permission_cache_epoch();
+            let snapshot = USER_PERMISSION_CACHE.get(&key).await;
+            if current_permission_cache_epoch() != token {
+                continue;
+            }
+
+            match snapshot {
+                Some(snapshot) if snapshot.epoch == token => {
+                    return PermissionCacheLookup::new(Some(snapshot.permissions), token);
+                }
+                Some(_) => {
+                    USER_PERMISSION_CACHE.invalidate(&key).await;
+                }
+                None => {}
+            }
+            return PermissionCacheLookup::new(None, token);
+        }
+
+        PermissionCacheLookup::new(None, current_permission_cache_epoch())
+    }
+
+    async fn insert_if_current(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        token: u64,
+        permissions: Vec<Permission>,
+    ) {
+        if current_permission_cache_epoch() != token {
+            return;
+        }
+
+        let key = (*tenant_id, *user_id);
+        USER_PERMISSION_CACHE
+            .insert(key, CachedPermissionSnapshot { epoch: token, permissions })
+            .await;
+        if current_permission_cache_epoch() != token {
+            USER_PERMISSION_CACHE.invalidate(&key).await;
+        }
     }
 }
 
@@ -432,6 +504,7 @@ mod tests {
     use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ConnectionTrait, Set};
+    use serial_test::serial;
 
     async fn insert_tenant_and_user(
         db: &impl ConnectionTrait,
@@ -481,38 +554,63 @@ mod tests {
         let key = (uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
         let one = permission_cache_entry_weight(
             &key,
-            &vec![Permission::new(Resource::Users, Action::Read)],
+            &CachedPermissionSnapshot {
+                epoch: 1,
+                permissions: vec![Permission::new(Resource::Users, Action::Read)],
+            },
         );
         let many = permission_cache_entry_weight(
             &key,
-            &vec![Permission::new(Resource::Users, Action::Read); 32],
+            &CachedPermissionSnapshot {
+                epoch: 1,
+                permissions: vec![Permission::new(Resource::Users, Action::Read); 32],
+            },
         );
 
         assert!(many > one);
-        assert!(one as usize >= std::mem::size_of::<(uuid::Uuid, uuid::Uuid)>());
+        assert!(one as usize >= std::mem::size_of::<PermissionCacheKey>());
     }
 
     #[tokio::test]
+    #[serial]
     async fn full_permission_cache_invalidation_removes_unknown_user_entries() {
         let tenant_id = uuid::Uuid::new_v4();
         let user_id = uuid::Uuid::new_v4();
-        USER_PERMISSION_CACHE
+        let cache = MokaPermissionCache;
+        cache
             .insert(
-                (tenant_id, user_id),
+                &tenant_id,
+                &user_id,
                 vec![Permission::new(Resource::Users, Action::Read)],
             )
             .await;
-        assert!(USER_PERMISSION_CACHE
-            .get(&(tenant_id, user_id))
-            .await
-            .is_some());
+        assert!(cache.get(&tenant_id, &user_id).await.is_some());
 
         invalidate_all_user_permissions_cache().await;
 
-        assert!(USER_PERMISSION_CACHE
-            .get(&(tenant_id, user_id))
-            .await
-            .is_none());
+        assert!(cache.get(&tenant_id, &user_id).await.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn stale_permission_fill_is_rejected_after_invalidation() {
+        invalidate_all_user_permissions_cache().await;
+        let tenant_id = uuid::Uuid::new_v4();
+        let user_id = uuid::Uuid::new_v4();
+        let cache = MokaPermissionCache;
+        let (_, stale_token) = cache.lookup(&tenant_id, &user_id).await.into_parts();
+
+        invalidate_user_permissions_cache(&tenant_id, &user_id).await;
+        cache
+            .insert_if_current(
+                &tenant_id,
+                &user_id,
+                stale_token,
+                vec![Permission::new(Resource::Settings, Action::Manage)],
+            )
+            .await;
+
+        assert!(cache.get(&tenant_id, &user_id).await.is_none());
     }
 
     #[tokio::test]
