@@ -1,3 +1,4 @@
+pub mod category_tree;
 pub mod event_contract;
 pub mod postgres;
 pub mod read_model;
