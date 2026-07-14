@@ -19,6 +19,17 @@ use crate::services::rbac::enforce_owned_scope;
 
 pub const PAGE_BUILDER_SCENARIO_BASELINE_CONFLICT_ERROR_CODE: &str =
     "SCENARIO_BASELINE_CONFLICT";
+pub const PAGE_BUILDER_SCENARIO_BASELINE_PROMOTION_NOTE_REQUIRED_ERROR_CODE: &str =
+    "SCENARIO_BASELINE_PROMOTION_NOTE_REQUIRED";
+
+#[derive(Clone, Debug)]
+pub struct PageBuilderScenarioBaselineRecord {
+    pub baseline: RuntimeScenarioReleaseBaseline,
+    pub previous_baseline_hash: Option<String>,
+    pub promoted_by: Option<Uuid>,
+    pub promotion_note: Option<String>,
+    pub promoted_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
+}
 
 pub struct PageBuilderScenarioBaselineService {
     db: DatabaseConnection,
@@ -35,6 +46,18 @@ impl PageBuilderScenarioBaselineService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<Option<RuntimeScenarioReleaseBaseline>> {
+        Ok(self
+            .get_record(tenant_id, security, page_id)
+            .await?
+            .map(|record| record.baseline))
+    }
+
+    pub async fn get_record(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        page_id: Uuid,
+    ) -> PagesResult<Option<PageBuilderScenarioBaselineRecord>> {
         let page = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
@@ -42,7 +65,7 @@ impl PageBuilderScenarioBaselineService {
             Action::Read,
             page.author_id,
         )?;
-        self.load_unchecked(tenant_id, page_id).await
+        self.load_record_unchecked(tenant_id, page_id).await
     }
 
     pub async fn save(
@@ -52,8 +75,17 @@ impl PageBuilderScenarioBaselineService {
         page_id: Uuid,
         baseline: RuntimeScenarioReleaseBaseline,
     ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
-        self.save_internal(tenant_id, security, page_id, baseline, None, false)
-            .await
+        self.save_internal(
+            tenant_id,
+            security,
+            page_id,
+            baseline,
+            None,
+            false,
+            None,
+            None,
+        )
+        .await
     }
 
     pub async fn save_if_current(
@@ -63,6 +95,8 @@ impl PageBuilderScenarioBaselineService {
         page_id: Uuid,
         baseline: RuntimeScenarioReleaseBaseline,
         expected_baseline_hash: Option<&str>,
+        promoted_by: Uuid,
+        promotion_note: Option<&str>,
     ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
         self.save_internal(
             tenant_id,
@@ -71,10 +105,13 @@ impl PageBuilderScenarioBaselineService {
             baseline,
             expected_baseline_hash,
             true,
+            Some(promoted_by),
+            promotion_note,
         )
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn save_internal(
         &self,
         tenant_id: Uuid,
@@ -83,6 +120,8 @@ impl PageBuilderScenarioBaselineService {
         baseline: RuntimeScenarioReleaseBaseline,
         expected_baseline_hash: Option<&str>,
         enforce_expected_state: bool,
+        promoted_by: Option<Uuid>,
+        promotion_note: Option<&str>,
     ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
         let page = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
@@ -113,9 +152,16 @@ impl PageBuilderScenarioBaselineService {
             .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
             .one(&self.db)
             .await?;
+        let promotion_note = normalized_promotion_note(promotion_note);
+        if enforce_expected_state && existing.is_some() && promotion_note.is_none() {
+            return Err(PagesError::validation(format!(
+                "{PAGE_BUILDER_SCENARIO_BASELINE_PROMOTION_NOTE_REQUIRED_ERROR_CODE}: replacing an existing scenario baseline requires a review note"
+            )));
+        }
 
         match (existing, expected_baseline_hash) {
-            (Some(_), Some(expected_hash)) => {
+            (Some(existing), Some(expected_hash)) => {
+                let previous_hash = existing.baseline_hash.clone();
                 let result = page_builder_scenario_baseline::Entity::update_many()
                     .col_expr(
                         page_builder_scenario_baseline::Column::BaselineId,
@@ -132,6 +178,22 @@ impl PageBuilderScenarioBaselineService {
                     .col_expr(
                         page_builder_scenario_baseline::Column::Baseline,
                         Expr::value(baseline_json),
+                    )
+                    .col_expr(
+                        page_builder_scenario_baseline::Column::PreviousBaselineHash,
+                        Expr::value(previous_hash),
+                    )
+                    .col_expr(
+                        page_builder_scenario_baseline::Column::PromotedBy,
+                        Expr::value(promoted_by),
+                    )
+                    .col_expr(
+                        page_builder_scenario_baseline::Column::PromotionNote,
+                        Expr::value(promotion_note.clone()),
+                    )
+                    .col_expr(
+                        page_builder_scenario_baseline::Column::PromotedAt,
+                        Expr::value(now.clone()),
                     )
                     .col_expr(
                         page_builder_scenario_baseline::Column::UpdatedAt,
@@ -152,11 +214,16 @@ impl PageBuilderScenarioBaselineService {
                 return Err(baseline_conflict(page_id));
             }
             (Some(existing), None) => {
+                let previous_hash = existing.baseline_hash.clone();
                 let mut active: page_builder_scenario_baseline::ActiveModel = existing.into();
                 active.baseline_id = Set(baseline.baseline_id.clone());
                 active.baseline_hash = Set(baseline.baseline_hash.clone());
                 active.source_project_hash = Set(baseline.source_project_hash.clone());
                 active.baseline = Set(baseline_json);
+                active.previous_baseline_hash = Set(Some(previous_hash));
+                active.promoted_by = Set(promoted_by);
+                active.promotion_note = Set(promotion_note);
+                active.promoted_at = Set(Some(now.clone()));
                 active.updated_at = Set(now);
                 active.update(&self.db).await?;
             }
@@ -170,6 +237,10 @@ impl PageBuilderScenarioBaselineService {
                     baseline_hash: Set(baseline.baseline_hash.clone()),
                     source_project_hash: Set(baseline.source_project_hash.clone()),
                     baseline: Set(baseline_json),
+                    previous_baseline_hash: Set(None),
+                    promoted_by: Set(promoted_by),
+                    promotion_note: Set(promotion_note),
+                    promoted_at: Set(Some(now.clone())),
                     created_at: Set(now.clone()),
                     updated_at: Set(now),
                 }
@@ -263,7 +334,7 @@ impl PageBuilderScenarioBaselineService {
         tenant_id: Uuid,
         page_id: Uuid,
     ) -> PagesResult<Option<RuntimeScenarioReleaseEvaluation>> {
-        let Some(baseline) = self.load_unchecked(tenant_id, page_id).await? else {
+        let Some(record) = self.load_record_unchecked(tenant_id, page_id).await? else {
             return Ok(None);
         };
         let body = page_body::Entity::find()
@@ -282,7 +353,7 @@ impl PageBuilderScenarioBaselineService {
                 "Stored Page Builder project is not valid JSON: {error}"
             ))
         })?;
-        self.evaluate_candidate_with_baseline(project_data, baseline)
+        self.evaluate_candidate_with_baseline(project_data, record.baseline)
             .map(Some)
     }
 
@@ -292,10 +363,10 @@ impl PageBuilderScenarioBaselineService {
         page_id: Uuid,
         project_data: Value,
     ) -> PagesResult<Option<RuntimeScenarioReleaseEvaluation>> {
-        let Some(baseline) = self.load_unchecked(tenant_id, page_id).await? else {
+        let Some(record) = self.load_record_unchecked(tenant_id, page_id).await? else {
             return Ok(None);
         };
-        self.evaluate_candidate_with_baseline(project_data, baseline)
+        self.evaluate_candidate_with_baseline(project_data, record.baseline)
             .map(Some)
     }
 
@@ -350,6 +421,17 @@ impl PageBuilderScenarioBaselineService {
         tenant_id: Uuid,
         page_id: Uuid,
     ) -> PagesResult<Option<RuntimeScenarioReleaseBaseline>> {
+        Ok(self
+            .load_record_unchecked(tenant_id, page_id)
+            .await?
+            .map(|record| record.baseline))
+    }
+
+    async fn load_record_unchecked(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<Option<PageBuilderScenarioBaselineRecord>> {
         let Some(model) = page_builder_scenario_baseline::Entity::find()
             .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
             .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
@@ -374,7 +456,13 @@ impl PageBuilderScenarioBaselineService {
                 "Stored Page Builder scenario baseline failed integrity validation",
             ));
         }
-        Ok(Some(baseline))
+        Ok(Some(PageBuilderScenarioBaselineRecord {
+            baseline,
+            previous_baseline_hash: model.previous_baseline_hash,
+            promoted_by: model.promoted_by,
+            promotion_note: model.promotion_note,
+            promoted_at: model.promoted_at,
+        }))
     }
 
     async fn find_page(&self, tenant_id: Uuid, page_id: Uuid) -> PagesResult<page::Model> {
@@ -385,6 +473,12 @@ impl PageBuilderScenarioBaselineService {
             .await?
             .ok_or_else(|| PagesError::page_not_found(page_id))
     }
+}
+
+fn normalized_promotion_note(note: Option<&str>) -> Option<String> {
+    note.map(str::trim)
+        .filter(|note| !note.is_empty())
+        .map(ToString::to_string)
 }
 
 fn baseline_conflict(page_id: Uuid) -> PagesError {
