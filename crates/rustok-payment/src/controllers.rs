@@ -10,7 +10,7 @@ use rustok_api::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::entities::provider_event;
@@ -100,8 +100,9 @@ impl From<provider_event::Model> for PaymentProviderEventAdminResponse {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct DeadLetterQuery {
+    /// Maximum number of newest dead-letter events to return (1..100).
     pub limit: Option<u64>,
 }
 
@@ -134,6 +135,32 @@ pub fn axum_webhook_router(runtime: &HostRuntimeContext) -> anyhow::Result<Route
         .with_state(state))
 }
 
+#[utoipa::path(
+    post,
+    path = "/payment/webhooks/{provider_id}",
+    tag = "payment-webhooks",
+    params(
+        ("provider_id" = String, Path, description = "Registered payment provider identifier"),
+        ("x-rustok-provider-delivery-id" = String, Header, description = "Provider delivery identifier"),
+        ("idempotency-key" = String, Header, description = "Provider event replay key"),
+        ("x-provider-signature" = String, Header, description = "Provider-specific signature; adapters may also accept a documented provider header")
+    ),
+    request_body(
+        content = Vec<u8>,
+        content_type = "application/octet-stream",
+        description = "Raw signed provider payload, maximum 1 MiB"
+    ),
+    responses(
+        (status = 200, description = "Provider event processed or replayed", body = PaymentWebhookIngressResponse),
+        (status = 202, description = "Provider event is already processing", body = PaymentWebhookIngressResponse),
+        (status = 400, description = "Webhook identity or payload is invalid"),
+        (status = 401, description = "Provider signature header is missing or invalid"),
+        (status = 409, description = "Provider event conflicts with current owner state"),
+        (status = 413, description = "Payload exceeds 1 MiB"),
+        (status = 422, description = "Provider event requires operator review"),
+        (status = 503, description = "Storage or owner state is temporarily unavailable")
+    )
+)]
 pub async fn ingest_provider_webhook(
     State(runtime): State<PaymentHttpRuntime>,
     tenant: TenantContext,
@@ -179,6 +206,18 @@ pub async fn ingest_provider_webhook(
     map_ingress_result(result)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/payment/provider-events/{event_id}",
+    tag = "payment-provider-events",
+    params(("event_id" = Uuid, Path, description = "Provider inbox event ID")),
+    responses(
+        (status = 200, description = "Safe provider event projection", body = PaymentProviderEventAdminResponse),
+        (status = 403, description = "payments:read or payments:manage is required"),
+        (status = 404, description = "Provider event not found"),
+        (status = 503, description = "Provider event storage unavailable")
+    )
+)]
 pub async fn get_provider_event(
     State(runtime): State<PaymentHttpRuntime>,
     tenant: TenantContext,
@@ -197,6 +236,17 @@ pub async fn get_provider_event(
     Ok(Json(event.into()))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/payment/provider-events/dead-letter",
+    tag = "payment-provider-events",
+    params(DeadLetterQuery),
+    responses(
+        (status = 200, description = "Newest dead-letter events", body = [PaymentProviderEventAdminResponse]),
+        (status = 403, description = "payments:read or payments:manage is required"),
+        (status = 503, description = "Provider event storage unavailable")
+    )
+)]
 pub async fn list_dead_letters(
     State(runtime): State<PaymentHttpRuntime>,
     tenant: TenantContext,
@@ -215,6 +265,19 @@ pub async fn list_dead_letters(
     Ok(Json(events.into_iter().map(Into::into).collect()))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/payment/provider-events/{event_id}/replay",
+    tag = "payment-provider-events",
+    params(("event_id" = Uuid, Path, description = "Dead-letter provider event ID")),
+    responses(
+        (status = 200, description = "Dead-letter event replayed", body = PaymentWebhookIngressResponse),
+        (status = 403, description = "payments:manage is required"),
+        (status = 409, description = "Event is already processing"),
+        (status = 422, description = "Event cannot be replayed or still conflicts with owner state"),
+        (status = 503, description = "Replay state could not be recorded")
+    )
+)]
 pub async fn replay_dead_letter(
     State(runtime): State<PaymentHttpRuntime>,
     tenant: TenantContext,
