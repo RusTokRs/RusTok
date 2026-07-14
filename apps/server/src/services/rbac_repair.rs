@@ -3,6 +3,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use crate::error::{Error, Result};
 use crate::models::users;
 
+use super::rbac_cache_invalidation::publish_user_rbac_invalidation;
 use super::rbac_service::RbacService;
 
 impl RbacService {
@@ -24,9 +25,7 @@ impl RbacService {
     }
 
     /// Repair canonical built-in role definitions and invalidate every affected
-    /// process-local user permission snapshot after the repair transaction has
-    /// committed. The returned restart warning remains set when affected users
-    /// exist because other server processes may still hold local snapshots.
+    /// permission snapshot after commit, locally and across replicas.
     pub async fn repair_system_roles_committed(
         db: &DatabaseConnection,
         tenant_id: Option<uuid::Uuid>,
@@ -54,10 +53,11 @@ impl RbacService {
             }
 
             Self::invalidate_user_rbac_caches(&affected.tenant_id, &affected.user_id).await;
+            publish_user_rbac_invalidation(&affected.tenant_id, &affected.user_id).await?;
             effective_affected_users.push(affected);
         }
         report.affected_users = effective_affected_users;
-        report.runtime_restart_required = !report.affected_users.is_empty();
+        report.runtime_restart_required = false;
         Ok(report)
     }
 
@@ -202,7 +202,7 @@ mod tests {
 
         assert!(report.applied);
         assert!(report.role_permission_links_removed >= 1);
-        assert!(report.runtime_restart_required);
+        assert!(!report.runtime_restart_required);
         assert_eq!(report.affected_users.len(), 2);
         assert!(report
             .affected_users
