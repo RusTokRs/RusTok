@@ -1,9 +1,12 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
+};
 
 use crate::error::{Error, Result};
 use crate::models::users;
 
 use super::rbac_cache_invalidation::publish_all_rbac_invalidation;
+use super::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
 use super::rbac_service::RbacService;
 
 impl RbacService {
@@ -31,8 +34,9 @@ impl RbacService {
         tenant_id: Option<uuid::Uuid>,
     ) -> Result<rustok_rbac::RbacSystemRoleRepairReport> {
         Self::record_system_role_repair_entrypoint("repair_system_roles_committed");
-        let mut report = rustok_rbac::repair_system_roles(
-            db,
+        let tx = db.begin().await?;
+        let mut report = rustok_rbac::repair_system_roles_in_transaction(
+            &tx,
             rustok_rbac::RbacSystemRoleRepairOptions {
                 tenant_id,
                 apply: true,
@@ -45,18 +49,37 @@ impl RbacService {
         for affected in report.affected_users.drain(..) {
             let belongs_to_role_tenant = users::Entity::find_by_id(affected.user_id)
                 .filter(users::Column::TenantId.eq(affected.tenant_id))
-                .one(db)
+                .one(&tx)
                 .await?
                 .is_some();
-            if !belongs_to_role_tenant {
-                continue;
+            if belongs_to_role_tenant {
+                effective_affected_users.push(affected);
             }
-
-            Self::invalidate_user_rbac_caches(&affected.tenant_id, &affected.user_id).await;
-            effective_affected_users.push(affected);
         }
-        if !effective_affected_users.is_empty() {
-            publish_all_rbac_invalidation().await?;
+
+        let durable_generation = if effective_affected_users.is_empty() {
+            None
+        } else {
+            Some(reserve_rbac_invalidation_generation(&tx).await?)
+        };
+        tx.commit().await?;
+        report.applied = true;
+
+        for affected in &effective_affected_users {
+            Self::invalidate_user_rbac_caches(&affected.tenant_id, &affected.user_id).await;
+        }
+        if let Some(durable_generation) = durable_generation {
+            if let Err(error) = publish_all_rbac_invalidation().await {
+                tracing::warn!(
+                    %error,
+                    durable_generation,
+                    "System-role repair fast RBAC invalidation fan-out failed; durable generation reconciliation will recover"
+                );
+                rustok_telemetry::metrics::record_event_error(
+                    "rbac.permissions.durable_generation.v1",
+                    "post_commit_fanout",
+                );
+            }
         }
         report.affected_users = effective_affected_users;
         report.runtime_restart_required = false;
@@ -79,6 +102,7 @@ mod tests {
         _entities::{permissions, role_permissions, roles, user_roles},
         tenants, users,
     };
+    use crate::services::rbac_invalidation_generation::read_rbac_invalidation_generation;
     use chrono::Utc;
     use rustok_api::Permission;
     use rustok_core::{UserRole, UserStatus};
@@ -197,6 +221,7 @@ mod tests {
             .await
             .expect("primed permission lookup should succeed"));
         }
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
         let report = RbacService::repair_system_roles_committed(&db, Some(tenant_id))
             .await
@@ -206,6 +231,7 @@ mod tests {
         assert!(report.role_permission_links_removed >= 1);
         assert!(!report.runtime_restart_required);
         assert_eq!(report.affected_users.len(), 2);
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
         assert!(report
             .affected_users
             .iter()
