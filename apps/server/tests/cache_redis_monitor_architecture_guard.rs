@@ -48,8 +48,32 @@ fn monitor_logs_only_bounded_state_not_error_text_or_urls() {
 }
 
 #[test]
-fn monitor_handle_prevents_duplicate_workers() {
+fn monitor_is_owned_supervised_and_restartable() {
     let monitor = source("apps/server/src/services/cache_redis_status_monitor.rs");
-    assert!(monitor.contains("shared_get::<CacheRedisStatusMonitorHandle>()"));
-    assert!(monitor.contains("shared_insert(CacheRedisStatusMonitorHandle)"));
+    for required in [
+        "CacheRedisStatusMonitorRuntime",
+        "task: Option<JoinHandle<()>>",
+        "task.abort();",
+        "CacheRedisStatusMonitorStartLock",
+        "shared_insert_if_absent(CacheRedisStatusMonitorStartLock::default())",
+        "let _start_guard = start_lock.0.lock().await;",
+        "existing.is_running()",
+        "existing.abort();",
+        "supervise_cache_redis_status_worker",
+        "std::panic::catch_unwind(AssertUnwindSafe(&mut worker_factory))",
+        "AssertUnwindSafe(worker).catch_unwind().await",
+        "factory_panicked",
+        "worker_panicked",
+        "worker_exited",
+        "monitor_handle_reports_terminal_tasks",
+        "monitor_supervisor_restarts_after_worker_panic",
+        "monitor_supervisor_restarts_after_factory_panic",
+        "shared_insert(CacheRedisStatusMonitorHandle::new(task))",
+    ] {
+        assert!(
+            monitor.contains(required),
+            "Redis status monitor must retain {required}"
+        );
+    }
+    assert!(!monitor.contains("pub struct CacheRedisStatusMonitorHandle;"));
 }
