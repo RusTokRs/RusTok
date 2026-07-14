@@ -16,20 +16,23 @@
         "x-rustok-provider-delivery-id"
       ]
     },
-    "signature_headers_forwarded_to_provider": [
+    "accepted_signature_headers": [
       "x-provider-signature",
       "stripe-signature",
       "x-webhook-signature"
     ],
-    "max_raw_payload_bytes": 1048576
+    "max_raw_payload_bytes": 1048576,
+    "tenant_scope_required": true
   },
   "provider_spi": {
-    "operation": "process_webhook",
+    "registry_operation": "execute_webhook",
+    "adapter_operation": "handle_webhook",
     "requirements": [
-      "Verify the provider signature before returning success.",
-      "Parse the raw body into a normalized event without mutating payment lifecycle state.",
-      "Return a stable event_type, optional external_reference, and bounded metadata object.",
-      "Reject malformed, unsigned, or unsupported provider payloads with a typed provider error."
+      "Verify the provider signature before returning a normalized event.",
+      "Parse the raw body without mutating payment lifecycle state.",
+      "Return provider_id, event_type, replay_key, optional external_reference, and a bounded metadata object.",
+      "Return replay_key equal to the request idempotency_key.",
+      "Reject malformed, unsigned, or unsupported provider payloads with PaymentError."
     ]
   },
   "inbox": {
@@ -48,6 +51,12 @@
       "dead_letter"
     ],
     "lease_required_for": ["processing"],
+    "normalized_checkpoint_before_owner_apply": true,
+    "checkpoint_fields": [
+      "event_type",
+      "external_reference",
+      "event_metadata"
+    ],
     "max_normalized_metadata_bytes": 65536,
     "max_normalized_metadata_depth": 16
   },
@@ -57,7 +66,7 @@
       "metadata_required": {
         "collection_id": "uuid-string",
         "amount": "positive-decimal-string",
-        "currency_code": "three-letter-uppercase-code"
+        "currency_code": "three-letter-code"
       }
     },
     "payment.captured": {
@@ -65,7 +74,7 @@
       "metadata_required": {
         "collection_id": "uuid-string",
         "amount": "positive-decimal-string",
-        "currency_code": "three-letter-uppercase-code"
+        "currency_code": "three-letter-code"
       }
     },
     "payment.cancelled": {
@@ -73,7 +82,7 @@
       "metadata_required": {
         "collection_id": "uuid-string",
         "amount": "positive-decimal-string",
-        "currency_code": "three-letter-uppercase-code"
+        "currency_code": "three-letter-code"
       }
     },
     "refund.completed": {
@@ -81,7 +90,7 @@
       "metadata_required": {
         "refund_id": "uuid-string",
         "amount": "positive-decimal-string",
-        "currency_code": "three-letter-uppercase-code"
+        "currency_code": "three-letter-code"
       }
     }
   },
@@ -93,12 +102,41 @@
     "retryable_apply_failure": "failed",
     "non_retryable_apply_failure": "dead_letter",
     "expired_processing_lease": "claimable",
-    "processed_replay": "acknowledge-without-domain-reapply"
+    "processed_replay": "acknowledge-without-domain-reapply",
+    "dead_letter_replay": "operator-only-dead_letter-to-processing-using-normalized-checkpoint"
+  },
+  "operator_api": {
+    "read_event": {
+      "method": "GET",
+      "path": "/api/payment/provider-events/{event_id}",
+      "permissions_any": ["payments:read", "payments:manage"]
+    },
+    "list_dead_letters": {
+      "method": "GET",
+      "path": "/api/payment/provider-events/dead-letter",
+      "permissions_any": ["payments:read", "payments:manage"],
+      "max_limit": 100
+    },
+    "replay_dead_letter": {
+      "method": "POST",
+      "path": "/api/payment/provider-events/{event_id}/replay",
+      "permissions_all": ["payments:manage"],
+      "raw_payload_required": false
+    },
+    "safe_projection_excludes": [
+      "idempotency_key",
+      "payload_hash",
+      "lease_owner",
+      "lease_expires_at",
+      "error_message",
+      "event_metadata"
+    ]
   },
   "security": {
     "signature_verification_before_inbox_insert": true,
     "raw_provider_error_exposed_to_client": false,
     "raw_payload_logged_or_persisted": false,
+    "provider_signature_exposed_to_operator_api": false,
     "tenant_scope_required": true
   },
   "evidence_status": "source_only"
