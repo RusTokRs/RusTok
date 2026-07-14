@@ -7,6 +7,7 @@ pub mod menu_translation;
 pub mod page;
 pub mod page_block;
 pub mod page_body;
+pub mod page_builder_scenario_baseline;
 pub mod page_channel_visibility;
 pub mod page_translation;
 
@@ -14,4 +15,5 @@ pub use menu::Entity as Menu;
 pub use menu_item::Entity as MenuItem;
 pub use page::Entity as Page;
 pub use page_block::Entity as Block;
+pub use page_builder_scenario_baseline::Entity as PageBuilderScenarioBaseline;
 pub use page_channel_visibility::Entity as PageChannelVisibility;

@@ -31,6 +31,8 @@ mod recovering_staged_checkout;
 mod refund_reconciliation;
 mod shipping_profile;
 mod staged_checkout;
+#[path = "../storefront_staged_checkout_runtime.rs"]
+pub mod storefront_staged_checkout_runtime;
 
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
 pub use checkout_compensation::{

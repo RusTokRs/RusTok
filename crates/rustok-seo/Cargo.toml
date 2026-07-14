@@ -66,4 +66,5 @@ reqwest = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio.workspace = true
+rustok-outbox = { workspace = true, features = ["test-transport-fallback"] }
 rustok-taxonomy.workspace = true

@@ -39,6 +39,7 @@ rustok-taxonomy.workspace = true
 rustok-workflow.workspace = true
 
 [dev-dependencies]
+async-trait.workspace = true
 rust_decimal.workspace = true
 rustok-test-utils.workspace = true
 serde_json.workspace = true

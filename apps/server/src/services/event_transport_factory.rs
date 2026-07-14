@@ -14,6 +14,7 @@ use rustok_outbox::{OutboxRelay, OutboxTransport, RelayConfig};
 use tokio::task::JoinHandle;
 
 use crate::common::settings::{EventTransportKind, RelayTargetKind, RustokSettings};
+use crate::services::rbac_cache_invalidation::start_rbac_cache_invalidation_listener;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::tenant_cache_generation::{
     start_tenant_cache_generation_listener, TenantCacheGenerationTransport,
@@ -69,9 +70,10 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         Error::BadRequest("CacheService must be initialized before the event runtime".to_string())
     })?;
 
-    // Subscribe before any transport can publish a tenant generation. This also restores the
-    // shared generation before tenant middleware constructs its backend later in bootstrap.
+    // Subscribe before any transport can publish a generation. This also restores shared
+    // generations before middleware and authorization paths construct or read their caches.
     start_tenant_cache_generation_listener(ctx, cache.clone()).await?;
+    start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;
 
     let runtime = match settings.events.transport {
         EventTransportKind::Memory => {

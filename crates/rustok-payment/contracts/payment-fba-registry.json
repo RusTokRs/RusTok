@@ -3,7 +3,7 @@
   "module": "payment",
   "role": "provider",
   "status": "boundary_ready",
-  "contract_version": "payment.checkout.v1+provider_spi.v1",
+  "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1",
   "ports": [
     {
       "name": "PaymentCollectionPort",
@@ -30,10 +30,23 @@
         "embedded_native",
         "graphql_checkout_compat"
       ]
+    },
+    {
+      "module": "server",
+      "profile": "provider_webhook_ingress",
+      "degraded_modes": [
+        "return_safe_retryable_error",
+        "preserve_durable_inbox_state"
+      ],
+      "fallback_profiles": []
     }
   ],
   "evidence": {
     "local_plan": "crates/rustok-payment/docs/implementation-plan.md",
+    "status_source_of_truth": "crates/rustok-payment/docs/implementation-plan.md",
+    "webhook_contract": "crates/rustok-payment/contracts/payment-provider-webhook-v1.json",
+    "webhook_runbook": "crates/rustok-payment/docs/provider-webhooks.md",
+    "webhook_source_status": "implemented_not_executed",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
   },
@@ -44,11 +57,14 @@
   },
   "contract_tests": {
     "status": "planned_cases_locked",
+    "source_cases_implemented": true,
+    "execution_status": "not_executed_in_change_session",
     "source": "crates/rustok-payment/contracts/payment-fba-registry.json",
     "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "profiles": [
       "in_process",
-      "remote_adapter_placeholder"
+      "remote_adapter_placeholder",
+      "provider_webhook_inbox"
     ],
     "cases": [
       {
@@ -73,6 +89,21 @@
           "typed_port_error_mapping",
           "context_deadline_preserved"
         ]
+      },
+      {
+        "operation": "handle_webhook",
+        "profiles": [
+          "provider_webhook_inbox"
+        ],
+        "assertions": [
+          "signature_verified_before_inbox_insert",
+          "raw_payload_not_persisted",
+          "delivery_and_idempotency_deduplicated",
+          "normalized_event_checkpointed_before_owner_apply",
+          "processing_lease_compare_and_set",
+          "dead_letter_excluded_from_automatic_retry",
+          "operator_replay_requires_normalized_checkpoint"
+        ]
       }
     ],
     "fallback_smoke": {
@@ -89,6 +120,7 @@
   },
   "provider_spi": {
     "status": "manual_baseline_locked",
+    "implementation_status": "webhook_inbox_source_implemented_not_transport_verified",
     "source": "crates/rustok-payment/src/providers.rs",
     "default_provider_id": "manual",
     "operations": [
@@ -105,14 +137,24 @@
       "cancel",
       "webhook_ingress"
     ],
-    "side_effect_boundary": "provider adapters execute external effects; PaymentService owns persisted lifecycle transitions",
+    "side_effect_boundary": "provider adapters execute external effects and verify/normalize webhook payloads; PaymentService owns persisted lifecycle transitions",
     "webhook_ingress": {
       "status": "planned",
+      "implementation_status": "source_implemented_not_transport_verified",
+      "contract": "contracts/payment-provider-webhook-v1.json",
+      "http_path": "/payment/webhooks/{provider_id}",
       "idempotency_required": true,
       "replay_required": true,
       "adapter_operation": "handle_webhook",
-      "raw_payload_audit_required": true,
-      "owner_service_replay_guard_required": true
+      "raw_payload_persisted": false,
+      "payload_hash_audit_required": true,
+      "normalized_checkpoint_required": true,
+      "owner_service_replay_guard_required": true,
+      "operator_dead_letter_replay": {
+        "path": "/api/payment/provider-events/{event_id}/replay",
+        "permission": "payments:manage",
+        "automatic_retry": false
+      }
     },
     "lifecycle_owner_service": "PaymentService",
     "external_adapter_registration": {

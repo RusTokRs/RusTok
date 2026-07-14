@@ -8,6 +8,7 @@ pub mod auth_lifecycle_provider;
 pub mod auth_password_reset;
 pub mod build_event_hub;
 pub mod build_executor;
+pub mod cache_runtime;
 pub mod commerce_provider_runtime;
 pub mod dashboard_user_activity;
 pub mod effective_module_policy;
@@ -30,15 +31,19 @@ pub mod oauth_consent_service;
 pub mod oauth_token_service;
 #[cfg(feature = "mod-commerce")]
 pub mod paid_order_label_worker;
+#[cfg(feature = "mod-payment")]
+pub mod payment_provider_event_worker;
 pub mod platform_composition;
 
 pub mod event_transport_factory;
 pub mod order_field_service;
 pub mod product_field_service;
 pub mod rbac_authoritative;
+pub mod rbac_cache_invalidation;
 pub mod rbac_committed_mutations;
 pub mod rbac_consistency;
 pub mod rbac_persistence;
+pub mod rbac_repair;
 pub mod rbac_request_scope;
 pub mod rbac_runtime;
 pub mod rbac_service;

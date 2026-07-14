@@ -138,6 +138,7 @@ fn default_backend_factory_uses_the_service_owned_redis_client() {
 #[test]
 fn generic_invalidation_and_loader_inputs_are_bounded() {
     let service = source("crates/rustok-cache/src/service.rs");
+    let policy = source("crates/rustok-cache/src/policy.rs");
 
     for required in [
         "MAX_CACHE_INVALIDATION_CHANNEL_BYTES",
@@ -160,6 +161,10 @@ fn generic_invalidation_and_loader_inputs_are_bounded() {
     assert!(
         service.contains("unique_in_flight_loads_are_bounded_without_breaking_same_key_coalescing"),
         "unique-flight capacity must retain regression coverage"
+    );
+    assert!(
+        policy.contains("zero_ttl_policy_is_rejected_before_cache_or_loader_work"),
+        "load policies must not report a successful fill when zero TTL deletes the value"
     );
 }
 
@@ -197,9 +202,13 @@ fn stale_refresh_is_bounded_deduplicated_and_atomic() {
     for required in [
         "MAX_CACHE_REFRESH_KEY_BYTES",
         "CacheRefreshSchedule::InvalidKey",
-        "validate_refresh_key(&key)?",
+        "validate_refresh_request(&key, expected_schema_version, max_encoded_bytes)?",
         "coordinator_rejects_invalid_keys_without_running_refresh",
         "swr_rejects_invalid_key_before_backend_or_loader_work",
+        "invalid_swr_configuration_does_not_delete_a_valid_entry",
+        "CacheRefreshTaskCompletionGuard",
+        "dropping_unpolled_refresh_future_releases_lease_and_counts_failure",
+        "system_clock_rejects_refresh_that_expires_while_loader_runs",
     ] {
         assert!(
             refresh.contains(required),
@@ -291,6 +300,7 @@ fn invalidation_recovery_is_two_phase_and_monotonic() {
 #[test]
 fn generation_fallback_is_trusted_monotonic_and_bounded() {
     let generation = source("crates/rustok-cache/src/generation.rs");
+    let backend_generation = source("crates/rustok-cache/src/backend_generation.rs");
     assert!(
         generation.contains("NoLocalSnapshot"),
         "Redis generation failure without a trusted local snapshot must fail closed"
@@ -312,6 +322,17 @@ fn generation_fallback_is_trusted_monotonic_and_bounded() {
             .contains("trusted_local_snapshots_are_bounded_without_evicting_existing_namespaces"),
         "generation capacity must retain regression coverage without evicting trusted state"
     );
+    for required in [
+        "MAX_GENERATION_OPERATION_ATTEMPTS",
+        "snapshot_is_current",
+        "get_discards_old_namespace_result_when_generation_changes_midflight",
+        "set_retries_current_namespace_when_generation_changes_midflight",
+    ] {
+        assert!(
+            backend_generation.contains(required),
+            "generation-aware cache operations must retain {required}"
+        );
+    }
 }
 
 #[test]

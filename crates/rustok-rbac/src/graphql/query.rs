@@ -4,6 +4,7 @@ use rustok_api::{
 };
 use rustok_core::{Rbac, UserRole};
 
+use super::control_plane::require_direct_control_plane_user;
 use super::types::RoleInfo;
 
 #[derive(Default)]
@@ -28,12 +29,14 @@ fn display_name(role: &UserRole) -> &'static str {
 #[Object]
 impl RbacQuery {
     /// List all platform roles with their permission sets.
-    /// Requires `settings:read` permission.
+    /// Requires a direct, session-bound user principal with `settings:read`.
     async fn roles(&self, ctx: &Context<'_>) -> Result<Vec<RoleInfo>> {
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let _tenant = ctx.data::<TenantContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+
+        require_direct_control_plane_user(auth, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
             return Err(<FieldError as GraphQLError>::permission_denied(

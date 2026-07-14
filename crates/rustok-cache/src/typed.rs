@@ -12,6 +12,8 @@ use crate::{
     CacheService, DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
 };
 
+pub const MAX_TYPED_CACHE_KEY_BYTES: usize = crate::service::MAX_CACHE_LOAD_KEY_BYTES;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedCacheLoadResult<T> {
     pub value: T,
@@ -70,6 +72,7 @@ impl CacheService {
         Fut: Future<Output = rustok_core::Result<CacheEnvelope<T>>>,
     {
         let key = key.into();
+        validate_typed_cache_request(&key, expected_schema_version, max_encoded_bytes)?;
 
         if let Some(bytes) = backend.get(&key).await? {
             match CacheEnvelope::<T>::decode_with_limit(
@@ -145,6 +148,41 @@ impl CacheService {
 
         Ok(typed_result(envelope, result.source, now_unix_ms))
     }
+}
+
+fn validate_typed_cache_request(
+    key: &str,
+    expected_schema_version: u32,
+    max_encoded_bytes: usize,
+) -> rustok_core::Result<()> {
+    validate_typed_cache_key(key)?;
+    if expected_schema_version == 0 {
+        return Err(rustok_core::Error::Cache(
+            "typed cache expected schema version must be non-zero".to_string(),
+        ));
+    }
+    if max_encoded_bytes == 0 {
+        return Err(rustok_core::Error::Cache(
+            "typed cache encoded size limit must be non-zero".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_typed_cache_key(key: &str) -> rustok_core::Result<()> {
+    if key.trim().is_empty() {
+        return Err(rustok_core::Error::Cache(
+            "typed cache key must not be empty".to_string(),
+        ));
+    }
+    if key.len() > MAX_TYPED_CACHE_KEY_BYTES {
+        return Err(rustok_core::Error::Cache(format!(
+            "typed cache key is {} bytes; maximum is {}",
+            key.len(),
+            MAX_TYPED_CACHE_KEY_BYTES
+        )));
+    }
+    Ok(())
 }
 
 fn typed_result<T>(
@@ -321,6 +359,81 @@ mod tests {
         assert_eq!(stale_result.value, "stale");
         assert_eq!(stale_result.freshness, CacheEnvelopeFreshness::Stale);
         assert_eq!(stale_result.source, CacheLoadSource::Hit);
+    }
+
+    #[tokio::test]
+    async fn typed_cache_rejects_invalid_keys_before_backend_or_loader_work() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(std::time::Duration::from_secs(60), 16);
+        let calls = AtomicUsize::new(0);
+
+        for key in ["".to_string(), "x".repeat(MAX_TYPED_CACHE_KEY_BYTES + 1)] {
+            let error = service
+                .load_enveloped_or_fill_with_limit_at(
+                    backend.clone(),
+                    key,
+                    1,
+                    policy(),
+                    1024,
+                    1_500,
+                    || async {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        CacheEnvelope::new(1, 1_400, "unexpected".to_string())
+                            .map_err(envelope_error_to_core)
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert!(matches!(error, rustok_core::Error::Cache(_)));
+        }
+
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        let stats = backend.stats();
+        assert_eq!(stats.hits, 0);
+        assert_eq!(stats.misses, 0);
+        assert_eq!(stats.evictions, 0);
+        assert_eq!(stats.entries, 0);
+    }
+
+    #[tokio::test]
+    async fn invalid_typed_configuration_does_not_delete_a_valid_entry() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(std::time::Duration::from_secs(60), 16);
+        let original = CacheEnvelope::new(1, 1_000, "cached".to_string())
+            .unwrap()
+            .encode()
+            .unwrap();
+        backend
+            .set("typed-config".to_string(), original.clone())
+            .await
+            .unwrap();
+        let calls = AtomicUsize::new(0);
+
+        for (expected_schema_version, max_encoded_bytes) in [(0, 1024), (1, 0)] {
+            let error = service
+                .load_enveloped_or_fill_with_limit_at(
+                    backend.clone(),
+                    "typed-config",
+                    expected_schema_version,
+                    policy(),
+                    max_encoded_bytes,
+                    1_500,
+                    || async {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        CacheEnvelope::new(1, 1_400, "unexpected".to_string())
+                            .map_err(envelope_error_to_core)
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert!(matches!(error, rustok_core::Error::Cache(_)));
+            assert_eq!(
+                backend.get("typed-config").await.unwrap(),
+                Some(original.clone())
+            );
+        }
+
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
     #[derive(Default)]

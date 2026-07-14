@@ -17,6 +17,7 @@ use crate::auth::hash_password;
 use crate::models::{sessions, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
+use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
 use crate::services::rbac_request_scope::role_for;
 use crate::services::rbac_service::RbacService;
 
@@ -183,6 +184,16 @@ where
     Ok(())
 }
 
+async fn publish_committed_user_invalidation(
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), AuthAdminMutationError> {
+    RbacService::invalidate_user_rbac_caches(&tenant_id, &user_id).await;
+    publish_user_rbac_invalidation(&tenant_id, &user_id)
+        .await
+        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))
+}
+
 #[async_trait]
 impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
     async fn create_user(
@@ -276,7 +287,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         tx.commit()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        RbacService::invalidate_user_rbac_caches(&context.tenant_id, &user.id).await;
+        publish_committed_user_invalidation(context.tenant_id, user.id).await?;
         self.user_record(user).await
     }
 
@@ -372,8 +383,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             active.status = Set(status.clone());
         }
         if let Some(password) = command.password {
-            active.password_hash = Set(hash_password(&password)
-                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?);
+            active.password_hash = Set(
+                hash_password(&password)
+                    .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?,
+            );
         }
         if let Some(metadata) = prepared.metadata {
             active.metadata = Set(metadata);
@@ -394,9 +407,14 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         if let Some(role) = requested_role {
-            RbacService::replace_user_role(&tx, &user.id, &context.tenant_id, role)
-                .await
-                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            RbacService::replace_user_role_in_transaction(
+                &tx,
+                &user.id,
+                &context.tenant_id,
+                role,
+            )
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         }
         if password_changed || status_disables_user {
             revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
@@ -419,7 +437,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         tx.commit()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        RbacService::invalidate_user_rbac_caches(&context.tenant_id, &user.id).await;
+        publish_committed_user_invalidation(context.tenant_id, user.id).await?;
         self.user_record(user).await
     }
 
@@ -461,7 +479,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         tx.commit()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        RbacService::invalidate_user_rbac_caches(&context.tenant_id, &user.id).await;
+        publish_committed_user_invalidation(context.tenant_id, user.id).await?;
         Ok(())
     }
 }

@@ -1,3 +1,4 @@
+mod control_plane;
 mod mutation;
 mod query;
 mod runtime;

@@ -81,7 +81,7 @@
     "adapter_operation": "handle_webhook",
     "assertions": [
       "idempotency_key_required_by_contract",
-      "raw_payload_audit_required",
+      "payload_hash_audit_required",
       "owner_service_replay_guard_required"
     ]
   },

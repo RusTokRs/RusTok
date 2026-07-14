@@ -11,6 +11,7 @@ use crate::{CacheGenerationError, CacheService};
 
 pub const DEFAULT_MAX_CACHE_BACKEND_GENERATIONS: usize = 4_096;
 pub const MAX_CACHE_BACKEND_PREFIX_BYTES: usize = 512;
+const MAX_GENERATION_OPERATION_ATTEMPTS: usize = 4;
 
 static BACKEND_GENERATIONS: OnceLock<Mutex<HashMap<String, Arc<BackendGenerationState>>>> =
     OnceLock::new();
@@ -37,9 +38,18 @@ impl BackendGenerationState {
     }
 
     fn snapshot(&self) -> CacheBackendGenerationSnapshot {
+        // Observe trust first. The transition to trusted stores the generation before publishing
+        // `trusted = true`; loading generation afterwards avoids a mixed `trusted=true, g=old`
+        // snapshot. A concurrent later rotation is detected by the post-I/O token recheck.
+        let trusted = self.trusted.load(Ordering::Acquire);
+        let generation = if trusted {
+            self.generation.load(Ordering::Acquire)
+        } else {
+            0
+        };
         CacheBackendGenerationSnapshot {
-            generation: self.generation.load(Ordering::Acquire),
-            trusted: self.trusted.load(Ordering::Acquire),
+            generation,
+            trusted,
         }
     }
 
@@ -80,12 +90,13 @@ impl BackendGenerationState {
         Ok(next)
     }
 
-    fn physical_key(&self, logical_key: &str) -> String {
-        if self.trusted.load(Ordering::Acquire) {
-            format!(
-                "g-{}:{logical_key}",
-                self.generation.load(Ordering::Acquire)
-            )
+    fn physical_key(
+        &self,
+        snapshot: CacheBackendGenerationSnapshot,
+        logical_key: &str,
+    ) -> String {
+        if snapshot.trusted {
+            format!("g-{}:{logical_key}", snapshot.generation)
         } else {
             format!("{}:{logical_key}", self.boot_namespace)
         }
@@ -364,27 +375,61 @@ impl GenerationAwareCacheBackend {
         }
     }
 
-    fn key(&self, logical_key: &str) -> rustok_core::Result<String> {
+    fn ensure_available(&self) -> rustok_core::Result<()> {
         if let Some(error) = &self.rejected {
             return Err(rustok_core::Error::Cache(error.to_string()));
         }
-        Ok(self.state.physical_key(logical_key))
+        Ok(())
+    }
+
+    fn key_snapshot(
+        &self,
+        logical_key: &str,
+    ) -> rustok_core::Result<(CacheBackendGenerationSnapshot, String)> {
+        self.ensure_available()?;
+        let snapshot = self.state.snapshot();
+        let physical_key = self.state.physical_key(snapshot, logical_key);
+        Ok((snapshot, physical_key))
+    }
+
+    fn snapshot_is_current(&self, snapshot: CacheBackendGenerationSnapshot) -> bool {
+        self.state.snapshot() == snapshot
+    }
+
+    fn generation_changed_error() -> rustok_core::Error {
+        rustok_core::Error::Cache(format!(
+            "cache backend generation changed during operation for {MAX_GENERATION_OPERATION_ATTEMPTS} consecutive attempts"
+        ))
     }
 }
 
 #[async_trait]
 impl CacheBackend for GenerationAwareCacheBackend {
     async fn health(&self) -> rustok_core::Result<()> {
-        self.key("health-probe")?;
+        self.ensure_available()?;
         self.inner.health().await
     }
 
     async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
-        self.inner.get(&self.key(key)?).await
+        for _ in 0..MAX_GENERATION_OPERATION_ATTEMPTS {
+            let (snapshot, physical_key) = self.key_snapshot(key)?;
+            let result = self.inner.get(&physical_key).await;
+            if self.snapshot_is_current(snapshot) {
+                return result;
+            }
+        }
+        Err(Self::generation_changed_error())
     }
 
     async fn set(&self, key: String, value: Vec<u8>) -> rustok_core::Result<()> {
-        self.inner.set(self.key(&key)?, value).await
+        for _ in 0..MAX_GENERATION_OPERATION_ATTEMPTS {
+            let (snapshot, physical_key) = self.key_snapshot(&key)?;
+            let result = self.inner.set(physical_key, value.clone()).await;
+            if self.snapshot_is_current(snapshot) {
+                return result;
+            }
+        }
+        Err(Self::generation_changed_error())
     }
 
     async fn set_with_ttl(
@@ -393,7 +438,17 @@ impl CacheBackend for GenerationAwareCacheBackend {
         value: Vec<u8>,
         ttl: Duration,
     ) -> rustok_core::Result<()> {
-        self.inner.set_with_ttl(self.key(&key)?, value, ttl).await
+        for _ in 0..MAX_GENERATION_OPERATION_ATTEMPTS {
+            let (snapshot, physical_key) = self.key_snapshot(&key)?;
+            let result = self
+                .inner
+                .set_with_ttl(physical_key, value.clone(), ttl)
+                .await;
+            if self.snapshot_is_current(snapshot) {
+                return result;
+            }
+        }
+        Err(Self::generation_changed_error())
     }
 
     async fn compare_and_set(
@@ -403,13 +458,28 @@ impl CacheBackend for GenerationAwareCacheBackend {
         value: Vec<u8>,
         ttl: Option<Duration>,
     ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
-        self.inner
-            .compare_and_set(&self.key(key)?, expected, value, ttl)
-            .await
+        for _ in 0..MAX_GENERATION_OPERATION_ATTEMPTS {
+            let (snapshot, physical_key) = self.key_snapshot(key)?;
+            let result = self
+                .inner
+                .compare_and_set(&physical_key, expected, value.clone(), ttl)
+                .await;
+            if self.snapshot_is_current(snapshot) {
+                return result;
+            }
+        }
+        Err(Self::generation_changed_error())
     }
 
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
-        self.inner.invalidate(&self.key(key)?).await
+        for _ in 0..MAX_GENERATION_OPERATION_ATTEMPTS {
+            let (snapshot, physical_key) = self.key_snapshot(key)?;
+            let result = self.inner.invalidate(&physical_key).await;
+            if self.snapshot_is_current(snapshot) {
+                return result;
+            }
+        }
+        Err(Self::generation_changed_error())
     }
 
     fn stats(&self) -> CacheStats {
@@ -421,9 +491,127 @@ impl CacheBackend for GenerationAwareCacheBackend {
 mod tests {
     use super::*;
     use crate::CacheService;
+    use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+    use tokio::sync::Notify;
 
     fn unique_prefix(name: &str) -> String {
         format!("test:{name}:{}", Uuid::new_v4().simple())
+    }
+
+    struct BlockingGenerationBackend {
+        values: Mutex<HashMap<String, Vec<u8>>>,
+        block_get_once: AtomicBool,
+        block_set_once: AtomicBool,
+        get_started: Arc<Notify>,
+        get_release: Arc<Notify>,
+        set_started: Arc<Notify>,
+        set_release: Arc<Notify>,
+    }
+
+    impl BlockingGenerationBackend {
+        fn new(block_get_once: bool, block_set_once: bool) -> Self {
+            Self {
+                values: Mutex::new(HashMap::new()),
+                block_get_once: AtomicBool::new(block_get_once),
+                block_set_once: AtomicBool::new(block_set_once),
+                get_started: Arc::new(Notify::new()),
+                get_release: Arc::new(Notify::new()),
+                set_started: Arc::new(Notify::new()),
+                set_release: Arc::new(Notify::new()),
+            }
+        }
+
+        fn insert_raw(&self, key: impl Into<String>, value: Vec<u8>) {
+            self.values
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(key.into(), value);
+        }
+
+        fn get_raw(&self, key: &str) -> Option<Vec<u8>> {
+            self.values
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get(key)
+                .cloned()
+        }
+    }
+
+    #[async_trait]
+    impl CacheBackend for BlockingGenerationBackend {
+        async fn health(&self) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+            if self.block_get_once.swap(false, AtomicOrdering::SeqCst) {
+                self.get_started.notify_one();
+                self.get_release.notified().await;
+            }
+            Ok(self.get_raw(key))
+        }
+
+        async fn set(&self, key: String, value: Vec<u8>) -> rustok_core::Result<()> {
+            if self.block_set_once.swap(false, AtomicOrdering::SeqCst) {
+                self.set_started.notify_one();
+                self.set_release.notified().await;
+            }
+            self.insert_raw(key, value);
+            Ok(())
+        }
+
+        async fn set_with_ttl(
+            &self,
+            key: String,
+            value: Vec<u8>,
+            ttl: Duration,
+        ) -> rustok_core::Result<()> {
+            if ttl.is_zero() {
+                return self.invalidate(&key).await;
+            }
+            self.set(key, value).await
+        }
+
+        async fn compare_and_set(
+            &self,
+            key: &str,
+            expected: &[u8],
+            value: Vec<u8>,
+            ttl: Option<Duration>,
+        ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
+            let mut values = self
+                .values
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if values.get(key).map(Vec::as_slice) != Some(expected) {
+                return Ok(CacheCompareAndSetOutcome::Mismatch);
+            }
+            if ttl == Some(Duration::ZERO) {
+                values.remove(key);
+            } else {
+                values.insert(key.to_string(), value);
+            }
+            Ok(CacheCompareAndSetOutcome::Applied)
+        }
+
+        async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
+            self.values
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(key);
+            Ok(())
+        }
+
+        fn stats(&self) -> CacheStats {
+            CacheStats {
+                entries: self
+                    .values
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .len() as u64,
+                ..CacheStats::default()
+            }
+        }
     }
 
     #[tokio::test]
@@ -446,6 +634,57 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(backend.get("key").await.unwrap(), Some(b"new".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn get_discards_old_namespace_result_when_generation_changes_midflight() {
+        let service = CacheService::from_url(None);
+        let prefix = unique_prefix("get-race");
+        let raw = Arc::new(BlockingGenerationBackend::new(true, false));
+        raw.insert_raw("g-0:key", b"stale".to_vec());
+        let raw_backend: Arc<dyn CacheBackend> = raw.clone();
+        let backend = service
+            .wrap_generation_aware_backend(&prefix, raw_backend)
+            .await;
+        let get_started = Arc::clone(&raw.get_started);
+        let get_release = Arc::clone(&raw.get_release);
+
+        let read_backend = Arc::clone(&backend);
+        let read = tokio::spawn(async move { read_backend.get("key").await });
+        get_started.notified().await;
+        observe_cache_backend_generation(&prefix, 1).unwrap();
+        get_release.notify_one();
+
+        assert_eq!(read.await.unwrap().unwrap(), None);
+        assert_eq!(backend.get("key").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn set_retries_current_namespace_when_generation_changes_midflight() {
+        let service = CacheService::from_url(None);
+        let prefix = unique_prefix("set-race");
+        let raw = Arc::new(BlockingGenerationBackend::new(false, true));
+        let raw_backend: Arc<dyn CacheBackend> = raw.clone();
+        let backend = service
+            .wrap_generation_aware_backend(&prefix, raw_backend)
+            .await;
+        let set_started = Arc::clone(&raw.set_started);
+        let set_release = Arc::clone(&raw.set_release);
+
+        let write_backend = Arc::clone(&backend);
+        let write = tokio::spawn(async move {
+            write_backend
+                .set("key".to_string(), b"value".to_vec())
+                .await
+        });
+        set_started.notified().await;
+        observe_cache_backend_generation(&prefix, 1).unwrap();
+        set_release.notify_one();
+
+        write.await.unwrap().unwrap();
+        assert_eq!(raw.get_raw("g-0:key"), Some(b"value".to_vec()));
+        assert_eq!(raw.get_raw("g-1:key"), Some(b"value".to_vec()));
+        assert_eq!(backend.get("key").await.unwrap(), Some(b"value".to_vec()));
     }
 
     #[tokio::test]

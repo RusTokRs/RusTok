@@ -13,9 +13,9 @@ already handed to payment-owned storefront transport.
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
-- FBA status: `boundary_ready` (`core_transport_ui`); consumer metadata and
-  source-smoke evidence do not promote the boundary without live execution.
-- Structural shape: `core_transport_ui`
+- FBA status: `boundary_ready` (`core_transport_ui`); source inspection and
+  committed recovery code do not promote the boundary without live execution.
+- Structural shape: `core_transport_ui`.
 - The commerce consumer registry is
   `crates/rustok-commerce/contracts/commerce-fba-registry.json`; its runtime
   invocation trace is
@@ -47,17 +47,44 @@ already handed to payment-owned storefront transport.
   a checkout-derived idempotency key and deadline; direct `CartService` use is
   removed from checkout orchestration. Runtime evidence remains required.
 - `CheckoutOperationJournal` persists the operation identity, request and cart
-  snapshot hashes, execution lease, recovery status, and owner aggregate ids.
-  `CheckoutInventoryReservationJournal` adds one immutable reservation identity
-  per checkout/cart-line pair and enforces tenant, cart, variant, quantity,
-  location, status-transition, and timestamp integrity in PostgreSQL and SQLite.
-  `CheckoutInventoryReservationExecutor` now invokes the inventory-owned
+  snapshot hashes, execution lease, recovery status, stage checkpoints, and
+  owner aggregate ids. `CheckoutInventoryReservationJournal` adds one immutable
+  reservation identity per checkout/cart-line pair and enforces tenant, cart,
+  variant, quantity, location, status-transition, and timestamp integrity in
+  PostgreSQL and SQLite.
+- Storefront checkout now requires a stable `Idempotency-Key` and uses
+  `StagedCheckoutService` rather than the former monolithic
+  `CheckoutService::complete_checkout` production entrypoint.
+- `CheckoutPlanBuilder` validates product, inventory, shipping, channel, locale,
+  and store context from the prepared cart and produces one immutable order and
+  fulfillment plan before cross-domain side effects begin.
+- `CheckoutStagePipeline` resumes through `cart_locked`,
+  `inventory_reserved`, `order_created`, `payment_ready`,
+  `payment_authorized`, `payment_captured`, `fulfillment_created`,
+  `cart_completed`, and `completed`.
+- `CheckoutInventoryReservationExecutor` invokes the inventory-owned
   `InventoryReservationIdentityPort` from the immutable prepared cart snapshot,
   adopts existing owner reservations on replay, records provider failures, and
   checkpoints `inventory_reserved` only after every variant-backed line is
-  confirmed. The executor is not composed into `JournaledCheckoutService` yet:
-  the current order-confirmation trigger also reserves inventory, so enabling
-  both paths would double-reserve the same demand.
+  confirmed. Order creation adopts those identities into order lines, while
+  the lifecycle cutover prevents the legacy confirmation trigger from reserving
+  the same demand a second time. The executor is not yet composed into
+  `JournaledCheckoutService` because the current order-confirmation trigger
+  also reserves inventory, and enabling both paths would double-reserve demand.
+- Order, payment collection, provider operation, fulfillment, and cart
+  completion stages use durable owner identities and accept already committed
+  results on replay.
+- `CheckoutCompensationService` separates pre-order identity release from
+  post-order cancellation. Adopted stock is released through the order
+  lifecycle trigger; only remaining pre-adoption identities are released
+  directly. Captured or uncertain provider outcomes are not automatically
+  reversed and remain reconciliation work.
+- `RecoveringStagedCheckoutService` attempts safe compensation immediately
+  after a storefront failure. `CheckoutCompensationSweepService` provides a
+  bounded lease-protected retry path for compensation backlog and expired
+  compensation workers.
+- `PaymentProviderOperationJournal::list_by_collection` gives orchestration an
+  owner-supported read of provider side effects before automatic cancellation.
 - REST storefront cart handlers plus GraphQL cart reads and mutations call
   cart-owned `CartStorefrontPort` for cart reads, creation, line-item
   mutations, context updates, and repricing; REST, GraphQL, and native
@@ -71,6 +98,8 @@ already handed to payment-owned storefront transport.
   and proves that channel-hidden inventory blocks checkout. It does not cover
   the remaining checkout providers or fallback/degraded paths, so commerce
   remains `in_progress`.
+- No new staged-checkout code has live compile, migration, concurrency, or
+  kill-point evidence yet. FFA/FBA status therefore remains `in_progress`.
 - FFA guardrails: `scripts/verify/verify-commerce-admin-boundary.mjs` locks
   `admin/src/transport/native_server_adapter.rs`, removed root GraphQL and state-machine aliases,
   and the core/transport/UI owner boundary;
@@ -80,49 +109,44 @@ already handed to payment-owned storefront transport.
 
 ## Next results
 
-1. **Cut inventory reservation ownership over to persisted checkout stages.**
-   Replace the order-confirmation reservation trigger with adoption/consumption
-   of checkout-owned reservation identities, compose
-   `CheckoutInventoryReservationExecutor` into `JournaledCheckoutService`, and
-   resume from both `cart_locked` and `inventory_reserved`. The trigger cutover
-   and runtime composition must land together so no checkout can skip inventory
-   and no demand can be reserved twice. Done when concurrency and kill-point
-   tests prove one reservation per cart line, exact release on compensation,
-   and replay-safe transition into order creation.
-2. **Continue order, payment, fulfillment, and cart completion as persisted stages.**
-   Replace the remaining monolithic `CheckoutService::complete_checkout` call
-   with owner-port commands and checkpoints for order creation, payment ready,
-   authorization, capture, paid order, fulfillment planning, and cart completion.
-   Done when process termination after each owner call resumes without duplicate
-   aggregate or provider side effects.
-3. **Complete checkout owner handoff with live boundary evidence.** Reduce the
-   aggregate cart projection only as a whole owner-handoff package, preserve
-   checkout orchestration, and execute product/pricing/inventory/customer/cart
-   provider fallbacks under real runtime conditions. Done when an end-to-end
-   checkout verifies request context, degraded behavior, recovery, and
-   native/GraphQL parity without owner service or DTO re-exports returning to
-   commerce.
+1. **Obtain live staged-checkout evidence.** Compile the commerce family,
+   execute clean and upgraded PostgreSQL/SQLite migrations, and add kill points
+   after every owner call and before every checkpoint. Done when the same
+   operation resumes without duplicate reservations, orders, collections,
+   provider operations, fulfillments, labels, or cart completion.
+2. **Close compensation lookup and operator surfaces.** Recover a payment
+   collection by checkout identity even when its id was not checkpointed, expose
+   bounded admin compensation/reconciliation commands, and record safe error
+   codes without leaking provider or SQL details. Done when every
+   `compensation_required` operation is either compensated, retryable with a
+   lease, or explicitly classified for manual reconciliation.
+3. **Complete provider and transport evidence.** Execute product, pricing,
+   inventory, cart, payment, fulfillment, and region ports with real deadlines,
+   retry, degraded, malformed-response, and unavailable cases. Done when
+   native/REST/GraphQL behavior is consistent and evidence is generated from
+   execution rather than source markers.
 4. **Productionize payment and fulfillment providers.** Wire approved payment
-   gateways and carrier adapters through owner `PaymentProviderRegistry` and
-   `FulfillmentProviderRegistry`, then prove authorize/capture/cancel/refund,
-   quote/label/cancel, webhooks, retries, and recovery. Done when the manual
-   default is no longer the only executable provider and lifecycle persistence
-   remains in owner services.
-5. **Deliver the next ecommerce domain increments by owner.** Extend the
-   seller foundation only through stable seller/catalog/grouping contracts;
-   deliver channel-aware Pricing 2.0, separate tax calculation, and the
-   remaining exchange/claim/order-change post-order surface in their owning
-   modules. Done when each increment has a named owner, ports/events, FFA
-   parity, FBA evidence, and no host or umbrella-domain regression.
+   gateways and carrier adapters through owner registries, then prove
+   authorize/capture/cancel/refund, quote/label/cancel, webhooks, retries, and
+   reconciliation. Done when the manual provider is no longer the only
+   executable production profile.
+5. **Deliver the next ecommerce increments by owner.** Continue Pricing 2.0,
+   promotion, market/store, full post-order, seller/offer, commission, ledger,
+   and payout capabilities only after the staged checkout correctness gate is
+   backed by live evidence.
 
 ## Verification
 
+- `cargo fmt --all -- --check`
+- `cargo check -p rustok-commerce --lib`
+- `cargo test -p rustok-commerce --test checkout_service_test`
+- `cargo test -p rustok-commerce --test order_inventory_reservation_test`
+- `cargo test -p rustok-migrations --test ecommerce_schema_smoke`
 - `npm run verify:ecommerce:fba`
 - `npm run verify:commerce:admin-boundary`
 - `npm run verify:commerce:storefront-transport-handoff`
 - `cargo xtask module validate commerce`
-- Targeted checkout, provider-adapter, post-order, inventory-channel, and
-  owner-handoff integration tests.
+- PostgreSQL contention and process kill-point tests for every checkout stage.
 
 ## References
 

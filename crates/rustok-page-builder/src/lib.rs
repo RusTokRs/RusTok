@@ -5,9 +5,17 @@ pub mod health;
 pub mod render;
 pub mod rollout;
 pub mod runtime_context;
+pub mod runtime_context_compatibility;
+pub mod runtime_context_dependency;
+pub mod runtime_context_migration;
+pub mod runtime_scenario_release;
+pub mod runtime_scenario_render;
+pub mod runtime_scenario_snapshot;
 #[cfg(feature = "server")]
 pub mod service;
 pub mod transport;
+
+pub use fly::{RuntimeContextExamplePolicy, RuntimeContextScenario};
 
 #[cfg(feature = "server")]
 use async_trait::async_trait;

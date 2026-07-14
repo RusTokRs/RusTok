@@ -1,0 +1,156 @@
+{
+  "schema_version": "1.0",
+  "contract_id": "payment.provider_webhook.v1",
+  "owner_module": "payment",
+  "transport": {
+    "method": "POST",
+    "path": "/payment/webhooks/{provider_id}",
+    "required_identity_headers": {
+      "delivery_id": [
+        "x-rustok-provider-delivery-id",
+        "x-webhook-id",
+        "idempotency-key"
+      ],
+      "idempotency_key": [
+        "idempotency-key",
+        "x-rustok-provider-delivery-id"
+      ]
+    },
+    "accepted_signature_headers": [
+      "x-provider-signature",
+      "stripe-signature",
+      "x-webhook-signature"
+    ],
+    "max_raw_payload_bytes": 1048576,
+    "tenant_scope_required": true
+  },
+  "provider_spi": {
+    "registry_operation": "execute_webhook",
+    "adapter_operation": "handle_webhook",
+    "requirements": [
+      "Verify the provider signature before returning a normalized event.",
+      "Parse the raw body without mutating payment lifecycle state.",
+      "Return provider_id, event_type, replay_key, optional external_reference, and a bounded metadata object.",
+      "Return replay_key equal to the request idempotency_key.",
+      "Reject malformed, unsigned, or unsupported provider payloads with PaymentError."
+    ]
+  },
+  "inbox": {
+    "table": "payment_provider_events",
+    "raw_payload_persisted": false,
+    "payload_digest": "sha256-lowercase-hex",
+    "deduplication_keys": [
+      ["tenant_id", "provider_id", "delivery_id"],
+      ["tenant_id", "provider_id", "idempotency_key"]
+    ],
+    "statuses": [
+      "received",
+      "processing",
+      "failed",
+      "processed",
+      "dead_letter"
+    ],
+    "lease_required_for": ["processing"],
+    "normalized_facts_atomic_with_receipt": true,
+    "normalized_facts_immutable_after_receipt": true,
+    "normalized_checkpoint_before_owner_apply": true,
+    "checkpoint_fields": [
+      "event_type",
+      "external_reference",
+      "event_metadata"
+    ],
+    "max_normalized_metadata_bytes": 65536,
+    "max_normalized_metadata_depth": 16
+  },
+  "normalized_events": {
+    "payment.authorized": {
+      "external_reference_required": true,
+      "metadata_required": {
+        "collection_id": "uuid-string",
+        "amount": "positive-decimal-string",
+        "currency_code": "three-letter-code"
+      }
+    },
+    "payment.captured": {
+      "external_reference_required": true,
+      "metadata_required": {
+        "collection_id": "uuid-string",
+        "amount": "positive-decimal-string",
+        "currency_code": "three-letter-code"
+      }
+    },
+    "payment.cancelled": {
+      "external_reference_required": false,
+      "metadata_required": {
+        "collection_id": "uuid-string",
+        "amount": "positive-decimal-string",
+        "currency_code": "three-letter-code"
+      }
+    },
+    "refund.completed": {
+      "external_reference_required": true,
+      "metadata_required": {
+        "refund_id": "uuid-string",
+        "amount": "positive-decimal-string",
+        "currency_code": "three-letter-code"
+      }
+    }
+  },
+  "delivery_semantics": {
+    "provider_delivery": "at-least-once",
+    "domain_apply": "effectively-once-through-inbox-and-owner-idempotency",
+    "duplicate_same_payload": "return-existing",
+    "same_key_different_payload": "reject",
+    "retryable_apply_failure": "failed",
+    "non_retryable_apply_failure": "dead_letter",
+    "expired_processing_lease": "claimable",
+    "processed_replay": "acknowledge-without-domain-reapply",
+    "retryable_recovery": "bounded_received_failed_or_expired_processing_sweep_from_normalized_checkpoint",
+    "dead_letter_replay": "operator-only-dead_letter-to-processing-using-normalized-checkpoint"
+  },
+  "operator_api": {
+    "read_event": {
+      "method": "GET",
+      "path": "/api/payment/provider-events/{event_id}",
+      "permissions_any": ["payments:read", "payments:manage"]
+    },
+    "list_dead_letters": {
+      "method": "GET",
+      "path": "/api/payment/provider-events/dead-letter",
+      "permissions_any": ["payments:read", "payments:manage"],
+      "max_limit": 100
+    },
+    "run_recovery": {
+      "method": "POST",
+      "path": "/api/payment/provider-events/recovery/run",
+      "permissions_all": ["payments:manage"],
+      "max_limit": 100,
+      "eligible_statuses": ["received", "failed", "expired_processing"],
+      "dead_letter_claimed": false,
+      "raw_payload_required": false
+    },
+    "replay_dead_letter": {
+      "method": "POST",
+      "path": "/api/payment/provider-events/{event_id}/replay",
+      "permissions_all": ["payments:manage"],
+      "raw_payload_required": false
+    },
+    "safe_projection_excludes": [
+      "idempotency_key",
+      "payload_hash",
+      "lease_owner",
+      "lease_expires_at",
+      "error_message",
+      "event_metadata"
+    ]
+  },
+  "security": {
+    "signature_verification_before_inbox_insert": true,
+    "verified_normalized_facts_written_with_inbox_insert": true,
+    "raw_provider_error_exposed_to_client": false,
+    "raw_payload_logged_or_persisted": false,
+    "provider_signature_exposed_to_operator_api": false,
+    "tenant_scope_required": true
+  },
+  "evidence_status": "source_only"
+}

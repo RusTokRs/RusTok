@@ -13,6 +13,7 @@ use crate::middleware::rate_limit::{
 };
 use crate::modules;
 use crate::modules::{DeploymentSurfaceContract, ManifestManager};
+use crate::services::cache_runtime::ensure_cache_service;
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::build_event_runtime;
 use crate::services::graphql_schema::init_graphql_schema;
@@ -61,8 +62,7 @@ pub async fn bootstrap_app_runtime(
     auth_config: AuthConfig,
     settings: &RustokSettings,
 ) -> Result<AppRuntimeBootstrap> {
-    let cache_service = CacheService::from_url(settings.cache.redis_url.as_deref());
-    runtime_ctx.shared_insert(cache_service.clone());
+    let cache_service = ensure_cache_service(&runtime_ctx);
 
     // Cache parsed settings so per-request middleware avoids repeated JSON deserialization.
     runtime_ctx.shared_insert(SharedRustokSettings(Arc::new(settings.clone())));

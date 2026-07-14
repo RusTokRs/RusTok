@@ -72,6 +72,20 @@ pub trait SeedTenantPort: Send + Sync {
     ) -> Result<SeedTenant, SeedExecutionError>;
 }
 
+/// Atomic identity and role provisioning boundary for installer seed users.
+///
+/// Implementations must not return success unless both the identity and its
+/// requested RBAC role are durable. Database adapters should use one transaction.
+#[async_trait]
+pub trait SeedPrincipalPort: Send + Sync {
+    async fn ensure_seed_principal(
+        &self,
+        request: SeedUserRequest,
+        role: UserRole,
+    ) -> Result<SeedUser, SeedExecutionError>;
+}
+
+/// Legacy split identity port retained for adapters outside the typed executor.
 #[async_trait]
 pub trait SeedIdentityPort: Send + Sync {
     async fn ensure_seed_user(
@@ -80,6 +94,7 @@ pub trait SeedIdentityPort: Send + Sync {
     ) -> Result<SeedUser, SeedExecutionError>;
 }
 
+/// Legacy split role port retained for adapters outside the typed executor.
 #[async_trait]
 pub trait SeedRolePort: Send + Sync {
     async fn assign_seed_role(
@@ -104,8 +119,7 @@ pub trait SeedModulePort: Send + Sync {
 pub async fn execute_seed_profile(
     request: SeedExecutionRequest,
     tenant_port: &dyn SeedTenantPort,
-    identity_port: &dyn SeedIdentityPort,
-    role_port: &dyn SeedRolePort,
+    principal_port: &dyn SeedPrincipalPort,
     module_port: &dyn SeedModulePort,
 ) -> Result<SeedExecutionOutcome, SeedExecutionError> {
     validate_request(&request)?;
@@ -132,11 +146,11 @@ pub async fn execute_seed_profile(
 
     let admin = if let Some(mut admin) = request.admin {
         admin.tenant_id = tenant.id;
-        let user = identity_port.ensure_seed_user(admin).await?;
-        role_port
-            .assign_seed_role(tenant.id, user.id, UserRole::SuperAdmin)
-            .await?;
-        Some(user)
+        Some(
+            principal_port
+                .ensure_seed_principal(admin, UserRole::SuperAdmin)
+                .await?,
+        )
     } else {
         None
     };
@@ -147,18 +161,19 @@ pub async fn execute_seed_profile(
                 "development seed profile requires a demo customer password".to_string(),
             )
         })?;
-        let user = identity_port
-            .ensure_seed_user(SeedUserRequest {
-                tenant_id: tenant.id,
-                email: "customer@demo.local".to_string(),
-                name: "Demo Customer".to_string(),
-                password,
-            })
-            .await?;
-        role_port
-            .assign_seed_role(tenant.id, user.id, UserRole::Customer)
-            .await?;
-        Some(user)
+        Some(
+            principal_port
+                .ensure_seed_principal(
+                    SeedUserRequest {
+                        tenant_id: tenant.id,
+                        email: "customer@demo.local".to_string(),
+                        name: "Demo Customer".to_string(),
+                        password,
+                    },
+                    UserRole::Customer,
+                )
+                .await?,
+        )
     } else {
         None
     };
@@ -192,15 +207,13 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        execute_seed_profile, SeedExecutionError, SeedExecutionRequest, SeedIdentityPort,
-        SeedModulePort, SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest, SeedUser,
-        SeedUserRequest,
+        execute_seed_profile, SeedExecutionError, SeedExecutionRequest, SeedModulePort,
+        SeedPrincipalPort, SeedTenant, SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest,
     };
     use crate::SeedProfile;
 
     struct TenantPort;
-    struct IdentityPort;
-    struct RolePort;
+    struct PrincipalPort;
     struct ModulePort;
 
     #[async_trait]
@@ -218,28 +231,17 @@ mod tests {
     }
 
     #[async_trait]
-    impl SeedIdentityPort for IdentityPort {
-        async fn ensure_seed_user(
+    impl SeedPrincipalPort for PrincipalPort {
+        async fn ensure_seed_principal(
             &self,
             request: SeedUserRequest,
+            _role: rustok_core::UserRole,
         ) -> Result<SeedUser, SeedExecutionError> {
             Ok(SeedUser {
                 id: Uuid::nil(),
                 email: request.email,
                 created: true,
             })
-        }
-    }
-
-    #[async_trait]
-    impl SeedRolePort for RolePort {
-        async fn assign_seed_role(
-            &self,
-            _tenant_id: Uuid,
-            _user_id: Uuid,
-            _role: rustok_core::UserRole,
-        ) -> Result<(), SeedExecutionError> {
-            Ok(())
         }
     }
 
@@ -273,8 +275,7 @@ mod tests {
                 actor: "installer".to_string(),
             },
             &TenantPort,
-            &IdentityPort,
-            &RolePort,
+            &PrincipalPort,
             &ModulePort,
         )
         .await

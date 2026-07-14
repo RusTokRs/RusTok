@@ -1,4 +1,6 @@
 pub mod admin;
+#[path = "admin/checkout_operations.rs"]
+pub(crate) mod checkout_operations;
 mod common;
 pub mod products;
 mod reconciliation;
@@ -67,6 +69,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
     Ok(axum::Router::new()
         .nest("/store", store::axum_router())
         .nest("/admin", admin::axum_router())
+        .nest(
+            "/admin/checkout-operations",
+            checkout_operations::axum_router(),
+        )
         .nest(
             "/admin/fulfillment-provider-operations",
             reconciliation::axum_router(),

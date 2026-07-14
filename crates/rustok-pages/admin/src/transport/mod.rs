@@ -1,6 +1,11 @@
 mod graphql_adapter;
+mod scenario_baseline_cas_adapter;
+mod scenario_release_adapter;
 
-use crate::model::{CreatePageDraft, PageDetail, PageList, PageMutationResult};
+use crate::model::{
+    CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageMutationResult,
+};
+use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
 
 pub type TransportError = graphql_adapter::ApiError;
 
@@ -17,6 +22,54 @@ pub async fn fetch_page(
     id: String,
 ) -> Result<Option<PageDetail>, TransportError> {
     graphql_adapter::fetch_page(token, tenant_slug, id).await
+}
+
+pub async fn fetch_page_builder_scenario_baseline(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    page_id: String,
+) -> Result<Option<RuntimeScenarioReleaseBaseline>, TransportError> {
+    graphql_adapter::fetch_page_builder_scenario_baseline(token, tenant_slug, page_id).await
+}
+
+pub async fn fetch_page_builder_scenario_release_status(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    page_id: String,
+) -> Result<PageBuilderScenarioReleaseStatus, TransportError> {
+    scenario_release_adapter::fetch(token, tenant_slug, page_id).await
+}
+
+pub async fn save_page_builder_scenario_baseline(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    page_id: String,
+    baseline: RuntimeScenarioReleaseBaseline,
+    expected_baseline_hash: Option<String>,
+) -> Result<RuntimeScenarioReleaseBaseline, TransportError> {
+    scenario_baseline_cas_adapter::save(
+        token,
+        tenant_slug,
+        page_id,
+        baseline,
+        expected_baseline_hash,
+    )
+    .await
+}
+
+pub async fn delete_page_builder_scenario_baseline(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    page_id: String,
+    expected_baseline_hash: Option<String>,
+) -> Result<bool, TransportError> {
+    scenario_baseline_cas_adapter::delete(
+        token,
+        tenant_slug,
+        page_id,
+        expected_baseline_hash,
+    )
+    .await
 }
 
 pub async fn create_page(

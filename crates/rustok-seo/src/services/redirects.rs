@@ -2,17 +2,27 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, Order, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, Order, QueryFilter,
+    QueryOrder, TransactionTrait,
+};
 use url::Url;
 use uuid::Uuid;
 
 use rustok_api::TenantContext;
+use rustok_core::{simple_hash, DomainEvent};
 
 use crate::dto::{SeoRedirectInput, SeoRedirectMatchType, SeoRedirectRecord};
-use crate::entities::seo_redirect;
+use crate::entities::{seo_event_delivery, seo_index_cursor, seo_index_delivery, seo_redirect};
 use crate::{SeoError, SeoResult};
 
 use super::{normalize_route, SeoService, REDIRECT_CACHE};
+
+const DELIVERY_STATUS_SENT: &str = "sent";
+const INDEX_DELIVERY_STATUS_SENT: &str = "sent";
+const INDEX_TARGET_SCOPE_KIND: &str = "kind";
+const INDEX_SCOPE_KEY_ALL: &str = "*";
+const INDEX_CURSOR_REPLAY_MODE_NOT_STARTED: &str = "not_started";
 
 impl SeoService {
     pub async fn list_redirects(&self, tenant_id: Uuid) -> SeoResult<Vec<SeoRedirectRecord>> {
@@ -39,11 +49,12 @@ impl SeoService {
         )?;
         let status_code = normalize_redirect_status(input.status_code)?;
         let now = Utc::now().fixed_offset();
+        let txn = self.db.begin().await?;
 
         let model = if let Some(id) = input.id {
             let Some(existing) = seo_redirect::Entity::find_by_id(id)
                 .filter(seo_redirect::Column::TenantId.eq(tenant.id))
-                .one(&self.db)
+                .one(&txn)
                 .await?
             else {
                 return Err(SeoError::NotFound);
@@ -56,7 +67,7 @@ impl SeoService {
             active.expires_at = Set(input.expires_at.map(|value| value.into()));
             active.is_active = Set(input.is_active);
             active.updated_at = Set(now);
-            active.update(&self.db).await?
+            active.update(&txn).await?
         } else {
             seo_redirect::ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -70,33 +81,132 @@ impl SeoService {
                 created_at: Set(now),
                 updated_at: Set(now),
             }
-            .insert(&self.db)
+            .insert(&txn)
             .await?
         };
 
-        REDIRECT_CACHE.invalidate(&tenant.id).await;
         let record = map_redirect_record(model);
+        self.publish_redirect_transition_in_tx(&txn, tenant.id, &record)
+            .await?;
+        txn.commit().await?;
 
-        if record.is_active {
-            self.publish_seo_redirect_upserted_event(
-                tenant.id,
-                record.id,
-                record.source_pattern.as_str(),
-                record.target_url.as_str(),
-                record.status_code,
-                record.is_active,
-            )
-            .await;
-        } else {
-            self.publish_seo_redirect_disabled_event(
-                tenant.id,
-                record.id,
-                record.source_pattern.as_str(),
-            )
-            .await;
+        REDIRECT_CACHE.invalidate(&tenant.id).await;
+        Ok(record)
+    }
+
+    async fn publish_redirect_transition_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        record: &SeoRedirectRecord,
+    ) -> SeoResult<()> {
+        let (event_type, idempotency_key, event) = redirect_domain_event(tenant_id, record);
+        let existing = seo_event_delivery::Entity::find()
+            .filter(seo_event_delivery::Column::TenantId.eq(tenant_id))
+            .filter(seo_event_delivery::Column::IdempotencyKey.eq(idempotency_key.as_str()))
+            .one(txn)
+            .await?;
+        if existing.is_some() {
+            return Ok(());
         }
 
-        Ok(record)
+        let outbox_event_id = self
+            .event_bus
+            .publish_in_tx_with_envelope_id(txn, tenant_id, None, event)
+            .await
+            .map_err(|error| transactional_event_error("redirect event", error))?;
+        let now = Utc::now().fixed_offset();
+
+        seo_event_delivery::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            event_type: Set(event_type.to_string()),
+            idempotency_key: Set(idempotency_key.clone()),
+            source_kind: Set(Some("redirect".to_string())),
+            source_id: Set(Some(record.id)),
+            status: Set(DELIVERY_STATUS_SENT.to_string()),
+            outbox_event_id: Set(Some(outbox_event_id)),
+            last_error: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+            dispatched_at: Set(Some(now)),
+        }
+        .insert(txn)
+        .await?;
+
+        for target_type in ["content", "product"] {
+            self.publish_redirect_reindex_in_tx(
+                txn,
+                tenant_id,
+                event_type,
+                idempotency_key.as_str(),
+                target_type,
+                now,
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn publish_redirect_reindex_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        seo_event_type: &str,
+        idempotency_key: &str,
+        target_type: &str,
+        observed_at: chrono::DateTime<chrono::FixedOffset>,
+    ) -> SeoResult<()> {
+        let existing = seo_index_delivery::Entity::find()
+            .filter(seo_index_delivery::Column::TenantId.eq(tenant_id))
+            .filter(seo_index_delivery::Column::IdempotencyKey.eq(idempotency_key))
+            .filter(seo_index_delivery::Column::TargetType.eq(target_type))
+            .filter(seo_index_delivery::Column::TargetScopeKey.eq(INDEX_SCOPE_KEY_ALL))
+            .one(txn)
+            .await?;
+        if existing.is_some() {
+            upsert_index_cursor_in_tx(txn, tenant_id, target_type, observed_at).await?;
+            return Ok(());
+        }
+
+        let outbox_event_id = self
+            .event_bus
+            .publish_in_tx_with_envelope_id(
+                txn,
+                tenant_id,
+                None,
+                DomainEvent::ReindexRequested {
+                    target_type: target_type.to_string(),
+                    target_id: None,
+                },
+            )
+            .await
+            .map_err(|error| transactional_event_error("redirect reindex event", error))?;
+
+        seo_index_delivery::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            seo_event_type: Set(seo_event_type.to_string()),
+            idempotency_key: Set(idempotency_key.to_string()),
+            target_type: Set(target_type.to_string()),
+            target_id: Set(None),
+            target_scope: Set(INDEX_TARGET_SCOPE_KIND.to_string()),
+            target_scope_key: Set(INDEX_SCOPE_KEY_ALL.to_string()),
+            status: Set(INDEX_DELIVERY_STATUS_SENT.to_string()),
+            attempt_count: Set(1),
+            outbox_event_id: Set(Some(outbox_event_id)),
+            next_attempt_at: Set(None),
+            last_error: Set(None),
+            dead_lettered_at: Set(None),
+            created_at: Set(observed_at),
+            updated_at: Set(observed_at),
+            dispatched_at: Set(Some(observed_at)),
+        }
+        .insert(txn)
+        .await?;
+
+        upsert_index_cursor_in_tx(txn, tenant_id, target_type, observed_at).await
     }
 
     pub(super) async fn load_redirect_models(
@@ -151,6 +261,106 @@ impl SeoService {
             })
             .cloned())
     }
+}
+
+async fn upsert_index_cursor_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    target_type: &str,
+    observed_at: chrono::DateTime<chrono::FixedOffset>,
+) -> SeoResult<()> {
+    let existing = seo_index_cursor::Entity::find()
+        .filter(seo_index_cursor::Column::TenantId.eq(tenant_id))
+        .filter(seo_index_cursor::Column::TargetType.eq(target_type))
+        .one(txn)
+        .await?;
+
+    if let Some(existing) = existing {
+        if existing.high_water_mark_at >= observed_at {
+            return Ok(());
+        }
+
+        let mut active: seo_index_cursor::ActiveModel = existing.into();
+        active.high_water_mark_at = Set(observed_at);
+        active.updated_at = Set(observed_at);
+        active.update(txn).await?;
+        return Ok(());
+    }
+
+    seo_index_cursor::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        target_type: Set(target_type.to_string()),
+        initial_cursor_at: Set(observed_at),
+        high_water_mark_at: Set(observed_at),
+        last_repair_cursor_at: Set(None),
+        replay_mode: Set(INDEX_CURSOR_REPLAY_MODE_NOT_STARTED.to_string()),
+        replay_requested_at: Set(None),
+        replay_completed_at: Set(None),
+        created_at: Set(observed_at),
+        updated_at: Set(observed_at),
+    }
+    .insert(txn)
+    .await?;
+
+    Ok(())
+}
+
+fn redirect_domain_event(
+    tenant_id: Uuid,
+    record: &SeoRedirectRecord,
+) -> (&'static str, String, DomainEvent) {
+    if record.is_active {
+        let event_type = "seo.redirect.upserted";
+        let idempotency_key = build_seo_event_key(
+            event_type,
+            tenant_id,
+            &[
+                record.id.to_string(),
+                record.source_pattern.clone(),
+                record.target_url.clone(),
+                record.status_code.to_string(),
+                record.is_active.to_string(),
+            ],
+        );
+        let event = DomainEvent::SeoRedirectUpserted {
+            redirect_id: record.id,
+            source_pattern: record.source_pattern.clone(),
+            target_url: record.target_url.clone(),
+            status_code: record.status_code,
+            is_active: record.is_active,
+            idempotency_key: idempotency_key.clone(),
+        };
+        (event_type, idempotency_key, event)
+    } else {
+        let event_type = "seo.redirect.disabled";
+        let idempotency_key = build_seo_event_key(
+            event_type,
+            tenant_id,
+            &[record.id.to_string(), record.source_pattern.clone()],
+        );
+        let event = DomainEvent::SeoRedirectDisabled {
+            redirect_id: record.id,
+            source_pattern: record.source_pattern.clone(),
+            idempotency_key: idempotency_key.clone(),
+        };
+        (event_type, idempotency_key, event)
+    }
+}
+
+fn build_seo_event_key(scope: &str, tenant_id: Uuid, parts: &[String]) -> String {
+    let mut payload = format!("{scope}|{tenant_id}");
+    for part in parts {
+        payload.push('|');
+        payload.push_str(part.as_str());
+    }
+    format!("{scope}:{:016x}", simple_hash(payload.as_str()))
+}
+
+fn transactional_event_error(context: &str, error: rustok_core::Error) -> SeoError {
+    SeoError::Database(sea_orm::DbErr::Custom(format!(
+        "failed to enqueue {context} transactionally: {error}"
+    )))
 }
 
 pub(super) fn normalize_hosts(hosts: &[String]) -> Vec<String> {
@@ -240,5 +450,49 @@ pub(super) fn map_redirect_record(model: seo_redirect::Model) -> SeoRedirectReco
         is_active: model.is_active,
         created_at: model.created_at.into(),
         updated_at: model.updated_at.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_seo_event_key;
+    use uuid::Uuid;
+
+    #[test]
+    fn redirect_event_keys_are_deterministic_and_state_sensitive() {
+        let tenant_id = Uuid::new_v4();
+        let redirect_id = Uuid::new_v4();
+        let active = build_seo_event_key(
+            "seo.redirect.upserted",
+            tenant_id,
+            &[
+                redirect_id.to_string(),
+                "/old".to_string(),
+                "/new".to_string(),
+                "301".to_string(),
+                "true".to_string(),
+            ],
+        );
+        let repeated = build_seo_event_key(
+            "seo.redirect.upserted",
+            tenant_id,
+            &[
+                redirect_id.to_string(),
+                "/old".to_string(),
+                "/new".to_string(),
+                "301".to_string(),
+                "true".to_string(),
+            ],
+        );
+        let disabled = build_seo_event_key(
+            "seo.redirect.disabled",
+            tenant_id,
+            &[redirect_id.to_string(), "/old".to_string()],
+        );
+
+        assert_eq!(active, repeated);
+        assert_ne!(active, disabled);
+        assert!(active.starts_with("seo.redirect.upserted:"));
+        assert!(disabled.starts_with("seo.redirect.disabled:"));
     }
 }

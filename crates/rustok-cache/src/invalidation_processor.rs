@@ -19,8 +19,8 @@ impl DurableCacheInvalidationConsumer {
     /// Work is serialized per channel. Concurrent delivery of the same generation waits for the
     /// first handler and is then classified as `Ignored`, while the number of distinct active
     /// channels remains bounded. Both callbacks receive an owned record so their futures do not
-    /// borrow process-local tracker state. A failed callback leaves the acknowledged offset
-    /// unchanged and the record remains eligible for retry.
+    /// borrow process-local tracker state. A failed or cancelled callback leaves the acknowledged
+    /// offset unchanged and the record remains eligible for retry.
     pub async fn process<A, AFut, R, RFut>(
         &self,
         record: DurableCacheInvalidationRecord,
@@ -34,6 +34,7 @@ impl DurableCacheInvalidationConsumer {
         RFut: Future<Output = rustok_core::Result<()>>,
     {
         let _in_flight = self.begin_process();
+        let mut completion = DurableInvalidationProcessCompletionGuard::new(self);
         let result = async {
             let lease = self
                 .process_gate(record.channel())
@@ -78,8 +79,35 @@ impl DurableCacheInvalidationConsumer {
             Err(DurableInvalidationProcessError::Saturated { .. }) => self.record_failure(true),
             Err(_) => self.record_failure(false),
         }
+        completion.complete();
 
         result
+    }
+}
+
+struct DurableInvalidationProcessCompletionGuard<'a> {
+    consumer: &'a DurableCacheInvalidationConsumer,
+    completed: bool,
+}
+
+impl<'a> DurableInvalidationProcessCompletionGuard<'a> {
+    fn new(consumer: &'a DurableCacheInvalidationConsumer) -> Self {
+        Self {
+            consumer,
+            completed: false,
+        }
+    }
+
+    fn complete(&mut self) {
+        self.completed = true;
+    }
+}
+
+impl Drop for DurableInvalidationProcessCompletionGuard<'_> {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.consumer.record_failure(false);
+        }
     }
 }
 
@@ -242,6 +270,46 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, DurableInvalidationProcessError::Handler(_)));
+        assert_eq!(consumer.last_generation("tenant.invalidate"), Some(3));
+        assert_eq!(
+            consumer.decide(&record(4)).unwrap(),
+            DurableInvalidationDecision::Apply { generation: 4 }
+        );
+        let stats = consumer.stats();
+        assert_eq!(stats.attempted, 1);
+        assert_eq!(stats.failed, 1);
+        assert_eq!(stats.applied, 0);
+        assert_eq!(stats.in_flight, 0);
+    }
+
+    #[tokio::test]
+    async fn cancelled_apply_counts_as_failure_and_keeps_offset_for_retry() {
+        let consumer = DurableCacheInvalidationConsumer::new(4).unwrap();
+        consumer.seed("tenant.invalidate", 3).unwrap();
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let task_consumer = consumer.clone();
+        let task_entered = Arc::clone(&entered);
+
+        let task = tokio::spawn(async move {
+            task_consumer
+                .process(
+                    record(4),
+                    move |_| async move {
+                        task_entered.notify_one();
+                        std::future::pending::<rustok_core::Result<()>>().await
+                    },
+                    |_| async { Ok(()) },
+                )
+                .await
+        });
+
+        entered.notified().await;
+        assert_eq!(consumer.stats().attempted, 1);
+        assert_eq!(consumer.stats().in_flight, 1);
+        task.abort();
+        let _ = task.await;
+        tokio::task::yield_now().await;
+
         assert_eq!(consumer.last_generation("tenant.invalidate"), Some(3));
         assert_eq!(
             consumer.decide(&record(4)).unwrap(),

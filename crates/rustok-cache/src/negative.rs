@@ -12,6 +12,7 @@ use crate::{
 };
 
 pub const DEFAULT_MAX_NEGATIVE_CACHE_BYTES: usize = 64 * 1024;
+pub const MAX_NEGATIVE_CACHE_KEY_BYTES: usize = crate::service::MAX_CACHE_LOAD_KEY_BYTES;
 
 /// Explicit policy for negative cache entries.
 ///
@@ -161,6 +162,7 @@ impl CacheService {
     where
         R: DeserializeOwned,
     {
+        validate_negative_key(key)?;
         let Some(bytes) = backend.get(key).await? else {
             return Ok(None);
         };
@@ -208,6 +210,7 @@ impl CacheService {
         R: Serialize,
     {
         let key = key.into();
+        validate_negative_key(&key)?;
         let ttl = policy
             .ttl_for(&key)
             .map_err(negative_policy_error_to_core)?;
@@ -240,6 +243,7 @@ impl CacheService {
         backend: Arc<dyn CacheBackend>,
         key: &str,
     ) -> rustok_core::Result<()> {
+        validate_negative_key(key)?;
         backend.invalidate(key).await
     }
 }
@@ -253,6 +257,22 @@ fn validate_schema_and_ttl(
     }
     if ttl.is_zero() {
         return Err(NegativeCachePolicyError::ZeroTtl);
+    }
+    Ok(())
+}
+
+fn validate_negative_key(key: &str) -> rustok_core::Result<()> {
+    if key.trim().is_empty() {
+        return Err(rustok_core::Error::Cache(
+            "negative cache key must not be empty".to_string(),
+        ));
+    }
+    if key.len() > MAX_NEGATIVE_CACHE_KEY_BYTES {
+        return Err(rustok_core::Error::Cache(format!(
+            "negative cache key is {} bytes; maximum is {}",
+            key.len(),
+            MAX_NEGATIVE_CACHE_KEY_BYTES
+        )));
     }
     Ok(())
 }
@@ -342,6 +362,41 @@ mod tests {
             .unwrap()
             .is_none());
         assert!(backend.get("negative").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn negative_cache_rejects_empty_and_oversized_keys_before_backend_work() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let policy = NegativeCachePolicy::fixed(1, Duration::from_secs(5)).unwrap();
+
+        for key in ["".to_string(), "x".repeat(MAX_NEGATIVE_CACHE_KEY_BYTES + 1)] {
+            assert!(service
+                .store_negative(
+                    backend.clone(),
+                    key.clone(),
+                    "not-found".to_string(),
+                    1_000,
+                    None,
+                    &policy,
+                )
+                .await
+                .is_err());
+            assert!(service
+                .get_negative_at::<String>(backend.clone(), &key, &policy, 2_000)
+                .await
+                .is_err());
+            assert!(service
+                .invalidate_negative(backend.clone(), &key)
+                .await
+                .is_err());
+        }
+
+        let stats = backend.stats();
+        assert_eq!(stats.hits, 0);
+        assert_eq!(stats.misses, 0);
+        assert_eq!(stats.evictions, 0);
+        assert_eq!(stats.entries, 0);
     }
 
     #[test]

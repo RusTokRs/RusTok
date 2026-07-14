@@ -8,6 +8,8 @@ use super::{
     CheckoutOperationStatus, StagedCheckoutError, StagedCheckoutService,
 };
 
+const RECONCILIATION_REQUIRED_STATUS: &str = "reconciliation_required";
+
 #[derive(Debug, Error)]
 pub enum RecoveringStagedCheckoutError {
     #[error(transparent)]
@@ -51,6 +53,17 @@ impl RecoveringStagedCheckoutService {
     ) -> RecoveringStagedCheckoutResult<CompleteCheckoutResponse> {
         let idempotency_key = idempotency_key.into();
         let cart_id = input.cart_id;
+        if let Some(current) = self
+            .staged
+            .operation_journal()
+            .find_latest_by_cart(tenant_id, cart_id)
+            .await?
+        {
+            if current.status == RECONCILIATION_REQUIRED_STATUS {
+                return Err(reconciliation_required_error(current.id));
+            }
+        }
+
         match self
             .staged
             .complete_checkout(
@@ -75,6 +88,9 @@ impl RecoveringStagedCheckoutService {
                 let Some(operation) = operation else {
                     return Err(staged.into());
                 };
+                if operation.status == RECONCILIATION_REQUIRED_STATUS {
+                    return Err(reconciliation_required_error(operation.id));
+                }
                 if operation.status != CheckoutOperationStatus::CompensationRequired.as_str() {
                     return Err(staged.into());
                 }
@@ -112,5 +128,18 @@ impl RecoveringStagedCheckoutService {
 
     pub fn compensation(&self) -> &CheckoutCompensationService {
         &self.compensation
+    }
+}
+
+fn reconciliation_required_error(operation_id: Uuid) -> RecoveringStagedCheckoutError {
+    RecoveringStagedCheckoutError::StagedAndCompensation {
+        staged: Box::new(StagedCheckoutError::Operation(
+            CheckoutOperationError::Conflict(format!(
+                "checkout operation {operation_id} requires reconciliation"
+            )),
+        )),
+        compensation: CheckoutCompensationError::ManualReconciliation(format!(
+            "checkout operation {operation_id} requires reconciliation"
+        )),
     }
 }

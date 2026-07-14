@@ -5,6 +5,7 @@ use rustok_api::{
 use rustok_core::UserRole;
 use uuid::Uuid;
 
+use super::control_plane::require_direct_control_plane_user;
 use super::types::{AssignUserRolePayload, RbacGraphqlUserRole};
 use super::{RbacGraphqlRoleWriteError, RbacGraphqlRoleWriterHandle};
 
@@ -37,8 +38,9 @@ fn map_role_write_error(error: RbacGraphqlRoleWriteError) -> FieldError {
 #[Object]
 impl RbacMutation {
     /// Assign a role to a user (replaces the current role).
-    /// Requires `users:manage`; hierarchy, target and continuity rules are
-    /// enforced transactionally by the host role writer.
+    /// Requires a direct, session-bound user principal with `users:manage`;
+    /// hierarchy, target and continuity rules are enforced transactionally by
+    /// the host role writer.
     async fn assign_user_role(
         &self,
         ctx: &Context<'_>,
@@ -48,6 +50,8 @@ impl RbacMutation {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
+
+        require_direct_control_plane_user(auth, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::USERS_MANAGE) {
             return Err(<FieldError as GraphQLError>::permission_denied(

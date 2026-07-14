@@ -1,6 +1,6 @@
 use std::{
     any::{Any, TypeId},
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     sync::{Arc, RwLock},
 };
 
@@ -36,6 +36,23 @@ impl ServerSharedValues {
             .write()
             .expect("server shared values lock poisoned")
             .insert(TypeId::of::<T>(), Arc::new(value));
+    }
+
+    fn insert_if_absent<T>(&self, value: T) -> bool
+    where
+        T: 'static + Send + Sync,
+    {
+        let mut values = self
+            .values
+            .write()
+            .expect("server shared values lock poisoned");
+        match values.entry(TypeId::of::<T>()) {
+            Entry::Vacant(entry) => {
+                entry.insert(Arc::new(value));
+                true
+            }
+            Entry::Occupied(_) => false,
+        }
     }
 
     fn take<T>(&self) -> Option<T>
@@ -102,6 +119,17 @@ impl ServerRuntimeContext {
         T: 'static + Send + Sync,
     {
         self.shared_values.insert(value);
+    }
+
+    /// Atomically insert a typed runtime value only when no value of that type exists.
+    ///
+    /// Returns `true` to the caller that reserved the lifecycle and `false` to concurrent callers
+    /// that observed an existing owner. This avoids check-then-insert races around spawned tasks.
+    pub fn shared_insert_if_absent<T>(&self, value: T) -> bool
+    where
+        T: 'static + Send + Sync,
+    {
+        self.shared_values.insert_if_absent(value)
     }
 
     pub fn shared_take<T>(&self) -> Option<T>
@@ -183,5 +211,14 @@ mod tests {
 
         assert_eq!(values.take::<String>().as_deref(), Some("listener"));
         assert_eq!(values.get::<u64>(), Some(42));
+    }
+
+    #[test]
+    fn shared_insert_if_absent_has_one_owner_and_preserves_the_first_value() {
+        let values = ServerSharedValues::default();
+
+        assert!(values.insert_if_absent(String::from("first")));
+        assert!(!values.insert_if_absent(String::from("second")));
+        assert_eq!(values.get::<String>().as_deref(), Some("first"));
     }
 }

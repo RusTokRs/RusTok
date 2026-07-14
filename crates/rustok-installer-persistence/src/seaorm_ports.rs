@@ -6,8 +6,8 @@ use rustok_installer::{
     InstallRoleDeployment, InstallRoleDeploymentRequest, InstallSchemaPort, InstallSeedOutcome,
     InstallSeedPort, InstallSessionRecord, InstallState, InstallVerificationOutcome,
     InstallVerificationPort, SeedExecutionError, SeedExecutionRequest, SeedIdentityPort,
-    SeedModulePort, SeedProfile, SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest,
-    SeedUser, SeedUserRequest,
+    SeedModulePort, SeedPrincipalPort, SeedProfile, SeedRolePort, SeedTenant, SeedTenantPort,
+    SeedTenantRequest, SeedUser, SeedUserRequest,
 };
 use rustok_migrations::Migrator;
 use rustok_modules::{
@@ -19,7 +19,9 @@ use rustok_tenant::{
     CreateTenantInput, PortActor, PortContext, TenantReadPort, TenantReadRequest,
     TenantReadSelector, TenantService,
 };
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TransactionTrait,
+};
 use sea_orm_migration::MigratorTrait;
 use std::time::Duration;
 use url::Url;
@@ -237,7 +239,6 @@ impl<'a> SeaOrmInstallerBootstrapPorts<'a> {
             self,
             self,
             self,
-            self,
         )
         .await
         .map_err(execution_error)?;
@@ -260,26 +261,49 @@ impl<'a> SeaOrmInstallerBootstrapPorts<'a> {
         tenant_id: Uuid,
         password: &str,
     ) -> Result<rustok_installer::InstallAdminOutcome, InstallExecutionError> {
-        let user = ensure_user(
-            &self.db,
-            SeedUserRequest {
-                tenant_id,
-                email: plan.admin.email.clone(),
-                name: "Super Admin".to_string(),
-                password: password.to_string(),
-            },
-        )
-        .await
-        .map_err(execution_error)?;
-        RbacRoleAssignmentDbWriter::new(self.db.clone())
-            .assign_role_permissions(tenant_id, user.id, rustok_core::UserRole::SuperAdmin)
+        let tx = self.db.begin().await.map_err(execution_error)?;
+        let result: Result<rustok_installer::InstallAdminOutcome, InstallExecutionError> = async {
+            let user = AuthUserBootstrapDbWriter::ensure_user_on(
+                &tx,
+                AuthUserBootstrapRequest {
+                    tenant_id,
+                    email: plan.admin.email.clone(),
+                    name: "Super Admin".to_string(),
+                    password: password.to_string(),
+                },
+            )
             .await
             .map_err(execution_error)?;
-        Ok(rustok_installer::InstallAdminOutcome {
-            user_id: user.id,
-            email: user.email,
-            created: user.created,
-        })
+            RbacRoleAssignmentDbWriter::assign_role_permissions_on(
+                &tx,
+                tenant_id,
+                user.id,
+                rustok_core::UserRole::SuperAdmin,
+            )
+            .await
+            .map_err(execution_error)?;
+            Ok(rustok_installer::InstallAdminOutcome {
+                user_id: user.id,
+                email: user.email,
+                created: user.created,
+            })
+        }
+        .await;
+
+        match result {
+            Ok(outcome) => {
+                tx.commit().await.map_err(execution_error)?;
+                Ok(outcome)
+            }
+            Err(error) => {
+                tx.rollback().await.map_err(|rollback_error| {
+                    InstallExecutionError::new(format!(
+                        "installer admin provisioning failed: {error}; rollback failed: {rollback_error}"
+                    ))
+                })?;
+                Err(error)
+            }
+        }
     }
 }
 
@@ -302,6 +326,59 @@ impl SeedTenantPort for SeaOrmInstallerBootstrapPorts<'_> {
             slug: tenant.slug,
             created,
         })
+    }
+}
+
+#[async_trait::async_trait]
+impl SeedPrincipalPort for SeaOrmInstallerBootstrapPorts<'_> {
+    async fn ensure_seed_principal(
+        &self,
+        request: SeedUserRequest,
+        role: rustok_core::UserRole,
+    ) -> Result<SeedUser, SeedExecutionError> {
+        let tx = self.db.begin().await.map_err(seed_error)?;
+        let result: Result<SeedUser, SeedExecutionError> = async {
+            let user = AuthUserBootstrapDbWriter::ensure_user_on(
+                &tx,
+                AuthUserBootstrapRequest {
+                    tenant_id: request.tenant_id,
+                    email: request.email,
+                    name: request.name,
+                    password: request.password,
+                },
+            )
+            .await
+            .map_err(seed_error)?;
+            RbacRoleAssignmentDbWriter::assign_role_permissions_on(
+                &tx,
+                request.tenant_id,
+                user.id,
+                role,
+            )
+            .await
+            .map_err(seed_error)?;
+            Ok(SeedUser {
+                id: user.id,
+                email: user.email,
+                created: user.created,
+            })
+        }
+        .await;
+
+        match result {
+            Ok(user) => {
+                tx.commit().await.map_err(seed_error)?;
+                Ok(user)
+            }
+            Err(error) => {
+                tx.rollback().await.map_err(|rollback_error| {
+                    SeedExecutionError::Dependency(format!(
+                        "seed principal provisioning failed: {error}; rollback failed: {rollback_error}"
+                    ))
+                })?;
+                Err(error)
+            }
+        }
     }
 }
 

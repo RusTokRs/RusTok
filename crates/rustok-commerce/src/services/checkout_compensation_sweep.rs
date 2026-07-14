@@ -23,7 +23,7 @@ const MAX_SWEEP_LIMIT: u64 = 100;
 pub struct CheckoutCompensationSweepFailure {
     pub operation_id: Uuid,
     pub manual_reconciliation: bool,
-    pub error: String,
+    pub error_code: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -116,12 +116,12 @@ impl CheckoutCompensationSweepService {
                 .await
             {
                 Ok(_) => report.compensated += 1,
-                Err(CheckoutCompensationError::ManualReconciliation(message)) => {
+                Err(CheckoutCompensationError::ManualReconciliation(_)) => {
                     report.manual_reconciliation += 1;
                     report.failures.push(CheckoutCompensationSweepFailure {
                         operation_id: operation.id,
                         manual_reconciliation: true,
-                        error: bounded_error(message),
+                        error_code: "checkout.compensation_manual_reconciliation".to_string(),
                     });
                 }
                 Err(error) => {
@@ -129,7 +129,7 @@ impl CheckoutCompensationSweepService {
                     report.failures.push(CheckoutCompensationSweepFailure {
                         operation_id: operation.id,
                         manual_reconciliation: false,
-                        error: bounded_error(error.to_string()),
+                        error_code: safe_error_code(&error).to_string(),
                     });
                 }
             }
@@ -138,6 +138,25 @@ impl CheckoutCompensationSweepService {
     }
 }
 
-fn bounded_error(value: String) -> String {
-    value.chars().take(500).collect()
+fn safe_error_code(error: &CheckoutCompensationError) -> &'static str {
+    match error {
+        CheckoutCompensationError::Boundary { .. } => "checkout.compensation_boundary_failed",
+        CheckoutCompensationError::Payment(_)
+        | CheckoutCompensationError::PaymentOrchestration(_) => {
+            "checkout.compensation_payment_failed"
+        }
+        CheckoutCompensationError::Order(_) => "checkout.compensation_order_failed",
+        CheckoutCompensationError::ReservationJournal(_) => {
+            "checkout.compensation_inventory_failed"
+        }
+        CheckoutCompensationError::ManualReconciliation(_) => {
+            "checkout.compensation_manual_reconciliation"
+        }
+        CheckoutCompensationError::Operation(_)
+        | CheckoutCompensationError::Database(_)
+        | CheckoutCompensationError::Conflict(_)
+        | CheckoutCompensationError::CompensationAndJournal { .. } => {
+            "checkout.compensation_failed"
+        }
+    }
 }

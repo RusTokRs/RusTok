@@ -11,3 +11,4 @@ rustok-cli-core.workspace = true
 rustok-runtime.workspace = true
 rustok-rbac.workspace = true
 serde_json.workspace = true
+uuid.workspace = true

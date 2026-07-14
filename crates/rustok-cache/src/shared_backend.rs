@@ -376,8 +376,9 @@ impl CacheBackend for SharedInstrumentedCacheBackend {
     }
 
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
+        self.inner.invalidate(key).await?;
         self.invalidations.fetch_add(1, Ordering::Relaxed);
-        self.inner.invalidate(key).await
+        Ok(())
     }
 
     fn stats(&self) -> CacheStats {
@@ -412,7 +413,7 @@ fn ttl_millis(ttl: Duration) -> Option<u64> {
     Some(if millis == 0 {
         1
     } else {
-        millis.min(u128::from(u64::MAX)) as u64
+        millis.min(i64::MAX as u128) as u64
     })
 }
 
@@ -443,6 +444,42 @@ fn shared_circuit_error(error: CircuitBreakerError<rustok_core::Error>) -> rusto
 mod tests {
     use super::*;
     use uuid::Uuid;
+
+    struct FailingInvalidationBackend;
+
+    #[async_trait]
+    impl CacheBackend for FailingInvalidationBackend {
+        async fn health(&self) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn get(&self, _key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+            Ok(None)
+        }
+
+        async fn set(&self, _key: String, _value: Vec<u8>) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn set_with_ttl(
+            &self,
+            _key: String,
+            _value: Vec<u8>,
+            _ttl: Duration,
+        ) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn invalidate(&self, _key: &str) -> rustok_core::Result<()> {
+            Err(rustok_core::Error::Cache(
+                "simulated invalidation failure".to_string(),
+            ))
+        }
+
+        fn stats(&self) -> CacheStats {
+            CacheStats::default()
+        }
+    }
 
     #[tokio::test]
     async fn shared_client_factory_preserves_memory_contract_without_redis() {
@@ -485,6 +522,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shared_instrumentation_counts_only_successful_invalidations() {
+        let backend = SharedInstrumentedCacheBackend::new(
+            "shared-failing-invalidation",
+            Arc::new(FailingInvalidationBackend),
+        );
+
+        assert!(backend.invalidate("key").await.is_err());
+        assert_eq!(backend.stats().evictions, 0);
+    }
+
+    #[tokio::test]
     async fn standard_factory_switches_namespace_on_generation_change() {
         let service = CacheService::from_url(None);
         let prefix = format!("shared-generation:{}", Uuid::new_v4().simple());
@@ -506,6 +554,15 @@ mod tests {
     fn shared_backend_ttl_preserves_positive_sub_millisecond_values() {
         assert_eq!(ttl_millis(Duration::from_nanos(1)), Some(1));
         assert_eq!(ttl_millis(Duration::from_micros(999)), Some(1));
+    }
+
+    #[cfg(feature = "redis-cache")]
+    #[test]
+    fn shared_backend_ttl_clamps_to_redis_signed_range() {
+        assert_eq!(
+            ttl_millis(Duration::new(u64::MAX, 999_999_999)),
+            Some(i64::MAX as u64)
+        );
     }
 
     #[cfg(feature = "redis-cache")]

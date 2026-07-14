@@ -24,10 +24,12 @@ async fn storefront_order_complete_checkout_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::HostRuntimeContext;
+        use rustok_commerce::services::storefront_staged_checkout_runtime;
         use rustok_commerce::storefront_checkout_runtime::{
-            self, StorefrontCheckoutCompletionCommand,
+            StorefrontCheckoutCompletionCommand, StorefrontCheckoutRuntime,
         };
         use rustok_outbox::TransactionalEventBus;
+        use rustok_payment::providers::PaymentProviderRegistry;
 
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         let event_bus = runtime_ctx
@@ -37,10 +39,10 @@ async fn storefront_order_complete_checkout_native(
                     "order/complete-checkout requires TransactionalEventBus in host runtime context",
                 )
             })?;
-        let runtime = storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
-            runtime_ctx.db_clone(),
-            event_bus,
-        );
+        let payment_provider_registry = runtime_ctx
+            .shared_get::<PaymentProviderRegistry>()
+            .unwrap_or_else(PaymentProviderRegistry::with_manual_provider);
+        let runtime = StorefrontCheckoutRuntime::new(runtime_ctx.db_clone(), event_bus);
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -52,13 +54,21 @@ async fn storefront_order_complete_checkout_native(
             .map_err(ServerFnError::new)?;
         let cart_id = Uuid::parse_str(request.cart_id.trim())
             .map_err(|_| ServerFnError::new("cart_id must be a valid UUID"))?;
+        let idempotency_key = request.idempotency_key.trim().to_string();
+        if idempotency_key.is_empty() || idempotency_key.len() > 191 {
+            return Err(ServerFnError::new(
+                "checkout idempotency key must contain 1 to 191 bytes",
+            ));
+        }
         let metadata = request.metadata;
 
-        let completion = storefront_checkout_runtime::complete_storefront_checkout(
+        let completion = storefront_staged_checkout_runtime::complete_storefront_checkout(
             &runtime,
+            payment_provider_registry,
             &tenant,
             &request_context,
             auth,
+            idempotency_key,
             StorefrontCheckoutCompletionCommand {
                 cart_id,
                 create_fulfillment: metadata.create_fulfillment,

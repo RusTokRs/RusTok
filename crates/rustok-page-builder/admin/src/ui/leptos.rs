@@ -1,9 +1,13 @@
 use crate::editor::{AdminCanvas, AdminShell};
 use crate::i18n::t;
 use crate::{AdminCanvasController, PageBuilderAdminFacade};
-use fly::{RuntimeContextScenario, TraitSchemaRegistry};
+use fly::{
+    RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
+    TraitSchemaRegistry,
+};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
+use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
 use rustok_ui_core::UiRouteContext;
 use serde_json::Value;
 use std::sync::Arc;
@@ -12,7 +16,8 @@ use std::sync::Arc;
 ///
 /// Generated module composition mounts [`PageBuilderAdmin`] without props. Consumer routes such as
 /// Pages may provide this context to activate a concrete document, persistence facade,
-/// provider-contributed authoring schemas, preview-only runtime data, and named preview scenarios.
+/// provider-contributed authoring schemas, preview-only runtime data, named preview scenarios,
+/// runtime publish policy, and a separately persisted scenario release baseline.
 #[derive(Clone)]
 pub struct PageBuilderAdminHostContext {
     pub controller: AdminCanvasController,
@@ -20,6 +25,9 @@ pub struct PageBuilderAdminHostContext {
     pub trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     pub runtime_context: Option<Value>,
     pub runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
+    pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
+    pub runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
+    pub on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
 }
 
 impl PageBuilderAdminHostContext {
@@ -30,6 +38,9 @@ impl PageBuilderAdminHostContext {
             trait_schemas: None,
             runtime_context: None,
             runtime_scenarios: None,
+            runtime_publish_gate_policy: None,
+            runtime_scenario_baseline: None,
+            on_runtime_scenario_baseline: None,
         }
     }
 
@@ -55,6 +66,30 @@ impl PageBuilderAdminHostContext {
         self.runtime_scenarios = Some(runtime_scenarios);
         self
     }
+
+    pub fn with_runtime_publish_gate_policy(
+        mut self,
+        policy: Arc<RuntimePublishGatePolicy>,
+    ) -> Self {
+        self.runtime_publish_gate_policy = Some(policy);
+        self
+    }
+
+    pub fn with_runtime_scenario_baseline(
+        mut self,
+        baseline: RuntimeScenarioReleaseBaseline,
+    ) -> Self {
+        self.runtime_scenario_baseline = Some(baseline);
+        self
+    }
+
+    pub fn on_runtime_scenario_baseline(
+        mut self,
+        callback: Callback<PageBuilderScenarioBaselineChange>,
+    ) -> Self {
+        self.on_runtime_scenario_baseline = Some(callback);
+        self
+    }
 }
 
 /// Generated host entrypoint. It intentionally accepts no props.
@@ -75,6 +110,9 @@ pub fn PageBuilderAdmin() -> impl IntoView {
                 trait_schemas=context.trait_schemas
                 runtime_context=context.runtime_context
                 runtime_scenarios=context.runtime_scenarios
+                runtime_publish_gate_policy=context.runtime_publish_gate_policy
+                runtime_scenario_baseline=context.runtime_scenario_baseline
+                on_runtime_scenario_baseline=context.on_runtime_scenario_baseline
             />
         }
         .into_any(),
@@ -116,6 +154,11 @@ pub fn PageBuilderAdminWithController(
     #[prop(optional)] trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     #[prop(optional)] runtime_context: Option<Value>,
     #[prop(optional)] runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
+    #[prop(optional)] runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
+    #[prop(optional)] runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
+    #[prop(optional)] on_runtime_scenario_baseline: Option<
+        Callback<PageBuilderScenarioBaselineChange>,
+    >,
     #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -136,6 +179,9 @@ pub fn PageBuilderAdminWithController(
                 trait_schemas
                 runtime_context
                 runtime_scenarios
+                runtime_publish_gate_policy
+                runtime_scenario_baseline
+                on_runtime_scenario_baseline
                 on_request
             />
         </AdminShell>

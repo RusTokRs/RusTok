@@ -75,13 +75,30 @@ struct ObservedCacheBackend {
     metrics: CacheCompareAndSetMetrics,
 }
 
-struct InFlightGuard<'a> {
-    counter: &'a AtomicU64,
+struct CasAttemptGuard {
+    counters: Arc<CacheCompareAndSetCounters>,
+    completed: bool,
 }
 
-impl Drop for InFlightGuard<'_> {
+impl CasAttemptGuard {
+    fn new(counters: Arc<CacheCompareAndSetCounters>) -> Self {
+        Self {
+            counters,
+            completed: false,
+        }
+    }
+
+    fn complete(&mut self) {
+        self.completed = true;
+    }
+}
+
+impl Drop for CasAttemptGuard {
     fn drop(&mut self) {
-        self.counter.fetch_sub(1, Ordering::Relaxed);
+        self.counters.in_flight.fetch_sub(1, Ordering::Relaxed);
+        if !self.completed {
+            self.counters.failed.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
 
@@ -118,11 +135,9 @@ impl CacheBackend for ObservedCacheBackend {
             .counters
             .in_flight
             .fetch_add(1, Ordering::Relaxed);
-        let _in_flight = InFlightGuard {
-            counter: &self.metrics.counters.in_flight,
-        };
+        let mut attempt = CasAttemptGuard::new(Arc::clone(&self.metrics.counters));
 
-        match self
+        let result = match self
             .backend
             .compare_and_set(key, expected, value, ttl)
             .await
@@ -145,7 +160,9 @@ impl CacheBackend for ObservedCacheBackend {
                 self.metrics.counters.failed.fetch_add(1, Ordering::Relaxed);
                 Err(error)
             }
-        }
+        };
+        attempt.complete();
+        result
     }
 
     async fn invalidate(&self, key: &str) -> CoreResult<()> {
@@ -185,6 +202,53 @@ mod tests {
             _ttl: Duration,
         ) -> CoreResult<()> {
             Ok(())
+        }
+
+        async fn invalidate(&self, _key: &str) -> CoreResult<()> {
+            Ok(())
+        }
+
+        fn stats(&self) -> CacheStats {
+            CacheStats::default()
+        }
+    }
+
+    struct PendingCasBackend {
+        entered: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait]
+    impl CacheBackend for PendingCasBackend {
+        async fn health(&self) -> CoreResult<()> {
+            Ok(())
+        }
+
+        async fn get(&self, _key: &str) -> CoreResult<Option<Vec<u8>>> {
+            Ok(None)
+        }
+
+        async fn set(&self, _key: String, _value: Vec<u8>) -> CoreResult<()> {
+            Ok(())
+        }
+
+        async fn set_with_ttl(
+            &self,
+            _key: String,
+            _value: Vec<u8>,
+            _ttl: Duration,
+        ) -> CoreResult<()> {
+            Ok(())
+        }
+
+        async fn compare_and_set(
+            &self,
+            _key: &str,
+            _expected: &[u8],
+            _value: Vec<u8>,
+            _ttl: Option<Duration>,
+        ) -> CoreResult<CacheCompareAndSetOutcome> {
+            self.entered.notify_one();
+            std::future::pending::<CoreResult<CacheCompareAndSetOutcome>>().await
         }
 
         async fn invalidate(&self, _key: &str) -> CoreResult<()> {
@@ -240,6 +304,37 @@ mod tests {
             }
         );
         assert_eq!(unsupported_metrics.snapshot().failed, 1);
+    }
+
+    #[tokio::test]
+    async fn cancelled_cas_attempt_counts_as_failure() {
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let (backend, metrics) = observe_cache_compare_and_set(Arc::new(PendingCasBackend {
+            entered: Arc::clone(&entered),
+        }));
+        let task = tokio::spawn(async move {
+            backend
+                .compare_and_set("key", b"old", b"new".to_vec(), None)
+                .await
+        });
+
+        entered.notified().await;
+        assert_eq!(metrics.snapshot().attempted, 1);
+        assert_eq!(metrics.snapshot().in_flight, 1);
+        task.abort();
+        let _ = task.await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(
+            metrics.snapshot(),
+            CacheCompareAndSetStats {
+                attempted: 1,
+                applied: 0,
+                mismatches: 0,
+                failed: 1,
+                in_flight: 0,
+            }
+        );
     }
 
     #[test]

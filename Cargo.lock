@@ -11548,10 +11548,12 @@ dependencies = [
  "rustok-modules",
  "rustok-rbac",
  "rustok-tenant",
+ "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "tokio",
  "url",
  "uuid",
 ]
@@ -11702,6 +11704,7 @@ name = "rustok-migrations"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "async-trait",
  "rust_decimal",
  "rustok-api",
  "rustok-auth",
@@ -11811,6 +11814,7 @@ dependencies = [
  "rustok-commerce",
  "rustok-graphql",
  "rustok-outbox",
+ "rustok-payment",
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
  "rustok-ui-transport",
@@ -11914,6 +11918,7 @@ dependencies = [
  "rustok-events",
  "rustok-media",
  "rustok-outbox",
+ "rustok-page-builder",
  "rustok-seo-targets",
  "rustok-telemetry",
  "rustok-tenant",
@@ -11978,7 +11983,9 @@ dependencies = [
 name = "rustok-payment"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
+ "axum",
  "chrono",
  "rust_decimal",
  "rustok-api",
@@ -11989,6 +11996,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -12223,6 +12231,8 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-events",
+ "rustok-migrations",
+ "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -12256,6 +12266,7 @@ dependencies = [
  "rustok-rbac",
  "rustok-runtime",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

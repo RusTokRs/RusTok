@@ -119,7 +119,6 @@ impl CommandProvider for InstallerCommandProvider {
             &ports,
             &ports,
             &ports,
-            &ports,
         )
         .await
         .map_err(failed)?;

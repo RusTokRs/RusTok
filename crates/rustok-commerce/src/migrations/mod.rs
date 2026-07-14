@@ -16,6 +16,9 @@ mod m20260713_000011_enforce_checkout_inventory_reservation_quantity;
 mod m20260713_000012_adopt_checkout_inventory_into_order_lines;
 mod m20260713_000013_cutover_checkout_inventory_lifecycle;
 mod m20260713_000014_create_checkout_order_plans;
+mod m20260713_000015_bind_checkout_payment_collections;
+mod m20260713_000016_block_provider_execution_during_checkout_compensation;
+mod m20260713_000017_classify_checkout_reconciliation;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -38,6 +41,11 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000012_adopt_checkout_inventory_into_order_lines::Migration),
         Box::new(m20260713_000013_cutover_checkout_inventory_lifecycle::Migration),
         Box::new(m20260713_000014_create_checkout_order_plans::Migration),
+        Box::new(m20260713_000015_bind_checkout_payment_collections::Migration),
+        Box::new(
+            m20260713_000016_block_provider_execution_during_checkout_compensation::Migration,
+        ),
+        Box::new(m20260713_000017_classify_checkout_reconciliation::Migration),
     ]
 }
 
@@ -114,6 +122,24 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260713_000014_create_checkout_order_plans",
             vec!["m20260713_000013_cutover_checkout_inventory_lifecycle"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260713_000015_bind_checkout_payment_collections",
+            vec![
+                "m20260713_000014_create_checkout_order_plans",
+                "m20260325_000104_create_payment_tables",
+            ],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260713_000016_block_provider_execution_during_checkout_compensation",
+            vec![
+                "m20260713_000015_bind_checkout_payment_collections",
+                "m20260713_000111_create_provider_operation_journal",
+            ],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260713_000017_classify_checkout_reconciliation",
+            vec!["m20260713_000016_block_provider_execution_during_checkout_compensation"],
         ),
     ]
 }

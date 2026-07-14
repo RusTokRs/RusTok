@@ -53,7 +53,9 @@ struct CacheRefreshInner {
 ///
 /// Refresh identity is scoped by both backend instance and key. A global semaphore limits
 /// refresh concurrency, while a per-key lease prevents duplicate refresh tasks for the same
-/// cache entry. Failed refreshes leave the stale value untouched until its hard expiry.
+/// cache entry and retains the backend allocation until its identity leaves the in-flight set.
+/// Failed, cancelled and panicked refreshes leave the stale value untouched until hard expiry and
+/// are reflected in the failure counter.
 #[derive(Clone)]
 pub struct CacheRefreshCoordinator {
     inner: Arc<CacheRefreshInner>,
@@ -128,10 +130,13 @@ impl CacheRefreshCoordinator {
         let lease = CacheRefreshLease {
             key: refresh_key,
             in_flight: Arc::clone(&inner.in_flight),
+            _backend: Arc::clone(backend),
             _permit: permit,
         };
+        let completion = CacheRefreshTaskCompletionGuard::new(Arc::clone(&inner));
         runtime.spawn(async move {
             let _lease = lease;
+            let mut completion = completion;
             match refresh().await {
                 Ok(()) => {
                     inner.metrics.completed.fetch_add(1, Ordering::Relaxed);
@@ -141,6 +146,7 @@ impl CacheRefreshCoordinator {
                     tracing::warn!(%error, key, "Stale cache background refresh failed");
                 }
             }
+            completion.complete();
         });
 
         CacheRefreshSchedule::Spawned
@@ -183,6 +189,7 @@ impl CacheRefreshCoordinator {
 struct CacheRefreshLease {
     key: CacheRefreshKey,
     in_flight: Arc<StdMutex<HashSet<CacheRefreshKey>>>,
+    _backend: Arc<dyn CacheBackend>,
     _permit: OwnedSemaphorePermit,
 }
 
@@ -192,6 +199,32 @@ impl Drop for CacheRefreshLease {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(&self.key);
+    }
+}
+
+struct CacheRefreshTaskCompletionGuard {
+    inner: Arc<CacheRefreshInner>,
+    completed: bool,
+}
+
+impl CacheRefreshTaskCompletionGuard {
+    fn new(inner: Arc<CacheRefreshInner>) -> Self {
+        Self {
+            inner,
+            completed: false,
+        }
+    }
+
+    fn complete(&mut self) {
+        self.completed = true;
+    }
+}
+
+impl Drop for CacheRefreshTaskCompletionGuard {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.inner.metrics.failed.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
 
@@ -259,6 +292,20 @@ impl CacheService {
         F: Fn() -> Fut + Clone + Send + 'static,
         Fut: Future<Output = rustok_core::Result<CacheEnvelope<T>>> + Send + 'static,
     {
+        let loader = move || {
+            let loader = loader.clone();
+            async move {
+                let envelope = loader().await?;
+                if envelope.is_hard_expired(current_unix_ms()) {
+                    return Err(rustok_core::Error::Cache(
+                        "cache loader produced an already hard-expired envelope at completion"
+                            .to_string(),
+                    ));
+                }
+                Ok(envelope)
+            }
+        };
+
         self.load_enveloped_stale_while_revalidate_with_limit_at(
             coordinator,
             backend,
@@ -276,7 +323,8 @@ impl CacheService {
     ///
     /// A stale hit carries the exact encoded bytes observed by the request. The background
     /// loader uses the backend's atomic compare-and-set primitive, so a concurrent replacement
-    /// or invalidation wins without any read/write time-of-check gap.
+    /// or invalidation wins without any read/write time-of-check gap. The same injected clock is
+    /// used to validate the asynchronously refreshed envelope.
     pub async fn load_enveloped_stale_while_revalidate_with_limit_at<T, F, Fut>(
         &self,
         coordinator: &CacheRefreshCoordinator,
@@ -294,7 +342,7 @@ impl CacheService {
         Fut: Future<Output = rustok_core::Result<CacheEnvelope<T>>> + Send + 'static,
     {
         let key = key.into();
-        validate_refresh_key(&key)?;
+        validate_refresh_request(&key, expected_schema_version, max_encoded_bytes)?;
 
         if let Some(observed_bytes) = backend.get(&key).await? {
             match CacheEnvelope::<T>::decode_with_limit(
@@ -318,6 +366,7 @@ impl CacheService {
                                 expected_schema_version,
                                 refresh_policy,
                                 max_encoded_bytes,
+                                now_unix_ms,
                                 refresh_loader,
                             )
                             .await
@@ -380,6 +429,7 @@ async fn refresh_envelope<T, F, Fut>(
     expected_schema_version: u32,
     policy: CacheLoadPolicy,
     max_encoded_bytes: usize,
+    now_unix_ms: u64,
     loader: F,
 ) -> rustok_core::Result<()>
 where
@@ -415,7 +465,7 @@ where
             expected_schema_version
         )));
     }
-    if envelope.is_hard_expired(current_unix_ms()) {
+    if envelope.is_hard_expired(now_unix_ms) {
         return Err(rustok_core::Error::Cache(
             "cache refresh produced an already hard-expired envelope".to_string(),
         ));
@@ -440,6 +490,25 @@ where
             Ok(())
         }
     }
+}
+
+fn validate_refresh_request(
+    key: &str,
+    expected_schema_version: u32,
+    max_encoded_bytes: usize,
+) -> rustok_core::Result<()> {
+    validate_refresh_key(key)?;
+    if expected_schema_version == 0 {
+        return Err(rustok_core::Error::Cache(
+            "cache refresh expected schema version must be non-zero".to_string(),
+        ));
+    }
+    if max_encoded_bytes == 0 {
+        return Err(rustok_core::Error::Cache(
+            "cache refresh encoded size limit must be non-zero".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_refresh_key(key: &str) -> rustok_core::Result<()> {
@@ -475,7 +544,9 @@ mod tests {
     use tokio::sync::oneshot;
 
     #[tokio::test]
-    async fn dropping_unpolled_refresh_future_releases_lease() {
+    async fn dropping_unpolled_refresh_future_releases_lease_and_counts_failure() {
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let backend = CacheService::from_url(None).memory_backend(Duration::from_secs(60), 1);
         let key = CacheRefreshKey {
             backend_id: 1,
             key: "never-polled".to_string(),
@@ -485,11 +556,20 @@ mod tests {
         let lease = CacheRefreshLease {
             key,
             in_flight: Arc::clone(&in_flight),
+            _backend: backend,
             _permit: permit,
         };
+        coordinator
+            .inner
+            .metrics
+            .started
+            .fetch_add(1, Ordering::Relaxed);
+        let completion = CacheRefreshTaskCompletionGuard::new(Arc::clone(&coordinator.inner));
         let future = async move {
             let _lease = lease;
+            let mut completion = completion;
             std::future::pending::<()>().await;
+            completion.complete();
         };
 
         drop(future);
@@ -497,6 +577,71 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .is_empty());
+        let stats = coordinator.stats();
+        assert_eq!(stats.started, 1);
+        assert_eq!(stats.failed, 1);
+    }
+
+    #[tokio::test]
+    async fn scheduled_refresh_keeps_backend_identity_alive_until_completion() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 1);
+        let weak_backend = Arc::downgrade(&backend);
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let (started_tx, started_rx) = oneshot::channel();
+        let (release_tx, release_rx) = oneshot::channel();
+
+        assert_eq!(
+            coordinator.schedule(&backend, "identity", move || async move {
+                let _ = started_tx.send(());
+                let _ = release_rx.await;
+                Ok(())
+            }),
+            CacheRefreshSchedule::Spawned
+        );
+        started_rx.await.unwrap();
+        drop(backend);
+        assert!(weak_backend.upgrade().is_some());
+
+        let _ = release_tx.send(());
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while coordinator.in_flight() != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("refresh task did not finish");
+        assert!(weak_backend.upgrade().is_none());
+    }
+
+    #[test]
+    fn runtime_shutdown_counts_cancelled_refresh_as_failure() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 1);
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let (started_tx, started_rx) = oneshot::channel();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            assert_eq!(
+                coordinator.schedule(&backend, "shutdown", move || async move {
+                    let _ = started_tx.send(());
+                    std::future::pending::<rustok_core::Result<()>>().await
+                }),
+                CacheRefreshSchedule::Spawned
+            );
+            started_rx.await.unwrap();
+            assert_eq!(coordinator.stats().started, 1);
+            assert_eq!(coordinator.stats().in_flight, 1);
+        });
+
+        runtime.shutdown_timeout(Duration::from_millis(10));
+        assert_eq!(coordinator.stats().completed, 0);
+        assert_eq!(coordinator.stats().failed, 1);
+        assert_eq!(coordinator.stats().in_flight, 0);
     }
 
     #[tokio::test]
@@ -624,6 +769,166 @@ mod tests {
         assert!(error.to_string().contains("maximum"));
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert_eq!(coordinator.in_flight(), 0);
+    }
+
+    #[tokio::test]
+    async fn invalid_swr_configuration_does_not_delete_a_valid_entry() {
+        let service = CacheService::from_url(None);
+        let backend = service
+            .backend_shared_client("refresh-invalid-config", Duration::from_secs(60), 16)
+            .await;
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let original = CacheEnvelope::new(1, 1_000, "cached".to_string())
+            .unwrap()
+            .with_expirations(Some(1_500), Some(10_000))
+            .unwrap()
+            .encode()
+            .unwrap();
+        backend
+            .set("document".to_string(), original.clone())
+            .await
+            .unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        for (expected_schema_version, max_encoded_bytes) in [(0, 1024), (1, 0)] {
+            let loader_calls = Arc::clone(&calls);
+            let error = service
+                .load_enveloped_stale_while_revalidate_with_limit_at(
+                    &coordinator,
+                    backend.clone(),
+                    "document",
+                    expected_schema_version,
+                    CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    max_encoded_bytes,
+                    2_000,
+                    move || {
+                        let loader_calls = Arc::clone(&loader_calls);
+                        async move {
+                            loader_calls.fetch_add(1, Ordering::SeqCst);
+                            CacheEnvelope::new(1, 2_000, "unexpected".to_string())
+                                .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                        }
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert!(matches!(error, rustok_core::Error::Cache(_)));
+            assert_eq!(backend.get("document").await.unwrap(), Some(original.clone()));
+            assert_eq!(coordinator.in_flight(), 0);
+        }
+
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn injected_clock_is_used_for_background_refresh_validation() {
+        let service = CacheService::from_url(None);
+        let backend = service
+            .backend_shared_client("refresh-injected-clock", Duration::from_secs(60), 16)
+            .await;
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let stale = CacheEnvelope::new(1, 1_000, "stale".to_string())
+            .unwrap()
+            .with_expirations(Some(1_500), Some(10_000))
+            .unwrap()
+            .encode()
+            .unwrap();
+        backend.set("document".to_string(), stale).await.unwrap();
+
+        let result = service
+            .load_enveloped_stale_while_revalidate_with_limit_at(
+                &coordinator,
+                backend.clone(),
+                "document",
+                1,
+                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                1024,
+                2_000,
+                || async {
+                    CacheEnvelope::new(1, 2_000, "fresh".to_string())
+                        .unwrap()
+                        .with_expirations(Some(2_500), Some(5_000))
+                        .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.cache.value, "stale");
+        assert_eq!(result.refresh, CacheRefreshSchedule::Spawned);
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while coordinator.in_flight() != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("refresh task did not finish");
+
+        let bytes = backend.get("document").await.unwrap().unwrap();
+        let refreshed = CacheEnvelope::<String>::decode_with_limit(&bytes, 1, 1024).unwrap();
+        assert_eq!(refreshed.payload(), "fresh");
+        assert_eq!(coordinator.stats().completed, 1);
+        assert_eq!(coordinator.stats().failed, 0);
+    }
+
+    #[tokio::test]
+    async fn system_clock_rejects_refresh_that_expires_while_loader_runs() {
+        let service = CacheService::from_url(None);
+        let backend = service
+            .backend_shared_client("refresh-system-clock-expiry", Duration::from_secs(60), 16)
+            .await;
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let now = current_unix_ms();
+        let stale = CacheEnvelope::new(1, now.saturating_sub(1_000), "stale".to_string())
+            .unwrap()
+            .with_expirations(
+                Some(now.saturating_sub(500)),
+                Some(now.saturating_add(10_000)),
+            )
+            .unwrap()
+            .encode()
+            .unwrap();
+        backend
+            .set("document".to_string(), stale.clone())
+            .await
+            .unwrap();
+        let refresh_expires_at = current_unix_ms().saturating_add(20);
+
+        let result = service
+            .load_enveloped_stale_while_revalidate(
+                &coordinator,
+                backend.clone(),
+                "document",
+                1,
+                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                move || async move {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    CacheEnvelope::new(
+                        1,
+                        refresh_expires_at.saturating_sub(1),
+                        "expired-refresh".to_string(),
+                    )
+                    .unwrap()
+                    .with_expirations(None, Some(refresh_expires_at))
+                    .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.cache.value, "stale");
+        assert_eq!(result.refresh, CacheRefreshSchedule::Spawned);
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while coordinator.in_flight() != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("refresh task did not finish");
+
+        assert_eq!(backend.get("document").await.unwrap(), Some(stale));
+        assert_eq!(coordinator.stats().completed, 0);
+        assert_eq!(coordinator.stats().failed, 1);
     }
 
     #[tokio::test]

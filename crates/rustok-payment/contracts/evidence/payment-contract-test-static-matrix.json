@@ -5,7 +5,7 @@
   "status": "static_matrix_locked",
   "generated_from": "crates/rustok-payment/contracts/payment-fba-registry.json",
   "runner": "scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
-  "contract_version": "payment.checkout.v1+provider_spi.v1",
+  "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1",
   "profiles": [
     "in_process",
     "remote_adapter_placeholder"

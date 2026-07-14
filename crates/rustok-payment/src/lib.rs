@@ -3,11 +3,19 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+#[cfg(feature = "server")]
+pub mod controllers;
 pub mod dto;
 pub mod entities;
 pub mod error;
+#[cfg(feature = "server")]
+pub mod http;
 pub mod migrations;
+#[cfg(feature = "server")]
+pub mod openapi;
 pub mod ports;
+#[cfg(feature = "server")]
+pub mod provider_event_recovery_controller;
 pub mod providers;
 pub mod services;
 
@@ -18,10 +26,19 @@ pub use providers::*;
 
 pub use error::{PaymentError, PaymentResult};
 pub use services::{
-    BeginProviderOperation, PaymentProviderOperationJournal, PaymentService,
-    PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING,
-    PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-    PROVIDER_OPERATION_SUCCEEDED,
+    BeginProviderOperation, CheckpointProviderEvent, CompleteProviderEvent, FailProviderEvent,
+    PaymentDomainEventApplier, PaymentLifecycleEventApplier, PaymentProviderEventApplier,
+    PaymentProviderEventApplyError, PaymentProviderEventContext, PaymentProviderEventExecution,
+    PaymentProviderEventIngressError, PaymentProviderEventIngressResult,
+    PaymentProviderEventIngressService, PaymentProviderEventJournal,
+    PaymentProviderEventRecoveryFailure, PaymentProviderEventRecoveryOutcome,
+    PaymentProviderEventRecoveryReport, PaymentProviderEventRecoveryService,
+    PaymentProviderOperationJournal, PaymentService, ReceiveProviderEvent,
+    RefundLifecycleEventApplier, VerifiedProviderEvent, PROVIDER_EVENT_DEAD_LETTER,
+    PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING,
+    PROVIDER_EVENT_RECEIVED, PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_ERROR,
+    PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_PENDING,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
 
 pub struct PaymentModule;

@@ -1,13 +1,19 @@
 use crate::editor::{
-    AdminEditorRuntime, AuthoringToolbar, BindingPanel, ContextSchemaPanel, DynamicRuntimePanel,
+    AdminEditorRuntime, AuthoringToolbar, BindingPanel, ContextCompatibilityPanel,
+    ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel, DynamicRuntimePanel,
     IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
-    ResponsiveStylePanel, RuntimeScenarioPanel, TraitPanel,
+    ResponsiveStylePanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
+    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, TraitPanel,
 };
 use crate::i18n::t;
 use crate::{AdminCanvasController, PageBuilderAdminFacade};
-use fly::{RuntimeContextScenario, TraitSchemaRegistry};
+use fly::{
+    RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
+    TraitSchemaRegistry,
+};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
+use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
 use rustok_ui_core::UiRouteContext;
 use serde_json::Value;
 use std::sync::Arc;
@@ -19,6 +25,11 @@ pub fn AdminCanvas(
     #[prop(optional)] trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     #[prop(optional)] runtime_context: Option<Value>,
     #[prop(optional)] runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
+    #[prop(optional)] runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
+    #[prop(optional)] runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
+    #[prop(optional)] on_runtime_scenario_baseline: Option<
+        Callback<PageBuilderScenarioBaselineChange>,
+    >,
     #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -52,13 +63,23 @@ pub fn AdminCanvas(
         Some(runtime_scenarios) => runtime.with_runtime_scenarios(runtime_scenarios),
         None => runtime,
     };
+    let runtime = match runtime_publish_gate_policy {
+        Some(policy) => runtime.with_runtime_publish_gate_policy(policy),
+        None => runtime,
+    };
     let toolbar_runtime = runtime.clone();
     let page_runtime = runtime.clone();
     let palette_runtime = runtime.clone();
     let canvas_runtime = runtime.clone();
+    let gate_runtime = runtime.clone();
     let scenario_runtime = runtime.clone();
+    let scenario_matrix_runtime = runtime.clone();
+    let scenario_regression_runtime = runtime.clone();
     let dynamic_runtime = runtime.clone();
     let context_runtime = runtime.clone();
+    let contract_tools_runtime = runtime.clone();
+    let compatibility_runtime = runtime.clone();
+    let dependency_runtime = runtime.clone();
     let binding_runtime = runtime.clone();
     let trait_runtime = runtime.clone();
     let properties_runtime = runtime.clone();
@@ -79,9 +100,19 @@ pub fn AdminCanvas(
                 </div>
                 <IsolatedAuthoringCanvas runtime=canvas_runtime />
                 <div class="space-y-3 overflow-auto">
+                    <RuntimePublishGatePanel runtime=gate_runtime />
                     <RuntimeScenarioPanel runtime=scenario_runtime />
+                    <RuntimeScenarioMatrixPanel runtime=scenario_matrix_runtime />
+                    <RuntimeScenarioRegressionPanel
+                        runtime=scenario_regression_runtime
+                        initial_baseline=runtime_scenario_baseline
+                        on_baseline_change=on_runtime_scenario_baseline
+                    />
                     <DynamicRuntimePanel runtime=dynamic_runtime />
                     <ContextSchemaPanel runtime=context_runtime />
+                    <ContextContractToolsPanel runtime=contract_tools_runtime />
+                    <ContextCompatibilityPanel runtime=compatibility_runtime />
+                    <ContextDependencyPanel runtime=dependency_runtime />
                     <BindingPanel runtime=binding_runtime />
                     <TraitPanel runtime=trait_runtime />
                     <PropertiesAssetsPanel runtime=properties_runtime />

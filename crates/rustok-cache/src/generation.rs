@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock, Weak};
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
@@ -393,7 +393,7 @@ impl CacheNamespaceGenerationStore {
 }
 
 struct RegisteredGenerationStore {
-    _identity: Arc<dyn Any + Send + Sync>,
+    identity: Weak<dyn Any + Send + Sync>,
     store: CacheNamespaceGenerationStore,
 }
 
@@ -408,6 +408,24 @@ fn generation_store_identity_key(identity: &Arc<dyn Any + Send + Sync>) -> usize
     Arc::as_ptr(identity) as *const () as usize
 }
 
+fn registered_store_for_identity(
+    registry: &GenerationStoreRegistry,
+    identity_key: usize,
+    identity: &Arc<dyn Any + Send + Sync>,
+) -> Option<CacheNamespaceGenerationStore> {
+    let registered = registry.get(&identity_key)?;
+    let registered_identity = registered.identity.upgrade()?;
+    if Arc::ptr_eq(&registered_identity, identity) {
+        Some(registered.store.clone())
+    } else {
+        None
+    }
+}
+
+fn prune_dead_generation_stores(registry: &mut GenerationStoreRegistry) {
+    registry.retain(|_, registered| registered.identity.strong_count() > 0);
+}
+
 impl CacheService {
     pub fn namespace_generations(&self) -> CacheNamespaceGenerationStore {
         let identity = self.generation_store_identity();
@@ -415,9 +433,14 @@ impl CacheService {
         let mut registry = generation_store_registry()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(registered) = registry.get(&identity_key) {
-            return registered.store.clone();
+
+        prune_dead_generation_stores(&mut registry);
+        if let Some(store) = registered_store_for_identity(&registry, identity_key, &identity) {
+            return store;
         }
+        // A pointer key may only alias a stale/dead allocation. Remove it before inserting a new
+        // identity so allocator address reuse can never attach a service to another store.
+        registry.remove(&identity_key);
 
         #[cfg(feature = "redis-cache")]
         let store = CacheNamespaceGenerationStore::new(self.redis_client().cloned());
@@ -435,7 +458,7 @@ impl CacheService {
         registry.insert(
             identity_key,
             RegisteredGenerationStore {
-                _identity: identity,
+                identity: Arc::downgrade(&identity),
                 store: store.clone(),
             },
         );
@@ -609,6 +632,32 @@ mod tests {
                 .value(),
             0
         );
+    }
+
+    #[test]
+    fn generation_store_registry_reclaims_dead_identities_without_aliasing() {
+        let first_identity: Arc<dyn Any + Send + Sync> = Arc::new(String::from("first"));
+        let second_identity: Arc<dyn Any + Send + Sync> = Arc::new(String::from("second"));
+        let identity_key = generation_store_identity_key(&second_identity);
+        #[cfg(feature = "redis-cache")]
+        let store = CacheNamespaceGenerationStore::new(None);
+        #[cfg(not(feature = "redis-cache"))]
+        let store = CacheNamespaceGenerationStore::new();
+        let mut registry = GenerationStoreRegistry::new();
+        registry.insert(
+            identity_key,
+            RegisteredGenerationStore {
+                identity: Arc::downgrade(&first_identity),
+                store,
+            },
+        );
+
+        assert!(registered_store_for_identity(&registry, identity_key, &second_identity).is_none());
+        assert_eq!(registry.len(), 1);
+
+        drop(first_identity);
+        prune_dead_generation_stores(&mut registry);
+        assert!(registry.is_empty());
     }
 
     #[tokio::test]

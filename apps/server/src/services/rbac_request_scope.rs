@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use rustok_api::Permission;
 use rustok_core::UserRole;
@@ -34,8 +35,26 @@ impl RbacRequestScope {
     }
 }
 
+struct RbacRequestScopeState {
+    scope: RbacRequestScope,
+    valid: AtomicBool,
+}
+
+impl RbacRequestScopeState {
+    fn new(scope: RbacRequestScope) -> Self {
+        Self {
+            scope,
+            valid: AtomicBool::new(true),
+        }
+    }
+
+    fn matches_valid(&self, tenant_id: &Uuid, actor_id: &Uuid) -> bool {
+        self.valid.load(Ordering::Acquire) && self.scope.matches(tenant_id, actor_id)
+    }
+}
+
 tokio::task_local! {
-    static CURRENT_RBAC_SCOPE: RbacRequestScope;
+    static CURRENT_RBAC_SCOPE: RbacRequestScopeState;
 }
 
 pub async fn with_rbac_request_scope<F>(scope: Option<RbacRequestScope>, future: F) -> F::Output
@@ -43,17 +62,19 @@ where
     F: Future,
 {
     match scope {
-        Some(scope) => CURRENT_RBAC_SCOPE.scope(scope, future).await,
+        Some(scope) => CURRENT_RBAC_SCOPE
+            .scope(RbacRequestScopeState::new(scope), future)
+            .await,
         None => future.await,
     }
 }
 
 pub fn permissions_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<Vec<Permission>> {
     CURRENT_RBAC_SCOPE
-        .try_with(|scope| {
-            scope
-                .matches(tenant_id, actor_id)
-                .then(|| scope.permissions.clone())
+        .try_with(|state| {
+            state
+                .matches_valid(tenant_id, actor_id)
+                .then(|| state.scope.permissions.clone())
         })
         .ok()
         .flatten()
@@ -61,13 +82,26 @@ pub fn permissions_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<Vec<Permissi
 
 pub fn role_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<UserRole> {
     CURRENT_RBAC_SCOPE
-        .try_with(|scope| {
-            scope
-                .matches(tenant_id, actor_id)
-                .then(|| scope.role.clone())
+        .try_with(|state| {
+            state
+                .matches_valid(tenant_id, actor_id)
+                .then(|| state.scope.role.clone())
         })
         .ok()
         .flatten()
+}
+
+/// Invalidate the current task-local RBAC snapshot when the mutation targets its exact actor.
+///
+/// This closes the multi-mutation request window: after a role or permission change commits, later
+/// authorization fields in the same request must resolve permissions again instead of reusing the
+/// middleware snapshot. Other concurrent requests keep their own isolated task-local state.
+pub(crate) fn invalidate_current_rbac_request_scope(tenant_id: &Uuid, actor_id: &Uuid) {
+    let _ = CURRENT_RBAC_SCOPE.try_with(|state| {
+        if state.scope.matches(tenant_id, actor_id) {
+            state.valid.store(false, Ordering::Release);
+        }
+    });
 }
 
 #[cfg(test)]
@@ -115,6 +149,48 @@ mod tests {
         .await;
 
         assert!(permissions_for(&tenant_id, &actor_id).is_none());
+    }
+
+    #[tokio::test]
+    async fn exact_actor_invalidation_expires_the_request_snapshot() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let scope = RbacRequestScope::new(
+            tenant_id,
+            actor_id,
+            vec![Permission::USERS_MANAGE],
+            UserRole::Admin,
+        );
+
+        with_rbac_request_scope(Some(scope), async move {
+            assert!(permissions_for(&tenant_id, &actor_id).is_some());
+            invalidate_current_rbac_request_scope(&tenant_id, &actor_id);
+            assert!(permissions_for(&tenant_id, &actor_id).is_none());
+            assert!(role_for(&tenant_id, &actor_id).is_none());
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn unrelated_actor_invalidation_preserves_the_request_snapshot() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let scope = RbacRequestScope::new(
+            tenant_id,
+            actor_id,
+            vec![Permission::USERS_READ],
+            UserRole::Manager,
+        );
+
+        with_rbac_request_scope(Some(scope), async move {
+            invalidate_current_rbac_request_scope(&tenant_id, &Uuid::new_v4());
+            invalidate_current_rbac_request_scope(&Uuid::new_v4(), &actor_id);
+            assert_eq!(
+                permissions_for(&tenant_id, &actor_id),
+                Some(vec![Permission::USERS_READ])
+            );
+        })
+        .await;
     }
 
     #[test]

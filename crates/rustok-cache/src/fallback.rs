@@ -146,10 +146,11 @@ fn validate_degraded_key(key: &str, operation: &str) -> rustok_core::Result<()> 
 /// records only writes whose primary operation failed, so those newer local bytes remain
 /// authoritative during reconnects instead of being overwritten by stale shared data. Failed
 /// invalidations retain a separate bounded process-local tombstone: reads never resurrect stale
-/// shared bytes and opportunistically retry the delete after Redis recovers. Tracker capacity is
-/// never recovered by evicting a live mutation; new mutations surface the primary error when they
-/// cannot be retained safely. A fixed set of striped locks serializes operations for the same key
-/// without introducing an unbounded per-key registry.
+/// shared bytes, but they also never replay a delete because a newer cross-instance write may have
+/// happened after the failed invalidation. Only an explicit invalidation retry may clear shared
+/// state. Tracker capacity is never recovered by evicting a live mutation; new mutations surface
+/// the primary error when they cannot be retained safely. A fixed set of striped locks serializes
+/// operations for the same key without introducing an unbounded per-key registry.
 pub(crate) struct DegradationAwareFallbackBackend {
     primary: Arc<dyn CacheBackend>,
     fallback: Arc<InMemoryCacheBackend>,
@@ -209,7 +210,7 @@ impl DegradationAwareFallbackBackend {
         }
     }
 
-    async fn retry_pending_invalidation(&self, key: &str) -> bool {
+    async fn pending_invalidation_active(&self, key: &str) -> bool {
         if !self.pending_invalidations.contains(key).await {
             return false;
         }
@@ -217,19 +218,10 @@ impl DegradationAwareFallbackBackend {
         if let Err(error) = self.fallback.invalidate(key).await {
             tracing::warn!(%error, key, "Failed to preserve local cache invalidation tombstone");
         }
-        match self.primary.invalidate(key).await {
-            Ok(()) => {
-                self.clear_pending_invalidation(key).await;
-                tracing::debug!(key, "Retried pending shared cache invalidation successfully");
-            }
-            Err(error) => {
-                tracing::debug!(
-                    %error,
-                    key,
-                    "Shared cache invalidation is still pending; suppressing stale primary value"
-                );
-            }
-        }
+        tracing::debug!(
+            key,
+            "Suppressing shared cache value until an explicit invalidation retry or newer write"
+        );
         true
     }
 
@@ -335,7 +327,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
 
     async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
         let _guard = self.key_lock(key).lock().await;
-        if self.retry_pending_invalidation(key).await {
+        if self.pending_invalidation_active(key).await {
             return Ok(None);
         }
         if let Some(value) = self.read_degraded_write(key).await? {
@@ -346,7 +338,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
             Ok(primary_value) => {
                 // Keep the defensive re-check even though same-key operations are serialized: a
                 // test or maintenance path may manipulate the concrete fallback directly.
-                if self.retry_pending_invalidation(key).await {
+                if self.pending_invalidation_active(key).await {
                     return Ok(None);
                 }
                 if let Some(value) = self.read_degraded_write(key).await? {
@@ -948,7 +940,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn failed_invalidation_tombstone_prevents_stale_primary_resurrection() {
+    async fn failed_invalidation_tombstone_requires_explicit_retry() {
         let primary = Arc::new(RecoveringStaleBackend {
             fail_writes: AtomicBool::new(true),
             value: StdMutex::new(Some(b"old".to_vec())),
@@ -967,7 +959,23 @@ mod tests {
         assert_eq!(fallback.get("key").await.unwrap(), None);
 
         primary.fail_writes.store(false, Ordering::SeqCst);
+        *primary
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(b"newer".to_vec());
+
         assert_eq!(backend.get("key").await.unwrap(), None);
+        assert!(backend.pending_invalidations.contains("key").await);
+        assert_eq!(
+            primary
+                .value
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_deref(),
+            Some(b"newer".as_slice())
+        );
+
+        backend.invalidate("key").await.unwrap();
         assert!(!backend.pending_invalidations.contains("key").await);
         assert!(primary
             .value

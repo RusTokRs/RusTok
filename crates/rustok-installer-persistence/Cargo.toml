@@ -21,3 +21,7 @@ serde.workspace = true
 serde_json.workspace = true
 url.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+rustok-test-utils.workspace = true
+tokio.workspace = true

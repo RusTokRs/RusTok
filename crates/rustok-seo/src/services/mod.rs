@@ -153,9 +153,9 @@ impl SeoService {
             return Ok(SeoModuleSettings::default());
         };
 
-        Ok(Self::normalize_settings(
-            serde_json::from_value::<SeoModuleSettings>(module.settings).unwrap_or_default(),
-        ))
+        Ok(Self::normalize_settings(parse_persisted_settings(
+            module.settings,
+        )?))
     }
 
     pub fn normalize_settings(mut settings: SeoModuleSettings) -> SeoModuleSettings {
@@ -197,6 +197,18 @@ impl SeoService {
     }
 }
 
+fn parse_persisted_settings(value: serde_json::Value) -> SeoResult<SeoModuleSettings> {
+    if !value.is_object() {
+        return Err(SeoError::configuration(
+            "persisted SEO settings must be a JSON object",
+        ));
+    }
+
+    serde_json::from_value(value).map_err(|error| {
+        SeoError::configuration(format!("invalid persisted SEO settings: {error}"))
+    })
+}
+
 #[cfg(test)]
 fn built_in_target_registry() -> Arc<SeoTargetRegistry> {
     let mut extensions = ModuleRuntimeExtensions::default();
@@ -233,6 +245,43 @@ pub(super) fn normalize_route(route: &str) -> SeoResult<String> {
         return Err(SeoError::validation("route must not contain whitespace"));
     }
     Ok(route.to_string())
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn persisted_settings_accept_valid_payload() {
+        let settings = parse_persisted_settings(json!({
+            "default_robots": ["index", "follow"],
+            "sitemap_enabled": false
+        }))
+        .expect("valid settings should load");
+
+        assert_eq!(settings.default_robots, vec!["index", "follow"]);
+        assert!(!settings.sitemap_enabled);
+    }
+
+    #[test]
+    fn persisted_settings_reject_malformed_field_types() {
+        let error = parse_persisted_settings(json!({
+            "sitemap_enabled": "yes"
+        }))
+        .expect_err("invalid settings must not silently fall back to defaults");
+
+        assert!(error.to_string().contains("invalid persisted SEO settings"));
+        assert!(error.to_string().contains("sitemap_enabled"));
+    }
+
+    #[test]
+    fn persisted_settings_reject_non_object_payload() {
+        let error = parse_persisted_settings(json!(["index", "follow"]))
+            .expect_err("settings root must remain a JSON object");
+
+        assert!(error.to_string().contains("must be a JSON object"));
+    }
 }
 
 #[cfg(test)]

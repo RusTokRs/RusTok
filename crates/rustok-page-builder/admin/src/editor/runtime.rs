@@ -1,5 +1,9 @@
 use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade};
-use fly::{ProjectHash, RuntimeContextScenario, TraitSchemaRegistry};
+use fly::{
+    evaluate_runtime_publish_gate, ProjectHash, RuntimeContextScenario,
+    RuntimePublishGateEvaluation, RuntimePublishGatePolicy, TraitSchemaRegistry,
+    ValidationSeverity,
+};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -16,6 +20,8 @@ pub struct AdminEditorRuntime {
     pub runtime_context: RwSignal<Value>,
     pub runtime_scenarios: Arc<Vec<RuntimeContextScenario>>,
     pub active_runtime_scenario: RwSignal<Option<String>>,
+    pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
+    pub runtime_publish_gate_evaluation: RwSignal<Option<RuntimePublishGateEvaluation>>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
     facade_missing: String,
@@ -38,6 +44,8 @@ impl AdminEditorRuntime {
             runtime_context: RwSignal::new(Value::Object(Map::new())),
             runtime_scenarios: Arc::new(Vec::new()),
             active_runtime_scenario: RwSignal::new(None),
+            runtime_publish_gate_policy: None,
+            runtime_publish_gate_evaluation: RwSignal::new(None),
             facade,
             on_request,
             facade_missing: facade_missing.into(),
@@ -53,6 +61,7 @@ impl AdminEditorRuntime {
     pub fn with_runtime_context(mut self, runtime_context: Value) -> Self {
         self.runtime_context = RwSignal::new(runtime_context);
         self.active_runtime_scenario = RwSignal::new(None);
+        self.runtime_publish_gate_evaluation = RwSignal::new(None);
         self
     }
 
@@ -61,6 +70,16 @@ impl AdminEditorRuntime {
         runtime_scenarios: Arc<Vec<RuntimeContextScenario>>,
     ) -> Self {
         self.runtime_scenarios = runtime_scenarios;
+        self.runtime_publish_gate_evaluation = RwSignal::new(None);
+        self
+    }
+
+    pub fn with_runtime_publish_gate_policy(
+        mut self,
+        policy: Arc<RuntimePublishGatePolicy>,
+    ) -> Self {
+        self.runtime_publish_gate_policy = Some(policy);
+        self.runtime_publish_gate_evaluation = RwSignal::new(None);
         self
     }
 
@@ -76,6 +95,7 @@ impl AdminEditorRuntime {
         self.runtime_context.set(scenario.context.clone());
         self.active_runtime_scenario
             .set(Some(scenario.id.clone()));
+        self.runtime_publish_gate_evaluation.set(None);
         self.last_error.set(None);
         self.announce(format!("Preview scenario applied: {}", scenario.label));
         true
@@ -84,9 +104,42 @@ impl AdminEditorRuntime {
     pub fn set_runtime_context(&self, runtime_context: Value) {
         self.runtime_context.set(runtime_context);
         self.active_runtime_scenario.set(None);
+        self.runtime_publish_gate_evaluation.set(None);
+    }
+
+    pub fn evaluate_runtime_publish_gate(&self) -> Option<RuntimePublishGateEvaluation> {
+        let policy = self.runtime_publish_gate_policy.as_ref()?;
+        let context = self.runtime_context.get_untracked();
+        Some(self.controller.with(|controller| {
+            evaluate_runtime_publish_gate(
+                controller.editor().document(),
+                Some(&context),
+                self.runtime_scenarios.as_slice(),
+                policy.as_ref(),
+            )
+        }))
     }
 
     pub fn dispatch(&self, intent: UiIntent) {
+        if matches!(
+            &intent,
+            UiIntent::Execute(_) | UiIntent::Undo | UiIntent::Redo
+        ) {
+            self.runtime_publish_gate_evaluation.set(None);
+        }
+        if matches!(&intent, UiIntent::RequestSave) {
+            if let Some(evaluation) = self.evaluate_runtime_publish_gate() {
+                let allowed = evaluation.allowed;
+                let message = gate_error_message(&evaluation);
+                self.runtime_publish_gate_evaluation
+                    .set(Some(evaluation));
+                if !allowed {
+                    self.fail(message);
+                    return;
+                }
+            }
+        }
+
         let result = self
             .controller
             .try_update(|controller| controller.dispatch(intent));
@@ -219,5 +272,20 @@ impl AdminEditorRuntime {
         let _ = self
             .controller
             .try_update(|controller| controller.mark_save_failed());
+    }
+}
+
+fn gate_error_message(evaluation: &RuntimePublishGateEvaluation) -> String {
+    let messages = evaluation
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == ValidationSeverity::Error)
+        .take(4)
+        .map(|diagnostic| diagnostic.message.clone())
+        .collect::<Vec<_>>();
+    if messages.is_empty() {
+        "Runtime publish gate rejected the current project".to_string()
+    } else {
+        format!("Runtime publish gate rejected save: {}", messages.join("; "))
     }
 }

@@ -8,6 +8,8 @@ use crate::error::Result;
 use crate::services::app_lifecycle::connect_runtime_workers_with_runtime;
 use crate::services::app_router::compose_application_router;
 use crate::services::app_runtime::bootstrap_app_runtime;
+use crate::services::cache_runtime::ensure_cache_service;
+use crate::services::rbac_cache_invalidation::start_rbac_cache_invalidation_listener;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 
 /// Runs host-independent startup validation and one-time initialization.
@@ -17,6 +19,8 @@ pub async fn initialize_server_context(
     database_uri: &str,
 ) -> Result<()> {
     check_production_secrets(jwt_secret, database_uri)?;
+    let cache = ensure_cache_service(runtime_ctx);
+    start_rbac_cache_invalidation_listener(runtime_ctx, cache).await?;
     crate::initializers::superadmin::ensure_default_superadmin(runtime_ctx).await
 }
 
