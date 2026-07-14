@@ -1,0 +1,96 @@
+name: Media port compatibility once
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/media-port-compat-once.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: media-port-compat-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/cache-hardening-continuation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cache-hardening-continuation
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-hardening
+      - name: Apply and test media port mapping
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/rustok-media/src/ports.rs")
+          text = path.read_text()
+          old_mapping = '''        MediaError::UnsupportedMimeType(content_type) => PortError::validation(
+              "media.unsupported_mime_type",
+              format!("unsupported media type: {content_type}"),
+          ),
+          MediaError::FileTooLarge { size, max } => PortError::validation('''
+          new_mapping = '''        MediaError::UnsupportedMimeType(content_type) => PortError::validation(
+              "media.unsupported_mime_type",
+              format!("unsupported media type: {content_type}"),
+          ),
+          MediaError::InvalidMediaContent { declared, reason } => PortError::validation(
+              "media.invalid_content",
+              format!("media content does not match declared type `{declared}`: {reason}"),
+          ),
+          MediaError::FileTooLarge { size, max } => PortError::validation('''
+          if text.count(old_mapping) != 1:
+              raise SystemExit(f"media mapping: expected one exact match, found {text.count(old_mapping)}")
+          text = text.replace(old_mapping, new_mapping, 1)
+
+          old_test = '''        let unsupported =
+              media_error_to_port_error(MediaError::UnsupportedMimeType("text/html".to_string()));
+          let oversized = media_error_to_port_error(MediaError::FileTooLarge { size: 12, max: 10 });
+          let invalid_locale =
+              media_error_to_port_error(MediaError::InvalidLocale("bad/locale".to_string()));
+
+          for error in [unsupported, oversized, invalid_locale] {'''
+          new_test = '''        let unsupported =
+              media_error_to_port_error(MediaError::UnsupportedMimeType("text/html".to_string()));
+          let invalid_content = media_error_to_port_error(MediaError::InvalidMediaContent {
+              declared: "image/png".to_string(),
+              reason: "signature mismatch".to_string(),
+          });
+          let oversized = media_error_to_port_error(MediaError::FileTooLarge { size: 12, max: 10 });
+          let invalid_locale =
+              media_error_to_port_error(MediaError::InvalidLocale("bad/locale".to_string()));
+
+          assert_eq!(invalid_content.code, "media.invalid_content");
+          for error in [unsupported, invalid_content, oversized, invalid_locale] {'''
+          if text.count(old_test) != 1:
+              raise SystemExit(f"media test: expected one exact match, found {text.count(old_test)}")
+          path.write_text(text.replace(old_test, new_test, 1))
+          PY
+          rustfmt --edition 2021 crates/rustok-media/src/ports.rs
+          cargo test -p rustok-media --lib
+      - name: Commit branch-only media fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/server-compile-diagnostics-once.yml
+          rm .github/workflows/media-port-compat-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rustok-media/src/ports.rs \
+            .github/workflows/server-compile-diagnostics-once.yml \
+            .github/workflows/media-port-compat-once.yml
+          git commit -m "fix(media): map invalid content port errors"
+          git push origin HEAD:agent/cache-hardening-continuation
