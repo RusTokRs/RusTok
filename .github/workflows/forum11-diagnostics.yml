@@ -94,6 +94,10 @@ jobs:
                   "    TryGetable,\n",
                   "",
               ),
+              "crates/rustok-forum/tests/reply_position_integrity_postgres.rs": (
+                  ", TryGetable",
+                  "",
+              ),
               "crates/rustok-forum/tests/soft_delete_revision_sqlite.rs": (
                   "    TryGetable,\n",
                   "",
@@ -101,6 +105,10 @@ jobs:
               "crates/rustok-forum/tests/soft_delete_revision_postgres.rs": (
                   ", TryGetable",
                   "",
+              ),
+              "crates/rustok-forum/tests/known_regressions.rs": (
+                  "result.map_err(|error| test_error(error))?;",
+                  "result.map_err(test_error)?;",
               ),
           }
           for path, (old, new) in replacements.items():
@@ -120,6 +128,8 @@ jobs:
             crates/rustok-forum/src/services/subscription/policy.rs
             crates/rustok-forum/src/services/subscription/topic.rs
             crates/rustok-forum/src/state_machine.rs
+            crates/rustok-forum/tests/known_regressions.rs
+            crates/rustok-forum/tests/reply_position_integrity_postgres.rs
             crates/rustok-forum/tests/reply_position_integrity_sqlite.rs
             crates/rustok-forum/tests/soft_delete_revision_postgres.rs
             crates/rustok-forum/tests/soft_delete_revision_sqlite.rs
