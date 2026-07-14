@@ -11,14 +11,41 @@ import {
 } from './verify-ecommerce-provider-spi-evidence.mjs';
 
 const moduleSlug = 'payment';
+const webhookCaseName = 'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service';
 
-const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterContract, mutateLiveAdapterEvidence, providerSource } = {}) => {
+const paymentWebhookAssertions = [
+  'idempotency_key_required',
+  'duplicate_delivery_replayed_without_duplicate_lifecycle_transition',
+  'raw_payload_hash_retained_for_audit',
+  'lifecycle_transition_delegated_to_owner_service',
+];
+const paymentWebhookRuntimeAssertions = [
+  'idempotency_key_required_by_contract',
+  'payload_hash_audit_required',
+  'owner_service_replay_guard_required',
+];
+const paymentWebhookLiveAssertions = [
+  'idempotency_key_required_by_contract',
+  'duplicate_delivery_replayed_without_duplicate_lifecycle_transition',
+  'raw_payload_hash_retained_for_audit',
+  'lifecycle_transition_delegated_to_owner_service',
+];
+
+const createFixtureRoot = ({
+  mutateEvidence,
+  mutateRegistry,
+  mutateRuntimeSmoke,
+  mutateLiveAdapterContract,
+  mutateLiveAdapterEvidence,
+  providerSource,
+} = {}) => {
   const rootPath = mkdtempSync(join(tmpdir(), 'rustok-provider-spi-evidence-'));
   const write = (relativePath, content) => {
     const fullPath = join(rootPath, ...relativePath.split('/'));
     mkdirSync(fullPath.slice(0, fullPath.lastIndexOf(sep)), { recursive: true });
     writeFileSync(fullPath, content);
   };
+
   const registry = {
     contract_version: 'payment.checkout.v1+provider_spi.v1',
     provider_spi: {
@@ -29,6 +56,8 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterCo
         idempotency_required: true,
         replay_required: true,
         adapter_operation: 'handle_webhook',
+        raw_payload_persisted: false,
+        payload_hash_audit_required: true,
       },
       external_adapter_registration: {
         status: 'planned_contract_locked',
@@ -40,6 +69,7 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterCo
     },
   };
   mutateRegistry?.(registry);
+
   const evidence = {
     schema_version: 1,
     module: moduleSlug,
@@ -63,14 +93,11 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterCo
     webhook_replay_contract: {
       name: 'payment_provider_webhook',
       status: 'static_locked_runtime_pending',
-      assertions: [
-        'idempotency_key_required',
-        'duplicate_delivery_replayed_without_duplicate_lifecycle_transition',
-        'raw_payload_retained_for_audit',
-        'lifecycle_transition_delegated_to_owner_service',
-      ],
+      assertions: paymentWebhookAssertions,
       adapter_operation: registry.provider_spi.webhook_ingress.adapter_operation,
-      raw_payload_audit_required: true,
+      raw_payload_persisted: false,
+      payload_hash_audit_required: true,
+      audit_artifact: 'sha256_payload_hash',
       owner_service_replay_guard_required: true,
     },
     external_adapter_registration: {
@@ -85,6 +112,8 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterCo
     },
     promotion_gate: 'does_not_raise_boundary_ready_without_runtime_execution',
   };
+  mutateEvidence?.(evidence);
+
   const runtimeSmoke = {
     schema_version: 1,
     module: moduleSlug,
@@ -151,11 +180,7 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterCo
     ],
     webhook_runtime_case: {
       adapter_operation: registry.provider_spi.webhook_ingress.adapter_operation,
-      assertions: [
-        'idempotency_key_required_by_contract',
-        'raw_payload_audit_required',
-        'owner_service_replay_guard_required',
-      ],
+      assertions: paymentWebhookRuntimeAssertions,
     },
     live_execution_plan: {
       status: 'planned_contract_locked',
@@ -166,12 +191,14 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterCo
         'provider_error_maps_to_typed_owner_error_without_lifecycle_persistence',
         'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed',
         'unavailable_mode_blocks_adapter_invocation',
-        'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service',
+        webhookCaseName,
       ],
       adapter_operation: registry.provider_spi.webhook_ingress.adapter_operation,
       evidence_status: 'runtime_execution_pending',
     },
   };
+  mutateRuntimeSmoke?.(runtimeSmoke);
+
   const liveAdapterContract = {
     schema_version: 1,
     module: moduleSlug,
@@ -183,15 +210,53 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterCo
     adapter_profile: 'external_gateway_adapter',
     promotion_gate: 'requires_concrete_external_adapter_execution_before_boundary_ready',
     required_cases: [
-      { case: 'successful_operation_invokes_adapter_once_after_owner_runtime_guard', expected_adapter_invocations: 1, assertions: ['owner_runtime_guard_passes_before_invocation', 'adapter_called_exactly_once', 'lifecycle_persistence_delegated_to_owner_service'] },
-      { case: 'provider_error_maps_to_typed_owner_error_without_lifecycle_persistence', expected_adapter_invocations: 1, assertions: ['provider_error_normalized_to_owner_error', 'adapter_result_not_persisted_directly', 'owner_service_controls_lifecycle_state'] },
-      { case: 'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed', expected_can_execute: true, assertions: ['degraded_mode_returned_by_runtime_mode', 'fallback_profile_propagated_to_orchestrator', 'adapter_invocation_allowed_after_owner_guard'] },
-      { case: 'unavailable_mode_blocks_adapter_invocation', expected_can_execute: false, expected_adapter_invocations: 0, assertions: ['unavailable_runtime_mode_is_non_executable', 'owner_guard_blocks_adapter_invocation', 'typed_owner_error_mapping'] },
-      { case: 'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service', adapter_operation: registry.provider_spi.webhook_ingress.adapter_operation, assertions: ['idempotency_key_required_by_contract', 'duplicate_delivery_replayed_without_duplicate_lifecycle_transition', 'raw_payload_retained_for_audit', 'lifecycle_transition_delegated_to_owner_service'] },
+      {
+        case: 'successful_operation_invokes_adapter_once_after_owner_runtime_guard',
+        expected_adapter_invocations: 1,
+        assertions: [
+          'owner_runtime_guard_passes_before_invocation',
+          'adapter_called_exactly_once',
+          'lifecycle_persistence_delegated_to_owner_service',
+        ],
+      },
+      {
+        case: 'provider_error_maps_to_typed_owner_error_without_lifecycle_persistence',
+        expected_adapter_invocations: 1,
+        assertions: [
+          'provider_error_normalized_to_owner_error',
+          'adapter_result_not_persisted_directly',
+          'owner_service_controls_lifecycle_state',
+        ],
+      },
+      {
+        case: 'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed',
+        expected_can_execute: true,
+        assertions: [
+          'degraded_mode_returned_by_runtime_mode',
+          'fallback_profile_propagated_to_orchestrator',
+          'adapter_invocation_allowed_after_owner_guard',
+        ],
+      },
+      {
+        case: 'unavailable_mode_blocks_adapter_invocation',
+        expected_can_execute: false,
+        expected_adapter_invocations: 0,
+        assertions: [
+          'unavailable_runtime_mode_is_non_executable',
+          'owner_guard_blocks_adapter_invocation',
+          'typed_owner_error_mapping',
+        ],
+      },
+      {
+        case: webhookCaseName,
+        adapter_operation: registry.provider_spi.webhook_ingress.adapter_operation,
+        assertions: paymentWebhookLiveAssertions,
+      },
     ],
     evidence_status: 'runtime_execution_pending',
   };
-  mutateEvidence?.(evidence);
+  mutateLiveAdapterContract?.(liveAdapterContract);
+
   const liveAdapterEvidence = {
     schema_version: 1,
     module: moduleSlug,
@@ -202,15 +267,58 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterCo
     adapter_profile: 'external_gateway_adapter',
     evidence_status: 'runtime_contract_executed',
     executed_cases: [
-      { case: 'successful_operation_invokes_adapter_once_after_owner_runtime_guard', result: 'pass', observed_adapter_invocations: 1, assertions: ['owner_runtime_guard_passes_before_invocation', 'adapter_called_exactly_once', 'lifecycle_persistence_delegated_to_owner_service'] },
-      { case: 'provider_error_maps_to_typed_owner_error_without_lifecycle_persistence', result: 'pass', observed_adapter_invocations: 1, assertions: ['provider_error_normalized_to_owner_error', 'adapter_result_not_persisted_directly', 'owner_service_controls_lifecycle_state'] },
-      { case: 'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed', result: 'pass', observed_can_execute: true, fallback_profile: 'manual_review', assertions: ['degraded_mode_returned_by_runtime_mode', 'fallback_profile_propagated_to_orchestrator', 'adapter_invocation_allowed_after_owner_guard'] },
-      { case: 'unavailable_mode_blocks_adapter_invocation', result: 'pass', observed_can_execute: false, observed_adapter_invocations: 0, assertions: ['unavailable_runtime_mode_is_non_executable', 'owner_guard_blocks_adapter_invocation', 'typed_owner_error_mapping'] },
-      { case: 'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service', result: 'pass', adapter_operation: registry.provider_spi.webhook_ingress.adapter_operation, assertions: ['idempotency_key_required_by_contract', 'duplicate_delivery_replayed_without_duplicate_lifecycle_transition', 'raw_payload_retained_for_audit', 'lifecycle_transition_delegated_to_owner_service'] },
+      {
+        case: 'successful_operation_invokes_adapter_once_after_owner_runtime_guard',
+        result: 'pass',
+        observed_adapter_invocations: 1,
+        assertions: [
+          'owner_runtime_guard_passes_before_invocation',
+          'adapter_called_exactly_once',
+          'lifecycle_persistence_delegated_to_owner_service',
+        ],
+      },
+      {
+        case: 'provider_error_maps_to_typed_owner_error_without_lifecycle_persistence',
+        result: 'pass',
+        observed_adapter_invocations: 1,
+        assertions: [
+          'provider_error_normalized_to_owner_error',
+          'adapter_result_not_persisted_directly',
+          'owner_service_controls_lifecycle_state',
+        ],
+      },
+      {
+        case: 'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed',
+        result: 'pass',
+        observed_can_execute: true,
+        fallback_profile: 'manual_review',
+        assertions: [
+          'degraded_mode_returned_by_runtime_mode',
+          'fallback_profile_propagated_to_orchestrator',
+          'adapter_invocation_allowed_after_owner_guard',
+        ],
+      },
+      {
+        case: 'unavailable_mode_blocks_adapter_invocation',
+        result: 'pass',
+        observed_can_execute: false,
+        observed_adapter_invocations: 0,
+        assertions: [
+          'unavailable_runtime_mode_is_non_executable',
+          'owner_guard_blocks_adapter_invocation',
+          'typed_owner_error_mapping',
+        ],
+      },
+      {
+        case: webhookCaseName,
+        result: 'pass',
+        adapter_operation: registry.provider_spi.webhook_ingress.adapter_operation,
+        assertions: paymentWebhookLiveAssertions,
+      },
     ],
   };
   mutateLiveAdapterEvidence?.(liveAdapterEvidence);
-  mutateLiveAdapterContract?.(liveAdapterContract);
+
   write('crates/rustok-payment/contracts/payment-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
   write('crates/rustok-payment/contracts/evidence/payment-provider-spi-static-matrix.json', `${JSON.stringify(evidence, null, 2)}\n`);
   write('crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json', `${JSON.stringify(runtimeSmoke, null, 2)}\n`);
@@ -229,7 +337,14 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterCo
   return pathToFileURL(`${rootPath}/`);
 };
 
-test('verifyEcommerceProviderSpiEvidence accepts matching provider SPI evidence', () => {
+const expectVerifierError = (root, message) => {
+  assert.throws(
+    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
+    { name: EcommerceProviderSpiEvidenceError.name, message },
+  );
+};
+
+test('verifyEcommerceProviderSpiEvidence accepts matching payment hash-audit evidence', () => {
   assert.doesNotThrow(() => {
     verifyEcommerceProviderSpiEvidence({ root: createFixtureRoot(), modules: [moduleSlug] });
   });
@@ -238,38 +353,23 @@ test('verifyEcommerceProviderSpiEvidence accepts matching provider SPI evidence'
 test('verifyEcommerceProviderSpiEvidence rejects live adapter evidence invocation drift', () => {
   const root = createFixtureRoot({
     mutateLiveAdapterEvidence(evidence) {
-      evidence.executed_cases.find((entry) => entry.case === 'successful_operation_invokes_adapter_once_after_owner_runtime_guard').observed_adapter_invocations = 2;
+      evidence.executed_cases.find(
+        (entry) => entry.case === 'successful_operation_invokes_adapter_once_after_owner_runtime_guard',
+      ).observed_adapter_invocations = 2;
     },
   });
-
-  assert.throws(
-    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
-    {
-      name: EcommerceProviderSpiEvidenceError.name,
-      message: 'payment live adapter evidence success invocation count drift',
-    },
-  );
+  expectVerifierError(root, 'payment live adapter evidence success invocation count drift');
 });
 
 test('verifyEcommerceProviderSpiEvidence rejects runtime smoke assertion drift', () => {
-  const root = createFixtureRoot();
-  const runtimeSmokePath = new URL(
-    'crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json',
-    root,
-  );
-  const runtimeSmoke = JSON.parse(readFileSync(runtimeSmokePath, 'utf8'));
-  runtimeSmoke.runtime_mode_cases.find((entry) => entry.case === 'unavailable_provider').assertions = [
-    'fallback_profile_required',
-  ];
-  writeFileSync(runtimeSmokePath, `${JSON.stringify(runtimeSmoke, null, 2)}\n`);
-
-  assert.throws(
-    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
-    {
-      name: EcommerceProviderSpiEvidenceError.name,
-      message: 'payment runtime smoke case unavailable_provider assertions drift',
+  const root = createFixtureRoot({
+    mutateRuntimeSmoke(runtimeSmoke) {
+      runtimeSmoke.runtime_mode_cases.find((entry) => entry.case === 'unavailable_provider').assertions = [
+        'fallback_profile_required',
+      ];
     },
-  );
+  });
+  expectVerifierError(root, 'payment runtime smoke case unavailable_provider assertions drift');
 });
 
 test('verifyEcommerceProviderSpiEvidence rejects operation assertion drift', () => {
@@ -278,29 +378,32 @@ test('verifyEcommerceProviderSpiEvidence rejects operation assertion drift', () 
       evidence.operation_cases[0].assertions = ['typed_provider_error_mapping'];
     },
   });
-
-  assert.throws(
-    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
-    {
-      name: EcommerceProviderSpiEvidenceError.name,
-      message: 'payment.authorize provider SPI assertions drift',
-    },
-  );
+  expectVerifierError(root, 'payment.authorize provider SPI assertions drift');
 });
 
-test('verifyEcommerceProviderSpiEvidence rejects webhook replay assertion drift', () => {
+test('verifyEcommerceProviderSpiEvidence rejects legacy raw payload retention assertion', () => {
   const root = createFixtureRoot({
     mutateEvidence(evidence) {
-      evidence.webhook_replay_contract.assertions = ['idempotency_key_required'];
+      evidence.webhook_replay_contract.assertions = [
+        'idempotency_key_required',
+        'duplicate_delivery_replayed_without_duplicate_lifecycle_transition',
+        'raw_payload_retained_for_audit',
+        'lifecycle_transition_delegated_to_owner_service',
+      ];
     },
   });
+  expectVerifierError(root, 'payment webhook replay assertions drift');
+});
 
-  assert.throws(
-    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
-    {
-      name: EcommerceProviderSpiEvidenceError.name,
-      message: 'payment webhook replay assertions drift',
+test('verifyEcommerceProviderSpiEvidence rejects payment raw payload persistence', () => {
+  const root = createFixtureRoot({
+    mutateRegistry(registry) {
+      registry.provider_spi.webhook_ingress.raw_payload_persisted = true;
     },
+  });
+  expectVerifierError(
+    root,
+    'payment webhook replay must require SHA-256 hash-only audit and forbid raw payload persistence',
   );
 });
 
@@ -310,16 +413,8 @@ test('verifyEcommerceProviderSpiEvidence rejects disabled registry replay requir
       registry.provider_spi.webhook_ingress.replay_required = false;
     },
   });
-
-  assert.throws(
-    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
-    {
-      name: EcommerceProviderSpiEvidenceError.name,
-      message: 'payment registry webhook ingress must keep idempotency and replay required',
-    },
-  );
+  expectVerifierError(root, 'payment registry webhook ingress must keep idempotency and replay required');
 });
-
 
 test('verifyEcommerceProviderSpiEvidence rejects external adapter registration assertion drift', () => {
   const root = createFixtureRoot({
@@ -327,16 +422,8 @@ test('verifyEcommerceProviderSpiEvidence rejects external adapter registration a
       evidence.external_adapter_registration.assertions = ['descriptor_capability_match_required'];
     },
   });
-
-  assert.throws(
-    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
-    {
-      name: EcommerceProviderSpiEvidenceError.name,
-      message: 'payment external adapter registration assertions drift',
-    },
-  );
+  expectVerifierError(root, 'payment external adapter registration assertions drift');
 });
-
 
 test('verifyEcommerceProviderSpiEvidence rejects missing external registration source marker', () => {
   const root = createFixtureRoot({
@@ -345,37 +432,20 @@ test('verifyEcommerceProviderSpiEvidence rejects missing external registration s
       'PaymentProviderHealth::Unavailable\n' +
       'pub struct PaymentProviderDegradedMode { reason: String }\n',
   });
-
-  assert.throws(
-    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
-    {
-      name: EcommerceProviderSpiEvidenceError.name,
-      message:
-        'payment provider SPI source lacks external registration marker ExternalPaymentProviderRegistration',
-    },
+  expectVerifierError(
+    root,
+    'payment provider SPI source lacks external registration marker ExternalPaymentProviderRegistration',
   );
 });
 
 test('verifyEcommerceProviderSpiEvidence rejects live execution plan drift', () => {
-  const root = createFixtureRoot();
-  const runtimeSmokePath = new URL(
-    'crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json',
-    root,
-  );
-  const runtimeSmoke = JSON.parse(readFileSync(runtimeSmokePath, 'utf8'));
-  runtimeSmoke.live_execution_plan.required_cases = ['unavailable_mode_blocks_adapter_invocation'];
-  writeFileSync(runtimeSmokePath, `${JSON.stringify(runtimeSmoke, null, 2)}
-`);
-
-  assert.throws(
-    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
-    {
-      name: EcommerceProviderSpiEvidenceError.name,
-      message: 'payment live execution plan required cases drift',
+  const root = createFixtureRoot({
+    mutateRuntimeSmoke(runtimeSmoke) {
+      runtimeSmoke.live_execution_plan.required_cases = ['unavailable_mode_blocks_adapter_invocation'];
     },
-  );
+  });
+  expectVerifierError(root, 'payment live execution plan required cases drift');
 });
-
 
 test('verifyEcommerceProviderSpiEvidence rejects live adapter contract drift', () => {
   const root = createFixtureRoot({
@@ -385,12 +455,18 @@ test('verifyEcommerceProviderSpiEvidence rejects live adapter contract drift', (
       ).expected_adapter_invocations = 2;
     },
   });
+  expectVerifierError(root, 'payment live adapter success invocation count drift');
+});
 
-  assert.throws(
-    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
-    {
-      name: EcommerceProviderSpiEvidenceError.name,
-      message: 'payment live adapter success invocation count drift',
+test('verifyEcommerceProviderSpiEvidence rejects live webhook audit assertion drift', () => {
+  const root = createFixtureRoot({
+    mutateLiveAdapterEvidence(evidence) {
+      evidence.executed_cases.find((entry) => entry.case === webhookCaseName).assertions = [
+        'idempotency_key_required_by_contract',
+        'raw_payload_retained_for_audit',
+        'lifecycle_transition_delegated_to_owner_service',
+      ];
     },
-  );
+  });
+  expectVerifierError(root, 'payment live adapter evidence webhook assertions drift');
 });
