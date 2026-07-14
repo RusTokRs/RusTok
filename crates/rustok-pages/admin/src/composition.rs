@@ -4,12 +4,19 @@ use crate::i18n::t;
 use crate::model::PageDetail;
 use crate::transport;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::use_route_query_value;
+use rustok_page_builder::runtime_context::{
+    generate_page_builder_runtime_example, PageBuilderRuntimeExampleRequest,
+};
+use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
+use rustok_page_builder::{RuntimeContextExamplePolicy, RuntimeContextScenario};
 use rustok_page_builder_admin::{
     PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
+use serde_json::{json, Value};
 use std::sync::Arc;
 
 #[component]
@@ -40,10 +47,22 @@ pub fn PagesAdmin() -> impl IntoView {
         let token = token.get();
         let tenant = tenant.get();
         async move {
-            match page_id.filter(|page_id| core::optional_ui_text(page_id).is_some()) {
-                Some(page_id) => transport::fetch_page(token, tenant, page_id).await,
-                None => Ok(None),
-            }
+            let Some(page_id) = page_id.filter(|page_id| core::optional_ui_text(page_id).is_some())
+            else {
+                return Ok(None);
+            };
+            let Some(page) = transport::fetch_page(token.clone(), tenant.clone(), page_id.clone())
+                .await?
+            else {
+                return Ok(None);
+            };
+            let baseline = transport::fetch_page_builder_scenario_baseline(
+                token,
+                tenant,
+                page_id,
+            )
+            .await?;
+            Ok(Some((page, baseline)))
         }
     });
 
@@ -55,9 +74,10 @@ pub fn PagesAdmin() -> impl IntoView {
                 }>
                     {move || {
                         builder_resource.get().map(|result| match result {
-                            Ok(Some(page)) => view! {
+                            Ok(Some((page, baseline))) => view! {
                                 <PagesFlyBuilder
                                     page
+                                    baseline
                                     token
                                     tenant
                                     default_locale=default_locale.clone()
@@ -86,12 +106,36 @@ pub fn PagesAdmin() -> impl IntoView {
 #[component]
 fn PagesFlyBuilder(
     page: PageDetail,
+    #[prop(optional)] baseline: Option<RuntimeScenarioReleaseBaseline>,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
     default_locale: String,
 ) -> impl IntoView {
     let seed = core::edit_form_seed_from_page(&page, &default_locale);
     let revision_id = builder::page_revision(&page);
+    let project_data = serde_json::from_str::<Value>(&seed.project_data_text).unwrap_or_else(|_| {
+        json!({
+            "pages": [{
+                "id": page.id,
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        })
+    });
+    let generated_context = generate_page_builder_runtime_example(PageBuilderRuntimeExampleRequest {
+        project_data: project_data.clone(),
+        policy: RuntimeContextExamplePolicy::default(),
+    })
+    .ok()
+    .map(|response| response.example.input_context)
+    .unwrap_or_else(|| json!({}));
+    let scenarios = Arc::new(vec![
+        RuntimeContextScenario::new("empty", "Empty", json!({})),
+        RuntimeContextScenario::new(
+            "generated",
+            "Generated example",
+            generated_context.clone(),
+        ),
+    ]);
     let controller =
         builder::controller_from_project(&page.id, &revision_id, &seed.project_data_text);
 
@@ -99,19 +143,70 @@ fn PagesFlyBuilder(
         Ok(controller) => {
             let page_id = page.id.clone();
             let snapshot_default_locale = default_locale.clone();
+            let facade_token = token;
+            let facade_tenant = tenant;
             let facade: Arc<dyn PageBuilderAdminFacade> = Arc::new(PagesBuilderFacade::new(
                 move || PagesBuilderSaveSnapshot {
-                    token: token.get_untracked(),
-                    tenant_slug: tenant.get_untracked(),
+                    token: facade_token.get_untracked(),
+                    tenant_slug: facade_tenant.get_untracked(),
                     page_id: page_id.clone(),
                     default_locale: snapshot_default_locale.clone(),
                 },
                 |_page, _project_data| {},
             ));
-            provide_context(
-                PageBuilderAdminHostContext::new(controller).with_facade(facade),
+
+            let persistence_error = RwSignal::new(None::<String>);
+            let baseline_page_id = page.id.clone();
+            let baseline_token = token;
+            let baseline_tenant = tenant;
+            let on_baseline = Callback::new(
+                move |baseline: Option<RuntimeScenarioReleaseBaseline>| {
+                    let page_id = baseline_page_id.clone();
+                    let token = baseline_token.get_untracked();
+                    let tenant = baseline_tenant.get_untracked();
+                    spawn_local(async move {
+                        let result = match baseline {
+                            Some(baseline) => transport::save_page_builder_scenario_baseline(
+                                token,
+                                tenant,
+                                page_id,
+                                baseline,
+                            )
+                            .await
+                            .map(|_| ()),
+                            None => transport::delete_page_builder_scenario_baseline(
+                                token,
+                                tenant,
+                                page_id,
+                            )
+                            .await
+                            .map(|_| ()),
+                        };
+                        persistence_error.set(result.err().map(|error| error.to_string()));
+                    });
+                },
             );
-            view! { <PageBuilderAdmin /> }.into_any()
+
+            let mut host = PageBuilderAdminHostContext::new(controller)
+                .with_facade(facade)
+                .with_runtime_context(generated_context)
+                .with_runtime_scenarios(scenarios)
+                .on_runtime_scenario_baseline(on_baseline);
+            if let Some(baseline) = baseline {
+                host = host.with_runtime_scenario_baseline(baseline);
+            }
+            provide_context(host);
+            view! {
+                <div class="space-y-2">
+                    <PageBuilderAdmin />
+                    {move || persistence_error.get().map(|error| view! {
+                        <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+                            {format!("Failed to persist scenario baseline: {error}")}
+                        </div>
+                    })}
+                </div>
+            }
+            .into_any()
         }
         Err(error) => view! {
             <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
