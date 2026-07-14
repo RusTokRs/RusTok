@@ -4,6 +4,7 @@ use rustok_api::{
     has_any_effective_permission, AuthContext, TenantContext,
 };
 use rustok_api::{Action, Permission, Resource};
+use rustok_core::CONTENT_FORMAT_GRAPESJS_V1;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -96,6 +97,20 @@ impl PagesMutation {
             require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        if let Some(body) = input.body.as_ref() {
+            if body.format.as_deref() == Some(CONTENT_FORMAT_GRAPESJS_V1) {
+                let project_data = body.content_json.clone().ok_or_else(|| {
+                    async_graphql::Error::new(
+                        "contentJson is required when updating a grapesjs_v1 page body",
+                    )
+                })?;
+                PageBuilderScenarioBaselineService::new(db.clone())
+                    .ensure_published_candidate_allowed(tenant_id, id, project_data)
+                    .await
+                    .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            }
+        }
 
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
