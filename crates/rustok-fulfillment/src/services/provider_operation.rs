@@ -126,7 +126,7 @@ impl FulfillmentProviderOperationJournal {
             )
             .col_expr(
                 provider_operation::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .filter(provider_operation::Column::Id.eq(id))
             .filter(

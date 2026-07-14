@@ -82,11 +82,11 @@ impl FulfillmentProviderOperationRecovery {
             )
             .col_expr(
                 provider_operation::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .col_expr(
                 provider_operation::Column::ProviderCompletedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.is_in(ids))
@@ -116,7 +116,7 @@ impl FulfillmentProviderOperationRecovery {
             )
             .col_expr(
                 provider_operation::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .col_expr(
                 provider_operation::Column::ProviderCompletedAt,
@@ -219,11 +219,11 @@ impl FulfillmentProviderOperationRecovery {
             )
             .col_expr(
                 provider_operation::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .col_expr(
                 provider_operation::Column::ProviderCompletedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
