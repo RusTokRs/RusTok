@@ -76,10 +76,7 @@ fn require_category_list_permission(ctx: &Context<'_>) -> Result<AuthContext> {
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
         .clone();
 
-    if !has_any_effective_permission(
-        &auth.permissions,
-        &[Permission::FORUM_CATEGORIES_LIST],
-    ) {
+    if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_LIST]) {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "Permission denied: forum_categories:list required",
         ));
@@ -88,10 +85,7 @@ fn require_category_list_permission(ctx: &Context<'_>) -> Result<AuthContext> {
     Ok(auth)
 }
 
-fn resolve_tenant_scope(
-    tenant: &TenantContext,
-    requested_tenant_id: Option<Uuid>,
-) -> Result<Uuid> {
+fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
     match requested_tenant_id {
         Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
             Err(<FieldError as GraphQLError>::permission_denied(
@@ -196,12 +190,8 @@ mod tests {
 
     #[test]
     fn schema_exposes_recursive_forum_category_tree() {
-        let schema = Schema::build(
-            ForumQuery::default(),
-            EmptyMutation,
-            EmptySubscription,
-        )
-        .finish();
+        let schema =
+            Schema::build(ForumQuery::default(), EmptyMutation, EmptySubscription).finish();
         let sdl = schema.sdl();
 
         assert!(sdl.contains("forumCategoryTree"));

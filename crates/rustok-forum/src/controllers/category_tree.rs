@@ -89,9 +89,7 @@ fn category_tree_error(error: ForumError) -> HttpError {
             "forum_category_not_found",
             format!("Category not found: {category_id}"),
         ),
-        ForumError::Forbidden(message) => {
-            HttpError::forbidden("forum_permission_denied", message)
-        }
+        ForumError::Forbidden(message) => HttpError::forbidden("forum_permission_denied", message),
         error => HttpError::bad_request("forum_category_tree_failed", error.to_string()),
     }
 }

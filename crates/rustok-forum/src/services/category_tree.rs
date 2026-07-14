@@ -1,8 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
@@ -36,12 +34,8 @@ impl CategoryTreeService {
         query: CategoryTreeQuery,
     ) -> ForumResult<CategoryTreeResponse> {
         enforce_scope(&security, Resource::ForumCategories, Action::List)?;
-        let requested_locale = normalize_locale(
-            query
-                .locale
-                .as_deref()
-                .unwrap_or(PLATFORM_FALLBACK_LOCALE),
-        )?;
+        let requested_locale =
+            normalize_locale(query.locale.as_deref().unwrap_or(PLATFORM_FALLBACK_LOCALE))?;
         let fallback_locale = query
             .fallback_locale
             .as_deref()

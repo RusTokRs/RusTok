@@ -13,15 +13,7 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
     let tenant_b = Uuid::new_v4();
 
     let root_primary = seed_category(db, tenant_a, None, 0, "Primary", "primary", false).await?;
-    seed_translation(
-        db,
-        tenant_a,
-        root_primary,
-        "ru",
-        "Главная",
-        "primary-ru",
-    )
-    .await?;
+    seed_translation(db, tenant_a, root_primary, "ru", "Главная", "primary-ru").await?;
     let root_secondary =
         seed_category(db, tenant_a, None, 10, "Secondary", "secondary", true).await?;
     let child_later = seed_category(
@@ -54,8 +46,7 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
         false,
     )
     .await?;
-    let foreign_root =
-        seed_category(db, tenant_b, None, 0, "Foreign", "primary", false).await?;
+    let foreign_root = seed_category(db, tenant_b, None, 0, "Foreign", "primary", false).await?;
 
     let service = CategoryService::new(db.clone());
     let security = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -301,10 +292,7 @@ async fn seed_translation(
     Ok(())
 }
 
-fn assert_validation_contains<T>(
-    result: Result<T, ForumError>,
-    expected: &str,
-) -> TestResult<()> {
+fn assert_validation_contains<T>(result: Result<T, ForumError>, expected: &str) -> TestResult<()> {
     match result {
         Err(ForumError::Validation(message)) if message.contains(expected) => Ok(()),
         Err(error) => Err(test_error(format!(

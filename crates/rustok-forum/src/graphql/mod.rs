@@ -14,4 +14,7 @@ pub use mutation::ForumMutation;
 pub use types::*;
 
 #[derive(MergedObject, Default)]
-pub struct ForumQuery(query::ForumQuery, category_tree_query::ForumCategoryTreeQuery);
+pub struct ForumQuery(
+    query::ForumQuery,
+    category_tree_query::ForumCategoryTreeQuery,
+);
