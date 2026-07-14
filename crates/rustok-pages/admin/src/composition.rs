@@ -176,6 +176,8 @@ fn PagesFlyBuilder(
                     let page_id = baseline_page_id.clone();
                     let token = baseline_token.get_untracked();
                     let tenant = baseline_tenant.get_untracked();
+                    let expected_baseline_hash =
+                        server_status.get_untracked().baseline_hash.clone();
                     spawn_local(async move {
                         let write_result = match baseline {
                             Some(baseline) => transport::save_page_builder_scenario_baseline(
@@ -183,6 +185,7 @@ fn PagesFlyBuilder(
                                 tenant.clone(),
                                 page_id.clone(),
                                 baseline,
+                                expected_baseline_hash,
                             )
                             .await
                             .map(|_| ()),
@@ -190,6 +193,7 @@ fn PagesFlyBuilder(
                                 token.clone(),
                                 tenant.clone(),
                                 page_id.clone(),
+                                expected_baseline_hash,
                             )
                             .await
                             .map(|_| ()),
@@ -249,10 +253,12 @@ fn PagesFlyBuilder(
 
 #[component]
 fn ServerReleaseStatus(status: RwSignal<PageBuilderScenarioReleaseStatus>) -> impl IntoView {
+    let class_status = status;
+    let text_status = status;
     view! {
         <div
             class=move || {
-                let status = status.get();
+                let status = class_status.get();
                 if !status.allowed || status.status == "broken" || status.status == "baseline_invalid" {
                     "rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
                 } else if status.status == "requires_review" {
@@ -264,7 +270,7 @@ fn ServerReleaseStatus(status: RwSignal<PageBuilderScenarioReleaseStatus>) -> im
             role="status"
         >
             {move || {
-                let status = status.get();
+                let status = text_status.get();
                 format!(
                     "Server release gate: {} · allowed={} · {} visual · {} breaking{}",
                     status.status,
