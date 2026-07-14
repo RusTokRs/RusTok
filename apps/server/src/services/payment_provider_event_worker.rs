@@ -81,13 +81,16 @@ async fn worker_loop(
                 }
             }
             _ = ticker.tick() => {
-                sweep_active_tenants(instance_id, &tenants, &recovery).await;
+                sweep_tenants(instance_id, &tenants, &recovery).await;
             }
         }
     }
 }
 
-async fn sweep_active_tenants(
+/// External payment effects must be reconciled even after a tenant is disabled.
+/// Tenant deactivation blocks user traffic, but it must not strand an already
+/// verified provider event or leave captured/authorized state unresolved.
+async fn sweep_tenants(
     instance_id: u64,
     tenants: &rustok_tenant::TenantService,
     recovery: &rustok_payment::PaymentProviderEventRecoveryService,
@@ -113,7 +116,7 @@ async fn sweep_active_tenants(
             return;
         }
 
-        for tenant in items.into_iter().filter(|tenant| tenant.is_active) {
+        for tenant in items {
             let worker_id = format!(
                 "payment-provider-event-worker:{instance_id}:tenant:{}",
                 tenant.id
@@ -131,6 +134,7 @@ async fn sweep_active_tenants(
                         worker = "payment_provider_event_recovery",
                         instance_id,
                         tenant_id = %tenant.id,
+                        tenant_active = tenant.is_active,
                         scanned = report.scanned,
                         processed = report.processed,
                         retryable = report.retryable,
@@ -146,6 +150,7 @@ async fn sweep_active_tenants(
                         worker = "payment_provider_event_recovery",
                         instance_id,
                         tenant_id = %tenant.id,
+                        tenant_active = tenant.is_active,
                         error = %error,
                         "Payment provider event recovery sweep failed"
                     );
