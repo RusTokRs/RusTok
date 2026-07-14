@@ -224,7 +224,7 @@ impl RbacService {
             missing_permissions = ?missing_permissions,
             allowed,
             latency_ms,
-            "rbac resolver decision (all-permissions check)"
+            "rbac resolver decision (all-permission check)"
         );
 
         if let Some((_, denied_reason)) = denied {
@@ -347,13 +347,15 @@ impl RbacService {
             .await
     }
 
-    pub async fn replace_user_role(
+    /// Transaction-only compatibility alias for legacy auth lifecycle composition.
+    /// New code must use `replace_user_role_in_transaction` or `replace_user_role_committed`.
+    pub(crate) async fn replace_user_role(
         db: &impl ConnectionTrait,
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
-        Self::record_authz_entrypoint_call("replace_user_role", "library");
+        Self::record_authz_entrypoint_call("replace_user_role_legacy_transaction", "internal");
         replace_user_role_via_store(db, user_id, tenant_id, role).await
     }
 
