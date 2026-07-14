@@ -1,6 +1,6 @@
 use crate::{
-    normalize_slug, AssetCatalog, AssetPolicy, PageMetadata, ProjectDocument, RegistrySet,
-    StyleRuleCatalog, StyleRuleScope,
+    normalize_slug, validate_runtime_extensions, AssetCatalog, AssetPolicy, PageMetadata,
+    ProjectDocument, RegistrySet, StyleRuleCatalog, StyleRuleScope,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -90,6 +90,10 @@ pub fn validate_project(
         });
     }
 
+    report
+        .diagnostics
+        .extend(validate_runtime_extensions(document));
+    deduplicate_diagnostics(&mut report.diagnostics);
     report
 }
 
@@ -357,6 +361,18 @@ fn metadata_url_allowed(value: &str) -> bool {
         || value.starts_with("data:image/")
 }
 
+fn deduplicate_diagnostics(diagnostics: &mut Vec<ValidationDiagnostic>) {
+    let mut seen = BTreeSet::new();
+    diagnostics.retain(|diagnostic| {
+        seen.insert((
+            diagnostic.severity as u8,
+            diagnostic.code.clone(),
+            diagnostic.path.clone(),
+            diagnostic.message.clone(),
+        ))
+    });
+}
+
 fn diagnostic(
     severity: ValidationSeverity,
     code: impl Into<String>,
@@ -378,7 +394,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn validates_pages_assets_and_orphan_rules() {
+    fn validates_pages_assets_orphan_rules_and_runtime_extensions() {
         let document = GrapesJsV1Codec::decode_value(json!({
             "assets": [
                 { "id": "asset", "src": "/one.png" },
@@ -396,6 +412,11 @@ mod tests {
                     "title": "This title is deliberately much longer than seventy characters so validation reports it"
                 },
                 "component": { "id": "root", "type": "wrapper" }
+            }],
+            "flyRuntimeContextSchema": [{
+                "id": "invalid-root",
+                "path": "",
+                "kind": "object"
             }]
         }))
         .expect("document");
@@ -416,6 +437,10 @@ mod tests {
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "non_normalized_page_slug"));
+        assert!(report
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid"));
         assert_eq!(report.page_count, 1);
         assert_eq!(report.asset_count, 2);
         assert_eq!(report.style_rule_count, 1);
