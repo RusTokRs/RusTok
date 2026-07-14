@@ -68,7 +68,7 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 INTO checkout_status
                 FROM payment_collections pc
                 JOIN checkout_operations co
-                  ON co.id = NULLIF(pc.metadata #>> '{checkout,operation_id}', '')::UUID
+                  ON lower(co.id::text) = lower(pc.metadata #>> '{checkout,operation_id}')
                  AND co.tenant_id = pc.tenant_id
                 WHERE pc.id = NEW.payment_collection_id
                   AND pc.tenant_id = NEW.tenant_id;
