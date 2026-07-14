@@ -1,11 +1,62 @@
 use rustok_migrations::Migrator;
 use rustok_payment::{
     CompleteProviderEvent, FailProviderEvent, PaymentProviderEventJournal, ReceiveProviderEvent,
-    PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING,
+    VerifiedProviderEvent, PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED,
+    PROVIDER_EVENT_PROCESSING, PROVIDER_EVENT_RECEIVED,
 };
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use serde_json::json;
 use uuid::Uuid;
+
+#[tokio::test]
+async fn verified_normalized_facts_are_durable_before_processing_claim() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let journal = PaymentProviderEventJournal::new(db);
+    let tenant_id = Uuid::new_v4();
+    let collection_id = Uuid::new_v4();
+    let received = journal
+        .receive_verified(
+            ReceiveProviderEvent {
+                tenant_id,
+                provider_id: "gateway".to_string(),
+                delivery_id: "delivery-atomic-checkpoint".to_string(),
+                idempotency_key: "event-atomic-checkpoint".to_string(),
+                raw_payload: br#"{"type":"payment.authorized"}"#.to_vec(),
+                signature_verified: true,
+            },
+            VerifiedProviderEvent {
+                event_type: "payment.authorized".to_string(),
+                external_reference: Some("provider-payment-atomic".to_string()),
+                event_metadata: json!({
+                    "collection_id": collection_id,
+                    "amount": "10.00",
+                    "currency_code": "USD",
+                }),
+            },
+        )
+        .await
+        .expect("verified normalized provider facts must enter the inbox atomically");
+
+    assert_eq!(received.status, PROVIDER_EVENT_RECEIVED);
+    assert_eq!(
+        received.event_type.as_deref(),
+        Some("payment.authorized")
+    );
+    assert_eq!(
+        received.external_reference.as_deref(),
+        Some("provider-payment-atomic")
+    );
+    assert_eq!(
+        received
+            .event_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("collection_id"))
+            .and_then(|value| value.as_str()),
+        Some(collection_id.to_string().as_str())
+    );
+    assert!(received.lease_owner.is_none());
+    assert!(received.processed_at.is_none());
+}
 
 #[tokio::test]
 async fn provider_event_inbox_deduplicates_and_replays_with_leases() {
