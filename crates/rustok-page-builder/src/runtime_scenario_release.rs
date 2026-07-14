@@ -11,6 +11,32 @@ pub const PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE: &str =
     "SCENARIO_REGRESSION_BLOCKED";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderScenarioBaselineChange {
+    pub baseline: Option<RuntimeScenarioReleaseBaseline>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promotion_note: Option<String>,
+}
+
+impl PageBuilderScenarioBaselineChange {
+    pub fn save(
+        baseline: RuntimeScenarioReleaseBaseline,
+        promotion_note: Option<String>,
+    ) -> Self {
+        Self {
+            baseline: Some(baseline),
+            promotion_note,
+        }
+    }
+
+    pub fn clear(promotion_note: Option<String>) -> Self {
+        Self {
+            baseline: None,
+            promotion_note,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PageBuilderRuntimeScenarioReleaseRequest {
     pub project_data: Value,
     #[serde(default)]
@@ -173,5 +199,22 @@ mod tests {
         )
         .expect("release response");
         assert!(response.evaluation.allowed);
+    }
+
+    #[test]
+    fn baseline_change_carries_review_note_separately() {
+        let document = GrapesJsV1Codec::decode_value(project()).expect("document");
+        let baseline = RuntimeScenarioReleaseBaseline::capture(
+            "baseline-1",
+            &document,
+            &PageSelection::First,
+            &RenderPolicy::default(),
+            &[],
+        );
+        let change = PageBuilderScenarioBaselineChange::save(
+            baseline,
+            Some("Reviewed visual update".to_string()),
+        );
+        assert_eq!(change.promotion_note.as_deref(), Some("Reviewed visual update"));
     }
 }
