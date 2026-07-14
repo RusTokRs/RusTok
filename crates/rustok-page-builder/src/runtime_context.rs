@@ -1,8 +1,10 @@
 use fly::{
-    evaluate_runtime_publish_gate, extract_runtime_context_contract, preflight_runtime_context,
-    FlyResult, GrapesJsV1Codec, RuntimeContextContract, RuntimeContextPreflight,
-    RuntimeContextPreflightPolicy, RuntimeContextScenario, RuntimePublishGateEvaluation,
-    RuntimePublishGatePolicy,
+    evaluate_runtime_publish_gate, export_runtime_context_json_schema,
+    extract_runtime_context_contract, generate_runtime_context_example,
+    preflight_runtime_context, FlyResult, GrapesJsV1Codec, RuntimeContextContract,
+    RuntimeContextExample, RuntimeContextExamplePolicy, RuntimeContextJsonSchema,
+    RuntimeContextPreflight, RuntimeContextPreflightPolicy, RuntimeContextScenario,
+    RuntimePublishGateEvaluation, RuntimePublishGatePolicy,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -15,6 +17,28 @@ pub struct PageBuilderRuntimeContractRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PageBuilderRuntimeContractResponse {
     pub contract: RuntimeContextContract,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderRuntimeJsonSchemaRequest {
+    pub project_data: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderRuntimeJsonSchemaResponse {
+    pub schema: RuntimeContextJsonSchema,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderRuntimeExampleRequest {
+    pub project_data: Value,
+    #[serde(default)]
+    pub policy: RuntimeContextExamplePolicy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderRuntimeExampleResponse {
+    pub example: RuntimeContextExample,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -61,6 +85,26 @@ impl PageBuilderRuntimeContextInspector {
         })
     }
 
+    pub fn json_schema(
+        &self,
+        request: PageBuilderRuntimeJsonSchemaRequest,
+    ) -> FlyResult<PageBuilderRuntimeJsonSchemaResponse> {
+        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        Ok(PageBuilderRuntimeJsonSchemaResponse {
+            schema: export_runtime_context_json_schema(&document),
+        })
+    }
+
+    pub fn example(
+        &self,
+        request: PageBuilderRuntimeExampleRequest,
+    ) -> FlyResult<PageBuilderRuntimeExampleResponse> {
+        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        Ok(PageBuilderRuntimeExampleResponse {
+            example: generate_runtime_context_example(&document, request.policy),
+        })
+    }
+
     pub fn preflight(
         &self,
         request: PageBuilderRuntimePreflightRequest,
@@ -91,6 +135,18 @@ pub fn inspect_page_builder_runtime_contract(
     request: PageBuilderRuntimeContractRequest,
 ) -> FlyResult<PageBuilderRuntimeContractResponse> {
     PageBuilderRuntimeContextInspector.contract(request)
+}
+
+pub fn export_page_builder_runtime_json_schema(
+    request: PageBuilderRuntimeJsonSchemaRequest,
+) -> FlyResult<PageBuilderRuntimeJsonSchemaResponse> {
+    PageBuilderRuntimeContextInspector.json_schema(request)
+}
+
+pub fn generate_page_builder_runtime_example(
+    request: PageBuilderRuntimeExampleRequest,
+) -> FlyResult<PageBuilderRuntimeExampleResponse> {
+    PageBuilderRuntimeContextInspector.example(request)
 }
 
 pub fn preflight_page_builder_runtime_context(
@@ -148,6 +204,28 @@ mod tests {
         assert_eq!(response.contract.required_paths, vec!["page.title"]);
         assert_eq!(response.contract.defaulted_paths, vec!["shop.currency"]);
         assert_eq!(response.contract.computed_paths, vec!["page.label"]);
+    }
+
+    #[test]
+    fn consumer_can_export_json_schema_and_generated_example() {
+        let schema = export_page_builder_runtime_json_schema(
+            PageBuilderRuntimeJsonSchemaRequest {
+                project_data: project_data(),
+            },
+        )
+        .expect("json schema response");
+        assert_eq!(schema.schema.schema["type"], "object");
+        assert!(!schema.schema.contract_hash.is_empty());
+
+        let example = generate_page_builder_runtime_example(
+            PageBuilderRuntimeExampleRequest {
+                project_data: project_data(),
+                policy: RuntimeContextExamplePolicy::default(),
+            },
+        )
+        .expect("example response");
+        assert_eq!(example.example.input_context["shop"]["currency"], "EUR");
+        assert_eq!(example.example.effective_context["page"]["label"], "EUR ");
     }
 
     #[test]
