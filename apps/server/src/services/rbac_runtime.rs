@@ -110,6 +110,11 @@ pub(crate) async fn invalidate_user_permissions_cache(
     invalidate_cached_permissions(&cache, tenant_id, user_id).await;
 }
 
+pub(crate) async fn invalidate_all_user_permissions_cache() {
+    USER_PERMISSION_CACHE.invalidate_all();
+    USER_PERMISSION_CACHE.run_pending_tasks().await;
+}
+
 pub(crate) async fn invalidate_user_rbac_caches(tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
     invalidate_user_permissions_cache(tenant_id, user_id).await;
 }
@@ -485,6 +490,29 @@ mod tests {
 
         assert!(many > one);
         assert!(one as usize >= std::mem::size_of::<(uuid::Uuid, uuid::Uuid)>());
+    }
+
+    #[tokio::test]
+    async fn full_permission_cache_invalidation_removes_unknown_user_entries() {
+        let tenant_id = uuid::Uuid::new_v4();
+        let user_id = uuid::Uuid::new_v4();
+        USER_PERMISSION_CACHE
+            .insert(
+                (tenant_id, user_id),
+                vec![Permission::new(Resource::Users, Action::Read)],
+            )
+            .await;
+        assert!(USER_PERMISSION_CACHE
+            .get(&(tenant_id, user_id))
+            .await
+            .is_some());
+
+        invalidate_all_user_permissions_cache().await;
+
+        assert!(USER_PERMISSION_CACHE
+            .get(&(tenant_id, user_id))
+            .await
+            .is_none());
     }
 
     #[tokio::test]
