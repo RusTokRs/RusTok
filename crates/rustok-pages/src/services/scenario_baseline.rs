@@ -10,6 +10,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder,
 };
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::entities::{page, page_body, page_builder_scenario_baseline};
@@ -151,15 +152,21 @@ impl PageBuilderScenarioBaselineService {
                 "Stored Page Builder project is not valid JSON: {error}"
             ))
         })?;
-        let response = evaluate_page_builder_runtime_scenario_release(
-            PageBuilderRuntimeScenarioReleaseRequest {
-                project_data,
-                baseline: Some(baseline),
-                policy: RuntimeScenarioReleasePolicy::block_broken(),
-            },
-        )
-        .map_err(|error| PagesError::validation(error.to_string()))?;
-        Ok(Some(response.evaluation))
+        self.evaluate_candidate_with_baseline(project_data, baseline)
+            .map(Some)
+    }
+
+    pub async fn evaluate_candidate(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+        project_data: Value,
+    ) -> PagesResult<Option<RuntimeScenarioReleaseEvaluation>> {
+        let Some(baseline) = self.load_unchecked(tenant_id, page_id).await? else {
+            return Ok(None);
+        };
+        self.evaluate_candidate_with_baseline(project_data, baseline)
+            .map(Some)
     }
 
     pub async fn ensure_publish_allowed(
@@ -167,26 +174,45 @@ impl PageBuilderScenarioBaselineService {
         tenant_id: Uuid,
         page_id: Uuid,
     ) -> PagesResult<()> {
-        let Some(evaluation) = self.evaluate_publish(tenant_id, page_id).await? else {
-            return Ok(());
-        };
-        if evaluation.allowed {
+        match self.evaluate_publish(tenant_id, page_id).await? {
+            Some(evaluation) => ensure_evaluation_allowed(evaluation),
+            None => Ok(()),
+        }
+    }
+
+    pub async fn ensure_published_candidate_allowed(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+        project_data: Value,
+    ) -> PagesResult<()> {
+        let page = self.find_page(tenant_id, page_id).await?;
+        if page.status != "published" {
             return Ok(());
         }
-        let details = evaluation
-            .blocking_diagnostics()
-            .take(4)
-            .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
-            .collect::<Vec<_>>()
-            .join("; ");
-        Err(PagesError::validation(format!(
-            "{PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE}: {}",
-            if details.is_empty() {
-                format!("release status {:?} is not allowed", evaluation.status)
-            } else {
-                details
-            }
-        )))
+        match self
+            .evaluate_candidate(tenant_id, page_id, project_data)
+            .await?
+        {
+            Some(evaluation) => ensure_evaluation_allowed(evaluation),
+            None => Ok(()),
+        }
+    }
+
+    fn evaluate_candidate_with_baseline(
+        &self,
+        project_data: Value,
+        baseline: RuntimeScenarioReleaseBaseline,
+    ) -> PagesResult<RuntimeScenarioReleaseEvaluation> {
+        evaluate_page_builder_runtime_scenario_release(
+            PageBuilderRuntimeScenarioReleaseRequest {
+                project_data,
+                baseline: Some(baseline),
+                policy: RuntimeScenarioReleasePolicy::block_broken(),
+            },
+        )
+        .map(|response| response.evaluation)
+        .map_err(|error| PagesError::validation(error.to_string()))
     }
 
     async fn load_unchecked(
@@ -229,4 +255,24 @@ impl PageBuilderScenarioBaselineService {
             .await?
             .ok_or_else(|| PagesError::page_not_found(page_id))
     }
+}
+
+fn ensure_evaluation_allowed(evaluation: RuntimeScenarioReleaseEvaluation) -> PagesResult<()> {
+    if evaluation.allowed {
+        return Ok(());
+    }
+    let details = evaluation
+        .blocking_diagnostics()
+        .take(4)
+        .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
+        .collect::<Vec<_>>()
+        .join("; ");
+    Err(PagesError::validation(format!(
+        "{PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE}: {}",
+        if details.is_empty() {
+            format!("release status {:?} is not allowed", evaluation.status)
+        } else {
+            details
+        }
+    )))
 }
