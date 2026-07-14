@@ -1,0 +1,57 @@
+name: Cache worker readiness
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/server/src/services/runtime_guardrails.rs"
+      - "apps/server/src/services/runtime_guardrails_base.rs"
+      - "apps/server/src/services/cache_redis_status_monitor.rs"
+      - "apps/server/src/services/field_definition_cache.rs"
+      - "apps/server/src/services/rbac_cache_invalidation.rs"
+      - "apps/server/src/services/rbac_invalidation_generation.rs"
+      - "apps/server/tests/cache_worker_guardrail_architecture_guard.rs"
+      - ".github/workflows/cache-worker-readiness.yml"
+  pull_request:
+    paths:
+      - "apps/server/src/services/runtime_guardrails.rs"
+      - "apps/server/src/services/runtime_guardrails_base.rs"
+      - "apps/server/src/services/cache_redis_status_monitor.rs"
+      - "apps/server/src/services/field_definition_cache.rs"
+      - "apps/server/src/services/rbac_cache_invalidation.rs"
+      - "apps/server/src/services/rbac_invalidation_generation.rs"
+      - "apps/server/tests/cache_worker_guardrail_architecture_guard.rs"
+      - ".github/workflows/cache-worker-readiness.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cache-worker-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker-readiness:
+    name: Cache worker readiness contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-worker-readiness
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Compile server
+        run: cargo check -p rustok-server --lib
+      - name: Worker readiness tests
+        run: |
+          cargo test -p rustok-server runtime_guardrails --lib
+          cargo test -p rustok-server --test cache_worker_guardrail_architecture_guard
+      - name: Clippy
+        run: cargo clippy -p rustok-server --lib -- -D warnings

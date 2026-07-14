@@ -34,42 +34,60 @@ const CHANNEL_NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(10);
 const CHANNEL_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
 const CHANNEL_CACHE_MAX_TENANT_VERSIONS: usize = 16 * 1024;
 
-#[derive(Default)]
 struct ChannelCacheVersionState {
-    global_epoch: u32,
-    tenant_epochs: HashMap<Uuid, u32>,
+    next_version: u64,
+    default_version: u64,
+    tenant_versions: HashMap<Uuid, u64>,
+    exhausted: bool,
+}
+
+impl Default for ChannelCacheVersionState {
+    fn default() -> Self {
+        Self {
+            next_version: 1,
+            default_version: 1,
+            tenant_versions: HashMap::new(),
+            exhausted: false,
+        }
+    }
 }
 
 impl ChannelCacheVersionState {
-    fn token(&self, tenant_id: Uuid) -> u64 {
-        let tenant_epoch = self.tenant_epochs.get(&tenant_id).copied().unwrap_or(0);
-        (u64::from(self.global_epoch) << 32) | u64::from(tenant_epoch)
+    fn token(&self, tenant_id: Uuid) -> Option<u64> {
+        if self.exhausted {
+            return None;
+        }
+        Some(
+            self.tenant_versions
+                .get(&tenant_id)
+                .copied()
+                .unwrap_or(self.default_version),
+        )
     }
 
     fn invalidate(&mut self, tenant_id: Uuid, maximum_tenants: usize) -> bool {
-        if let Some(epoch) = self.tenant_epochs.get_mut(&tenant_id) {
-            if let Some(next) = epoch.checked_add(1) {
-                *epoch = next;
-                return false;
-            }
-            self.rotate_all();
-            self.tenant_epochs.insert(tenant_id, 1);
+        if self.exhausted {
             return true;
         }
 
-        if self.tenant_epochs.len() >= maximum_tenants.max(1) {
-            self.rotate_all();
-            self.tenant_epochs.insert(tenant_id, 1);
+        let Some(next_version) = self.next_version.checked_add(1) else {
+            self.exhausted = true;
+            self.tenant_versions.clear();
+            return true;
+        };
+        self.next_version = next_version;
+
+        if !self.tenant_versions.contains_key(&tenant_id)
+            && self.tenant_versions.len() >= maximum_tenants.max(1)
+        {
+            self.default_version = next_version;
+            self.tenant_versions.clear();
+            self.tenant_versions.insert(tenant_id, next_version);
             return true;
         }
 
-        self.tenant_epochs.insert(tenant_id, 1);
+        self.tenant_versions.insert(tenant_id, next_version);
         false
-    }
-
-    fn rotate_all(&mut self) {
-        self.global_epoch = self.global_epoch.wrapping_add(1);
-        self.tenant_epochs.clear();
     }
 }
 
@@ -172,7 +190,7 @@ impl ChannelResolutionCache {
         }
     }
 
-    fn tenant_version(&self, tenant_id: Uuid) -> u64 {
+    fn tenant_version(&self, tenant_id: Uuid) -> Option<u64> {
         self.versions
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -196,8 +214,17 @@ impl ChannelResolutionCache {
         self.versions
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .tenant_epochs
+            .tenant_versions
             .len()
+    }
+
+    #[cfg(test)]
+    fn exhaust_versions(&self) {
+        let mut versions = self
+            .versions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        versions.next_version = u64::MAX;
     }
 }
 
@@ -251,19 +278,27 @@ pub async fn resolve(
         req.extensions(),
     );
     let cache = channel_cache(&ctx);
-    let cache_key = channel_cache_key_from_facts(&facts, cache.tenant_version(facts.tenant_id));
 
-    let cached = cache
-        .cache
-        .try_get_with(cache_key, async move {
-            resolver
-                .resolve(&facts)
-                .await
-                .map(CachedChannelResolution::from_decision)
-                .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-        })
-        .await
-        .map_err(|error| *error)?;
+    let cached = if let Some(version) = cache.tenant_version(facts.tenant_id) {
+        let cache_key = channel_cache_key_from_facts(&facts, version);
+        cache
+            .cache
+            .try_get_with(cache_key, async move {
+                resolver
+                    .resolve(&facts)
+                    .await
+                    .map(CachedChannelResolution::from_decision)
+                    .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+            })
+            .await
+            .map_err(|error| *error)?
+    } else {
+        resolver
+            .resolve(&facts)
+            .await
+            .map(CachedChannelResolution::from_decision)
+            .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
+    };
 
     if let CachedChannelResolution::Found(context) = cached {
         req.extensions_mut()
@@ -413,7 +448,7 @@ mod version_registry_tests {
         assert_ne!(initial_first, invalidated_first);
         assert_ne!(initial_first, cache.tenant_version(first));
         assert!(cache.tracked_tenant_versions() <= 2);
-        assert_ne!(cache.tenant_version(third), 0);
+        assert!(cache.tenant_version(third).is_some());
     }
 
     #[tokio::test]
@@ -424,6 +459,18 @@ mod version_registry_tests {
             cache.invalidate_tenant(tenant).await;
         }
         assert_eq!(cache.tracked_tenant_versions(), 1);
+    }
+
+    #[tokio::test]
+    async fn version_exhaustion_disables_cache_instead_of_reusing_a_token() {
+        let cache = ChannelResolutionCache::with_max_tenant_versions(2);
+        let tenant = Uuid::new_v4();
+        cache.exhaust_versions();
+
+        cache.invalidate_tenant(tenant).await;
+
+        assert!(cache.tenant_version(tenant).is_none());
+        assert_eq!(cache.tracked_tenant_versions(), 0);
     }
 }
 
