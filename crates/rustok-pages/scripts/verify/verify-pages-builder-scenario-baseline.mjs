@@ -53,11 +53,14 @@ const required = [
   [service, 'baseline.validate()', 'scenario baseline service does not validate integrity'],
   [service, 'baseline.baseline_hash != model.baseline_hash', 'stored baseline columns are not cross-checked'],
   [service, 'RuntimeScenarioReleasePolicy::block_broken()', 'Pages publish evaluation does not block broken regressions'],
+  [service, 'ensure_published_candidate_allowed', 'published Page Builder updates are not scenario-gated'],
+  [service, 'if page.status != "published"', 'draft updates must remain outside the release gate'],
   [graphqlMod, '#[derive(MergedObject, Default)]', 'baseline GraphQL objects are not merged into Pages schema'],
   [graphqlBaseline, 'page_builder_scenario_baseline', 'baseline GraphQL query is missing'],
   [graphqlBaseline, 'save_page_builder_scenario_baseline', 'baseline GraphQL save mutation is missing'],
   [graphqlBaseline, 'delete_page_builder_scenario_baseline', 'baseline GraphQL delete mutation is missing'],
   [mutation, '.ensure_publish_allowed(tenant_id, id)', 'publishPage does not enforce scenario regression gate'],
+  [mutation, '.ensure_published_candidate_allowed(tenant_id, id, project_data)', 'updatePage does not gate candidate live builder content'],
   [adminAdapter, 'PAGE_BUILDER_SCENARIO_BASELINE_QUERY', 'Pages admin baseline query is missing'],
   [adminAdapter, 'SAVE_PAGE_BUILDER_SCENARIO_BASELINE_MUTATION', 'Pages admin baseline save mutation is missing'],
   [adminTransport, 'fetch_page_builder_scenario_baseline', 'Pages admin transport does not expose baseline load'],
@@ -77,6 +80,12 @@ const gateIndex = mutation.indexOf('.ensure_publish_allowed(tenant_id, id)');
 const publishIndex = mutation.indexOf('.publish(tenant_id, page_security(&auth), id)');
 if (gateIndex < 0 || publishIndex < 0 || gateIndex > publishIndex) {
   failures.push('publishPage must evaluate the scenario baseline before publishing the page');
+}
+
+const candidateGateIndex = mutation.indexOf('.ensure_published_candidate_allowed(tenant_id, id, project_data)');
+const updateIndex = mutation.indexOf('.update(');
+if (candidateGateIndex < 0 || updateIndex < 0 || candidateGateIndex > updateIndex) {
+  failures.push('published updatePage candidate must be evaluated before the page body is written');
 }
 
 if (service.includes('project_data.get("nodes")')) {
