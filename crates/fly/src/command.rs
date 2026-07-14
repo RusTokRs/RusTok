@@ -1,9 +1,9 @@
 use crate::{
-    apply_binding_command, apply_dynamic_command, apply_page_command, apply_style_rule_command,
-    extend_with_runtime_validation, validate_project, AssetDescriptor, BindingCommand,
-    ComponentNode, ComponentObject, DynamicCommand, FlyError, FlyResult, GrapesJsV1Codec,
-    PageCommand, ProjectDocument, RegistrySet, SequentialIdGenerator, StyleRuleCommand,
-    ValidationLimits, ValidationReport,
+    apply_binding_command, apply_context_command, apply_dynamic_command, apply_page_command,
+    apply_style_rule_command, extend_with_runtime_validation, validate_project, AssetDescriptor,
+    BindingCommand, ComponentNode, ComponentObject, ContextCommand, DynamicCommand, FlyError,
+    FlyResult, GrapesJsV1Codec, PageCommand, ProjectDocument, RegistrySet, SequentialIdGenerator,
+    StyleRuleCommand, ValidationLimits, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -131,6 +131,9 @@ pub enum EditorCommand {
     },
     Binding {
         command: BindingCommand,
+    },
+    Context {
+        command: ContextCommand,
     },
     Batch {
         commands: Vec<EditorCommand>,
@@ -484,6 +487,7 @@ impl FlyEditor {
             EditorCommand::Page { command } => apply_page_command(document, command),
             EditorCommand::Dynamic { command } => apply_dynamic_command(document, command),
             EditorCommand::Binding { command } => apply_binding_command(document, command),
+            EditorCommand::Context { command } => apply_context_command(document, command),
             EditorCommand::Batch { commands } => {
                 for command in commands {
                     self.apply_to_document(document, command)?;
@@ -530,9 +534,9 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
 mod tests {
     use super::*;
     use crate::{
-        BindingCatalog, BindingTarget, BindingTransform, ConditionOperator, DynamicCatalog,
-        GrapesJsV1Codec, RuntimeBinding, RuntimeCondition, RegistrySet,
-        FLY_RUNTIME_CONDITIONS_FIELD,
+        BindingCatalog, BindingTarget, BindingTransform, ConditionOperator, ContextFieldDefinition,
+        ContextSchemaCatalog, ContextValueKind, DynamicCatalog, GrapesJsV1Codec, RuntimeBinding,
+        RuntimeCondition, RegistrySet, FLY_RUNTIME_CONDITIONS_FIELD,
     };
     use serde_json::json;
 
@@ -631,6 +635,29 @@ mod tests {
         assert_eq!(BindingCatalog::from_document(editor.document()).bindings.len(), 1);
         editor.undo().expect("undo binding command");
         assert!(BindingCatalog::from_document(editor.document()).bindings.is_empty());
+    }
+
+    #[test]
+    fn context_commands_participate_in_history() {
+        let mut editor = editor();
+        editor
+            .apply(EditorCommand::Context {
+                command: ContextCommand::UpsertField {
+                    field: ContextFieldDefinition {
+                        id: "title".to_string(),
+                        path: "page.title".to_string(),
+                        kind: ContextValueKind::String,
+                        required: true,
+                        default: Some(json!("Untitled")),
+                        item_kind: None,
+                        extensions: Map::new(),
+                    },
+                },
+            })
+            .expect("context command");
+        assert_eq!(ContextSchemaCatalog::from_document(editor.document()).fields.len(), 1);
+        editor.undo().expect("undo context command");
+        assert!(ContextSchemaCatalog::from_document(editor.document()).fields.is_empty());
     }
 
     #[test]
