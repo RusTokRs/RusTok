@@ -1,0 +1,65 @@
+name: FORUM-04 Category Tree Runtime
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-forum/**"
+      - ".github/workflows/forum04-category-tree-runtime.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      RUSTOK_FORUM_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Check focused formatting
+        shell: bash
+        run: |
+          rustfmt --edition 2021 --check \
+            crates/rustok-forum/src/controllers/category_tree.rs \
+            crates/rustok-forum/src/controllers/mod.rs \
+            crates/rustok-forum/src/dto/category_tree.rs \
+            crates/rustok-forum/src/dto/mod.rs \
+            crates/rustok-forum/src/graphql/category_tree_query.rs \
+            crates/rustok-forum/src/graphql/mod.rs \
+            crates/rustok-forum/src/openapi.rs \
+            crates/rustok-forum/src/services/category_owner.rs \
+            crates/rustok-forum/src/services/category_tree.rs \
+            crates/rustok-forum/src/services/mod.rs \
+            crates/rustok-forum/tests/category_tree_postgres.rs \
+            crates/rustok-forum/tests/category_tree_sqlite.rs \
+            crates/rustok-forum/tests/support/category_tree.rs \
+            crates/rustok-forum/tests/support/mod.rs
+      - name: Check forum crate
+        run: RUSTFLAGS="-Dwarnings" cargo check -p rustok-forum --all-targets --all-features
+      - name: Clippy forum crate
+        run: cargo clippy -p rustok-forum --all-targets --all-features --no-deps -- -D warnings
+      - name: Test SQLite category tree
+        run: cargo test -p rustok-forum --test category_tree_sqlite -- --nocapture
+      - name: Test PostgreSQL category tree
+        run: cargo test -p rustok-forum --test category_tree_postgres -- --nocapture --test-threads=1
+      - name: Test GraphQL category tree schema
+        run: cargo test -p rustok-forum schema_exposes_recursive_forum_category_tree -- --nocapture
+      - name: Validate forum module
+        run: cargo xtask module validate forum
