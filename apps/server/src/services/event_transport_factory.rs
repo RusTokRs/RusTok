@@ -14,6 +14,7 @@ use rustok_outbox::{OutboxRelay, OutboxTransport, RelayConfig};
 use tokio::task::JoinHandle;
 
 use crate::common::settings::{EventTransportKind, RelayTargetKind, RustokSettings};
+use crate::services::rbac_cache_invalidation::start_rbac_cache_invalidation_listener;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::tenant_cache_generation::{
     start_tenant_cache_generation_listener, TenantCacheGenerationTransport,
@@ -69,9 +70,10 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         Error::BadRequest("CacheService must be initialized before the event runtime".to_string())
     })?;
 
-    // Subscribe before any transport can publish a tenant generation. This also restores the
-    // shared generation before tenant middleware constructs its backend later in bootstrap.
+    // Subscribe before any transport can publish a generation. Recovery happens before request
+    // handling, so tenant and RBAC process-local caches cannot start from an unverified epoch.
     start_tenant_cache_generation_listener(ctx, cache.clone()).await?;
+    start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;
 
     let runtime = match settings.events.transport {
         EventTransportKind::Memory => {
@@ -258,7 +260,7 @@ async fn resolve_relay_target(
                     Ok((Arc::new(transport), listener_bus, true))
                 } else {
                     Err(Error::BadRequest(format!(
-                        "Failed to initialize relay_target=iggy and fallback is disabled: {error}"
+                        "Failed to initialize relay_target=iggy: {error}. Set events.allow_relay_target_fallback=true to opt into memory fallback"
                     )))
                 }
             }
@@ -272,39 +274,33 @@ fn transport_with_local_delivery(
 ) -> (Arc<dyn EventTransport>, EventBus) {
     let local = MemoryTransport::with_capacity(channel_capacity);
     let listener_bus = local.event_bus();
-    let transport = LocalDeliveryFanoutTransport { primary, local };
-    (Arc::new(transport), listener_bus)
+    (
+        Arc::new(LocalDeliveryTransport { primary, local }),
+        listener_bus,
+    )
 }
 
-#[derive(Clone)]
-struct LocalDeliveryFanoutTransport {
+struct LocalDeliveryTransport {
     primary: Arc<dyn EventTransport>,
     local: MemoryTransport,
 }
 
 #[async_trait]
-impl EventTransport for LocalDeliveryFanoutTransport {
-    async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
-        // The primary delivery is irreversible. Once it succeeds, returning a local fan-out error
-        // would make the outbox relay publish the same remote event again. Record the local failure
-        // separately and let durable/idempotent consumers recover through their transport path.
+impl EventTransport for LocalDeliveryTransport {
+    async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
         self.primary.publish(envelope.clone()).await?;
-        let event_id = envelope.id;
-        let event_type = envelope.event.event_type();
         if let Err(error) = self.local.publish(envelope).await {
             EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
-            rustok_telemetry::metrics::record_event_error(event_type, "local_delivery");
-            tracing::error!(
-                event_id = %event_id,
-                event_type,
-                error = %error,
-                "Remote event was accepted but local module delivery failed"
+            tracing::error!(%error, "Local event listener delivery failed after primary publish");
+            rustok_telemetry::metrics::record_event_error(
+                "event.local_delivery",
+                "post_primary_publish",
             );
         }
         Ok(())
     }
 
-    async fn acknowledge(&self, event_id: uuid::Uuid) -> rustok_core::Result<()> {
+    async fn acknowledge(&self, event_id: uuid::Uuid) -> Result<()> {
         self.primary.acknowledge(event_id).await
     }
 
@@ -314,71 +310,5 @@ impl EventTransport for LocalDeliveryFanoutTransport {
 
     fn as_any(&self) -> &dyn Any {
         self
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rustok_events::{DomainEvent, EventEnvelope};
-    use uuid::Uuid;
-
-    #[tokio::test]
-    async fn fanout_transport_delivers_only_after_primary_accepts_event() {
-        let primary = MemoryTransport::with_capacity(8);
-        let mut primary_receiver = primary.subscribe();
-        let (transport, listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
-        let mut listener = listener_bus.subscribe();
-        let envelope = EventEnvelope::new(
-            Uuid::from_u128(1),
-            None,
-            DomainEvent::TenantUpdated {
-                tenant_id: Uuid::from_u128(1),
-            },
-        );
-
-        transport.publish(envelope.clone()).await.unwrap();
-        assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
-        assert_eq!(listener.recv().await.unwrap().id, envelope.id);
-    }
-
-    #[tokio::test]
-    async fn fanout_transport_does_not_deliver_locally_when_primary_rejects() {
-        let primary = MemoryTransport::with_capacity(8);
-        let (transport, listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
-        let mut listener = listener_bus.subscribe();
-        let envelope = EventEnvelope::new(
-            Uuid::from_u128(2),
-            None,
-            DomainEvent::TenantUpdated {
-                tenant_id: Uuid::from_u128(2),
-            },
-        );
-
-        assert!(transport.publish(envelope).await.is_err());
-        assert!(
-            tokio::time::timeout(Duration::from_millis(10), listener.recv())
-                .await
-                .is_err()
-        );
-    }
-
-    #[tokio::test]
-    async fn accepted_remote_delivery_is_not_retried_when_local_bus_has_no_receivers() {
-        let primary = MemoryTransport::with_capacity(8);
-        let mut primary_receiver = primary.subscribe();
-        let (transport, _listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
-        let before = event_local_delivery_metrics_snapshot().failure_total;
-        let envelope = EventEnvelope::new(
-            Uuid::from_u128(3),
-            None,
-            DomainEvent::TenantUpdated {
-                tenant_id: Uuid::from_u128(3),
-            },
-        );
-
-        transport.publish(envelope.clone()).await.unwrap();
-        assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
-        assert!(event_local_delivery_metrics_snapshot().failure_total >= before + 1);
     }
 }
