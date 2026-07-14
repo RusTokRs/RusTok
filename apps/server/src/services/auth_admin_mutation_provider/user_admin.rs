@@ -191,7 +191,9 @@ async fn publish_committed_user_invalidation(
     durable_generation: u64,
 ) {
     RbacService::invalidate_user_rbac_caches(&tenant_id, &user_id).await;
-    if let Err(error) = publish_user_rbac_invalidation(&tenant_id, &user_id).await {
+    if let Err(error) =
+        publish_user_rbac_invalidation(&tenant_id, &user_id, durable_generation).await
+    {
         tracing::warn!(
             %error,
             durable_generation,
