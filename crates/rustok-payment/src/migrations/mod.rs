@@ -10,6 +10,7 @@ mod m20260713_000112_claim_provider_operation_execution;
 mod m20260713_000113_lock_collection_order_binding;
 mod m20260714_000114_create_provider_event_inbox;
 mod m20260714_000115_enforce_provider_event_inbox;
+mod m20260714_000116_allow_provider_event_replay;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -27,5 +28,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000113_lock_collection_order_binding::Migration),
         Box::new(m20260714_000114_create_provider_event_inbox::Migration),
         Box::new(m20260714_000115_enforce_provider_event_inbox::Migration),
+        Box::new(m20260714_000116_allow_provider_event_replay::Migration),
     ]
 }
