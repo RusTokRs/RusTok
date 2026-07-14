@@ -8,6 +8,7 @@ use crate::{CacheLoadResult, CacheService};
 
 const NANOS_PER_SECOND: u128 = 1_000_000_000;
 const MAX_JITTER_PERCENT: u8 = 50;
+pub const MAX_CACHE_POLICY_KEY_BYTES: usize = crate::service::MAX_CACHE_LOAD_KEY_BYTES;
 
 /// TTL selection policy for a cache fill.
 ///
@@ -148,6 +149,7 @@ impl CacheService {
         Fut: Future<Output = rustok_core::Result<Vec<u8>>>,
     {
         let key = key.into();
+        validate_policy_key(&key)?;
         let ttl = policy.ttl.ttl_for(&key);
         let loader_timeout = policy.loader_timeout;
 
@@ -164,6 +166,22 @@ impl CacheService {
         })
         .await
     }
+}
+
+fn validate_policy_key(key: &str) -> rustok_core::Result<()> {
+    if key.trim().is_empty() {
+        return Err(rustok_core::Error::Cache(
+            "cache load key must not be empty".to_string(),
+        ));
+    }
+    if key.len() > MAX_CACHE_POLICY_KEY_BYTES {
+        return Err(rustok_core::Error::Cache(format!(
+            "cache load key is {} bytes; maximum is {}",
+            key.len(),
+            MAX_CACHE_POLICY_KEY_BYTES
+        )));
+    }
+    Ok(())
 }
 
 fn deterministic_jittered_ttl(
@@ -272,6 +290,35 @@ mod tests {
             CacheTtlPolicy::deterministic_jitter(Duration::from_secs(1), 10, "  ").unwrap_err(),
             CachePolicyError::EmptyNamespace
         );
+    }
+
+    #[tokio::test]
+    async fn policy_rejects_invalid_keys_before_loader_work() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let policy = CacheLoadPolicy::new(
+            CacheTtlPolicy::deterministic_jitter(Duration::from_secs(60), 10, "bounded:v1")
+                .unwrap(),
+        );
+        let calls = AtomicUsize::new(0);
+
+        for key in ["".to_string(), "x".repeat(MAX_CACHE_POLICY_KEY_BYTES + 1)] {
+            let error = service
+                .load_or_fill_with_policy(backend.clone(), key, policy.clone(), || async {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(b"unexpected".to_vec())
+                })
+                .await
+                .unwrap_err();
+            assert!(matches!(error, rustok_core::Error::Cache(_)));
+        }
+
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        let stats = backend.stats();
+        assert_eq!(stats.hits, 0);
+        assert_eq!(stats.misses, 0);
+        assert_eq!(stats.evictions, 0);
+        assert_eq!(stats.entries, 0);
     }
 
     #[tokio::test]
