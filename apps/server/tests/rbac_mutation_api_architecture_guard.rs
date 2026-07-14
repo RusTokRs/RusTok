@@ -102,13 +102,52 @@ fn committed_role_replacement_locks_target_and_checks_noop_before_generation_bum
 }
 
 #[test]
-fn public_role_repair_boundary_requires_database_transaction() {
+fn public_role_repair_surface_splits_read_only_plan_from_transactional_apply() {
     let exports = source("crates/rustok-rbac/src/lib.rs");
     let server = source("apps/server/src/services/rbac_repair.rs");
 
     assert!(exports.contains("mod repair;"));
     assert!(!exports.contains("pub mod repair;"));
+    assert!(exports.contains("pub async fn plan_system_role_repair("));
+    assert!(exports.contains("pub async fn apply_system_role_repair_in_transaction("));
     assert!(exports.contains("db: &sea_orm::DatabaseTransaction"));
-    assert!(exports.contains("repair::repair_system_roles_in_transaction(db, options).await"));
-    assert!(server.contains("rustok_rbac::repair_system_roles_in_transaction(\n            &tx,"));
+    assert!(!exports.contains("pub use repair::{\n    repair_system_roles"));
+    assert!(server.contains("rustok_rbac::plan_system_role_repair(db, tenant_id)"));
+    assert!(server.contains("rustok_rbac::apply_system_role_repair_in_transaction(&tx, tenant_id)"));
+}
+
+#[test]
+fn operational_cli_applies_repair_and_generation_in_one_transaction() {
+    let cli = source("crates/rustok-rbac/cli/src/lib.rs");
+    let cargo = source("crates/rustok-rbac/cli/Cargo.toml");
+
+    for required in [
+        "sea-orm.workspace = true",
+    ] {
+        assert!(cargo.contains(required), "RBAC CLI manifest must retain {required}");
+    }
+    for required in [
+        "apply_system_role_repair_in_transaction",
+        "plan_system_role_repair",
+        "reserve_permission_invalidation_generation",
+        "let tx = db.begin().await",
+        "tx.commit().await",
+        "rollback_command_failure",
+        "report.runtime_restart_required = false",
+        "durable_generation",
+    ] {
+        assert!(cli.contains(required), "RBAC CLI must retain {required}");
+    }
+
+    let repair = cli
+        .find("apply_system_role_repair_in_transaction(&tx, tenant_id)")
+        .expect("CLI apply must repair inside the transaction");
+    let reserve = cli
+        .find("reserve_permission_invalidation_generation(&tx)")
+        .expect("CLI apply must reserve durable generation");
+    let commit = cli
+        .find("tx.commit().await")
+        .expect("CLI apply must commit after repair and generation");
+    assert!(repair < reserve);
+    assert!(reserve < commit);
 }
