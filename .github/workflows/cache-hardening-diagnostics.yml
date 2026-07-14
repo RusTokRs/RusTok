@@ -62,6 +62,16 @@ jobs:
             --test cache_worker_guardrail_architecture_guard \
             > /tmp/tests.log 2>&1
           test_status=$?
+
+          sed -r 's/\x1B\[[0-9;]*[mK]//g' /tmp/check.log > /tmp/check.clean
+          sed -r 's/\x1B\[[0-9;]*[mK]//g' /tmp/tests.log > /tmp/tests.clean
+          grep -n -E 'error(\[[A-Z0-9]+\])?:|could not compile|warning:' /tmp/check.clean -A12 -B5 \
+            > /tmp/check.filtered || true
+          grep -n -E 'error(\[[A-Z0-9]+\])?:|could not compile|FAILED|failures:|test result:' /tmp/tests.clean -A12 -B5 \
+            > /tmp/tests.filtered || true
+          if [ ! -s /tmp/check.filtered ]; then tail -n 80 /tmp/check.clean > /tmp/check.filtered; fi
+          if [ ! -s /tmp/tests.filtered ]; then tail -n 100 /tmp/tests.clean > /tmp/tests.filtered; fi
+
           {
             echo "## Cache hardening diagnostics summary"
             echo
@@ -77,18 +87,18 @@ jobs:
             echo '```'
           } > /tmp/fmt.md
           {
-            echo "## Server compile diagnostics"
+            echo "## Filtered server compile diagnostics"
             echo
             echo '```text'
-            tail -c 18000 /tmp/check.log
+            tail -c 20000 /tmp/check.filtered
             echo
             echo '```'
           } > /tmp/check.md
           {
-            echo "## Cache architecture-test diagnostics"
+            echo "## Filtered cache architecture-test diagnostics"
             echo
             echo '```text'
-            tail -c 18000 /tmp/tests.log
+            tail -c 20000 /tmp/tests.filtered
             echo
             echo '```'
           } > /tmp/tests.md
