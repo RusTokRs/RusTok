@@ -41,6 +41,13 @@ pub struct ReceiveProviderEvent {
 }
 
 #[derive(Clone, Debug)]
+pub struct VerifiedProviderEvent {
+    pub event_type: String,
+    pub external_reference: Option<String>,
+    pub event_metadata: Value,
+}
+
+#[derive(Clone, Debug)]
 pub struct CheckpointProviderEvent {
     pub tenant_id: Uuid,
     pub event_id: Uuid,
@@ -81,11 +88,33 @@ impl PaymentProviderEventJournal {
         Self { db }
     }
 
+    /// Low-level receipt used by journal tests and compatibility callers. New
+    /// webhook ingress should use `receive_verified` so normalized facts are
+    /// durable in the same insert as the payload digest and delivery identity.
     pub async fn receive(
         &self,
         input: ReceiveProviderEvent,
     ) -> PaymentResult<provider_event::Model> {
+        self.receive_internal(input, None).await
+    }
+
+    /// Persist signature-verified normalized facts atomically with the inbox
+    /// receipt. The raw body is only hashed and is never stored.
+    pub async fn receive_verified(
+        &self,
+        input: ReceiveProviderEvent,
+        normalized: VerifiedProviderEvent,
+    ) -> PaymentResult<provider_event::Model> {
+        self.receive_internal(input, Some(normalized)).await
+    }
+
+    async fn receive_internal(
+        &self,
+        input: ReceiveProviderEvent,
+        normalized: Option<VerifiedProviderEvent>,
+    ) -> PaymentResult<provider_event::Model> {
         let input = normalize_receive_input(input)?;
+        let normalized = normalized.map(normalize_verified_event).transpose()?;
         let payload_hash = hash_payload(input.raw_payload.as_slice());
 
         if let Some(existing) = self
@@ -97,8 +126,9 @@ impl PaymentProviderEventJournal {
             )
             .await?
         {
-            ensure_same_delivery(&existing, &input, payload_hash.as_str())?;
-            return Ok(existing);
+            return self
+                .adopt_existing(existing, &input, payload_hash.as_str(), normalized.as_ref())
+                .await;
         }
 
         let now = Utc::now();
@@ -111,9 +141,13 @@ impl PaymentProviderEventJournal {
             payload_hash: Set(payload_hash.clone()),
             signature_verified: Set(true),
             status: Set(PROVIDER_EVENT_RECEIVED.to_string()),
-            event_type: Set(None),
-            external_reference: Set(None),
-            event_metadata: Set(None),
+            event_type: Set(normalized.as_ref().map(|value| value.event_type.clone())),
+            external_reference: Set(normalized
+                .as_ref()
+                .and_then(|value| value.external_reference.clone())),
+            event_metadata: Set(normalized
+                .as_ref()
+                .map(|value| value.event_metadata.clone())),
             attempt_count: Set(0),
             lease_owner: Set(None),
             lease_expires_at: Set(None),
@@ -138,13 +172,66 @@ impl PaymentProviderEventJournal {
                     )
                     .await?
                 {
-                    ensure_same_delivery(&existing, &input, payload_hash.as_str())?;
-                    Ok(existing)
+                    self.adopt_existing(
+                        existing,
+                        &input,
+                        payload_hash.as_str(),
+                        normalized.as_ref(),
+                    )
+                    .await
                 } else {
                     Err(insert_error.into())
                 }
             }
         }
+    }
+
+    async fn adopt_existing(
+        &self,
+        existing: provider_event::Model,
+        input: &ReceiveProviderEvent,
+        payload_hash: &str,
+        normalized: Option<&VerifiedProviderEvent>,
+    ) -> PaymentResult<provider_event::Model> {
+        ensure_same_delivery(&existing, input, payload_hash)?;
+        let Some(normalized) = normalized else {
+            return Ok(existing);
+        };
+
+        if existing.event_type.is_none() && existing.event_metadata.is_none() {
+            let update = provider_event::Entity::update_many()
+                .col_expr(
+                    provider_event::Column::EventType,
+                    Expr::value(Some(normalized.event_type.clone())),
+                )
+                .col_expr(
+                    provider_event::Column::ExternalReference,
+                    Expr::value(normalized.external_reference.clone()),
+                )
+                .col_expr(
+                    provider_event::Column::EventMetadata,
+                    Expr::value(Some(normalized.event_metadata.clone())),
+                )
+                .col_expr(
+                    provider_event::Column::UpdatedAt,
+                    Expr::current_timestamp(),
+                )
+                .filter(provider_event::Column::TenantId.eq(existing.tenant_id))
+                .filter(provider_event::Column::Id.eq(existing.id))
+                .filter(provider_event::Column::EventType.is_null())
+                .filter(provider_event::Column::EventMetadata.is_null())
+                .exec(&self.db)
+                .await?;
+            if update.rows_affected > 0 {
+                return self.get(existing.tenant_id, existing.id).await;
+            }
+            let current = self.get(existing.tenant_id, existing.id).await?;
+            ensure_same_normalized_event(&current, normalized)?;
+            return Ok(current);
+        }
+
+        ensure_same_normalized_event(&existing, normalized)?;
+        Ok(existing)
     }
 
     pub async fn get(
@@ -323,6 +410,7 @@ impl PaymentProviderEventJournal {
         self.get(tenant_id, event_id).await.map(Some)
     }
 
+    /// Compatibility checkpoint for pre-inbox-normalization callers and tests.
     pub async fn checkpoint_normalized(
         &self,
         input: CheckpointProviderEvent,
@@ -332,30 +420,24 @@ impl PaymentProviderEventJournal {
             "lease_owner",
             MAX_LEASE_OWNER_LENGTH,
         )?;
-        let event_type = normalize_required(
-            input.event_type,
-            "event_type",
-            MAX_EVENT_TYPE_LENGTH,
-        )?;
-        let external_reference = normalize_optional(
-            input.external_reference,
-            "external_reference",
-            MAX_EXTERNAL_REFERENCE_LENGTH,
-        )?;
-        let event_metadata = normalize_event_metadata(input.event_metadata)?;
+        let normalized = normalize_verified_event(VerifiedProviderEvent {
+            event_type: input.event_type,
+            external_reference: input.external_reference,
+            event_metadata: input.event_metadata,
+        })?;
         let now = Utc::now().fixed_offset();
         let update = provider_event::Entity::update_many()
             .col_expr(
                 provider_event::Column::EventType,
-                Expr::value(Some(event_type)),
+                Expr::value(Some(normalized.event_type)),
             )
             .col_expr(
                 provider_event::Column::ExternalReference,
-                Expr::value(external_reference),
+                Expr::value(normalized.external_reference),
             )
             .col_expr(
                 provider_event::Column::EventMetadata,
-                Expr::value(Some(event_metadata)),
+                Expr::value(Some(normalized.event_metadata)),
             )
             .col_expr(
                 provider_event::Column::UpdatedAt,
@@ -389,17 +471,11 @@ impl PaymentProviderEventJournal {
             "lease_owner",
             MAX_LEASE_OWNER_LENGTH,
         )?;
-        let event_type = normalize_required(
-            input.event_type,
-            "event_type",
-            MAX_EVENT_TYPE_LENGTH,
-        )?;
-        let external_reference = normalize_optional(
-            input.external_reference,
-            "external_reference",
-            MAX_EXTERNAL_REFERENCE_LENGTH,
-        )?;
-        let event_metadata = normalize_event_metadata(input.event_metadata)?;
+        let normalized = normalize_verified_event(VerifiedProviderEvent {
+            event_type: input.event_type,
+            external_reference: input.external_reference,
+            event_metadata: input.event_metadata,
+        })?;
         let now = Utc::now().fixed_offset();
 
         let update = provider_event::Entity::update_many()
@@ -409,15 +485,15 @@ impl PaymentProviderEventJournal {
             )
             .col_expr(
                 provider_event::Column::EventType,
-                Expr::value(Some(event_type)),
+                Expr::value(Some(normalized.event_type)),
             )
             .col_expr(
                 provider_event::Column::ExternalReference,
-                Expr::value(external_reference),
+                Expr::value(normalized.external_reference),
             )
             .col_expr(
                 provider_event::Column::EventMetadata,
-                Expr::value(Some(event_metadata)),
+                Expr::value(Some(normalized.event_metadata)),
             )
             .col_expr(
                 provider_event::Column::LeaseOwner,
@@ -648,6 +724,23 @@ fn normalize_receive_input(mut input: ReceiveProviderEvent) -> PaymentResult<Rec
     Ok(input)
 }
 
+fn normalize_verified_event(
+    mut event: VerifiedProviderEvent,
+) -> PaymentResult<VerifiedProviderEvent> {
+    event.event_type = normalize_required(
+        event.event_type,
+        "event_type",
+        MAX_EVENT_TYPE_LENGTH,
+    )?;
+    event.external_reference = normalize_optional(
+        event.external_reference,
+        "external_reference",
+        MAX_EXTERNAL_REFERENCE_LENGTH,
+    )?;
+    event.event_metadata = normalize_event_metadata(event.event_metadata)?;
+    Ok(event)
+}
+
 fn ensure_same_delivery(
     existing: &provider_event::Model,
     input: &ReceiveProviderEvent,
@@ -663,6 +756,22 @@ fn ensure_same_delivery(
         return Err(PaymentError::Validation(format!(
             "provider event key `{}` is already bound to another delivery",
             input.idempotency_key
+        )));
+    }
+    Ok(())
+}
+
+fn ensure_same_normalized_event(
+    existing: &provider_event::Model,
+    normalized: &VerifiedProviderEvent,
+) -> PaymentResult<()> {
+    if existing.event_type.as_deref() != Some(normalized.event_type.as_str())
+        || existing.external_reference != normalized.external_reference
+        || existing.event_metadata.as_ref() != Some(&normalized.event_metadata)
+    {
+        return Err(PaymentError::Validation(format!(
+            "provider event {} is already bound to different normalized facts",
+            existing.id
         )));
     }
     Ok(())
