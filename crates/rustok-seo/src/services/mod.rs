@@ -40,6 +40,7 @@ pub use rustok_pages::PageService;
 pub use rustok_product::CatalogService;
 
 const MODULE_SLUG: &str = "seo";
+const SEO_SETTINGS_SCHEMA_VERSION: u64 = 1;
 const REDIRECT_CACHE_TTL_SECS: u64 = 30;
 const REDIRECT_CACHE_MAX_WEIGHT_BYTES: u64 = 8 * 1024 * 1024;
 const SITEMAP_CHUNK_SIZE: usize = 500;
@@ -153,9 +154,9 @@ impl SeoService {
             return Ok(SeoModuleSettings::default());
         };
 
-        Ok(Self::normalize_settings(
-            serde_json::from_value::<SeoModuleSettings>(module.settings).unwrap_or_default(),
-        ))
+        Ok(Self::normalize_settings(parse_persisted_settings(
+            module.settings,
+        )?))
     }
 
     pub fn normalize_settings(mut settings: SeoModuleSettings) -> SeoModuleSettings {
@@ -197,6 +198,27 @@ impl SeoService {
     }
 }
 
+fn parse_persisted_settings(mut value: serde_json::Value) -> SeoResult<SeoModuleSettings> {
+    let object = value.as_object_mut().ok_or_else(|| {
+        SeoError::configuration("persisted SEO settings must be a JSON object")
+    })?;
+    let schema_version = match object.remove("schema_version") {
+        Some(value) => value.as_u64().ok_or_else(|| {
+            SeoError::configuration("SEO settings `schema_version` must be a positive integer")
+        })?,
+        None => SEO_SETTINGS_SCHEMA_VERSION,
+    };
+    if schema_version != SEO_SETTINGS_SCHEMA_VERSION {
+        return Err(SeoError::configuration(format!(
+            "unsupported SEO settings schema version `{schema_version}`; expected `{SEO_SETTINGS_SCHEMA_VERSION}`"
+        )));
+    }
+
+    serde_json::from_value(value).map_err(|error| {
+        SeoError::configuration(format!("invalid persisted SEO settings: {error}"))
+    })
+}
+
 #[cfg(test)]
 fn built_in_target_registry() -> Arc<SeoTargetRegistry> {
     let mut extensions = ModuleRuntimeExtensions::default();
@@ -233,6 +255,65 @@ pub(super) fn normalize_route(route: &str) -> SeoResult<String> {
         return Err(SeoError::validation("route must not contain whitespace"));
     }
     Ok(route.to_string())
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn persisted_settings_accept_legacy_payload_without_schema_version() {
+        let settings = parse_persisted_settings(json!({
+            "default_robots": ["index", "follow"],
+            "sitemap_enabled": false
+        }))
+        .expect("legacy settings should be treated as schema version 1");
+
+        assert_eq!(settings.default_robots, vec!["index", "follow"]);
+        assert!(!settings.sitemap_enabled);
+    }
+
+    #[test]
+    fn persisted_settings_accept_current_schema_version() {
+        let settings = parse_persisted_settings(json!({
+            "schema_version": SEO_SETTINGS_SCHEMA_VERSION,
+            "sitemap_enabled": true
+        }))
+        .expect("current settings schema should load");
+
+        assert!(settings.sitemap_enabled);
+    }
+
+    #[test]
+    fn persisted_settings_reject_malformed_field_types() {
+        let error = parse_persisted_settings(json!({
+            "schema_version": SEO_SETTINGS_SCHEMA_VERSION,
+            "sitemap_enabled": "yes"
+        }))
+        .expect_err("invalid settings must not silently fall back to defaults");
+
+        assert!(error.to_string().contains("invalid persisted SEO settings"));
+        assert!(error.to_string().contains("sitemap_enabled"));
+    }
+
+    #[test]
+    fn persisted_settings_reject_unsupported_schema_version() {
+        let error = parse_persisted_settings(json!({
+            "schema_version": SEO_SETTINGS_SCHEMA_VERSION + 1
+        }))
+        .expect_err("future settings schema must require an explicit migration");
+
+        assert!(error.to_string().contains("unsupported SEO settings schema version"));
+    }
+
+    #[test]
+    fn persisted_settings_reject_non_object_payload() {
+        let error = parse_persisted_settings(json!(["index", "follow"]))
+            .expect_err("settings root must remain a JSON object");
+
+        assert!(error.to_string().contains("must be a JSON object"));
+    }
 }
 
 #[cfg(test)]
