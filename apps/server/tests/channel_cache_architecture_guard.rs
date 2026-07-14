@@ -21,12 +21,17 @@ fn channel_cache_generations_are_bounded_and_fail_safe() {
     for required in [
         "CHANNEL_CACHE_MAX_TENANT_VERSIONS",
         "struct ChannelCacheVersionState",
-        "global_epoch: u32",
-        "tenant_epochs: HashMap<Uuid, u32>",
-        "if self.tenant_epochs.len() >= maximum_tenants.max(1)",
-        "self.rotate_all();",
+        "next_version: u64",
+        "default_version: u64",
+        "tenant_versions: HashMap<Uuid, u64>",
+        "exhausted: bool",
+        "self.next_version.checked_add(1)",
+        "self.exhausted = true;",
+        "self.tenant_versions.len() >= maximum_tenants.max(1)",
         "self.cache.invalidate_all();",
         "self.cache.run_pending_tasks().await;",
+        "if let Some(version) = cache.tenant_version(facts.tenant_id)",
+        "version_exhaustion_disables_cache_instead_of_reusing_a_token",
         "tenant_version_registry_rotates_without_reusing_stale_tokens",
         "repeated_tenant_invalidation_does_not_grow_the_registry",
     ] {
@@ -36,14 +41,15 @@ fn channel_cache_generations_are_bounded_and_fail_safe() {
         );
     }
 
+    assert!(!channel.contains("wrapping_add"));
     assert!(!channel.contains("tenant_versions: Arc<RwLock<HashMap<Uuid, u64>>>") );
-    let rotation = channel
-        .find("self.rotate_all();")
-        .expect("capacity exhaustion must rotate the global epoch");
+    let exhaustion = channel
+        .find("self.exhausted = true;")
+        .expect("version exhaustion must be explicit");
     let full_invalidation = channel
         .find("self.cache.invalidate_all();")
-        .expect("global rotation must clear cached resolutions");
-    assert!(rotation < full_invalidation);
+        .expect("capacity or version exhaustion must clear cached resolutions");
+    assert!(exhaustion < full_invalidation);
 }
 
 #[test]
