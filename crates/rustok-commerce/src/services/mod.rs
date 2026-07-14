@@ -27,6 +27,7 @@ mod payment_orchestration;
 mod post_order;
 mod refund_reconciliation;
 mod shipping_profile;
+mod staged_checkout;
 
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
 pub use checkout_finalization::{
@@ -103,3 +104,6 @@ pub use post_order::{
 };
 pub use refund_reconciliation::RefundReconciliationService;
 pub use shipping_profile::ShippingProfileService;
+pub use staged_checkout::{
+    StagedCheckoutError, StagedCheckoutResult, StagedCheckoutService,
+};
