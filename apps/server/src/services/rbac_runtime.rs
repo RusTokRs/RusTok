@@ -315,6 +315,7 @@ impl PermissionCache for MokaPermissionCache {
     }
 
     async fn invalidate(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
+        super::rbac_request_scope::invalidate_current_rbac_request_scope(tenant_id, user_id);
         advance_permission_cache_epoch();
         USER_PERMISSION_CACHE
             .invalidate(&(*tenant_id, *user_id))
