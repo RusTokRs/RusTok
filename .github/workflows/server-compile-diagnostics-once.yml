@@ -1,0 +1,38 @@
+name: Server compile diagnostics once
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/server-compile-diagnostics-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-hardening
+      - name: Capture server compile output
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          cargo check -p rustok-server --lib \
+            2>&1 | tee "$RUNNER_TEMP/rustok-server-check.log"
+          echo "${PIPESTATUS[0]}" > "$RUNNER_TEMP/rustok-server-check.status"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-compile-diagnostics
+          path: |
+            ${{ runner.temp }}/rustok-server-check.log
+            ${{ runner.temp }}/rustok-server-check.status
+          if-no-files-found: error
