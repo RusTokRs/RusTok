@@ -53,7 +53,8 @@ struct CacheRefreshInner {
 ///
 /// Refresh identity is scoped by both backend instance and key. A global semaphore limits
 /// refresh concurrency, while a per-key lease prevents duplicate refresh tasks for the same
-/// cache entry. Failed refreshes leave the stale value untouched until its hard expiry.
+/// cache entry and retains the backend allocation until its identity leaves the in-flight set.
+/// Failed refreshes leave the stale value untouched until its hard expiry.
 #[derive(Clone)]
 pub struct CacheRefreshCoordinator {
     inner: Arc<CacheRefreshInner>,
@@ -128,6 +129,7 @@ impl CacheRefreshCoordinator {
         let lease = CacheRefreshLease {
             key: refresh_key,
             in_flight: Arc::clone(&inner.in_flight),
+            _backend: Arc::clone(backend),
             _permit: permit,
         };
         runtime.spawn(async move {
@@ -183,6 +185,7 @@ impl CacheRefreshCoordinator {
 struct CacheRefreshLease {
     key: CacheRefreshKey,
     in_flight: Arc<StdMutex<HashSet<CacheRefreshKey>>>,
+    _backend: Arc<dyn CacheBackend>,
     _permit: OwnedSemaphorePermit,
 }
 
@@ -512,6 +515,7 @@ mod tests {
 
     #[tokio::test]
     async fn dropping_unpolled_refresh_future_releases_lease() {
+        let backend = CacheService::from_url(None).memory_backend(Duration::from_secs(60), 1);
         let key = CacheRefreshKey {
             backend_id: 1,
             key: "never-polled".to_string(),
@@ -521,6 +525,7 @@ mod tests {
         let lease = CacheRefreshLease {
             key,
             in_flight: Arc::clone(&in_flight),
+            _backend: backend,
             _permit: permit,
         };
         let future = async move {
@@ -533,6 +538,38 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn scheduled_refresh_keeps_backend_identity_alive_until_completion() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 1);
+        let weak_backend = Arc::downgrade(&backend);
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let (started_tx, started_rx) = oneshot::channel();
+        let (release_tx, release_rx) = oneshot::channel();
+
+        assert_eq!(
+            coordinator.schedule(&backend, "identity", move || async move {
+                let _ = started_tx.send(());
+                let _ = release_rx.await;
+                Ok(())
+            }),
+            CacheRefreshSchedule::Spawned
+        );
+        started_rx.await.unwrap();
+        drop(backend);
+        assert!(weak_backend.upgrade().is_some());
+
+        let _ = release_tx.send(());
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while coordinator.in_flight() != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("refresh task did not finish");
+        assert!(weak_backend.upgrade().is_none());
     }
 
     #[tokio::test]
