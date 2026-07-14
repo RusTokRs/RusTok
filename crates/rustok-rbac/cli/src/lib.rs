@@ -73,6 +73,17 @@ impl RbacCommandProvider {
             })
             .transpose()?;
         let apply = option_bool(options, "apply")?;
+        let all_tenants = option_bool(options, "all_tenants")?;
+        if tenant_id.is_some() && all_tenants {
+            return Err(CliCoreError::InvalidInput {
+                message: "--tenant-id and --all-tenants are mutually exclusive".to_string(),
+            });
+        }
+        if apply && tenant_id.is_none() && !all_tenants {
+            return Err(CliCoreError::InvalidInput {
+                message: "--apply requires --tenant-id or explicit --all-tenants".to_string(),
+            });
+        }
         let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
         let report = repair_system_roles(&db, RbacSystemRoleRepairOptions { tenant_id, apply })
             .await
@@ -90,6 +101,14 @@ impl RbacCommandProvider {
         object.insert(
             "runtime_restart_required_if_applied".to_string(),
             (!report.affected_users.is_empty()).into(),
+        );
+        object.insert(
+            "scope".to_string(),
+            if let Some(tenant_id) = tenant_id {
+                serde_json::json!({ "tenant_id": tenant_id })
+            } else {
+                serde_json::json!({ "all_tenants": true })
+            },
         );
         write_output_if_requested(&args, &data)?;
 
