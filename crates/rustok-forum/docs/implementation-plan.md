@@ -1139,7 +1139,7 @@ npm run verify:forum:storefront-boundary
 npm run verify:page-builder:consumer:forum
 npm run verify:forum:wave-evidence-freshness
 npm run verify:channel:proof-points
-npm run verify:profile:fba
+cargo test -p rustok-profiles
 npm run verify:media:fba
 npm run verify:outbox:fba
 npm run verify:rbac:fba
