@@ -62,6 +62,7 @@ pub struct PaymentProviderEventRecoveryResponse {
     pub retryable: usize,
     pub dead_letter: usize,
     pub in_progress: usize,
+    pub errors: usize,
     pub failures: Vec<PaymentProviderEventRecoveryFailureResponse>,
 }
 
@@ -73,6 +74,7 @@ impl From<PaymentProviderEventRecoveryReport> for PaymentProviderEventRecoveryRe
             retryable: value.retryable,
             dead_letter: value.dead_letter,
             in_progress: value.in_progress,
+            errors: value.errors,
             failures: value.failures.into_iter().map(Into::into).collect(),
         }
     }
@@ -93,9 +95,9 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
     tag = "payment-provider-events",
     params(PaymentProviderEventRecoveryQuery),
     responses(
-        (status = 200, description = "Bounded recovery sweep completed", body = PaymentProviderEventRecoveryResponse),
+        (status = 200, description = "Bounded recovery sweep completed; per-event failures are reported safely", body = PaymentProviderEventRecoveryResponse),
         (status = 403, description = "payments:manage is required"),
-        (status = 503, description = "Provider event recovery storage unavailable")
+        (status = 503, description = "Initial provider event recovery query failed")
     )
 )]
 pub async fn run_provider_event_recovery(
