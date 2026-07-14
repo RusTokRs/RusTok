@@ -50,10 +50,7 @@ fn acknowledge_rbac_applied_generation(
     match tracker.acknowledge_applied(RBAC_PERMISSION_INVALIDATION_CHANNEL, generation) {
         Ok(_) => Ok(()),
         Err(BoundedInvalidationTrackerError::Payload(
-            CacheInvalidationPayloadError::AcknowledgementNotContiguous {
-                current: Some(current),
-                proposed,
-            },
+            CacheInvalidationPayloadError::OffsetRegressed { current, proposed },
         )) if current >= proposed => Ok(()),
         Err(error) => Err(Error::Cache(error.to_string())),
     }
