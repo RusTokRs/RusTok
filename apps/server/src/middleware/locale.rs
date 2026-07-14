@@ -140,13 +140,10 @@ fn tenant_locale_entry_weight(_tenant_id: &Uuid, locales: &Arc<Vec<TenantLocaleR
 }
 
 fn tenant_locale_cache(ctx: &ServerRuntimeContext) -> Arc<TenantLocaleCache> {
-    if let Some(cache) = ctx.shared_get::<Arc<TenantLocaleCache>>() {
-        return cache;
-    }
-
-    let cache = Arc::new(TenantLocaleCache::new());
-    ctx.shared_insert(cache.clone());
-    cache
+    let candidate = Arc::new(TenantLocaleCache::new());
+    let _ = ctx.shared_insert_if_absent(candidate.clone());
+    ctx.shared_get::<Arc<TenantLocaleCache>>()
+        .unwrap_or(candidate)
 }
 
 pub async fn resolve_locale(
