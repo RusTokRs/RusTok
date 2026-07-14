@@ -1,0 +1,78 @@
+name: Cache hardening diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ci-diagnostics-placeholder"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-hardening-diagnostics
+      - name: Collect diagnostics
+        id: diagnostics
+        shell: bash
+        run: |
+          set +e
+          cargo fmt --all -- --check > /tmp/fmt.log 2>&1
+          fmt_status=$?
+          cargo check -p rustok-server --lib > /tmp/check.log 2>&1
+          check_status=$?
+          cargo test -p rustok-server --test marketplace_cache_architecture_guard --test channel_cache_architecture_guard --test locale_cache_architecture_guard --test field_definition_cache_runtime_guard --test cache_worker_guardrail_architecture_guard > /tmp/tests.log 2>&1
+          test_status=$?
+          {
+            echo "## Cache hardening diagnostics"
+            echo
+            echo "Commit: $GITHUB_SHA"
+            echo "fmt_status=$fmt_status check_status=$check_status test_status=$test_status"
+            echo
+            echo '<details><summary>cargo fmt --check</summary>'
+            echo
+            echo '```text'
+            tail -c 40000 /tmp/fmt.log
+            echo
+            echo '```'
+            echo '</details>'
+            echo
+            echo '<details><summary>cargo check -p rustok-server --lib</summary>'
+            echo
+            echo '```text'
+            tail -c 40000 /tmp/check.log
+            echo
+            echo '```'
+            echo '</details>'
+            echo
+            echo '<details><summary>architecture tests</summary>'
+            echo
+            echo '```text'
+            tail -c 40000 /tmp/tests.log
+            echo
+            echo '```'
+            echo '</details>'
+          } > /tmp/diagnostics.md
+          echo "fmt_status=$fmt_status" >> "$GITHUB_OUTPUT"
+          echo "check_status=$check_status" >> "$GITHUB_OUTPUT"
+          echo "test_status=$test_status" >> "$GITHUB_OUTPUT"
+      - name: Publish diagnostics
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIAGNOSTICS_ISSUE: "1"
+        run: gh issue comment "$DIAGNOSTICS_ISSUE" --body-file /tmp/diagnostics.md
+      - name: Fail when diagnostics fail
+        if: steps.diagnostics.outputs.fmt_status != '0' || steps.diagnostics.outputs.check_status != '0' || steps.diagnostics.outputs.test_status != '0'
+        run: exit 1
