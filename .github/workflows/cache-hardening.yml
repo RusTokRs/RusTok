@@ -8,10 +8,12 @@ on:
       - "crates/rustok-core/src/cache.rs"
       - "crates/rustok-core/src/cache_tests.rs"
       - "crates/rustok-core/src/context.rs"
+      - "crates/rustok-core/src/id.rs"
       - "crates/rustok-core/src/lib.rs"
       - "crates/rustok-core/src/events/memory.rs"
       - "crates/rustok-core/src/resilience/circuit_breaker.rs"
       - "crates/rustok-core/tests/**"
+      - "crates/rustok-events/src/types.rs"
       - "crates/rustok-telemetry/src/lib.rs"
       - "apps/server/src/middleware/mod.rs"
       - "apps/server/src/middleware/tenant.rs"
@@ -50,10 +52,12 @@ on:
       - "crates/rustok-core/src/cache.rs"
       - "crates/rustok-core/src/cache_tests.rs"
       - "crates/rustok-core/src/context.rs"
+      - "crates/rustok-core/src/id.rs"
       - "crates/rustok-core/src/lib.rs"
       - "crates/rustok-core/src/events/memory.rs"
       - "crates/rustok-core/src/resilience/circuit_breaker.rs"
       - "crates/rustok-core/tests/**"
+      - "crates/rustok-events/src/types.rs"
       - "crates/rustok-telemetry/src/lib.rs"
       - "apps/server/src/middleware/mod.rs"
       - "apps/server/src/middleware/tenant.rs"
@@ -117,12 +121,15 @@ jobs:
           set -euo pipefail
           changed=/tmp/cache-hardening-changed-rust.txt
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            head="${{ github.event.pull_request.head.sha }}"
+            base_ref="origin/${{ github.event.pull_request.base.ref }}"
+            merge_base="$(git merge-base "$base_ref" "$head")"
+            git diff --name-only --diff-filter=ACMRT "$merge_base" "$head" -- '*.rs' > "$changed"
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
             git diff --name-only --diff-filter=ACMRT \
-              "${{ github.event.pull_request.base.sha }}" \
-              "${{ github.event.pull_request.head.sha }}" \
+              "${{ github.event.before }}" \
+              "${{ github.sha }}" \
               -- '*.rs' > "$changed"
-          elif git rev-parse HEAD^ >/dev/null 2>&1; then
-            git diff --name-only --diff-filter=ACMRT HEAD^ HEAD -- '*.rs' > "$changed"
           else
             git ls-files '*.rs' > "$changed"
           fi
