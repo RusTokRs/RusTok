@@ -66,7 +66,9 @@ pub struct TenantCacheGenerationListenerState {
     local_degraded: AtomicBool,
     subscriber_degraded: AtomicBool,
     reconciliation_degraded: AtomicBool,
-    last_error: RwLock<Option<String>>,
+    local_error: RwLock<Option<String>>,
+    subscriber_error: RwLock<Option<String>>,
+    reconciliation_error: RwLock<Option<String>>,
 }
 
 impl TenantCacheGenerationListenerState {
@@ -79,7 +81,9 @@ impl TenantCacheGenerationListenerState {
             local_degraded: AtomicBool::new(false),
             subscriber_degraded: AtomicBool::new(false),
             reconciliation_degraded: AtomicBool::new(false),
-            last_error: RwLock::new(None),
+            local_error: RwLock::new(None),
+            subscriber_error: RwLock::new(None),
+            reconciliation_error: RwLock::new(None),
         });
         state.publish_metrics();
         state
@@ -88,13 +92,15 @@ impl TenantCacheGenerationListenerState {
     pub async fn mark_local_healthy(&self) {
         self.local_ready.store(true, Ordering::Release);
         self.local_degraded.store(false, Ordering::Release);
-        self.clear_error_if_recovered().await;
+        *self.local_error.write().await = None;
         self.publish_metrics();
     }
 
     pub async fn mark_local_degraded(&self, error: impl Into<String>) {
+        *self.local_error.write().await = Some(bounded_listener_error(error.into()));
+        self.local_ready.store(false, Ordering::Release);
         self.local_degraded.store(true, Ordering::Release);
-        self.record_error(error).await;
+        self.publish_metrics();
     }
 
     pub fn mark_subscriber_starting(&self) {
@@ -109,7 +115,8 @@ impl TenantCacheGenerationListenerState {
         self.subscriber_degraded.store(false, Ordering::Release);
         self.reconciliation_healthy.store(true, Ordering::Release);
         self.reconciliation_degraded.store(false, Ordering::Release);
-        self.clear_error_if_recovered().await;
+        *self.subscriber_error.write().await = None;
+        *self.reconciliation_error.write().await = None;
         self.publish_metrics();
     }
 
@@ -118,38 +125,29 @@ impl TenantCacheGenerationListenerState {
     pub async fn mark_subscriber_activity_healthy(&self) {
         self.subscriber_ready.store(true, Ordering::Release);
         self.subscriber_degraded.store(false, Ordering::Release);
-        self.clear_error_if_recovered().await;
+        *self.subscriber_error.write().await = None;
         self.publish_metrics();
     }
 
     pub async fn mark_reconciliation_healthy(&self) {
         self.reconciliation_healthy.store(true, Ordering::Release);
         self.reconciliation_degraded.store(false, Ordering::Release);
-        self.clear_error_if_recovered().await;
+        *self.reconciliation_error.write().await = None;
         self.publish_metrics();
     }
 
     pub async fn mark_subscriber_degraded(&self, error: impl Into<String>) {
+        *self.subscriber_error.write().await = Some(bounded_listener_error(error.into()));
         self.subscriber_ready.store(false, Ordering::Release);
         self.subscriber_degraded.store(true, Ordering::Release);
-        self.record_error(error).await;
-    }
-
-    pub async fn mark_reconciliation_degraded(&self, error: impl Into<String>) {
-        self.reconciliation_healthy.store(false, Ordering::Release);
-        self.reconciliation_degraded.store(true, Ordering::Release);
-        self.record_error(error).await;
-    }
-
-    async fn record_error(&self, error: impl Into<String>) {
-        *self.last_error.write().await = Some(bounded_listener_error(error.into()));
         self.publish_metrics();
     }
 
-    async fn clear_error_if_recovered(&self) {
-        if !self.any_component_degraded() {
-            *self.last_error.write().await = None;
-        }
+    pub async fn mark_reconciliation_degraded(&self, error: impl Into<String>) {
+        *self.reconciliation_error.write().await = Some(bounded_listener_error(error.into()));
+        self.reconciliation_healthy.store(false, Ordering::Release);
+        self.reconciliation_degraded.store(true, Ordering::Release);
+        self.publish_metrics();
     }
 
     fn any_component_degraded(&self) -> bool {
@@ -187,11 +185,33 @@ impl TenantCacheGenerationListenerState {
         record_tenant_generation_listener_metrics(self.components());
     }
 
+    async fn active_error_summary(&self) -> Option<String> {
+        let mut errors = Vec::with_capacity(3);
+
+        if self.local_degraded.load(Ordering::Acquire) {
+            if let Some(error) = self.local_error.read().await.as_deref() {
+                errors.push(format!("local: {error}"));
+            }
+        }
+        if self.subscriber_degraded.load(Ordering::Acquire) {
+            if let Some(error) = self.subscriber_error.read().await.as_deref() {
+                errors.push(format!("subscriber: {error}"));
+            }
+        }
+        if self.reconciliation_degraded.load(Ordering::Acquire) {
+            if let Some(error) = self.reconciliation_error.read().await.as_deref() {
+                errors.push(format!("reconciliation: {error}"));
+            }
+        }
+
+        (!errors.is_empty()).then(|| bounded_listener_error(errors.join("; ")))
+    }
+
     pub async fn snapshot(&self) -> TenantCacheGenerationListenerSnapshot {
         let metrics = self.components();
         TenantCacheGenerationListenerSnapshot {
             status: TenantCacheGenerationListenerStatus::from_metric_value(metrics.status),
-            last_error: self.last_error.read().await.clone(),
+            last_error: self.active_error_summary().await,
             redis_required: self.redis_required,
             local_ready: metrics.local_ready,
             subscriber_ready: metrics.subscriber_ready,
@@ -261,7 +281,7 @@ mod tests {
         assert!(!snapshot.reconciliation_healthy);
         assert_eq!(
             snapshot.last_error.as_deref(),
-            Some("generation store unavailable")
+            Some("reconciliation: generation store unavailable")
         );
     }
 
@@ -278,7 +298,31 @@ mod tests {
             TenantCacheGenerationListenerStatus::Degraded
         );
         assert!(!snapshot.subscriber_ready);
-        assert_eq!(snapshot.last_error.as_deref(), Some("subscriber closed"));
+        assert_eq!(
+            snapshot.last_error.as_deref(),
+            Some("subscriber: subscriber closed")
+        );
+    }
+
+    #[tokio::test]
+    async fn recovered_failure_exposes_the_remaining_component_error() {
+        let state = TenantCacheGenerationListenerState::new(true);
+        state.mark_subscriber_ready_after_recovery().await;
+        state.mark_subscriber_degraded("subscriber closed").await;
+        state
+            .mark_reconciliation_degraded("generation store unavailable")
+            .await;
+        state.mark_reconciliation_healthy().await;
+
+        let snapshot = state.snapshot().await;
+        assert_eq!(
+            snapshot.status,
+            TenantCacheGenerationListenerStatus::Degraded
+        );
+        assert_eq!(
+            snapshot.last_error.as_deref(),
+            Some("subscriber: subscriber closed")
+        );
     }
 
     #[tokio::test]
@@ -292,6 +336,24 @@ mod tests {
         assert_eq!(
             state.snapshot().await.status,
             TenantCacheGenerationListenerStatus::Healthy
+        );
+    }
+
+    #[tokio::test]
+    async fn local_failure_clears_the_ready_component_gauge() {
+        let state = TenantCacheGenerationListenerState::new(false);
+        state.mark_local_healthy().await;
+        state.mark_local_degraded("local subscription closed").await;
+
+        let snapshot = state.snapshot().await;
+        assert_eq!(
+            snapshot.status,
+            TenantCacheGenerationListenerStatus::Degraded
+        );
+        assert!(!snapshot.local_ready);
+        assert_eq!(
+            snapshot.last_error.as_deref(),
+            Some("local: local subscription closed")
         );
     }
 
