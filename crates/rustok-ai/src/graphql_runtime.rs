@@ -48,24 +48,7 @@ impl AiGraphqlRuntimeData {
 pub fn attach_schema_data(
     inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
 ) -> Result<AiGraphqlRuntimeData, String> {
-    let event_bus = inputs
-        .shared_get::<rustok_outbox::TransactionalEventBus>()
-        .ok_or_else(|| "AI GraphQL requires TransactionalEventBus".to_string())?;
-    let registry = inputs
-        .shared_get::<rustok_core::ModuleRegistry>()
-        .ok_or_else(|| "AI GraphQL requires ModuleRegistry".to_string())?;
-    let mut runtime = crate::AiHostRuntime::new(inputs.db_clone(), event_bus, registry)
-        .with_storage(inputs.shared_get::<rustok_storage::StorageService>())
-        .with_alloy_runtime(inputs.shared_get::<alloy::SharedAlloyRuntime>());
-    if let Some(value) = inputs.shared_get::<crate::SharedAiSecretResolverRegistry>() {
-        runtime = runtime.with_secret_registry(value.0);
-    }
-    if let Some(value) = inputs.shared_get::<crate::SharedAiEgressPolicy>() {
-        runtime = runtime.with_egress_policy(value.0);
-    }
-    if let Some(value) = inputs.shared_get::<crate::SharedAiProviderTargetCatalog>() {
-        runtime = runtime.with_provider_targets(value.0);
-    }
+    let runtime = crate::ai_host_runtime_from_context(inputs.host())?;
     let role_slug_provider = AiGraphqlRoleSlugProviderHandle::new(Arc::new(
         SeaOrmAiGraphqlRoleSlugProvider::new(inputs.db_clone()),
     ));

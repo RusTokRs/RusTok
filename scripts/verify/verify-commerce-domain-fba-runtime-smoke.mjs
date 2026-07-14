@@ -58,6 +58,8 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   const cartCheckoutRuntimeSource = read('crates/rustok-commerce/src/storefront_checkout_runtime.rs');
   const cartShippingOptionsSource = read('crates/rustok-commerce/src/controllers/store/products.rs');
   const cartPromotionMutationSource = read('crates/rustok-commerce/src/graphql/mutations/pricing.rs');
+  const cartPromotionNativeAdapterSource = read('crates/rustok-commerce/admin/src/transport/native_server_adapter.rs')
+    .split('#[cfg(all(test, feature = "ssr"))]')[0];
 
   if (trace.schema_version !== 1) fail('commerce-domain invocation trace schema_version drift');
   if (trace.status !== 'executable_no_compile') fail('commerce-domain invocation trace status drift');
@@ -222,6 +224,19 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   }
   if (cartPromotionMutationSource.includes('CartService::new(')) {
     fail('GraphQL cart promotion adapter must not construct CartService outside CartPromotionPort');
+  }
+  for (const marker of [
+    'in_process_cart_promotion_port(',
+    '.read_cart_promotion_preview(',
+    '.apply_cart_promotion(',
+    'CartPromotionRequest',
+  ]) {
+    if (!cartPromotionNativeAdapterSource.includes(marker)) {
+      fail(`Native cart promotion adapter missing CartPromotionPort operation: ${marker}`);
+    }
+  }
+  if (cartPromotionNativeAdapterSource.includes('CartService::new(')) {
+    fail('Native cart promotion adapter must not construct CartService outside CartPromotionPort');
   }
 
   for (const module of modules) {

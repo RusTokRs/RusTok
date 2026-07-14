@@ -71,12 +71,13 @@ identity.
    proven for the published `cart.checkout.v2` contract, including write
    idempotency, context update, lifecycle recovery, and degraded behavior.
 
-3. **Migrate remaining commerce GraphQL and checkout consumers to cart ports.**
-   The REST storefront cart seam uses `CartStorefrontPort`, while GraphQL and
-   checkout composition still contain direct owner-service construction.
-   **Depends on:** equivalent typed context mapping for those adapters.
-   **Done when:** commerce has no direct `CartService` construction outside
-   explicit owner-side composition.
+3. **Prove cart ports through live provider-consumer execution.**
+   Commerce production adapters use `CartCheckoutPort`, `CartStorefrontPort`,
+   and `CartPromotionPort`; static evidence confirms no direct
+   `CartService` construction outside owner-side composition.
+   **Depends on:** compiled or live provider-consumer execution.
+   **Done when:** transport execution covers checkout, storefront writes,
+   promotion application, fallback, and recovery behavior.
 
 4. **Document operational changes with checkout changes.** Add diagnostics only
    where runtime pressure identifies a concrete cart or snapshot failure mode,

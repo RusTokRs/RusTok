@@ -62,7 +62,6 @@ pub async fn create_provider(
     capabilities: Vec<String>,
     allowed_task_profiles: Vec<String>,
     denied_task_profiles: Vec<String>,
-    restricted_role_slugs: Vec<String>,
 ) -> Result<AiProviderProfilePayload, ApiError> {
     ai_create_provider_native(
         slug,
@@ -75,7 +74,6 @@ pub async fn create_provider(
         capabilities,
         allowed_task_profiles,
         denied_task_profiles,
-        restricted_role_slugs,
     )
     .await
     .map_err(Into::into)
@@ -92,7 +90,6 @@ pub async fn update_provider(
     capabilities: Vec<String>,
     allowed_task_profiles: Vec<String>,
     denied_task_profiles: Vec<String>,
-    restricted_role_slugs: Vec<String>,
     is_active: bool,
 ) -> Result<AiProviderProfilePayload, ApiError> {
     ai_update_provider_native(
@@ -106,7 +103,6 @@ pub async fn update_provider(
         capabilities,
         allowed_task_profiles,
         denied_task_profiles,
-        restricted_role_slugs,
         is_active,
     )
     .await
@@ -428,7 +424,6 @@ async fn ai_create_provider_native(
     capabilities: Vec<String>,
     allowed_task_profiles: Vec<String>,
     denied_task_profiles: Vec<String>,
-    restricted_role_slugs: Vec<String>,
 ) -> Result<AiProviderProfilePayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -469,7 +464,7 @@ async fn ai_create_provider_native(
                 usage_policy: rustok_ai::ProviderUsagePolicy {
                     allowed_task_profiles,
                     denied_task_profiles,
-                    restricted_role_slugs,
+                    restricted_role_slugs: Vec::new(),
                 },
                 metadata: serde_json::json!({}),
             },
@@ -491,7 +486,6 @@ async fn ai_create_provider_native(
             capabilities,
             allowed_task_profiles,
             denied_task_profiles,
-            restricted_role_slugs,
         );
         Err(ServerFnError::new("SSR only"))
     }
@@ -545,7 +539,6 @@ async fn ai_update_provider_native(
     capabilities: Vec<String>,
     allowed_task_profiles: Vec<String>,
     denied_task_profiles: Vec<String>,
-    restricted_role_slugs: Vec<String>,
     is_active: bool,
 ) -> Result<AiProviderProfilePayload, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -575,7 +568,7 @@ async fn ai_update_provider_native(
                 usage_policy: rustok_ai::ProviderUsagePolicy {
                     allowed_task_profiles,
                     denied_task_profiles,
-                    restricted_role_slugs,
+                    restricted_role_slugs: Vec::new(),
                 },
                 metadata: serde_json::json!({}),
                 is_active,
@@ -598,7 +591,6 @@ async fn ai_update_provider_native(
             capabilities,
             allowed_task_profiles,
             denied_task_profiles,
-            restricted_role_slugs,
             is_active,
         );
         Err(ServerFnError::new("SSR only"))
@@ -1195,32 +1187,7 @@ fn ensure_ai_overview_permission(
 fn ai_runtime_from_context(
     runtime_ctx: &rustok_api::HostRuntimeContext,
 ) -> Result<rustok_ai::AiHostRuntime, ServerFnError> {
-    let event_bus = runtime_ctx
-        .shared_get::<rustok_outbox::TransactionalEventBus>()
-        .ok_or_else(|| {
-            ServerFnError::new("AI admin requires TransactionalEventBus in host runtime context")
-        })?;
-    let module_registry = runtime_ctx
-        .shared_get::<rustok_ai::SharedAiModuleRegistry>()
-        .ok_or_else(|| {
-            ServerFnError::new("AI admin requires SharedAiModuleRegistry in host runtime context")
-        })?
-        .0;
-
-    let mut runtime =
-        rustok_ai::AiHostRuntime::new(runtime_ctx.db_clone(), event_bus, module_registry)
-            .with_storage(runtime_ctx.shared_get::<rustok_storage::StorageService>())
-            .with_alloy_runtime(runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>());
-    if let Some(registry) = runtime_ctx.shared_get::<rustok_ai::SharedAiSecretResolverRegistry>() {
-        runtime = runtime.with_secret_registry(registry.0);
-    }
-    if let Some(policy) = runtime_ctx.shared_get::<rustok_ai::SharedAiEgressPolicy>() {
-        runtime = runtime.with_egress_policy(policy.0);
-    }
-    if let Some(targets) = runtime_ctx.shared_get::<rustok_ai::SharedAiProviderTargetCatalog>() {
-        runtime = runtime.with_provider_targets(targets.0);
-    }
-    Ok(runtime)
+    rustok_ai::ai_host_runtime_from_context(runtime_ctx).map_err(ServerFnError::new)
 }
 
 #[cfg(feature = "ssr")]

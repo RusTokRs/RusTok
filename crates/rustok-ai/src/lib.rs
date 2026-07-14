@@ -77,14 +77,14 @@ pub use policy::ToolExecutionPolicy;
 pub use router::{AiRouter, ResolvedExecutionPlan, RouterProviderProfile};
 #[cfg(feature = "server")]
 pub use service::{
-    AiAgentModelAssignmentRecord, AiAgentPrincipalRecord, AiApprovalRequestRecord,
-    AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail, AiChatSessionSummary, AiHostRuntime,
-    AiManagementService, AiOperatorContext, AiProviderProfileRecord, AiRecentRunRecord,
-    AiSendMessageResult, AiTaskProfileRecord, AiToolProfileRecord,
-    CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput, CreateAiAgentWorkflowRunInput,
-    CreateAiProviderProfileInput, CreateAiTaskProfileInput, CreateAiToolProfileInput,
-    ResolveAiAgentWorkflowStageApprovalInput, ResumeAiApprovalInput, RunAiTaskJobInput,
-    SendAiChatMessageInput, SharedAiEgressPolicy, SharedAiModuleRegistry,
+    ai_host_runtime_from_context, AiAgentModelAssignmentRecord, AiAgentPrincipalRecord,
+    AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail,
+    AiChatSessionSummary, AiHostRuntime, AiManagementService, AiOperatorContext,
+    AiProviderProfileRecord, AiRecentRunRecord, AiSendMessageResult, AiTaskProfileRecord,
+    AiToolProfileRecord, CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput,
+    CreateAiAgentWorkflowRunInput, CreateAiProviderProfileInput, CreateAiTaskProfileInput,
+    CreateAiToolProfileInput, ResolveAiAgentWorkflowStageApprovalInput, ResumeAiApprovalInput,
+    RunAiTaskJobInput, SendAiChatMessageInput, SharedAiEgressPolicy, SharedAiModuleRegistry,
     SharedAiProviderTargetCatalog, SharedAiSecretResolverRegistry, StartAiChatSessionInput,
     UpdateAiAgentModelAssignmentInput, UpdateAiAgentPrincipalInput, UpdateAiProviderProfileInput,
     UpdateAiTaskProfileInput, UpdateAiToolProfileInput,

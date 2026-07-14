@@ -197,6 +197,69 @@ fn normalize_source_id(value: &str) -> Result<String, ServerFnError> {
 }
 
 #[cfg(feature = "ssr")]
+fn cart_promotion_port_context(
+    tenant: &rustok_api::TenantContext,
+    auth: &rustok_api::AuthContext,
+    cart_id: uuid::Uuid,
+    operation: &str,
+    is_write: bool,
+) -> rustok_api::PortContext {
+    let correlation_id = format!("commerce-admin-cart-promotion:{operation}:{cart_id}");
+    let context = rustok_api::PortContext::new(
+        tenant.id.to_string(),
+        rustok_api::PortActor::user(auth.user_id.to_string()),
+        tenant.default_locale.as_str(),
+        correlation_id.clone(),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    if is_write {
+        context.with_idempotency_key(correlation_id)
+    } else {
+        context
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn cart_promotion_request(
+    cart_id: uuid::Uuid,
+    payload: &CommerceCartPromotionDraft,
+    line_item_id: Option<uuid::Uuid>,
+    metadata: serde_json::Value,
+) -> Result<rustok_cart::CartPromotionRequest, ServerFnError> {
+    let source_id = normalize_source_id(&payload.source_id)?;
+    let (kind, amount) = match &payload.kind {
+        CommerceCartPromotionKind::PercentageDiscount => {
+            ensure_unused_decimal(&payload.amount, "amount")?;
+            (
+                rustok_cart::CartPromotionKindRequest::PercentageDiscount,
+                parse_required_decimal(&payload.discount_percent, "discount_percent")?,
+            )
+        }
+        CommerceCartPromotionKind::FixedDiscount => {
+            ensure_unused_decimal(&payload.discount_percent, "discount_percent")?;
+            (
+                rustok_cart::CartPromotionKindRequest::FixedDiscount,
+                parse_required_decimal(&payload.amount, "amount")?,
+            )
+        }
+    };
+    let scope = match &payload.scope {
+        CommerceCartPromotionScope::Cart => rustok_cart::CartPromotionScopeRequest::Cart,
+        CommerceCartPromotionScope::LineItem => rustok_cart::CartPromotionScopeRequest::LineItem,
+        CommerceCartPromotionScope::Shipping => rustok_cart::CartPromotionScopeRequest::Shipping,
+    };
+    Ok(rustok_cart::CartPromotionRequest {
+        cart_id,
+        line_item_id,
+        scope,
+        kind,
+        source_id,
+        amount,
+        metadata,
+    })
+}
+
+#[cfg(feature = "ssr")]
 async fn preview_cart_promotion_native_with_context(
     app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
@@ -205,7 +268,7 @@ async fn preview_cart_promotion_native_with_context(
     payload: CommerceCartPromotionDraft,
 ) -> Result<CommerceCartPromotionPreview, ServerFnError> {
     use rustok_api::Permission;
-    use rustok_cart::CartService;
+    use rustok_cart::{CartPromotionPort, in_process_cart_promotion_port};
 
     ensure_permission(
         &auth.permissions,
@@ -215,67 +278,14 @@ async fn preview_cart_promotion_native_with_context(
 
     let cart_id = parse_cart_id(&cart_id)?;
     let line_item_id = parse_optional_line_item_id(&payload.line_item_id, &payload.scope)?;
-    let source_id = normalize_source_id(&payload.source_id)?;
-    let service = CartService::new(app_ctx.db_clone());
-
-    let preview = match payload.kind {
-        CommerceCartPromotionKind::PercentageDiscount => {
-            let discount_percent =
-                parse_required_decimal(&payload.discount_percent, "discount_percent")?;
-            ensure_unused_decimal(&payload.amount, "amount")?;
-            match payload.scope {
-                CommerceCartPromotionScope::Shipping => {
-                    service
-                        .preview_percentage_shipping_promotion(
-                            tenant.id,
-                            cart_id,
-                            source_id.as_str(),
-                            discount_percent,
-                        )
-                        .await
-                }
-                CommerceCartPromotionScope::Cart | CommerceCartPromotionScope::LineItem => {
-                    service
-                        .preview_percentage_promotion(
-                            tenant.id,
-                            cart_id,
-                            line_item_id,
-                            source_id.as_str(),
-                            discount_percent,
-                        )
-                        .await
-                }
-            }
-        }
-        CommerceCartPromotionKind::FixedDiscount => {
-            let amount = parse_required_decimal(&payload.amount, "amount")?;
-            ensure_unused_decimal(&payload.discount_percent, "discount_percent")?;
-            match payload.scope {
-                CommerceCartPromotionScope::Shipping => {
-                    service
-                        .preview_fixed_shipping_promotion(
-                            tenant.id,
-                            cart_id,
-                            source_id.as_str(),
-                            amount,
-                        )
-                        .await
-                }
-                CommerceCartPromotionScope::Cart | CommerceCartPromotionScope::LineItem => {
-                    service
-                        .preview_fixed_promotion(
-                            tenant.id,
-                            cart_id,
-                            line_item_id,
-                            source_id.as_str(),
-                            amount,
-                        )
-                        .await
-                }
-            }
-        }
-    }
-    .map_err(ServerFnError::new)?;
+    let request = cart_promotion_request(cart_id, &payload, line_item_id, serde_json::Value::Null)?;
+    let preview = in_process_cart_promotion_port(app_ctx.db_clone())
+        .read_cart_promotion_preview(
+            cart_promotion_port_context(tenant, auth, cart_id, "preview", false),
+            request,
+        )
+        .await
+        .map_err(|error| ServerFnError::new(error.message))?;
 
     Ok(map_cart_promotion_preview(payload.scope, preview))
 }
@@ -289,7 +299,7 @@ async fn apply_cart_promotion_native_with_context(
     payload: CommerceCartPromotionDraft,
 ) -> Result<CommerceAdminCartSnapshot, ServerFnError> {
     use rustok_api::Permission;
-    use rustok_cart::CartService;
+    use rustok_cart::{CartPromotionPort, in_process_cart_promotion_port};
 
     ensure_permission(
         &auth.permissions,
@@ -299,72 +309,15 @@ async fn apply_cart_promotion_native_with_context(
 
     let cart_id = parse_cart_id(&cart_id)?;
     let line_item_id = parse_optional_line_item_id(&payload.line_item_id, &payload.scope)?;
-    let source_id = normalize_source_id(&payload.source_id)?;
     let metadata = parse_metadata_json(&payload.metadata_json)?;
-    let service = CartService::new(app_ctx.db_clone());
-
-    let cart = match payload.kind {
-        CommerceCartPromotionKind::PercentageDiscount => {
-            let discount_percent =
-                parse_required_decimal(&payload.discount_percent, "discount_percent")?;
-            ensure_unused_decimal(&payload.amount, "amount")?;
-            match payload.scope {
-                CommerceCartPromotionScope::Shipping => {
-                    service
-                        .apply_percentage_shipping_promotion(
-                            tenant.id,
-                            cart_id,
-                            source_id.as_str(),
-                            discount_percent,
-                            metadata,
-                        )
-                        .await
-                }
-                CommerceCartPromotionScope::Cart | CommerceCartPromotionScope::LineItem => {
-                    service
-                        .apply_percentage_promotion(
-                            tenant.id,
-                            cart_id,
-                            line_item_id,
-                            source_id.as_str(),
-                            discount_percent,
-                            metadata,
-                        )
-                        .await
-                }
-            }
-        }
-        CommerceCartPromotionKind::FixedDiscount => {
-            let amount = parse_required_decimal(&payload.amount, "amount")?;
-            ensure_unused_decimal(&payload.discount_percent, "discount_percent")?;
-            match payload.scope {
-                CommerceCartPromotionScope::Shipping => {
-                    service
-                        .apply_fixed_shipping_promotion(
-                            tenant.id,
-                            cart_id,
-                            source_id.as_str(),
-                            amount,
-                            metadata,
-                        )
-                        .await
-                }
-                CommerceCartPromotionScope::Cart | CommerceCartPromotionScope::LineItem => {
-                    service
-                        .apply_fixed_promotion(
-                            tenant.id,
-                            cart_id,
-                            line_item_id,
-                            source_id.as_str(),
-                            amount,
-                            metadata,
-                        )
-                        .await
-                }
-            }
-        }
-    }
-    .map_err(ServerFnError::new)?;
+    let request = cart_promotion_request(cart_id, &payload, line_item_id, metadata)?;
+    let cart = in_process_cart_promotion_port(app_ctx.db_clone())
+        .apply_cart_promotion(
+            cart_promotion_port_context(tenant, auth, cart_id, "apply", true),
+            request,
+        )
+        .await
+        .map_err(|error| ServerFnError::new(error.message))?;
 
     Ok(map_cart_snapshot(cart))
 }
@@ -752,10 +705,10 @@ mod tests {
     use super::*;
     use rustok_api::Permission;
     use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
-    use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
     use rustok_cart::CartService;
-    use rustok_fulfillment::dto::CreateShippingOptionInput;
+    use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
     use rustok_fulfillment::FulfillmentService;
+    use rustok_fulfillment::dto::CreateShippingOptionInput;
     use rustok_order::dto::{CreateOrderChangeInput, CreateOrderInput, CreateOrderLineItemInput};
     use rustok_test_utils::db::setup_test_db;
     use rustok_test_utils::mock_transactional_event_bus;
@@ -1184,9 +1137,11 @@ mod tests {
         assert_eq!(adjustment.scope.as_deref(), Some("shipping"));
         assert_eq!(adjustment.amount, "4.99");
         assert_eq!(adjustment.currency_code, "EUR");
-        assert!(adjustment
-            .metadata
-            .contains("\"campaign\":\"native-operator\""));
+        assert!(
+            adjustment
+                .metadata
+                .contains("\"campaign\":\"native-operator\"")
+        );
         assert!(adjustment.metadata.contains("\"scope\":\"shipping\""));
     }
 

@@ -49,6 +49,35 @@ pub struct AiHostRuntime {
     cancellations: Arc<Mutex<HashMap<Uuid, watch::Sender<()>>>>,
 }
 
+/// Builds the canonical AI runtime from the host's neutral shared-service
+/// context. Transport adapters must use this factory instead of constructing
+/// their own capability runtime.
+pub fn ai_host_runtime_from_context(
+    context: &rustok_api::HostRuntimeContext,
+) -> Result<AiHostRuntime, String> {
+    let event_bus = context
+        .shared_get::<TransactionalEventBus>()
+        .ok_or_else(|| "AI requires TransactionalEventBus in HostRuntimeContext".to_string())?;
+    let module_registry = context
+        .shared_get::<SharedAiModuleRegistry>()
+        .ok_or_else(|| "AI requires SharedAiModuleRegistry in HostRuntimeContext".to_string())?
+        .0;
+
+    let mut runtime = AiHostRuntime::new(context.db_clone(), event_bus, module_registry)
+        .with_storage(context.shared_get::<StorageService>())
+        .with_alloy_runtime(context.shared_get::<alloy::SharedAlloyRuntime>());
+    if let Some(registry) = context.shared_get::<SharedAiSecretResolverRegistry>() {
+        runtime = runtime.with_secret_registry(registry.0);
+    }
+    if let Some(policy) = context.shared_get::<SharedAiEgressPolicy>() {
+        runtime = runtime.with_egress_policy(policy.0);
+    }
+    if let Some(targets) = context.shared_get::<SharedAiProviderTargetCatalog>() {
+        runtime = runtime.with_provider_targets(targets.0);
+    }
+    Ok(runtime)
+}
+
 impl AiHostRuntime {
     pub fn new(
         db: DatabaseConnection,

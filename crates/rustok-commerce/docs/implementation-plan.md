@@ -60,9 +60,9 @@ already handed to payment-owned storefront transport.
   both paths would double-reserve the same demand.
 - REST storefront cart handlers plus GraphQL cart reads and mutations call
   cart-owned `CartStorefrontPort` for cart reads, creation, line-item
-  mutations, context updates, and repricing. Checkout adapter constructions
-  remain tracked separately and prevent transport verification.
-- GraphQL admin cart promotions call cart-owned `CartPromotionPort`; no
+  mutations, context updates, and repricing; REST, GraphQL, and native
+  checkout adapters use the same owner ports for their cart boundary.
+- GraphQL and native admin cart promotions call cart-owned `CartPromotionPort`; no
   production `rustok-commerce` adapter constructs `CartService` directly.
 - Targeted compiled provider-consumer execution is recorded by
   `cargo test -p rustok-commerce --test checkout_service_test
