@@ -257,7 +257,7 @@ pub async fn fetch_page_builder_scenario_baseline(
         .page_builder_scenario_baseline
         .map(|payload| serde_json::from_value(payload.baseline))
         .transpose()
-        .map_err(|error| GraphqlHttpError::Protocol(format!(
+        .map_err(|error| GraphqlHttpError::Graphql(format!(
             "Invalid Page Builder scenario baseline response: {error}"
         )))
 }
@@ -269,7 +269,7 @@ pub async fn save_page_builder_scenario_baseline(
     baseline: RuntimeScenarioReleaseBaseline,
 ) -> Result<RuntimeScenarioReleaseBaseline, ApiError> {
     let baseline = serde_json::to_value(baseline).map_err(|error| {
-        GraphqlHttpError::Protocol(format!("Unable to encode scenario baseline: {error}"))
+        GraphqlHttpError::Graphql(format!("Unable to encode scenario baseline: {error}"))
     })?;
     let response: SavePageBuilderScenarioBaselineResponse = request(
         SAVE_PAGE_BUILDER_SCENARIO_BASELINE_MUTATION,
@@ -283,7 +283,7 @@ pub async fn save_page_builder_scenario_baseline(
     .await?;
     serde_json::from_value(response.save_page_builder_scenario_baseline.baseline).map_err(
         |error| {
-            GraphqlHttpError::Protocol(format!(
+            GraphqlHttpError::Graphql(format!(
                 "Invalid saved Page Builder scenario baseline response: {error}"
             ))
         },
