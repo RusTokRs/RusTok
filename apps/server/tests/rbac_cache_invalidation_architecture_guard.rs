@@ -61,8 +61,10 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
         "reconcile_generation_if_advanced",
         "MissedTickBehavior::Skip",
         "periodic_reconciliation",
+        "fanout_deferred",
         "redis_publish_deferred",
         "local_publish_deferred",
+        "RBAC invalidation fan-out deferred to generation reconciliation",
         "RBAC invalidation publication deferred to generation reconciliation",
         "Local RBAC invalidation delivery deferred to generation reconciliation",
         "must not be retried blindly",
@@ -75,6 +77,24 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
             "RBAC invalidation recovery must retain {required}"
         );
     }
+
+    let publish_start = rbac
+        .find("pub async fn publish_user_rbac_invalidation")
+        .expect("RBAC invalidation publisher must exist");
+    let publish_end = rbac[publish_start..]
+        .find("pub async fn start_rbac_cache_invalidation_listener")
+        .map(|offset| publish_start + offset)
+        .expect("RBAC listener startup must follow the publisher");
+    let publish = &rbac[publish_start..publish_end];
+    assert!(publish.contains("let fanout: Result<CacheInvalidationOutcome> = async"));
+    assert!(publish.contains("let outcome = match fanout"));
+    assert!(publish.contains("Err(error) =>"));
+    assert!(publish.contains("return Ok(());"));
+    assert_eq!(
+        publish.matches("must not be retried blindly").count(),
+        1,
+        "only generation advance may remain a hard post-commit error"
+    );
 
     assert!(rbac.contains(
         "        });\n    }\n\n    let reconcile_listener = listener.clone();"
