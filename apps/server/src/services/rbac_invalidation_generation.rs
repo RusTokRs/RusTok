@@ -1,9 +1,18 @@
+use std::time::Duration;
+
 use sea_orm::{ConnectionTrait, Statement};
 
 use crate::error::{Error, Result};
+use crate::services::rbac_runtime::invalidate_all_user_permissions_cache;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const RBAC_PERMISSION_SCOPE: &str = "permissions";
+const RBAC_DURABLE_GENERATION_CHANNEL: &str = "rbac.permissions.durable_generation.v1";
+const RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
 const MAX_DURABLE_GENERATION: i64 = i64::MAX;
+
+#[derive(Clone)]
+pub struct RbacInvalidationGenerationWatchdogHandle;
 
 /// Reserve the next durable RBAC invalidation generation on the caller-owned
 /// connection. When `db` is a transaction, the generation advances atomically
@@ -57,6 +66,75 @@ where
             "durable RBAC invalidation generation is negative: {generation}"
         ))
     })
+}
+
+/// Poll the database source of truth so missed Redis/PubSub delivery can never
+/// keep a replica on stale authorization snapshots indefinitely.
+pub async fn start_rbac_invalidation_generation_watchdog(
+    ctx: &ServerRuntimeContext,
+) -> Result<()> {
+    if ctx
+        .shared_get::<RbacInvalidationGenerationWatchdogHandle>()
+        .is_some()
+    {
+        return Ok(());
+    }
+
+    let initial_generation = read_rbac_invalidation_generation(ctx.db()).await?;
+    invalidate_all_user_permissions_cache().await;
+
+    let db = ctx.db_clone();
+    tokio::spawn(async move {
+        let mut observed_generation = initial_generation;
+        let start =
+            tokio::time::Instant::now() + RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL;
+        let mut interval = tokio::time::interval_at(
+            start,
+            RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL,
+        );
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            interval.tick().await;
+            match read_rbac_invalidation_generation(&db).await {
+                Ok(generation) if generation == observed_generation => {}
+                Ok(generation) => {
+                    if generation < observed_generation {
+                        tracing::error!(
+                            previous = observed_generation,
+                            current = generation,
+                            "Durable RBAC invalidation generation regressed; clearing all permission snapshots"
+                        );
+                        rustok_telemetry::metrics::record_event_error(
+                            RBAC_DURABLE_GENERATION_CHANNEL,
+                            "generation_regressed",
+                        );
+                    } else {
+                        tracing::warn!(
+                            previous = observed_generation,
+                            current = generation,
+                            "Reconciled RBAC permission snapshots from durable database generation"
+                        );
+                    }
+                    invalidate_all_user_permissions_cache().await;
+                    observed_generation = generation;
+                }
+                Err(error) => {
+                    tracing::error!(
+                        %error,
+                        "Failed to read durable RBAC invalidation generation"
+                    );
+                    rustok_telemetry::metrics::record_event_error(
+                        RBAC_DURABLE_GENERATION_CHANNEL,
+                        "generation_read",
+                    );
+                }
+            }
+        }
+    });
+
+    ctx.shared_insert(RbacInvalidationGenerationWatchdogHandle);
+    Ok(())
 }
 
 #[cfg(test)]
