@@ -43,7 +43,8 @@ mod state_machine_proptest;
 pub use error::{CommerceError, CommerceResult};
 pub use services::{
     ApplyOrderChangeResult, BeginCheckoutOperation, CheckoutCompensationError,
-    CheckoutCompensationResult, CheckoutCompensationService, CheckoutError,
+    CheckoutCompensationResult, CheckoutCompensationService, CheckoutCompensationSweepFailure,
+    CheckoutCompensationSweepReport, CheckoutCompensationSweepService, CheckoutError,
     CheckoutFulfillmentCreatedState, CheckoutFulfillmentPlan, CheckoutFulfillmentPlanItem,
     CheckoutFulfillmentStageError, CheckoutFulfillmentStageExecutor,
     CheckoutFulfillmentStageResult, CheckoutInventoryExecutionError,
@@ -67,7 +68,8 @@ pub use services::{
     JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
     PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService, PaymentOrchestrationError,
     PaymentOrchestrationResult, PaymentOrchestrationService, PlanCheckoutInventoryReservation,
-    PostOrderOrchestrationError, PostOrderOrchestrationService, RefundReconciliationService,
+    PostOrderOrchestrationError, PostOrderOrchestrationService, RecoveringStagedCheckoutError,
+    RecoveringStagedCheckoutResult, RecoveringStagedCheckoutService, RefundReconciliationService,
     ReturnClaimDecisionInput, ReturnDecisionInput, ReturnDecisionResponse,
     ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
     StagedCheckoutError, StagedCheckoutResult, StagedCheckoutService, StoreContextError,
