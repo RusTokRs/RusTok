@@ -164,8 +164,9 @@ impl CacheBackend for InstrumentedWeightedCacheBackend {
     }
 
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
+        self.inner.invalidate(key).await?;
         self.evictions.fetch_add(1, Ordering::Relaxed);
-        self.inner.invalidate(key).await
+        Ok(())
     }
 
     fn stats(&self) -> CacheStats {
@@ -200,6 +201,42 @@ mod tests {
     use super::*;
     use uuid::Uuid;
 
+    struct FailingInvalidationBackend;
+
+    #[async_trait]
+    impl CacheBackend for FailingInvalidationBackend {
+        async fn health(&self) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn get(&self, _key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+            Ok(None)
+        }
+
+        async fn set(&self, _key: String, _value: Vec<u8>) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn set_with_ttl(
+            &self,
+            _key: String,
+            _value: Vec<u8>,
+            _ttl: Duration,
+        ) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn invalidate(&self, _key: &str) -> rustok_core::Result<()> {
+            Err(rustok_core::Error::Cache(
+                "simulated invalidation failure".to_string(),
+            ))
+        }
+
+        fn stats(&self) -> CacheStats {
+            CacheStats::default()
+        }
+    }
+
     #[tokio::test]
     async fn weighted_memory_factory_preserves_instrumentation_contract() {
         let service = CacheService::from_url(None);
@@ -219,6 +256,17 @@ mod tests {
         assert_eq!(stats.misses, 1);
         assert_eq!(stats.hits, 1);
         assert_eq!(stats.entries, 1);
+    }
+
+    #[tokio::test]
+    async fn weighted_instrumentation_counts_only_successful_invalidations() {
+        let backend = InstrumentedWeightedCacheBackend::new(
+            "weighted-failing-invalidation",
+            Arc::new(FailingInvalidationBackend),
+        );
+
+        assert!(backend.invalidate("key").await.is_err());
+        assert_eq!(backend.stats().evictions, 0);
     }
 
     #[tokio::test]
