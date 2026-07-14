@@ -3,22 +3,25 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use once_cell::sync::Lazy;
 use rustok_cache::{
-    cache_backend_generation_snapshot, observe_cache_backend_generation,
     BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
-    CacheBackendGenerationError, CacheInvalidationMessage, CacheInvalidationObservation,
-    CacheInvalidationOutcome, CacheInvalidationPayloadError, CacheService,
-    DurableCacheInvalidationRecord, VersionedCacheInvalidation,
+    CacheInvalidationMessage, CacheInvalidationObservation, CacheInvalidationOutcome,
+    CacheInvalidationPayloadError, CacheService, DurableCacheInvalidationRecord,
+    VersionedCacheInvalidation,
 };
+use sea_orm::DatabaseConnection;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
+use crate::services::rbac_invalidation_generation::{
+    ensure_rbac_invalidation_generation_state, read_rbac_invalidation_generation,
+    RbacInvalidationGenerationState,
+};
 use crate::services::rbac_runtime::{
     invalidate_all_user_permissions_cache, invalidate_user_permissions_cache,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-pub const RBAC_PERMISSION_GENERATION_PREFIX: &str = "rustok:rbac:permissions:v1";
 pub const RBAC_PERMISSION_INVALIDATION_CHANNEL: &str = "rbac.permissions.generation.v1";
 const RBAC_PERMISSION_INVALIDATION_CAUSE: &str = "rbac.user.permissions.changed";
 const RBAC_PERMISSION_INVALIDATE_ALL_KEY: &str = "*";
@@ -37,18 +40,6 @@ struct RbacCacheInvalidationListenerStartLock(Arc<tokio::sync::Mutex<()>>);
 enum RbacInvalidationTarget {
     All,
     User { tenant_id: Uuid, user_id: Uuid },
-}
-
-fn observe_rbac_backend_generation(generation: u64) -> Result<u64> {
-    match observe_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX, generation) {
-        Ok(snapshot) => Ok(snapshot.generation),
-        Err(CacheBackendGenerationError::GenerationRegressed { current, proposed })
-            if current >= proposed =>
-        {
-            Ok(current)
-        }
-        Err(error) => Err(Error::Cache(error.to_string())),
-    }
 }
 
 fn acknowledge_rbac_applied_generation(
@@ -79,67 +70,52 @@ fn acknowledge_rbac_recovery(
 
 #[derive(Clone)]
 struct RbacCacheInvalidationListener {
-    cache: CacheService,
+    db: DatabaseConnection,
+    durable_state: RbacInvalidationGenerationState,
     tracker: BoundedCacheInvalidationGapTracker,
 }
 
 impl RbacCacheInvalidationListener {
-    fn new(cache: CacheService) -> Self {
+    fn new(
+        db: DatabaseConnection,
+        durable_state: RbacInvalidationGenerationState,
+    ) -> Self {
         Self {
-            cache,
+            db,
+            durable_state,
             tracker: BoundedCacheInvalidationGapTracker::default(),
         }
     }
 
     async fn read_generation(&self) -> Result<u64> {
-        if self.cache.redis_configuration_present() {
-            if !self.cache.redis_client_initialized() {
-                return Err(Error::Cache(
-                    "Redis is configured but the RBAC invalidation client is unavailable"
-                        .to_string(),
-                ));
-            }
-            return self
-                .cache
-                .namespace_generations()
-                .read(RBAC_PERMISSION_GENERATION_PREFIX)
-                .await
-                .map(|generation| generation.value())
-                .map_err(|error| Error::Cache(error.to_string()));
-        }
-
-        let snapshot = cache_backend_generation_snapshot(RBAC_PERMISSION_GENERATION_PREFIX)
-            .map_err(|error| Error::Cache(error.to_string()))?;
-        if snapshot.trusted {
-            Ok(snapshot.generation)
-        } else {
-            observe_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX, 0)
-                .map(|snapshot| snapshot.generation)
-                .map_err(|error| Error::Cache(error.to_string()))
-        }
+        read_rbac_invalidation_generation(&self.db).await
     }
 
     async fn recover_generation_and_clear(&self) -> Result<u64> {
-        let generation = self.read_generation().await?;
-        let recovered_through = observe_rbac_backend_generation(generation)?;
+        let recovered_through = self.read_generation().await?;
         invalidate_all_user_permissions_cache().await;
         acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
+        self.durable_state.observe_applied(recovered_through);
         Ok(recovered_through)
     }
 
     async fn reconcile_generation_if_advanced(&self) -> Result<Option<u64>> {
-        let generation = self.read_generation().await?;
-        let recovered_through = observe_rbac_backend_generation(generation)?;
-        if self
+        let recovered_through = self.read_generation().await?;
+        let tracker_current = self
             .tracker
-            .last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL)
-            .is_some_and(|current| current >= recovered_through)
-        {
+            .last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL);
+        let process_current = self.durable_state.current();
+
+        if process_current.is_some_and(|current| current >= recovered_through) {
+            if !tracker_current.is_some_and(|current| current >= recovered_through) {
+                acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
+            }
             return Ok(None);
         }
 
         invalidate_all_user_permissions_cache().await;
         acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
+        self.durable_state.observe_applied(recovered_through);
         Ok(Some(recovered_through))
     }
 
@@ -164,15 +140,20 @@ impl RbacCacheInvalidationListener {
                     }
                 }
                 acknowledge_rbac_applied_generation(&self.tracker, generation)?;
+                self.durable_state.observe_applied(generation);
             }
-            CacheInvalidationObservation::Duplicate { .. }
-            | CacheInvalidationObservation::Stale { .. } => {}
+            CacheInvalidationObservation::Duplicate { generation } => {
+                self.durable_state.observe_applied(generation);
+            }
+            CacheInvalidationObservation::Stale { last, .. } => {
+                self.durable_state.observe_applied(last);
+            }
             CacheInvalidationObservation::UnverifiedFirst { .. }
             | CacheInvalidationObservation::Gap { .. } => {
                 let recovered = self.recover_generation_and_clear().await?;
                 if recovered < event.generation {
                     return Err(Error::Cache(format!(
-                        "shared RBAC invalidation generation {recovered} trails received {}",
+                        "durable RBAC invalidation generation {recovered} trails received {}",
                         event.generation
                     )));
                 }
@@ -186,19 +167,30 @@ impl RbacCacheInvalidationListener {
 pub async fn publish_user_rbac_invalidation(
     tenant_id: &Uuid,
     user_id: &Uuid,
+    generation: u64,
 ) -> Result<()> {
     publish_rbac_invalidation(
         Some(*tenant_id),
         rbac_invalidation_key(*tenant_id, *user_id),
+        generation,
     )
     .await
 }
 
-pub async fn publish_all_rbac_invalidation() -> Result<()> {
-    publish_rbac_invalidation(None, RBAC_PERMISSION_INVALIDATE_ALL_KEY.to_string()).await
+pub async fn publish_all_rbac_invalidation(generation: u64) -> Result<()> {
+    publish_rbac_invalidation(
+        None,
+        RBAC_PERMISSION_INVALIDATE_ALL_KEY.to_string(),
+        generation,
+    )
+    .await
 }
 
-async fn publish_rbac_invalidation(tenant_id: Option<Uuid>, key: String) -> Result<()> {
+async fn publish_rbac_invalidation(
+    tenant_id: Option<Uuid>,
+    key: String,
+    generation: u64,
+) -> Result<()> {
     let Some(cache) = RBAC_INVALIDATION_CACHE_SERVICE
         .read()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -207,18 +199,11 @@ async fn publish_rbac_invalidation(tenant_id: Option<Uuid>, key: String) -> Resu
         tracing::warn!(
             ?tenant_id,
             %key,
-            "RBAC distributed invalidation is not initialized; local cache invalidation only"
+            generation,
+            "RBAC distributed invalidation is not initialized; durable generation reconciliation will recover"
         );
         return Ok(());
     };
-    let generation = cache
-        .bump_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX)
-        .await
-        .map_err(|error| {
-            Error::Cache(format!(
-                "RBAC invalidation generation could not advance; an enclosing mutation may already be committed and must not be retried blindly: {error}"
-            ))
-        })?;
 
     let fanout: Result<CacheInvalidationOutcome> = async {
         let emitted_at_unix_ms = u64::try_from(
@@ -233,7 +218,7 @@ async fn publish_rbac_invalidation(tenant_id: Option<Uuid>, key: String) -> Resu
             tenant_id,
             RBAC_PERMISSION_INVALIDATION_CHANNEL,
             key.clone(),
-            generation.generation,
+            generation,
             emitted_at_unix_ms,
             RBAC_PERMISSION_INVALIDATION_CAUSE,
             None,
@@ -253,9 +238,9 @@ async fn publish_rbac_invalidation(tenant_id: Option<Uuid>, key: String) -> Resu
             tracing::warn!(
                 ?tenant_id,
                 %key,
-                generation = generation.generation,
+                generation,
                 %error,
-                "RBAC invalidation fan-out deferred to generation reconciliation"
+                "RBAC invalidation fan-out deferred to durable generation reconciliation"
             );
             rustok_telemetry::metrics::record_event_error(
                 RBAC_PERMISSION_INVALIDATION_CHANNEL,
@@ -270,8 +255,8 @@ async fn publish_rbac_invalidation(tenant_id: Option<Uuid>, key: String) -> Resu
             tracing::warn!(
                 ?tenant_id,
                 %key,
-                generation = generation.generation,
-                "RBAC invalidation publication deferred to generation reconciliation"
+                generation,
+                "RBAC invalidation publication deferred to durable generation reconciliation"
             );
             rustok_telemetry::metrics::record_event_error(
                 RBAC_PERMISSION_INVALIDATION_CHANNEL,
@@ -282,8 +267,8 @@ async fn publish_rbac_invalidation(tenant_id: Option<Uuid>, key: String) -> Resu
         tracing::warn!(
             ?tenant_id,
             %key,
-            generation = generation.generation,
-            "Local RBAC invalidation delivery deferred to generation reconciliation"
+            generation,
+            "Local RBAC invalidation delivery deferred to durable generation reconciliation"
         );
         rustok_telemetry::metrics::record_event_error(
             RBAC_PERMISSION_INVALIDATION_CHANNEL,
@@ -311,11 +296,22 @@ pub async fn start_rbac_cache_invalidation_listener(
         return Ok(());
     }
 
-    let listener = RbacCacheInvalidationListener::new(cache.clone());
+    let durable_state = ensure_rbac_invalidation_generation_state(ctx);
+    let listener = RbacCacheInvalidationListener::new(ctx.db_clone(), durable_state);
     let mut local = cache
         .invalidations()
         .subscribe_local_channel(RBAC_PERMISSION_INVALIDATION_CHANNEL);
-    listener.recover_generation_and_clear().await?;
+    if let Err(error) = listener.recover_generation_and_clear().await {
+        tracing::warn!(
+            %error,
+            "Initial RBAC invalidation recovery is unavailable; durable watchdog will retry"
+        );
+        invalidate_all_user_permissions_cache().await;
+        rustok_telemetry::metrics::record_event_error(
+            RBAC_PERMISSION_INVALIDATION_CHANNEL,
+            "startup_recovery_deferred",
+        );
+    }
 
     let local_listener = listener.clone();
     tokio::spawn(async move {

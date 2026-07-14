@@ -18,6 +18,7 @@ use crate::models::{sessions, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
+use crate::services::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
 use crate::services::rbac_request_scope::role_for;
 use crate::services::rbac_service::RbacService;
 
@@ -187,11 +188,24 @@ where
 async fn publish_committed_user_invalidation(
     tenant_id: Uuid,
     user_id: Uuid,
-) -> Result<(), AuthAdminMutationError> {
+    durable_generation: u64,
+) {
     RbacService::invalidate_user_rbac_caches(&tenant_id, &user_id).await;
-    publish_user_rbac_invalidation(&tenant_id, &user_id)
-        .await
-        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))
+    if let Err(error) =
+        publish_user_rbac_invalidation(&tenant_id, &user_id, durable_generation).await
+    {
+        tracing::warn!(
+            %error,
+            durable_generation,
+            %tenant_id,
+            %user_id,
+            "User administration fast RBAC invalidation fan-out failed; durable generation reconciliation will recover"
+        );
+        rustok_telemetry::metrics::record_event_error(
+            "rbac.permissions.durable_generation.v1",
+            "post_commit_fanout",
+        );
+    }
 }
 
 #[async_trait]
@@ -284,10 +298,13 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(map_custom_field_error)?;
         }
+        let durable_generation = reserve_rbac_invalidation_generation(&tx)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         tx.commit()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        publish_committed_user_invalidation(context.tenant_id, user.id).await?;
+        publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation).await;
         self.user_record(user).await
     }
 
@@ -434,10 +451,13 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(map_custom_field_error)?;
         }
+        let durable_generation = reserve_rbac_invalidation_generation(&tx)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         tx.commit()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        publish_committed_user_invalidation(context.tenant_id, user.id).await?;
+        publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation).await;
         self.user_record(user).await
     }
 
@@ -476,10 +496,13 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(map_lifecycle_error)?;
         revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
+        let durable_generation = reserve_rbac_invalidation_generation(&tx)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         tx.commit()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        publish_committed_user_invalidation(context.tenant_id, user.id).await?;
+        publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation).await;
         Ok(())
     }
 }

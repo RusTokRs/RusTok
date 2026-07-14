@@ -46,6 +46,31 @@ fn rbac_integrity_migration_is_registered_once_through_auth_module() {
 }
 
 #[test]
+fn durable_rbac_generation_migration_is_registered_once_through_auth_module() {
+    let root = repo_root();
+    let registry = source("crates/rustok-auth/src/migrations/mod.rs");
+    let migration = source(
+        "crates/rustok-auth/src/migrations/m20260714_900002_create_rbac_invalidation_state.rs",
+    );
+
+    assert!(registry.contains("mod m20260714_900002_create_rbac_invalidation_state;"));
+    assert!(registry.contains(
+        "Box::new(m20260714_900002_create_rbac_invalidation_state::Migration)"
+    ));
+    assert!(!root
+        .join("crates/rustok-migrations/src/m20260714_900002_create_rbac_invalidation_state.rs")
+        .exists());
+    for required in [
+        "rbac_invalidation_state",
+        "RBAC_PERMISSION_SCOPE",
+        "Generation",
+        "UpdatedAt",
+    ] {
+        assert!(migration.contains(required), "migration must retain {required}");
+    }
+}
+
+#[test]
 fn central_migrator_keeps_existing_dependency_and_inventory_tests() {
     let central = source("crates/rustok-migrations/src/lib.rs");
 

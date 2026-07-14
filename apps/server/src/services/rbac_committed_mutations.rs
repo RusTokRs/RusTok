@@ -10,6 +10,7 @@ use crate::models::{
 };
 
 use super::rbac_cache_invalidation::publish_user_rbac_invalidation;
+use super::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
 use super::rbac_persistence::replace_user_role_via_store;
 use super::rbac_service::RbacService;
 
@@ -47,9 +48,24 @@ impl RbacService {
         let tx = db.begin().await?;
         ensure_active_super_admin_continuity(&tx, user_id, tenant_id, &role).await?;
         Self::replace_user_role_in_transaction(&tx, user_id, tenant_id, role).await?;
+        let durable_generation = reserve_rbac_invalidation_generation(&tx).await?;
         tx.commit().await?;
         Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
-        publish_user_rbac_invalidation(tenant_id, user_id).await?;
+        if let Err(error) =
+            publish_user_rbac_invalidation(tenant_id, user_id, durable_generation).await
+        {
+            tracing::warn!(
+                %error,
+                durable_generation,
+                %tenant_id,
+                %user_id,
+                "RBAC fast invalidation fan-out failed after committed role replacement; durable generation reconciliation will recover"
+            );
+            rustok_telemetry::metrics::record_event_error(
+                "rbac.permissions.durable_generation.v1",
+                "post_commit_fanout",
+            );
+        }
         Ok(())
     }
 
@@ -148,6 +164,7 @@ mod tests {
     use super::RbacService;
     use crate::error::Error;
     use crate::models::{tenants, users};
+    use crate::services::rbac_invalidation_generation::read_rbac_invalidation_generation;
     use chrono::Utc;
     use rustok_api::Permission;
     use rustok_core::{UserRole, UserStatus};
@@ -220,6 +237,7 @@ mod tests {
         )
         .await
         .expect("admin permission lookup should succeed"));
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
         RbacService::replace_user_role_committed(
             &db,
@@ -230,6 +248,7 @@ mod tests {
         .await
         .expect("committed demotion should succeed");
 
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
         assert!(!RbacService::has_permission(
             &db,
             &tenant_id,
@@ -269,6 +288,7 @@ mod tests {
         )
         .await
         .expect("super-admin permission lookup should succeed"));
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
         let error = RbacService::replace_user_role_committed(
             &db,
@@ -279,6 +299,7 @@ mod tests {
         .await
         .expect_err("last active super-admin demotion must be rejected");
         assert!(matches!(error, Error::BadRequest(_)));
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
         let authoritative = RbacService::get_user_permissions_authoritative(
             &db,

@@ -19,8 +19,8 @@ pub use integration::{
 };
 pub use ports::*;
 pub use repair::{
-    repair_system_roles, RbacAffectedUser, RbacSystemRoleRepairError,
-    RbacSystemRoleRepairOptions, RbacSystemRoleRepairReport,
+    repair_system_roles, repair_system_roles_in_transaction, RbacAffectedUser,
+    RbacSystemRoleRepairError, RbacSystemRoleRepairOptions, RbacSystemRoleRepairReport,
 };
 pub use services::authz_mode::AuthzEngine;
 pub use services::permission_authorizer::{
