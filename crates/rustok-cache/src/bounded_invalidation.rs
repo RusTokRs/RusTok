@@ -157,6 +157,11 @@ impl BoundedCacheInvalidationGapTracker {
         if proposed == current {
             return Ok(Some(current));
         }
+        if proposed < current {
+            return Err(BoundedInvalidationTrackerError::Payload(
+                CacheInvalidationPayloadError::OffsetRegressed { current, proposed },
+            ));
+        }
         if current.checked_add(1) != Some(proposed) {
             return Err(BoundedInvalidationTrackerError::Payload(
                 CacheInvalidationPayloadError::AcknowledgementNotContiguous {
@@ -303,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn applied_acknowledgement_rejects_unseeded_or_skipped_offsets() {
+    fn applied_acknowledgement_rejects_unseeded_skipped_or_regressed_offsets() {
         let tracker = BoundedCacheInvalidationGapTracker::new(1).unwrap();
         assert_eq!(
             tracker
@@ -319,6 +324,17 @@ mod tests {
         assert_eq!(tracker.channel_count(), 0);
 
         tracker.seed("tenant.invalidate", 3).unwrap();
+        assert_eq!(
+            tracker
+                .acknowledge_applied("tenant.invalidate", 2)
+                .unwrap_err(),
+            BoundedInvalidationTrackerError::Payload(
+                CacheInvalidationPayloadError::OffsetRegressed {
+                    current: 3,
+                    proposed: 2,
+                }
+            )
+        );
         assert_eq!(
             tracker
                 .acknowledge_applied("tenant.invalidate", 5)
