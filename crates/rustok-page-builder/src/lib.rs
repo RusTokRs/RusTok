@@ -8,6 +8,7 @@ pub mod runtime_context;
 pub mod runtime_context_compatibility;
 pub mod runtime_context_dependency;
 pub mod runtime_context_migration;
+pub mod runtime_scenario_release;
 pub mod runtime_scenario_render;
 pub mod runtime_scenario_snapshot;
 #[cfg(feature = "server")]
