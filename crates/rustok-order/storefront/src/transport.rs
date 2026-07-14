@@ -31,6 +31,7 @@ impl CheckoutCompletionCommandMetadata {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompleteCheckoutRequest {
     pub cart_id: String,
+    pub idempotency_key: String,
     pub metadata: CheckoutCompletionCommandMetadata,
 }
 
@@ -112,6 +113,7 @@ fn selected_transport_path() -> UiTransportPath {
 pub fn build_complete_checkout_request(cart_id: String) -> CompleteCheckoutRequest {
     CompleteCheckoutRequest {
         cart_id: normalize_required_ui_text(cart_id),
+        idempotency_key: format!("storefront-checkout:{}", uuid::Uuid::new_v4()),
         metadata: CheckoutCompletionCommandMetadata::storefront_complete(),
     }
 }
@@ -121,9 +123,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn complete_request_trims_cart_id() {
+    fn complete_request_trims_cart_id_and_creates_stable_key() {
         let request = build_complete_checkout_request(" cart-1 ".into());
+        let replay = request.clone();
         assert_eq!(request.cart_id, "cart-1");
+        assert!(request.idempotency_key.starts_with("storefront-checkout:"));
+        assert_eq!(request.idempotency_key, replay.idempotency_key);
     }
 
     #[test]
