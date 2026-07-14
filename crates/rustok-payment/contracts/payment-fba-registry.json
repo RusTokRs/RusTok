@@ -45,6 +45,7 @@
     "local_plan": "crates/rustok-payment/docs/implementation-plan.md",
     "webhook_contract": "crates/rustok-payment/contracts/payment-provider-webhook-v1.json",
     "webhook_runbook": "crates/rustok-payment/docs/provider-webhooks.md",
+    "webhook_source_status": "implemented_not_executed",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
   },
@@ -54,7 +55,9 @@
     "status": "implemented"
   },
   "contract_tests": {
-    "status": "source_cases_implemented_not_executed",
+    "status": "planned_cases_locked",
+    "source_cases_implemented": true,
+    "execution_status": "not_executed_in_change_session",
     "source": "crates/rustok-payment/contracts/payment-fba-registry.json",
     "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "profiles": [
@@ -115,7 +118,8 @@
     }
   },
   "provider_spi": {
-    "status": "webhook_inbox_source_implemented",
+    "status": "manual_baseline_locked",
+    "implementation_status": "webhook_inbox_source_implemented_not_transport_verified",
     "source": "crates/rustok-payment/src/providers.rs",
     "default_provider_id": "manual",
     "operations": [
@@ -134,12 +138,14 @@
     ],
     "side_effect_boundary": "provider adapters execute external effects and verify/normalize webhook payloads; PaymentService owns persisted lifecycle transitions",
     "webhook_ingress": {
-      "status": "source_implemented_not_transport_verified",
+      "status": "planned",
+      "implementation_status": "source_implemented_not_transport_verified",
       "contract": "contracts/payment-provider-webhook-v1.json",
       "http_path": "/payment/webhooks/{provider_id}",
       "idempotency_required": true,
       "replay_required": true,
       "adapter_operation": "handle_webhook",
+      "raw_payload_audit_required": true,
       "raw_payload_persisted": false,
       "payload_hash_required": true,
       "normalized_checkpoint_required": true,
