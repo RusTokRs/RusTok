@@ -29,6 +29,8 @@
 - The canonical tree returns the complete tenant hierarchy in deterministic `(position, id)` sibling order through one owner call bounded to 512 nodes and zero-based depth 16.
 - Each node includes `parent_id`, `depth`, direct `children_count`, `has_children`, localized breadcrumbs and nested children.
 - REST entry point: `GET /api/forum/categories/tree`.
+- GraphQL entry point: `forumCategoryTree(tenantId, locale, fallbackLocale)` on the merged `ForumQuery`.
+- Categories without any localized translation fail closed instead of returning empty `name`/`slug` fields.
 - The legacy flat category list remains a bounded compatibility projection and is not the canonical hierarchy contract.
 ### CreateTopicInput
 - Added: `slug: Option<String>`
@@ -95,7 +97,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 ### Domain Invariants
 - Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
 - Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
-- Category tree reads fail closed for oversized, excessive-depth, cyclic, disconnected or foreign-parent hierarchies.
+- Category tree reads fail closed for oversized, excessive-depth, untranslated, cyclic, disconnected or foreign-parent hierarchies.
 
 ### Events / Outbox Side Effects
 - If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
