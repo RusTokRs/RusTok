@@ -110,6 +110,7 @@ impl GqlPageBuilderScenarioReleaseStatus {
 #[derive(InputObject)]
 pub struct SaveGqlPageBuilderScenarioBaselineInput {
     pub baseline: Value,
+    pub expected_baseline_hash: Option<String>,
 }
 
 #[derive(Default)]
@@ -190,7 +191,13 @@ impl PageBuilderScenarioBaselineMutation {
             })?;
         let service = PageBuilderScenarioBaselineService::new(db.clone());
         let baseline = service
-            .save(tenant_id, page_security(&auth), page_id, baseline)
+            .save_if_current(
+                tenant_id,
+                page_security(&auth),
+                page_id,
+                baseline,
+                input.expected_baseline_hash.as_deref(),
+            )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         GqlPageBuilderScenarioBaseline::from_baseline(page_id, baseline)
@@ -200,6 +207,7 @@ impl PageBuilderScenarioBaselineMutation {
         &self,
         ctx: &Context<'_>,
         page_id: Uuid,
+        expected_baseline_hash: Option<String>,
         tenant_id: Option<Uuid>,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -208,7 +216,12 @@ impl PageBuilderScenarioBaselineMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = current_tenant_id(tenant, &auth, tenant_id)?;
         PageBuilderScenarioBaselineService::new(db.clone())
-            .delete(tenant_id, page_security(&auth), page_id)
+            .delete_if_current(
+                tenant_id,
+                page_security(&auth),
+                page_id,
+                expected_baseline_hash.as_deref(),
+            )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))
     }
