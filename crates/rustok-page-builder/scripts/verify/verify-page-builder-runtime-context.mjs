@@ -90,7 +90,7 @@ const required = [
   [modularCanvas, '<RuntimeScenarioRegressionPanel', 'scenario regression panel is not mounted'],
   [contextPanel, 'EditorCommand::Context', 'context authoring does not use editor transactions'],
   [scenarioMatrixPanel, 'render_runtime_scenario_matrix', 'admin scenario matrix does not use Fly renderer'],
-  [scenarioRegressionPanel, 'RuntimeScenarioRenderSnapshot::capture', 'admin regression panel does not capture canonical snapshots'],
+  [scenarioRegressionPanel, 'RuntimeScenarioReleaseBaseline::capture', 'admin regression panel does not capture canonical release baselines'],
 ];
 
 const failures = required
