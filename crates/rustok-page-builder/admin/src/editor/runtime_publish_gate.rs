@@ -68,19 +68,19 @@ pub fn RuntimePublishGatePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             suite.rejected_count,
                         )
                     });
+                    let status_class = if evaluation.allowed {
+                        "rounded bg-emerald-500/10 px-2 py-1 text-emerald-700"
+                    } else {
+                        "rounded bg-destructive/10 px-2 py-1 text-destructive"
+                    };
+                    let status_text = if evaluation.allowed {
+                        "Publish runtime gate passed".to_string()
+                    } else {
+                        format!("Publish blocked · {error_count} error(s)")
+                    };
                     view! {
                         <div class="space-y-2 text-xs">
-                            <p class=if evaluation.allowed {
-                                "rounded bg-emerald-500/10 px-2 py-1 text-emerald-700"
-                            } else {
-                                "rounded bg-destructive/10 px-2 py-1 text-destructive"
-                            }>
-                                {if evaluation.allowed {
-                                    "Publish runtime gate passed".to_string()
-                                } else {
-                                    format!("Publish blocked · {error_count} error(s)")
-                                }}
-                            </p>
+                            <p class=status_class>{status_text}</p>
                             <p class="text-muted-foreground">{format!(
                                 "{error_count} errors · {warning_count} warnings"
                             )}</p>
