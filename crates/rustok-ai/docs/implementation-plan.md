@@ -74,6 +74,10 @@ context. The factory is the only remaining `AiHostRuntime::new` call; turning
 that value into a process-wide generic runtime extension remains part of the
 platform prerequisite rather than an AI-specific host change.
 
+AI no longer queries RBAC tables for actor roles. Provider profiles cannot
+accept role slugs, and any legacy persisted role restriction is fail-closed
+until the platform-owned `TenantRbacCatalog` supplies a typed selection.
+
 Rig agent recovery never executes unknown or policy-denied tool calls. It
 persists a synthetic skipped result and lets the model finish the turn. A
 sensitive model turn is represented as one approval batch: non-sensitive

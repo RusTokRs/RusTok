@@ -134,7 +134,10 @@ pub struct ModuleRuntimeBinding {
     pub entrypoint: String,
     pub input_schema_digest: String,
     pub output_schema_digest: String,
-    pub permission: Option<String>,
+    /// Exact module-owned RBAC permission required to invoke this binding.
+    /// Capability grants constrain guest-to-host calls separately and never
+    /// authorize an actor to invoke a binding.
+    pub permission: String,
     pub idempotency: ModuleBindingIdempotency,
     pub limit_profile: String,
     #[serde(default)]
@@ -205,7 +208,13 @@ impl ModuleArtifactDescriptor {
             }
         }
         for (index, binding) in self.bindings.iter().enumerate() {
-            if binding.id.trim().is_empty() || binding.entrypoint.trim().is_empty() {
+            if binding.id.trim().is_empty()
+                || binding.entrypoint.trim().is_empty()
+                || !self
+                    .permissions
+                    .iter()
+                    .any(|permission| permission.key == binding.permission)
+            {
                 return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
             }
             if !valid_digest(&binding.input_schema_digest)
@@ -280,6 +289,10 @@ impl ModuleArtifactDescriptor {
                 || contribution.surface.trim().is_empty()
                 || !valid_digest(&contribution.localization_digest)
                 || !contribution.permission.starts_with(&permission_prefix)
+                || !self
+                    .permissions
+                    .iter()
+                    .any(|permission| permission.key == contribution.permission)
             {
                 return Err(ModuleArtifactError::InvalidUiContribution(
                     contribution.id.clone(),
@@ -583,13 +596,17 @@ mod tests {
     #[test]
     fn binding_cannot_expand_descriptor_capabilities() {
         let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.permissions = vec![ArtifactPermissionDescriptor {
+            key: "sample_module.lifecycle.manage".to_string(),
+            label: "Manage lifecycle".to_string(),
+        }];
         descriptor.bindings.push(ModuleRuntimeBinding {
             id: "pre_enable".to_string(),
             kind: ModuleRuntimeBindingKind::PreEnable,
             entrypoint: "pre_enable".to_string(),
             input_schema_digest: digest('b'),
             output_schema_digest: digest('c'),
-            permission: None,
+            permission: "sample_module.lifecycle.manage".to_string(),
             idempotency: ModuleBindingIdempotency::Required,
             limit_profile: "lifecycle".to_string(),
             capabilities: vec![CapabilityName::new("platform.http").expect("capability")],
@@ -673,6 +690,42 @@ mod tests {
             surface: "admin_settings".to_string(),
             localization_digest: digest('b'),
             permission: "other_module.settings.manage".to_string(),
+        }];
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidUiContribution(_))
+        ));
+    }
+
+    #[test]
+    fn bindings_and_ui_must_reference_declared_permissions() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.bindings.push(ModuleRuntimeBinding {
+            id: "command".to_string(),
+            kind: ModuleRuntimeBindingKind::Command,
+            entrypoint: "command".to_string(),
+            input_schema_digest: digest('b'),
+            output_schema_digest: digest('c'),
+            permission: "sample_module.commands.execute".to_string(),
+            idempotency: ModuleBindingIdempotency::Required,
+            limit_profile: "command".to_string(),
+            capabilities: Vec::new(),
+        });
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidBinding(_))
+        ));
+
+        descriptor.bindings.clear();
+        descriptor.permissions = vec![ArtifactPermissionDescriptor {
+            key: "sample_module.settings.manage".to_string(),
+            label: "Manage settings".to_string(),
+        }];
+        descriptor.ui_contributions = vec![ArtifactUiContribution {
+            id: "settings".to_string(),
+            surface: "admin_settings".to_string(),
+            localization_digest: digest('d'),
+            permission: "sample_module.settings.read".to_string(),
         }];
         assert!(matches!(
             descriptor.validate(),

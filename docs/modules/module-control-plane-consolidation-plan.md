@@ -602,7 +602,7 @@ rollback without relying on workspace source composition.
 - [ ] Register admitted permissions through the RBAC owner service with
   localized labels/descriptions; installation never grants them to roles or
   actors automatically.
-- [ ] Require every runtime/UI binding to name the exact permission it checks;
+- [x] Require every runtime/UI binding to name the exact permission it checks;
   capability grants authorize guest-to-host access and are not substitutes for
   actor RBAC.
 
@@ -724,11 +724,14 @@ of an admitted blob.
   installation; no local or legacy verifier exists as a fallback. The worker
   now executes fixed Cosign verification commands and fails closed unless its
   complete typed allow-list accepts the signed in-toto subject digest, SLSA
-  builder/build type/source, and CycloneDX JSON version, component-license, and
+  builder/build type/source/ref, and CycloneDX JSON version, component-license, and
   vulnerability evidence. The worker listener requires deployment-provided
   mTLS identity/client-CA material and bounds concurrency, duration, and
-  message size. The transport supports mTLS client configuration. The mounted
-  typed policy selects either keyless Sigstore identities/issuers or a
+  message size. Its same mTLS-protected listener exposes a readiness RPC only
+  after fail-closed startup validation, so deployment supervision uses the
+  authenticated transport rather than a plaintext health port. The transport
+  supports mTLS client configuration and readiness probing. The mounted typed
+  policy selects either keyless Sigstore identities/issuers or a
   first-party KMS key reference; neither mode falls back to the other.
   Fixture-backed tests cover accepted statements and denied digest, license,
   vulnerability, keyless-policy, and KMS-policy cases.

@@ -14,7 +14,8 @@
       "buildType": "https://rustok.dev/build/wasm/v1",
       "externalParameters": {
         "source": {
-          "uri": "https://github.com/rustok/module"
+          "uri": "https://github.com/rustok/module",
+          "ref": "refs/heads/main"
         }
       }
     },

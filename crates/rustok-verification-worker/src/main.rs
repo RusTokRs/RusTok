@@ -5,8 +5,6 @@ use rustok_verification_worker::{
     CosignTrustVerifier, ListenerConfig, VerificationGrpcService, VerificationPolicy,
     VerificationWorker,
 };
-use tonic::transport::Server;
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = ListenerConfig::from_env()?;

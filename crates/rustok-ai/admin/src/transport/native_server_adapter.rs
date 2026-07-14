@@ -1,7 +1,5 @@
 #![allow(clippy::too_many_arguments)]
 use leptos::prelude::*;
-#[cfg(feature = "ssr")]
-use sea_orm::ConnectionTrait;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -1193,48 +1191,19 @@ fn ai_runtime_from_context(
 #[cfg(feature = "ssr")]
 async fn operator(
     auth: &rustok_api::AuthContext,
-    db: &sea_orm::DatabaseConnection,
+    _db: &sea_orm::DatabaseConnection,
 ) -> Result<rustok_ai::AiOperatorContext, ServerFnError> {
     let preferred_locale = leptos_axum::extract::<rustok_api::RequestContext>()
         .await
         .ok()
         .map(|request_context| request_context.locale);
-    let backend = db.get_database_backend();
-    let statement = match backend {
-        sea_orm::DbBackend::Sqlite => sea_orm::Statement::from_sql_and_values(
-            backend,
-            r#"
-            SELECT roles.slug AS slug
-            FROM roles
-            INNER JOIN user_roles ON user_roles.role_id = roles.id
-            WHERE user_roles.user_id = ?1 AND roles.tenant_id = ?2
-            "#,
-            vec![auth.user_id.into(), auth.tenant_id.into()],
-        ),
-        _ => sea_orm::Statement::from_sql_and_values(
-            backend,
-            r#"
-            SELECT roles.slug AS slug
-            FROM roles
-            INNER JOIN user_roles ON user_roles.role_id = roles.id
-            WHERE user_roles.user_id = $1 AND roles.tenant_id = $2
-            "#,
-            vec![auth.user_id.into(), auth.tenant_id.into()],
-        ),
-    };
-    let role_slugs = db
-        .query_all(statement)
-        .await
-        .map_err(server_error)?
-        .into_iter()
-        .filter_map(|row| row.try_get::<String>("", "slug").ok())
-        .collect();
-
     Ok(rustok_ai::AiOperatorContext {
         tenant_id: auth.tenant_id,
         user_id: auth.user_id,
         permissions: auth.permissions.clone(),
-        role_slugs,
+        // Provider role restrictions are fail-closed until the platform-owned
+        // TenantRbacCatalog is available through the generic host context.
+        role_slugs: Vec::new(),
         preferred_locale,
     })
 }

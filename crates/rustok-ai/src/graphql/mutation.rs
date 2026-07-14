@@ -41,12 +41,9 @@ async fn operator_context(
         tenant_id: auth.tenant_id,
         user_id: auth.user_id,
         permissions: auth.permissions.clone(),
-        role_slugs: ctx
-            .data::<crate::AiGraphqlRuntimeData>()?
-            .role_slug_provider()
-            .load_role_slugs(auth.tenant_id, auth.user_id)
-            .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?,
+        // Provider role restrictions are fail-closed until the platform-owned
+        // TenantRbacCatalog is available through the generic host context.
+        role_slugs: Vec::new(),
         preferred_locale,
     })
 }

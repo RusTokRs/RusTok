@@ -23,6 +23,13 @@ Optional bounded overrides are `RUSTOK_VERIFICATION_REQUEST_TIMEOUT_MS`,
 must use `GrpcTrustVerifier::connect_with_tls` with its client identity, trust
 root, and expected worker domain.
 
+The same mTLS listener exposes `VerificationService/GetReadiness`. It returns
+ready only after the process has loaded and validated its listener material and
+typed verification policy; an invalid or incomplete startup configuration exits
+the process instead. Platform supervision must use this authenticated RPC (via
+`GrpcTrustVerifier::check_readiness`) and process liveness, never a plaintext
+health port.
+
 ## Rollout
 
 1. Complete: typed tonic gRPC client/server adapters in
@@ -31,7 +38,7 @@ root, and expected worker domain.
    atomic persistence of the redacted verification decision.
 3. Complete: the worker starts a tonic listener and executes only fixed Cosign
    verification commands. It requires a complete allow-list policy, validates
-   the signed in-toto subject digest, SLSA builder/build type/source, and
+   the signed in-toto subject digest, SLSA builder/build type/source/ref, and
    CycloneDX JSON version plus every declared component license and vulnerability
    rating. When configured, Cosign uses offline verification to require bundled
    transparency evidence.
@@ -45,3 +52,6 @@ root, and expected worker domain.
    the two modes.
 6. Complete: fixture-backed tests cover accepted SLSA/CycloneDX statements and
    denied digest, license, vulnerability, keyless policy, and KMS policy cases.
+7. Complete: the worker exposes a mTLS-protected gRPC readiness RPC on the
+   verification listener. It becomes available only after fail-closed startup
+   validation; no unauthenticated operational endpoint is bound.

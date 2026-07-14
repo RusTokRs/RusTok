@@ -5,7 +5,7 @@ use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tonic::Request;
 
 use crate::proto::verification_service_client::VerificationServiceClient;
-use crate::proto::VerifyRequest;
+use crate::proto::{ReadinessRequest, VerifyRequest};
 
 /// Owner-side adapter. Any connection, deadline, protocol, or worker error is
 /// returned to `ModuleInstaller`, which rejects admission without a fallback.
@@ -41,6 +41,25 @@ impl GrpcTrustVerifier {
             .await
             .map_err(|error| error.to_string())?;
         Ok(Self::from_channel(channel))
+    }
+
+    /// Performs the worker's mTLS-protected readiness probe. Deployment
+    /// supervisors can use it to wait for a fully validated worker before
+    /// sending admission traffic.
+    pub async fn check_readiness(&self) -> Result<(), String> {
+        let response = self
+            .client
+            .lock()
+            .await
+            .get_readiness(Request::new(ReadinessRequest {}))
+            .await
+            .map_err(|error| error.to_string())?
+            .into_inner();
+        if response.ready {
+            Ok(())
+        } else {
+            Err("verification worker reported not ready".to_string())
+        }
     }
 }
 

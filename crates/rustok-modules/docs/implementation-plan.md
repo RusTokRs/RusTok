@@ -105,7 +105,9 @@ is wired; no artifact path falls back to a compiled callback.
 Artifact descriptors now carry versioned declarative bindings with stable IDs,
 schema digests, permission, idempotency, limit profile, and declared
 capabilities. Admission rejects duplicate bindings, malformed schemas, and
-binding capabilities absent from the descriptor.
+binding capabilities absent from the descriptor. Every artifact binding and UI
+contribution must reference an exact declared module-owned RBAC permission;
+capability grants remain separate guest-to-host authorization.
 
 `ArtifactRuntimeLifecycleExecutor` now provides the dispatcher-facing sandbox
 adapter contract: installation resolution is tenant/scope-aware, effective

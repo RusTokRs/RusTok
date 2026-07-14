@@ -50,14 +50,10 @@ pub use engine::{
     provider_factory_supports, AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy,
 };
 pub use error::{AiError, AiResult};
-#[cfg(all(feature = "graphql", feature = "server"))]
-pub use graphql_runtime::{
-    attach_schema_data, AiGraphqlRuntimeData, SeaOrmAiGraphqlRoleSlugProvider,
-};
 #[cfg(feature = "graphql")]
-pub use graphql_runtime::{
-    AiGraphqlRoleSlugProvider, AiGraphqlRoleSlugProviderHandle, AI_GRAPHQL_CONTRIBUTION,
-};
+pub use graphql_runtime::AI_GRAPHQL_CONTRIBUTION;
+#[cfg(all(feature = "graphql", feature = "server"))]
+pub use graphql_runtime::{attach_schema_data, AiGraphqlRuntimeData};
 pub use mcp::{McpClientAdapter, ToolExecutionResult};
 #[cfg(feature = "server")]
 pub use metrics::{AiMetricBucket, AiRuntimeMetricsSnapshot};

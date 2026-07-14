@@ -8,9 +8,9 @@ use tokio::process::Command;
 
 use crate::{policy::vulnerability_severity_rank, VerificationPolicy, VerificationTrustRoot};
 
-/// Concrete worker-only Cosign adapter. Command arguments derive exclusively
-/// from typed owner input and mounted policy; artifact-controlled values never
-/// become executable arguments.
+/// Concrete worker-only Cosign adapter. Values are passed as process arguments,
+/// never through a shell; trust-root flags derive exclusively from mounted
+/// policy.
 pub struct CosignTrustVerifier {
     program: String,
     policy: VerificationPolicy,
@@ -79,12 +79,15 @@ impl CosignTrustVerifier {
 }
 
 fn attestation_statements(output: &[u8]) -> Result<Vec<Value>, String> {
-    let records: Value = serde_json::from_slice(output)
+    let records = serde_json::Deserializer::from_slice(output)
+        .into_iter::<Value>()
+        .collect::<Result<Vec<_>, _>>()
         .map_err(|_| "cosign attestation output is not JSON".to_string())?;
-    let records = records.as_array().ok_or_else(|| {
-        "cosign attestation output must contain a JSON array of verified records".to_string()
-    })?;
-    let mut statements = Vec::with_capacity(records.len());
+    let records = records.into_iter().flat_map(|record| match record {
+        Value::Array(records) => records,
+        record => vec![record],
+    });
+    let mut statements = Vec::new();
     for record in records {
         let payload = record
             .get("payload")
@@ -144,15 +147,16 @@ fn validate_slsa(
             let source = statement
                 .pointer("/predicate/buildDefinition/externalParameters/source/uri")
                 .and_then(Value::as_str);
-            subject_matches(&statement, expected_digest)
+            let source_ref = statement
+                .pointer("/predicate/buildDefinition/externalParameters/source/ref")
+                .and_then(Value::as_str);
+            statement.get("predicateType").and_then(Value::as_str)
+                == Some("https://slsa.dev/provenance/v1")
+                && subject_matches(&statement, expected_digest)
                 && builder.is_some_and(|value| allowed(&policy.allowed_builders, value))
                 && build_type.is_some_and(|value| allowed(&policy.allowed_build_types, value))
-                && source.is_some_and(|value| {
-                    policy
-                        .allowed_source_repositories
-                        .iter()
-                        .any(|repository| value.starts_with(repository))
-                })
+                && source.is_some_and(|value| allowed(&policy.allowed_source_repositories, value))
+                && source_ref.is_some_and(|value| allowed(&policy.allowed_source_refs, value))
         });
     accepted.then_some(()).ok_or_else(|| {
         "SLSA provenance does not satisfy subject, builder, build-type, or source policy"
@@ -160,7 +164,8 @@ fn validate_slsa(
     })
 }
 
-fn license_identifiers(bom: &Value) -> Vec<&str> {
+fn component_licenses_are_allowed(bom: &Value, policy: &VerificationPolicy) -> bool {
+    let mut has_component = false;
     bom.get("metadata")
         .and_then(|metadata| metadata.get("component"))
         .into_iter()
@@ -170,21 +175,25 @@ fn license_identifiers(bom: &Value) -> Vec<&str> {
                 .into_iter()
                 .flatten(),
         )
-        .flat_map(|component| {
+        .all(|component| {
+            has_component = true;
             component
                 .get("licenses")
                 .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
+                .is_some_and(|licenses| {
+                    !licenses.is_empty()
+                        && licenses.iter().all(|entry| {
+                            entry
+                                .get("license")
+                                .and_then(|license| {
+                                    license.get("id").or_else(|| license.get("name"))
+                                })
+                                .and_then(Value::as_str)
+                                .is_some_and(|license| allowed(&policy.allowed_licenses, license))
+                        })
+                })
         })
-        .filter_map(|entry| entry.get("license"))
-        .filter_map(|license| {
-            license
-                .get("id")
-                .or_else(|| license.get("name"))
-                .and_then(Value::as_str)
-        })
-        .collect()
+        && has_component
 }
 
 fn vulnerabilities_are_within_policy(bom: &Value, maximum: &str) -> bool {
@@ -221,8 +230,9 @@ fn validate_cyclonedx(
             let bom = statement
                 .pointer("/predicate/bom")
                 .unwrap_or_else(|| statement.get("predicate").unwrap_or(&Value::Null));
-            let licenses = license_identifiers(bom);
-            subject_matches(&statement, expected_digest)
+            statement.get("predicateType").and_then(Value::as_str)
+                == Some("https://cyclonedx.org/bom")
+                && subject_matches(&statement, expected_digest)
                 && bom.get("bomFormat").and_then(Value::as_str) == Some("CycloneDX")
                 && bom
                     .get("specVersion")
@@ -230,10 +240,7 @@ fn validate_cyclonedx(
                     .is_some_and(|version| {
                         allowed(&policy.allowed_cyclonedx_spec_versions, version)
                     })
-                && !licenses.is_empty()
-                && licenses
-                    .iter()
-                    .all(|license| allowed(&policy.allowed_licenses, license))
+                && component_licenses_are_allowed(bom, policy)
                 && vulnerabilities_are_within_policy(bom, &policy.maximum_vulnerability_severity)
         });
     accepted.then_some(()).ok_or_else(|| {
@@ -337,7 +344,8 @@ mod tests {
                 require_transparency_bundle: true,
             },
             allowed_builders: vec!["https://build.rustok.dev/worker".into()],
-            allowed_source_repositories: vec!["https://github.com/rustok/".into()],
+            allowed_source_repositories: vec!["https://github.com/rustok/module".into()],
+            allowed_source_refs: vec!["refs/heads/main".into()],
             allowed_build_types: vec!["https://rustok.dev/build/wasm/v1".into()],
             allowed_licenses: vec!["MIT".into(), "Apache-2.0".into()],
             allowed_cyclonedx_spec_versions: vec!["1.6".into()],

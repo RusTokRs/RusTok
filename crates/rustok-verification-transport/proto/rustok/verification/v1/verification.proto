@@ -7,6 +7,10 @@ package rustok.verification.v1;
 // framing, method identity, deadlines, and status semantics only.
 service VerificationService {
   rpc Verify(VerifyRequest) returns (VerifyResponse);
+  // This endpoint is intentionally served on the same mutually authenticated
+  // listener as verification. A successful response means the worker has
+  // completed its fail-closed startup validation and is accepting requests.
+  rpc GetReadiness(ReadinessRequest) returns (ReadinessResponse);
 }
 
 message VerifyRequest {
@@ -15,4 +19,10 @@ message VerifyRequest {
 
 message VerifyResponse {
   bytes trust_verification_decision_json = 1;
+}
+
+message ReadinessRequest {}
+
+message ReadinessResponse {
+  bool ready = 1;
 }

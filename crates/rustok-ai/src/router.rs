@@ -257,7 +257,7 @@ fn provider_allowed(
 fn provider_candidate_status(
     provider: &RouterProviderProfile,
     task_profile: &TaskProfile,
-    actor_role_slugs: &[String],
+    _actor_role_slugs: &[String],
 ) -> (RouterCandidateStatus, String) {
     if !provider.is_active {
         return (
@@ -330,18 +330,10 @@ fn provider_candidate_status(
             "task profile is not listed in provider usage policy allow-list".to_string(),
         );
     }
-    if !provider.usage_policy.restricted_role_slugs.is_empty()
-        && !actor_role_slugs.iter().any(|role| {
-            provider
-                .usage_policy
-                .restricted_role_slugs
-                .iter()
-                .any(|allowed| allowed == role)
-        })
-    {
+    if !provider.usage_policy.restricted_role_slugs.is_empty() {
         return (
             RouterCandidateStatus::MissingRequiredActorRole,
-            "actor does not have a role permitted by provider usage policy".to_string(),
+            "provider role restriction awaits the platform tenant RBAC catalog".to_string(),
         );
     }
     (
