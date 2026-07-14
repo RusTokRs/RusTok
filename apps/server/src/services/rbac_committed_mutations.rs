@@ -10,6 +10,7 @@ use crate::models::{
 };
 
 use super::rbac_cache_invalidation::publish_user_rbac_invalidation;
+use super::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
 use super::rbac_persistence::replace_user_role_via_store;
 use super::rbac_service::RbacService;
 
@@ -47,9 +48,22 @@ impl RbacService {
         let tx = db.begin().await?;
         ensure_active_super_admin_continuity(&tx, user_id, tenant_id, &role).await?;
         Self::replace_user_role_in_transaction(&tx, user_id, tenant_id, role).await?;
+        let durable_generation = reserve_rbac_invalidation_generation(&tx).await?;
         tx.commit().await?;
         Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
-        publish_user_rbac_invalidation(tenant_id, user_id).await?;
+        if let Err(error) = publish_user_rbac_invalidation(tenant_id, user_id).await {
+            tracing::warn!(
+                %error,
+                durable_generation,
+                %tenant_id,
+                %user_id,
+                "RBAC fast invalidation fan-out failed after committed role replacement; durable generation reconciliation will recover"
+            );
+            rustok_telemetry::metrics::record_event_error(
+                "rbac.permissions.durable_generation.v1",
+                "post_commit_fanout",
+            );
+        }
         Ok(())
     }
 
