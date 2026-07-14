@@ -1,11 +1,13 @@
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use once_cell::sync::Lazy;
 use rustok_cache::{
     cache_backend_generation_snapshot, observe_cache_backend_generation,
-    BoundedCacheInvalidationGapTracker, CacheInvalidationMessage, CacheInvalidationObservation,
-    CacheService, DurableCacheInvalidationRecord, VersionedCacheInvalidation,
+    BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
+    CacheBackendGenerationError, CacheInvalidationMessage, CacheInvalidationObservation,
+    CacheInvalidationPayloadError, CacheService, DurableCacheInvalidationRecord,
+    VersionedCacheInvalidation,
 };
 use sea_orm::{EntityTrait, QuerySelect};
 use tokio::sync::broadcast;
@@ -25,6 +27,50 @@ static RBAC_INVALIDATION_CACHE_SERVICE: Lazy<RwLock<Option<CacheService>>> =
 
 #[derive(Clone)]
 pub struct RbacCacheInvalidationListenerHandle;
+
+#[derive(Clone, Default)]
+struct RbacCacheInvalidationListenerStartLock(Arc<tokio::sync::Mutex<()>>);
+
+fn observe_rbac_backend_generation(generation: u64) -> Result<u64> {
+    match observe_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX, generation) {
+        Ok(snapshot) => Ok(snapshot.generation),
+        Err(CacheBackendGenerationError::GenerationRegressed { current, proposed })
+            if current >= proposed =>
+        {
+            Ok(current)
+        }
+        Err(error) => Err(Error::Cache(error.to_string())),
+    }
+}
+
+fn acknowledge_rbac_applied_generation(
+    tracker: &BoundedCacheInvalidationGapTracker,
+    generation: u64,
+) -> Result<()> {
+    match tracker.acknowledge_applied(RBAC_PERMISSION_INVALIDATION_CHANNEL, generation) {
+        Ok(_) => Ok(()),
+        Err(BoundedInvalidationTrackerError::Payload(
+            CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                current: Some(current),
+                proposed,
+            },
+        )) if current >= proposed => Ok(()),
+        Err(error) => Err(Error::Cache(error.to_string())),
+    }
+}
+
+fn acknowledge_rbac_recovery(
+    tracker: &BoundedCacheInvalidationGapTracker,
+    generation: u64,
+) -> Result<()> {
+    match tracker.acknowledge_recovery(RBAC_PERMISSION_INVALIDATION_CHANNEL, generation) {
+        Ok(_) => Ok(()),
+        Err(BoundedInvalidationTrackerError::Payload(
+            CacheInvalidationPayloadError::OffsetRegressed { current, proposed },
+        )) if current >= proposed => Ok(()),
+        Err(error) => Err(Error::Cache(error.to_string())),
+    }
+}
 
 #[derive(Clone)]
 struct RbacCacheInvalidationListener {
@@ -68,13 +114,10 @@ impl RbacCacheInvalidationListener {
             }
         };
 
-        observe_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX, generation)
-            .map_err(|error| Error::Cache(error.to_string()))?;
+        let recovered_through = observe_rbac_backend_generation(generation)?;
         invalidate_all_user_permission_snapshots(&self.ctx).await?;
-        self.tracker
-            .acknowledge_recovery(RBAC_PERMISSION_INVALIDATION_CHANNEL, generation)
-            .map_err(|error| Error::Cache(error.to_string()))?;
-        Ok(generation)
+        acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
+        Ok(recovered_through)
     }
 
     async fn handle_message(&self, message: CacheInvalidationMessage) -> Result<()> {
@@ -91,9 +134,7 @@ impl RbacCacheInvalidationListener {
             CacheInvalidationObservation::InOrder { generation } => {
                 let (tenant_id, user_id) = parse_rbac_invalidation_key(&event.key)?;
                 invalidate_user_permissions_cache(&tenant_id, &user_id).await;
-                self.tracker
-                    .acknowledge_applied(RBAC_PERMISSION_INVALIDATION_CHANNEL, generation)
-                    .map_err(|error| Error::Cache(error.to_string()))?;
+                acknowledge_rbac_applied_generation(&self.tracker, generation)?;
             }
             CacheInvalidationObservation::Duplicate { .. }
             | CacheInvalidationObservation::Stale { .. } => {}
@@ -176,16 +217,18 @@ pub async fn start_rbac_cache_invalidation_listener(
     ctx: &ServerRuntimeContext,
     cache: CacheService,
 ) -> Result<()> {
+    let _ = ctx.shared_insert_if_absent(RbacCacheInvalidationListenerStartLock::default());
+    let start_lock = ctx
+        .shared_get::<RbacCacheInvalidationListenerStartLock>()
+        .ok_or_else(|| Error::Cache("RBAC invalidation start lock is unavailable".to_string()))?;
+    let _start_guard = start_lock.0.lock().await;
+
     if ctx
         .shared_get::<RbacCacheInvalidationListenerHandle>()
         .is_some()
     {
         return Ok(());
     }
-
-    *RBAC_INVALIDATION_CACHE_SERVICE
-        .write()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(cache.clone());
 
     let listener = RbacCacheInvalidationListener::new(ctx.clone(), cache.clone());
     let mut local = cache
@@ -259,6 +302,9 @@ pub async fn start_rbac_cache_invalidation_listener(
         });
     }
 
+    *RBAC_INVALIDATION_CACHE_SERVICE
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(cache);
     ctx.shared_insert(RbacCacheInvalidationListenerHandle);
     Ok(())
 }
@@ -295,7 +341,12 @@ fn parse_rbac_invalidation_key(value: &str) -> Result<(Uuid, Uuid)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_rbac_invalidation_key, rbac_invalidation_key};
+    use super::{
+        acknowledge_rbac_applied_generation, acknowledge_rbac_recovery,
+        parse_rbac_invalidation_key, rbac_invalidation_key,
+        RBAC_PERMISSION_INVALIDATION_CHANNEL,
+    };
+    use rustok_cache::BoundedCacheInvalidationGapTracker;
     use uuid::Uuid;
 
     #[test]
@@ -312,5 +363,21 @@ mod tests {
     fn malformed_rbac_invalidation_key_is_rejected() {
         assert!(parse_rbac_invalidation_key("not-a-pair").is_err());
         assert!(parse_rbac_invalidation_key("invalid:also-invalid").is_err());
+    }
+
+    #[test]
+    fn superseded_rbac_acknowledgements_are_safe_noops() {
+        let tracker = BoundedCacheInvalidationGapTracker::default();
+        tracker
+            .seed(RBAC_PERMISSION_INVALIDATION_CHANNEL, 7)
+            .unwrap();
+
+        acknowledge_rbac_applied_generation(&tracker, 6).unwrap();
+        acknowledge_rbac_recovery(&tracker, 6).unwrap();
+
+        assert_eq!(
+            tracker.last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL),
+            Some(7)
+        );
     }
 }
