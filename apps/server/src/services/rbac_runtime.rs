@@ -615,7 +615,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn user_role_loader_ignores_cross_tenant_role_links() {
+    async fn database_rejects_cross_tenant_role_links_and_loader_keeps_local_role() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let (tenant_a, user_a) = insert_tenant_and_user(
             &db,
@@ -652,14 +652,14 @@ mod tests {
             .expect("load foreign role")
             .expect("foreign role exists");
 
-        user_roles::Entity::insert(user_roles::ActiveModel {
+        assert!(user_roles::Entity::insert(user_roles::ActiveModel {
             id: Set(rustok_core::generate_id()),
             user_id: Set(user_a),
             role_id: Set(foreign_role.id),
         })
         .exec(&db)
         .await
-        .expect("insert corrupted cross-tenant role link");
+        .is_err());
 
         let store = SeaOrmRelationPermissionStore { db };
         let role_ids = store
