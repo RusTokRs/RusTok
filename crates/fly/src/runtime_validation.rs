@@ -1,6 +1,7 @@
 use crate::{
-    extract_runtime_context_contract, validate_binding_definitions, validate_dynamic_definitions,
-    ProjectDocument, ValidationDiagnostic, ValidationReport,
+    analyze_runtime_context_dependencies, extract_runtime_context_contract,
+    validate_binding_definitions, validate_dynamic_definitions, ProjectDocument,
+    ValidationDiagnostic, ValidationReport,
 };
 use std::collections::BTreeSet;
 
@@ -10,6 +11,7 @@ pub fn validate_runtime_extensions(
     let mut diagnostics = extract_runtime_context_contract(document).definition_diagnostics;
     diagnostics.extend(validate_binding_definitions(document));
     diagnostics.extend(validate_dynamic_definitions(document));
+    diagnostics.extend(analyze_runtime_context_dependencies(document).diagnostics);
     deduplicate_diagnostics(&mut diagnostics);
     diagnostics
 }
@@ -67,6 +69,15 @@ mod tests {
                 "id": "root-context",
                 "path": "",
                 "kind": "object"
+            }, {
+                "id": "title-input",
+                "path": "page.title",
+                "kind": "string"
+            }],
+            "flyRuntimeComputed": [{
+                "id": "title-computed",
+                "path": "page.title",
+                "expression": { "op": "literal", "value": "Computed" }
             }],
             "flyRuntimeBindings": [{
                 "id": "binding",
@@ -85,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_validation_combines_context_binding_and_dynamic_diagnostics() {
+    fn runtime_validation_combines_contract_dependency_binding_and_dynamic_diagnostics() {
         let document = invalid_runtime_document();
         let diagnostics = validate_runtime_extensions(&document);
         assert!(diagnostics
@@ -94,6 +105,9 @@ mod tests {
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid"));
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "runtime_context_path_shadowed_by_computed"
+        }));
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_binding_target_missing"));
