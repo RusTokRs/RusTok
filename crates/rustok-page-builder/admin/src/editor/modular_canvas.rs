@@ -13,6 +13,7 @@ use fly::{
 };
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
+use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
 use rustok_ui_core::UiRouteContext;
 use serde_json::Value;
 use std::sync::Arc;
@@ -27,7 +28,7 @@ pub fn AdminCanvas(
     #[prop(optional)] runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     #[prop(optional)] runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
     #[prop(optional)] on_runtime_scenario_baseline: Option<
-        Callback<Option<RuntimeScenarioReleaseBaseline>>,
+        Callback<PageBuilderScenarioBaselineChange>,
     >,
     #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
