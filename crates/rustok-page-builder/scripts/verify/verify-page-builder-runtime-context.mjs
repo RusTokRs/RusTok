@@ -66,7 +66,7 @@ const required = [
   [contextSchema, 'pub fn materialize_context', 'context defaults/computed materialization is missing'],
   [contextContract, 'pub fn preflight_runtime_context', 'runtime context preflight is missing'],
   [contextCompatibility, 'pub fn diff_runtime_context_contracts', 'runtime contract diff is missing'],
-  [contextDependency, 'pub fn build_runtime_context_dependency_graph', 'runtime dependency graph is missing'],
+  [contextDependency, 'pub fn analyze_runtime_context_dependencies', 'runtime dependency graph is missing'],
   [contextJsonSchema, 'pub fn export_runtime_context_json_schema', 'runtime JSON Schema export is missing'],
   [contextMigration, 'pub fn migrate_runtime_context', 'runtime context migration is missing'],
   [runtimeGate, 'pub fn evaluate_runtime_publish_gate', 'runtime publish gate is missing'],
@@ -80,7 +80,7 @@ const required = [
   [pageBuilderLib, 'pub mod runtime_scenario_snapshot;', 'consumer scenario snapshot API is not exported'],
   [runtimeContextApi, 'PageBuilderRuntimeContextInspector', 'consumer context inspector is missing'],
   [compatibilityApi, 'PageBuilderRuntimeContractCompatibilityInspector', 'consumer compatibility inspector is missing'],
-  [dependencyApi, 'PageBuilderRuntimeContextDependencyInspector', 'consumer dependency inspector is missing'],
+  [dependencyApi, 'PageBuilderRuntimeDependencyInspector', 'consumer dependency inspector is missing'],
   [migrationApi, 'PageBuilderRuntimeContextMigrator', 'consumer context migrator is missing'],
   [scenarioRenderApi, 'PageBuilderRuntimeScenarioRenderer', 'consumer scenario renderer is missing'],
   [scenarioSnapshotApi, 'PageBuilderRuntimeScenarioRegressionInspector', 'consumer scenario regression inspector is missing'],
@@ -100,11 +100,18 @@ const failures = required
 if (contextSchema.includes('eval(') || contextSchema.includes('Function(')) {
   failures.push('computed expressions must not use JavaScript eval or Function');
 }
-if (runtimePipeline.indexOf('materialize_context') > runtimePipeline.indexOf('materialize_bindings')) {
-  failures.push('context defaults/computed values must run before bindings');
-}
-if (runtimePipeline.indexOf('materialize_bindings') > runtimePipeline.indexOf('materialize_runtime')) {
-  failures.push('bindings must run before conditions and repeaters');
+const contextStage = runtimePipeline.indexOf('materialize_context');
+const bindingStage = runtimePipeline.indexOf('materialize_bindings');
+const dynamicStage = runtimePipeline.indexOf('materialize_runtime');
+if (contextStage < 0 || bindingStage < 0 || dynamicStage < 0) {
+  failures.push('runtime pipeline stages are incomplete');
+} else {
+  if (contextStage > bindingStage) {
+    failures.push('context defaults/computed values must run before bindings');
+  }
+  if (bindingStage > dynamicStage) {
+    failures.push('bindings must run before conditions and repeaters');
+  }
 }
 
 if (failures.length > 0) {
