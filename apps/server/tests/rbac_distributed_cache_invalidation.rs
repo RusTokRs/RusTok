@@ -121,6 +121,12 @@ async fn local_generation_delivery_invalidates_target_and_gap_clears_all_snapsho
     let first_user = insert_user(&db, tenant_id, "rbac-first@example.com").await;
     let second_user = insert_user(&db, tenant_id, "rbac-second@example.com").await;
 
+    let context = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+    let cache = CacheService::from_url(None);
+    start_rbac_cache_invalidation_listener(&context, cache.clone())
+        .await
+        .expect("start RBAC invalidation listener");
+
     for user_id in [first_user, second_user] {
         RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Admin)
             .await
@@ -134,12 +140,6 @@ async fn local_generation_delivery_invalidates_target_and_gap_clears_all_snapsho
         .await
         .expect("prime admin permission snapshot"));
     }
-
-    let context = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
-    let cache = CacheService::from_url(None);
-    start_rbac_cache_invalidation_listener(&context, cache.clone())
-        .await
-        .expect("start RBAC invalidation listener");
 
     let admin_role = roles::Entity::find()
         .filter(roles::Column::TenantId.eq(tenant_id))
