@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use moka::future::Cache;
 use once_cell::sync::Lazy;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use rustok_core::UserRole;
@@ -77,16 +79,22 @@ static RBAC_CLAIM_ROLE_MISMATCH_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_DECISIONS_POLICY_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_EVAL_DURATION_MS_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_EVAL_DURATION_SAMPLES: AtomicU64 = AtomicU64::new(0);
-static RBAC_PERMISSION_CACHE_EPOCH: AtomicU64 = AtomicU64::new(1);
+static RBAC_PERMISSION_CACHE_GLOBAL_EPOCH: AtomicU32 = AtomicU32::new(1);
+static RBAC_PERMISSION_CACHE_EPOCH_EXHAUSTED: AtomicBool = AtomicBool::new(false);
 
 const RBAC_PERMISSION_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
 const RBAC_PERMISSION_CACHE_LOOKUP_ATTEMPTS: usize = 4;
+const RBAC_PERMISSION_CACHE_EPOCH_STRIPES: usize = 64;
 
 type PermissionCacheKey = (uuid::Uuid, uuid::Uuid);
 
+static RBAC_PERMISSION_CACHE_KEY_EPOCHS: Lazy<
+    [AtomicU32; RBAC_PERMISSION_CACHE_EPOCH_STRIPES],
+> = Lazy::new(|| std::array::from_fn(|_| AtomicU32::new(1)));
+
 #[derive(Clone)]
 struct CachedPermissionSnapshot {
-    epoch: u64,
+    token: u64,
     permissions: Vec<Permission>,
 }
 
@@ -114,14 +122,52 @@ fn permission_cache_entry_weight(
     weight.clamp(1, u32::MAX as usize) as u32
 }
 
-fn current_permission_cache_epoch() -> u64 {
-    RBAC_PERMISSION_CACHE_EPOCH.load(Ordering::Acquire)
+fn permission_cache_epoch_stripe(key: &PermissionCacheKey) -> usize {
+    let mut hasher = DefaultHasher::new();
+    key.hash(&mut hasher);
+    (hasher.finish() as usize) % RBAC_PERMISSION_CACHE_EPOCH_STRIPES
 }
 
-fn advance_permission_cache_epoch() -> u64 {
-    RBAC_PERMISSION_CACHE_EPOCH
-        .fetch_add(1, Ordering::AcqRel)
-        .wrapping_add(1)
+fn permission_cache_token(global_epoch: u32, key_epoch: u32) -> u64 {
+    (u64::from(global_epoch) << 32) | u64::from(key_epoch)
+}
+
+fn current_permission_cache_token(key: &PermissionCacheKey) -> Option<u64> {
+    if RBAC_PERMISSION_CACHE_EPOCH_EXHAUSTED.load(Ordering::Acquire) {
+        return None;
+    }
+
+    let global_epoch = RBAC_PERMISSION_CACHE_GLOBAL_EPOCH.load(Ordering::Acquire);
+    let key_epoch = RBAC_PERMISSION_CACHE_KEY_EPOCHS[permission_cache_epoch_stripe(key)]
+        .load(Ordering::Acquire);
+    if RBAC_PERMISSION_CACHE_EPOCH_EXHAUSTED.load(Ordering::Acquire) {
+        return None;
+    }
+    Some(permission_cache_token(global_epoch, key_epoch))
+}
+
+fn advance_permission_cache_epoch(epoch: &AtomicU32) {
+    let mut current = epoch.load(Ordering::Acquire);
+    loop {
+        let Some(next) = current.checked_add(1) else {
+            RBAC_PERMISSION_CACHE_EPOCH_EXHAUSTED.store(true, Ordering::Release);
+            return;
+        };
+        match epoch.compare_exchange_weak(current, next, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => return,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
+fn advance_permission_cache_key_epoch(key: &PermissionCacheKey) {
+    advance_permission_cache_epoch(
+        &RBAC_PERMISSION_CACHE_KEY_EPOCHS[permission_cache_epoch_stripe(key)],
+    );
+}
+
+fn advance_permission_cache_global_epoch() {
+    advance_permission_cache_epoch(&RBAC_PERMISSION_CACHE_GLOBAL_EPOCH);
 }
 
 pub(crate) async fn invalidate_user_permissions_cache(
@@ -133,7 +179,7 @@ pub(crate) async fn invalidate_user_permissions_cache(
 }
 
 pub(crate) async fn invalidate_all_user_permissions_cache() {
-    advance_permission_cache_epoch();
+    advance_permission_cache_global_epoch();
     USER_PERMISSION_CACHE.invalidate_all();
     USER_PERMISSION_CACHE.run_pending_tasks().await;
 }
@@ -309,7 +355,10 @@ impl PermissionCache for MokaPermissionCache {
         user_id: &uuid::Uuid,
         permissions: Vec<Permission>,
     ) {
-        let token = current_permission_cache_epoch();
+        let key = (*tenant_id, *user_id);
+        let Some(token) = current_permission_cache_token(&key) else {
+            return;
+        };
         let _ = self
             .insert_if_current(tenant_id, user_id, token, permissions)
             .await;
@@ -317,10 +366,9 @@ impl PermissionCache for MokaPermissionCache {
 
     async fn invalidate(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
         super::rbac_request_scope::invalidate_current_rbac_request_scope(tenant_id, user_id);
-        advance_permission_cache_epoch();
-        USER_PERMISSION_CACHE
-            .invalidate(&(*tenant_id, *user_id))
-            .await;
+        let key = (*tenant_id, *user_id);
+        advance_permission_cache_key_epoch(&key);
+        USER_PERMISSION_CACHE.invalidate(&key).await;
     }
 
     async fn lookup(
@@ -330,14 +378,16 @@ impl PermissionCache for MokaPermissionCache {
     ) -> PermissionCacheLookup {
         let key = (*tenant_id, *user_id);
         for _ in 0..RBAC_PERMISSION_CACHE_LOOKUP_ATTEMPTS {
-            let token = current_permission_cache_epoch();
+            let Some(token) = current_permission_cache_token(&key) else {
+                return PermissionCacheLookup::new(None, 0);
+            };
             let snapshot = USER_PERMISSION_CACHE.get(&key).await;
-            if current_permission_cache_epoch() != token {
+            if current_permission_cache_token(&key) != Some(token) {
                 continue;
             }
 
             match snapshot {
-                Some(snapshot) if snapshot.epoch == token => {
+                Some(snapshot) if snapshot.token == token => {
                     return PermissionCacheLookup::new(Some(snapshot.permissions), token);
                 }
                 Some(_) => {
@@ -348,7 +398,7 @@ impl PermissionCache for MokaPermissionCache {
             return PermissionCacheLookup::new(None, token);
         }
 
-        PermissionCacheLookup::new(None, current_permission_cache_epoch())
+        PermissionCacheLookup::new(None, current_permission_cache_token(&key).unwrap_or(0))
     }
 
     async fn insert_if_current(
@@ -358,15 +408,15 @@ impl PermissionCache for MokaPermissionCache {
         token: u64,
         permissions: Vec<Permission>,
     ) -> bool {
-        if current_permission_cache_epoch() != token {
+        let key = (*tenant_id, *user_id);
+        if current_permission_cache_token(&key) != Some(token) {
             return false;
         }
 
-        let key = (*tenant_id, *user_id);
         USER_PERMISSION_CACHE
-            .insert(key, CachedPermissionSnapshot { epoch: token, permissions })
+            .insert(key, CachedPermissionSnapshot { token, permissions })
             .await;
-        if current_permission_cache_epoch() != token {
+        if current_permission_cache_token(&key) != Some(token) {
             USER_PERMISSION_CACHE.invalidate(&key).await;
             return false;
         }
@@ -559,14 +609,14 @@ mod tests {
         let one = permission_cache_entry_weight(
             &key,
             &CachedPermissionSnapshot {
-                epoch: 1,
+                token: 1,
                 permissions: vec![Permission::new(Resource::Users, Action::Read)],
             },
         );
         let many = permission_cache_entry_weight(
             &key,
             &CachedPermissionSnapshot {
-                epoch: 1,
+                token: 1,
                 permissions: vec![Permission::new(Resource::Users, Action::Read); 32],
             },
         );
@@ -593,6 +643,45 @@ mod tests {
         invalidate_all_user_permissions_cache().await;
 
         assert!(cache.get(&tenant_id, &user_id).await.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn targeted_invalidation_preserves_an_unrelated_epoch_stripe() {
+        invalidate_all_user_permissions_cache().await;
+        let tenant_id = uuid::Uuid::new_v4();
+        let first_user_id = uuid::Uuid::new_v4();
+        let first_key = (tenant_id, first_user_id);
+        let first_stripe = permission_cache_epoch_stripe(&first_key);
+        let second_user_id = loop {
+            let candidate = uuid::Uuid::new_v4();
+            if permission_cache_epoch_stripe(&(tenant_id, candidate)) != first_stripe {
+                break candidate;
+            }
+        };
+        let cache = MokaPermissionCache;
+        cache
+            .insert(
+                &tenant_id,
+                &first_user_id,
+                vec![Permission::USERS_READ],
+            )
+            .await;
+        cache
+            .insert(
+                &tenant_id,
+                &second_user_id,
+                vec![Permission::USERS_LIST],
+            )
+            .await;
+
+        invalidate_user_permissions_cache(&tenant_id, &first_user_id).await;
+
+        assert!(cache.get(&tenant_id, &first_user_id).await.is_none());
+        assert_eq!(
+            cache.get(&tenant_id, &second_user_id).await,
+            Some(vec![Permission::USERS_LIST])
+        );
     }
 
     #[tokio::test]
