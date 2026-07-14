@@ -6,8 +6,8 @@ use rustok_installer::{
     InstallRoleDeployment, InstallRoleDeploymentRequest, InstallSchemaPort, InstallSeedOutcome,
     InstallSeedPort, InstallSessionRecord, InstallState, InstallVerificationOutcome,
     InstallVerificationPort, SeedExecutionError, SeedExecutionRequest, SeedIdentityPort,
-    SeedModulePort, SeedProfile, SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest,
-    SeedUser, SeedUserRequest,
+    SeedModulePort, SeedPrincipalPort, SeedProfile, SeedRolePort, SeedTenant, SeedTenantPort,
+    SeedTenantRequest, SeedUser, SeedUserRequest,
 };
 use rustok_migrations::Migrator;
 use rustok_modules::{
@@ -239,7 +239,6 @@ impl<'a> SeaOrmInstallerBootstrapPorts<'a> {
             self,
             self,
             self,
-            self,
         )
         .await
         .map_err(execution_error)?;
@@ -327,6 +326,59 @@ impl SeedTenantPort for SeaOrmInstallerBootstrapPorts<'_> {
             slug: tenant.slug,
             created,
         })
+    }
+}
+
+#[async_trait::async_trait]
+impl SeedPrincipalPort for SeaOrmInstallerBootstrapPorts<'_> {
+    async fn ensure_seed_principal(
+        &self,
+        request: SeedUserRequest,
+        role: rustok_core::UserRole,
+    ) -> Result<SeedUser, SeedExecutionError> {
+        let tx = self.db.begin().await.map_err(seed_error)?;
+        let result: Result<SeedUser, SeedExecutionError> = async {
+            let user = AuthUserBootstrapDbWriter::ensure_user_on(
+                &tx,
+                AuthUserBootstrapRequest {
+                    tenant_id: request.tenant_id,
+                    email: request.email,
+                    name: request.name,
+                    password: request.password,
+                },
+            )
+            .await
+            .map_err(seed_error)?;
+            RbacRoleAssignmentDbWriter::assign_role_permissions_on(
+                &tx,
+                request.tenant_id,
+                user.id,
+                role,
+            )
+            .await
+            .map_err(seed_error)?;
+            Ok(SeedUser {
+                id: user.id,
+                email: user.email,
+                created: user.created,
+            })
+        }
+        .await;
+
+        match result {
+            Ok(user) => {
+                tx.commit().await.map_err(seed_error)?;
+                Ok(user)
+            }
+            Err(error) => {
+                tx.rollback().await.map_err(|rollback_error| {
+                    SeedExecutionError::Dependency(format!(
+                        "seed principal provisioning failed: {error}; rollback failed: {rollback_error}"
+                    ))
+                })?;
+                Err(error)
+            }
+        }
     }
 }
 
