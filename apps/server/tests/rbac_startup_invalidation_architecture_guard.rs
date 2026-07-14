@@ -36,6 +36,41 @@ fn durable_generation_watchdog_and_rbac_listener_start_before_superadmin_reconci
 }
 
 #[test]
+fn durable_generation_watchdog_is_owned_supervised_and_restartable() {
+    let generation = source("apps/server/src/services/rbac_invalidation_generation.rs");
+
+    for required in [
+        "AbortOnDropWatchdogTask",
+        "self.task.abort();",
+        "RbacInvalidationGenerationWatchdogStartLock",
+        "let _start_guard = start_lock.0.lock().await;",
+        "existing.is_running()",
+        "spawn_rbac_invalidation_generation_watchdog",
+        "AssertUnwindSafe(worker_factory()).catch_unwind().await",
+        "watchdog_restart",
+        "watchdog_handle_reports_terminal_tasks",
+        "watchdog_supervisor_restarts_after_panic",
+    ] {
+        assert!(
+            generation.contains(required),
+            "durable generation watchdog must retain {required}"
+        );
+    }
+
+    assert!(!generation.contains(
+        "if !ctx.shared_insert_if_absent(RbacInvalidationGenerationWatchdogHandle)"
+    ));
+
+    let spawn = generation
+        .find("let task = spawn_rbac_invalidation_generation_watchdog")
+        .expect("watchdog supervisor must be spawned");
+    let commit = generation
+        .find("ctx.shared_insert(RbacInvalidationGenerationWatchdogHandle::new(task));")
+        .expect("watchdog handle must be committed into runtime context");
+    assert!(spawn < commit);
+}
+
+#[test]
 fn full_runtime_reuses_the_early_cache_service() {
     let runtime = source("apps/server/src/services/app_runtime.rs");
     let cache_runtime = source("apps/server/src/services/cache_runtime.rs");
