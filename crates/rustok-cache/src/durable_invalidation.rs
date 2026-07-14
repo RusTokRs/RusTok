@@ -104,7 +104,11 @@ impl DurableCacheInvalidationRecord {
         .map_err(DurableCacheInvalidationError::Invalidation)
     }
 
-    /// Stable idempotency key without exposing tenant, key, cause or trace data.
+    /// Stable idempotency key without exposing tenant or cache-key data.
+    ///
+    /// Operational metadata such as timestamps, causes and trace identifiers is deliberately
+    /// excluded. Re-materializing the same logical invalidation with different tracing context
+    /// must still address the same dedupe entry.
     pub fn idempotency_key(&self) -> String {
         let mut digest = Sha256::new();
         digest.update(self.format_version.to_be_bytes());
@@ -116,22 +120,11 @@ impl DurableCacheInvalidationRecord {
             }
             None => digest.update([0]),
         }
-        for value in [
-            self.channel.as_bytes(),
-            self.key.as_bytes(),
-            self.cause.as_bytes(),
-        ] {
+        for value in [self.channel.as_bytes(), self.key.as_bytes()] {
             digest.update((value.len() as u64).to_be_bytes());
             digest.update(value);
         }
         digest.update(self.generation.to_be_bytes());
-        digest.update(self.emitted_at_unix_ms.to_be_bytes());
-        if let Some(trace_id) = &self.trace_id {
-            digest.update((trace_id.len() as u64).to_be_bytes());
-            digest.update(trace_id.as_bytes());
-        } else {
-            digest.update(0_u64.to_be_bytes());
-        }
         format!("cache-invalidation:v1:{}", hex::encode(digest.finalize()))
     }
 
@@ -354,9 +347,9 @@ mod tests {
     }
 
     #[test]
-    fn idempotency_key_is_stable_bounded_and_sensitive_to_generation() {
+    fn idempotency_key_is_stable_bounded_and_sensitive_to_logical_identity() {
         let first = record();
-        let second = DurableCacheInvalidationRecord::new(
+        let different_generation = DurableCacheInvalidationRecord::new(
             first.source_event_id(),
             first.tenant_id(),
             first.channel(),
@@ -367,8 +360,27 @@ mod tests {
             first.trace_id().map(ToOwned::to_owned),
         )
         .unwrap();
+        let different_operational_metadata = DurableCacheInvalidationRecord::new(
+            first.source_event_id(),
+            first.tenant_id(),
+            first.channel(),
+            first.key(),
+            first.generation(),
+            first.emitted_at_unix_ms() + 500,
+            "retry.materialized.with.different.cause",
+            Some("fedcba9876543210".to_string()),
+        )
+        .unwrap();
+
         assert_eq!(first.idempotency_key(), record().idempotency_key());
-        assert_ne!(first.idempotency_key(), second.idempotency_key());
+        assert_eq!(
+            first.idempotency_key(),
+            different_operational_metadata.idempotency_key()
+        );
+        assert_ne!(
+            first.idempotency_key(),
+            different_generation.idempotency_key()
+        );
         assert_eq!(
             first.idempotency_key().len(),
             "cache-invalidation:v1:".len() + 64
