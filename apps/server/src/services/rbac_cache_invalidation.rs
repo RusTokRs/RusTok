@@ -21,6 +21,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 pub const RBAC_PERMISSION_GENERATION_PREFIX: &str = "rustok:rbac:permissions:v1";
 pub const RBAC_PERMISSION_INVALIDATION_CHANNEL: &str = "rbac.permissions.generation.v1";
 const RBAC_PERMISSION_INVALIDATION_CAUSE: &str = "rbac.user.permissions.changed";
+const RBAC_PERMISSION_INVALIDATE_ALL_KEY: &str = "*";
 const RBAC_PERMISSION_RECONCILE_INTERVAL: Duration = Duration::from_secs(30);
 
 static RBAC_INVALIDATION_CACHE_SERVICE: Lazy<RwLock<Option<CacheService>>> =
@@ -31,6 +32,12 @@ pub struct RbacCacheInvalidationListenerHandle;
 
 #[derive(Clone, Default)]
 struct RbacCacheInvalidationListenerStartLock(Arc<tokio::sync::Mutex<()>>);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RbacInvalidationTarget {
+    All,
+    User { tenant_id: Uuid, user_id: Uuid },
+}
 
 fn observe_rbac_backend_generation(generation: u64) -> Result<u64> {
     match observe_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX, generation) {
@@ -148,8 +155,14 @@ impl RbacCacheInvalidationListener {
 
         match self.tracker.observe(&event) {
             CacheInvalidationObservation::InOrder { generation } => {
-                let (tenant_id, user_id) = parse_rbac_invalidation_key(&event.key)?;
-                invalidate_user_permissions_cache(&tenant_id, &user_id).await;
+                match parse_rbac_invalidation_target(&event.key)? {
+                    RbacInvalidationTarget::All => {
+                        invalidate_all_user_permissions_cache().await;
+                    }
+                    RbacInvalidationTarget::User { tenant_id, user_id } => {
+                        invalidate_user_permissions_cache(&tenant_id, &user_id).await;
+                    }
+                }
                 acknowledge_rbac_applied_generation(&self.tracker, generation)?;
             }
             CacheInvalidationObservation::Duplicate { .. }
@@ -174,14 +187,26 @@ pub async fn publish_user_rbac_invalidation(
     tenant_id: &Uuid,
     user_id: &Uuid,
 ) -> Result<()> {
+    publish_rbac_invalidation(
+        Some(*tenant_id),
+        rbac_invalidation_key(*tenant_id, *user_id),
+    )
+    .await
+}
+
+pub async fn publish_all_rbac_invalidation() -> Result<()> {
+    publish_rbac_invalidation(None, RBAC_PERMISSION_INVALIDATE_ALL_KEY.to_string()).await
+}
+
+async fn publish_rbac_invalidation(tenant_id: Option<Uuid>, key: String) -> Result<()> {
     let Some(cache) = RBAC_INVALIDATION_CACHE_SERVICE
         .read()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone()
     else {
         tracing::warn!(
-            %tenant_id,
-            %user_id,
+            ?tenant_id,
+            %key,
             "RBAC distributed invalidation is not initialized; local cache invalidation only"
         );
         return Ok(());
@@ -205,9 +230,9 @@ pub async fn publish_user_rbac_invalidation(
         .map_err(|_| Error::Cache("RBAC invalidation timestamp overflow".to_string()))?;
         let record = DurableCacheInvalidationRecord::new(
             Uuid::new_v4(),
-            Some(*tenant_id),
+            tenant_id,
             RBAC_PERMISSION_INVALIDATION_CHANNEL,
-            rbac_invalidation_key(*tenant_id, *user_id),
+            key.clone(),
             generation.generation,
             emitted_at_unix_ms,
             RBAC_PERMISSION_INVALIDATION_CAUSE,
@@ -226,8 +251,8 @@ pub async fn publish_user_rbac_invalidation(
         Ok(outcome) => outcome,
         Err(error) => {
             tracing::warn!(
-                %tenant_id,
-                %user_id,
+                ?tenant_id,
+                %key,
                 generation = generation.generation,
                 %error,
                 "RBAC invalidation fan-out deferred to generation reconciliation"
@@ -243,8 +268,8 @@ pub async fn publish_user_rbac_invalidation(
     if cache.redis_configuration_present() {
         if !outcome.redis_published {
             tracing::warn!(
-                %tenant_id,
-                %user_id,
+                ?tenant_id,
+                %key,
                 generation = generation.generation,
                 "RBAC invalidation publication deferred to generation reconciliation"
             );
@@ -255,8 +280,8 @@ pub async fn publish_user_rbac_invalidation(
         }
     } else if outcome.local_subscribers == 0 {
         tracing::warn!(
-            %tenant_id,
-            %user_id,
+            ?tenant_id,
+            %key,
             generation = generation.generation,
             "Local RBAC invalidation delivery deferred to generation reconciliation"
         );
@@ -392,6 +417,14 @@ fn rbac_invalidation_key(tenant_id: Uuid, user_id: Uuid) -> String {
     format!("{tenant_id}:{user_id}")
 }
 
+fn parse_rbac_invalidation_target(value: &str) -> Result<RbacInvalidationTarget> {
+    if value == RBAC_PERMISSION_INVALIDATE_ALL_KEY {
+        return Ok(RbacInvalidationTarget::All);
+    }
+    let (tenant_id, user_id) = parse_rbac_invalidation_key(value)?;
+    Ok(RbacInvalidationTarget::User { tenant_id, user_id })
+}
+
 fn parse_rbac_invalidation_key(value: &str) -> Result<(Uuid, Uuid)> {
     let (tenant_id, user_id) = value.split_once(':').ok_or_else(|| {
         Error::Validation("malformed RBAC cache invalidation key".to_string())
@@ -408,7 +441,8 @@ fn parse_rbac_invalidation_key(value: &str) -> Result<(Uuid, Uuid)> {
 mod tests {
     use super::{
         acknowledge_rbac_applied_generation, acknowledge_rbac_recovery,
-        parse_rbac_invalidation_key, rbac_invalidation_key,
+        parse_rbac_invalidation_key, parse_rbac_invalidation_target, rbac_invalidation_key,
+        RbacInvalidationTarget, RBAC_PERMISSION_INVALIDATE_ALL_KEY,
         RBAC_PERMISSION_INVALIDATION_CHANNEL,
     };
     use rustok_cache::BoundedCacheInvalidationGapTracker;
@@ -419,8 +453,16 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
         assert_eq!(
-            parse_rbac_invalidation_key(&rbac_invalidation_key(tenant_id, user_id)).unwrap(),
-            (tenant_id, user_id)
+            parse_rbac_invalidation_target(&rbac_invalidation_key(tenant_id, user_id)).unwrap(),
+            RbacInvalidationTarget::User { tenant_id, user_id }
+        );
+    }
+
+    #[test]
+    fn namespace_wide_invalidation_key_is_explicit() {
+        assert_eq!(
+            parse_rbac_invalidation_target(RBAC_PERMISSION_INVALIDATE_ALL_KEY).unwrap(),
+            RbacInvalidationTarget::All
         );
     }
 
