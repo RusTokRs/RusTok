@@ -350,7 +350,6 @@ pub async fn start_tenant_cache_generation_listener(
         .subscribe_local_channel(TENANT_CACHE_GENERATION_CHANNEL);
     let local_listener = listener.clone();
     let local_state = Arc::clone(&state);
-    let local_only = !redis_required;
     tokio::spawn(async move {
         let runtime = EventConsumerRuntime::new("tenant_cache_generation_local");
         runtime.restarted("startup");
@@ -358,9 +357,7 @@ pub async fn start_tenant_cache_generation_listener(
             match local.recv().await {
                 Ok(message) => match local_listener.handle_message(message).await {
                     Ok(()) => {
-                        if local_only {
-                            local_state.mark_local_healthy().await;
-                        }
+                        local_state.mark_local_healthy().await;
                     }
                     Err(error) => {
                         local_state.mark_local_degraded(error.to_string()).await;
@@ -374,8 +371,7 @@ pub async fn start_tenant_cache_generation_listener(
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
                     runtime.lagged(skipped);
                     match local_listener.recover_shared_generation().await {
-                        Ok(_) if local_only => local_state.mark_local_healthy().await,
-                        Ok(_) => {}
+                        Ok(_) => local_state.mark_local_healthy().await,
                         Err(error) => {
                             local_state.mark_local_degraded(error.to_string()).await;
                             tracing::error!(%error, "Tenant cache generation recovery after local lag failed");
