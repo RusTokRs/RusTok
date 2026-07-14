@@ -133,9 +133,10 @@ impl CacheRefreshCoordinator {
             _backend: Arc::clone(backend),
             _permit: permit,
         };
+        let completion = CacheRefreshTaskCompletionGuard::new(Arc::clone(&inner));
         runtime.spawn(async move {
             let _lease = lease;
-            let mut completion = CacheRefreshTaskCompletionGuard::new(Arc::clone(&inner));
+            let mut completion = completion;
             match refresh().await {
                 Ok(()) => {
                     inner.metrics.completed.fetch_add(1, Ordering::Relaxed);
@@ -543,7 +544,8 @@ mod tests {
     use tokio::sync::oneshot;
 
     #[tokio::test]
-    async fn dropping_unpolled_refresh_future_releases_lease() {
+    async fn dropping_unpolled_refresh_future_releases_lease_and_counts_failure() {
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let backend = CacheService::from_url(None).memory_backend(Duration::from_secs(60), 1);
         let key = CacheRefreshKey {
             backend_id: 1,
@@ -557,9 +559,17 @@ mod tests {
             _backend: backend,
             _permit: permit,
         };
+        coordinator
+            .inner
+            .metrics
+            .started
+            .fetch_add(1, Ordering::Relaxed);
+        let completion = CacheRefreshTaskCompletionGuard::new(Arc::clone(&coordinator.inner));
         let future = async move {
             let _lease = lease;
+            let mut completion = completion;
             std::future::pending::<()>().await;
+            completion.complete();
         };
 
         drop(future);
@@ -567,6 +577,9 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .is_empty());
+        let stats = coordinator.stats();
+        assert_eq!(stats.started, 1);
+        assert_eq!(stats.failed, 1);
     }
 
     #[tokio::test]
