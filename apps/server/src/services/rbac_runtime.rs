@@ -16,7 +16,7 @@ use rustok_rbac::{
     RelationPermissionStore, RoleAssignmentStore, RuntimePermissionResolver,
 };
 
-use crate::models::_entities::{permissions, role_permissions, roles, user_roles};
+use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
 
 use super::rbac_persistence::{
     assign_role_permissions_via_store, remove_tenant_role_assignments_via_store,
@@ -298,15 +298,28 @@ impl RelationPermissionStore for SeaOrmRelationPermissionStore {
     type Error = Error;
 
     async fn load_user_role_ids(&self, user_id: &uuid::Uuid) -> Result<Vec<uuid::Uuid>> {
-        let user_role_models = user_roles::Entity::find()
+        let Some(user) = users::Entity::find_by_id(*user_id).one(&self.db).await? else {
+            return Ok(Vec::new());
+        };
+
+        let assigned_role_ids = user_roles::Entity::find()
             .filter(user_roles::Column::UserId.eq(*user_id))
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|user_role| user_role.role_id)
+            .collect::<Vec<_>>();
+        if assigned_role_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let user_tenant_roles = roles::Entity::find()
+            .filter(roles::Column::TenantId.eq(user.tenant_id))
+            .filter(roles::Column::Id.is_in(assigned_role_ids))
             .all(&self.db)
             .await?;
 
-        Ok(user_role_models
-            .into_iter()
-            .map(|user_role| user_role.role_id)
-            .collect())
+        Ok(user_tenant_roles.into_iter().map(|role| role.id).collect())
     }
 
     async fn load_tenant_role_ids(
@@ -406,8 +419,57 @@ impl RoleAssignmentStore for ServerRoleAssignmentStore {
 }
 
 #[cfg(test)]
-mod cache_weight_tests {
+mod tests {
     use super::*;
+    use crate::models::{tenants, users as user_models};
+    use chrono::Utc;
+    use rustok_core::UserStatus;
+    use rustok_migrations::Migrator;
+    use rustok_test_utils::db::setup_test_db_with_migrations;
+    use sea_orm::{ConnectionTrait, Set};
+
+    async fn insert_tenant_and_user(
+        db: &impl ConnectionTrait,
+        tenant_slug: &str,
+        email: &str,
+    ) -> (uuid::Uuid, uuid::Uuid) {
+        let tenant_id = rustok_core::generate_id();
+        let user_id = rustok_core::generate_id();
+
+        tenants::Entity::insert(tenants::ActiveModel {
+            id: Set(tenant_id),
+            name: Set("Test tenant".to_string()),
+            slug: Set(tenant_slug.to_string()),
+            domain: Set(None),
+            settings: Set(serde_json::json!({})),
+            default_locale: Set("en".to_string()),
+            is_active: Set(true),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        })
+        .exec(db)
+        .await
+        .expect("failed to insert tenant");
+
+        user_models::Entity::insert(user_models::ActiveModel {
+            id: Set(user_id),
+            tenant_id: Set(tenant_id),
+            email: Set(email.to_string()),
+            password_hash: Set("hash".to_string()),
+            name: Set(None),
+            status: Set(UserStatus::Active),
+            email_verified_at: Set(None),
+            last_login_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        })
+        .exec(db)
+        .await
+        .expect("failed to insert user");
+
+        (tenant_id, user_id)
+    }
 
     #[test]
     fn permission_cache_weight_grows_with_permission_count() {
@@ -423,5 +485,61 @@ mod cache_weight_tests {
 
         assert!(many > one);
         assert!(one as usize >= std::mem::size_of::<(uuid::Uuid, uuid::Uuid)>());
+    }
+
+    #[tokio::test]
+    async fn user_role_loader_ignores_cross_tenant_role_links() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant_a, user_a) = insert_tenant_and_user(
+            &db,
+            "runtime-role-filter-a",
+            "runtime-role-filter-a@example.com",
+        )
+        .await;
+        let (tenant_b, user_b) = insert_tenant_and_user(
+            &db,
+            "runtime-role-filter-b",
+            "runtime-role-filter-b@example.com",
+        )
+        .await;
+
+        assign_role_permissions_via_store(&db, &user_a, &tenant_a, UserRole::Customer)
+            .await
+            .expect("assign local role");
+        assign_role_permissions_via_store(&db, &user_b, &tenant_b, UserRole::Admin)
+            .await
+            .expect("assign foreign role");
+
+        let local_role = roles::Entity::find()
+            .filter(roles::Column::TenantId.eq(tenant_a))
+            .filter(roles::Column::Slug.eq(UserRole::Customer.to_string()))
+            .one(&db)
+            .await
+            .expect("load local role")
+            .expect("local role exists");
+        let foreign_role = roles::Entity::find()
+            .filter(roles::Column::TenantId.eq(tenant_b))
+            .filter(roles::Column::Slug.eq(UserRole::Admin.to_string()))
+            .one(&db)
+            .await
+            .expect("load foreign role")
+            .expect("foreign role exists");
+
+        user_roles::Entity::insert(user_roles::ActiveModel {
+            id: Set(rustok_core::generate_id()),
+            user_id: Set(user_a),
+            role_id: Set(foreign_role.id),
+        })
+        .exec(&db)
+        .await
+        .expect("insert corrupted cross-tenant role link");
+
+        let store = SeaOrmRelationPermissionStore { db };
+        let role_ids = store
+            .load_user_role_ids(&user_a)
+            .await
+            .expect("load user roles");
+
+        assert_eq!(role_ids, vec![local_role.id]);
     }
 }
