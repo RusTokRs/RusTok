@@ -6,11 +6,14 @@ use utoipa::OpenApi;
         crate::controllers::ingest_provider_webhook,
         crate::controllers::get_provider_event,
         crate::controllers::list_dead_letters,
-        crate::controllers::replay_dead_letter
+        crate::controllers::replay_dead_letter,
+        crate::provider_event_recovery_controller::run_provider_event_recovery
     ),
     components(schemas(
         crate::controllers::PaymentWebhookIngressResponse,
-        crate::controllers::PaymentProviderEventAdminResponse
+        crate::controllers::PaymentProviderEventAdminResponse,
+        crate::provider_event_recovery_controller::PaymentProviderEventRecoveryResponse,
+        crate::provider_event_recovery_controller::PaymentProviderEventRecoveryFailureResponse
     )),
     tags(
         (
@@ -19,7 +22,7 @@ use utoipa::OpenApi;
         ),
         (
             name = "payment-provider-events",
-            description = "Tenant-scoped provider event inspection and dead-letter replay"
+            description = "Tenant-scoped provider event recovery, inspection, and dead-letter replay"
         )
     )
 )]
