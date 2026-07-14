@@ -1,7 +1,14 @@
 //! Owner-owned RBAC persistence consistency diagnostics.
 
+use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
+
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use rustok_api::Permission;
+use rustok_core::{Rbac, UserRole};
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct RbacConsistencyStats {
@@ -11,6 +18,9 @@ pub struct RbacConsistencyStats {
     pub cross_tenant_user_roles_total: i64,
     pub cross_tenant_role_permissions_total: i64,
     pub reserved_role_slug_collisions_total: i64,
+    pub system_roles_with_permission_drift_total: i64,
+    pub missing_system_role_permissions_total: i64,
+    pub extra_system_role_permissions_total: i64,
 }
 
 pub async fn load_consistency_stats(
@@ -32,6 +42,8 @@ pub async fn load_consistency_stats(
         .ok_or_else(|| {
             sea_orm::DbErr::Custom("RBAC consistency stats query returned no rows".to_string())
         })?;
+    let drift = load_system_role_permission_drift(db).await?;
+
     Ok(RbacConsistencyStats {
         users_without_roles_total: row.try_get("", "users_without_roles_total")?,
         orphan_user_roles_total: row.try_get("", "orphan_user_roles_total")?,
@@ -41,5 +53,87 @@ pub async fn load_consistency_stats(
             .try_get("", "cross_tenant_role_permissions_total")?,
         reserved_role_slug_collisions_total: row
             .try_get("", "reserved_role_slug_collisions_total")?,
+        system_roles_with_permission_drift_total: drift.roles_with_drift,
+        missing_system_role_permissions_total: drift.missing_permissions,
+        extra_system_role_permissions_total: drift.extra_permissions,
     })
+}
+
+#[derive(Default)]
+struct SystemRolePermissionDrift {
+    roles_with_drift: i64,
+    missing_permissions: i64,
+    extra_permissions: i64,
+}
+
+struct SystemRoleSnapshot {
+    role: UserRole,
+    permissions: HashSet<Permission>,
+    invalid_permission_rows: i64,
+}
+
+async fn load_system_role_permission_drift(
+    db: &DatabaseConnection,
+) -> Result<SystemRolePermissionDrift, sea_orm::DbErr> {
+    let rows = db
+        .query_all(Statement::from_string(
+            db.get_database_backend(),
+            "SELECT r.id AS role_id, r.slug AS role_slug, p.resource AS permission_resource, p.action AS permission_action \
+             FROM roles r \
+             LEFT JOIN role_permissions rp ON rp.role_id = r.id \
+             LEFT JOIN permissions p ON p.id = rp.permission_id AND p.tenant_id = r.tenant_id \
+             WHERE r.is_system = TRUE AND r.slug IN ('super_admin', 'admin', 'manager', 'customer')"
+                .to_string(),
+        ))
+        .await?;
+
+    let mut snapshots: HashMap<Uuid, SystemRoleSnapshot> = HashMap::new();
+    for row in rows {
+        let role_id: Uuid = row.try_get("", "role_id")?;
+        let role_slug: String = row.try_get("", "role_slug")?;
+        let role = UserRole::from_str(&role_slug).map_err(|error| {
+            sea_orm::DbErr::Custom(format!(
+                "invalid system role slug `{role_slug}` in RBAC consistency query: {error}"
+            ))
+        })?;
+        let snapshot = snapshots.entry(role_id).or_insert_with(|| SystemRoleSnapshot {
+            role,
+            permissions: HashSet::new(),
+            invalid_permission_rows: 0,
+        });
+
+        let resource: Option<String> = row.try_get("", "permission_resource")?;
+        let action: Option<String> = row.try_get("", "permission_action")?;
+        let (Some(resource), Some(action)) = (resource, action) else {
+            continue;
+        };
+        match Permission::from_str(&format!("{resource}:{action}")) {
+            Ok(permission) => {
+                snapshot.permissions.insert(permission);
+            }
+            Err(_) => snapshot.invalid_permission_rows += 1,
+        }
+    }
+
+    let mut drift = SystemRolePermissionDrift::default();
+    for snapshot in snapshots.into_values() {
+        let expected = Rbac::permissions_for_role(&snapshot.role);
+        let missing = expected
+            .iter()
+            .filter(|permission| !snapshot.permissions.contains(permission))
+            .count() as i64;
+        let extra = snapshot
+            .permissions
+            .iter()
+            .filter(|permission| !expected.contains(permission))
+            .count() as i64
+            + snapshot.invalid_permission_rows;
+        if missing > 0 || extra > 0 {
+            drift.roles_with_drift += 1;
+            drift.missing_permissions += missing;
+            drift.extra_permissions += extra;
+        }
+    }
+
+    Ok(drift)
 }
