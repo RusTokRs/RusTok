@@ -1,0 +1,105 @@
+{
+  "schema_version": "1.0",
+  "contract_id": "payment.provider_webhook.v1",
+  "owner_module": "payment",
+  "transport": {
+    "method": "POST",
+    "path": "/payment/webhooks/{provider_id}",
+    "required_identity_headers": {
+      "delivery_id": [
+        "x-rustok-provider-delivery-id",
+        "x-webhook-id",
+        "idempotency-key"
+      ],
+      "idempotency_key": [
+        "idempotency-key",
+        "x-rustok-provider-delivery-id"
+      ]
+    },
+    "signature_headers_forwarded_to_provider": [
+      "x-provider-signature",
+      "stripe-signature",
+      "x-webhook-signature"
+    ],
+    "max_raw_payload_bytes": 1048576
+  },
+  "provider_spi": {
+    "operation": "process_webhook",
+    "requirements": [
+      "Verify the provider signature before returning success.",
+      "Parse the raw body into a normalized event without mutating payment lifecycle state.",
+      "Return a stable event_type, optional external_reference, and bounded metadata object.",
+      "Reject malformed, unsigned, or unsupported provider payloads with a typed provider error."
+    ]
+  },
+  "inbox": {
+    "table": "payment_provider_events",
+    "raw_payload_persisted": false,
+    "payload_digest": "sha256-lowercase-hex",
+    "deduplication_keys": [
+      ["tenant_id", "provider_id", "delivery_id"],
+      ["tenant_id", "provider_id", "idempotency_key"]
+    ],
+    "statuses": [
+      "received",
+      "processing",
+      "failed",
+      "processed",
+      "dead_letter"
+    ],
+    "lease_required_for": ["processing"],
+    "max_normalized_metadata_bytes": 65536,
+    "max_normalized_metadata_depth": 16
+  },
+  "normalized_events": {
+    "payment.authorized": {
+      "external_reference_required": true,
+      "metadata_required": {
+        "collection_id": "uuid-string",
+        "amount": "positive-decimal-string",
+        "currency_code": "three-letter-uppercase-code"
+      }
+    },
+    "payment.captured": {
+      "external_reference_required": true,
+      "metadata_required": {
+        "collection_id": "uuid-string",
+        "amount": "positive-decimal-string",
+        "currency_code": "three-letter-uppercase-code"
+      }
+    },
+    "payment.cancelled": {
+      "external_reference_required": false,
+      "metadata_required": {
+        "collection_id": "uuid-string",
+        "amount": "positive-decimal-string",
+        "currency_code": "three-letter-uppercase-code"
+      }
+    },
+    "refund.completed": {
+      "external_reference_required": true,
+      "metadata_required": {
+        "refund_id": "uuid-string",
+        "amount": "positive-decimal-string",
+        "currency_code": "three-letter-uppercase-code"
+      }
+    }
+  },
+  "delivery_semantics": {
+    "provider_delivery": "at-least-once",
+    "domain_apply": "effectively-once-through-inbox-and-owner-idempotency",
+    "duplicate_same_payload": "return-existing",
+    "same_key_different_payload": "reject",
+    "retryable_apply_failure": "failed",
+    "non_retryable_apply_failure": "dead_letter",
+    "expired_processing_lease": "claimable",
+    "processed_replay": "acknowledge-without-domain-reapply"
+  },
+  "security": {
+    "signature_verification_before_inbox_insert": true,
+    "raw_provider_error_exposed_to_client": false,
+    "raw_payload_logged_or_persisted": false,
+    "tenant_scope_required": true
+  },
+  "evidence_status": "source_only"
+}
