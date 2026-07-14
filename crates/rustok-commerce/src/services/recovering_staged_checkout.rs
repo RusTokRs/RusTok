@@ -8,8 +8,12 @@ use super::{
     CheckoutOperationStatus, StagedCheckoutError, StagedCheckoutService,
 };
 
+const RECONCILIATION_REQUIRED_STATUS: &str = "reconciliation_required";
+
 #[derive(Debug, Error)]
 pub enum RecoveringStagedCheckoutError {
+    #[error("checkout operation {operation_id} requires reconciliation")]
+    ReconciliationRequired { operation_id: Uuid },
     #[error(transparent)]
     Staged(#[from] StagedCheckoutError),
     #[error("checkout failed: {staged}; recovery lookup failed: {journal}")]
@@ -51,6 +55,19 @@ impl RecoveringStagedCheckoutService {
     ) -> RecoveringStagedCheckoutResult<CompleteCheckoutResponse> {
         let idempotency_key = idempotency_key.into();
         let cart_id = input.cart_id;
+        if let Some(current) = self
+            .staged
+            .operation_journal()
+            .find_latest_by_cart(tenant_id, cart_id)
+            .await?
+        {
+            if current.status == RECONCILIATION_REQUIRED_STATUS {
+                return Err(RecoveringStagedCheckoutError::ReconciliationRequired {
+                    operation_id: current.id,
+                });
+            }
+        }
+
         match self
             .staged
             .complete_checkout(
@@ -75,6 +92,11 @@ impl RecoveringStagedCheckoutService {
                 let Some(operation) = operation else {
                     return Err(staged.into());
                 };
+                if operation.status == RECONCILIATION_REQUIRED_STATUS {
+                    return Err(RecoveringStagedCheckoutError::ReconciliationRequired {
+                        operation_id: operation.id,
+                    });
+                }
                 if operation.status != CheckoutOperationStatus::CompensationRequired.as_str() {
                     return Err(staged.into());
                 }
