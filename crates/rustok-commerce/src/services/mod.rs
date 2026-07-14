@@ -10,6 +10,7 @@ mod checkout_order_creation;
 mod checkout_order_plan;
 mod checkout_order_stages;
 mod checkout_payment_stages;
+mod checkout_plan_builder;
 mod checkout_stage_pipeline;
 pub mod context;
 mod fulfillment_create_label_recovery;
@@ -74,6 +75,7 @@ pub use checkout_payment_stages::{
     CheckoutPaymentCapturedState, CheckoutPaymentStageError, CheckoutPaymentStageExecutor,
     CheckoutPaymentStageResult,
 };
+pub use checkout_plan_builder::CheckoutPlanBuilder;
 pub use checkout_stage_pipeline::{
     CheckoutStagePipeline, CheckoutStagePipelineError, CheckoutStagePipelineResult,
 };
