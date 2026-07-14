@@ -259,6 +259,20 @@ impl CacheService {
         F: Fn() -> Fut + Clone + Send + 'static,
         Fut: Future<Output = rustok_core::Result<CacheEnvelope<T>>> + Send + 'static,
     {
+        let loader = move || {
+            let loader = loader.clone();
+            async move {
+                let envelope = loader().await?;
+                if envelope.is_hard_expired(current_unix_ms()) {
+                    return Err(rustok_core::Error::Cache(
+                        "cache loader produced an already hard-expired envelope at completion"
+                            .to_string(),
+                    ));
+                }
+                Ok(envelope)
+            }
+        };
+
         self.load_enveloped_stale_while_revalidate_with_limit_at(
             coordinator,
             backend,
@@ -746,6 +760,66 @@ mod tests {
         assert_eq!(refreshed.payload(), "fresh");
         assert_eq!(coordinator.stats().completed, 1);
         assert_eq!(coordinator.stats().failed, 0);
+    }
+
+    #[tokio::test]
+    async fn system_clock_rejects_refresh_that_expires_while_loader_runs() {
+        let service = CacheService::from_url(None);
+        let backend = service
+            .backend_shared_client("refresh-system-clock-expiry", Duration::from_secs(60), 16)
+            .await;
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let now = current_unix_ms();
+        let stale = CacheEnvelope::new(1, now.saturating_sub(1_000), "stale".to_string())
+            .unwrap()
+            .with_expirations(
+                Some(now.saturating_sub(500)),
+                Some(now.saturating_add(10_000)),
+            )
+            .unwrap()
+            .encode()
+            .unwrap();
+        backend
+            .set("document".to_string(), stale.clone())
+            .await
+            .unwrap();
+        let refresh_expires_at = current_unix_ms().saturating_add(20);
+
+        let result = service
+            .load_enveloped_stale_while_revalidate(
+                &coordinator,
+                backend.clone(),
+                "document",
+                1,
+                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                move || async move {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    CacheEnvelope::new(
+                        1,
+                        refresh_expires_at.saturating_sub(1),
+                        "expired-refresh".to_string(),
+                    )
+                    .unwrap()
+                    .with_expirations(None, Some(refresh_expires_at))
+                    .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.cache.value, "stale");
+        assert_eq!(result.refresh, CacheRefreshSchedule::Spawned);
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while coordinator.in_flight() != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("refresh task did not finish");
+
+        assert_eq!(backend.get("document").await.unwrap(), Some(stale));
+        assert_eq!(coordinator.stats().completed, 0);
+        assert_eq!(coordinator.stats().failed, 1);
     }
 
     #[tokio::test]
