@@ -52,7 +52,7 @@ impl PageBuilderScenarioBaselineService {
         page_id: Uuid,
         baseline: RuntimeScenarioReleaseBaseline,
     ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
-        self.save_if_current(tenant_id, security, page_id, baseline, None)
+        self.save_internal(tenant_id, security, page_id, baseline, None, false)
             .await
     }
 
@@ -63,6 +63,26 @@ impl PageBuilderScenarioBaselineService {
         page_id: Uuid,
         baseline: RuntimeScenarioReleaseBaseline,
         expected_baseline_hash: Option<&str>,
+    ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
+        self.save_internal(
+            tenant_id,
+            security,
+            page_id,
+            baseline,
+            expected_baseline_hash,
+            true,
+        )
+        .await
+    }
+
+    async fn save_internal(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        page_id: Uuid,
+        baseline: RuntimeScenarioReleaseBaseline,
+        expected_baseline_hash: Option<&str>,
+        enforce_expected_state: bool,
     ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
         let page = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
@@ -128,6 +148,9 @@ impl PageBuilderScenarioBaselineService {
                     return Err(baseline_conflict(page_id));
                 }
             }
+            (Some(_), None) if enforce_expected_state => {
+                return Err(baseline_conflict(page_id));
+            }
             (Some(existing), None) => {
                 let mut active: page_builder_scenario_baseline::ActiveModel = existing.into();
                 active.baseline_id = Set(baseline.baseline_id.clone());
@@ -139,7 +162,7 @@ impl PageBuilderScenarioBaselineService {
             }
             (None, Some(_)) => return Err(baseline_conflict(page_id)),
             (None, None) => {
-                page_builder_scenario_baseline::ActiveModel {
+                let insert = page_builder_scenario_baseline::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     tenant_id: Set(tenant_id),
                     page_id: Set(page_id),
@@ -147,11 +170,17 @@ impl PageBuilderScenarioBaselineService {
                     baseline_hash: Set(baseline.baseline_hash.clone()),
                     source_project_hash: Set(baseline.source_project_hash.clone()),
                     baseline: Set(baseline_json),
-                    created_at: Set(now),
+                    created_at: Set(now.clone()),
                     updated_at: Set(now),
                 }
                 .insert(&self.db)
-                .await?;
+                .await;
+                if let Err(error) = insert {
+                    if enforce_expected_state {
+                        return Err(baseline_conflict(page_id));
+                    }
+                    return Err(error.into());
+                }
             }
         }
         Ok(baseline)
@@ -163,7 +192,7 @@ impl PageBuilderScenarioBaselineService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<bool> {
-        self.delete_if_current(tenant_id, security, page_id, None)
+        self.delete_internal(tenant_id, security, page_id, None, false)
             .await
     }
 
@@ -174,6 +203,24 @@ impl PageBuilderScenarioBaselineService {
         page_id: Uuid,
         expected_baseline_hash: Option<&str>,
     ) -> PagesResult<bool> {
+        self.delete_internal(
+            tenant_id,
+            security,
+            page_id,
+            expected_baseline_hash,
+            true,
+        )
+        .await
+    }
+
+    async fn delete_internal(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        page_id: Uuid,
+        expected_baseline_hash: Option<&str>,
+        enforce_expected_state: bool,
+    ) -> PagesResult<bool> {
         let page = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
@@ -181,6 +228,21 @@ impl PageBuilderScenarioBaselineService {
             Action::Update,
             page.author_id,
         )?;
+
+        if enforce_expected_state && expected_baseline_hash.is_none() {
+            let exists = page_builder_scenario_baseline::Entity::find()
+                .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
+                .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
+                .one(&self.db)
+                .await?
+                .is_some();
+            return if exists {
+                Err(baseline_conflict(page_id))
+            } else {
+                Ok(false)
+            };
+        }
+
         let mut delete = page_builder_scenario_baseline::Entity::delete_many()
             .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
             .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id));
@@ -190,7 +252,7 @@ impl PageBuilderScenarioBaselineService {
             );
         }
         let result = delete.exec(&self.db).await?;
-        if expected_baseline_hash.is_some() && result.rows_affected != 1 {
+        if enforce_expected_state && result.rows_affected != 1 {
             return Err(baseline_conflict(page_id));
         }
         Ok(result.rows_affected > 0)
