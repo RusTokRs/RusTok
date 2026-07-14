@@ -39,7 +39,12 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared(&format!(
-                "INSERT INTO rbac_invalidation_state (scope, generation, updated_at) VALUES ('{RBAC_PERMISSION_SCOPE}', 0, CURRENT_TIMESTAMP)"
+                "INSERT INTO rbac_invalidation_state (scope, generation, updated_at) \
+                 SELECT '{RBAC_PERMISSION_SCOPE}', 0, CURRENT_TIMESTAMP \
+                 WHERE NOT EXISTS ( \
+                     SELECT 1 FROM rbac_invalidation_state \
+                     WHERE scope = '{RBAC_PERMISSION_SCOPE}' \
+                 )"
             ))
             .await?;
         Ok(())
