@@ -70,12 +70,13 @@ impl CategoryTreeService {
             });
         }
 
-        let category_ids = categories.iter().map(|category| category.id).collect::<Vec<_>>();
+        let category_ids = categories
+            .iter()
+            .map(|category| category.id)
+            .collect::<Vec<_>>();
         let translations = forum_category_translation::Entity::find()
             .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-            .filter(
-                forum_category_translation::Column::CategoryId.is_in(category_ids.clone()),
-            )
+            .filter(forum_category_translation::Column::CategoryId.is_in(category_ids.clone()))
             .all(&self.db)
             .await?;
         let mut translations_by_category =
@@ -105,6 +106,12 @@ impl CategoryTreeService {
                 fallback_locale.as_deref(),
                 |translation| translation.locale.as_str(),
             );
+            let translation = resolved.item.ok_or_else(|| {
+                ForumError::Validation(format!(
+                    "Forum category {} has no localized translation",
+                    category.id
+                ))
+            })?;
             let node = CategoryTreeNode {
                 id: category.id,
                 parent_id: category.parent_id,
@@ -115,17 +122,9 @@ impl CategoryTreeService {
                 available_locales: available_locales_from(&localized, |translation| {
                     translation.locale.as_str()
                 }),
-                name: resolved
-                    .item
-                    .map(|translation| translation.name.clone())
-                    .unwrap_or_default(),
-                slug: resolved
-                    .item
-                    .map(|translation| translation.slug.clone())
-                    .unwrap_or_default(),
-                description: resolved
-                    .item
-                    .and_then(|translation| translation.description.clone()),
+                name: translation.name.clone(),
+                slug: translation.slug.clone(),
+                description: translation.description.clone(),
                 icon: category.icon,
                 color: category.color,
                 moderated: category.moderated,
