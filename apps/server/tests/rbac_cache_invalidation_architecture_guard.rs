@@ -54,6 +54,8 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
         "reconcile_generation_if_advanced",
         "MissedTickBehavior::Skip",
         "periodic_reconciliation",
+        "redis_publish_deferred",
+        "RBAC invalidation publication deferred to generation reconciliation",
         "CacheInvalidationPayloadError::OffsetRegressed",
         "superseded_rbac_acknowledgements_are_safe_noops",
         "invalidate_all_user_permissions_cache().await",
@@ -64,6 +66,9 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
         );
     }
 
+    assert!(!rbac.contains(
+        "RBAC permission cache generation advanced but Redis publish failed"
+    ));
     assert!(!rbac.contains("users::Entity::find()"));
     assert!(runtime.contains("pub(crate) async fn invalidate_all_user_permissions_cache()"));
     assert!(runtime.contains("USER_PERMISSION_CACHE.invalidate_all();"));
