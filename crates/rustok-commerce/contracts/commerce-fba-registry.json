@@ -64,7 +64,7 @@
     },
     {
       "module": "payment",
-      "contract_version": "payment.checkout.v1+provider_spi.v1",
+      "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1",
       "registry": "crates/rustok-payment/contracts/payment-fba-registry.json",
       "ports": [
         "PaymentCollectionPort"
