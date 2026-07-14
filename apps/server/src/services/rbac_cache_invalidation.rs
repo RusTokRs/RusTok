@@ -142,9 +142,11 @@ impl RbacCacheInvalidationListener {
                 acknowledge_rbac_applied_generation(&self.tracker, generation)?;
                 self.durable_state.observe_applied(generation);
             }
-            CacheInvalidationObservation::Duplicate { generation }
-            | CacheInvalidationObservation::Stale { generation, .. } => {
+            CacheInvalidationObservation::Duplicate { generation } => {
                 self.durable_state.observe_applied(generation);
+            }
+            CacheInvalidationObservation::Stale { last, .. } => {
+                self.durable_state.observe_applied(last);
             }
             CacheInvalidationObservation::UnverifiedFirst { .. }
             | CacheInvalidationObservation::Gap { .. } => {
