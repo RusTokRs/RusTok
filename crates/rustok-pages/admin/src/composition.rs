@@ -1,7 +1,7 @@
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::core;
 use crate::i18n::t;
-use crate::model::PageDetail;
+use crate::model::{PageBuilderScenarioReleaseStatus, PageDetail};
 use crate::transport;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -59,12 +59,18 @@ pub fn PagesAdmin() -> impl IntoView {
                 return Ok(None);
             };
             let baseline = transport::fetch_page_builder_scenario_baseline(
+                token.clone(),
+                tenant.clone(),
+                page_id.clone(),
+            )
+            .await?;
+            let release_status = transport::fetch_page_builder_scenario_release_status(
                 token,
                 tenant,
                 page_id,
             )
             .await?;
-            Ok(Some((page, baseline)))
+            Ok(Some((page, baseline, release_status)))
         }
     });
 
@@ -76,10 +82,11 @@ pub fn PagesAdmin() -> impl IntoView {
                 }>
                     {move || {
                         builder_resource.get().map(|result| match result {
-                            Ok(Some((page, baseline))) => view! {
+                            Ok(Some((page, baseline, release_status))) => view! {
                                 <PagesFlyBuilder
                                     page
                                     baseline
+                                    release_status
                                     token=token.clone()
                                     tenant=tenant.clone()
                                     default_locale=default_locale.clone()
@@ -109,6 +116,7 @@ pub fn PagesAdmin() -> impl IntoView {
 fn PagesFlyBuilder(
     page: PageDetail,
     #[prop(optional)] baseline: Option<RuntimeScenarioReleaseBaseline>,
+    release_status: PageBuilderScenarioReleaseStatus,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
     default_locale: String,
@@ -159,6 +167,7 @@ fn PagesFlyBuilder(
             ));
 
             let persistence_error = RwSignal::new(None::<String>);
+            let server_status = RwSignal::new(release_status);
             let baseline_page_id = page.id.clone();
             let baseline_token = token.clone();
             let baseline_tenant = tenant.clone();
@@ -168,24 +177,41 @@ fn PagesFlyBuilder(
                     let token = baseline_token.get_untracked();
                     let tenant = baseline_tenant.get_untracked();
                     spawn_local(async move {
-                        let result = match baseline {
+                        let write_result = match baseline {
                             Some(baseline) => transport::save_page_builder_scenario_baseline(
-                                token,
-                                tenant,
-                                page_id,
+                                token.clone(),
+                                tenant.clone(),
+                                page_id.clone(),
                                 baseline,
                             )
                             .await
                             .map(|_| ()),
                             None => transport::delete_page_builder_scenario_baseline(
+                                token.clone(),
+                                tenant.clone(),
+                                page_id.clone(),
+                            )
+                            .await
+                            .map(|_| ()),
+                        };
+                        match write_result {
+                            Ok(()) => match transport::fetch_page_builder_scenario_release_status(
                                 token,
                                 tenant,
                                 page_id,
                             )
                             .await
-                            .map(|_| ()),
-                        };
-                        persistence_error.set(result.err().map(|error| error.to_string()));
+                            {
+                                Ok(status) => {
+                                    server_status.set(status);
+                                    persistence_error.set(None);
+                                }
+                                Err(error) => persistence_error.set(Some(format!(
+                                    "Baseline was written but server status could not be verified: {error}"
+                                ))),
+                            },
+                            Err(error) => persistence_error.set(Some(error.to_string())),
+                        }
                     });
                 },
             );
@@ -201,6 +227,7 @@ fn PagesFlyBuilder(
             provide_context(host);
             view! {
                 <div class="space-y-2">
+                    <ServerReleaseStatus status=server_status />
                     <PageBuilderAdmin />
                     {move || persistence_error.get().map(|error| view! {
                         <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
@@ -217,5 +244,40 @@ fn PagesFlyBuilder(
             </div>
         }
         .into_any(),
+    }
+}
+
+#[component]
+fn ServerReleaseStatus(status: RwSignal<PageBuilderScenarioReleaseStatus>) -> impl IntoView {
+    view! {
+        <div
+            class=move || {
+                let status = status.get();
+                if !status.allowed || status.status == "broken" || status.status == "baseline_invalid" {
+                    "rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+                } else if status.status == "requires_review" {
+                    "rounded-xl border border-amber-300/50 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+                } else {
+                    "rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+                }
+            }
+            role="status"
+        >
+            {move || {
+                let status = status.get();
+                format!(
+                    "Server release gate: {} · allowed={} · {} visual · {} breaking{}",
+                    status.status,
+                    status.allowed,
+                    status.visual_changes,
+                    status.breaking_changes,
+                    status
+                        .baseline_hash
+                        .as_deref()
+                        .map(|hash| format!(" · baseline {hash}"))
+                        .unwrap_or_default(),
+                )
+            }}
+        </div>
     }
 }
