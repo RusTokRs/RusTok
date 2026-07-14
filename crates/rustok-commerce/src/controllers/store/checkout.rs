@@ -5,8 +5,9 @@ use axum::{
 };
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_cart::{
-    bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_storefront_port,
-    CartStorefrontPort, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
+    bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_checkout_port,
+    in_process_cart_storefront_port, CartStorefrontPort, CartStorefrontReadRequest,
+    PrepareCartCheckoutSnapshotRequest,
 };
 use rustok_payment::PaymentService;
 use rustok_web::{HttpError, HttpResult};
@@ -178,6 +179,7 @@ pub async fn complete_cart_checkout(
         metadata: input.metadata,
     };
     let event_bus = runtime.event_bus();
+    let payment_provider_registry = runtime.payment_provider_registry();
     let pricing_resolver = Arc::new(crate::StorefrontCheckoutPricingResolver::new(
         runtime.db_clone(),
         event_bus.clone(),
@@ -201,6 +203,8 @@ pub async fn complete_cart_checkout(
         runtime.db_clone(),
         event_bus.clone(),
     ));
+    let reservation_port =
+        rustok_inventory::in_process_inventory_reservation_identity_port(runtime.db_clone());
     let plan_builder = crate::CheckoutPlanBuilder::new(
         runtime.db_clone(),
         Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
@@ -212,21 +216,29 @@ pub async fn complete_cart_checkout(
     );
     let pipeline = crate::CheckoutStagePipeline::new(
         runtime.db_clone(),
-        event_bus,
-        rustok_inventory::in_process_inventory_reservation_identity_port(runtime.db_clone()),
+        event_bus.clone(),
+        reservation_port.clone(),
         atomic_cart.port.clone(),
     )
-    .with_payment_provider_registry(runtime.payment_provider_registry());
-    let service = crate::StagedCheckoutService::new(
+    .with_payment_provider_registry(payment_provider_registry.clone());
+    let staged = crate::StagedCheckoutService::new(
         plan_builder,
         pipeline,
         atomic_cart.handle,
         runtime.db_clone(),
     );
+    let compensation = crate::CheckoutCompensationService::new(
+        runtime.db_clone(),
+        event_bus,
+        reservation_port,
+        in_process_cart_checkout_port(runtime.db_clone()),
+    )
+    .with_payment_provider_registry(payment_provider_registry);
+    let service = crate::services::RecoveringStagedCheckoutService::new(staged, compensation);
     let response = service
         .complete_checkout(tenant.id, actor_id, idempotency_key, checkout_input)
         .await
-        .map_err(staged_checkout_http_error)?;
+        .map_err(recovering_checkout_http_error)?;
 
     Ok(Json(response))
 }
@@ -259,6 +271,32 @@ fn required_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
     Ok(value.to_string())
 }
 
+fn recovering_checkout_http_error(error: crate::services::RecoveringStagedCheckoutError) -> HttpError {
+    match error {
+        crate::services::RecoveringStagedCheckoutError::Staged(staged) => {
+            staged_checkout_http_error(staged)
+        }
+        crate::services::RecoveringStagedCheckoutError::StagedAndJournal { .. } => {
+            HttpError::internal("Checkout failed and recovery journal lookup is unavailable")
+        }
+        crate::services::RecoveringStagedCheckoutError::StagedAndCompensation {
+            compensation: crate::CheckoutCompensationError::ManualReconciliation(_),
+            ..
+        } => HttpError::new(
+            StatusCode::CONFLICT,
+            "checkout_reconciliation_required",
+            "Checkout reached an external side effect that requires reconciliation",
+        ),
+        crate::services::RecoveringStagedCheckoutError::StagedAndCompensation { .. } => {
+            HttpError::new(
+                StatusCode::CONFLICT,
+                "checkout_compensation_pending",
+                "Checkout failed and compensation will be retried",
+            )
+        }
+    }
+}
+
 fn staged_checkout_http_error(error: crate::StagedCheckoutError) -> HttpError {
     match error {
         crate::StagedCheckoutError::Operation(crate::CheckoutOperationError::Conflict(message)) => {
@@ -283,7 +321,7 @@ fn staged_checkout_http_error(error: crate::StagedCheckoutError) -> HttpError {
         }) if code == CHECKOUT_PRICING_CHANGED_CODE => HttpError::new(
             StatusCode::CONFLICT,
             code,
-            "Checkout pricing or cart state changed; retry with the same Idempotency-Key",
+            "Checkout pricing or cart state changed; retry with a new Idempotency-Key",
         ),
         crate::StagedCheckoutError::Checkout(crate::CheckoutError::BoundaryFailure {
             kind: rustok_api::PortErrorKind::Conflict,
@@ -300,7 +338,7 @@ fn staged_checkout_http_error(error: crate::StagedCheckoutError) -> HttpError {
         crate::StagedCheckoutError::Pipeline(_) => HttpError::new(
             StatusCode::CONFLICT,
             "checkout_pipeline_failed",
-            "Checkout entered recovery; retry with the same Idempotency-Key after reconciliation",
+            "Checkout entered recovery; retry after reconciliation",
         ),
         crate::StagedCheckoutError::CheckoutAndJournal { .. }
         | crate::StagedCheckoutError::PipelineAndJournal { .. } => {
