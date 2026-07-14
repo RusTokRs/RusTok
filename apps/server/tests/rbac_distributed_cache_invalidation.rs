@@ -5,6 +5,7 @@ use rustok_api::Permission;
 use rustok_cache::{CacheService, VersionedCacheInvalidation};
 use rustok_core::{UserRole, UserStatus};
 use rustok_migrations::Migrator;
+use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_server::common::settings::RustokSettings;
 use rustok_server::models::_entities::{permissions, role_permissions, roles, user_roles};
 use rustok_server::models::{tenants, users};
@@ -127,8 +128,10 @@ async fn local_generation_delivery_invalidates_target_and_gap_clears_all_snapsho
         .await
         .expect("start RBAC invalidation listener");
 
+    let writer = RbacRoleAssignmentDbWriter::new(db.clone());
     for user_id in [first_user, second_user] {
-        RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Admin)
+        writer
+            .assign_role_permissions(tenant_id, user_id, UserRole::Admin)
             .await
             .expect("assign admin role");
         assert!(RbacService::has_permission(
