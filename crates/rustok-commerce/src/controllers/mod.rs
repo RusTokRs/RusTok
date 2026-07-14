@@ -1,6 +1,6 @@
 pub mod admin;
 #[path = "admin/checkout_operations.rs"]
-mod checkout_operations;
+pub(crate) mod checkout_operations;
 mod common;
 pub mod products;
 mod reconciliation;
