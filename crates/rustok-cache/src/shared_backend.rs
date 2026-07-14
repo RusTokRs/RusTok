@@ -413,7 +413,7 @@ fn ttl_millis(ttl: Duration) -> Option<u64> {
     Some(if millis == 0 {
         1
     } else {
-        millis.min(u128::from(u64::MAX)) as u64
+        millis.min(i64::MAX as u128) as u64
     })
 }
 
@@ -554,6 +554,15 @@ mod tests {
     fn shared_backend_ttl_preserves_positive_sub_millisecond_values() {
         assert_eq!(ttl_millis(Duration::from_nanos(1)), Some(1));
         assert_eq!(ttl_millis(Duration::from_micros(999)), Some(1));
+    }
+
+    #[cfg(feature = "redis-cache")]
+    #[test]
+    fn shared_backend_ttl_clamps_to_redis_signed_range() {
+        assert_eq!(
+            ttl_millis(Duration::new(u64::MAX, 999_999_999)),
+            Some(i64::MAX as u64)
+        );
     }
 
     #[cfg(feature = "redis-cache")]
