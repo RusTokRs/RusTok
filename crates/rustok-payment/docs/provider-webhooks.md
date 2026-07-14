@@ -10,6 +10,10 @@ provider payloads or mutate payment state from a webhook controller.
 The machine-readable contract is
 `contracts/payment-provider-webhook-v1.json`.
 
+Implementation tasks, completion marks, verification state, and promotion gates
+are tracked only in `docs/implementation-plan.md`. This document is an
+operational runbook and must not maintain a second roadmap or status checklist.
+
 ## Mounted HTTP routes
 
 Provider ingress:
@@ -149,9 +153,13 @@ and stable error code for failures. It does not return internal provider or SQL
 messages. A legacy row without normalized facts is moved to `dead_letter`
 instead of being retried forever.
 
-This HTTP endpoint is an operator recovery mechanism, not a replacement for a
-scheduled worker. A production scheduler may call the same
-`PaymentProviderEventRecoveryService::run` method.
+The standard server background-worker lifecycle executes the same
+`PaymentProviderEventRecoveryService::run` path on a bounded delayed interval
+when the runtime profile enables background workers. The worker reuses the
+shared shutdown handle, prevents duplicate startup within one process, pages
+through tenants, and relies on inbox CAS leases for cross-replica exclusion. The
+HTTP endpoint remains an explicit operator-triggered sweep of the same recovery
+contract.
 
 ## Safe operator projection
 
@@ -186,8 +194,9 @@ lease owner, lease expiry, raw error message, signature, and raw payload.
 For a retryable `received`, `failed`, or expired `processing` event:
 
 1. Resolve the temporary owner/storage dependency.
-2. Call `POST /api/payment/provider-events/recovery/run?limit=N` with
-   `payments:manage`, or run the same service from the scheduled worker.
+2. Allow the scheduled worker to reclaim it, or call
+   `POST /api/payment/provider-events/recovery/run?limit=N` with
+   `payments:manage` for an immediate bounded sweep.
 3. Review only stable failure codes; internal error messages remain private.
 
 For a `dead_letter` event:
@@ -201,11 +210,8 @@ For a `dead_letter` event:
    `payments:manage`.
 5. Do not edit the inbox row manually.
 
-## Evidence status
+## Status reference
 
-The implementation has source code, migrations, module-codegen routing, OpenAPI,
-and regression tests. The tests have not been executed in this change session,
-and there is no recorded live external-provider signature verification,
-PostgreSQL concurrency, scheduled recovery, provider redelivery, or HTTP replay
-evidence. The boundary therefore remains `source_only` / `boundary_ready`, not
-`transport_verified`.
+Current completion marks, unexecuted verification steps, and the promotion state
+are maintained only in `docs/implementation-plan.md`. Update that file in the
+same commit as any source, contract, evidence, or runtime-verification change.
