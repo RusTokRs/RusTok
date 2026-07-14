@@ -6,6 +6,7 @@ pub mod render;
 pub mod rollout;
 pub mod runtime_context;
 pub mod runtime_context_compatibility;
+pub mod runtime_context_migration;
 #[cfg(feature = "server")]
 pub mod service;
 pub mod transport;
