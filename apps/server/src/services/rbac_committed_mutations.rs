@@ -13,6 +13,23 @@ use super::rbac_persistence::replace_user_role_via_store;
 use super::rbac_service::RbacService;
 
 impl RbacService {
+    /// Replace a role inside a transaction owned by the caller.
+    ///
+    /// This operation neither commits nor invalidates process-local
+    /// authorization caches. The transaction owner must invalidate the user's
+    /// RBAC caches only after a successful commit.
+    pub(crate) async fn replace_user_role_in_transaction<C>(
+        db: &C,
+        user_id: &uuid::Uuid,
+        tenant_id: &uuid::Uuid,
+        role: rustok_core::UserRole,
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        replace_user_role_via_store(db, user_id, tenant_id, role).await
+    }
+
     /// Replace a role outside an enclosing transaction and invalidate the
     /// process-local authorization snapshot only after commit.
     ///
@@ -28,7 +45,7 @@ impl RbacService {
         Self::record_committed_mutation_entrypoint();
         let tx = db.begin().await?;
         ensure_active_super_admin_continuity(&tx, user_id, tenant_id, &role).await?;
-        replace_user_role_via_store(&tx, user_id, tenant_id, role).await?;
+        Self::replace_user_role_in_transaction(&tx, user_id, tenant_id, role).await?;
         tx.commit().await?;
         Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
         Ok(())
@@ -121,5 +138,161 @@ where
         DbBackend::Postgres | DbBackend::MySql => {
             query().lock_exclusive().one(db).await.map_err(Into::into)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RbacService;
+    use crate::error::Error;
+    use crate::models::{tenants, users};
+    use chrono::Utc;
+    use rustok_api::Permission;
+    use rustok_core::{UserRole, UserStatus};
+    use rustok_migrations::Migrator;
+    use rustok_test_utils::db::setup_test_db_with_migrations;
+    use sea_orm::{ConnectionTrait, EntityTrait, Set};
+
+    async fn insert_tenant_and_user(
+        db: &impl ConnectionTrait,
+        tenant_slug: &str,
+        email: &str,
+    ) -> (uuid::Uuid, uuid::Uuid) {
+        let tenant_id = rustok_core::generate_id();
+        let user_id = rustok_core::generate_id();
+
+        tenants::Entity::insert(tenants::ActiveModel {
+            id: Set(tenant_id),
+            name: Set("Test tenant".to_string()),
+            slug: Set(tenant_slug.to_string()),
+            domain: Set(None),
+            settings: Set(serde_json::json!({})),
+            default_locale: Set("en".to_string()),
+            is_active: Set(true),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        })
+        .exec(db)
+        .await
+        .expect("failed to insert tenant");
+
+        users::Entity::insert(users::ActiveModel {
+            id: Set(user_id),
+            tenant_id: Set(tenant_id),
+            email: Set(email.to_string()),
+            password_hash: Set("hash".to_string()),
+            name: Set(None),
+            status: Set(UserStatus::Active),
+            email_verified_at: Set(None),
+            last_login_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        })
+        .exec(db)
+        .await
+        .expect("failed to insert user");
+
+        (tenant_id, user_id)
+    }
+
+    #[tokio::test]
+    async fn committed_role_replacement_invalidates_primed_permission_cache() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant_id, user_id) = insert_tenant_and_user(
+            &db,
+            "committed-role-cache-invalidation",
+            "committed-role-cache@example.com",
+        )
+        .await;
+
+        RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Admin)
+            .await
+            .expect("admin role assignment should succeed");
+
+        assert!(RbacService::has_permission(
+            &db,
+            &tenant_id,
+            &user_id,
+            &Permission::SETTINGS_MANAGE,
+        )
+        .await
+        .expect("admin permission lookup should succeed"));
+
+        RbacService::replace_user_role_committed(
+            &db,
+            &user_id,
+            &tenant_id,
+            UserRole::Customer,
+        )
+        .await
+        .expect("committed demotion should succeed");
+
+        assert!(!RbacService::has_permission(
+            &db,
+            &tenant_id,
+            &user_id,
+            &Permission::SETTINGS_MANAGE,
+        )
+        .await
+        .expect("post-demotion permission lookup should succeed"));
+        assert!(RbacService::has_permission(
+            &db,
+            &tenant_id,
+            &user_id,
+            &Permission::PRODUCTS_READ,
+        )
+        .await
+        .expect("customer permission lookup should succeed"));
+    }
+
+    #[tokio::test]
+    async fn rejected_last_super_admin_demotion_preserves_authority() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant_id, user_id) = insert_tenant_and_user(
+            &db,
+            "last-super-admin-rollback",
+            "last-super-admin@example.com",
+        )
+        .await;
+
+        RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::SuperAdmin)
+            .await
+            .expect("super-admin role assignment should succeed");
+        assert!(RbacService::has_permission(
+            &db,
+            &tenant_id,
+            &user_id,
+            &Permission::SETTINGS_MANAGE,
+        )
+        .await
+        .expect("super-admin permission lookup should succeed"));
+
+        let error = RbacService::replace_user_role_committed(
+            &db,
+            &user_id,
+            &tenant_id,
+            UserRole::Customer,
+        )
+        .await
+        .expect_err("last active super-admin demotion must be rejected");
+        assert!(matches!(error, Error::BadRequest(_)));
+
+        let authoritative = RbacService::get_user_permissions_authoritative(
+            &db,
+            &tenant_id,
+            &user_id,
+        )
+        .await
+        .expect("authoritative permissions should remain readable");
+        assert!(authoritative.contains(&Permission::SETTINGS_MANAGE));
+        assert!(RbacService::has_permission(
+            &db,
+            &tenant_id,
+            &user_id,
+            &Permission::SETTINGS_MANAGE,
+        )
+        .await
+        .expect("cached permission lookup should remain valid"));
     }
 }
