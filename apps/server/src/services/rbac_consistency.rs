@@ -32,6 +32,9 @@ mod tests {
         assert_eq!(stats.cross_tenant_user_roles_total, 0);
         assert_eq!(stats.cross_tenant_role_permissions_total, 0);
         assert_eq!(stats.reserved_role_slug_collisions_total, 0);
+        assert_eq!(stats.system_roles_with_permission_drift_total, 0);
+        assert_eq!(stats.missing_system_role_permissions_total, 0);
+        assert_eq!(stats.extra_system_role_permissions_total, 0);
     }
 
     #[tokio::test]
@@ -140,6 +143,9 @@ mod tests {
         assert_eq!(stats.cross_tenant_user_roles_total, 1);
         assert_eq!(stats.cross_tenant_role_permissions_total, 1);
         assert_eq!(stats.reserved_role_slug_collisions_total, 1);
+        assert_eq!(stats.system_roles_with_permission_drift_total, 1);
+        assert!(stats.missing_system_role_permissions_total > 0);
+        assert_eq!(stats.extra_system_role_permissions_total, 0);
         assert_eq!(stats.orphan_user_roles_total, 0);
         assert_eq!(stats.orphan_role_permissions_total, 0);
     }
