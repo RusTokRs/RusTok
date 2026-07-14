@@ -15,12 +15,9 @@
 //! If neither primary nor fallback env var is set for email/password,
 //! the initializer skips silently (no superadmin will be created).
 
-use sea_orm::ActiveModelTrait;
-use sea_orm::ActiveValue::Set;
-
-use crate::auth::hash_password;
 use crate::error::Result;
 use crate::models::{tenants, users};
+use crate::services::auth_lifecycle::AuthLifecycleService;
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -56,7 +53,7 @@ pub async fn ensure_default_superadmin(ctx: &ServerRuntimeContext) -> Result<()>
         tenants::Entity::find_or_create(ctx.db(), &tenant_name, &tenant_slug, None).await?;
 
     if let Some(user) = users::Entity::find_by_email(ctx.db(), tenant.id, &email).await? {
-        RbacService::assign_role_permissions(
+        RbacService::replace_user_role_committed(
             ctx.db(),
             &user.id,
             &tenant.id,
@@ -72,16 +69,14 @@ pub async fn ensure_default_superadmin(ctx: &ServerRuntimeContext) -> Result<()>
         return Ok(());
     }
 
-    let password_hash = hash_password(&password)?;
-    let mut user = users::ActiveModel::new(tenant.id, &email, &password_hash);
-    user.name = Set(Some("Super Admin".to_string()));
-    let user = user.insert(ctx.db()).await?;
-
-    RbacService::assign_role_permissions(
-        ctx.db(),
-        &user.id,
-        &tenant.id,
+    let user = AuthLifecycleService::create_user_runtime(
+        ctx,
+        tenant.id,
+        &email,
+        &password,
+        Some("Super Admin".to_string()),
         rustok_core::UserRole::SuperAdmin,
+        Some(rustok_core::UserStatus::Active),
     )
     .await?;
 
