@@ -45,10 +45,8 @@ pub fn RuntimePublishGatePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 </div>
 
                 {move || {
-                    let evaluation = report_runtime
-                        .runtime_publish_gate_evaluation
-                        .get()
-                        .or_else(|| report_runtime.evaluate_runtime_publish_gate());
+                    let _tracked_context = report_runtime.runtime_context.get();
+                    let evaluation = report_runtime.evaluate_runtime_publish_gate();
                     let Some(evaluation) = evaluation else {
                         return view! {
                             <p class="text-xs text-muted-foreground">"Runtime publish policy is not configured."</p>
