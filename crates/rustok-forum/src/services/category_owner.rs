@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
 use rustok_core::SecurityContext;
@@ -86,6 +86,31 @@ impl CategoryService {
                 fallback_locale,
             )
             .await
+    }
+
+    pub(crate) async fn find_category_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        category_id: Uuid,
+    ) -> ForumResult<crate::entities::forum_category::Model> {
+        category::CategoryService::find_category_in_tx(txn, tenant_id, category_id).await
+    }
+
+    pub(crate) async fn adjust_counters_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        topic_delta: i32,
+        reply_delta: i32,
+    ) -> ForumResult<()> {
+        category::CategoryService::adjust_counters_in_tx(
+            txn,
+            tenant_id,
+            category_id,
+            topic_delta,
+            reply_delta,
+        )
+        .await
     }
 }
 

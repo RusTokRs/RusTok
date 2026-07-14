@@ -794,7 +794,7 @@ async fn create_concurrent_replies(
         let result = handle
             .await
             .map_err(|error| test_error(format!("reply task failed to join: {error}")))?;
-        result.map_err(|error| test_error(error))?;
+        result.map_err(test_error)?;
     }
     Ok(())
 }

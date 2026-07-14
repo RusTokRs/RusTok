@@ -1298,7 +1298,7 @@ mod tests {
             .expect("closed topic lookup should succeed")
             .expect("closed topic should exist");
         let mut closed_active: forum_topic::ActiveModel = closed_model.into();
-        closed_active.status = Set(crate::constants::topic_status::CLOSED.to_string());
+        closed_active.status = Set(crate::state_machine::TopicStatus::Closed);
         closed_active
             .update(&db)
             .await
