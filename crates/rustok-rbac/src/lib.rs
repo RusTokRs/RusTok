@@ -32,7 +32,7 @@ pub use services::permission_evaluator::{
     PermissionEvaluation,
 };
 pub use services::permission_policy::{
-    check_all_permissions, check_any_permission, check_permission, denied_reason_for_denial,
+    check_all_permissions, check_any_permissions, check_permission, denied_reason_for_denial,
     has_effective_permission_in_set, missing_permissions, DeniedReasonKind, PermissionCheckOutcome,
 };
 
@@ -43,7 +43,8 @@ pub use services::policy_model::{
 };
 pub use services::relation_permission_resolver::{
     invalidate_cached_permissions, resolve_permissions_from_relations,
-    resolve_permissions_with_cache, PermissionCache, RelationPermissionStore,
+    resolve_permissions_with_cache, PermissionCache, PermissionCacheLookup,
+    RelationPermissionStore,
 };
 pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
 
