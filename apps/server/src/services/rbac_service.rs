@@ -334,13 +334,13 @@ impl RbacService {
         rbac_runtime_resolver(db)
     }
 
-    pub async fn assign_role_permissions(
+    pub(crate) async fn assign_role_permissions(
         db: &DatabaseConnection,
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
-        Self::record_authz_entrypoint_call("assign_role_permissions", "library");
+        Self::record_authz_entrypoint_call("assign_role_permissions", "internal");
         let resolver = Self::resolver(db);
         resolver
             .assign_role_permissions(tenant_id, user_id, role)
@@ -359,25 +359,25 @@ impl RbacService {
         replace_user_role_via_store(db, user_id, tenant_id, role).await
     }
 
-    pub async fn remove_tenant_role_assignments(
+    pub(crate) async fn remove_tenant_role_assignments(
         db: &DatabaseConnection,
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
     ) -> Result<()> {
-        Self::record_authz_entrypoint_call("remove_tenant_role_assignments", "library");
+        Self::record_authz_entrypoint_call("remove_tenant_role_assignments", "internal");
         let resolver = Self::resolver(db);
         resolver
             .remove_tenant_role_assignments(tenant_id, user_id)
             .await
     }
 
-    pub async fn remove_user_role_assignment(
+    pub(crate) async fn remove_user_role_assignment(
         db: &DatabaseConnection,
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
-        Self::record_authz_entrypoint_call("remove_user_role_assignment", "library");
+        Self::record_authz_entrypoint_call("remove_user_role_assignment", "internal");
         let resolver = Self::resolver(db);
         resolver
             .remove_user_role_assignment(tenant_id, user_id, role)
