@@ -24,13 +24,14 @@ impl RbacService {
 
     /// Repair canonical built-in role definitions and invalidate every affected
     /// process-local user permission snapshot after the repair transaction has
-    /// committed.
+    /// committed. The returned restart warning remains set when affected users
+    /// exist because other server processes may still hold local snapshots.
     pub async fn repair_system_roles_committed(
         db: &DatabaseConnection,
         tenant_id: Option<uuid::Uuid>,
     ) -> Result<rustok_rbac::RbacSystemRoleRepairReport> {
         Self::record_system_role_repair_entrypoint("repair_system_roles_committed");
-        let mut report = rustok_rbac::repair_system_roles(
+        let report = rustok_rbac::repair_system_roles(
             db,
             rustok_rbac::RbacSystemRoleRepairOptions {
                 tenant_id,
@@ -43,7 +44,6 @@ impl RbacService {
         for affected in &report.affected_users {
             Self::invalidate_user_rbac_caches(&affected.tenant_id, &affected.user_id).await;
         }
-        report.runtime_restart_required = false;
         Ok(report)
     }
 
@@ -176,7 +176,7 @@ mod tests {
 
         assert!(report.applied);
         assert!(report.role_permission_links_removed >= 1);
-        assert!(!report.runtime_restart_required);
+        assert!(report.runtime_restart_required);
         assert_eq!(report.affected_users.len(), 2);
 
         for user_id in [first_user, second_user] {
