@@ -1,7 +1,8 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
 use fly::{
-    render_runtime_scenario_matrix, PageSelection, RenderPolicy, ValidationSeverity,
+    render_runtime_scenario_matrix, PageSelection, RenderPolicy, RuntimeScenarioRenderMatrix,
+    ValidationSeverity,
 };
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
@@ -37,33 +38,39 @@ pub fn RuntimeScenarioMatrixPanel(runtime: AdminEditorRuntime) -> impl IntoView 
                         .cases
                         .iter()
                         .flat_map(|case| case.diagnostics.iter())
+                        .chain(matrix.diagnostics.iter())
                         .filter(|diagnostic| diagnostic.severity == ValidationSeverity::Error)
-                        .count()
-                        + matrix
-                            .diagnostics
-                            .iter()
-                            .filter(|diagnostic| diagnostic.severity == ValidationSeverity::Error)
-                            .count();
+                        .count();
                     let renderable = matrix.is_renderable();
+                    let status_class = if renderable {
+                        "rounded bg-emerald-500/10 px-2 py-1 text-emerald-700"
+                    } else {
+                        "rounded bg-destructive/10 px-2 py-1 text-destructive"
+                    };
+                    let RuntimeScenarioRenderMatrix {
+                        cases,
+                        rendered_count,
+                        failed_count,
+                        unique_html_outputs,
+                        duplicate_html_groups,
+                        diagnostics,
+                    } = matrix;
+                    let duplicate_group_count = duplicate_html_groups.len();
                     view! {
                         <div class="space-y-2 text-xs">
-                            <p class=if renderable {
-                                "rounded bg-emerald-500/10 px-2 py-1 text-emerald-700"
-                            } else {
-                                "rounded bg-destructive/10 px-2 py-1 text-destructive"
-                            }>{format!(
+                            <p class=status_class>{format!(
                                 "{} rendered · {} failed · {} blocking",
-                                matrix.rendered_count,
-                                matrix.failed_count,
+                                rendered_count,
+                                failed_count,
                                 blocking,
                             )}</p>
                             <p class="text-muted-foreground">{format!(
                                 "{} unique HTML output(s) · {} duplicate group(s)",
-                                matrix.unique_html_outputs,
-                                matrix.duplicate_html_groups.len(),
+                                unique_html_outputs,
+                                duplicate_group_count,
                             )}</p>
                             <div class="space-y-1">
-                                {matrix.cases.into_iter().map(|case| {
+                                {cases.into_iter().map(|case| {
                                     let error_count = case
                                         .diagnostics
                                         .iter()
@@ -71,15 +78,16 @@ pub fn RuntimeScenarioMatrixPanel(runtime: AdminEditorRuntime) -> impl IntoView 
                                             diagnostic.severity == ValidationSeverity::Error
                                         })
                                         .count();
+                                    let summary = if case.rendered {
+                                        format!("· rendered · {error_count} blocking")
+                                    } else {
+                                        "· render failed".to_string()
+                                    };
                                     view! {
                                         <details class="rounded bg-muted/50 px-2 py-1">
                                             <summary class="cursor-pointer">
-                                                <span class="font-medium">{case.scenario_label.clone()}</span>
-                                                <span class="ml-1 text-muted-foreground">{if case.rendered {
-                                                    format!("· rendered · {error_count} blocking")
-                                                } else {
-                                                    "· render failed".to_string()
-                                                }}</span>
+                                                <span class="font-medium">{case.scenario_label}</span>
+                                                <span class="ml-1 text-muted-foreground">{summary}</span>
                                             </summary>
                                             <div class="mt-1 space-y-1 break-all text-muted-foreground">
                                                 {case.html_hash.map(|hash| view! {
@@ -107,17 +115,17 @@ pub fn RuntimeScenarioMatrixPanel(runtime: AdminEditorRuntime) -> impl IntoView 
                                     }
                                 }).collect_view()}
                             </div>
-                            {(!matrix.duplicate_html_groups.is_empty()).then(|| view! {
+                            {(!duplicate_html_groups.is_empty()).then(|| view! {
                                 <details>
                                     <summary class="cursor-pointer font-medium">"Duplicate output groups"</summary>
                                     <div class="mt-1 space-y-1">
-                                        {matrix.duplicate_html_groups.into_iter().map(|group| view! {
+                                        {duplicate_html_groups.into_iter().map(|group| view! {
                                             <p class="rounded bg-muted px-2 py-1">{group.join(", ")}</p>
                                         }).collect_view()}
                                     </div>
                                 </details>
                             })}
-                            {matrix.diagnostics.into_iter().map(|diagnostic| view! {
+                            {diagnostics.into_iter().map(|diagnostic| view! {
                                 <p class="rounded bg-destructive/10 px-2 py-1 text-destructive">
                                     <strong>{diagnostic.code}</strong>
                                     <span class="ml-1">{diagnostic.message}</span>
