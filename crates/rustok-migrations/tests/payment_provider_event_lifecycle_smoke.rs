@@ -38,8 +38,10 @@ async fn normalized_payment_webhooks_apply_authorize_and_capture_once() {
         idempotency_key: "event-authorized-1".to_string(),
     };
     let authorized = PaymentProviderWebhookResult {
+        provider_id: "manual".to_string(),
         event_type: "payment.authorized".to_string(),
         external_reference: Some("provider-payment-1".to_string()),
+        replay_key: "event-authorized-1".to_string(),
         metadata: json!({
             "collection_id": collection.id,
             "amount": "25.00",
@@ -71,8 +73,10 @@ async fn normalized_payment_webhooks_apply_authorize_and_capture_once() {
         idempotency_key: "event-captured-1".to_string(),
     };
     let captured = PaymentProviderWebhookResult {
+        provider_id: "manual".to_string(),
         event_type: "payment.captured".to_string(),
         external_reference: Some("provider-payment-1".to_string()),
+        replay_key: "event-captured-1".to_string(),
         metadata: json!({
             "collection_id": collection.id,
             "amount": "25.00",
@@ -126,8 +130,10 @@ async fn normalized_payment_webhook_rejects_currency_mismatch_before_mutation() 
                 idempotency_key: "event-currency-mismatch".to_string(),
             },
             PaymentProviderWebhookResult {
+                provider_id: "manual".to_string(),
                 event_type: "payment.authorized".to_string(),
                 external_reference: Some("provider-payment-2".to_string()),
+                replay_key: "event-currency-mismatch".to_string(),
                 metadata: json!({
                     "collection_id": collection.id,
                     "amount": "10.00",
