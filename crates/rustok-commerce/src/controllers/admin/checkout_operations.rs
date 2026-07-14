@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::{super::common::ensure_permissions, super::CommerceHttpRuntime};
+use super::{common::ensure_permissions, CommerceHttpRuntime};
 
 #[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct AdminCheckoutOperationResponse {
@@ -48,6 +48,19 @@ pub struct AdminCheckoutCompensationSweepResponse {
     pub retryable: usize,
     pub manual_reconciliation: usize,
     pub failures: Vec<AdminCheckoutCompensationSweepFailure>,
+}
+
+pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
+    axum::Router::new()
+        .route(
+            "/compensation-sweep",
+            axum::routing::post(sweep_checkout_compensations),
+        )
+        .route("/{id}", axum::routing::get(show_checkout_operation))
+        .route(
+            "/{id}/compensate",
+            axum::routing::post(compensate_checkout_operation),
+        )
 }
 
 #[utoipa::path(
@@ -114,7 +127,11 @@ pub async fn compensate_checkout_operation(
             tenant.id,
             auth.user_id,
             id,
-            format!("admin-checkout-compensation:{}:{}", auth.user_id, Uuid::new_v4()),
+            format!(
+                "admin-checkout-compensation:{}:{}",
+                auth.user_id,
+                Uuid::new_v4()
+            ),
         )
         .await
         .map_err(map_compensation_error)?;
@@ -227,7 +244,9 @@ fn map_compensation_error(error: crate::CheckoutCompensationError) -> HttpError 
             "checkout_compensation_conflict",
             "Checkout compensation cannot proceed from the current state",
         ),
-        crate::CheckoutCompensationError::Boundary { retryable: true, .. }
+        crate::CheckoutCompensationError::Boundary {
+            retryable: true, ..
+        }
         | crate::CheckoutCompensationError::Payment(_)
         | crate::CheckoutCompensationError::PaymentOrchestration(_)
         | crate::CheckoutCompensationError::Order(_)
