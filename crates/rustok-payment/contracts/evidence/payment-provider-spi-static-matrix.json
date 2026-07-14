@@ -5,7 +5,7 @@
   "status": "static_matrix_locked",
   "generated_from": "crates/rustok-payment/contracts/payment-fba-registry.json",
   "runner": "scripts/verify/verify-ecommerce-provider-spi-evidence.mjs",
-  "contract_version": "payment.checkout.v1+provider_spi.v1",
+  "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1",
   "provider_spi_status": "manual_baseline_locked",
   "default_provider_id": "manual",
   "operation_cases": [
@@ -84,6 +84,11 @@
       "raw_payload_retained_for_audit",
       "lifecycle_transition_delegated_to_owner_service"
     ],
+    "legacy_assertion_aliases": {
+      "raw_payload_retained_for_audit": "raw_payload_hash_retained_for_audit"
+    },
+    "raw_payload_persistence": "disabled",
+    "audit_artifact": "sha256_payload_hash",
     "adapter_operation": "handle_webhook",
     "raw_payload_audit_required": true,
     "owner_service_replay_guard_required": true
