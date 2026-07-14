@@ -11,8 +11,8 @@ ui_classification = "storefront_only"
 entry_type = "PaymentModule"
 
 [provides.http]
-axum_router = "controllers::axum_router"
-axum_webhook_router = "controllers::axum_webhook_router"
+axum_router = "http::axum_router"
+axum_webhook_router = "http::axum_webhook_router"
 
 [provides.storefront_ui]
 leptos_crate = "rustok-payment-storefront"
