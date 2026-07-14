@@ -23,6 +23,8 @@ pub enum RbacRoleAssignmentError {
         expected_tenant_id: Uuid,
         actual_tenant_id: Uuid,
     },
+    #[error("RBAC role assignment does not support database backend {0}")]
+    UnsupportedBackend(&'static str),
 }
 
 /// Database-backed writer for idempotent built-in role assignment.
@@ -50,6 +52,7 @@ impl RbacRoleAssignmentDbWriter {
         user_id: Uuid,
         role: UserRole,
     ) -> Result<(), RbacRoleAssignmentError> {
+        ensure_supported_backend(self.db.get_database_backend())?;
         let tx = self
             .db
             .begin()
@@ -86,6 +89,7 @@ impl RbacRoleAssignmentDbWriter {
     where
         C: ConnectionTrait,
     {
+        ensure_supported_backend(db.get_database_backend())?;
         ConnectionRoleAssignmentWriter { db }
             .assign_role_permissions(tenant_id, user_id, role)
             .await
@@ -134,7 +138,9 @@ where
         let backend = self.db.get_database_backend();
         let sql = match backend {
             DbBackend::Sqlite => "SELECT tenant_id FROM users WHERE id = ?1 LIMIT 1",
-            _ => "SELECT tenant_id FROM users WHERE id = $1 LIMIT 1",
+            DbBackend::Postgres | DbBackend::MySql => {
+                "SELECT tenant_id FROM users WHERE id = $1 LIMIT 1"
+            }
         };
         let actual_tenant_id = self
             .query_uuid(sql, "tenant_id", vec![user_id.into()])
@@ -199,7 +205,7 @@ where
         let backend = self.db.get_database_backend();
         let select = match backend {
             DbBackend::Sqlite => "SELECT id FROM permissions WHERE tenant_id = ?1 AND resource = ?2 AND action = ?3 LIMIT 1",
-            _ => "SELECT id FROM permissions WHERE tenant_id = $1 AND resource = $2 AND action = $3 LIMIT 1",
+            DbBackend::Postgres | DbBackend::MySql => "SELECT id FROM permissions WHERE tenant_id = $1 AND resource = $2 AND action = $3 LIMIT 1",
         };
         if let Some(id) = self
             .query_id(
@@ -287,7 +293,9 @@ where
             DbBackend::Sqlite => {
                 "SELECT permission_id FROM role_permissions WHERE role_id = ?1"
             }
-            _ => "SELECT permission_id FROM role_permissions WHERE role_id = $1",
+            DbBackend::Postgres | DbBackend::MySql => {
+                "SELECT permission_id FROM role_permissions WHERE role_id = $1"
+            }
         };
         let rows = self
             .db
@@ -317,7 +325,9 @@ where
             DbBackend::Sqlite => {
                 "DELETE FROM role_permissions WHERE role_id = ?1 AND permission_id = ?2"
             }
-            _ => "DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2",
+            DbBackend::Postgres | DbBackend::MySql => {
+                "DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2"
+            }
         };
         self.db
             .execute(Statement::from_sql_and_values(
@@ -339,7 +349,9 @@ where
         let backend = self.db.get_database_backend();
         let sql = match backend {
             DbBackend::Sqlite => template.replace("{tenant}", "?1").replace("{slug}", "?2"),
-            _ => template.replace("{tenant}", "$1").replace("{slug}", "$2"),
+            DbBackend::Postgres | DbBackend::MySql => {
+                template.replace("{tenant}", "$1").replace("{slug}", "$2")
+            }
         };
         self.query_id(sql.as_str(), vec![tenant_id.into(), slug.into()])
             .await
@@ -389,6 +401,13 @@ where
     }
 }
 
+fn ensure_supported_backend(backend: DbBackend) -> Result<(), RbacRoleAssignmentError> {
+    match backend {
+        DbBackend::Postgres | DbBackend::Sqlite => Ok(()),
+        DbBackend::MySql => Err(RbacRoleAssignmentError::UnsupportedBackend("mysql")),
+    }
+}
+
 fn stale_role_permission_ids(
     existing_permission_ids: Vec<Uuid>,
     expected_permission_ids: &HashSet<Uuid>,
@@ -402,7 +421,7 @@ fn stale_role_permission_ids(
 fn render_insert_sql(template: &str, backend: DbBackend) -> String {
     let markers = match backend {
         DbBackend::Sqlite => ["?1", "?2", "?3", "?4"],
-        _ => ["$1", "$2", "$3", "$4"],
+        DbBackend::Postgres | DbBackend::MySql => ["$1", "$2", "$3", "$4"],
     };
     template
         .replace("{id}", markers[0])
@@ -421,7 +440,7 @@ fn render_insert_sql(template: &str, backend: DbBackend) -> String {
 mod tests {
     use std::collections::HashSet;
 
-    use super::{render_insert_sql, stale_role_permission_ids};
+    use super::{ensure_supported_backend, render_insert_sql, stale_role_permission_ids};
     use sea_orm::DbBackend;
     use uuid::Uuid;
 
@@ -464,5 +483,12 @@ mod tests {
             stale_role_permission_ids(vec![retained, stale], &expected),
             vec![stale]
         );
+    }
+
+    #[test]
+    fn unsupported_mysql_backend_is_rejected_before_writes() {
+        assert!(ensure_supported_backend(DbBackend::Postgres).is_ok());
+        assert!(ensure_supported_backend(DbBackend::Sqlite).is_ok());
+        assert!(ensure_supported_backend(DbBackend::MySql).is_err());
     }
 }
