@@ -69,7 +69,7 @@ pub async fn repair_system_roles(
 
     if options.apply {
         let tx = db.begin().await.map_err(database_error)?;
-        let result = repair_system_roles_on(&tx, options).await;
+        let result = repair_system_roles_in_transaction(&tx, options).await;
         match result {
             Ok(mut report) => {
                 tx.commit().await.map_err(database_error)?;
@@ -87,11 +87,16 @@ pub async fn repair_system_roles(
             }
         }
     } else {
-        repair_system_roles_on(db, options).await
+        repair_system_roles_in_transaction(db, options).await
     }
 }
 
-async fn repair_system_roles_on<C>(
+/// Apply or plan canonical system-role repair on a caller-owned connection.
+///
+/// When `options.apply` is true, callers must pass a transaction and commit it
+/// themselves. The returned report intentionally leaves `applied` false until
+/// the transaction owner has completed that commit.
+pub async fn repair_system_roles_in_transaction<C>(
     db: &C,
     options: RbacSystemRoleRepairOptions,
 ) -> Result<RbacSystemRoleRepairReport, RbacSystemRoleRepairError>
