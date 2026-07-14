@@ -1,7 +1,7 @@
 use crate::{
-    materialize_bindings, materialize_context, materialize_runtime, render_page,
-    BindingMaterialization, ContextMaterialization, FlyResult, PageSelection, ProjectDocument,
-    RenderPolicy, RenderedPage, RuntimeMaterialization, ValidationDiagnostic,
+    materialize_project_with_runtime_context, render_page, FlyResult, PageSelection,
+    ProjectDocument, RenderPolicy, RenderedPage, RuntimeProjectMaterialization,
+    ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -35,31 +35,22 @@ pub fn render_page_with_runtime_context(
     policy: &RenderPolicy,
     context: &Value,
 ) -> FlyResult<RuntimeRenderResult> {
-    let ContextMaterialization {
-        context,
-        mut diagnostics,
+    let RuntimeProjectMaterialization {
+        document,
+        effective_context: _,
+        diagnostics,
         defaults_applied,
         computed_applied,
         computed_fallbacks,
         unresolved_computed,
-        type_mismatches: context_type_mismatches,
-    } = materialize_context(document, context);
-    let BindingMaterialization {
-        document,
-        diagnostics: binding_diagnostics,
+        context_type_mismatches,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
-    } = materialize_bindings(document, &context);
-    diagnostics.extend(binding_diagnostics);
-    let RuntimeMaterialization {
-        document,
-        diagnostics: dynamic_diagnostics,
         evaluated_conditions,
         hidden_components,
         repeated_nodes,
-    } = materialize_runtime(&document, &context);
-    diagnostics.extend(dynamic_diagnostics);
+    } = materialize_project_with_runtime_context(document, context);
     let page = render_page(&document, selection, policy)?;
     Ok(RuntimeRenderResult {
         page,
