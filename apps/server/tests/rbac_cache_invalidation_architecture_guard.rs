@@ -46,6 +46,7 @@ fn rbac_invalidation_startup_is_serialized_and_committed_after_recovery() {
 #[test]
 fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
     let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
+    let runtime = source("apps/server/src/services/rbac_runtime.rs");
     let tracker = source("crates/rustok-cache/src/bounded_invalidation.rs");
 
     for required in [
@@ -55,6 +56,7 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
         "periodic_reconciliation",
         "CacheInvalidationPayloadError::OffsetRegressed",
         "superseded_rbac_acknowledgements_are_safe_noops",
+        "invalidate_all_user_permissions_cache().await",
     ] {
         assert!(
             rbac.contains(required),
@@ -62,7 +64,15 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
         );
     }
 
+    assert!(!rbac.contains("users::Entity::find()"));
+    assert!(runtime.contains("pub(crate) async fn invalidate_all_user_permissions_cache()"));
+    assert!(runtime.contains("USER_PERMISSION_CACHE.invalidate_all();"));
+    assert!(runtime.contains("full_permission_cache_invalidation_removes_unknown_user_entries"));
     assert!(tracker.contains("if proposed < current"));
-    assert!(tracker.contains("CacheInvalidationPayloadError::OffsetRegressed { current, proposed }"));
-    assert!(tracker.contains("applied_acknowledgement_rejects_unseeded_skipped_or_regressed_offsets"));
+    assert!(tracker.contains(
+        "CacheInvalidationPayloadError::OffsetRegressed { current, proposed }"
+    ));
+    assert!(tracker.contains(
+        "applied_acknowledgement_rejects_unseeded_skipped_or_regressed_offsets"
+    ));
 }
