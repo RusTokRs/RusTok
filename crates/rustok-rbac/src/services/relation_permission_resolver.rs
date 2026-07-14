@@ -1,6 +1,8 @@
 use crate::services::permission_normalization::normalize_permissions;
 use rustok_api::Permission;
 
+const MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS: usize = 4;
+
 #[async_trait::async_trait]
 pub trait RelationPermissionStore {
     type Error;
@@ -27,7 +29,7 @@ pub trait RelationPermissionStore {
 ///
 /// Cache adapters that do not need race protection can use token `0` through the default trait
 /// methods. Generation-aware adapters override `lookup` and `insert_if_current` so a value loaded
-/// before an invalidation cannot be published after that invalidation completes.
+/// before an invalidation cannot be published or returned after that invalidation completes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PermissionCacheLookup {
     permissions: Option<Vec<Permission>>,
@@ -65,14 +67,19 @@ pub trait PermissionCache {
         PermissionCacheLookup::new(self.get(tenant_id, user_id).await, 0)
     }
 
+    /// Publish a cache fill only if the lookup token still represents the current generation.
+    ///
+    /// Returns `true` when the resolved permissions are safe to return to the caller. The default
+    /// implementation preserves compatibility for adapters without generation tracking.
     async fn insert_if_current(
         &self,
         tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
         _token: u64,
         permissions: Vec<Permission>,
-    ) {
+    ) -> bool {
         self.insert(tenant_id, user_id, permissions).await;
+        true
     }
 }
 
@@ -110,27 +117,37 @@ where
     S: RelationPermissionStore,
     C: PermissionCache,
 {
-    let (cached_permissions, token) = cache.lookup(tenant_id, user_id).await.into_parts();
-    if let Some(cached_permissions) = cached_permissions {
-        return Ok(crate::PermissionResolution {
-            permissions: normalize_permissions(cached_permissions),
-            cache_hit: true,
-        });
+    for _ in 0..MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS {
+        let (cached_permissions, token) = cache.lookup(tenant_id, user_id).await.into_parts();
+        if let Some(cached_permissions) = cached_permissions {
+            return Ok(crate::PermissionResolution {
+                permissions: normalize_permissions(cached_permissions),
+                cache_hit: true,
+            });
+        }
+
+        let resolved_permissions =
+            resolve_permissions_from_relations(store, tenant_id, user_id).await?;
+        if cache
+            .insert_if_current(
+                tenant_id,
+                user_id,
+                token,
+                resolved_permissions.clone(),
+            )
+            .await
+        {
+            return Ok(crate::PermissionResolution {
+                permissions: resolved_permissions,
+                cache_hit: false,
+            });
+        }
     }
 
-    let resolved_permissions =
-        resolve_permissions_from_relations(store, tenant_id, user_id).await?;
-    cache
-        .insert_if_current(
-            tenant_id,
-            user_id,
-            token,
-            resolved_permissions.clone(),
-        )
-        .await;
-
+    // Continuous invalidation means no permission snapshot can be proven current. Deny by returning
+    // an empty set instead of exposing a value loaded from a superseded generation.
     Ok(crate::PermissionResolution {
-        permissions: resolved_permissions,
+        permissions: Vec::new(),
         cache_hit: false,
     })
 }
@@ -152,7 +169,7 @@ mod tests {
     use async_trait::async_trait;
     use rustok_api::Permission;
     use std::collections::HashMap;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
@@ -202,14 +219,14 @@ mod tests {
     }
 
     struct TokenAwareCache {
-        inserted_with_token: AtomicBool,
+        publication_attempts: AtomicUsize,
         values: Arc<Mutex<PermissionCacheMap>>,
     }
 
     impl Default for TokenAwareCache {
         fn default() -> Self {
             Self {
-                inserted_with_token: AtomicBool::new(false),
+                publication_attempts: AtomicUsize::new(0),
                 values: Arc::new(Mutex::new(HashMap::new())),
             }
         }
@@ -252,13 +269,58 @@ mod tests {
             user_id: &uuid::Uuid,
             token: u64,
             permissions: Vec<Permission>,
-        ) {
+        ) -> bool {
             assert_eq!(token, 41);
-            self.inserted_with_token.store(true, Ordering::Release);
+            if self.publication_attempts.fetch_add(1, Ordering::AcqRel) == 0 {
+                return false;
+            }
             self.values
                 .lock()
                 .await
                 .insert((*tenant_id, *user_id), permissions);
+            true
+        }
+    }
+
+    struct AlwaysSupersededCache;
+
+    #[async_trait]
+    impl PermissionCache for AlwaysSupersededCache {
+        async fn get(
+            &self,
+            _tenant_id: &uuid::Uuid,
+            _user_id: &uuid::Uuid,
+        ) -> Option<Vec<Permission>> {
+            panic!("generation-aware resolver must use lookup")
+        }
+
+        async fn insert(
+            &self,
+            _tenant_id: &uuid::Uuid,
+            _user_id: &uuid::Uuid,
+            _permissions: Vec<Permission>,
+        ) {
+            panic!("generation-aware resolver must use insert_if_current")
+        }
+
+        async fn invalidate(&self, _tenant_id: &uuid::Uuid, _user_id: &uuid::Uuid) {}
+
+        async fn lookup(
+            &self,
+            _tenant_id: &uuid::Uuid,
+            _user_id: &uuid::Uuid,
+        ) -> PermissionCacheLookup {
+            PermissionCacheLookup::new(None, 7)
+        }
+
+        async fn insert_if_current(
+            &self,
+            _tenant_id: &uuid::Uuid,
+            _user_id: &uuid::Uuid,
+            _token: u64,
+            _permissions: Vec<Permission>,
+        ) -> bool {
+            false
         }
     }
 
@@ -385,7 +447,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolver_uses_generation_checked_cache_publication() {
+    async fn resolver_retries_generation_checked_cache_publication() {
         let role_id = uuid::Uuid::new_v4();
         let tenant_id = uuid::Uuid::new_v4();
         let user_id = uuid::Uuid::new_v4();
@@ -401,7 +463,33 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.permissions, vec![Permission::USERS_READ]);
-        assert!(cache.inserted_with_token.load(Ordering::Acquire));
+        assert_eq!(cache.publication_attempts.load(Ordering::Acquire), 2);
+        assert_eq!(
+            cache.values.lock().await.get(&(tenant_id, user_id)).cloned(),
+            Some(vec![Permission::USERS_READ])
+        );
+    }
+
+    #[tokio::test]
+    async fn continuous_invalidation_fails_closed() {
+        let role_id = uuid::Uuid::new_v4();
+        let store = StubStore {
+            role_ids: vec![role_id],
+            tenant_role_ids: vec![role_id],
+            permissions: vec![Permission::USERS_MANAGE],
+        };
+
+        let result = resolve_permissions_with_cache(
+            &store,
+            &AlwaysSupersededCache,
+            &uuid::Uuid::new_v4(),
+            &uuid::Uuid::new_v4(),
+        )
+        .await
+        .unwrap();
+
+        assert!(result.permissions.is_empty());
+        assert!(!result.cache_hit);
     }
 
     #[tokio::test]
