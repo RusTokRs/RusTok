@@ -17,7 +17,6 @@ const EVENT_PAYMENT_AUTHORIZED: &str = "payment.authorized";
 const EVENT_PAYMENT_CAPTURED: &str = "payment.captured";
 const EVENT_PAYMENT_CANCELLED: &str = "payment.cancelled";
 
-#[derive(Clone)]
 pub struct PaymentLifecycleEventApplier {
     payment_service: PaymentService,
 }
@@ -187,14 +186,12 @@ impl NormalizedPaymentEvent {
                 "normalized payment webhook metadata must be an object",
             )
         })?;
-        let collection_id = required_string(metadata, "collection_id")
-            .and_then(|value| {
-                Uuid::parse_str(value.as_str()).map_err(|_| {
-                    non_retryable(
-                        "payment.webhook_collection_id_invalid",
-                        "normalized payment webhook collection_id must be a UUID",
-                    )
-                })
+        let collection_id = Uuid::parse_str(required_string(metadata, "collection_id")?.as_str())
+            .map_err(|_| {
+                non_retryable(
+                    "payment.webhook_collection_id_invalid",
+                    "normalized payment webhook collection_id must be a UUID",
+                )
             })?;
         let amount = Decimal::from_str(required_string(metadata, "amount")?.as_str()).map_err(
             |_| {
@@ -330,11 +327,11 @@ fn owner_metadata(
         "provider_webhook".to_string(),
         serde_json::json!({
             "event_id": context.event_id,
-            "provider_id": context.provider_id,
-            "delivery_id": context.delivery_id,
-            "idempotency_key": context.idempotency_key,
-            "event_type": event.event_type,
-            "external_reference": event.external_reference,
+            "provider_id": context.provider_id.clone(),
+            "delivery_id": context.delivery_id.clone(),
+            "idempotency_key": context.idempotency_key.clone(),
+            "event_type": event.event_type.clone(),
+            "external_reference": event.external_reference.clone(),
         }),
     );
     Value::Object(metadata)
@@ -353,9 +350,12 @@ fn map_payment_error(error: PaymentError) -> PaymentProviderEventApplyError {
         PaymentError::Validation(message) => {
             non_retryable("payment.webhook_validation_failed", message)
         }
-        PaymentError::CollectionNotFound(_) | PaymentError::RefundNotFound(_) => {
-            retryable("payment.webhook_owner_not_found", "payment owner record was not found")
-        }
+        PaymentError::PaymentCollectionNotFound(_)
+        | PaymentError::PaymentNotFound(_)
+        | PaymentError::RefundNotFound(_) => retryable(
+            "payment.webhook_owner_not_found",
+            "payment owner record was not found",
+        ),
     }
 }
 
