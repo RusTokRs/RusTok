@@ -16,15 +16,9 @@ impl RbacService {
         tenant_id: Option<uuid::Uuid>,
     ) -> Result<rustok_rbac::RbacSystemRoleRepairReport> {
         Self::record_system_role_repair_entrypoint("plan_system_role_repair");
-        rustok_rbac::repair_system_roles(
-            db,
-            rustok_rbac::RbacSystemRoleRepairOptions {
-                tenant_id,
-                apply: false,
-            },
-        )
-        .await
-        .map_err(|error| Error::Message(error.to_string()))
+        rustok_rbac::plan_system_role_repair(db, tenant_id)
+            .await
+            .map_err(|error| Error::Message(error.to_string()))
     }
 
     /// Repair canonical built-in role definitions and invalidate every affected
@@ -35,15 +29,9 @@ impl RbacService {
     ) -> Result<rustok_rbac::RbacSystemRoleRepairReport> {
         Self::record_system_role_repair_entrypoint("repair_system_roles_committed");
         let tx = db.begin().await?;
-        let mut report = rustok_rbac::repair_system_roles_in_transaction(
-            &tx,
-            rustok_rbac::RbacSystemRoleRepairOptions {
-                tenant_id,
-                apply: true,
-            },
-        )
-        .await
-        .map_err(|error| Error::Message(error.to_string()))?;
+        let mut report = rustok_rbac::apply_system_role_repair_in_transaction(&tx, tenant_id)
+            .await
+            .map_err(|error| Error::Message(error.to_string()))?;
 
         let mut effective_affected_users = Vec::with_capacity(report.affected_users.len());
         for affected in report.affected_users.drain(..) {
