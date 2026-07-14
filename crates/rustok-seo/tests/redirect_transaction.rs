@@ -6,14 +6,12 @@ use rustok_api::TenantContext;
 use rustok_core::{Error, EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo::entities::{seo_event_delivery, seo_redirect};
-use rustok_seo::{
-    SeoRedirectInput, SeoRedirectMatchType, SeoService, SeoTargetRegistry,
-};
+use rustok_seo::{SeoRedirectInput, SeoRedirectMatchType, SeoService, SeoTargetRegistry};
 use rustok_tenant::entities::tenant_module;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
-    Statement,
+    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    EntityTrait, PaginatorTrait, Statement,
 };
 use serde_json::json;
 use uuid::Uuid;
