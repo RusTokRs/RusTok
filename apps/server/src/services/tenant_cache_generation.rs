@@ -298,6 +298,9 @@ pub struct TenantCacheGenerationListenerHandle {
     state: Arc<TenantCacheGenerationListenerState>,
 }
 
+#[derive(Clone, Default)]
+struct TenantCacheGenerationListenerStartLock(Arc<tokio::sync::Mutex<()>>);
+
 pub async fn tenant_cache_generation_listener_snapshot(
     ctx: &ServerRuntimeContext,
 ) -> TenantCacheGenerationListenerSnapshot {
@@ -314,6 +317,11 @@ pub async fn start_tenant_cache_generation_listener(
     cache: CacheService,
 ) -> Result<()> {
     bind_tenant_backend_generations()?;
+    let _ = ctx.shared_insert_if_absent(TenantCacheGenerationListenerStartLock::default());
+    let start_lock = ctx
+        .shared_get::<TenantCacheGenerationListenerStartLock>()
+        .ok_or_else(|| Error::Cache("tenant listener start lock is unavailable".to_string()))?;
+    let _start_guard = start_lock.0.lock().await;
     if ctx
         .shared_get::<TenantCacheGenerationListenerHandle>()
         .is_some()
@@ -323,11 +331,6 @@ pub async fn start_tenant_cache_generation_listener(
 
     let redis_required = cache.redis_configuration_present();
     let state = TenantCacheGenerationListenerState::new(redis_required);
-    if !ctx.shared_insert_if_absent(TenantCacheGenerationListenerHandle {
-        state: Arc::clone(&state),
-    }) {
-        return Ok(());
-    }
     let listener = TenantCacheGenerationListener::new(cache.clone());
     match listener.recover_shared_generation().await {
         Ok(_) if !redis_required => state.mark_local_healthy().await,
