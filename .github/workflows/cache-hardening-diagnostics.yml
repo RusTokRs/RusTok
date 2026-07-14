@@ -44,7 +44,7 @@ jobs:
             echo '<details><summary>cargo fmt --check</summary>'
             echo
             echo '```text'
-            tail -c 40000 /tmp/fmt.log
+            tail -c 18000 /tmp/fmt.log
             echo
             echo '```'
             echo '</details>'
@@ -52,7 +52,7 @@ jobs:
             echo '<details><summary>cargo check -p rustok-server --lib</summary>'
             echo
             echo '```text'
-            tail -c 40000 /tmp/check.log
+            tail -c 18000 /tmp/check.log
             echo
             echo '```'
             echo '</details>'
@@ -60,7 +60,7 @@ jobs:
             echo '<details><summary>architecture tests</summary>'
             echo
             echo '```text'
-            tail -c 40000 /tmp/tests.log
+            tail -c 18000 /tmp/tests.log
             echo
             echo '```'
             echo '</details>'
