@@ -38,7 +38,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn persisted_cross_tenant_and_reserved_slug_corruption_is_reported() {
+    async fn database_rejects_cross_tenant_relations_and_reports_remaining_role_corruption() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant_a = rustok_core::generate_id();
         let tenant_b = rustok_core::generate_id();
@@ -91,14 +91,14 @@ mod tests {
         .exec(&db)
         .await
         .expect("insert foreign role");
-        user_roles::Entity::insert(user_roles::ActiveModel {
+        assert!(user_roles::Entity::insert(user_roles::ActiveModel {
             id: Set(rustok_core::generate_id()),
             user_id: Set(user_id),
             role_id: Set(foreign_role_id),
         })
         .exec(&db)
         .await
-        .expect("insert cross-tenant user role");
+        .is_err());
 
         let permission_id = rustok_core::generate_id();
         permissions::Entity::insert(permissions::ActiveModel {
@@ -112,14 +112,14 @@ mod tests {
         .exec(&db)
         .await
         .expect("insert permission");
-        role_permissions::Entity::insert(role_permissions::ActiveModel {
+        assert!(role_permissions::Entity::insert(role_permissions::ActiveModel {
             id: Set(rustok_core::generate_id()),
             role_id: Set(foreign_role_id),
             permission_id: Set(permission_id),
         })
         .exec(&db)
         .await
-        .expect("insert cross-tenant role permission");
+        .is_err());
 
         roles::Entity::insert(roles::ActiveModel {
             id: Set(rustok_core::generate_id()),
@@ -140,8 +140,8 @@ mod tests {
             .await
             .expect("load consistency stats");
 
-        assert_eq!(stats.cross_tenant_user_roles_total, 1);
-        assert_eq!(stats.cross_tenant_role_permissions_total, 1);
+        assert_eq!(stats.cross_tenant_user_roles_total, 0);
+        assert_eq!(stats.cross_tenant_role_permissions_total, 0);
         assert_eq!(stats.reserved_role_slug_collisions_total, 1);
         assert_eq!(stats.system_roles_with_permission_drift_total, 1);
         assert!(stats.missing_system_role_permissions_total > 0);
