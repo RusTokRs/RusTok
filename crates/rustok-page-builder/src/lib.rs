@@ -4,6 +4,7 @@ mod dto_display;
 pub mod health;
 pub mod render;
 pub mod rollout;
+pub mod runtime_context;
 #[cfg(feature = "server")]
 pub mod service;
 pub mod transport;
