@@ -1,7 +1,7 @@
 use crate::editor::{AdminCanvas, AdminShell};
 use crate::i18n::t;
 use crate::{AdminCanvasController, PageBuilderAdminFacade};
-use fly::{RuntimeContextScenario, TraitSchemaRegistry};
+use fly::{RuntimeContextScenario, RuntimePublishGatePolicy, TraitSchemaRegistry};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_ui_core::UiRouteContext;
@@ -12,7 +12,8 @@ use std::sync::Arc;
 ///
 /// Generated module composition mounts [`PageBuilderAdmin`] without props. Consumer routes such as
 /// Pages may provide this context to activate a concrete document, persistence facade,
-/// provider-contributed authoring schemas, preview-only runtime data, and named preview scenarios.
+/// provider-contributed authoring schemas, preview-only runtime data, named preview scenarios,
+/// and a runtime publish policy.
 #[derive(Clone)]
 pub struct PageBuilderAdminHostContext {
     pub controller: AdminCanvasController,
@@ -20,6 +21,7 @@ pub struct PageBuilderAdminHostContext {
     pub trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     pub runtime_context: Option<Value>,
     pub runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
+    pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
 }
 
 impl PageBuilderAdminHostContext {
@@ -30,6 +32,7 @@ impl PageBuilderAdminHostContext {
             trait_schemas: None,
             runtime_context: None,
             runtime_scenarios: None,
+            runtime_publish_gate_policy: None,
         }
     }
 
@@ -55,6 +58,14 @@ impl PageBuilderAdminHostContext {
         self.runtime_scenarios = Some(runtime_scenarios);
         self
     }
+
+    pub fn with_runtime_publish_gate_policy(
+        mut self,
+        policy: Arc<RuntimePublishGatePolicy>,
+    ) -> Self {
+        self.runtime_publish_gate_policy = Some(policy);
+        self
+    }
 }
 
 /// Generated host entrypoint. It intentionally accepts no props.
@@ -75,6 +86,7 @@ pub fn PageBuilderAdmin() -> impl IntoView {
                 trait_schemas=context.trait_schemas
                 runtime_context=context.runtime_context
                 runtime_scenarios=context.runtime_scenarios
+                runtime_publish_gate_policy=context.runtime_publish_gate_policy
             />
         }
         .into_any(),
@@ -116,6 +128,7 @@ pub fn PageBuilderAdminWithController(
     #[prop(optional)] trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     #[prop(optional)] runtime_context: Option<Value>,
     #[prop(optional)] runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
+    #[prop(optional)] runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -136,6 +149,7 @@ pub fn PageBuilderAdminWithController(
                 trait_schemas
                 runtime_context
                 runtime_scenarios
+                runtime_publish_gate_policy
                 on_request
             />
         </AdminShell>
