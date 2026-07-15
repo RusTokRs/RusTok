@@ -54,10 +54,7 @@ impl MigrationTrait for Migration {
                             .default("received"),
                     )
                     .col(ColumnDef::new(PaymentProviderEvents::EventType).string_len(191))
-                    .col(
-                        ColumnDef::new(PaymentProviderEvents::ExternalReference)
-                            .string_len(191),
-                    )
+                    .col(ColumnDef::new(PaymentProviderEvents::ExternalReference).string_len(191))
                     .col(ColumnDef::new(PaymentProviderEvents::EventMetadata).json_binary())
                     .col(
                         ColumnDef::new(PaymentProviderEvents::AttemptCount)

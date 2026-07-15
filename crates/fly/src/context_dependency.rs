@@ -166,7 +166,9 @@ pub fn analyze_runtime_context_dependencies(
                 ),
             ));
         }
-        if node.sources.contains(&RuntimeContextPathSource::DeclaredField)
+        if node
+            .sources
+            .contains(&RuntimeContextPathSource::DeclaredField)
             && node.sources.contains(&RuntimeContextPathSource::Computed)
         {
             diagnostics.push(dependency_diagnostic(
@@ -179,7 +181,10 @@ pub fn analyze_runtime_context_dependencies(
             ));
         }
         if node.consumers.is_empty() {
-            if node.sources.contains(&RuntimeContextPathSource::DeclaredField) {
+            if node
+                .sources
+                .contains(&RuntimeContextPathSource::DeclaredField)
+            {
                 diagnostics.push(dependency_diagnostic(
                     ValidationSeverity::Info,
                     "runtime_context_unused_field",
@@ -248,7 +253,7 @@ fn binding_target_label(target: &BindingTarget) -> String {
     match target {
         BindingTarget::Field { name } => format!("field:{name}"),
         BindingTarget::Attribute { name } => format!("attribute:{name}"),
-        BindingTarget::Style { property } => format!("style:{property}"),
+        BindingTarget::Style { name } => format!("style:{name}"),
     }
 }
 
@@ -393,7 +398,10 @@ mod tests {
             graph.computed_evaluation_order,
             vec!["user.fullName".to_string()]
         );
-        assert_eq!(graph.node("user.fullName").map(|node| node.consumers.len()), Some(1));
+        assert_eq!(
+            graph.node("user.fullName").map(|node| node.consumers.len()),
+            Some(1)
+        );
         assert!(graph
             .diagnostics
             .iter()

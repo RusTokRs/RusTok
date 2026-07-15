@@ -66,9 +66,7 @@ impl PublicOrigin {
             format!("https://{raw}")
         };
         let mut parsed = Url::parse(candidate.as_str()).map_err(|error| {
-            SeoError::configuration(format!(
-                "invalid SEO public origin from {source}: {error}"
-            ))
+            SeoError::configuration(format!("invalid SEO public origin from {source}: {error}"))
         })?;
 
         if !parsed.username().is_empty() || parsed.password().is_some() {
@@ -176,9 +174,7 @@ impl SeoService {
         }
         let public_origin = PublicOrigin::resolve(tenant)?;
         let started_at = chrono::Utc::now().fixed_offset();
-        let urls = self
-            .collect_sitemap_urls(tenant, &public_origin)
-            .await?;
+        let urls = self.collect_sitemap_urls(tenant, &public_origin).await?;
         let completed_at = chrono::Utc::now().fixed_offset();
         let completed_job = self
             .persist_generated_sitemap_in_tx(
@@ -237,15 +233,8 @@ impl SeoService {
         .insert(&txn)
         .await?;
 
-        self.persist_sitemap_files_in_tx(
-            &txn,
-            tenant,
-            public_origin,
-            job.id,
-            urls,
-            completed_at,
-        )
-        .await?;
+        self.persist_sitemap_files_in_tx(&txn, tenant, public_origin, job.id, urls, completed_at)
+            .await?;
 
         let event_type = "seo.sitemap.generated";
         let idempotency_key = sitemap_event_key(
@@ -577,13 +566,7 @@ impl SeoService {
 
         let index_urls = files
             .iter()
-            .map(|file| {
-                format!(
-                    "{}/sitemaps/{}",
-                    public_origin.as_str(),
-                    file.path
-                )
-            })
+            .map(|file| format!("{}/sitemaps/{}", public_origin.as_str(), file.path))
             .collect::<Vec<_>>();
         files.insert(
             0,

@@ -33,14 +33,6 @@ updates:
       all-updates:
         update-types: ["major", "minor", "patch"]
   - package-ecosystem: "cargo"
-    directory: "/apps/server/migration"
-    schedule:
-      interval: "daily"
-    open-pull-requests-limit: 10
-    groups:
-      all-updates:
-        update-types: ["major", "minor", "patch"]
-  - package-ecosystem: "cargo"
     directory: "/apps/storefront"
     schedule:
       interval: "daily"
@@ -58,14 +50,6 @@ updates:
         update-types: ["major", "minor", "patch"]
   - package-ecosystem: "cargo"
     directory: "/crates/leptos-auth"
-    schedule:
-      interval: "daily"
-    open-pull-requests-limit: 10
-    groups:
-      all-updates:
-        update-types: ["major", "minor", "patch"]
-  - package-ecosystem: "cargo"
-    directory: "/crates/leptos-graphql"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10

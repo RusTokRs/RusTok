@@ -10537,6 +10537,7 @@ name = "rustok-api"
 version = "0.1.0"
 dependencies = [
  "async-graphql",
+ "async-trait",
  "axum",
  "base64 0.22.1",
  "hex",
@@ -12265,6 +12266,7 @@ dependencies = [
  "rustok-cli-core",
  "rustok-rbac",
  "rustok-runtime",
+ "sea-orm",
  "serde_json",
  "uuid",
 ]
@@ -12330,10 +12332,12 @@ dependencies = [
 name = "rustok-runtime"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "rustok-api",
  "sea-orm",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

@@ -1,6 +1,4 @@
-use rustok_cart::{
-    in_process_cart_checkout_port, AtomicCartCheckoutHandle,
-};
+use rustok_cart::{in_process_cart_checkout_port, AtomicCartCheckoutHandle};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_payment::providers::PaymentProviderRegistry;
 use std::sync::Arc;
@@ -87,9 +85,7 @@ impl JournaledCheckoutService {
             .into());
         }
 
-        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(
-            self.db.clone(),
-        )));
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(self.db.clone())));
         let inventory_availability = Arc::new(rustok_inventory::InventoryService::new(
             self.db.clone(),
             event_bus.clone(),

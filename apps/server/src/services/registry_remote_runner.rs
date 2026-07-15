@@ -12,8 +12,7 @@ use crate::services::registry_governance::{
 };
 use crate::services::registry_principal::RegistryPrincipalRef;
 
-const FOLLOW_UP_STAGES: &[&str] =
-    &["compile_smoke", "targeted_tests", "security_policy_review"];
+const FOLLOW_UP_STAGES: &[&str] = &["compile_smoke", "targeted_tests", "security_policy_review"];
 const MAX_CLAIM_CANDIDATES: u64 = 128;
 
 /// Claim the first eligible remote validation stage with a database
@@ -79,8 +78,8 @@ pub async fn claim_remote_validation_stage_atomic(
         };
 
         let now = Utc::now();
-        let reclaimed = candidate.status
-            == registry_validation_stage::RegistryValidationStageStatus::Running;
+        let reclaimed =
+            candidate.status == registry_validation_stage::RegistryValidationStageStatus::Running;
         let previous_claim_id = candidate.claim_id.clone();
         let previous_runner_id = candidate.claimed_by.clone();
         let claim_id = format!("rvc_{}", uuid::Uuid::new_v4().simple());
@@ -204,10 +203,7 @@ pub async fn claim_remote_validation_stage_atomic(
             suggested_pass_reason_code: Some(pass_reason_code(&stage.stage_key).to_string()),
             suggested_failure_reason_code: Some(failure_reason_code(&stage.stage_key).to_string()),
             suggested_blocked_reason_code: Some(blocked_reason_code(&stage.stage_key).to_string()),
-            artifact_download_url: format!(
-                "/v2/catalog/publish/{}/artifact/download",
-                request.id
-            ),
+            artifact_download_url: format!("/v2/catalog/publish/{}/artifact/download", request.id),
             artifact_checksum_sha256,
             crate_name: request.crate_name,
         }));

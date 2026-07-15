@@ -535,8 +535,8 @@ mod tests {
     use super::*;
     use crate::{
         BindingCatalog, BindingTarget, BindingTransform, ConditionOperator, ContextFieldDefinition,
-        ContextSchemaCatalog, ContextValueKind, DynamicCatalog, GrapesJsV1Codec, RuntimeBinding,
-        RuntimeCondition, RegistrySet, FLY_RUNTIME_CONDITIONS_FIELD,
+        ContextSchemaCatalog, ContextValueKind, DynamicCatalog, GrapesJsV1Codec, RegistrySet,
+        RuntimeBinding, RuntimeCondition, FLY_RUNTIME_CONDITIONS_FIELD,
     };
     use serde_json::json;
 
@@ -602,14 +602,21 @@ mod tests {
                 },
             })
             .expect("dynamic command");
-        assert_eq!(DynamicCatalog::from_document(editor.document()).conditions.len(), 1);
+        assert_eq!(
+            DynamicCatalog::from_document(editor.document())
+                .conditions
+                .len(),
+            1
+        );
         assert!(editor
             .document()
             .project
             .extensions
             .contains_key(FLY_RUNTIME_CONDITIONS_FIELD));
         editor.undo().expect("undo dynamic command");
-        assert!(DynamicCatalog::from_document(editor.document()).conditions.is_empty());
+        assert!(DynamicCatalog::from_document(editor.document())
+            .conditions
+            .is_empty());
     }
 
     #[test]
@@ -632,9 +639,16 @@ mod tests {
                 },
             })
             .expect("binding command");
-        assert_eq!(BindingCatalog::from_document(editor.document()).bindings.len(), 1);
+        assert_eq!(
+            BindingCatalog::from_document(editor.document())
+                .bindings
+                .len(),
+            1
+        );
         editor.undo().expect("undo binding command");
-        assert!(BindingCatalog::from_document(editor.document()).bindings.is_empty());
+        assert!(BindingCatalog::from_document(editor.document())
+            .bindings
+            .is_empty());
     }
 
     #[test]
@@ -655,9 +669,16 @@ mod tests {
                 },
             })
             .expect("context command");
-        assert_eq!(ContextSchemaCatalog::from_document(editor.document()).fields.len(), 1);
+        assert_eq!(
+            ContextSchemaCatalog::from_document(editor.document())
+                .fields
+                .len(),
+            1
+        );
         editor.undo().expect("undo context command");
-        assert!(ContextSchemaCatalog::from_document(editor.document()).fields.is_empty());
+        assert!(ContextSchemaCatalog::from_document(editor.document())
+            .fields
+            .is_empty());
     }
 
     #[test]
@@ -680,7 +701,9 @@ mod tests {
             })
             .expect_err("root repeater should fail validation");
         assert!(matches!(error, FlyError::Validation(_)));
-        assert!(DynamicCatalog::from_document(editor.document()).repeaters.is_empty());
+        assert!(DynamicCatalog::from_document(editor.document())
+            .repeaters
+            .is_empty());
     }
 
     #[test]

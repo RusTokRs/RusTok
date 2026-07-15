@@ -361,7 +361,10 @@ mod tests {
 
         assert!(error.to_string().contains("TTL"));
         assert_eq!(calls.load(Ordering::SeqCst), 0);
-        assert_eq!(backend.get("present").await.unwrap(), Some(b"cached".to_vec()));
+        assert_eq!(
+            backend.get("present").await.unwrap(),
+            Some(b"cached".to_vec())
+        );
     }
 
     #[tokio::test]

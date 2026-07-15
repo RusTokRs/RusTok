@@ -165,9 +165,7 @@ impl DegradationAwareFallbackBackend {
             primary,
             fallback,
             degraded_writes: DegradedWriteTracker::new(MAX_DEGRADED_WRITE_KEYS),
-            pending_invalidations: PendingInvalidationTracker::new(
-                MAX_PENDING_INVALIDATION_KEYS,
-            ),
+            pending_invalidations: PendingInvalidationTracker::new(MAX_PENDING_INVALIDATION_KEYS),
             key_locks: (0..FALLBACK_KEY_LOCK_STRIPES)
                 .map(|_| Mutex::new(()))
                 .collect(),
@@ -314,8 +312,7 @@ impl DegradationAwareFallbackBackend {
     }
 
     async fn has_unsynchronized_mutation(&self, key: &str) -> bool {
-        self.degraded_writes.contains(key).await
-            || self.pending_invalidations.contains(key).await
+        self.degraded_writes.contains(key).await || self.pending_invalidations.contains(key).await
     }
 }
 
@@ -347,8 +344,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
 
                 match primary_value {
                     Some(value) => {
-                        if let Err(error) =
-                            self.fallback.set(key.to_string(), value.clone()).await
+                        if let Err(error) = self.fallback.set(key.to_string(), value.clone()).await
                         {
                             tracing::warn!(
                                 %error,
@@ -778,10 +774,7 @@ mod tests {
         let tracker = DegradedWriteTracker::new(1);
         let fallback = InMemoryCacheBackend::new(Duration::from_secs(30), 4);
 
-        assert!(tracker
-            .insert("missing", b"new", &fallback)
-            .await
-            .is_err());
+        assert!(tracker.insert("missing", b"new", &fallback).await.is_err());
         fallback
             .set("stale".to_string(), b"old".to_vec())
             .await
@@ -872,7 +865,10 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.to_string().contains("unsynchronized"));
-        assert_eq!(backend.get("key").await.unwrap(), Some(b"local-new".to_vec()));
+        assert_eq!(
+            backend.get("key").await.unwrap(),
+            Some(b"local-new".to_vec())
+        );
         assert_eq!(
             primary
                 .value
@@ -1022,10 +1018,7 @@ mod tests {
                 .set(key.clone(), b"temporary".to_vec())
                 .await
                 .unwrap();
-            tracker
-                .insert(&key, b"temporary", &fallback)
-                .await
-                .unwrap();
+            tracker.insert(&key, b"temporary", &fallback).await.unwrap();
             fallback.invalidate(&key).await.unwrap();
         }
 
@@ -1033,10 +1026,7 @@ mod tests {
             .set("fresh".to_string(), b"fresh".to_vec())
             .await
             .unwrap();
-        tracker
-            .insert("fresh", b"fresh", &fallback)
-            .await
-            .unwrap();
+        tracker.insert("fresh", b"fresh", &fallback).await.unwrap();
 
         let state = tracker.state.lock().await;
         assert!(state.keys.contains("live"));

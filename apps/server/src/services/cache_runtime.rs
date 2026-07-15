@@ -32,7 +32,9 @@ mod tests {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
         let first = ensure_cache_service(&ctx);
-        let mut subscriber = first.invalidations().subscribe_local_channel("cache-runtime-test");
+        let mut subscriber = first
+            .invalidations()
+            .subscribe_local_channel("cache-runtime-test");
         let second = ensure_cache_service(&ctx);
 
         let outcome = second

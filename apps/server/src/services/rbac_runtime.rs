@@ -15,8 +15,7 @@ use rustok_api::{Action, Permission, Resource};
 use rustok_rbac::{
     authorize_all_permissions, authorize_any_permission, authorize_permission,
     invalidate_cached_permissions, AuthorizationDecision, DeniedReasonKind, PermissionCache,
-    PermissionCacheLookup, RelationPermissionStore, RoleAssignmentStore,
-    RuntimePermissionResolver,
+    PermissionCacheLookup, RelationPermissionStore, RoleAssignmentStore, RuntimePermissionResolver,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
@@ -88,9 +87,8 @@ const RBAC_PERMISSION_CACHE_EPOCH_STRIPES: usize = 64;
 
 type PermissionCacheKey = (uuid::Uuid, uuid::Uuid);
 
-static RBAC_PERMISSION_CACHE_KEY_EPOCHS: Lazy<
-    [AtomicU32; RBAC_PERMISSION_CACHE_EPOCH_STRIPES],
-> = Lazy::new(|| std::array::from_fn(|_| AtomicU32::new(1)));
+static RBAC_PERMISSION_CACHE_KEY_EPOCHS: Lazy<[AtomicU32; RBAC_PERMISSION_CACHE_EPOCH_STRIPES]> =
+    Lazy::new(|| std::array::from_fn(|_| AtomicU32::new(1)));
 
 #[derive(Clone)]
 struct CachedPermissionSnapshot {
@@ -371,11 +369,7 @@ impl PermissionCache for MokaPermissionCache {
         USER_PERMISSION_CACHE.invalidate(&key).await;
     }
 
-    async fn lookup(
-        &self,
-        tenant_id: &uuid::Uuid,
-        user_id: &uuid::Uuid,
-    ) -> PermissionCacheLookup {
+    async fn lookup(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) -> PermissionCacheLookup {
         let key = (*tenant_id, *user_id);
         for _ in 0..RBAC_PERMISSION_CACHE_LOOKUP_ATTEMPTS {
             let Some(token) = current_permission_cache_token(&key) else {
@@ -661,18 +655,10 @@ mod tests {
         };
         let cache = MokaPermissionCache;
         cache
-            .insert(
-                &tenant_id,
-                &first_user_id,
-                vec![Permission::USERS_READ],
-            )
+            .insert(&tenant_id, &first_user_id, vec![Permission::USERS_READ])
             .await;
         cache
-            .insert(
-                &tenant_id,
-                &second_user_id,
-                vec![Permission::USERS_LIST],
-            )
+            .insert(&tenant_id, &second_user_id, vec![Permission::USERS_LIST])
             .await;
 
         invalidate_user_permissions_cache(&tenant_id, &first_user_id).await;

@@ -176,7 +176,10 @@ mod tests {
             .expect("dashboard policy should be attached");
         assert_eq!(
             policy.0,
-            vec![DashboardField::DashboardStats, DashboardField::RecentActivity]
+            vec![
+                DashboardField::DashboardStats,
+                DashboardField::RecentActivity
+            ]
         );
     }
 }

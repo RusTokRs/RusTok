@@ -59,8 +59,7 @@ where
         .map_err(database_error)?
         .ok_or(RbacInvalidationGenerationError::MissingOrExhausted)?;
     let generation: i64 = row.try_get("", "generation").map_err(database_error)?;
-    u64::try_from(generation)
-        .map_err(|_| RbacInvalidationGenerationError::Negative(generation))
+    u64::try_from(generation).map_err(|_| RbacInvalidationGenerationError::Negative(generation))
 }
 
 fn database_error(error: impl std::fmt::Display) -> RbacInvalidationGenerationError {
@@ -78,7 +77,9 @@ mod tests {
     async fn reservation_requires_the_durable_generation_schema() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         let tx = db.begin().await.unwrap();
-        assert!(reserve_permission_invalidation_generation(&tx).await.is_err());
+        assert!(reserve_permission_invalidation_generation(&tx)
+            .await
+            .is_err());
         tx.rollback().await.unwrap();
     }
 
@@ -101,8 +102,16 @@ mod tests {
         .unwrap();
 
         let tx = db.begin().await.unwrap();
-        assert_eq!(reserve_permission_invalidation_generation(&tx).await.unwrap(), 1);
+        assert_eq!(
+            reserve_permission_invalidation_generation(&tx)
+                .await
+                .unwrap(),
+            1
+        );
         tx.rollback().await.unwrap();
-        assert_eq!(read_permission_invalidation_generation(&db).await.unwrap(), 0);
+        assert_eq!(
+            read_permission_invalidation_generation(&db).await.unwrap(),
+            0
+        );
     }
 }

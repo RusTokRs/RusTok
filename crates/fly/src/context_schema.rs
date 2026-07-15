@@ -64,9 +64,15 @@ pub struct ContextFieldDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum ContextExpression {
-    Literal { value: Value },
-    Path { path: String },
-    Coalesce { values: Vec<ContextExpression> },
+    Literal {
+        value: Value,
+    },
+    Path {
+        path: String,
+    },
+    Coalesce {
+        values: Vec<ContextExpression>,
+    },
     Concat {
         values: Vec<ContextExpression>,
         #[serde(default)]
@@ -104,15 +110,23 @@ pub enum ContextExpression {
         left: Box<ContextExpression>,
         right: Box<ContextExpression>,
     },
-    And { values: Vec<ContextExpression> },
-    Or { values: Vec<ContextExpression> },
-    Not { value: Box<ContextExpression> },
+    And {
+        values: Vec<ContextExpression>,
+    },
+    Or {
+        values: Vec<ContextExpression>,
+    },
+    Not {
+        value: Box<ContextExpression>,
+    },
     If {
         condition: Box<ContextExpression>,
         then_value: Box<ContextExpression>,
         else_value: Box<ContextExpression>,
     },
-    Format { template: String },
+    Format {
+        template: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -188,7 +202,12 @@ pub fn apply_context_command(
             upsert_by_id(&mut catalog.fields, field.clone(), |value| &value.id);
         }
         ContextCommand::RemoveField { field_id } => {
-            remove_by_id(&mut catalog.fields, field_id, |value| &value.id, "context field")?;
+            remove_by_id(
+                &mut catalog.fields,
+                field_id,
+                |value| &value.id,
+                "context field",
+            )?;
         }
         ContextCommand::UpsertComputed { computed } => {
             validate_computed_identity(computed)?;
@@ -252,7 +271,10 @@ pub fn materialize_context(document: &ProjectDocument, input: &Value) -> Context
                             ValidationSeverity::Warning,
                             "runtime_computed_write_failed",
                             &computed.path,
-                            format!("computed value `{}` could not be written: {error}", computed.id),
+                            format!(
+                                "computed value `{}` could not be written: {error}",
+                                computed.id
+                            ),
                         )),
                     }
                 }
@@ -325,7 +347,10 @@ pub fn materialize_context(document: &ProjectDocument, input: &Value) -> Context
                         ValidationSeverity::Warning,
                         "runtime_computed_write_failed",
                         &computed.path,
-                        format!("computed value `{}` fallback could not be written: {error}", computed.id),
+                        format!(
+                            "computed value `{}` fallback could not be written: {error}",
+                            computed.id
+                        ),
                     ));
                 }
             }
@@ -435,7 +460,10 @@ pub fn validate_context_definitions(document: &ProjectDocument) -> Vec<Validatio
                 ValidationSeverity::Error,
                 "runtime_context_item_kind_without_array",
                 &field.path,
-                format!("field `{}` declares item_kind but is not an array", field.id),
+                format!(
+                    "field `{}` declares item_kind but is not an array",
+                    field.id
+                ),
             ));
         }
         if let Some(default) = field.default.as_ref() {
@@ -713,7 +741,9 @@ fn evaluate_expression(expression: &ContextExpression, context: &Value) -> Expre
                 match evaluate_expression(value, context) {
                     ExpressionEvaluation::Value(value) => rendered.push(scalar_text(&value)),
                     ExpressionEvaluation::Pending => return ExpressionEvaluation::Pending,
-                    ExpressionEvaluation::Error(error) => return ExpressionEvaluation::Error(error),
+                    ExpressionEvaluation::Error(error) => {
+                        return ExpressionEvaluation::Error(error)
+                    }
                 }
             }
             ExpressionEvaluation::Value(Value::String(rendered.join(separator)))
@@ -721,20 +751,12 @@ fn evaluate_expression(expression: &ContextExpression, context: &Value) -> Expre
         ContextExpression::Add { left, right } => {
             evaluate_numeric_binary(left, right, context, |left, right| left + right, "add")
         }
-        ContextExpression::Subtract { left, right } => evaluate_numeric_binary(
-            left,
-            right,
-            context,
-            |left, right| left - right,
-            "subtract",
-        ),
-        ContextExpression::Multiply { left, right } => evaluate_numeric_binary(
-            left,
-            right,
-            context,
-            |left, right| left * right,
-            "multiply",
-        ),
+        ContextExpression::Subtract { left, right } => {
+            evaluate_numeric_binary(left, right, context, |left, right| left - right, "subtract")
+        }
+        ContextExpression::Multiply { left, right } => {
+            evaluate_numeric_binary(left, right, context, |left, right| left * right, "multiply")
+        }
         ContextExpression::Divide { left, right } => {
             let right_value = match evaluate_expression(right, context) {
                 ExpressionEvaluation::Value(value) => value,
@@ -760,7 +782,9 @@ fn evaluate_expression(expression: &ContextExpression, context: &Value) -> Expre
             number_value(dividend / divisor)
         }
         ContextExpression::Equals { left, right } => evaluate_equality(left, right, context, false),
-        ContextExpression::NotEquals { left, right } => evaluate_equality(left, right, context, true),
+        ContextExpression::NotEquals { left, right } => {
+            evaluate_equality(left, right, context, true)
+        }
         ContextExpression::GreaterThan { left, right } => evaluate_ordering(
             left,
             right,
@@ -783,7 +807,9 @@ fn evaluate_expression(expression: &ContextExpression, context: &Value) -> Expre
                     }
                     ExpressionEvaluation::Value(_) => {}
                     ExpressionEvaluation::Pending => return ExpressionEvaluation::Pending,
-                    ExpressionEvaluation::Error(error) => return ExpressionEvaluation::Error(error),
+                    ExpressionEvaluation::Error(error) => {
+                        return ExpressionEvaluation::Error(error)
+                    }
                 }
             }
             ExpressionEvaluation::Value(Value::Bool(true))
@@ -797,7 +823,9 @@ fn evaluate_expression(expression: &ContextExpression, context: &Value) -> Expre
                     }
                     ExpressionEvaluation::Value(_) => {}
                     ExpressionEvaluation::Pending => saw_pending = true,
-                    ExpressionEvaluation::Error(error) => return ExpressionEvaluation::Error(error),
+                    ExpressionEvaluation::Error(error) => {
+                        return ExpressionEvaluation::Error(error)
+                    }
                 }
             }
             if saw_pending {

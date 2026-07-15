@@ -156,18 +156,12 @@ mod tests {
     #[tokio::test]
     async fn authoritative_permissions_require_user_tenant_membership() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        let (_tenant_a, user_a) = insert_tenant_and_user(
-            &db,
-            "authoritative-tenant-a",
-            "authoritative-a@example.com",
-        )
-        .await;
-        let (tenant_b, user_b) = insert_tenant_and_user(
-            &db,
-            "authoritative-tenant-b",
-            "authoritative-b@example.com",
-        )
-        .await;
+        let (_tenant_a, user_a) =
+            insert_tenant_and_user(&db, "authoritative-tenant-a", "authoritative-a@example.com")
+                .await;
+        let (tenant_b, user_b) =
+            insert_tenant_and_user(&db, "authoritative-tenant-b", "authoritative-b@example.com")
+                .await;
 
         RbacService::assign_role_permissions(&db, &user_b, &tenant_b, UserRole::Admin)
             .await
@@ -189,10 +183,9 @@ mod tests {
         .await
         .is_err());
 
-        let permissions =
-            RbacService::get_user_permissions_authoritative(&db, &tenant_b, &user_a)
-                .await
-                .expect("resolve authoritative permissions");
+        let permissions = RbacService::get_user_permissions_authoritative(&db, &tenant_b, &user_a)
+            .await
+            .expect("resolve authoritative permissions");
 
         assert!(permissions.is_empty());
     }

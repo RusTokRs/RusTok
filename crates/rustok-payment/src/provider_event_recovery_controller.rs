@@ -43,9 +43,7 @@ pub struct PaymentProviderEventRecoveryFailureResponse {
     pub error_code: Option<String>,
 }
 
-impl From<PaymentProviderEventRecoveryFailure>
-    for PaymentProviderEventRecoveryFailureResponse
-{
+impl From<PaymentProviderEventRecoveryFailure> for PaymentProviderEventRecoveryFailureResponse {
     fn from(value: PaymentProviderEventRecoveryFailure) -> Self {
         Self {
             event_id: value.event_id,

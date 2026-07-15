@@ -1,6 +1,4 @@
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 
 use crate::error::{Error, Result};
 use crate::models::users;
@@ -75,11 +73,7 @@ impl RbacService {
     }
 
     fn record_system_role_repair_entrypoint(entry_point: &str) {
-        rustok_telemetry::metrics::record_module_entrypoint_call(
-            "rbac",
-            entry_point,
-            "library",
-        );
+        rustok_telemetry::metrics::record_module_entrypoint_call("rbac", entry_point, "library");
     }
 }
 
@@ -98,10 +92,7 @@ mod tests {
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
 
-    async fn insert_tenant(
-        db: &impl ConnectionTrait,
-        tenant_slug: &str,
-    ) -> uuid::Uuid {
+    async fn insert_tenant(db: &impl ConnectionTrait, tenant_slug: &str) -> uuid::Uuid {
         let tenant_id = rustok_core::generate_id();
         tenants::Entity::insert(tenants::ActiveModel {
             id: Set(tenant_id),

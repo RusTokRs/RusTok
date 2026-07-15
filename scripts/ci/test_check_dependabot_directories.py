@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import os
 import pathlib
 import subprocess
 import sys
@@ -91,7 +92,7 @@ class DependabotDirectoryCheckTests(unittest.TestCase):
                     updates:
                       - package-ecosystem: "cargo"
                         directory: "/apps/server"
-                      - package-ecosystem: "github-actions"
+                      - package-ecosystem: "cargo"
                         directory: "/apps/server"
                     """
                 ).strip()
@@ -118,7 +119,7 @@ class DependabotDirectoryCheckTests(unittest.TestCase):
                     updates:
                       - package-ecosystem: "cargo"
                         directory: "/apps/server"
-                      - package-ecosystem: "github-actions"
+                      - package-ecosystem: "cargo"
                         directory: "/apps/server/"
                     """
                 ).strip()
@@ -276,6 +277,7 @@ class DependabotDirectoryCheckTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("All Dependabot update directories exist.", result.stdout)
 
+    @unittest.skipIf(os.name == "nt", "Windows does not allow double quotes in directory names")
     def test_allows_escaped_quote_inside_double_quoted_scalar(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)

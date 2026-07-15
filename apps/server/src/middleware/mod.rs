@@ -132,8 +132,7 @@ pub mod tenant {
             );
         } else if !cache.redis_configuration_present() {
             let listener = tenant_invalidation_listener_snapshot(ctx).await;
-            if listener.status != TenantInvalidationListenerStatus::Healthy
-                || !listener.local_ready
+            if listener.status != TenantInvalidationListenerStatus::Healthy || !listener.local_ready
             {
                 tracing::warn!(
                     cause,

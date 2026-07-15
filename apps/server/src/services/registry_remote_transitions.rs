@@ -373,10 +373,7 @@ where
     Ok(())
 }
 
-fn required<'a>(
-    value: &'a str,
-    field: &str,
-) -> Result<&'a str, RegistryRemoteTransitionError> {
+fn required<'a>(value: &'a str, field: &str) -> Result<&'a str, RegistryRemoteTransitionError> {
     let value = value.trim();
     if value.is_empty() {
         Err(RegistryRemoteTransitionError::Invalid(format!(
@@ -447,10 +444,7 @@ mod tests {
             "test_failure"
         );
         assert_eq!(
-            default_reason_code(
-                "security_policy_review",
-                RemoteTerminalOutcome::Passed
-            ),
+            default_reason_code("security_policy_review", RemoteTerminalOutcome::Passed),
             "manual_review_complete"
         );
     }

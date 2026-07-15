@@ -100,24 +100,13 @@ impl CheckoutOrderCreationExecutor {
         let order = match existing_id {
             Some(order_id) => {
                 self.order_service
-                    .get_order_with_locale_fallback(
-                        tenant_id,
-                        order_id,
-                        locale,
-                        fallback_locale,
-                    )
+                    .get_order_with_locale_fallback(tenant_id, order_id, locale, fallback_locale)
                     .await?
             }
             None => {
                 let create_result = self
                     .order_service
-                    .create_order_with_channel(
-                        tenant_id,
-                        actor_id,
-                        input,
-                        channel_id,
-                        channel_slug,
-                    )
+                    .create_order_with_channel(tenant_id, actor_id, input, channel_id, channel_slug)
                     .await;
                 match create_result {
                     Ok(order) => order,

@@ -5,8 +5,8 @@ pub mod entities;
 pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
-mod invalidation_generation;
 pub mod integration;
+mod invalidation_generation;
 pub mod ports;
 mod repair;
 pub mod services;
@@ -15,14 +15,14 @@ pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
 pub use catalog::BuiltinTenantRbacCatalog;
 pub use consistency::{load_consistency_stats, RbacConsistencyStats};
 pub use error::RbacError;
-pub use invalidation_generation::{
-    read_permission_invalidation_generation, reserve_permission_invalidation_generation,
-    RbacInvalidationGenerationError, RBAC_PERMISSION_INVALIDATION_SCOPE,
-};
 pub use integration::{
     RbacIntegrationEventKind, RbacRoleAssignmentEvent, RBAC_EVENT_ROLE_PERMISSIONS_ASSIGNED,
     RBAC_EVENT_TENANT_ROLE_ASSIGNMENTS_REMOVED, RBAC_EVENT_USER_ROLE_ASSIGNMENT_REMOVED,
     RBAC_EVENT_USER_ROLE_REPLACED,
+};
+pub use invalidation_generation::{
+    read_permission_invalidation_generation, reserve_permission_invalidation_generation,
+    RbacInvalidationGenerationError, RBAC_PERMISSION_INVALIDATION_SCOPE,
 };
 pub use ports::*;
 pub use repair::{

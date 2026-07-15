@@ -13,8 +13,8 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::dto::{
-    CompleteCheckoutInput, CreateOrderAdjustmentInput, CreateOrderInput,
-    CreateOrderLineItemInput, CreateOrderTaxLineInput, ResolveStoreContextInput,
+    CompleteCheckoutInput, CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput,
+    CreateOrderTaxLineInput, ResolveStoreContextInput,
 };
 use crate::storefront_channel::{
     is_metadata_visible_for_public_channel, normalize_public_channel_slug,
@@ -24,8 +24,8 @@ use crate::storefront_shipping::{
 };
 
 use super::{
-    CheckoutError, CheckoutFulfillmentPlan, CheckoutFulfillmentPlanItem,
-    CheckoutOrderPlanPayload, CheckoutResult, StoreContextService,
+    CheckoutError, CheckoutFulfillmentPlan, CheckoutFulfillmentPlanItem, CheckoutOrderPlanPayload,
+    CheckoutResult, StoreContextService,
 };
 
 pub struct CheckoutPlanBuilder {
@@ -250,12 +250,7 @@ impl CheckoutPlanBuilder {
             let availability = self
                 .inventory_availability_port
                 .check_availability(
-                    inventory_context(
-                        tenant_id,
-                        actor_id,
-                        cart,
-                        public_channel_slug.as_deref(),
-                    ),
+                    inventory_context(tenant_id, actor_id, cart, public_channel_slug.as_deref()),
                     InventoryAvailabilityRequest {
                         variant_id,
                         requested_quantity: line_item.quantity,
@@ -282,9 +277,8 @@ impl CheckoutPlanBuilder {
     ) -> CheckoutResult<()> {
         let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref());
         for delivery_group in &cart.delivery_groups {
-            let selected_shipping_option_id = delivery_group
-                .selected_shipping_option_id
-                .ok_or_else(|| {
+            let selected_shipping_option_id =
+                delivery_group.selected_shipping_option_id.ok_or_else(|| {
                     CheckoutError::Validation(format!(
                         "Delivery group {} does not have a selected shipping option",
                         delivery_group.shipping_profile_slug
@@ -300,7 +294,10 @@ impl CheckoutPlanBuilder {
                 )
                 .await
                 .map_err(stage_error("load_shipping_option"))?;
-            if !option.currency_code.eq_ignore_ascii_case(&cart.currency_code) {
+            if !option
+                .currency_code
+                .eq_ignore_ascii_case(&cart.currency_code)
+            {
                 return Err(CheckoutError::Validation(format!(
                     "Shipping option {} uses currency {}, expected {}",
                     option.id, option.currency_code, cart.currency_code
@@ -315,8 +312,7 @@ impl CheckoutPlanBuilder {
                     option.id
                 )));
             }
-            let required_profiles =
-                BTreeSet::from([delivery_group.shipping_profile_slug.clone()]);
+            let required_profiles = BTreeSet::from([delivery_group.shipping_profile_slug.clone()]);
             if !is_shipping_option_compatible_with_profiles(&option, &required_profiles) {
                 return Err(CheckoutError::Validation(format!(
                     "Shipping option {} is not compatible with delivery group {}",

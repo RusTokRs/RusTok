@@ -55,8 +55,9 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
 
 fn request_is_authorized(request: &Request<Body>) -> bool {
     match configured_token() {
-        Some(expected) => supplied_token(request)
-            .is_some_and(|supplied| constant_time_eq(supplied, &expected)),
+        Some(expected) => {
+            supplied_token(request).is_some_and(|supplied| constant_time_eq(supplied, &expected))
+        }
         None => cfg!(debug_assertions),
     }
 }
@@ -132,11 +133,7 @@ fn configured_token() -> Option<String> {
 fn is_protected_observability_path(path: &str) -> bool {
     matches!(
         path,
-        "/metrics"
-            | "/metrics/"
-            | "/api/_health/metrics"
-            | "/health/runtime"
-            | "/health/modules"
+        "/metrics" | "/metrics/" | "/api/_health/metrics" | "/health/runtime" | "/health/modules"
     )
 }
 

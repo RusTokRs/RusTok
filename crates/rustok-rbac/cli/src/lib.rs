@@ -6,9 +6,8 @@ use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
 use rustok_rbac::{
-    apply_system_role_repair_in_transaction, load_consistency_stats,
-    plan_system_role_repair, reserve_permission_invalidation_generation,
-    RbacSystemRoleRepairReport,
+    apply_system_role_repair_in_transaction, load_consistency_stats, plan_system_role_repair,
+    reserve_permission_invalidation_generation, RbacSystemRoleRepairReport,
 };
 use rustok_runtime::{db_clone, RuntimeComposition};
 use sea_orm::{DatabaseConnection, DatabaseTransaction, TransactionTrait};
@@ -101,7 +100,9 @@ impl RbacCommandProvider {
         let changes_total = report.changes_total();
         let mut data = serde_json::to_value(&report).map_err(command_failed)?;
         let Some(object) = data.as_object_mut() else {
-            return Err(command_failed("RBAC repair report did not serialize as an object"));
+            return Err(command_failed(
+                "RBAC repair report did not serialize as an object",
+            ));
         };
         object.insert("changes_total".to_string(), changes_total.into());
         object.insert(
@@ -167,9 +168,9 @@ async fn rollback_command_failure(
     let primary = error.to_string();
     match tx.rollback().await {
         Ok(()) => command_failed(primary),
-        Err(rollback_error) => command_failed(format!(
-            "{primary}; rollback failed: {rollback_error}"
-        )),
+        Err(rollback_error) => {
+            command_failed(format!("{primary}; rollback failed: {rollback_error}"))
+        }
     }
 }
 
@@ -179,7 +180,9 @@ pub fn command_provider(runtime: &RuntimeComposition) -> Box<dyn CommandProvider
     })
 }
 
-fn command_options(args: &serde_json::Value) -> Option<&serde_json::Map<String, serde_json::Value>> {
+fn command_options(
+    args: &serde_json::Value,
+) -> Option<&serde_json::Map<String, serde_json::Value>> {
     args.get("options").and_then(serde_json::Value::as_object)
 }
 
@@ -221,7 +224,8 @@ fn write_output_if_requested(
     args: &serde_json::Value,
     value: &serde_json::Value,
 ) -> CliCoreResult<()> {
-    if let Some(path) = command_options(args).and_then(|options| option_string(Some(options), "output"))
+    if let Some(path) =
+        command_options(args).and_then(|options| option_string(Some(options), "output"))
     {
         fs::write(
             path,

@@ -34,10 +34,7 @@ pub struct RecoveringStagedCheckoutService {
 }
 
 impl RecoveringStagedCheckoutService {
-    pub fn new(
-        staged: StagedCheckoutService,
-        compensation: CheckoutCompensationService,
-    ) -> Self {
+    pub fn new(staged: StagedCheckoutService, compensation: CheckoutCompensationService) -> Self {
         Self {
             staged,
             compensation,
@@ -66,12 +63,7 @@ impl RecoveringStagedCheckoutService {
 
         match self
             .staged
-            .complete_checkout(
-                tenant_id,
-                actor_id,
-                idempotency_key.clone(),
-                input,
-            )
+            .complete_checkout(tenant_id, actor_id, idempotency_key.clone(), input)
             .await
         {
             Ok(response) => Ok(response),
@@ -102,12 +94,7 @@ impl RecoveringStagedCheckoutService {
                 );
                 match self
                     .compensation
-                    .compensate(
-                        tenant_id,
-                        actor_id,
-                        operation.id,
-                        lease_owner,
-                    )
+                    .compensate(tenant_id, actor_id, operation.id, lease_owner)
                     .await
                 {
                     Ok(_) => Err(staged.into()),

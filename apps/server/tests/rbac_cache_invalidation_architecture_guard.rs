@@ -41,7 +41,10 @@ fn rbac_invalidation_startup_is_serialized_supervised_and_publishable_after_reco
         "let runtime = RbacCacheInvalidationListenerHandle::new(",
         "ctx.shared_insert(runtime);",
     ] {
-        assert!(rbac.contains(required), "RBAC startup must retain {required}");
+        assert!(
+            rbac.contains(required),
+            "RBAC startup must retain {required}"
+        );
     }
 
     let early_subscription = rbac
@@ -60,12 +63,9 @@ fn rbac_invalidation_startup_is_serialized_supervised_and_publishable_after_reco
     assert!(early_subscription < recovery);
     assert!(recovery < runtime_commit);
     assert!(runtime_commit < publisher_commit);
-    assert!(event_runtime.contains(
-        "start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;"
-    ));
-    assert!(event_runtime.contains(
-        "CacheService must be initialized before the event runtime"
-    ));
+    assert!(event_runtime
+        .contains("start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;"));
+    assert!(event_runtime.contains("CacheService must be initialized before the event runtime"));
 }
 
 #[test]
@@ -148,16 +148,17 @@ fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
             .map(|offset| reserve + offset)
             .expect("generation owner must commit after reservation");
         assert!(reserve < commit);
-        assert!(mutation.contains("durable_generation reconciliation will recover")
-            || mutation.contains("durable generation reconciliation will recover"));
+        assert!(
+            mutation.contains("durable_generation reconciliation will recover")
+                || mutation.contains("durable generation reconciliation will recover")
+        );
     }
 
-    assert!(committed.contains(
-        "publish_user_rbac_invalidation(tenant_id, user_id, durable_generation)"
-    ));
-    assert!(admin.contains(
-        "publish_user_rbac_invalidation(&tenant_id, &user_id, durable_generation)"
-    ));
+    assert!(committed
+        .contains("publish_user_rbac_invalidation(tenant_id, user_id, durable_generation)"));
+    assert!(
+        admin.contains("publish_user_rbac_invalidation(&tenant_id, &user_id, durable_generation)")
+    );
     assert!(repair.contains("publish_all_rbac_invalidation(durable_generation)"));
     assert!(!repair.contains("publish_user_rbac_invalidation"));
 
@@ -166,12 +167,12 @@ fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
     assert!(runtime.contains("USER_PERMISSION_CACHE.invalidate_all();"));
     assert!(runtime.contains("full_permission_cache_invalidation_removes_unknown_user_entries"));
     assert!(tracker.contains("if proposed < current"));
-    assert!(tracker.contains(
-        "CacheInvalidationPayloadError::OffsetRegressed { current, proposed }"
-    ));
-    assert!(tracker.contains(
-        "applied_acknowledgement_rejects_unseeded_skipped_or_regressed_offsets"
-    ));
+    assert!(
+        tracker.contains("CacheInvalidationPayloadError::OffsetRegressed { current, proposed }")
+    );
+    assert!(
+        tracker.contains("applied_acknowledgement_rejects_unseeded_skipped_or_regressed_offsets")
+    );
 }
 
 #[test]
@@ -192,7 +193,10 @@ fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
         "continuous_invalidation_fails_closed",
         "permissions: Vec::new()",
     ] {
-        assert!(core.contains(required), "RBAC cache core must retain {required}");
+        assert!(
+            core.contains(required),
+            "RBAC cache core must retain {required}"
+        );
     }
     assert!(exports.contains("PermissionCacheLookup"));
 

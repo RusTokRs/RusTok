@@ -119,7 +119,9 @@ fn validate_sitemap_submit_target(raw_url: &str) -> Result<ParsedSitemapSubmitTa
             return Err(format!("sitemap submission URL rejected: {reason}"));
         }
         ValidationResult::Sanitized { .. } => {
-            return Err("sitemap submission URL returned an unexpected validation result".to_string());
+            return Err(
+                "sitemap submission URL returned an unexpected validation result".to_string(),
+            );
         }
     }
 

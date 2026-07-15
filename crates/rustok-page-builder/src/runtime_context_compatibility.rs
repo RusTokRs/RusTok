@@ -112,12 +112,11 @@ mod tests {
 
     #[test]
     fn snapshots_are_serializable_and_stable() {
-        let response = snapshot_page_builder_runtime_contract(
-            PageBuilderRuntimeContractSnapshotRequest {
+        let response =
+            snapshot_page_builder_runtime_contract(PageBuilderRuntimeContractSnapshotRequest {
                 project_data: project(false, None),
-            },
-        )
-        .expect("snapshot");
+            })
+            .expect("snapshot");
         assert!(response.snapshot.is_valid());
         assert!(!response.snapshot.contract_hash.is_empty());
         let encoded = serde_json::to_value(&response).expect("serialize snapshot");
@@ -135,7 +134,10 @@ mod tests {
             },
         )
         .expect("diff");
-        assert_eq!(response.diff.compatibility, RuntimeContractCompatibility::Breaking);
+        assert_eq!(
+            response.diff.compatibility,
+            RuntimeContractCompatibility::Breaking
+        );
         assert!(response
             .diff
             .changes
@@ -145,23 +147,22 @@ mod tests {
 
     #[test]
     fn snapshot_diff_accepts_external_baselines() {
-        let previous = snapshot_page_builder_runtime_contract(
-            PageBuilderRuntimeContractSnapshotRequest {
+        let previous =
+            snapshot_page_builder_runtime_contract(PageBuilderRuntimeContractSnapshotRequest {
                 project_data: project(false, None),
-            },
-        )
-        .expect("previous snapshot")
-        .snapshot;
-        let next = snapshot_page_builder_runtime_contract(
-            PageBuilderRuntimeContractSnapshotRequest {
+            })
+            .expect("previous snapshot")
+            .snapshot;
+        let next =
+            snapshot_page_builder_runtime_contract(PageBuilderRuntimeContractSnapshotRequest {
                 project_data: project(true, Some("Welcome")),
-            },
-        )
-        .expect("next snapshot")
-        .snapshot;
-        let response = diff_page_builder_runtime_contracts(
-            PageBuilderRuntimeContractDiffRequest { previous, next },
-        );
+            })
+            .expect("next snapshot")
+            .snapshot;
+        let response = diff_page_builder_runtime_contracts(PageBuilderRuntimeContractDiffRequest {
+            previous,
+            next,
+        });
         assert_eq!(
             response.diff.compatibility,
             RuntimeContractCompatibility::RequiresReview

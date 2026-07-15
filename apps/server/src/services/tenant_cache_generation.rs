@@ -621,8 +621,7 @@ mod tests {
         let mut envelope = tenant_event(DomainEvent::TenantUpdated {
             tenant_id: Uuid::from_u128(44),
         });
-        envelope.timestamp =
-            chrono::DateTime::<chrono::Utc>::from_timestamp_millis(-1).unwrap();
+        envelope.timestamp = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(-1).unwrap();
 
         assert!(transport
             .publish_generation_if_needed(&envelope)

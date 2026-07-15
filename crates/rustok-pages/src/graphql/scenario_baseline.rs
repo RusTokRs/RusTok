@@ -1,11 +1,11 @@
 use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError}, has_any_effective_permission, AuthContext,
-    Permission, TenantContext,
+    graphql::{require_module_enabled, GraphQLError},
+    has_any_effective_permission, AuthContext, Permission, TenantContext,
 };
 use rustok_page_builder::runtime_scenario_release::{
-    RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation,
-    RuntimeScenarioReleaseStatus, RuntimeScenarioRenderChangeImpact,
+    RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleaseStatus,
+    RuntimeScenarioRenderChangeImpact,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
@@ -66,16 +66,17 @@ impl GqlPageBuilderScenarioReleaseStatus {
         }
     }
 
-    fn from_evaluation(page_id: Uuid, evaluation: RuntimeScenarioReleaseEvaluation) -> Result<Self> {
+    fn from_evaluation(
+        page_id: Uuid,
+        evaluation: RuntimeScenarioReleaseEvaluation,
+    ) -> Result<Self> {
         let visual_changes = evaluation
             .diff
             .as_ref()
             .map(|diff| {
                 diff.changes
                     .iter()
-                    .filter(|change| {
-                        change.impact() == RuntimeScenarioRenderChangeImpact::Visual
-                    })
+                    .filter(|change| change.impact() == RuntimeScenarioRenderChangeImpact::Visual)
                     .count()
             })
             .unwrap_or_default();
@@ -85,9 +86,7 @@ impl GqlPageBuilderScenarioReleaseStatus {
             .map(|diff| {
                 diff.changes
                     .iter()
-                    .filter(|change| {
-                        change.impact() == RuntimeScenarioRenderChangeImpact::Breaking
-                    })
+                    .filter(|change| change.impact() == RuntimeScenarioRenderChangeImpact::Breaking)
                     .count()
             })
             .unwrap_or_default();

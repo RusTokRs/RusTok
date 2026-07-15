@@ -397,10 +397,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             active.status = Set(status.clone());
         }
         if let Some(password) = command.password {
-            active.password_hash = Set(
-                hash_password(&password)
-                    .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?,
-            );
+            active.password_hash = Set(hash_password(&password)
+                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?);
         }
         if let Some(metadata) = prepared.metadata {
             active.metadata = Set(metadata);
@@ -421,14 +419,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         if let Some(role) = requested_role {
-            RbacService::replace_user_role_in_transaction(
-                &tx,
-                &user.id,
-                &context.tenant_id,
-                role,
-            )
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            RbacService::replace_user_role_in_transaction(&tx, &user.id, &context.tenant_id, role)
+                .await
+                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         }
         if password_changed || status_disables_user {
             revoke_active_sessions(&tx, context.tenant_id, user.id).await?;

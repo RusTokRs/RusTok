@@ -200,14 +200,10 @@ mod tests {
         )
         .await;
 
-        let error = assign_role_permissions_via_store(
-            &db,
-            &user_id,
-            &foreign_tenant_id,
-            UserRole::Manager,
-        )
-        .await
-        .expect_err("cross-tenant role assignment must fail");
+        let error =
+            assign_role_permissions_via_store(&db, &user_id, &foreign_tenant_id, UserRole::Manager)
+                .await
+                .expect_err("cross-tenant role assignment must fail");
         let message = error.to_string();
         assert!(message.contains(&user_id.to_string()));
         assert!(message.contains(&user_tenant_id.to_string()));

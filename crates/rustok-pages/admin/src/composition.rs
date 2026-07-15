@@ -53,8 +53,8 @@ pub fn PagesAdmin() -> impl IntoView {
             else {
                 return Ok(None);
             };
-            let Some(page) = transport::fetch_page(token.clone(), tenant.clone(), page_id.clone())
-                .await?
+            let Some(page) =
+                transport::fetch_page(token.clone(), tenant.clone(), page_id.clone()).await?
             else {
                 return Ok(None);
             };
@@ -64,12 +64,9 @@ pub fn PagesAdmin() -> impl IntoView {
                 page_id.clone(),
             )
             .await?;
-            let release_status = transport::fetch_page_builder_scenario_release_status(
-                token,
-                tenant,
-                page_id,
-            )
-            .await?;
+            let release_status =
+                transport::fetch_page_builder_scenario_release_status(token, tenant, page_id)
+                    .await?;
             Ok(Some((page, baseline, release_status)))
         }
     });
@@ -124,28 +121,26 @@ fn PagesFlyBuilder(
     let seed = core::edit_form_seed_from_page(&page, &default_locale);
     let revision_id = builder::page_revision(&page);
     let fallback_page_id = page.id.clone();
-    let project_data = serde_json::from_str::<Value>(&seed.project_data_text).unwrap_or_else(|_| {
-        json!({
-            "pages": [{
-                "id": fallback_page_id,
-                "component": { "id": "root", "type": "wrapper" }
-            }]
+    let project_data =
+        serde_json::from_str::<Value>(&seed.project_data_text).unwrap_or_else(|_| {
+            json!({
+                "pages": [{
+                    "id": fallback_page_id,
+                    "component": { "id": "root", "type": "wrapper" }
+                }]
+            })
+        });
+    let generated_context =
+        generate_page_builder_runtime_example(PageBuilderRuntimeExampleRequest {
+            project_data: project_data.clone(),
+            policy: RuntimeContextExamplePolicy::default(),
         })
-    });
-    let generated_context = generate_page_builder_runtime_example(PageBuilderRuntimeExampleRequest {
-        project_data: project_data.clone(),
-        policy: RuntimeContextExamplePolicy::default(),
-    })
-    .ok()
-    .map(|response| response.example.input_context)
-    .unwrap_or_else(|| json!({}));
+        .ok()
+        .map(|response| response.example.input_context)
+        .unwrap_or_else(|| json!({}));
     let scenarios = Arc::new(vec![
         RuntimeContextScenario::new("empty", "Empty", json!({})),
-        RuntimeContextScenario::new(
-            "generated",
-            "Generated example",
-            generated_context.clone(),
-        ),
+        RuntimeContextScenario::new("generated", "Generated example", generated_context.clone()),
     ]);
     let controller =
         builder::controller_from_project(&page.id, &revision_id, &seed.project_data_text);

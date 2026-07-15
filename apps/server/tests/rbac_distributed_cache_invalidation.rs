@@ -39,11 +39,7 @@ async fn insert_tenant(db: &sea_orm::DatabaseConnection) -> Uuid {
     tenant_id
 }
 
-async fn insert_user(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    email: &str,
-) -> Uuid {
+async fn insert_user(db: &sea_orm::DatabaseConnection, tenant_id: Uuid, email: &str) -> Uuid {
     let user_id = rustok_core::generate_id();
     users::Entity::insert(users::ActiveModel {
         id: Set(user_id),
@@ -64,11 +60,7 @@ async fn insert_user(
     user_id
 }
 
-async fn publish_generation(
-    cache: &CacheService,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> u64 {
+async fn publish_generation(cache: &CacheService, tenant_id: Uuid, user_id: Uuid) -> u64 {
     let generation = cache
         .bump_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX)
         .await
@@ -96,14 +88,10 @@ async fn wait_for_permission(
 ) {
     tokio::time::timeout(Duration::from_secs(2), async {
         loop {
-            let actual = RbacService::has_permission(
-                db,
-                &tenant_id,
-                &user_id,
-                &Permission::SETTINGS_MANAGE,
-            )
-            .await
-            .expect("permission lookup");
+            let actual =
+                RbacService::has_permission(db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE)
+                    .await
+                    .expect("permission lookup");
             if actual == expected {
                 return;
             }

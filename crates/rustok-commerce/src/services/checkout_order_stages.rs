@@ -8,11 +8,11 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use super::{
-    CheckoutInventoryExecutionError, CheckoutInventoryReservationExecutor,
-    CheckoutOperationError, CheckoutOperationJournal, CheckoutOperationStage,
-    CheckoutOrderConfirmationError, CheckoutOrderConfirmationExecutor,
-    CheckoutOrderCreationError, CheckoutOrderCreationExecutor, CheckoutOrderPlanError,
-    CheckoutOrderPlanJournal, CheckoutOrderPlanPayload, CheckoutOrderPlanRecord,
+    CheckoutInventoryExecutionError, CheckoutInventoryReservationExecutor, CheckoutOperationError,
+    CheckoutOperationJournal, CheckoutOperationStage, CheckoutOrderConfirmationError,
+    CheckoutOrderConfirmationExecutor, CheckoutOrderCreationError, CheckoutOrderCreationExecutor,
+    CheckoutOrderPlanError, CheckoutOrderPlanJournal, CheckoutOrderPlanPayload,
+    CheckoutOrderPlanRecord,
 };
 
 #[derive(Clone, Debug)]

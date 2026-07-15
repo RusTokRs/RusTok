@@ -55,9 +55,7 @@ impl<S, R>
     }
 }
 
-impl<S, R, T>
-    FlyAdapterBackedPageBuilderService<S, R, T, NoopPageBuilderScenarioBaselineStore>
-{
+impl<S, R, T> FlyAdapterBackedPageBuilderService<S, R, T, NoopPageBuilderScenarioBaselineStore> {
     pub fn with_telemetry(store: S, renderer: R, telemetry: T) -> Self {
         Self {
             store,

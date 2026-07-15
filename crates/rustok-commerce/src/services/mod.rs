@@ -115,11 +115,8 @@ pub use post_order::{
     ReturnExchangeDecisionInput, ReturnRefundDecisionInput,
 };
 pub use recovering_staged_checkout::{
-    RecoveringStagedCheckoutError, RecoveringStagedCheckoutResult,
-    RecoveringStagedCheckoutService,
+    RecoveringStagedCheckoutError, RecoveringStagedCheckoutResult, RecoveringStagedCheckoutService,
 };
 pub use refund_reconciliation::RefundReconciliationService;
 pub use shipping_profile::ShippingProfileService;
-pub use staged_checkout::{
-    StagedCheckoutError, StagedCheckoutResult, StagedCheckoutService,
-};
+pub use staged_checkout::{StagedCheckoutError, StagedCheckoutResult, StagedCheckoutService};

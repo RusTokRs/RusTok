@@ -114,10 +114,9 @@ fn collect_fields(
     for selection in &selection_set.items {
         match &selection.node {
             Selection::Field(field) => {
-                if let Some(field) = ModuleGraphqlField::classify(
-                    operation_type,
-                    field.node.name.node.as_str(),
-                ) {
+                if let Some(field) =
+                    ModuleGraphqlField::classify(operation_type, field.node.name.node.as_str())
+                {
                     fields.insert(field);
                 }
             }
@@ -250,14 +249,16 @@ mod tests {
             .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
             .expect("module policy should be attached");
 
-        assert!(policy
-            .0
-            .iter()
-            .any(|field| field.name == "moduleRegistry" && field.authority == ModuleAuthority::Read));
-        assert!(policy
-            .0
-            .iter()
-            .any(|field| field.name == "buildProgress" && field.authority == ModuleAuthority::Read));
+        assert!(policy.0.iter().any(
+            |field| field.name == "moduleRegistry" && field.authority == ModuleAuthority::Read
+        ));
+        assert!(
+            policy
+                .0
+                .iter()
+                .any(|field| field.name == "buildProgress"
+                    && field.authority == ModuleAuthority::Read)
+        );
     }
 
     #[test]

@@ -257,9 +257,11 @@ pub async fn fetch_page_builder_scenario_baseline(
         .page_builder_scenario_baseline
         .map(|payload| serde_json::from_value(payload.baseline))
         .transpose()
-        .map_err(|error| GraphqlHttpError::Graphql(format!(
-            "Invalid Page Builder scenario baseline response: {error}"
-        )))
+        .map_err(|error| {
+            GraphqlHttpError::Graphql(format!(
+                "Invalid Page Builder scenario baseline response: {error}"
+            ))
+        })
 }
 
 pub async fn save_page_builder_scenario_baseline(
@@ -281,13 +283,11 @@ pub async fn save_page_builder_scenario_baseline(
         tenant_slug,
     )
     .await?;
-    serde_json::from_value(response.save_page_builder_scenario_baseline.baseline).map_err(
-        |error| {
-            GraphqlHttpError::Graphql(format!(
-                "Invalid saved Page Builder scenario baseline response: {error}"
-            ))
-        },
-    )
+    serde_json::from_value(response.save_page_builder_scenario_baseline.baseline).map_err(|error| {
+        GraphqlHttpError::Graphql(format!(
+            "Invalid saved Page Builder scenario baseline response: {error}"
+        ))
+    })
 }
 
 pub async fn delete_page_builder_scenario_baseline(

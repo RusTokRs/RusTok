@@ -37,7 +37,10 @@ impl PaymentProviderEventApplier for PaymentDomainEventApplier {
         } else {
             Err(PaymentProviderEventApplyError::new(
                 "payment.webhook_event_unsupported",
-                format!("unsupported normalized provider event `{}`", event.event_type),
+                format!(
+                    "unsupported normalized provider event `{}`",
+                    event.event_type
+                ),
                 false,
             ))
         }

@@ -57,7 +57,12 @@ fn legacy_role_replacement_alias_is_private_and_confined_to_new_user_creation() 
         .map(|offset| create_start + offset)
         .expect("user creation block must end before profile update");
     let create_block = &lifecycle[create_start..create_end];
-    assert_eq!(create_block.matches("RbacService::replace_user_role(").count(), 1);
+    assert_eq!(
+        create_block
+            .matches("RbacService::replace_user_role(")
+            .count(),
+        1
+    );
 }
 
 #[test]
@@ -85,7 +90,10 @@ fn committed_role_replacement_locks_target_and_checks_noop_before_generation_bum
         "exact_single_role_replacement_is_a_generation_noop",
         "matching_role_among_multiple_assignments_is_not_treated_as_noop",
     ] {
-        assert!(committed.contains(required), "committed role path must retain {required}");
+        assert!(
+            committed.contains(required),
+            "committed role path must retain {required}"
+        );
     }
 
     let lock = committed
@@ -121,10 +129,11 @@ fn operational_cli_applies_repair_and_generation_in_one_transaction() {
     let cli = source("crates/rustok-rbac/cli/src/lib.rs");
     let cargo = source("crates/rustok-rbac/cli/Cargo.toml");
 
-    for required in [
-        "sea-orm.workspace = true",
-    ] {
-        assert!(cargo.contains(required), "RBAC CLI manifest must retain {required}");
+    for required in ["sea-orm.workspace = true"] {
+        assert!(
+            cargo.contains(required),
+            "RBAC CLI manifest must retain {required}"
+        );
     }
     for required in [
         "apply_system_role_repair_in_transaction",

@@ -34,9 +34,7 @@ pub struct RuntimeContextExample {
     pub diagnostics: Vec<ValidationDiagnostic>,
 }
 
-pub fn export_runtime_context_json_schema(
-    document: &ProjectDocument,
-) -> RuntimeContextJsonSchema {
+pub fn export_runtime_context_json_schema(document: &ProjectDocument) -> RuntimeContextJsonSchema {
     let contract = extract_runtime_context_contract(document);
     let catalog = ContextSchemaCatalog::from_document(document);
     let mut diagnostics = contract.definition_diagnostics.clone();
@@ -125,7 +123,10 @@ pub fn generate_runtime_context_example(
                 ValidationSeverity::Warning,
                 "runtime_context_example_write_failed",
                 &field.path,
-                format!("context example field `{}` could not be written: {error}", field.id),
+                format!(
+                    "context example field `{}` could not be written: {error}",
+                    field.id
+                ),
             ));
         }
     }
@@ -169,12 +170,7 @@ fn field_schema(
     Value::Object(schema)
 }
 
-fn insert_property_schema(
-    root: &mut Value,
-    segments: &[String],
-    schema: Value,
-    required: bool,
-) {
+fn insert_property_schema(root: &mut Value, segments: &[String], schema: Value, required: bool) {
     let Some((first, rest)) = segments.split_first() else {
         return;
     };
@@ -252,7 +248,10 @@ fn push_required(object: &mut Map<String, Value>, property: &str) {
         .or_insert_with(|| Value::Array(Vec::new()))
         .as_array_mut()
         .expect("required must be an array");
-    if !required.iter().any(|value| value.as_str() == Some(property)) {
+    if !required
+        .iter()
+        .any(|value| value.as_str() == Some(property))
+    {
         required.push(Value::String(property.to_string()));
     }
 }
@@ -357,7 +356,10 @@ mod tests {
             exported.schema["properties"]["page"]["properties"]["title"]["type"],
             "string"
         );
-        assert_eq!(exported.schema["properties"]["page"]["required"][0], "title");
+        assert_eq!(
+            exported.schema["properties"]["page"]["required"][0],
+            "title"
+        );
         assert_eq!(
             exported.schema["properties"]["page"]["properties"]["displayTitle"]["readOnly"],
             true
@@ -367,11 +369,12 @@ mod tests {
 
     #[test]
     fn generates_example_and_materializes_computed_values() {
-        let example = generate_runtime_context_example(
-            &document(),
-            RuntimeContextExamplePolicy::default(),
-        );
+        let example =
+            generate_runtime_context_example(&document(), RuntimeContextExamplePolicy::default());
         assert_eq!(example.input_context["page"]["title"], "Welcome");
-        assert_eq!(example.effective_context["page"]["displayTitle"], "Welcome!");
+        assert_eq!(
+            example.effective_context["page"]["displayTitle"],
+            "Welcome!"
+        );
     }
 }

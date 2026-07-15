@@ -1,7 +1,5 @@
 use rustok_migrations::Migrator;
-use rustok_payment::{
-    PaymentProviderEventJournal, ReceiveProviderEvent, VerifiedProviderEvent,
-};
+use rustok_payment::{PaymentProviderEventJournal, ReceiveProviderEvent, VerifiedProviderEvent};
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use sea_orm_migration::sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::json;
@@ -38,11 +36,7 @@ async fn normalized_provider_event_facts_are_immutable_even_through_direct_sql()
         .execute(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "UPDATE payment_provider_events SET event_type = ? WHERE id = ? AND tenant_id = ?",
-            [
-                "payment.captured".into(),
-                event.id.into(),
-                tenant_id.into(),
-            ],
+            ["payment.captured".into(), event.id.into(), tenant_id.into()],
         ))
         .await
         .expect_err("direct SQL must not rewrite normalized provider facts");

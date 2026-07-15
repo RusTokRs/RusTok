@@ -20,6 +20,12 @@ modules, but remains a capability-only layer, not a tenant business domain.
 - staging and forking Rhai module artifacts through `rustok-modules` with immutable release lineage;
 - no transformation of the script runtime into a separate tenant business domain.
 
+## Responsibility Zone
+
+Alloy owns capability-level script authoring, scheduling, execution, and their
+transport adapters. Domain modules own the business policies and call Alloy only
+through its public hook and integration contracts.
+
 ## Integration
 
 - connected by `apps/server` via generated module wiring from `modules.toml` and `rustok-module.toml`;
@@ -33,7 +39,7 @@ modules, but remains a capability-only layer, not a tenant business domain.
 - `cargo xtask module test alloy`
 - targeted runtime tests for script execution, scheduler and bridge semantics when changing capability surface
 
-## Related documents
+## Related Documentation
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)

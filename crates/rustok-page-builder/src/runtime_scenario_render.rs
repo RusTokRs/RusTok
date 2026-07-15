@@ -53,8 +53,8 @@ mod tests {
 
     #[test]
     fn consumer_can_render_runtime_scenario_matrix() {
-        let response = render_page_builder_runtime_scenarios(
-            PageBuilderRuntimeScenarioRenderRequest {
+        let response =
+            render_page_builder_runtime_scenarios(PageBuilderRuntimeScenarioRenderRequest {
                 project_data: json!({
                     "pages": [{
                         "id": "home",
@@ -86,9 +86,8 @@ mod tests {
                         json!({ "page": { "title": "Second" } }),
                     ),
                 ],
-            },
-        )
-        .expect("scenario render response");
+            })
+            .expect("scenario render response");
         assert_eq!(response.matrix.rendered_count, 2);
         assert_eq!(response.matrix.unique_html_outputs, 2);
         assert!(response.matrix.is_renderable());

@@ -57,9 +57,8 @@ fn durable_generation_watchdog_is_owned_supervised_and_restartable() {
         );
     }
 
-    assert!(!generation.contains(
-        "if !ctx.shared_insert_if_absent(RbacInvalidationGenerationWatchdogHandle)"
-    ));
+    assert!(!generation
+        .contains("if !ctx.shared_insert_if_absent(RbacInvalidationGenerationWatchdogHandle)"));
 
     let spawn = generation
         .find("let task = spawn_rbac_invalidation_generation_watchdog")
@@ -93,6 +92,9 @@ fn rate_limit_cleanup_and_existing_bootstrap_tests_remain_present() {
         "compiled_surface_contract_allows_headless_profile_without_embedded_ui_features",
         "bootstrap_registry_only_runtime_forces_headless_surfaces",
     ] {
-        assert!(runtime.contains(required), "app runtime must retain {required}");
+        assert!(
+            runtime.contains(required),
+            "app runtime must retain {required}"
+        );
     }
 }

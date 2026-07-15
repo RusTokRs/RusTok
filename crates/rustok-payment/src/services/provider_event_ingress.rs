@@ -36,11 +36,7 @@ pub struct PaymentProviderEventApplyError {
 }
 
 impl PaymentProviderEventApplyError {
-    pub fn new(
-        code: impl Into<String>,
-        message: impl Into<String>,
-        retryable: bool,
-    ) -> Self {
+    pub fn new(code: impl Into<String>, message: impl Into<String>, retryable: bool) -> Self {
         Self {
             code: code.into(),
             message: message.into(),
@@ -242,10 +238,9 @@ impl PaymentProviderEventIngressService {
                 .await;
             return match failure {
                 Ok(_) => Err(apply.into()),
-                Err(journal) => Err(PaymentProviderEventIngressError::ApplyAndJournal {
-                    apply,
-                    journal,
-                }),
+                Err(journal) => {
+                    Err(PaymentProviderEventIngressError::ApplyAndJournal { apply, journal })
+                }
             };
         }
 

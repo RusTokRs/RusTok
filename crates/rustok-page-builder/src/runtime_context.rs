@@ -1,10 +1,10 @@
 use fly::{
     evaluate_runtime_publish_gate, export_runtime_context_json_schema,
-    extract_runtime_context_contract, generate_runtime_context_example,
-    preflight_runtime_context, FlyResult, GrapesJsV1Codec, RuntimeContextContract,
-    RuntimeContextExample, RuntimeContextExamplePolicy, RuntimeContextJsonSchema,
-    RuntimeContextPreflight, RuntimeContextPreflightPolicy, RuntimeContextScenario,
-    RuntimePublishGateEvaluation, RuntimePublishGatePolicy,
+    extract_runtime_context_contract, generate_runtime_context_example, preflight_runtime_context,
+    FlyResult, GrapesJsV1Codec, RuntimeContextContract, RuntimeContextExample,
+    RuntimeContextExamplePolicy, RuntimeContextJsonSchema, RuntimeContextPreflight,
+    RuntimeContextPreflightPolicy, RuntimeContextScenario, RuntimePublishGateEvaluation,
+    RuntimePublishGatePolicy,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -208,21 +208,17 @@ mod tests {
 
     #[test]
     fn consumer_can_export_json_schema_and_generated_example() {
-        let schema = export_page_builder_runtime_json_schema(
-            PageBuilderRuntimeJsonSchemaRequest {
-                project_data: project_data(),
-            },
-        )
+        let schema = export_page_builder_runtime_json_schema(PageBuilderRuntimeJsonSchemaRequest {
+            project_data: project_data(),
+        })
         .expect("json schema response");
         assert_eq!(schema.schema.schema["type"], "object");
         assert!(!schema.schema.contract_hash.is_empty());
 
-        let example = generate_page_builder_runtime_example(
-            PageBuilderRuntimeExampleRequest {
-                project_data: project_data(),
-                policy: RuntimeContextExamplePolicy::default(),
-            },
-        )
+        let example = generate_page_builder_runtime_example(PageBuilderRuntimeExampleRequest {
+            project_data: project_data(),
+            policy: RuntimeContextExamplePolicy::default(),
+        })
         .expect("example response");
         assert_eq!(example.example.input_context["shop"]["currency"], "EUR");
         assert_eq!(example.example.effective_context["page"]["label"], "EUR ");
@@ -230,13 +226,11 @@ mod tests {
 
     #[test]
     fn strict_preflight_rejects_missing_required_context() {
-        let response = preflight_page_builder_runtime_context(
-            PageBuilderRuntimePreflightRequest {
-                project_data: project_data(),
-                context: json!({}),
-                policy: RuntimeContextPreflightPolicy::default(),
-            },
-        )
+        let response = preflight_page_builder_runtime_context(PageBuilderRuntimePreflightRequest {
+            project_data: project_data(),
+            context: json!({}),
+            policy: RuntimeContextPreflightPolicy::default(),
+        })
         .expect("preflight response");
         assert!(!response.preflight.accepted);
         assert_eq!(response.preflight.missing_required, 1);
@@ -246,23 +240,27 @@ mod tests {
 
     #[test]
     fn preflight_returns_effective_context_for_valid_input() {
-        let response = preflight_page_builder_runtime_context(
-            PageBuilderRuntimePreflightRequest {
-                project_data: project_data(),
-                context: json!({ "page": { "title": "Welcome" } }),
-                policy: RuntimeContextPreflightPolicy::default(),
-            },
-        )
+        let response = preflight_page_builder_runtime_context(PageBuilderRuntimePreflightRequest {
+            project_data: project_data(),
+            context: json!({ "page": { "title": "Welcome" } }),
+            policy: RuntimeContextPreflightPolicy::default(),
+        })
         .expect("preflight response");
         assert!(response.preflight.accepted);
-        assert_eq!(response.preflight.effective_context["shop"]["currency"], "EUR");
-        assert_eq!(response.preflight.effective_context["page"]["label"], "EUR Welcome");
+        assert_eq!(
+            response.preflight.effective_context["shop"]["currency"],
+            "EUR"
+        );
+        assert_eq!(
+            response.preflight.effective_context["page"]["label"],
+            "EUR Welcome"
+        );
     }
 
     #[test]
     fn consumer_publish_gate_matches_admin_runtime_policy() {
-        let response = evaluate_page_builder_runtime_publish_gate(
-            PageBuilderRuntimePublishGateRequest {
+        let response =
+            evaluate_page_builder_runtime_publish_gate(PageBuilderRuntimePublishGateRequest {
                 project_data: project_data(),
                 context: Some(json!({ "page": { "title": "Welcome" } })),
                 scenarios: vec![RuntimeContextScenario::new(
@@ -275,9 +273,8 @@ mod tests {
                     scenarios: ScenarioGateMode::All,
                     preflight: RuntimeContextPreflightPolicy::default(),
                 },
-            },
-        )
-        .expect("publish gate response");
+            })
+            .expect("publish gate response");
         assert!(response.evaluation.allowed);
     }
 }

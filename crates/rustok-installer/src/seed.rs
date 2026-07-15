@@ -208,7 +208,8 @@ mod tests {
 
     use super::{
         execute_seed_profile, SeedExecutionError, SeedExecutionRequest, SeedModulePort,
-        SeedPrincipalPort, SeedTenant, SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest,
+        SeedPrincipalPort, SeedTenant, SeedTenantPort, SeedTenantRequest, SeedUser,
+        SeedUserRequest,
     };
     use crate::SeedProfile;
 

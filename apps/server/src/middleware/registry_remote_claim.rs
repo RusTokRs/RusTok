@@ -10,8 +10,8 @@ use subtle::ConstantTimeEq;
 
 use crate::services::marketplace_catalog::{
     RegistryRunnerClaimPayload, RegistryRunnerClaimRequest, RegistryRunnerClaimResponse,
-    RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest, RegistryRunnerMutationResponse,
-    REGISTRY_MUTATION_SCHEMA_VERSION,
+    RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest,
+    RegistryRunnerMutationResponse, REGISTRY_MUTATION_SCHEMA_VERSION,
 };
 use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
 use crate::services::registry_remote_transitions::{
@@ -47,7 +47,11 @@ pub async fn claim_atomic(
 
     let executor = &ctx.settings().registry.remote_executor;
     if !executor.enabled {
-        return response(StatusCode::NOT_FOUND, "not_found", "Remote executor is disabled");
+        return response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "Remote executor is disabled",
+        );
     }
     let Some(expected) = executor.shared_token.as_deref() else {
         return response(
@@ -62,9 +66,7 @@ pub async fn claim_atomic(
         .and_then(|value| value.to_str().ok())
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    if !supplied.is_some_and(|value| {
-        bool::from(value.as_bytes().ct_eq(expected.as_bytes()))
-    }) {
+    if !supplied.is_some_and(|value| bool::from(value.as_bytes().ct_eq(expected.as_bytes()))) {
         return response(
             StatusCode::UNAUTHORIZED,
             "unauthorized",
@@ -98,11 +100,7 @@ pub async fn claim_atomic(
     }
 }
 
-async fn handle_claim(
-    ctx: &ServerRuntimeContext,
-    lease_ttl_ms: u64,
-    bytes: &[u8],
-) -> Response {
+async fn handle_claim(ctx: &ServerRuntimeContext, lease_ttl_ms: u64, bytes: &[u8]) -> Response {
     let input = match serde_json::from_slice::<RegistryRunnerClaimRequest>(bytes) {
         Ok(input) => input,
         Err(_) => {
@@ -140,8 +138,16 @@ async fn handle_claim(
     .await
     {
         Ok(claim) => claim,
-        Err(error) if error.to_string().starts_with("Unsupported validation stage") => {
-            return response(StatusCode::BAD_REQUEST, "invalid_request", &error.to_string())
+        Err(error)
+            if error
+                .to_string()
+                .starts_with("Unsupported validation stage") =>
+        {
+            return response(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                &error.to_string(),
+            )
         }
         Err(error) => {
             tracing::error!(%error, runner_id = %input.runner_id, "Atomic registry runner claim failed");

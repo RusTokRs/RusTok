@@ -97,10 +97,7 @@ impl CheckoutOrderPlanJournal {
         }
         let plan_hash = hash_payload(payload_value.clone())?;
 
-        if let Some(existing) = self
-            .find_model(tenant_id, checkout_operation_id)
-            .await?
-        {
+        if let Some(existing) = self.find_model(tenant_id, checkout_operation_id).await? {
             return validate_existing(existing, &snapshot_hash, &plan_hash);
         }
 
@@ -148,10 +145,7 @@ impl CheckoutOrderPlanJournal {
         match insert {
             Ok(model) => model_to_record(model),
             Err(insert_error) => {
-                if let Some(existing) = self
-                    .find_model(tenant_id, checkout_operation_id)
-                    .await?
-                {
+                if let Some(existing) = self.find_model(tenant_id, checkout_operation_id).await? {
                     return validate_existing(existing, &snapshot_hash, &plan_hash);
                 }
                 Err(insert_error.into())
@@ -264,9 +258,7 @@ fn normalize_hash(value: String, label: &str) -> CheckoutOrderPlanResult<String>
 fn hash_payload(value: Value) -> CheckoutOrderPlanResult<String> {
     let canonical = canonicalize_json(value);
     let payload = serde_json::to_vec(&canonical).map_err(|error| {
-        CheckoutOrderPlanError::Validation(format!(
-            "failed to encode checkout order plan: {error}"
-        ))
+        CheckoutOrderPlanError::Validation(format!("failed to encode checkout order plan: {error}"))
     })?;
     Ok(format!("{:x}", Sha256::digest(payload)))
 }
@@ -291,10 +283,8 @@ mod tests {
 
     #[test]
     fn canonical_hash_is_independent_of_object_key_order() {
-        let first = hash_payload(serde_json::json!({"b": 2, "a": {"d": 4, "c": 3}}))
-            .unwrap();
-        let second = hash_payload(serde_json::json!({"a": {"c": 3, "d": 4}, "b": 2}))
-            .unwrap();
+        let first = hash_payload(serde_json::json!({"b": 2, "a": {"d": 4, "c": 3}})).unwrap();
+        let second = hash_payload(serde_json::json!({"a": {"c": 3, "d": 4}, "b": 2})).unwrap();
         assert_eq!(first, second);
     }
 

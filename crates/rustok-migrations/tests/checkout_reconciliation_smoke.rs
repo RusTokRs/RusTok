@@ -6,9 +6,7 @@ use rustok_commerce::{
 };
 use rustok_migrations::Migrator;
 use rustok_payment::dto::CreatePaymentCollectionInput;
-use rustok_payment::{
-    BeginProviderOperation, PaymentProviderOperationJournal, PaymentService,
-};
+use rustok_payment::{BeginProviderOperation, PaymentProviderOperationJournal, PaymentService};
 use rustok_test_utils::{db::setup_test_db_with_migrations, mock_transactional_event_bus};
 use serde_json::json;
 use uuid::Uuid;
@@ -111,12 +109,7 @@ async fn manual_checkout_reconciliation_is_terminal_and_blocks_provider_executio
         .expect("checkout must enter compensation_required");
     let compensation_owner = format!("checkout-compensation-test:{}", Uuid::new_v4());
     operation_journal
-        .claim_compensation(
-            tenant_id,
-            operation.id,
-            compensation_owner.as_str(),
-            30,
-        )
+        .claim_compensation(tenant_id, operation.id, compensation_owner.as_str(), 30)
         .await
         .expect("compensation claim must not fail")
         .expect("compensation must be claimable");

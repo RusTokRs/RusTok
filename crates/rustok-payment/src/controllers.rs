@@ -306,10 +306,7 @@ pub async fn replay_dead_letter(
 }
 
 fn map_ingress_result(
-    result: Result<
-        crate::PaymentProviderEventExecution,
-        PaymentProviderEventIngressError,
-    >,
+    result: Result<crate::PaymentProviderEventExecution, PaymentProviderEventIngressError>,
 ) -> Result<(StatusCode, Json<PaymentWebhookIngressResponse>), (StatusCode, Json<Value>)> {
     match result {
         Ok(execution) => Ok((

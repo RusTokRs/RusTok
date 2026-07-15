@@ -26,9 +26,7 @@ pub struct CheckoutCompletedState {
 pub enum CheckoutFinalizationError {
     #[error(transparent)]
     Operation(#[from] CheckoutOperationError),
-    #[error(
-        "cart boundary `{stage}` failed with `{code}` (retryable={retryable}): {message}"
-    )]
+    #[error("cart boundary `{stage}` failed with `{code}` (retryable={retryable}): {message}")]
     CartBoundary {
         stage: &'static str,
         code: String,
@@ -243,7 +241,10 @@ fn validate_state(
         || state.plan.checkout_operation_id != state.operation_id
         || state.payment_collection.order_id != Some(state.order.id)
         || state.payment_collection.status != "captured"
-        || !matches!(state.order.status.as_str(), "paid" | "shipped" | "delivered")
+        || !matches!(
+            state.order.status.as_str(),
+            "paid" | "shipped" | "delivered"
+        )
         || cart_id == Uuid::nil()
     {
         return Err(CheckoutFinalizationError::Conflict(
@@ -306,10 +307,8 @@ fn cart_context(
     .with_causation_id(state.operation_id.to_string())
     .with_deadline(deadline);
     if write {
-        context = context.with_idempotency_key(format!(
-            "checkout:{}:cart:{action}",
-            state.operation_id
-        ));
+        context =
+            context.with_idempotency_key(format!("checkout:{}:cart:{action}", state.operation_id));
     }
     if let Some(channel) = state.plan.payload.channel_slug.as_deref() {
         context = context.with_channel(channel.to_string());

@@ -63,7 +63,10 @@ async fn normalized_payment_webhooks_apply_authorize_and_capture_once() {
         .await
         .expect("authorized collection must remain readable");
     assert_eq!(authorized_collection.status, "authorized");
-    assert_eq!(authorized_collection.authorized_amount, Decimal::new(2500, 2));
+    assert_eq!(
+        authorized_collection.authorized_amount,
+        Decimal::new(2500, 2)
+    );
 
     let capture_context = PaymentProviderEventContext {
         event_id: Uuid::new_v4(),

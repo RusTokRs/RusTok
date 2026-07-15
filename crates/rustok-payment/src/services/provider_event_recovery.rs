@@ -91,9 +91,7 @@ impl PaymentProviderEventRecoveryService {
         else {
             let current = self.journal.get(tenant_id, event_id).await?;
             return Ok(match current.status.as_str() {
-                PROVIDER_EVENT_PROCESSED => {
-                    PaymentProviderEventRecoveryOutcome::Processed(current)
-                }
+                PROVIDER_EVENT_PROCESSED => PaymentProviderEventRecoveryOutcome::Processed(current),
                 PROVIDER_EVENT_DEAD_LETTER => {
                     PaymentProviderEventRecoveryOutcome::DeadLetter(current)
                 }
@@ -169,10 +167,7 @@ impl PaymentProviderEventRecoveryService {
     ) -> PaymentResult<PaymentProviderEventRecoveryReport> {
         let events = self
             .journal
-            .list_retryable(
-                tenant_id,
-                limit.unwrap_or(DEFAULT_RECOVERY_BATCH_LIMIT),
-            )
+            .list_retryable(tenant_id, limit.unwrap_or(DEFAULT_RECOVERY_BATCH_LIMIT))
             .await?;
         let mut report = PaymentProviderEventRecoveryReport {
             scanned: events.len(),

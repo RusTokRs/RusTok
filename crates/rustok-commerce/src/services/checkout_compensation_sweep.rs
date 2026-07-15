@@ -12,9 +12,7 @@ use uuid::Uuid;
 
 use crate::entities::checkout_operation;
 
-use super::{
-    CheckoutCompensationError, CheckoutCompensationService, CheckoutOperationStatus,
-};
+use super::{CheckoutCompensationError, CheckoutCompensationService, CheckoutOperationStatus};
 
 const DEFAULT_SWEEP_LIMIT: u64 = 25;
 const MAX_SWEEP_LIMIT: u64 = 100;

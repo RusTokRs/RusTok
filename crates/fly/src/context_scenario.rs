@@ -70,7 +70,10 @@ pub fn validate_runtime_context_scenarios(
                 ValidationSeverity::Error,
                 "duplicate_runtime_scenario_id",
                 format!("{path}.id"),
-                format!("runtime context scenario id `{}` is duplicated", scenario.id),
+                format!(
+                    "runtime context scenario id `{}` is duplicated",
+                    scenario.id
+                ),
             ));
         }
         if scenario.label.trim().is_empty() {
@@ -78,7 +81,10 @@ pub fn validate_runtime_context_scenarios(
                 ValidationSeverity::Warning,
                 "runtime_scenario_label_empty",
                 format!("{path}.label"),
-                format!("runtime context scenario `{}` has an empty label", scenario.id),
+                format!(
+                    "runtime context scenario `{}` has an empty label",
+                    scenario.id
+                ),
             ));
         }
         if !scenario.context.is_object() {

@@ -1,6 +1,5 @@
 use crate::{
-    ComponentObject, FlyError, FlyResult, ProjectDocument, ValidationDiagnostic,
-    ValidationSeverity,
+    ComponentObject, FlyError, FlyResult, ProjectDocument, ValidationDiagnostic, ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
@@ -60,10 +59,8 @@ pub struct BindingCatalog {
 impl BindingCatalog {
     pub fn from_document(document: &ProjectDocument) -> Self {
         let mut catalog = Self::default();
-        let Some(Value::Array(entries)) = document
-            .project
-            .extensions
-            .get(FLY_RUNTIME_BINDINGS_FIELD)
+        let Some(Value::Array(entries)) =
+            document.project.extensions.get(FLY_RUNTIME_BINDINGS_FIELD)
         else {
             return catalog;
         };
@@ -115,9 +112,7 @@ pub fn apply_binding_command(
         }
         BindingCommand::Remove { binding_id } => {
             let before = catalog.bindings.len();
-            catalog
-                .bindings
-                .retain(|binding| binding.id != *binding_id);
+            catalog.bindings.retain(|binding| binding.id != *binding_id);
             if catalog.bindings.len() == before {
                 return Err(FlyError::Decode(format!(
                     "runtime binding `{binding_id}` was not found"
@@ -128,10 +123,7 @@ pub fn apply_binding_command(
     write_catalog(document, catalog)
 }
 
-pub fn materialize_bindings(
-    document: &ProjectDocument,
-    context: &Value,
-) -> BindingMaterialization {
+pub fn materialize_bindings(document: &ProjectDocument, context: &Value) -> BindingMaterialization {
     let catalog = BindingCatalog::from_document(document);
     let mut materialized = document.clone();
     let mut diagnostics = Vec::new();
@@ -298,14 +290,16 @@ fn validate_target(target: &BindingTarget) -> Result<(), String> {
         BindingTarget::Style { .. } => name
             .chars()
             .all(|character| character.is_ascii_alphabetic() || character == '-'),
-        BindingTarget::Attribute { .. } | BindingTarget::Field { .. } => name.chars().all(
-            |character| {
+        BindingTarget::Attribute { .. } | BindingTarget::Field { .. } => {
+            name.chars().all(|character| {
                 character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | ':')
-            },
-        ),
+            })
+        }
     };
     if !valid {
-        return Err(format!("{kind} name `{name}` contains unsupported characters"));
+        return Err(format!(
+            "{kind} name `{name}` contains unsupported characters"
+        ));
     }
     Ok(())
 }
@@ -358,9 +352,7 @@ fn apply_value(component: &mut ComponentObject, target: &BindingTarget, value: V
             "type" => component.component_type = value.as_str().map(ToString::to_string),
             "tagName" => component.tag_name = value.as_str().map(ToString::to_string),
             "provider" => component.provider = value.as_str().map(ToString::to_string),
-            "schemaVersion" => {
-                component.schema_version = value.as_str().map(ToString::to_string)
-            }
+            "schemaVersion" => component.schema_version = value.as_str().map(ToString::to_string),
             _ if value.is_null() => {
                 component.extensions.remove(name);
             }
@@ -376,12 +368,8 @@ fn transform_value(value: Value, transform: BindingTransform) -> Option<Value> {
         BindingTransform::Identity => Some(value),
         BindingTransform::String => Some(Value::String(scalar_text(&value))),
         BindingTransform::Json => serde_json::to_string(&value).ok().map(Value::String),
-        BindingTransform::Uppercase => {
-            Some(Value::String(scalar_text(&value).to_uppercase()))
-        }
-        BindingTransform::Lowercase => {
-            Some(Value::String(scalar_text(&value).to_lowercase()))
-        }
+        BindingTransform::Uppercase => Some(Value::String(scalar_text(&value).to_uppercase())),
+        BindingTransform::Lowercase => Some(Value::String(scalar_text(&value).to_lowercase())),
         BindingTransform::Trim => Some(Value::String(scalar_text(&value).trim().to_string())),
         BindingTransform::Boolean => Some(Value::Bool(is_truthy(&value))),
         BindingTransform::Number => match value {

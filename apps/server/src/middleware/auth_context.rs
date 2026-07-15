@@ -164,7 +164,9 @@ mod tests {
         assert!(is_human_user_self_service_path("/store/customers/me"));
         assert!(is_human_user_self_service_path("/store/carts"));
         assert!(is_human_user_self_service_path("/api/fn/ai/overview"));
-        assert!(is_human_user_self_service_path("/api/fn/ai/create-provider"));
+        assert!(is_human_user_self_service_path(
+            "/api/fn/ai/create-provider"
+        ));
         assert!(!is_human_user_self_service_path("/admin/products"));
         assert!(!is_human_user_self_service_path("/api/auth/reset/request"));
         assert!(!is_human_user_self_service_path("/api/oauth/token"));

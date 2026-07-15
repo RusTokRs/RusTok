@@ -112,14 +112,16 @@ mod tests {
         .exec(&db)
         .await
         .expect("insert permission");
-        assert!(role_permissions::Entity::insert(role_permissions::ActiveModel {
-            id: Set(rustok_core::generate_id()),
-            role_id: Set(foreign_role_id),
-            permission_id: Set(permission_id),
-        })
-        .exec(&db)
-        .await
-        .is_err());
+        assert!(
+            role_permissions::Entity::insert(role_permissions::ActiveModel {
+                id: Set(rustok_core::generate_id()),
+                role_id: Set(foreign_role_id),
+                permission_id: Set(permission_id),
+            })
+            .exec(&db)
+            .await
+            .is_err()
+        );
 
         roles::Entity::insert(roles::ActiveModel {
             id: Set(rustok_core::generate_id()),

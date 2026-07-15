@@ -240,8 +240,8 @@ async fn storefront_line_item_resolution_rejects_missing_price_for_cart_currency
 }
 
 #[tokio::test]
-async fn storefront_line_item_resolution_falls_back_to_first_product_translation_when_locale_missing()
- {
+async fn storefront_line_item_resolution_falls_back_to_first_product_translation_when_locale_missing(
+) {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
     let service = CatalogService::new(db.clone(), mock_transactional_event_bus());

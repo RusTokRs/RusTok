@@ -46,10 +46,7 @@ impl TestSitemapSubmissionAdapter {
 
 #[async_trait::async_trait]
 impl SitemapSubmissionAdapter for TestSitemapSubmissionAdapter {
-    async fn submit_sitemap_index(
-        &self,
-        endpoint: SitemapSubmitEndpoint,
-    ) -> Result<(), String> {
+    async fn submit_sitemap_index(&self, endpoint: SitemapSubmitEndpoint) -> Result<(), String> {
         self.submitted_endpoints
             .lock()
             .await
@@ -314,8 +311,7 @@ async fn load_settings_normalizes_hosts_robots_and_locale() {
         settings.sitemap_submission_endpoints,
         vec![
             "http://localhost:8080/seo/ping".to_string(),
-            "https://www.google.com/ping?sitemap=https://store.example.com/sitemap.xml"
-                .to_string()
+            "https://www.google.com/ping?sitemap=https://store.example.com/sitemap.xml".to_string()
         ]
     );
 }
@@ -499,9 +495,7 @@ async fn submit_sitemap_endpoints_reports_success_failure_and_invalid() {
 
     let message = result.expect_err("must return aggregate error");
     assert!(message.contains("1 success(es) and 2 failure(s)"));
-    assert!(
-        message.contains("endpoint `https://fail.example.com/ping` responded with status 500")
-    );
+    assert!(message.contains("endpoint `https://fail.example.com/ping` responded with status 500"));
     assert!(message.contains("invalid endpoint: invalid endpoint"));
     let submitted = adapter.submitted_endpoints().await;
     assert_eq!(
@@ -645,9 +639,7 @@ async fn submit_sitemap_endpoints_keeps_existing_sitemap_query_in_adapter_payloa
     let urls = adapter.submitted_request_urls().await;
     assert_eq!(
         urls,
-        vec![
-            "https://example.com/ping?sitemap=https://preset.example.com/sitemap.xml".to_string()
-        ]
+        vec!["https://example.com/ping?sitemap=https://preset.example.com/sitemap.xml".to_string()]
     );
 }
 
@@ -671,9 +663,7 @@ async fn submit_sitemap_endpoints_preserves_case_insensitive_sitemap_query_key()
     let urls = adapter.submitted_request_urls().await;
     assert_eq!(
         urls,
-        vec![
-            "https://example.com/ping?SITEMAP=https://preset.example.com/sitemap.xml".to_string()
-        ]
+        vec!["https://example.com/ping?SITEMAP=https://preset.example.com/sitemap.xml".to_string()]
     );
 }
 

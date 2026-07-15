@@ -63,13 +63,7 @@ pub async fn delete_page_builder_scenario_baseline(
     page_id: String,
     expected_baseline_hash: Option<String>,
 ) -> Result<bool, TransportError> {
-    scenario_baseline_cas_adapter::delete(
-        token,
-        tenant_slug,
-        page_id,
-        expected_baseline_hash,
-    )
-    .await
+    scenario_baseline_cas_adapter::delete(token, tenant_slug, page_id, expected_baseline_hash).await
 }
 
 pub async fn create_page(

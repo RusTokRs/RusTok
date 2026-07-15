@@ -223,7 +223,6 @@ pub fn is_valid_runtime_context_path(path: &str) -> bool {
             '[' => {
                 if !token.is_empty() {
                     token.clear();
-                    saw_segment = true;
                 }
                 let mut index = String::new();
                 let mut closed = false;

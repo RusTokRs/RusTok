@@ -39,10 +39,7 @@ async fn verified_normalized_facts_are_durable_before_processing_claim() {
         .expect("verified normalized provider facts must enter the inbox atomically");
 
     assert_eq!(received.status, PROVIDER_EVENT_RECEIVED);
-    assert_eq!(
-        received.event_type.as_deref(),
-        Some("payment.authorized")
-    );
+    assert_eq!(received.event_type.as_deref(), Some("payment.authorized"));
     assert_eq!(
         received.external_reference.as_deref(),
         Some("provider-payment-atomic")

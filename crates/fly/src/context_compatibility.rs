@@ -344,9 +344,7 @@ pub fn diff_runtime_context_documents(
     )
 }
 
-fn fields_by_path(
-    fields: &[ContextFieldDefinition],
-) -> BTreeMap<String, ContextFieldDefinition> {
+fn fields_by_path(fields: &[ContextFieldDefinition]) -> BTreeMap<String, ContextFieldDefinition> {
     fields
         .iter()
         .cloned()
@@ -354,9 +352,7 @@ fn fields_by_path(
         .collect()
 }
 
-fn computed_by_path(
-    computed: &[ComputedContextValue],
-) -> BTreeMap<String, ComputedContextValue> {
+fn computed_by_path(computed: &[ComputedContextValue]) -> BTreeMap<String, ComputedContextValue> {
     computed
         .iter()
         .cloned()
@@ -397,9 +393,7 @@ fn classify_compatibility(
     }
 }
 
-fn migration_hints(
-    changes: &[RuntimeContextContractChange],
-) -> Vec<RuntimeContextMigrationHint> {
+fn migration_hints(changes: &[RuntimeContextContractChange]) -> Vec<RuntimeContextMigrationHint> {
     let mut hints = Vec::new();
     for change in changes {
         match change {
@@ -440,7 +434,9 @@ fn migration_hints(
                 hints.push(RuntimeContextMigrationHint {
                     kind: RuntimeContextMigrationHintKind::ReviewTypeConversion,
                     path: path.clone(),
-                    message: format!("review existing runtime values for type conversion at `{path}`"),
+                    message: format!(
+                        "review existing runtime values for type conversion at `{path}`"
+                    ),
                     automatic: false,
                 })
             }
@@ -520,9 +516,10 @@ mod tests {
                 ..
             }]
         ));
-        assert!(diff.migration_hints.iter().any(|hint| {
-            hint.kind == RuntimeContextMigrationHintKind::SupplyRequiredValue
-        }));
+        assert!(diff
+            .migration_hints
+            .iter()
+            .any(|hint| { hint.kind == RuntimeContextMigrationHintKind::SupplyRequiredValue }));
     }
 
     #[test]

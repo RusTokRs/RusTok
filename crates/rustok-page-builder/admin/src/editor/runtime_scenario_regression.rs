@@ -335,9 +335,7 @@ fn change_summary(change: &RuntimeScenarioRenderChange) -> String {
         RuntimeScenarioRenderChange::SnapshotFormatChanged { previous, next } => {
             format!("snapshot format changed from `{previous}` to `{next}`")
         }
-        RuntimeScenarioRenderChange::SelectionChanged { .. } => {
-            "selected page changed".to_string()
-        }
+        RuntimeScenarioRenderChange::SelectionChanged { .. } => "selected page changed".to_string(),
         RuntimeScenarioRenderChange::PolicyChanged => "render policy changed".to_string(),
         RuntimeScenarioRenderChange::ScenarioAdded { scenario_id } => {
             format!("scenario `{scenario_id}` added")
@@ -349,9 +347,7 @@ fn change_summary(change: &RuntimeScenarioRenderChange) -> String {
             scenario_id,
             previous,
             next,
-        } => format!(
-            "scenario `{scenario_id}` rendered changed from {previous} to {next}"
-        ),
+        } => format!("scenario `{scenario_id}` rendered changed from {previous} to {next}"),
         RuntimeScenarioRenderChange::PageChanged { scenario_id, .. } => {
             format!("scenario `{scenario_id}` resolved to another page")
         }

@@ -4,8 +4,7 @@ use sea_orm_migration::sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-const SQLITE_LEGACY_WHEN: &str =
-    "WHEN OLD.status = 'pending' AND NEW.status = 'confirmed'";
+const SQLITE_LEGACY_WHEN: &str = "WHEN OLD.status = 'pending' AND NEW.status = 'confirmed'";
 const SQLITE_SCOPED_WHEN: &str = "WHEN OLD.status = 'pending' AND NEW.status = 'confirmed' AND json_extract(NEW.metadata, '$.checkout.operation_id') IS NULL";
 
 #[async_trait::async_trait]

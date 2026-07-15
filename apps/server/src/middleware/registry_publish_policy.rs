@@ -36,18 +36,14 @@ pub async fn enforce(mut request: Request<Body>, next: Next) -> Response {
     let ownership = match normalize_ownership(&publish.module.ownership) {
         Some(value) => value,
         None => {
-            return bad_request(
-                "Registry module ownership must be `first_party` or `third_party`",
-            )
+            return bad_request("Registry module ownership must be `first_party` or `third_party`")
         }
     };
     let trust_level = match normalize_trust_level(&publish.module.trust_level) {
         Some(value) => value,
-        None => {
-            return bad_request(
-                "Registry module trust_level must be `core`, `verified`, `unverified`, or `private`",
-            )
-        }
+        None => return bad_request(
+            "Registry module trust_level must be `core`, `verified`, `unverified`, or `private`",
+        ),
     };
     publish.module.ownership = ownership.to_string();
     publish.module.trust_level = trust_level.to_string();

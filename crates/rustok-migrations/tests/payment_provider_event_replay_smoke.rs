@@ -117,10 +117,7 @@ async fn operator_replay_uses_verified_normalized_checkpoint_without_raw_payload
     assert!(replayed.replayed);
     assert_eq!(replayed.inbox_event.status, PROVIDER_EVENT_PROCESSED);
     assert_eq!(replayed.provider_event.provider_id, "gateway");
-    assert_eq!(
-        replayed.provider_event.event_type,
-        "payment.authorized"
-    );
+    assert_eq!(replayed.provider_event.event_type, "payment.authorized");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert!(journal
         .list_dead_letters(tenant_id, 10)

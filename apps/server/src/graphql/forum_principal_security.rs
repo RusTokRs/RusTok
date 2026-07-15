@@ -85,7 +85,8 @@ fn selection_policy(
                 ));
             }
             Selection::FragmentSpread(fragment) => {
-                if let Some(definition) = document.fragments.get(&fragment.node.fragment_name.node) {
+                if let Some(definition) = document.fragments.get(&fragment.node.fragment_name.node)
+                {
                     policy.merge(selection_policy(
                         &definition.node.selection_set.node,
                         document,
@@ -185,10 +186,10 @@ impl Extension for ForumPrincipalPolicyExtension {
                 operation_name = ?operation_name,
                 "Rejected GraphQL forum operation authenticated as an insufficient service principal"
             );
-            return Response::from_errors(vec![
-                <FieldError as GraphQLError>::permission_denied(message)
-                    .into_server_error(Pos::default()),
-            ]);
+            return Response::from_errors(vec![<FieldError as GraphQLError>::permission_denied(
+                message,
+            )
+            .into_server_error(Pos::default())]);
         }
 
         next.run(ctx, operation_name).await
@@ -254,24 +255,20 @@ mod tests {
 
     #[test]
     fn classifies_topic_and_reply_moderation_separately() {
-        let topic = policy(
-            r#"mutation { deleteForumTopic(id: "00000000-0000-0000-0000-000000000001") }"#,
-        );
+        let topic =
+            policy(r#"mutation { deleteForumTopic(id: "00000000-0000-0000-0000-000000000001") }"#);
         assert!(topic.topic_moderation);
         assert!(!topic.reply_moderation);
 
-        let reply = policy(
-            r#"mutation { deleteForumReply(id: "00000000-0000-0000-0000-000000000001") }"#,
-        );
+        let reply =
+            policy(r#"mutation { deleteForumReply(id: "00000000-0000-0000-0000-000000000001") }"#);
         assert!(reply.reply_moderation);
         assert!(!reply.topic_moderation);
     }
 
     #[test]
     fn category_administration_is_not_misclassified() {
-        let policy = policy(
-            r#"mutation { createForumCategory(input: {}) { id } }"#,
-        );
+        let policy = policy(r#"mutation { createForumCategory(input: {}) { id } }"#);
         assert!(!policy.human_only);
         assert!(!policy.personal_projection);
         assert!(!policy.topic_moderation);

@@ -1,8 +1,8 @@
 use super::*;
 
 #[tokio::test]
-async fn store_payment_collection_transport_reuses_active_collection_and_preserves_cart_context_metadata()
- {
+async fn store_payment_collection_transport_reuses_active_collection_and_preserves_cart_context_metadata(
+) {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
     let tenant_id = Uuid::new_v4();
@@ -1432,11 +1432,9 @@ async fn store_order_transport_returns_customer_owned_order_after_checkout() {
     assert!(order["tax_lines"][0]["line_item_id"].as_str().is_some());
     assert!(order["tax_lines"][0]["shipping_option_id"].is_null());
     assert!(order["tax_lines"][1]["line_item_id"].is_null());
-    assert!(
-        order["tax_lines"][1]["shipping_option_id"]
-            .as_str()
-            .is_some()
-    );
+    assert!(order["tax_lines"][1]["shipping_option_id"]
+        .as_str()
+        .is_some());
 }
 
 #[tokio::test]

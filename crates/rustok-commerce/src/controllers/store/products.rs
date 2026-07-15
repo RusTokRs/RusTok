@@ -1,13 +1,13 @@
 use axum::{
-    Json,
     extract::{Path, Query, State},
+    Json,
 };
 use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
-use rustok_cart::{CartStorefrontPort, CartStorefrontReadRequest, in_process_cart_storefront_port};
+use rustok_cart::{in_process_cart_storefront_port, CartStorefrontPort, CartStorefrontReadRequest};
 use rustok_fulfillment::FulfillmentService;
 use rustok_product::{
-    CatalogService,
     entities::{product, product_translation},
+    CatalogService,
 };
 use rustok_region::{RegionListRequest, RegionReadPort};
 use rustok_web::{HttpError, HttpResult};
@@ -18,7 +18,7 @@ use super::{
     super::common::{PaginatedResponse, PaginationMeta},
     StoreContextQuery, StoreListProductsParams,
 };
-use crate::controllers::{CommerceHttpRuntime, products::ProductListItem};
+use crate::controllers::{products::ProductListItem, CommerceHttpRuntime};
 use crate::{
     dto::{ProductResponse, RegionResponse, ShippingOptionResponse},
     storefront_channel::{

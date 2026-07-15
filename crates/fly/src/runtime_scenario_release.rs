@@ -34,10 +34,7 @@ impl RuntimeScenarioReleaseBaseline {
             source_project_hash: document.hash().hex(),
             scenarios: scenarios.to_vec(),
             snapshot: RuntimeScenarioRenderSnapshot::capture(
-                document,
-                selection,
-                policy,
-                scenarios,
+                document, selection, policy, scenarios,
             ),
             baseline_hash: String::new(),
         };
@@ -472,6 +469,9 @@ mod tests {
             RuntimeScenarioReleasePolicy::block_broken(),
         );
         assert!(!evaluation.allowed);
-        assert_eq!(evaluation.status, RuntimeScenarioReleaseStatus::BaselineMissing);
+        assert_eq!(
+            evaluation.status,
+            RuntimeScenarioReleaseStatus::BaselineMissing
+        );
     }
 }

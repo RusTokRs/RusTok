@@ -14,7 +14,7 @@ use uuid::Uuid;
 use super::{
     CheckoutFulfillmentPlan, CheckoutOperationCheckpoint, CheckoutOperationError,
     CheckoutOperationJournal, CheckoutOperationStage, CheckoutOperationStatus,
-    CheckoutPaymentCapturedState, CheckoutOrderPlanRecord, DEFAULT_CHECKOUT_LEASE_SECONDS,
+    CheckoutOrderPlanRecord, CheckoutPaymentCapturedState, DEFAULT_CHECKOUT_LEASE_SECONDS,
 };
 
 const MANUAL_PROVIDER_ID: &str = "manual";
@@ -197,12 +197,8 @@ impl CheckoutFulfillmentStageExecutor {
                 index,
                 fulfillment_key.as_str(),
             )?;
-            let existing_id = find_fulfillment_id_by_key(
-                &self.db,
-                tenant_id,
-                fulfillment_key.as_str(),
-            )
-            .await?;
+            let existing_id =
+                find_fulfillment_id_by_key(&self.db, tenant_id, fulfillment_key.as_str()).await?;
             let fulfillment = match existing_id {
                 Some(fulfillment_id) => {
                     self.fulfillment_service
@@ -470,8 +466,7 @@ fn validate_fulfillment(
     let operation_id = plan.checkout_operation_id.to_string();
     if checkout.get("operation_id").and_then(Value::as_str) != Some(operation_id.as_str())
         || checkout.get("fulfillment_key").and_then(Value::as_str) != Some(fulfillment_key)
-        || checkout.get("order_plan_hash").and_then(Value::as_str)
-            != Some(plan.plan_hash.as_str())
+        || checkout.get("order_plan_hash").and_then(Value::as_str) != Some(plan.plan_hash.as_str())
         || checkout.get("fulfillment_index").and_then(Value::as_u64) != Some(index as u64)
     {
         return Err(CheckoutFulfillmentStageError::Conflict(format!(

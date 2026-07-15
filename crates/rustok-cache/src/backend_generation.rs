@@ -90,11 +90,7 @@ impl BackendGenerationState {
         Ok(next)
     }
 
-    fn physical_key(
-        &self,
-        snapshot: CacheBackendGenerationSnapshot,
-        logical_key: &str,
-    ) -> String {
+    fn physical_key(&self, snapshot: CacheBackendGenerationSnapshot, logical_key: &str) -> String {
         if snapshot.trusted {
             format!("g-{}:{logical_key}", snapshot.generation)
         } else {
@@ -733,10 +729,7 @@ mod tests {
         cache_backend_generation_snapshot(&conflicting_alias).unwrap();
 
         assert!(matches!(
-            bind_cache_backend_generation_aliases(
-                &canonical,
-                &[&new_alias, &conflicting_alias]
-            ),
+            bind_cache_backend_generation_aliases(&canonical, &[&new_alias, &conflicting_alias]),
             Err(CacheBackendGenerationError::AliasAlreadyBound { .. })
         ));
 

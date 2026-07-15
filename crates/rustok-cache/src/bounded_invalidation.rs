@@ -348,9 +348,7 @@ mod tests {
         );
         assert_eq!(tracker.last_generation("tenant.invalidate"), Some(3));
         assert_eq!(
-            tracker
-                .acknowledge_applied("tenant.invalidate", 3)
-                .unwrap(),
+            tracker.acknowledge_applied("tenant.invalidate", 3).unwrap(),
             Some(3)
         );
         tracker.acknowledge_applied("tenant.invalidate", 4).unwrap();

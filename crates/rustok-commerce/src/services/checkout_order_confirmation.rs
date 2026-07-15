@@ -28,10 +28,7 @@ pub struct CheckoutOrderConfirmationExecutor {
 }
 
 impl CheckoutOrderConfirmationExecutor {
-    pub fn new(
-        db: sea_orm::DatabaseConnection,
-        event_bus: TransactionalEventBus,
-    ) -> Self {
+    pub fn new(db: sea_orm::DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             order_service: OrderService::new(db.clone(), event_bus),
             operation_journal: CheckoutOperationJournal::new(db),
@@ -80,7 +77,10 @@ impl CheckoutOrderConfirmationExecutor {
         validate_order_identity(&order, operation_id)?;
 
         if operation.stage == CheckoutOperationStage::PaymentReady.as_str() {
-            if !matches!(order.status.as_str(), "confirmed" | "paid" | "shipped" | "delivered") {
+            if !matches!(
+                order.status.as_str(),
+                "confirmed" | "paid" | "shipped" | "delivered"
+            ) {
                 return Err(CheckoutOrderConfirmationError::Conflict(format!(
                     "checkout operation {} is payment_ready but order {} is `{}`",
                     operation.id, order.id, order.status

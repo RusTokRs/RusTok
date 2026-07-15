@@ -22,12 +22,9 @@ fn rbac_integrity_migration_is_registered_once_through_auth_module() {
         "crates/rustok-auth/src/migrations/m20260714_900001_enforce_rbac_relation_tenant_integrity.rs",
     );
 
-    assert!(registry.contains(
-        "mod m20260714_900001_enforce_rbac_relation_tenant_integrity;"
-    ));
-    assert!(registry.contains(
-        "Box::new(m20260714_900001_enforce_rbac_relation_tenant_integrity::Migration)"
-    ));
+    assert!(registry.contains("mod m20260714_900001_enforce_rbac_relation_tenant_integrity;"));
+    assert!(registry
+        .contains("Box::new(m20260714_900001_enforce_rbac_relation_tenant_integrity::Migration)"));
     assert!(!root
         .join(
             "crates/rustok-migrations/src/m20260714_900001_enforce_rbac_relation_tenant_integrity.rs"
@@ -41,7 +38,10 @@ fn rbac_integrity_migration_is_registered_once_through_auth_module() {
         "trg_rbac_roles_tenant_update",
         "trg_rbac_permissions_tenant_update",
     ] {
-        assert!(migration.contains(required), "migration must retain {required}");
+        assert!(
+            migration.contains(required),
+            "migration must retain {required}"
+        );
     }
 }
 
@@ -54,9 +54,9 @@ fn durable_rbac_generation_migration_is_registered_once_through_auth_module() {
     );
 
     assert!(registry.contains("mod m20260714_900002_create_rbac_invalidation_state;"));
-    assert!(registry.contains(
-        "Box::new(m20260714_900002_create_rbac_invalidation_state::Migration)"
-    ));
+    assert!(
+        registry.contains("Box::new(m20260714_900002_create_rbac_invalidation_state::Migration)")
+    );
     assert!(!root
         .join("crates/rustok-migrations/src/m20260714_900002_create_rbac_invalidation_state.rs")
         .exists());
@@ -66,7 +66,10 @@ fn durable_rbac_generation_migration_is_registered_once_through_auth_module() {
         "Generation",
         "UpdatedAt",
     ] {
-        assert!(migration.contains(required), "migration must retain {required}");
+        assert!(
+            migration.contains(required),
+            "migration must retain {required}"
+        );
     }
 }
 

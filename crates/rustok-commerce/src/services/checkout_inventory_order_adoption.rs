@@ -31,8 +31,7 @@ pub enum CheckoutInventoryOrderAdoptionError {
     Database(#[from] sea_orm::DbErr),
 }
 
-pub type CheckoutInventoryOrderAdoptionResult<T> =
-    Result<T, CheckoutInventoryOrderAdoptionError>;
+pub type CheckoutInventoryOrderAdoptionResult<T> = Result<T, CheckoutInventoryOrderAdoptionError>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CheckoutInventoryOrderAdoption {
@@ -103,7 +102,9 @@ impl CheckoutInventoryOrderAdoptionService {
                     operation.id
                 )));
             }
-            return self.validate_adopted_rows(tenant_id, operation_id, order).await;
+            return self
+                .validate_adopted_rows(tenant_id, operation_id, order)
+                .await;
         }
 
         if operation.stage != CheckoutOperationStage::InventoryReserved.as_str() {
@@ -174,12 +175,14 @@ impl CheckoutInventoryOrderAdoptionService {
             .map(|binding| (binding.cart_line_item_id, *binding))
             .collect::<HashMap<_, _>>();
         for mapping in &mappings {
-            let binding = by_cart_line.get(&mapping.cart_line_item_id).ok_or_else(|| {
-                CheckoutInventoryOrderAdoptionError::Conflict(format!(
-                    "reservation {} has no matching order line for cart line {}",
-                    mapping.reservation_id, mapping.cart_line_item_id
-                ))
-            })?;
+            let binding = by_cart_line
+                .get(&mapping.cart_line_item_id)
+                .ok_or_else(|| {
+                    CheckoutInventoryOrderAdoptionError::Conflict(format!(
+                        "reservation {} has no matching order line for cart line {}",
+                        mapping.reservation_id, mapping.cart_line_item_id
+                    ))
+                })?;
             validate_mapping(mapping, tenant_id, operation_id, binding)?;
         }
 

@@ -3,8 +3,7 @@ use crate::i18n::t;
 use fly::{
     diff_runtime_context_contracts, migrate_runtime_context, ContractChangeImpact,
     RuntimeContextContractChange, RuntimeContextContractSnapshot, RuntimeContextMigrationPolicy,
-    RuntimeContextMigrationResult, RuntimeContractCompatibility,
-    FLY_RUNTIME_CONTEXT_CONTRACT_V1,
+    RuntimeContextMigrationResult, RuntimeContractCompatibility, FLY_RUNTIME_CONTEXT_CONTRACT_V1,
 };
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;

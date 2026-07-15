@@ -30,9 +30,7 @@ fn tenant_generation_validates_deterministic_fields_before_bump() {
         .find("successful_rotations.observe(envelope.id)")
         .expect("successful rotation must commit its event ID");
 
-    assert!(
-        timestamp < preflight && preflight < bump && bump < publish && publish < commit
-    );
+    assert!(timestamp < preflight && preflight < bump && bump < publish && publish < commit);
     assert!(generation.contains("PREFLIGHT_GENERATION: u64 = 1"));
     assert!(generation.contains("malformed_envelope_does_not_advance_generation"));
 }

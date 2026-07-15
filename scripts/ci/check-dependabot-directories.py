@@ -10,6 +10,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONFIG = ROOT / ".github" / "dependabot.yml"
 DIRECTORY_RE = re.compile(r"^\s*directory:\s*(.+?)\s*$")
+PACKAGE_ECOSYSTEM_RE = re.compile(r"^\s*-\s*package-ecosystem:\s*(.+?)\s*$")
 
 
 def parse_directory_value(raw_value: str) -> str:
@@ -90,11 +91,16 @@ def main() -> int:
         return 1
 
     missing: list[str] = []
-    seen: set[str] = set()
-    duplicates: set[str] = set()
+    seen: set[tuple[str, str]] = set()
+    duplicates: set[tuple[str, str]] = set()
     invalid: set[str] = set()
     found_directory_entries = 0
+    ecosystem = ""
     for line in config.read_text(encoding="utf-8").splitlines():
+        ecosystem_match = PACKAGE_ECOSYSTEM_RE.match(line)
+        if ecosystem_match:
+            ecosystem = parse_directory_value(ecosystem_match.group(1))
+            continue
         match = DIRECTORY_RE.match(line)
         if not match:
             continue
@@ -104,10 +110,11 @@ def main() -> int:
         if not directory or not is_safe_repo_relative_path(directory):
             invalid.add(raw_directory)
             continue
-        if directory in seen:
-            duplicates.add(directory)
+        key = (ecosystem, directory)
+        if key in seen:
+            duplicates.add(key)
         else:
-            seen.add(directory)
+            seen.add(key)
         path = root / directory.lstrip("/")
         if not path.is_dir():
             missing.append(directory)
@@ -127,8 +134,8 @@ def main() -> int:
 
     if duplicates:
         print("Dependabot directories contain duplicates:", file=sys.stderr)
-        for directory in sorted(duplicates):
-            print(f"  - {directory}", file=sys.stderr)
+        for ecosystem, directory in sorted(duplicates):
+            print(f"  - {ecosystem}: {directory}", file=sys.stderr)
         return 1
 
     if missing:

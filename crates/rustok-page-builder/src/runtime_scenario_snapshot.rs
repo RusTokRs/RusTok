@@ -1,6 +1,6 @@
 use fly::{
-    diff_runtime_scenario_render_snapshots, FlyResult, GrapesJsV1Codec, PageSelection, RenderPolicy,
-    RuntimeContextScenario, RuntimeScenarioRenderDiff, RuntimeScenarioRenderSnapshot,
+    diff_runtime_scenario_render_snapshots, FlyResult, GrapesJsV1Codec, PageSelection,
+    RenderPolicy, RuntimeContextScenario, RuntimeScenarioRenderDiff, RuntimeScenarioRenderSnapshot,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -141,16 +141,15 @@ mod tests {
 
     #[test]
     fn consumer_can_snapshot_and_diff_scenario_outputs() {
-        let previous = snapshot_page_builder_runtime_scenarios(
-            PageBuilderRuntimeScenarioSnapshotRequest {
+        let previous =
+            snapshot_page_builder_runtime_scenarios(PageBuilderRuntimeScenarioSnapshotRequest {
                 project_data: project_data(),
                 selection: PageSelection::First,
                 policy: RenderPolicy::default(),
                 scenarios: scenarios("Welcome"),
-            },
-        )
-        .expect("previous snapshot")
-        .snapshot;
+            })
+            .expect("previous snapshot")
+            .snapshot;
         let response = diff_page_builder_runtime_scenario_project(
             PageBuilderRuntimeScenarioProjectDiffRequest {
                 previous,
@@ -170,15 +169,14 @@ mod tests {
 
     #[test]
     fn snapshot_response_roundtrips() {
-        let response = snapshot_page_builder_runtime_scenarios(
-            PageBuilderRuntimeScenarioSnapshotRequest {
+        let response =
+            snapshot_page_builder_runtime_scenarios(PageBuilderRuntimeScenarioSnapshotRequest {
                 project_data: project_data(),
                 selection: PageSelection::First,
                 policy: RenderPolicy::default(),
                 scenarios: scenarios("Welcome"),
-            },
-        )
-        .expect("snapshot response");
+            })
+            .expect("snapshot response");
         let value = serde_json::to_value(&response).expect("serialize response");
         let decoded: PageBuilderRuntimeScenarioSnapshotResponse =
             serde_json::from_value(value).expect("deserialize response");

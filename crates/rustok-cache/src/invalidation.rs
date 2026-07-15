@@ -118,10 +118,7 @@ pub enum CacheInvalidationPayloadError {
     PayloadTooLarge { length: usize, maximum: usize },
     ZeroGeneration,
     OffsetRegressed { current: u64, proposed: u64 },
-    AcknowledgementNotContiguous {
-        current: Option<u64>,
-        proposed: u64,
-    },
+    AcknowledgementNotContiguous { current: Option<u64>, proposed: u64 },
     MalformedPayload,
     UnsupportedVersion(String),
     InvalidGeneration,
@@ -299,19 +296,23 @@ impl CacheInvalidationGapTracker {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(current) = generations.get(&channel).copied() else {
-            return Err(CacheInvalidationPayloadError::AcknowledgementNotContiguous {
-                current: None,
-                proposed,
-            });
+            return Err(
+                CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                    current: None,
+                    proposed,
+                },
+            );
         };
         if proposed == current {
             return Ok(Some(current));
         }
         if current.checked_add(1) != Some(proposed) {
-            return Err(CacheInvalidationPayloadError::AcknowledgementNotContiguous {
-                current: Some(current),
-                proposed,
-            });
+            return Err(
+                CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                    current: Some(current),
+                    proposed,
+                },
+            );
         }
         Ok(generations.insert(channel, proposed))
     }

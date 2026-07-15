@@ -64,26 +64,16 @@ pub async fn enforce(
 
     match operation {
         RegistryOperation::PublishStatus => {
-            if let Err(response) = authorize_user_access(
-                &ctx,
-                &request,
-                &publish_request,
-                PublishAccess::Manage,
-            )
-            .await
+            if let Err(response) =
+                authorize_user_access(&ctx, &request, &publish_request, PublishAccess::Manage).await
             {
                 return response;
             }
             next.run(request).await
         }
         RegistryOperation::ArtifactUpload => {
-            if let Err(response) = authorize_user_access(
-                &ctx,
-                &request,
-                &publish_request,
-                PublishAccess::Manage,
-            )
-            .await
+            if let Err(response) =
+                authorize_user_access(&ctx, &request, &publish_request, PublishAccess::Manage).await
             {
                 return response;
             }
@@ -95,13 +85,9 @@ pub async fn enforce(
         }
         RegistryOperation::ArtifactDownload => {
             if !runner_token_is_valid(&ctx, &request) {
-                if let Err(response) = authorize_user_access(
-                    &ctx,
-                    &request,
-                    &publish_request,
-                    PublishAccess::Manage,
-                )
-                .await
+                if let Err(response) =
+                    authorize_user_access(&ctx, &request, &publish_request, PublishAccess::Manage)
+                        .await
                 {
                     return response;
                 }
@@ -109,26 +95,16 @@ pub async fn enforce(
             serve_artifact(&ctx, &publish_request).await
         }
         RegistryOperation::ManageMutation => {
-            if let Err(response) = authorize_user_access(
-                &ctx,
-                &request,
-                &publish_request,
-                PublishAccess::Manage,
-            )
-            .await
+            if let Err(response) =
+                authorize_user_access(&ctx, &request, &publish_request, PublishAccess::Manage).await
             {
                 return response;
             }
             next.run(request).await
         }
         RegistryOperation::ReviewMutation => {
-            if let Err(response) = authorize_user_access(
-                &ctx,
-                &request,
-                &publish_request,
-                PublishAccess::Review,
-            )
-            .await
+            if let Err(response) =
+                authorize_user_access(&ctx, &request, &publish_request, PublishAccess::Review).await
             {
                 return response;
             }
@@ -203,7 +179,8 @@ async fn validate_owner_transfer(
         dry_run = transfer.dry_run,
         "Validated registry owner transfer target"
     );
-    next.run(Request::from_parts(parts, Body::from(bytes))).await
+    next.run(Request::from_parts(parts, Body::from(bytes)))
+        .await
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -475,12 +452,8 @@ mod tests {
         assert!(is_remote_runner_path(
             "/v2/catalog/runner/claim_1/heartbeat"
         ));
-        assert!(is_remote_runner_path(
-            "/v2/catalog/runner/claim_1/complete"
-        ));
-        assert!(is_remote_runner_path(
-            "/v2/catalog/runner/claim_1/fail"
-        ));
+        assert!(is_remote_runner_path("/v2/catalog/runner/claim_1/complete"));
+        assert!(is_remote_runner_path("/v2/catalog/runner/claim_1/fail"));
         assert!(!is_remote_runner_path("/v2/catalog/runner/claim_1"));
         assert!(!is_remote_runner_path("/v2/catalog/publish/rpr_1"));
     }

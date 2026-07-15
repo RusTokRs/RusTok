@@ -196,7 +196,8 @@ impl CheckoutPaymentStageExecutor {
                         operation_id,
                         plan.plan_hash.as_str(),
                     )?;
-                    if captured.status != "captured" || captured.captured_amount != order.total_amount
+                    if captured.status != "captured"
+                        || captured.captured_amount != order.total_amount
                     {
                         return Err(CheckoutPaymentStageError::Conflict(format!(
                             "payment collection {} did not capture the full order amount",
@@ -291,12 +292,7 @@ impl CheckoutPaymentStageExecutor {
                     plan.plan_hash.as_str(),
                 )?;
                 self.payment_service
-                    .attach_order_to_collection(
-                        tenant_id,
-                        existing.id,
-                        order.id,
-                        metadata,
-                    )
+                    .attach_order_to_collection(tenant_id, existing.id, order.id, metadata)
                     .await?
             }
             None => {
@@ -353,7 +349,10 @@ fn validate_order_plan(
             order.id, operation_id
         )));
     }
-    if !matches!(order.status.as_str(), "confirmed" | "paid" | "shipped" | "delivered") {
+    if !matches!(
+        order.status.as_str(),
+        "confirmed" | "paid" | "shipped" | "delivered"
+    ) {
         return Err(CheckoutPaymentStageError::Conflict(format!(
             "order {} is `{}` before payment stages",
             order.id, order.status
@@ -463,7 +462,10 @@ fn payment_stage_metadata(
         "order_plan_hash".to_string(),
         Value::String(plan_hash.to_string()),
     );
-    checkout.insert("payment_stage".to_string(), Value::String(stage.to_string()));
+    checkout.insert(
+        "payment_stage".to_string(),
+        Value::String(stage.to_string()),
+    );
     root.insert("checkout".to_string(), Value::Object(checkout));
     root.insert(
         "commerce_orchestration".to_string(),

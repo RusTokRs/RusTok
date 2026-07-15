@@ -71,10 +71,10 @@ mod tests {
     #[test]
     fn consumer_can_migrate_context_between_contracts() {
         let previous_project = project("string", false, None);
-        let previous_document = GrapesJsV1Codec::decode_value(previous_project)
-            .expect("previous document");
-        let response = migrate_page_builder_runtime_context(
-            PageBuilderRuntimeContextMigrationRequest {
+        let previous_document =
+            GrapesJsV1Codec::decode_value(previous_project).expect("previous document");
+        let response =
+            migrate_page_builder_runtime_context(PageBuilderRuntimeContextMigrationRequest {
                 previous_contract: RuntimeContextContractSnapshot::from_document(
                     &previous_document,
                 ),
@@ -84,9 +84,8 @@ mod tests {
                     coerce_scalars: true,
                     ..RuntimeContextMigrationPolicy::default()
                 },
-            },
-        )
-        .expect("migration response");
+            })
+            .expect("migration response");
         assert!(response.migration.accepted);
         assert_eq!(response.migration.migrated_context["count"], 42.0);
         assert!(response.migration.operations.iter().any(|operation| {
@@ -97,19 +96,18 @@ mod tests {
     #[test]
     fn migration_response_preserves_rejected_result() {
         let previous_project = project("string", false, None);
-        let previous_document = GrapesJsV1Codec::decode_value(previous_project)
-            .expect("previous document");
-        let response = migrate_page_builder_runtime_context(
-            PageBuilderRuntimeContextMigrationRequest {
+        let previous_document =
+            GrapesJsV1Codec::decode_value(previous_project).expect("previous document");
+        let response =
+            migrate_page_builder_runtime_context(PageBuilderRuntimeContextMigrationRequest {
                 previous_contract: RuntimeContextContractSnapshot::from_document(
                     &previous_document,
                 ),
                 next_project_data: project("string", true, None),
                 context: json!({}),
                 policy: RuntimeContextMigrationPolicy::default(),
-            },
-        )
-        .expect("migration response");
+            })
+            .expect("migration response");
         assert!(!response.migration.accepted);
     }
 }

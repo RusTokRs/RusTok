@@ -156,12 +156,7 @@ impl StagedCheckoutService {
             Err(error) => {
                 let checkout = checkout_port_error("prepare_atomic_cart_checkout", error);
                 return Err(self
-                    .persist_checkout_failure(
-                        tenant_id,
-                        claimed.id,
-                        lease_owner,
-                        checkout,
-                    )
+                    .persist_checkout_failure(tenant_id, claimed.id, lease_owner, checkout)
                     .await);
             }
         };
@@ -186,12 +181,7 @@ impl StagedCheckoutService {
                 "prepared cart snapshot changed after checkout lock".to_string(),
             );
             return Err(self
-                .persist_checkout_failure(
-                    tenant_id,
-                    claimed.id,
-                    lease_owner,
-                    checkout,
-                )
+                .persist_checkout_failure(tenant_id, claimed.id, lease_owner, checkout)
                 .await);
         }
 
@@ -204,12 +194,7 @@ impl StagedCheckoutService {
                 Ok(plan) => Some(plan),
                 Err(checkout) => {
                     return Err(self
-                        .persist_checkout_failure(
-                            tenant_id,
-                            claimed.id,
-                            lease_owner,
-                            checkout,
-                        )
+                        .persist_checkout_failure(tenant_id, claimed.id, lease_owner, checkout)
                         .await);
                 }
             }
@@ -231,12 +216,7 @@ impl StagedCheckoutService {
         {
             Ok(completed) => Ok(completed_response(completed)),
             Err(pipeline) => Err(self
-                .persist_pipeline_failure(
-                    tenant_id,
-                    claimed.id,
-                    lease_owner,
-                    pipeline,
-                )
+                .persist_pipeline_failure(tenant_id, claimed.id, lease_owner, pipeline)
                 .await),
         }
     }
@@ -354,7 +334,9 @@ enum FailureDisposition {
 fn checkout_failure_disposition(error: &CheckoutError) -> FailureDisposition {
     match error {
         CheckoutError::CheckoutInProgress(_) => FailureDisposition::Retryable,
-        CheckoutError::BoundaryFailure { retryable: true, .. } => FailureDisposition::Retryable,
+        CheckoutError::BoundaryFailure {
+            retryable: true, ..
+        } => FailureDisposition::Retryable,
         CheckoutError::Validation(_)
         | CheckoutError::CartNotReady(_)
         | CheckoutError::EmptyCart(_)
@@ -453,10 +435,8 @@ mod tests {
             metadata,
         };
         assert_eq!(
-            checkout_request_hash(tenant_id, &input(serde_json::json!({"b": 2, "a": 1})))
-                .unwrap(),
-            checkout_request_hash(tenant_id, &input(serde_json::json!({"a": 1, "b": 2})))
-                .unwrap()
+            checkout_request_hash(tenant_id, &input(serde_json::json!({"b": 2, "a": 1}))).unwrap(),
+            checkout_request_hash(tenant_id, &input(serde_json::json!({"a": 1, "b": 2}))).unwrap()
         );
     }
 

@@ -92,12 +92,8 @@ impl DynamicCatalog {
                 .extensions
                 .get(FLY_RUNTIME_CONDITIONS_FIELD),
         );
-        let (repeaters, unknown_repeater_entries) = decode_entries(
-            document
-                .project
-                .extensions
-                .get(FLY_RUNTIME_REPEATERS_FIELD),
-        );
+        let (repeaters, unknown_repeater_entries) =
+            decode_entries(document.project.extensions.get(FLY_RUNTIME_REPEATERS_FIELD));
         Self {
             conditions,
             repeaters,
@@ -123,12 +119,21 @@ pub fn apply_dynamic_command(
     let mut catalog = DynamicCatalog::from_document(document);
     match command {
         DynamicCommand::UpsertCondition { condition } => {
-            validate_definition_identity(document, &condition.id, &condition.component_id, &condition.path)?;
-            upsert_by_id(&mut catalog.conditions, condition.clone(), |value| &value.id);
+            validate_definition_identity(
+                document,
+                &condition.id,
+                &condition.component_id,
+                &condition.path,
+            )?;
+            upsert_by_id(&mut catalog.conditions, condition.clone(), |value| {
+                &value.id
+            });
         }
         DynamicCommand::RemoveCondition { condition_id } => {
             let before = catalog.conditions.len();
-            catalog.conditions.retain(|condition| condition.id != *condition_id);
+            catalog
+                .conditions
+                .retain(|condition| condition.id != *condition_id);
             if catalog.conditions.len() == before {
                 return Err(FlyError::Decode(format!(
                     "runtime condition `{condition_id}` was not found"
@@ -136,8 +141,16 @@ pub fn apply_dynamic_command(
             }
         }
         DynamicCommand::UpsertRepeater { repeater } => {
-            validate_definition_identity(document, &repeater.id, &repeater.component_id, &repeater.path)?;
-            if repeater.limit.is_some_and(|limit| limit > MAX_REPEATER_LIMIT) {
+            validate_definition_identity(
+                document,
+                &repeater.id,
+                &repeater.component_id,
+                &repeater.path,
+            )?;
+            if repeater
+                .limit
+                .is_some_and(|limit| limit > MAX_REPEATER_LIMIT)
+            {
                 return Err(FlyError::Decode(format!(
                     "runtime repeater limit must not exceed {MAX_REPEATER_LIMIT}"
                 )));
@@ -146,7 +159,9 @@ pub fn apply_dynamic_command(
         }
         DynamicCommand::RemoveRepeater { repeater_id } => {
             let before = catalog.repeaters.len();
-            catalog.repeaters.retain(|repeater| repeater.id != *repeater_id);
+            catalog
+                .repeaters
+                .retain(|repeater| repeater.id != *repeater_id);
             if catalog.repeaters.len() == before {
                 return Err(FlyError::Decode(format!(
                     "runtime repeater `{repeater_id}` was not found"
@@ -157,10 +172,7 @@ pub fn apply_dynamic_command(
     write_catalog(document, catalog)
 }
 
-pub fn materialize_runtime(
-    document: &ProjectDocument,
-    context: &Value,
-) -> RuntimeMaterialization {
+pub fn materialize_runtime(document: &ProjectDocument, context: &Value) -> RuntimeMaterialization {
     let catalog = DynamicCatalog::from_document(document);
     let mut materialized = document.clone();
     let mut diagnostics = Vec::new();
@@ -196,12 +208,7 @@ pub fn materialize_runtime(
             ));
             continue;
         }
-        match expand_repeater(
-            &mut materialized,
-            repeater,
-            context,
-            &original_styles,
-        ) {
+        match expand_repeater(&mut materialized, repeater, context, &original_styles) {
             Ok(count) => repeated_nodes = repeated_nodes.saturating_add(count),
             Err(error) => diagnostics.push(runtime_diagnostic(
                 ValidationSeverity::Warning,
@@ -236,8 +243,10 @@ pub fn validate_dynamic_definitions(document: &ProjectDocument) -> Vec<Validatio
             &mut ids,
             &mut diagnostics,
         );
-        if matches!(condition.operator, ConditionOperator::Equals | ConditionOperator::NotEquals | ConditionOperator::Contains)
-            && condition.expected.is_none()
+        if matches!(
+            condition.operator,
+            ConditionOperator::Equals | ConditionOperator::NotEquals | ConditionOperator::Contains
+        ) && condition.expected.is_none()
         {
             diagnostics.push(runtime_diagnostic(
                 ValidationSeverity::Warning,
@@ -288,7 +297,10 @@ pub fn validate_dynamic_definitions(document: &ProjectDocument) -> Vec<Validatio
                 format!("repeater `{}` has a zero item limit", repeater.id),
             ));
         }
-        if repeater.limit.is_some_and(|limit| limit > MAX_REPEATER_LIMIT) {
+        if repeater
+            .limit
+            .is_some_and(|limit| limit > MAX_REPEATER_LIMIT)
+        {
             diagnostics.push(runtime_diagnostic(
                 ValidationSeverity::Error,
                 "runtime_repeater_limit_exceeded",
@@ -379,7 +391,9 @@ where
 {
     let mut entries = known
         .into_iter()
-        .map(|entry| serde_json::to_value(entry).map_err(|error| FlyError::Encode(error.to_string())))
+        .map(|entry| {
+            serde_json::to_value(entry).map_err(|error| FlyError::Encode(error.to_string()))
+        })
         .collect::<FlyResult<Vec<_>>>()?;
     entries.extend(unknown);
     if entries.is_empty() {
@@ -474,9 +488,15 @@ fn evaluate_condition(condition: &RuntimeCondition, context: &Value) -> bool {
         ConditionOperator::NotEquals => resolved != condition.expected.as_ref(),
         ConditionOperator::Truthy => resolved.is_some_and(is_truthy),
         ConditionOperator::Falsy => resolved.is_none_or(|value| !is_truthy(value)),
-        ConditionOperator::Contains => resolved.is_some_and(|value| contains(value, condition.expected.as_ref())),
+        ConditionOperator::Contains => {
+            resolved.is_some_and(|value| contains(value, condition.expected.as_ref()))
+        }
     };
-    if condition.invert { !matched } else { matched }
+    if condition.invert {
+        !matched
+    } else {
+        matched
+    }
 }
 
 fn contains(value: &Value, expected: Option<&Value>) -> bool {
@@ -940,7 +960,9 @@ mod tests {
         );
         assert_eq!(materialized.repeated_nodes, 2);
         assert!(materialized.document.contains_component("card--cards-0"));
-        assert!(materialized.document.contains_component("card-title--cards-1"));
+        assert!(materialized
+            .document
+            .contains_component("card-title--cards-1"));
         assert_eq!(
             materialized
                 .document
@@ -982,6 +1004,8 @@ mod tests {
             .as_array()
             .expect("condition array");
         assert_eq!(entries.len(), 2);
-        assert!(entries.iter().any(|entry| entry.get("providerCondition").is_some()));
+        assert!(entries
+            .iter()
+            .any(|entry| entry.get("providerCondition").is_some()));
     }
 }

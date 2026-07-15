@@ -212,10 +212,7 @@ impl PaymentProviderEventJournal {
                     provider_event::Column::EventMetadata,
                     Expr::value(Some(normalized.event_metadata.clone())),
                 )
-                .col_expr(
-                    provider_event::Column::UpdatedAt,
-                    Expr::current_timestamp(),
-                )
+                .col_expr(provider_event::Column::UpdatedAt, Expr::current_timestamp())
                 .filter(provider_event::Column::TenantId.eq(existing.tenant_id))
                 .filter(provider_event::Column::Id.eq(existing.id))
                 .filter(provider_event::Column::EventType.is_null())
@@ -244,9 +241,7 @@ impl PaymentProviderEventJournal {
             .one(&self.db)
             .await?
             .ok_or_else(|| {
-                PaymentError::Validation(format!(
-                    "payment provider event {event_id} was not found"
-                ))
+                PaymentError::Validation(format!("payment provider event {event_id} was not found"))
             })
     }
 
@@ -287,11 +282,8 @@ impl PaymentProviderEventJournal {
         lease_owner: impl Into<String>,
         lease_seconds: i64,
     ) -> PaymentResult<Option<provider_event::Model>> {
-        let lease_owner = normalize_required(
-            lease_owner.into(),
-            "lease_owner",
-            MAX_LEASE_OWNER_LENGTH,
-        )?;
+        let lease_owner =
+            normalize_required(lease_owner.into(), "lease_owner", MAX_LEASE_OWNER_LENGTH)?;
         let lease_seconds = lease_seconds.clamp(1, MAX_LEASE_SECONDS);
         let now = Utc::now().fixed_offset();
         let lease_expires_at = now + Duration::seconds(lease_seconds);
@@ -333,10 +325,7 @@ impl PaymentProviderEventJournal {
                 provider_event::Column::ProcessedAt,
                 Expr::value(Option::<DateTime<FixedOffset>>::None),
             )
-            .col_expr(
-                provider_event::Column::UpdatedAt,
-                Expr::current_timestamp(),
-            )
+            .col_expr(provider_event::Column::UpdatedAt, Expr::current_timestamp())
             .filter(provider_event::Column::TenantId.eq(tenant_id))
             .filter(provider_event::Column::Id.eq(event_id))
             .filter(claimable)
@@ -356,11 +345,8 @@ impl PaymentProviderEventJournal {
         lease_owner: impl Into<String>,
         lease_seconds: i64,
     ) -> PaymentResult<Option<provider_event::Model>> {
-        let lease_owner = normalize_required(
-            lease_owner.into(),
-            "lease_owner",
-            MAX_LEASE_OWNER_LENGTH,
-        )?;
+        let lease_owner =
+            normalize_required(lease_owner.into(), "lease_owner", MAX_LEASE_OWNER_LENGTH)?;
         let lease_seconds = lease_seconds.clamp(1, MAX_LEASE_SECONDS);
         let now = Utc::now().fixed_offset();
         let lease_expires_at = now + Duration::seconds(lease_seconds);
@@ -393,10 +379,7 @@ impl PaymentProviderEventJournal {
                 provider_event::Column::ProcessedAt,
                 Expr::value(Option::<DateTime<FixedOffset>>::None),
             )
-            .col_expr(
-                provider_event::Column::UpdatedAt,
-                Expr::current_timestamp(),
-            )
+            .col_expr(provider_event::Column::UpdatedAt, Expr::current_timestamp())
             .filter(provider_event::Column::TenantId.eq(tenant_id))
             .filter(provider_event::Column::Id.eq(event_id))
             .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_DEAD_LETTER))
@@ -415,11 +398,8 @@ impl PaymentProviderEventJournal {
         &self,
         input: CheckpointProviderEvent,
     ) -> PaymentResult<provider_event::Model> {
-        let lease_owner = normalize_required(
-            input.lease_owner,
-            "lease_owner",
-            MAX_LEASE_OWNER_LENGTH,
-        )?;
+        let lease_owner =
+            normalize_required(input.lease_owner, "lease_owner", MAX_LEASE_OWNER_LENGTH)?;
         let normalized = normalize_verified_event(VerifiedProviderEvent {
             event_type: input.event_type,
             external_reference: input.external_reference,
@@ -439,10 +419,7 @@ impl PaymentProviderEventJournal {
                 provider_event::Column::EventMetadata,
                 Expr::value(Some(normalized.event_metadata)),
             )
-            .col_expr(
-                provider_event::Column::UpdatedAt,
-                Expr::current_timestamp(),
-            )
+            .col_expr(provider_event::Column::UpdatedAt, Expr::current_timestamp())
             .filter(provider_event::Column::TenantId.eq(input.tenant_id))
             .filter(provider_event::Column::Id.eq(input.event_id))
             .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_PROCESSING))
@@ -452,11 +429,7 @@ impl PaymentProviderEventJournal {
             .await?;
         if update.rows_affected == 0 {
             return self
-                .transition_conflict(
-                    input.tenant_id,
-                    input.event_id,
-                    PROVIDER_EVENT_PROCESSING,
-                )
+                .transition_conflict(input.tenant_id, input.event_id, PROVIDER_EVENT_PROCESSING)
                 .await;
         }
         self.get(input.tenant_id, input.event_id).await
@@ -466,11 +439,8 @@ impl PaymentProviderEventJournal {
         &self,
         input: CompleteProviderEvent,
     ) -> PaymentResult<provider_event::Model> {
-        let lease_owner = normalize_required(
-            input.lease_owner,
-            "lease_owner",
-            MAX_LEASE_OWNER_LENGTH,
-        )?;
+        let lease_owner =
+            normalize_required(input.lease_owner, "lease_owner", MAX_LEASE_OWNER_LENGTH)?;
         let normalized = normalize_verified_event(VerifiedProviderEvent {
             event_type: input.event_type,
             external_reference: input.external_reference,
@@ -511,14 +481,8 @@ impl PaymentProviderEventJournal {
                 provider_event::Column::ErrorMessage,
                 Expr::value(Option::<String>::None),
             )
-            .col_expr(
-                provider_event::Column::ProcessedAt,
-                Expr::value(Some(now)),
-            )
-            .col_expr(
-                provider_event::Column::UpdatedAt,
-                Expr::current_timestamp(),
-            )
+            .col_expr(provider_event::Column::ProcessedAt, Expr::value(Some(now)))
+            .col_expr(provider_event::Column::UpdatedAt, Expr::current_timestamp())
             .filter(provider_event::Column::TenantId.eq(input.tenant_id))
             .filter(provider_event::Column::Id.eq(input.event_id))
             .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_PROCESSING))
@@ -529,11 +493,7 @@ impl PaymentProviderEventJournal {
 
         if update.rows_affected == 0 {
             return self
-                .transition_conflict(
-                    input.tenant_id,
-                    input.event_id,
-                    PROVIDER_EVENT_PROCESSED,
-                )
+                .transition_conflict(input.tenant_id, input.event_id, PROVIDER_EVENT_PROCESSED)
                 .await;
         }
         self.get(input.tenant_id, input.event_id).await
@@ -543,16 +503,9 @@ impl PaymentProviderEventJournal {
         &self,
         input: FailProviderEvent,
     ) -> PaymentResult<provider_event::Model> {
-        let lease_owner = normalize_required(
-            input.lease_owner,
-            "lease_owner",
-            MAX_LEASE_OWNER_LENGTH,
-        )?;
-        let error_code = normalize_required(
-            input.error_code,
-            "error_code",
-            MAX_ERROR_CODE_LENGTH,
-        )?;
+        let lease_owner =
+            normalize_required(input.lease_owner, "lease_owner", MAX_LEASE_OWNER_LENGTH)?;
+        let error_code = normalize_required(input.error_code, "error_code", MAX_ERROR_CODE_LENGTH)?;
         let error_message = normalize_required(
             input.error_message,
             "error_message",
@@ -591,10 +544,7 @@ impl PaymentProviderEventJournal {
                 provider_event::Column::ProcessedAt,
                 Expr::value(processed_at),
             )
-            .col_expr(
-                provider_event::Column::UpdatedAt,
-                Expr::current_timestamp(),
-            )
+            .col_expr(provider_event::Column::UpdatedAt, Expr::current_timestamp())
             .filter(provider_event::Column::TenantId.eq(input.tenant_id))
             .filter(provider_event::Column::Id.eq(input.event_id))
             .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_PROCESSING))
@@ -706,16 +656,9 @@ fn normalize_receive_input(mut input: ReceiveProviderEvent) -> PaymentResult<Rec
             "payment provider event payload must contain 1 to {MAX_RAW_PAYLOAD_BYTES} bytes"
         )));
     }
-    input.provider_id = normalize_required(
-        input.provider_id,
-        "provider_id",
-        MAX_PROVIDER_ID_LENGTH,
-    )?;
-    input.delivery_id = normalize_required(
-        input.delivery_id,
-        "delivery_id",
-        MAX_EVENT_KEY_LENGTH,
-    )?;
+    input.provider_id =
+        normalize_required(input.provider_id, "provider_id", MAX_PROVIDER_ID_LENGTH)?;
+    input.delivery_id = normalize_required(input.delivery_id, "delivery_id", MAX_EVENT_KEY_LENGTH)?;
     input.idempotency_key = normalize_required(
         input.idempotency_key,
         "idempotency_key",
@@ -727,11 +670,7 @@ fn normalize_receive_input(mut input: ReceiveProviderEvent) -> PaymentResult<Rec
 fn normalize_verified_event(
     mut event: VerifiedProviderEvent,
 ) -> PaymentResult<VerifiedProviderEvent> {
-    event.event_type = normalize_required(
-        event.event_type,
-        "event_type",
-        MAX_EVENT_TYPE_LENGTH,
-    )?;
+    event.event_type = normalize_required(event.event_type, "event_type", MAX_EVENT_TYPE_LENGTH)?;
     event.external_reference = normalize_optional(
         event.external_reference,
         "external_reference",
@@ -781,11 +720,7 @@ fn hash_payload(payload: &[u8]) -> String {
     format!("{:x}", Sha256::digest(payload))
 }
 
-fn normalize_required(
-    value: String,
-    label: &str,
-    max_length: usize,
-) -> PaymentResult<String> {
+fn normalize_required(value: String, label: &str, max_length: usize) -> PaymentResult<String> {
     let value = value.trim().to_string();
     if value.is_empty() || value.len() > max_length {
         return Err(PaymentError::Validation(format!(

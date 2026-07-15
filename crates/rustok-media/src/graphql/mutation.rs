@@ -1,6 +1,8 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::graphql::{require_module_enabled, GraphQLError};
-use rustok_api::{has_effective_permission, Action, AuthContext, Permission, Resource, TenantContext};
+use rustok_api::{
+    has_effective_permission, Action, AuthContext, Permission, Resource, TenantContext,
+};
 use rustok_storage::StorageService;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -61,7 +63,11 @@ impl MediaMutation {
     }
 }
 
-fn require_media_permission(ctx: &Context<'_>, requested_tenant: Uuid, action: Action) -> Result<()> {
+fn require_media_permission(
+    ctx: &Context<'_>,
+    requested_tenant: Uuid,
+    action: Action,
+) -> Result<()> {
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;

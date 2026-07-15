@@ -1,10 +1,10 @@
+use crate::ProjectDocument;
 use crate::{
     extract_runtime_context_contract, preflight_runtime_context,
-    preflight_runtime_context_scenarios, RuntimeContextPreflight,
-    RuntimeContextPreflightPolicy, RuntimeContextScenario, RuntimeContextScenarioSuiteResult,
-    ValidationDiagnostic, ValidationSeverity,
+    preflight_runtime_context_scenarios, RuntimeContextPreflight, RuntimeContextPreflightPolicy,
+    RuntimeContextScenario, RuntimeContextScenarioSuiteResult, ValidationDiagnostic,
+    ValidationSeverity,
 };
-use crate::ProjectDocument;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -25,7 +25,9 @@ pub enum ScenarioGateMode {
     Ignore,
     All,
     Any,
-    Named { scenario_ids: Vec<String> },
+    Named {
+        scenario_ids: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -67,9 +69,8 @@ pub fn evaluate_runtime_publish_gate(
 
     let current_context_result = match policy.current_context {
         CurrentContextGateMode::Ignore => None,
-        CurrentContextGateMode::ValidateIfProvided => current_context.map(|context| {
-            preflight_runtime_context(document, context, policy.preflight)
-        }),
+        CurrentContextGateMode::ValidateIfProvided => current_context
+            .map(|context| preflight_runtime_context(document, context, policy.preflight)),
         CurrentContextGateMode::RequireValid => Some(match current_context {
             Some(context) => preflight_runtime_context(document, context, policy.preflight),
             None => {
@@ -104,11 +105,8 @@ pub fn evaluate_runtime_publish_gate(
                 ));
                 None
             } else {
-                let suite = preflight_runtime_context_scenarios(
-                    document,
-                    scenarios,
-                    policy.preflight,
-                );
+                let suite =
+                    preflight_runtime_context_scenarios(document, scenarios, policy.preflight);
                 if !suite.accepted {
                     diagnostics.push(gate_diagnostic(
                         "runtime_publish_scenarios_rejected",
@@ -132,11 +130,8 @@ pub fn evaluate_runtime_publish_gate(
                 ));
                 None
             } else {
-                let suite = preflight_runtime_context_scenarios(
-                    document,
-                    scenarios,
-                    policy.preflight,
-                );
+                let suite =
+                    preflight_runtime_context_scenarios(document, scenarios, policy.preflight);
                 if suite.accepted_count == 0 {
                     diagnostics.push(gate_diagnostic(
                         "runtime_publish_no_scenario_accepted",
@@ -176,11 +171,8 @@ pub fn evaluate_runtime_publish_gate(
                 if selected.is_empty() {
                     None
                 } else {
-                    let suite = preflight_runtime_context_scenarios(
-                        document,
-                        &selected,
-                        policy.preflight,
-                    );
+                    let suite =
+                        preflight_runtime_context_scenarios(document, &selected, policy.preflight);
                     if !suite.accepted {
                         diagnostics.push(gate_diagnostic(
                             "runtime_publish_named_scenarios_rejected",
@@ -292,7 +284,10 @@ mod tests {
         );
         assert!(!evaluation.allowed);
         assert_eq!(
-            evaluation.scenarios.as_ref().map(|suite| suite.rejected_count),
+            evaluation
+                .scenarios
+                .as_ref()
+                .map(|suite| suite.rejected_count),
             Some(1)
         );
     }
@@ -337,8 +332,9 @@ mod tests {
             },
         );
         assert!(!evaluation.allowed);
-        assert!(evaluation.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "runtime_publish_named_scenario_missing"
-        }));
+        assert!(evaluation
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "runtime_publish_named_scenario_missing" }));
     }
 }

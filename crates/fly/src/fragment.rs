@@ -191,10 +191,8 @@ mod tests {
             format: FLY_FRAGMENT_V1.to_string(),
             source_project_format: ProjectFormat::GrapesJsV1,
             components: vec![
-                serde_json::from_value(json!({ "id": "a", "type": "text" }))
-                    .expect("component a"),
-                serde_json::from_value(json!({ "id": "b", "type": "text" }))
-                    .expect("component b"),
+                serde_json::from_value(json!({ "id": "a", "type": "text" })).expect("component a"),
+                serde_json::from_value(json!({ "id": "b", "type": "text" })).expect("component b"),
             ],
             styles: Vec::new(),
             assets: Vec::new(),

@@ -3,8 +3,8 @@ use rustok_api::{Action, Resource};
 use rustok_core::{SecurityContext, CONTENT_FORMAT_GRAPESJS_V1};
 use rustok_page_builder::runtime_scenario_release::{
     evaluate_page_builder_runtime_scenario_release, PageBuilderRuntimeScenarioReleaseRequest,
-    RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation,
-    RuntimeScenarioReleasePolicy, PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE,
+    RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleasePolicy,
+    PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE,
 };
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
@@ -17,8 +17,7 @@ use crate::entities::{page, page_body, page_builder_scenario_baseline};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::enforce_owned_scope;
 
-pub const PAGE_BUILDER_SCENARIO_BASELINE_CONFLICT_ERROR_CODE: &str =
-    "SCENARIO_BASELINE_CONFLICT";
+pub const PAGE_BUILDER_SCENARIO_BASELINE_CONFLICT_ERROR_CODE: &str = "SCENARIO_BASELINE_CONFLICT";
 pub const PAGE_BUILDER_SCENARIO_BASELINE_PROMOTION_NOTE_REQUIRED_ERROR_CODE: &str =
     "SCENARIO_BASELINE_PROMOTION_NOTE_REQUIRED";
 
@@ -59,12 +58,7 @@ impl PageBuilderScenarioBaselineService {
         page_id: Uuid,
     ) -> PagesResult<Option<PageBuilderScenarioBaselineRecord>> {
         let page = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(
-            &security,
-            Resource::Pages,
-            Action::Read,
-            page.author_id,
-        )?;
+        enforce_owned_scope(&security, Resource::Pages, Action::Read, page.author_id)?;
         self.load_record_unchecked(tenant_id, page_id).await
     }
 
@@ -76,14 +70,7 @@ impl PageBuilderScenarioBaselineService {
         baseline: RuntimeScenarioReleaseBaseline,
     ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
         self.save_internal(
-            tenant_id,
-            security,
-            page_id,
-            baseline,
-            None,
-            false,
-            None,
-            None,
+            tenant_id, security, page_id, baseline, None, false, None, None,
         )
         .await
     }
@@ -124,12 +111,7 @@ impl PageBuilderScenarioBaselineService {
         promotion_note: Option<&str>,
     ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
         let page = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(
-            &security,
-            Resource::Pages,
-            Action::Update,
-            page.author_id,
-        )?;
+        enforce_owned_scope(&security, Resource::Pages, Action::Update, page.author_id)?;
         let diagnostics = baseline.validate();
         if !diagnostics.is_empty() {
             return Err(PagesError::validation(format!(
@@ -201,9 +183,7 @@ impl PageBuilderScenarioBaselineService {
                     )
                     .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
                     .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
-                    .filter(
-                        page_builder_scenario_baseline::Column::BaselineHash.eq(expected_hash),
-                    )
+                    .filter(page_builder_scenario_baseline::Column::BaselineHash.eq(expected_hash))
                     .exec(&self.db)
                     .await?;
                 if result.rows_affected != 1 {
@@ -274,14 +254,8 @@ impl PageBuilderScenarioBaselineService {
         page_id: Uuid,
         expected_baseline_hash: Option<&str>,
     ) -> PagesResult<bool> {
-        self.delete_internal(
-            tenant_id,
-            security,
-            page_id,
-            expected_baseline_hash,
-            true,
-        )
-        .await
+        self.delete_internal(tenant_id, security, page_id, expected_baseline_hash, true)
+            .await
     }
 
     async fn delete_internal(
@@ -293,12 +267,7 @@ impl PageBuilderScenarioBaselineService {
         enforce_expected_state: bool,
     ) -> PagesResult<bool> {
         let page = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(
-            &security,
-            Resource::Pages,
-            Action::Update,
-            page.author_id,
-        )?;
+        enforce_owned_scope(&security, Resource::Pages, Action::Update, page.author_id)?;
 
         if enforce_expected_state && expected_baseline_hash.is_none() {
             let exists = page_builder_scenario_baseline::Entity::find()
@@ -318,9 +287,8 @@ impl PageBuilderScenarioBaselineService {
             .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
             .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id));
         if let Some(expected_hash) = expected_baseline_hash {
-            delete = delete.filter(
-                page_builder_scenario_baseline::Column::BaselineHash.eq(expected_hash),
-            );
+            delete = delete
+                .filter(page_builder_scenario_baseline::Column::BaselineHash.eq(expected_hash));
         }
         let result = delete.exec(&self.db).await?;
         if enforce_expected_state && result.rows_affected != 1 {
@@ -370,11 +338,7 @@ impl PageBuilderScenarioBaselineService {
             .map(Some)
     }
 
-    pub async fn ensure_publish_allowed(
-        &self,
-        tenant_id: Uuid,
-        page_id: Uuid,
-    ) -> PagesResult<()> {
+    pub async fn ensure_publish_allowed(&self, tenant_id: Uuid, page_id: Uuid) -> PagesResult<()> {
         match self.evaluate_publish(tenant_id, page_id).await? {
             Some(evaluation) => ensure_evaluation_allowed(evaluation),
             None => Ok(()),
@@ -405,13 +369,11 @@ impl PageBuilderScenarioBaselineService {
         project_data: Value,
         baseline: RuntimeScenarioReleaseBaseline,
     ) -> PagesResult<RuntimeScenarioReleaseEvaluation> {
-        evaluate_page_builder_runtime_scenario_release(
-            PageBuilderRuntimeScenarioReleaseRequest {
-                project_data,
-                baseline: Some(baseline),
-                policy: RuntimeScenarioReleasePolicy::block_broken(),
-            },
-        )
+        evaluate_page_builder_runtime_scenario_release(PageBuilderRuntimeScenarioReleaseRequest {
+            project_data,
+            baseline: Some(baseline),
+            policy: RuntimeScenarioReleasePolicy::block_broken(),
+        })
         .map(|response| response.evaluation)
         .map_err(|error| PagesError::validation(error.to_string()))
     }

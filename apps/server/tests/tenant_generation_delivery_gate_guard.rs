@@ -36,7 +36,10 @@ fn every_runtime_transport_uses_the_canonical_listener_gate() {
         "unrelated_cache_subscriber_cannot_satisfy_the_tenant_listener_gate",
         "canonical_local_listener_allows_downstream_delivery",
     ] {
-        assert!(gate.contains(required), "delivery gate must retain {required}");
+        assert!(
+            gate.contains(required),
+            "delivery gate must retain {required}"
+        );
     }
     assert!(!gate.contains("local_subscribers"));
 

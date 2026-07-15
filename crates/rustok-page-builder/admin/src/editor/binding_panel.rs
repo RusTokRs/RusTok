@@ -1,8 +1,7 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
 use fly::{
-    BindingCatalog, BindingCommand, BindingTarget, BindingTransform, EditorCommand,
-    RuntimeBinding,
+    BindingCatalog, BindingCommand, BindingTarget, BindingTransform, EditorCommand, RuntimeBinding,
 };
 use fly_ui::UiIntent;
 use leptos::prelude::*;

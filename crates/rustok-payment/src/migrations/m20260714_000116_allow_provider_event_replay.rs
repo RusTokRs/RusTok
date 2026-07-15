@@ -32,10 +32,7 @@ fn replay_transition_sql(allow_replay: bool) -> &'static str {
     }
 }
 
-async fn install_postgres(
-    manager: &SchemaManager<'_>,
-    allow_replay: bool,
-) -> Result<(), DbErr> {
+async fn install_postgres(manager: &SchemaManager<'_>, allow_replay: bool) -> Result<(), DbErr> {
     let sql = format!(
         r#"
         CREATE OR REPLACE FUNCTION enforce_payment_provider_event_integrity()
@@ -79,10 +76,7 @@ async fn install_postgres(
     Ok(())
 }
 
-async fn install_sqlite(
-    manager: &SchemaManager<'_>,
-    allow_replay: bool,
-) -> Result<(), DbErr> {
+async fn install_sqlite(manager: &SchemaManager<'_>, allow_replay: bool) -> Result<(), DbErr> {
     let sql = format!(
         r#"
         DROP TRIGGER IF EXISTS payment_provider_events_guard_update;
@@ -163,10 +157,7 @@ async fn install_sqlite(
     Ok(())
 }
 
-async fn install_mysql(
-    manager: &SchemaManager<'_>,
-    allow_replay: bool,
-) -> Result<(), DbErr> {
+async fn install_mysql(manager: &SchemaManager<'_>, allow_replay: bool) -> Result<(), DbErr> {
     manager
         .get_connection()
         .execute_unprepared("DROP TRIGGER IF EXISTS payment_provider_events_guard_update;")

@@ -813,7 +813,10 @@ mod tests {
                 .await
                 .unwrap_err();
             assert!(matches!(error, rustok_core::Error::Cache(_)));
-            assert_eq!(backend.get("document").await.unwrap(), Some(original.clone()));
+            assert_eq!(
+                backend.get("document").await.unwrap(),
+                Some(original.clone())
+            );
             assert_eq!(coordinator.in_flight(), 0);
         }
 

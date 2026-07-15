@@ -140,7 +140,10 @@ mod tests {
         }))
         .expect("document");
         let materialized = materialize_project_with_runtime_context(&document, &json!({}));
-        assert_eq!(materialized.effective_context["page"]["title"], "Hello world");
+        assert_eq!(
+            materialized.effective_context["page"]["title"],
+            "Hello world"
+        );
         assert_eq!(materialized.defaults_applied, 1);
         assert_eq!(materialized.computed_applied, 1);
         assert_eq!(materialized.applied_bindings, 1);

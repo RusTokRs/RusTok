@@ -288,12 +288,7 @@ impl CheckoutCompensationService {
     ) -> CheckoutCompensationResult<()> {
         let order = self
             .order_service
-            .get_order_with_locale_fallback(
-                tenant_id,
-                order_id,
-                PLATFORM_FALLBACK_LOCALE,
-                None,
-            )
+            .get_order_with_locale_fallback(tenant_id, order_id, PLATFORM_FALLBACK_LOCALE, None)
             .await?;
         let source_operation = order
             .metadata

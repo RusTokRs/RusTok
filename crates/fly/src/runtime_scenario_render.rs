@@ -81,12 +81,9 @@ pub fn render_runtime_scenario_matrix(
                 format!("runtime scenario id `{}` is duplicated", scenario.id),
             ));
         }
-        matrix.cases.push(render_case(
-            document,
-            selection,
-            policy,
-            scenario,
-        ));
+        matrix
+            .cases
+            .push(render_case(document, selection, policy, scenario));
     }
 
     matrix.rendered_count = matrix.cases.iter().filter(|case| case.rendered).count();
@@ -219,16 +216,8 @@ mod tests {
     #[test]
     fn matrix_renders_distinct_scenario_outputs() {
         let scenarios = vec![
-            RuntimeContextScenario::new(
-                "one",
-                "One",
-                json!({ "page": { "title": "First" } }),
-            ),
-            RuntimeContextScenario::new(
-                "two",
-                "Two",
-                json!({ "page": { "title": "Second" } }),
-            ),
+            RuntimeContextScenario::new("one", "One", json!({ "page": { "title": "First" } })),
+            RuntimeContextScenario::new("two", "Two", json!({ "page": { "title": "Second" } })),
         ];
         let matrix = render_runtime_scenario_matrix(
             &document(),
@@ -248,16 +237,8 @@ mod tests {
     #[test]
     fn matrix_groups_duplicate_outputs() {
         let scenarios = vec![
-            RuntimeContextScenario::new(
-                "one",
-                "One",
-                json!({ "page": { "title": "Same" } }),
-            ),
-            RuntimeContextScenario::new(
-                "two",
-                "Two",
-                json!({ "page": { "title": "Same" } }),
-            ),
+            RuntimeContextScenario::new("one", "One", json!({ "page": { "title": "Same" } })),
+            RuntimeContextScenario::new("two", "Two", json!({ "page": { "title": "Same" } })),
         ];
         let matrix = render_runtime_scenario_matrix(
             &document(),
@@ -278,6 +259,9 @@ mod tests {
             &[RuntimeContextScenario::new("one", "One", json!({}))],
         );
         assert_eq!(matrix.failed_count, 1);
-        assert!(matrix.case("one").and_then(|case| case.error.as_ref()).is_some());
+        assert!(matrix
+            .case("one")
+            .and_then(|case| case.error.as_ref())
+            .is_some());
     }
 }

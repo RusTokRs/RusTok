@@ -94,7 +94,8 @@ pub fn migrate_runtime_context(
         {
             continue;
         }
-        if let Some(value) = resolve_context_path(&migrated_context, &previous_field.path).cloned() {
+        if let Some(value) = resolve_context_path(&migrated_context, &previous_field.path).cloned()
+        {
             if policy.retain_removed_paths {
                 operations.push(RuntimeContextMigrationOperation {
                     kind: RuntimeContextMigrationOperationKind::RemovedPathRetained,
@@ -146,7 +147,10 @@ fn migrate_field(
                 previous: Some(value.clone()),
                 next: Some(value),
                 automatic: true,
-                message: format!("runtime value `{}` is compatible and was preserved", field.path),
+                message: format!(
+                    "runtime value `{}` is compatible and was preserved",
+                    field.path
+                ),
             });
         }
         Some(value) => {
@@ -165,13 +169,9 @@ fn migrate_field(
                                 field.kind.as_str()
                             ),
                         }),
-                        Err(error) => record_write_failure(
-                            field,
-                            value,
-                            error,
-                            operations,
-                            diagnostics,
-                        ),
+                        Err(error) => {
+                            record_write_failure(field, value, error, operations, diagnostics)
+                        }
                     }
                     return;
                 }
@@ -210,13 +210,9 @@ fn migrate_field(
                     automatic: true,
                     message: format!("default was applied to `{}`", field.path),
                 }),
-                Err(error) => record_write_failure(
-                    field,
-                    Value::Null,
-                    error,
-                    operations,
-                    diagnostics,
-                ),
+                Err(error) => {
+                    record_write_failure(field, Value::Null, error, operations, diagnostics)
+                }
             }
         }
         None if field.required && policy.synthesize_required_values => {
@@ -233,13 +229,9 @@ fn migrate_field(
                         field.path
                     ),
                 }),
-                Err(error) => record_write_failure(
-                    field,
-                    Value::Null,
-                    error,
-                    operations,
-                    diagnostics,
-                ),
+                Err(error) => {
+                    record_write_failure(field, Value::Null, error, operations, diagnostics)
+                }
             }
         }
         None if field.required => {
@@ -310,10 +302,7 @@ fn coerce_value(value: &Value, kind: ContextValueKind) -> Option<Value> {
     }
 }
 
-fn placeholder_value(
-    kind: ContextValueKind,
-    item_kind: Option<ContextValueKind>,
-) -> Value {
+fn placeholder_value(kind: ContextValueKind, item_kind: Option<ContextValueKind>) -> Value {
     match kind {
         ContextValueKind::Any | ContextValueKind::Null => Value::Null,
         ContextValueKind::Boolean => Value::Bool(false),
@@ -339,7 +328,10 @@ fn record_write_failure(
         previous: Some(previous),
         next: None,
         automatic: false,
-        message: format!("runtime path `{}` could not be written: {error}", field.path),
+        message: format!(
+            "runtime path `{}` could not be written: {error}",
+            field.path
+        ),
     });
     diagnostics.push(migration_diagnostic(
         ValidationSeverity::Warning,

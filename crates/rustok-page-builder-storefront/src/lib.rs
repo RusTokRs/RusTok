@@ -90,17 +90,15 @@ pub fn PageBuilderStorefront(
     let class = class.unwrap_or_else(|| "rustok-page-builder-storefront".to_string());
 
     let rendered = match context {
-        Some(context) => render_storefront_page_with_context(
-            project_data,
-            selection,
-            policy,
-            context,
-        )
-        .map(|output| {
-            let diagnostic_count = output.result.diagnostics.len();
-            let repeated_nodes = output.result.repeated_nodes;
-            (output.result.page, diagnostic_count, repeated_nodes)
-        }),
+        Some(context) => {
+            render_storefront_page_with_context(project_data, selection, policy, context).map(
+                |output| {
+                    let diagnostic_count = output.result.diagnostics.len();
+                    let repeated_nodes = output.result.repeated_nodes;
+                    (output.result.page, diagnostic_count, repeated_nodes)
+                },
+            )
+        }
         None => render_storefront_page(project_data, selection, policy)
             .map(|output| (output.page, 0, 0)),
     };

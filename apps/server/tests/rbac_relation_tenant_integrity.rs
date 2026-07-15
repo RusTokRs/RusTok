@@ -20,10 +20,7 @@ async fn execute(
     .map(|_| ())
 }
 
-async fn count(
-    db: &sea_orm::DatabaseConnection,
-    sql: &str,
-) -> i64 {
+async fn count(db: &sea_orm::DatabaseConnection, sql: &str) -> i64 {
     db.query_one(Statement::from_string(DbBackend::Sqlite, sql.to_string()))
         .await
         .expect("query count")
@@ -42,12 +39,7 @@ async fn insert_tenant(db: &sea_orm::DatabaseConnection, id: Uuid, slug: &str) {
     .expect("insert tenant");
 }
 
-async fn insert_user(
-    db: &sea_orm::DatabaseConnection,
-    id: Uuid,
-    tenant_id: Uuid,
-    email: &str,
-) {
+async fn insert_user(db: &sea_orm::DatabaseConnection, id: Uuid, tenant_id: Uuid, email: &str) {
     execute(
         db,
         "INSERT INTO users (id, tenant_id, email, password_hash) VALUES (?1, ?2, ?3, ?4)",
@@ -57,12 +49,7 @@ async fn insert_user(
     .expect("insert user");
 }
 
-async fn insert_role(
-    db: &sea_orm::DatabaseConnection,
-    id: Uuid,
-    tenant_id: Uuid,
-    slug: &str,
-) {
+async fn insert_role(db: &sea_orm::DatabaseConnection, id: Uuid, tenant_id: Uuid, slug: &str) {
     execute(
         db,
         "INSERT INTO roles (id, tenant_id, name, slug, is_system) VALUES (?1, ?2, ?3, ?4, TRUE)",
@@ -198,7 +185,10 @@ async fn migration_removes_historical_cross_tenant_links_before_enforcing_trigge
     )
     .await
     .expect("legacy schema permits cross-tenant role permission");
-    assert_eq!(count(&db, "SELECT COUNT(*) AS total FROM user_roles").await, 1);
+    assert_eq!(
+        count(&db, "SELECT COUNT(*) AS total FROM user_roles").await,
+        1
+    );
     assert_eq!(
         count(&db, "SELECT COUNT(*) AS total FROM role_permissions").await,
         1
@@ -208,7 +198,10 @@ async fn migration_removes_historical_cross_tenant_links_before_enforcing_trigge
         .await
         .expect("apply RBAC tenant integrity migration");
 
-    assert_eq!(count(&db, "SELECT COUNT(*) AS total FROM user_roles").await, 0);
+    assert_eq!(
+        count(&db, "SELECT COUNT(*) AS total FROM user_roles").await,
+        0
+    );
     assert_eq!(
         count(&db, "SELECT COUNT(*) AS total FROM role_permissions").await,
         0

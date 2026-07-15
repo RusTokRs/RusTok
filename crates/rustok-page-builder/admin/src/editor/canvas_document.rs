@@ -8,11 +8,7 @@ use serde_json::Value;
 const CANVAS_SCRIPT: &str = include_str!("canvas_runtime.js");
 
 pub fn render_canvas_srcdoc(document: &ProjectDocument, instance_id: &str) -> String {
-    let rendered = render_page(
-        document,
-        &PageSelection::First,
-        &canvas_render_policy(),
-    );
+    let rendered = render_page(document, &PageSelection::First, &canvas_render_policy());
     render_srcdoc(rendered, instance_id, 0, 0)
 }
 

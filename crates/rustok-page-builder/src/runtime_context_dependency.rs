@@ -1,6 +1,5 @@
 use fly::{
-    analyze_runtime_context_dependencies, FlyResult, GrapesJsV1Codec,
-    RuntimeContextDependencyGraph,
+    analyze_runtime_context_dependencies, FlyResult, GrapesJsV1Codec, RuntimeContextDependencyGraph,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -43,8 +42,8 @@ mod tests {
 
     #[test]
     fn consumer_can_inspect_runtime_dependency_graph() {
-        let response = analyze_page_builder_runtime_dependencies(
-            PageBuilderRuntimeDependencyRequest {
+        let response =
+            analyze_page_builder_runtime_dependencies(PageBuilderRuntimeDependencyRequest {
                 project_data: json!({
                     "pages": [{
                         "component": {
@@ -74,9 +73,8 @@ mod tests {
                         "name": "content"
                     }]
                 }),
-            },
-        )
-        .expect("dependency response");
+            })
+            .expect("dependency response");
         assert_eq!(response.graph.declared_field_count, 1);
         assert_eq!(response.graph.computed_count, 1);
         assert_eq!(response.graph.computed_evaluation_order, vec!["user.label"]);

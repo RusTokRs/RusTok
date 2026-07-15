@@ -75,10 +75,7 @@ impl CheckoutStagePipeline {
                 inventory_port,
             ),
             payment_stage: CheckoutPaymentStageExecutor::new(db.clone()),
-            fulfillment_stage: CheckoutFulfillmentStageExecutor::new(
-                db.clone(),
-                event_bus.clone(),
-            ),
+            fulfillment_stage: CheckoutFulfillmentStageExecutor::new(db.clone(), event_bus.clone()),
             finalization: CheckoutFinalizationExecutor::new(db.clone(), cart_checkout_port),
             order_service: OrderService::new(db.clone(), event_bus),
             payment_service: PaymentService::new(db.clone()),
@@ -130,7 +127,8 @@ impl CheckoutStagePipeline {
                 )
                 .await?
         } else {
-            self.load_payment_ready_state(tenant_id, operation_id).await?
+            self.load_payment_ready_state(tenant_id, operation_id)
+                .await?
         };
 
         let operation = self.operation_journal.get(tenant_id, operation_id).await?;
@@ -145,7 +143,8 @@ impl CheckoutStagePipeline {
                 )
                 .await?
         } else {
-            self.load_payment_captured_state(tenant_id, operation_id).await?
+            self.load_payment_captured_state(tenant_id, operation_id)
+                .await?
         };
 
         let operation = self.operation_journal.get(tenant_id, operation_id).await?;
@@ -204,7 +203,9 @@ impl CheckoutStagePipeline {
         tenant_id: Uuid,
         operation_id: Uuid,
     ) -> CheckoutStagePipelineResult<CheckoutPaymentCapturedState> {
-        let ready = self.load_payment_ready_state(tenant_id, operation_id).await?;
+        let ready = self
+            .load_payment_ready_state(tenant_id, operation_id)
+            .await?;
         let operation = self.operation_journal.get(tenant_id, operation_id).await?;
         let collection_id = operation.payment_collection_id.ok_or_else(|| {
             CheckoutStagePipelineError::Conflict(format!(
@@ -230,7 +231,9 @@ impl CheckoutStagePipeline {
         tenant_id: Uuid,
         operation_id: Uuid,
     ) -> CheckoutStagePipelineResult<CheckoutFulfillmentCreatedState> {
-        let captured = self.load_payment_captured_state(tenant_id, operation_id).await?;
+        let captured = self
+            .load_payment_captured_state(tenant_id, operation_id)
+            .await?;
         let operation_id_text = operation_id.to_string();
         let fulfillments = self
             .fulfillment_service

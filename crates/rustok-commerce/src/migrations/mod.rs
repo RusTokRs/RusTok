@@ -42,9 +42,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000013_cutover_checkout_inventory_lifecycle::Migration),
         Box::new(m20260713_000014_create_checkout_order_plans::Migration),
         Box::new(m20260713_000015_bind_checkout_payment_collections::Migration),
-        Box::new(
-            m20260713_000016_block_provider_execution_during_checkout_compensation::Migration,
-        ),
+        Box::new(m20260713_000016_block_provider_execution_during_checkout_compensation::Migration),
         Box::new(m20260713_000017_classify_checkout_reconciliation::Migration),
     ]
 }

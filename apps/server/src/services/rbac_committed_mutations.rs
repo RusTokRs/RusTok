@@ -92,9 +92,8 @@ async fn lock_target_user_for_role_mutation<C>(
 where
     C: ConnectionTrait,
 {
-    let query = || {
-        users::Entity::find_by_id(*user_id).filter(users::Column::TenantId.eq(*tenant_id))
-    };
+    let query =
+        || users::Entity::find_by_id(*user_id).filter(users::Column::TenantId.eq(*tenant_id));
     let target = match db.get_database_backend() {
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await?,
         DbBackend::Sqlite => {
@@ -304,14 +303,9 @@ mod tests {
         .expect("admin permission lookup should succeed"));
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
-        RbacService::replace_user_role_committed(
-            &db,
-            &user_id,
-            &tenant_id,
-            UserRole::Customer,
-        )
-        .await
-        .expect("committed demotion should succeed");
+        RbacService::replace_user_role_committed(&db, &user_id, &tenant_id, UserRole::Customer)
+            .await
+            .expect("committed demotion should succeed");
 
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
         assert!(!RbacService::has_permission(
@@ -322,14 +316,11 @@ mod tests {
         )
         .await
         .expect("post-demotion permission lookup should succeed"));
-        assert!(RbacService::has_permission(
-            &db,
-            &tenant_id,
-            &user_id,
-            &Permission::PRODUCTS_READ,
-        )
-        .await
-        .expect("customer permission lookup should succeed"));
+        assert!(
+            RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::PRODUCTS_READ,)
+                .await
+                .expect("customer permission lookup should succeed")
+        );
     }
 
     #[tokio::test]
@@ -345,14 +336,9 @@ mod tests {
             .await
             .unwrap();
 
-        RbacService::replace_user_role_committed(
-            &db,
-            &user_id,
-            &tenant_id,
-            UserRole::Customer,
-        )
-        .await
-        .unwrap();
+        RbacService::replace_user_role_committed(&db, &user_id, &tenant_id, UserRole::Customer)
+            .await
+            .unwrap();
 
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
     }
@@ -373,14 +359,9 @@ mod tests {
             .await
             .unwrap();
 
-        RbacService::replace_user_role_committed(
-            &db,
-            &user_id,
-            &tenant_id,
-            UserRole::Customer,
-        )
-        .await
-        .unwrap();
+        RbacService::replace_user_role_committed(&db, &user_id, &tenant_id, UserRole::Customer)
+            .await
+            .unwrap();
 
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
         assert!(!RbacService::has_permission(
@@ -416,24 +397,17 @@ mod tests {
         .expect("super-admin permission lookup should succeed"));
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
-        let error = RbacService::replace_user_role_committed(
-            &db,
-            &user_id,
-            &tenant_id,
-            UserRole::Customer,
-        )
-        .await
-        .expect_err("last active super-admin demotion must be rejected");
+        let error =
+            RbacService::replace_user_role_committed(&db, &user_id, &tenant_id, UserRole::Customer)
+                .await
+                .expect_err("last active super-admin demotion must be rejected");
         assert!(matches!(error, Error::BadRequest(_)));
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
-        let authoritative = RbacService::get_user_permissions_authoritative(
-            &db,
-            &tenant_id,
-            &user_id,
-        )
-        .await
-        .expect("authoritative permissions should remain readable");
+        let authoritative =
+            RbacService::get_user_permissions_authoritative(&db, &tenant_id, &user_id)
+                .await
+                .expect("authoritative permissions should remain readable");
         assert!(authoritative.contains(&Permission::SETTINGS_MANAGE));
         assert!(RbacService::has_permission(
             &db,

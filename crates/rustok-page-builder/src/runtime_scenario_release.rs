@@ -1,14 +1,13 @@
 use fly::{evaluate_runtime_scenario_release, FlyResult, GrapesJsV1Codec};
 pub use fly::{
-    RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation,
-    RuntimeScenarioReleaseMode, RuntimeScenarioReleasePolicy, RuntimeScenarioReleaseStatus,
-    RuntimeScenarioRenderChange, RuntimeScenarioRenderChangeImpact,
+    RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleaseMode,
+    RuntimeScenarioReleasePolicy, RuntimeScenarioReleaseStatus, RuntimeScenarioRenderChange,
+    RuntimeScenarioRenderChangeImpact,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub const PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE: &str =
-    "SCENARIO_REGRESSION_BLOCKED";
+pub const PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE: &str = "SCENARIO_REGRESSION_BLOCKED";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PageBuilderScenarioBaselineChange {
@@ -18,10 +17,7 @@ pub struct PageBuilderScenarioBaselineChange {
 }
 
 impl PageBuilderScenarioBaselineChange {
-    pub fn save(
-        baseline: RuntimeScenarioReleaseBaseline,
-        promotion_note: Option<String>,
-    ) -> Self {
+    pub fn save(baseline: RuntimeScenarioReleaseBaseline, promotion_note: Option<String>) -> Self {
         Self {
             baseline: Some(baseline),
             promotion_note,
@@ -215,6 +211,9 @@ mod tests {
             baseline,
             Some("Reviewed visual update".to_string()),
         );
-        assert_eq!(change.promotion_note.as_deref(), Some("Reviewed visual update"));
+        assert_eq!(
+            change.promotion_note.as_deref(),
+            Some("Reviewed visual update")
+        );
     }
 }

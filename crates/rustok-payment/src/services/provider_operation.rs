@@ -128,9 +128,7 @@ impl PaymentProviderOperationJournal {
     ) -> PaymentResult<Vec<provider_operation::Model>> {
         provider_operation::Entity::find()
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
-            .filter(
-                provider_operation::Column::PaymentCollectionId.eq(payment_collection_id),
-            )
+            .filter(provider_operation::Column::PaymentCollectionId.eq(payment_collection_id))
             .order_by_asc(provider_operation::Column::CreatedAt)
             .all(&self.db)
             .await

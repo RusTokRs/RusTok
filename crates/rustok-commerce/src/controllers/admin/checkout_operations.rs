@@ -217,11 +217,9 @@ fn map_operation_error(error: crate::CheckoutOperationError) -> HttpError {
             "checkout_operation_not_found",
             "Checkout operation not found",
         ),
-        crate::CheckoutOperationError::Conflict(message) => HttpError::new(
-            StatusCode::CONFLICT,
-            "checkout_operation_conflict",
-            message,
-        ),
+        crate::CheckoutOperationError::Conflict(message) => {
+            HttpError::new(StatusCode::CONFLICT, "checkout_operation_conflict", message)
+        }
         crate::CheckoutOperationError::Validation(message) => {
             HttpError::bad_request("checkout_operation_invalid", message)
         }

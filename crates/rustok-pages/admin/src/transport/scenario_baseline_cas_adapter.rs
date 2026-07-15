@@ -18,7 +18,10 @@ struct SaveVariables {
 #[derive(Debug, Serialize)]
 struct SaveInput {
     baseline: Value,
-    #[serde(rename = "expectedBaselineHash", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "expectedBaselineHash",
+        skip_serializing_if = "Option::is_none"
+    )]
     expected_baseline_hash: Option<String>,
 }
 
@@ -26,7 +29,10 @@ struct SaveInput {
 struct DeleteVariables {
     #[serde(rename = "pageId")]
     page_id: String,
-    #[serde(rename = "expectedBaselineHash", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "expectedBaselineHash",
+        skip_serializing_if = "Option::is_none"
+    )]
     expected_baseline_hash: Option<String>,
 }
 

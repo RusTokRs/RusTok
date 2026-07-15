@@ -5,9 +5,7 @@ use crate::{
 };
 use std::collections::BTreeSet;
 
-pub fn validate_runtime_extensions(
-    document: &ProjectDocument,
-) -> Vec<ValidationDiagnostic> {
+pub fn validate_runtime_extensions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = extract_runtime_context_contract(document).definition_diagnostics;
     diagnostics.extend(validate_binding_definitions(document));
     diagnostics.extend(validate_dynamic_definitions(document));
@@ -38,9 +36,7 @@ fn deduplicate_diagnostics(diagnostics: &mut Vec<ValidationDiagnostic>) {
     diagnostics.retain(|diagnostic| seen.insert(diagnostic_identity(diagnostic)));
 }
 
-fn diagnostic_identity(
-    diagnostic: &ValidationDiagnostic,
-) -> (u8, String, String, String) {
+fn diagnostic_identity(diagnostic: &ValidationDiagnostic) -> (u8, String, String, String) {
     (
         diagnostic.severity as u8,
         diagnostic.code.clone(),
@@ -105,9 +101,9 @@ mod tests {
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid"));
-        assert!(diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "runtime_context_path_shadowed_by_computed"
-        }));
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "runtime_context_path_shadowed_by_computed" }));
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_binding_target_missing"));

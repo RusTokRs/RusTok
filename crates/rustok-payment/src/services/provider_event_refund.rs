@@ -61,7 +61,10 @@ impl PaymentProviderEventApplier for RefundLifecycleEventApplier {
         {
             return Err(non_retryable(
                 "payment.webhook_currency_mismatch",
-                format!("refund {} currency does not match provider event", refund.id),
+                format!(
+                    "refund {} currency does not match provider event",
+                    refund.id
+                ),
             ));
         }
         if refund.amount != payload.amount {
@@ -143,31 +146,27 @@ struct NormalizedRefundEvent {
 }
 
 impl NormalizedRefundEvent {
-    fn parse(
-        event: &PaymentProviderWebhookResult,
-    ) -> Result<Self, PaymentProviderEventApplyError> {
+    fn parse(event: &PaymentProviderWebhookResult) -> Result<Self, PaymentProviderEventApplyError> {
         let metadata = event.metadata.as_object().ok_or_else(|| {
             non_retryable(
                 "payment.webhook_metadata_invalid",
                 "normalized refund webhook metadata must be an object",
             )
         })?;
-        let refund_id = Uuid::parse_str(required_string(metadata, "refund_id")?.as_str()).map_err(
-            |_| {
+        let refund_id =
+            Uuid::parse_str(required_string(metadata, "refund_id")?.as_str()).map_err(|_| {
                 non_retryable(
                     "payment.webhook_refund_id_invalid",
                     "normalized refund webhook refund_id must be a UUID",
                 )
-            },
-        )?;
-        let amount = Decimal::from_str(required_string(metadata, "amount")?.as_str()).map_err(
-            |_| {
+            })?;
+        let amount =
+            Decimal::from_str(required_string(metadata, "amount")?.as_str()).map_err(|_| {
                 non_retryable(
                     "payment.webhook_amount_invalid",
                     "normalized refund webhook amount must be a decimal string",
                 )
-            },
-        )?;
+            })?;
         if amount <= Decimal::ZERO {
             return Err(non_retryable(
                 "payment.webhook_amount_invalid",

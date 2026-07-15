@@ -62,9 +62,11 @@ where
     F: Future,
 {
     match scope {
-        Some(scope) => CURRENT_RBAC_SCOPE
-            .scope(RbacRequestScopeState::new(scope), future)
-            .await,
+        Some(scope) => {
+            CURRENT_RBAC_SCOPE
+                .scope(RbacRequestScopeState::new(scope), future)
+                .await
+        }
         None => future.await,
     }
 }

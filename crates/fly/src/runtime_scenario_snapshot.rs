@@ -5,8 +5,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub const FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT_V1: &str =
-    "fly_runtime_scenario_render_snapshot_v1";
+pub const FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT_V1: &str = "fly_runtime_scenario_render_snapshot_v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RuntimeScenarioRenderSnapshotCase {
@@ -70,7 +69,8 @@ impl RuntimeScenarioRenderSnapshot {
             })
             .collect::<Vec<_>>();
         let format = FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT_V1.to_string();
-        let snapshot_hash = snapshot_hash(&format, &selection, &policy, &cases, &matrix.diagnostics);
+        let snapshot_hash =
+            snapshot_hash(&format, &selection, &policy, &cases, &matrix.diagnostics);
         Self {
             format,
             selection,
@@ -107,14 +107,21 @@ pub enum RuntimeScenarioRenderChangeImpact {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RuntimeScenarioRenderChange {
-    SnapshotFormatChanged { previous: String, next: String },
+    SnapshotFormatChanged {
+        previous: String,
+        next: String,
+    },
     SelectionChanged {
         previous: PageSelection,
         next: PageSelection,
     },
     PolicyChanged,
-    ScenarioAdded { scenario_id: String },
-    ScenarioRemoved { scenario_id: String },
+    ScenarioAdded {
+        scenario_id: String,
+    },
+    ScenarioRemoved {
+        scenario_id: String,
+    },
     RenderStateChanged {
         scenario_id: String,
         previous: bool,
@@ -125,9 +132,15 @@ pub enum RuntimeScenarioRenderChange {
         previous: Option<String>,
         next: Option<String>,
     },
-    HtmlChanged { scenario_id: String },
-    CssChanged { scenario_id: String },
-    DocumentChanged { scenario_id: String },
+    HtmlChanged {
+        scenario_id: String,
+    },
+    CssChanged {
+        scenario_id: String,
+    },
+    DocumentChanged {
+        scenario_id: String,
+    },
     BlockingDiagnosticsChanged {
         scenario_id: String,
         previous: usize,
@@ -310,8 +323,8 @@ fn snapshot_hash(
     cases: &[RuntimeScenarioRenderSnapshotCase],
     diagnostics: &[ValidationDiagnostic],
 ) -> String {
-    let bytes = serde_json::to_vec(&(format, selection, policy, cases, diagnostics))
-        .unwrap_or_default();
+    let bytes =
+        serde_json::to_vec(&(format, selection, policy, cases, diagnostics)).unwrap_or_default();
     ProjectHash::from_bytes(&bytes).hex()
 }
 

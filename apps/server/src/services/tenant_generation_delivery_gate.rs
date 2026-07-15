@@ -39,9 +39,7 @@ impl TenantGenerationDeliveryGate {
         }
 
         let snapshot = tenant_cache_generation_listener_snapshot(&self.ctx).await;
-        if snapshot.status == TenantCacheGenerationListenerStatus::Healthy
-            && snapshot.local_ready
-        {
+        if snapshot.status == TenantCacheGenerationListenerStatus::Healthy && snapshot.local_ready {
             return Ok(());
         }
 
@@ -85,11 +83,7 @@ mod tests {
 
     fn tenant_event(id: u128) -> EventEnvelope {
         let tenant_id = Uuid::from_u128(id);
-        EventEnvelope::new(
-            tenant_id,
-            None,
-            DomainEvent::TenantUpdated { tenant_id },
-        )
+        EventEnvelope::new(tenant_id, None, DomainEvent::TenantUpdated { tenant_id })
     }
 
     #[tokio::test]
@@ -100,11 +94,7 @@ mod tests {
             .subscribe_local_channel("unrelated.cache.channel");
         let downstream = MemoryTransport::with_capacity(8);
         let mut receiver = downstream.subscribe();
-        let gate = TenantGenerationDeliveryGate::new(
-            Arc::new(downstream),
-            context().await,
-            cache,
-        );
+        let gate = TenantGenerationDeliveryGate::new(Arc::new(downstream), context().await, cache);
 
         assert!(gate.publish(tenant_event(1)).await.is_err());
         assert!(

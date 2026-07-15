@@ -1,7 +1,7 @@
 use rustok_core::{ModuleRegistry, UserRole};
 use rustok_installer::{
-    AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan, InstallProfile,
-    InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode, SecretValue,
+    AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan,
+    InstallProfile, InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode, SecretValue,
     SeedPrincipalPort, SeedProfile, SeedUserRequest, TenantBootstrap,
 };
 use rustok_installer_persistence::SeaOrmInstallerBootstrapPorts;
@@ -138,7 +138,10 @@ async fn seed_role_failure_rolls_back_new_customer_identity() {
         .expect_err("reserved customer slug collision must reject seed principal provisioning");
 
     assert!(error.to_string().contains("customer"));
-    assert_eq!(bootstrap_user_count(&db, tenant_id, customer_email).await, 0);
+    assert_eq!(
+        bootstrap_user_count(&db, tenant_id, customer_email).await,
+        0
+    );
 }
 
 #[tokio::test]

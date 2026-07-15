@@ -318,12 +318,7 @@ impl PagesMutation {
 
         let service = BlockService::new(db.clone(), event_bus.clone());
         service
-            .reorder(
-                tenant_id,
-                page_security(&auth),
-                page_id,
-                input.block_ids,
-            )
+            .reorder(tenant_id, page_security(&auth), page_id, input.block_ids)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 

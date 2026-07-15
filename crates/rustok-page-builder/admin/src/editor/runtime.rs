@@ -89,12 +89,13 @@ impl AdminEditorRuntime {
             .iter()
             .find(|scenario| scenario.id == scenario_id)
         else {
-            self.fail(format!("Runtime context scenario `{scenario_id}` was not found"));
+            self.fail(format!(
+                "Runtime context scenario `{scenario_id}` was not found"
+            ));
             return false;
         };
         self.runtime_context.set(scenario.context.clone());
-        self.active_runtime_scenario
-            .set(Some(scenario.id.clone()));
+        self.active_runtime_scenario.set(Some(scenario.id.clone()));
         self.runtime_publish_gate_evaluation.set(None);
         self.last_error.set(None);
         self.announce(format!("Preview scenario applied: {}", scenario.label));
@@ -131,8 +132,7 @@ impl AdminEditorRuntime {
             if let Some(evaluation) = self.evaluate_runtime_publish_gate() {
                 let allowed = evaluation.allowed;
                 let message = gate_error_message(&evaluation);
-                self.runtime_publish_gate_evaluation
-                    .set(Some(evaluation));
+                self.runtime_publish_gate_evaluation.set(Some(evaluation));
                 if !allowed {
                     self.fail(message);
                     return;
@@ -286,6 +286,9 @@ fn gate_error_message(evaluation: &RuntimePublishGateEvaluation) -> String {
     if messages.is_empty() {
         "Runtime publish gate rejected the current project".to_string()
     } else {
-        format!("Runtime publish gate rejected save: {}", messages.join("; "))
+        format!(
+            "Runtime publish gate rejected save: {}",
+            messages.join("; ")
+        )
     }
 }
