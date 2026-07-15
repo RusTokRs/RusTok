@@ -7,9 +7,9 @@ use rustok_cart::{
     in_process_cart_storefront_port, CartStorefrontAddLineItemRequest,
     CartStorefrontContextUpdateRequest, CartStorefrontCreateRequest,
     CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
-    CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
+    CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
 };
-use rustok_pricing::{in_process_pricing_read_port, PricingReadPort, ResolveProductPriceRequest};
+use rustok_pricing::{in_process_pricing_read_port, ResolveProductPriceRequest};
 
 use super::super::{current_tenant_scope, types::*, MODULE_SLUG};
 use super::helpers::*;

@@ -9,7 +9,7 @@ use crate::core::{
     normalize_channel_value, normalized_currency_code, normalized_price_list_id,
     normalized_quantity, normalized_region_id, price_draft_from_price,
     pricing_product_list_item_class, selected_channel_key, summarize_pricing, text_or_none,
-    unlisted_channel_option_label, GLOBAL_CHANNEL_KEY, UNLISTED_CHANNEL_KEY,
+    unlisted_channel_option_label, PriceDraftForm, GLOBAL_CHANNEL_KEY, UNLISTED_CHANNEL_KEY,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -1455,16 +1455,16 @@ fn VariantPriceEditor(
                     on:click=move |_| {
                         let variant_id = variant_id.clone();
                         let product_id = product_id.clone();
-                        let payload = build_price_draft(
-                            currency_code.get_untracked(),
-                            amount.get_untracked(),
-                            compare_at_amount.get_untracked(),
-                            price_list_id.clone(),
-                            channel_id.get_untracked(),
-                            channel_slug.get_untracked(),
-                            min_quantity.get_untracked(),
-                            max_quantity.get_untracked(),
-                        );
+                        let payload = build_price_draft(PriceDraftForm {
+                            currency_code: currency_code.get_untracked(),
+                            amount: amount.get_untracked(),
+                            compare_at_amount: compare_at_amount.get_untracked(),
+                            price_list_id: price_list_id.clone(),
+                            channel_id: channel_id.get_untracked(),
+                            channel_slug: channel_slug.get_untracked(),
+                            min_quantity: min_quantity.get_untracked(),
+                            max_quantity: max_quantity.get_untracked(),
+                        });
                         let on_saved = on_saved;
                         let save_error_label = t(locale_for_save.as_deref(), "pricing.edit.saveError", "Failed to save price");
                         set_busy.set(true);

@@ -15,7 +15,7 @@ use crate::models::platform_state::{
 };
 use crate::modules::{ManifestDiff, ManifestError, ManifestManager, ModulesManifest};
 use rustok_build::build::Model as Build;
-use rustok_build::{BuildEventPublisher, BuildRequest, BuildService, ModuleSpec};
+use rustok_build::{BuildEventPublisher, BuildRequest, BuildService};
 use rustok_modules::ModuleDefinitionError;
 
 pub const ACTIVE_PLATFORM_STATE_ID: &str = "active";

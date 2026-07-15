@@ -9,8 +9,6 @@ use uuid::Uuid;
 
 use rustok_core::{Rbac, UserRole};
 
-const BUILT_IN_ROLE_SLUGS: [&str; 4] = ["super_admin", "admin", "manager", "customer"];
-
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RbacSystemRoleRepairOptions {
     pub tenant_id: Option<Uuid>,
@@ -561,12 +559,15 @@ fn database_error(error: impl std::fmt::Display) -> RbacSystemRoleRepairError {
 
 #[cfg(test)]
 mod tests {
-    use super::{built_in_roles, RbacSystemRoleRepairReport, BUILT_IN_ROLE_SLUGS};
+    use super::{built_in_roles, RbacSystemRoleRepairReport};
 
     #[test]
     fn built_in_role_inventory_is_stable() {
         let slugs = built_in_roles().map(|role| role.to_string());
-        assert_eq!(slugs, BUILT_IN_ROLE_SLUGS.map(str::to_string));
+        assert_eq!(
+            slugs,
+            ["super_admin", "admin", "manager", "customer"].map(str::to_string)
+        );
     }
 
     #[test]

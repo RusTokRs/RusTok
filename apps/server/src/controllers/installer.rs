@@ -69,7 +69,7 @@ pub struct InstallJobStatusResponse {
     pub finished_at: Option<DateTime<Utc>>,
     pub session_id: Option<Uuid>,
     pub tenant_id: Option<Uuid>,
-    pub output: Option<InstallerApplyOutput>,
+    pub output: Option<InstallApplyOutput>,
     pub error: Option<String>,
 }
 
@@ -168,7 +168,7 @@ async fn apply(
     let plan = bind_selected_composition(request.plan);
     let job_id = rustok_core::generate_id();
     let submitted_at = Utc::now();
-    let apply_options = InstallerApplyOptions {
+    let apply_options = InstallApplyOptions {
         lock_owner: request
             .lock_owner
             .filter(|value| !value.trim().is_empty())

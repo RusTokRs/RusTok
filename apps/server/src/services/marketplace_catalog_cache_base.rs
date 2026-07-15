@@ -741,13 +741,16 @@ mod tests {
             .await
             .expect("first marketplace fetch did not start");
 
-        let error = provider
+        let error = match provider
             .load_catalog(
                 provider.registry_url.as_deref().unwrap(),
                 &query("second", "", ""),
             )
             .await
-            .unwrap_err();
+        {
+            Ok(_) => panic!("the saturated fetch should fail"),
+            Err(error) => error,
+        };
         assert!(error.to_string().contains("capacity is saturated"));
         assert_eq!(provider.saturated_fetches(), 1);
         assert_eq!(calls.load(AtomicOrdering::SeqCst), 1);
@@ -772,13 +775,16 @@ mod tests {
             8,
         );
 
-        let error = provider
+        let error = match provider
             .load_catalog(
                 provider.registry_url.as_deref().unwrap(),
                 &MarketplaceCatalogQuery::default(),
             )
             .await
-            .unwrap_err();
+        {
+            Ok(_) => panic!("the oversized response should fail"),
+            Err(error) => error,
+        };
         assert!(error.to_string().contains("exceeds 128 bytes"));
         server.abort();
     }

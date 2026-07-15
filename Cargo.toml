@@ -79,6 +79,7 @@ tower-http = { version = "0.7.0", features = ["cors", "fs"] }
 tonic = "0.14.5"
 tonic-prost = "0.14.5"
 tonic-prost-build = "0.14.5"
+protoc-bin-vendored = "3.2"
 prost = "0.14.3"
 
 # Database
@@ -95,6 +96,7 @@ sea-orm-migration = { version = "1.1", features = ["runtime-tokio-rustls", "sqlx
 
 # GraphQL
 async-graphql = { version = "7.2.1", features = ["uuid", "chrono"] }
+async-graphql-value = "7.2.1"
 base64 = "0.22"
 
 # IDs
@@ -192,7 +194,7 @@ reqwest-retry = "0.5.0"
 prometheus = "0.14"
 lazy_static = "1.5"
 secrecy = { version = "0.10", features = ["serde"] }
-rig = { package = "rig-core", version = "=0.39.0", features = ["audio", "image", "rmcp"] }
+rig = { package = "rig-core", version = "=0.40.0", features = ["audio", "image", "rmcp"] }
 rig-bedrock = "=0.40.0"
 rig-fastembed = "=0.40.0"
 rig-gemini-grpc = "=0.40.0"

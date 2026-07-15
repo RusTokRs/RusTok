@@ -25,7 +25,7 @@ pub use types::*;
 
 fn require_auth_context<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {
     ctx.data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated().into())
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())
 }
 
 fn optional_auth_context<'a>(ctx: &'a Context<'a>) -> Option<&'a AuthContext> {
@@ -40,7 +40,6 @@ fn runtime(ctx: &Context<'_>) -> Result<OAuthAdminRuntime> {
             <FieldError as GraphQLError>::internal_error(
                 "OAuthAdminRuntime is not registered; initialize shared host runtime providers",
             )
-            .into()
         })
 }
 
@@ -52,7 +51,6 @@ fn auth_runtime(ctx: &Context<'_>) -> Result<AuthLifecycleRuntime> {
             <FieldError as GraphQLError>::internal_error(
                 "AuthLifecycleRuntime is not registered; initialize shared host runtime providers",
             )
-            .into()
         })
 }
 
@@ -78,7 +76,7 @@ fn auth_lifecycle_context(
         session_id: user_auth.map(|auth| auth.session_id),
         permissions: user_auth
             .map(|auth| auth.permissions.clone())
-            .unwrap_or_else(Vec::new),
+            .unwrap_or_default(),
         locale,
     })
 }

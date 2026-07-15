@@ -1327,7 +1327,7 @@ pub fn derive_registry_follow_up_gates(
 }
 
 #[cfg(feature = "ssr")]
-pub async fn load_registry_module_lifecycle(
+async fn load_registry_module_lifecycle(
     app_ctx: &ModulesServerRuntime,
     slug: &str,
 ) -> Result<Option<RegistryModuleLifecycle>, ServerFnError> {

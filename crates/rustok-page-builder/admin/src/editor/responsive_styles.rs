@@ -211,7 +211,7 @@ fn dispatch_rule_patch(runtime: &AdminEditorRuntime, breakpoint_id: &str, entry:
         .style
         .and_then(|style| style.as_object().cloned())
         .unwrap_or_default();
-    runtime.dispatch(UiIntent::Execute(EditorCommand::StyleRule {
+    runtime.dispatch(UiIntent::execute(EditorCommand::StyleRule {
         command: StyleRuleCommand::UpsertComponentRule {
             component_id,
             scope: StyleRuleScope::Media {

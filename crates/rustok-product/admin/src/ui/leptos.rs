@@ -135,7 +135,7 @@ fn TypedProductAttributeField(
                 <textarea class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none focus:border-primary" prop:value=move || editor_state.get().json(&read_id) on:input=move |event| editor_state.update(|state| state.set_json(write_id.clone(), event_target_value(&event))) />
             }.into_any()
         }
-        _ => view! { <></> }.into_any(),
+        _ => ().into_any(),
     };
 
     view! {
@@ -1221,7 +1221,7 @@ fn open_product_for_edit(
                 product,
                 form_state,
             } => {
-                set_selected.set(Some(product));
+                set_selected.set(Some(*product));
                 apply_product_editor_form_state(
                     form_state,
                     set_editing_id,

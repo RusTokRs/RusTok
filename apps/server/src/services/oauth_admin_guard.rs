@@ -147,7 +147,7 @@ where
                 oauth_apps::Entity::update_many()
                     .col_expr(
                         oauth_apps::Column::UpdatedAt,
-                        Expr::col(oauth_apps::Column::UpdatedAt),
+                        Expr::col(oauth_apps::Column::UpdatedAt).into(),
                     )
                     .filter(oauth_apps::Column::Id.eq(app.id))
                     .filter(oauth_apps::Column::TenantId.eq(tenant_id))

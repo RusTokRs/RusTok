@@ -2266,6 +2266,10 @@ fn validate_group_translations(
     Ok(())
 }
 
+fn map_schema_resolution_error(error: SchemaResolutionError) -> CommerceError {
+    CommerceError::Validation(format!("schema resolution failed: {error:?}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2287,8 +2291,4 @@ mod tests {
         assert!(validate_bounded_json_object("metadata", &Value::Array(Vec::new())).is_err());
         assert!(validate_bounded_json_object("metadata", &serde_json::json!({})).is_ok());
     }
-}
-
-fn map_schema_resolution_error(error: SchemaResolutionError) -> CommerceError {
-    CommerceError::Validation(format!("schema resolution failed: {error:?}"))
 }

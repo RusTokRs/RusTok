@@ -62,10 +62,8 @@ async fn cart_add_line_item_rejects_unknown_tax_provider_id_on_region() {
         .expect_err("unknown tax provider should be rejected");
 
     match error {
-        rustok_cart::CartError::Tax(inner) => {
-            assert!(inner
-                .to_string()
-                .contains("unknown tax provider_id: external_tax"));
+        rustok_cart::CartError::TaxBoundary { message, .. } => {
+            assert!(message.contains("unknown tax provider_id: external_tax"));
         }
         other => panic!("unexpected error: {other}"),
     }

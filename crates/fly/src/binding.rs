@@ -46,7 +46,7 @@ pub struct RuntimeBinding {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum BindingCommand {
-    Upsert { binding: RuntimeBinding },
+    Upsert { binding: Box<RuntimeBinding> },
     Remove { binding_id: String },
 }
 
@@ -105,9 +105,9 @@ pub fn apply_binding_command(
                 .iter()
                 .position(|candidate| candidate.id == binding.id)
             {
-                catalog.bindings[index] = binding.clone();
+                catalog.bindings[index] = binding.as_ref().clone();
             } else {
-                catalog.bindings.push(binding.clone());
+                catalog.bindings.push(binding.as_ref().clone());
             }
         }
         BindingCommand::Remove { binding_id } => {
@@ -579,7 +579,7 @@ mod tests {
         apply_binding_command(
             &mut document,
             &BindingCommand::Upsert {
-                binding: RuntimeBinding {
+                binding: Box::new(RuntimeBinding {
                     id: "new-binding".to_string(),
                     component_id: "title".to_string(),
                     path: "page.title".to_string(),
@@ -589,7 +589,7 @@ mod tests {
                     fallback: None,
                     transform: BindingTransform::Identity,
                     extensions: Map::new(),
-                },
+                }),
             },
         )
         .expect("upsert binding");

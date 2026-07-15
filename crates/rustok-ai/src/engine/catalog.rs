@@ -971,9 +971,9 @@ mod tests {
                 assert_eq!(
                     entry.features.contains(feature),
                     provider_factory_supports(&slug, *feature),
-                    "{}/{} catalog descriptor and concrete Rig factory disagree",
+                    "{}/{:?} catalog descriptor and concrete Rig factory disagree",
                     entry.slug,
-                    format!("{feature:?}")
+                    feature
                 );
             }
         }

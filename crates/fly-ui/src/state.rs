@@ -91,19 +91,10 @@ impl Default for ViewportState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct PageNavigationState {
     pub active_page_id: Option<String>,
     pub active_page_index: usize,
-}
-
-impl Default for PageNavigationState {
-    fn default() -> Self {
-        Self {
-            active_page_id: None,
-            active_page_index: 0,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -127,23 +118,12 @@ impl CanvasRect {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct OverlayState {
     pub selected: Option<CanvasRect>,
     pub hovered: Option<CanvasRect>,
     pub insertion: Option<CanvasRect>,
     pub resize_handles_visible: bool,
-}
-
-impl Default for OverlayState {
-    fn default() -> Self {
-        Self {
-            selected: None,
-            hovered: None,
-            insertion: None,
-            resize_handles_visible: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -213,7 +193,7 @@ impl Default for EditorPolicy {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct DirtyState {
     pub dirty: bool,
     pub command_sequence: u64,
@@ -221,19 +201,6 @@ pub struct DirtyState {
     pub project_hash: Option<ProjectHash>,
     pub save_in_progress: bool,
     pub save_failed: bool,
-}
-
-impl Default for DirtyState {
-    fn default() -> Self {
-        Self {
-            dirty: false,
-            command_sequence: 0,
-            last_acknowledged_revision: None,
-            project_hash: None,
-            save_in_progress: false,
-            save_failed: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

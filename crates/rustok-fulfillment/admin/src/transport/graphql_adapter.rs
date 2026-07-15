@@ -209,15 +209,14 @@ pub async fn fetch_bootstrap(
 }
 
 pub async fn fetch_shipping_options(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    search: Option<String>,
-    currency_code: Option<String>,
-    provider_id: Option<String>,
-    page: u64,
-    per_page: u64,
+    query: super::FetchShippingOptionsRequest,
 ) -> Result<ShippingOptionList, ApiError> {
+    let super::FetchShippingOptionsRequest {
+        token,
+        tenant_slug,
+        tenant_id,
+        filter,
+    } = query;
     let response: ShippingOptionsResponse = request(
         SHIPPING_OPTIONS_QUERY,
         Some(TenantScopedVariables {
@@ -225,11 +224,11 @@ pub async fn fetch_shipping_options(
             extra: ShippingOptionsVariables {
                 filter: ShippingOptionsFilter {
                     active: None,
-                    currency_code,
-                    provider_id,
-                    search,
-                    page: Some(page),
-                    per_page: Some(per_page),
+                    currency_code: filter.currency_code,
+                    provider_id: filter.provider_id,
+                    search: filter.search,
+                    page: Some(filter.page),
+                    per_page: Some(filter.per_page),
                 },
             },
         }),

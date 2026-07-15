@@ -390,18 +390,24 @@ mod tests {
 
     fn sample_plan() -> InstallPlan {
         InstallPlan::production_minimal(
-            crate::SecretValue::Reference(crate::SecretRef::Environment {
-                name: "DATABASE_URL".to_string(),
-            }),
+            crate::SecretValue::Reference {
+                reference: crate::SecretRef {
+                    backend: "environment".to_string(),
+                    key: "DATABASE_URL".to_string(),
+                },
+            },
             crate::TenantBootstrap {
                 slug: "main".to_string(),
                 name: "Main".to_string(),
             },
             crate::AdminBootstrap {
                 email: "admin@example.com".to_string(),
-                password: crate::SecretValue::Reference(crate::SecretRef::Environment {
-                    name: "ADMIN_PASSWORD".to_string(),
-                }),
+                password: crate::SecretValue::Reference {
+                    reference: crate::SecretRef {
+                        backend: "environment".to_string(),
+                        key: "ADMIN_PASSWORD".to_string(),
+                    },
+                },
             },
             InstallComposition {
                 revision: "distribution@1".to_string(),

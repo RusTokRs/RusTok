@@ -54,4 +54,20 @@ impl ScriptEngine {
     pub fn config(&self) -> &RhaiConfig {
         self.inner.config()
     }
+
+    /// Exercises the configured Rhai kernel in Alloy unit tests.
+    ///
+    /// Production execution intentionally goes through `AlloyDraftRuntime` and
+    /// `SandboxRuntime`; this entrypoint is excluded from non-test builds.
+    #[cfg(test)]
+    pub fn execute(
+        &self,
+        name: &str,
+        source: &str,
+        context: &crate::ExecutionContext,
+    ) -> ScriptResult<rhai::Dynamic> {
+        self.inner
+            .execute(name, source, context)
+            .map_err(ScriptError::from)
+    }
 }

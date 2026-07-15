@@ -66,7 +66,7 @@ fn require_permission<'a>(
     Ok(auth)
 }
 
-fn require_logs_read(ctx: &Context<'_>) -> Result<&AuthContext> {
+fn require_logs_read<'a>(ctx: &'a Context<'_>) -> Result<&'a AuthContext> {
     require_permission(
         ctx,
         &Permission::LOGS_READ,

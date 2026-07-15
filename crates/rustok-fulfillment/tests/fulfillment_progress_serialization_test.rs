@@ -6,7 +6,7 @@ use rustok_fulfillment::migrations;
 use rustok_fulfillment::FulfillmentService;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 mod support;

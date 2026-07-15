@@ -396,27 +396,32 @@ pub fn agent_catalog() -> AiResult<AgentCatalog> {
             can_orchestrate: false,
         })
         .collect();
-    descriptors.extend(rustok_ai_product::product_ai_agents().iter().map(|agent| {
-        AgentDescriptor {
-            slug: agent.slug.to_string(),
-            display_name: agent.display_name.to_string(),
-            owner: "rustok-ai-product".to_string(),
-            kind: AgentKind::Domain,
-            responsibility: agent.responsibility.to_string(),
-            required_permissions: agent
-                .required_permissions
-                .iter()
-                .map(|value| (*value).to_string())
-                .collect(),
-            allowed_operations: [agent.task_slug.to_string()].into_iter().collect(),
-            required_capabilities: agent
+    let product_descriptors = rustok_ai_product::product_ai_agents()
+        .iter()
+        .map(|agent| {
+            let required_capabilities = agent
                 .required_capabilities
                 .iter()
                 .map(|capability| product_agent_capability(capability))
-                .collect::<AiResult<Vec<_>>>()?,
-            can_orchestrate: false,
-        }
-    }));
+                .collect::<AiResult<Vec<_>>>()?;
+            Ok(AgentDescriptor {
+                slug: agent.slug.to_string(),
+                display_name: agent.display_name.to_string(),
+                owner: "rustok-ai-product".to_string(),
+                kind: AgentKind::Domain,
+                responsibility: agent.responsibility.to_string(),
+                required_permissions: agent
+                    .required_permissions
+                    .iter()
+                    .map(|value| (*value).to_string())
+                    .collect(),
+                allowed_operations: [agent.task_slug.to_string()].into_iter().collect(),
+                required_capabilities,
+                can_orchestrate: false,
+            })
+        })
+        .collect::<AiResult<Vec<_>>>()?;
+    descriptors.extend(product_descriptors);
     let mut workflows: Vec<AgentWorkflowDescriptor> = rustok_ai_alloy::alloy_swarm_workflows()
         .iter()
         .map(|workflow| AgentWorkflowDescriptor {

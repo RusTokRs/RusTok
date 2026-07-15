@@ -336,7 +336,7 @@ impl CacheNamespaceGenerationStore {
         if local.contains_key(namespace_key) {
             return Ok(());
         }
-        let next_count = local.len().checked_add(1).unwrap_or(usize::MAX);
+        let next_count = local.len().saturating_add(1);
         if next_count > self.max_local_snapshots {
             return Err(CacheGenerationError::LocalSnapshotCapacityExceeded {
                 count: next_count,

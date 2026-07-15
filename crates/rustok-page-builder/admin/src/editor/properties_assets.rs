@@ -401,7 +401,7 @@ fn AssetSection(runtime: AdminEditorRuntime) -> impl IntoView {
                     } else {
                         json!({ "id": id, "src": source })
                     };
-                    add_runtime.dispatch(UiIntent::Execute(EditorCommand::Asset {
+                    add_runtime.dispatch(UiIntent::execute(EditorCommand::Asset {
                         command: AssetCommand::Upsert { asset },
                     }));
                 }
@@ -437,7 +437,7 @@ fn AssetSection(runtime: AdminEditorRuntime) -> impl IntoView {
                                     <button
                                         type="button"
                                         class="rounded border border-destructive/40 px-2 py-1 text-destructive"
-                                        on:click=move |_| remove_runtime.dispatch(UiIntent::Execute(
+                                        on:click=move |_| remove_runtime.dispatch(UiIntent::execute(
                                             EditorCommand::Asset {
                                                 command: AssetCommand::Remove {
                                                     asset_id: remove_id.clone(),
@@ -501,7 +501,7 @@ fn selected_patch(runtime: &AdminEditorRuntime, patch: ComponentPatch) -> Result
         .controller
         .with(|controller| controller.ui().state.selection.component_id.clone())
         .ok_or_else(|| "select a component before editing properties".to_string())?;
-    Ok(UiIntent::Execute(EditorCommand::Patch {
+    Ok(UiIntent::execute(EditorCommand::Patch {
         component_id,
         patch,
     }))

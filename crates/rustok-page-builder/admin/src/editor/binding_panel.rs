@@ -137,10 +137,10 @@ pub fn BindingPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                     stable_suffix(&kind),
                                     stable_suffix(&name),
                                 );
-                                command_runtime.dispatch(UiIntent::Execute(
+                                command_runtime.dispatch(UiIntent::execute(
                                     EditorCommand::Binding {
                                         command: BindingCommand::Upsert {
-                                            binding: RuntimeBinding {
+                                            binding: Box::new(RuntimeBinding {
                                                 id,
                                                 component_id: command_component_id.clone(),
                                                 path: binding_path,
@@ -152,7 +152,7 @@ pub fn BindingPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                                     &transform.get_untracked()
                                                 ),
                                                 extensions: Map::new(),
-                                            },
+                                            }),
                                         },
                                     },
                                 ));
@@ -178,7 +178,7 @@ pub fn BindingPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                                 type="button"
                                                 class="shrink-0 text-destructive"
                                                 on:click=move |_| remove_runtime.dispatch(
-                                                    UiIntent::Execute(EditorCommand::Binding {
+                                                    UiIntent::execute(EditorCommand::Binding {
                                                         command: BindingCommand::Remove {
                                                             binding_id: binding_id.clone(),
                                                         },

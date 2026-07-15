@@ -129,7 +129,7 @@ fn setting_field_hint(field: &ModuleSettingField, locale: Locale) -> Option<Stri
     if let Some(item_type) = field.item_type.as_deref() {
         parts.push(format!(
             "{}: {}",
-            tr(locale, "Array items", "Р­Р»РµРјРµРЅС‚С‹ РјР°СЃСЃРёРІР°"),
+            tr(locale, "Array items", "Array items"),
             humanize_token(item_type)
         ));
     }
@@ -2219,7 +2219,7 @@ pub fn ModuleDetailPanel(
                                             </p>
                                             <p class="text-sm text-muted-foreground">
                                                 {if settings_form_supported.get() {
-                                                    tr(locale, "This module exposes schema-driven tenant settings from rustok-module.toml.", "Р­С‚РѕС‚ РјРѕРґСѓР»СЊ РїСѓР±Р»РёРєСѓРµС‚ schema-driven tenant-РЅР°СЃС‚СЂРѕР№РєРё РёР· rustok-module.toml.")
+                                                    tr(locale, "This module exposes schema-driven tenant settings from rustok-module.toml.", "This module exposes schema-driven tenant settings from rustok-module.toml.")
                                                 } else if settings_editable.get() {
                                                     tr(locale, "Persist raw JSON settings for the current tenant. The payload is stored in tenant_modules.settings.", "РЎРѕС…СЂР°РЅСЏР№С‚Рµ raw JSON-РЅР°СЃС‚СЂРѕР№РєРё РґР»СЏ С‚РµРєСѓС‰РµРіРѕ tenant. Payload С…СЂР°РЅРёС‚СЃСЏ РІ tenant_modules.settings.")
                                                 } else {
@@ -2504,7 +2504,7 @@ pub fn ModuleDetailPanel(
                                 <VersionTrailView
                                     locale=locale
                                     version_trail=version_trail.clone()
-                                    loading=loading.into()
+                                    loading=loading
                                 />
                             </div>
                         }

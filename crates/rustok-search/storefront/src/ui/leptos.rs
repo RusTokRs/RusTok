@@ -91,19 +91,19 @@ pub fn SearchView(
         "search.error.loadResults",
         "Failed to load storefront search results",
     );
-    let route_filters = core::parse_search_route_filters(
-        read_route_query_value(&route_context, "channel_id").as_deref(),
-        read_route_query_value(&route_context, "entity_types").as_deref(),
-        read_route_query_value(&route_context, "source_modules").as_deref(),
-        read_route_query_value(&route_context, "statuses").as_deref(),
-        read_route_query_value(&route_context, "category_ids").as_deref(),
-        read_route_query_value(&route_context, "attribute_code").as_deref(),
-        read_route_query_value(&route_context, "attribute_values").as_deref(),
-        read_route_query_value(&route_context, "attribute_min").as_deref(),
-        read_route_query_value(&route_context, "attribute_max").as_deref(),
-        read_route_query_value(&route_context, "sort_attribute_code").as_deref(),
-        read_route_query_value(&route_context, "sort_desc").as_deref(),
-    );
+    let route_filters = core::parse_search_route_filters(core::SearchRouteFilterQuery {
+        channel_id: read_route_query_value(&route_context, "channel_id"),
+        entity_types: read_route_query_value(&route_context, "entity_types"),
+        source_modules: read_route_query_value(&route_context, "source_modules"),
+        statuses: read_route_query_value(&route_context, "statuses"),
+        category_ids: read_route_query_value(&route_context, "category_ids"),
+        attribute_code: read_route_query_value(&route_context, "attribute_code"),
+        attribute_values: read_route_query_value(&route_context, "attribute_values"),
+        attribute_min: read_route_query_value(&route_context, "attribute_min"),
+        attribute_max: read_route_query_value(&route_context, "attribute_max"),
+        sort_attribute_code: read_route_query_value(&route_context, "sort_attribute_code"),
+        sort_desc: read_route_query_value(&route_context, "sort_desc"),
+    });
     let (channel_id, set_channel_id) = signal(route_filters.channel_id.clone().unwrap_or_default());
     let (category_ids, set_category_ids) = signal(route_filters.category_ids.join(","));
     let (attribute_code, set_attribute_code) =
@@ -189,19 +189,18 @@ pub fn SearchView(
             <div class="mt-8 space-y-4">
                 <form
                     class="rounded-2xl border border-border bg-background p-4"
-                    on:submit=move |ev| submit_search(
-                        ev,
-                        search_input.get(),
-                        selected_preset.get(),
-                        channel_id.get(),
-                        category_ids.get(),
-                        attribute_code.get(),
-                        attribute_values.get(),
-                        attribute_min.get(),
-                        attribute_max.get(),
-                        sort_attribute_code.get(),
-                        sort_desc.get(),
-                    )
+                    on:submit=move |ev| submit_search(ev, CatalogSearchSubmission {
+                        query: search_input.get(),
+                        preset_key: selected_preset.get(),
+                        channel_id: channel_id.get(),
+                        category_ids: category_ids.get(),
+                        attribute_code: attribute_code.get(),
+                        attribute_values: attribute_values.get(),
+                        attribute_min: attribute_min.get(),
+                        attribute_max: attribute_max.get(),
+                        sort_attribute_code: sort_attribute_code.get(),
+                        sort_desc: sort_desc.get(),
+                    })
                 >
                     <label class="block text-sm font-medium text-card-foreground" for="storefront-search-input">
                         {query_label.clone()}
@@ -702,8 +701,7 @@ fn CatalogFilterField(
     }
 }
 
-fn submit_search(
-    ev: SubmitEvent,
+struct CatalogSearchSubmission {
     query: String,
     preset_key: String,
     channel_id: String,
@@ -714,35 +712,14 @@ fn submit_search(
     attribute_max: String,
     sort_attribute_code: String,
     sort_desc: bool,
-) {
-    ev.prevent_default();
-    navigate_to_catalog_search(
-        &query,
-        &preset_key,
-        &channel_id,
-        &category_ids,
-        &attribute_code,
-        &attribute_values,
-        &attribute_min,
-        &attribute_max,
-        &sort_attribute_code,
-        sort_desc,
-    );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn navigate_to_catalog_search(
-    query: &str,
-    preset_key: &str,
-    channel_id: &str,
-    category_ids: &str,
-    attribute_code: &str,
-    attribute_values: &str,
-    attribute_min: &str,
-    attribute_max: &str,
-    sort_attribute_code: &str,
-    sort_desc: bool,
-) {
+fn submit_search(ev: SubmitEvent, submission: CatalogSearchSubmission) {
+    ev.prevent_default();
+    navigate_to_catalog_search(&submission);
+}
+
+fn navigate_to_catalog_search(submission: &CatalogSearchSubmission) {
     let Some(window) = web_sys::window() else {
         return;
     };
@@ -752,7 +729,8 @@ fn navigate_to_catalog_search(
     let Ok(url) = web_sys::Url::new(&current_href) else {
         return;
     };
-    let route_intent = core::build_storefront_search_route_intent(query, Some(preset_key));
+    let route_intent =
+        core::build_storefront_search_route_intent(&submission.query, Some(&submission.preset_key));
 
     match route_intent.query.as_deref() {
         Some(query) => url.search_params().set("q", query),
@@ -764,13 +742,16 @@ fn navigate_to_catalog_search(
     }
 
     for (key, value) in [
-        ("channel_id", channel_id),
-        ("category_ids", category_ids),
-        ("attribute_code", attribute_code),
-        ("attribute_values", attribute_values),
-        ("attribute_min", attribute_min),
-        ("attribute_max", attribute_max),
-        ("sort_attribute_code", sort_attribute_code),
+        ("channel_id", submission.channel_id.as_str()),
+        ("category_ids", submission.category_ids.as_str()),
+        ("attribute_code", submission.attribute_code.as_str()),
+        ("attribute_values", submission.attribute_values.as_str()),
+        ("attribute_min", submission.attribute_min.as_str()),
+        ("attribute_max", submission.attribute_max.as_str()),
+        (
+            "sort_attribute_code",
+            submission.sort_attribute_code.as_str(),
+        ),
     ] {
         if value.trim().is_empty() {
             url.search_params().delete(key);
@@ -778,7 +759,7 @@ fn navigate_to_catalog_search(
             url.search_params().set(key, value.trim());
         }
     }
-    if sort_desc {
+    if submission.sort_desc {
         url.search_params().set("sort_desc", "true");
     } else {
         url.search_params().delete("sort_desc");

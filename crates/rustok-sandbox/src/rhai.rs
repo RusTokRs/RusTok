@@ -123,8 +123,8 @@ impl RhaiExecutor {
         scope
     }
 
-    fn map_error(error: Box<EvalAltResult>, request: &SandboxRequest) -> SandboxError {
-        match *error {
+    fn map_error(error: EvalAltResult, request: &SandboxRequest) -> SandboxError {
+        match error {
             EvalAltResult::ErrorTerminated(reason, _)
                 if reason.to_string() == CANCELLATION_MARKER =>
             {
@@ -193,7 +193,7 @@ impl SandboxExecutor for RhaiExecutor {
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
         let output = engine
             .eval_ast_with_scope::<Dynamic>(&mut scope, &ast)
-            .map_err(|error| Self::map_error(error, request))?;
+            .map_err(|error| Self::map_error(*error, request))?;
         let mut output = dynamic_to_json(output);
         for extension in &self.extensions {
             output = extension.map_output(&mut scope, request, output)?;

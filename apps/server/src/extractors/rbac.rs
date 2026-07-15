@@ -397,6 +397,7 @@ mod tests {
             session_id: rustok_core::generate_id(),
             permissions,
             inferred_role: role,
+            actor_kind: rustok_core::SecurityActorKind::User,
             client_id: None,
             scopes: vec![],
             grant_type: "direct".to_string(),

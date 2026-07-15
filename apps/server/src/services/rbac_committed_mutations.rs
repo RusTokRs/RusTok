@@ -102,7 +102,7 @@ where
                 users::Entity::update_many()
                     .col_expr(
                         users::Column::UpdatedAt,
-                        Expr::col(users::Column::UpdatedAt),
+                        Expr::col(users::Column::UpdatedAt).into(),
                     )
                     .filter(users::Column::Id.eq(*user_id))
                     .filter(users::Column::TenantId.eq(*tenant_id))

@@ -78,11 +78,10 @@ mod tests {
     };
     use crate::health::{
         ProviderDegradationReason, ProviderHealthEvidence, ProviderHealthSnapshot,
-        ProviderHealthState, ProviderSloObservations, ProviderSloStatus, ProviderSloThresholds,
+        ProviderHealthState, ProviderSloObservations, ProviderSloStatus,
     };
     use crate::rollout::{
-        ensure_capability, fallback_matrix, BuilderCapabilityFlags, BuilderRolloutError,
-        BuilderToggleProfile,
+        ensure_capability, fallback_matrix, BuilderRolloutError, BuilderToggleProfile,
     };
 
     #[test]
@@ -151,7 +150,15 @@ mod tests {
             .iter()
             .map(|kind| kind.as_str())
             .collect();
-        assert_eq!(error_kinds, PAGE_BUILDER_ERROR_CATALOG);
+        let catalog_kinds: Vec<_> = PAGE_BUILDER_ERROR_CATALOG
+            .iter()
+            .map(|entry| entry.kind.as_str())
+            .collect();
+        assert_eq!(error_kinds, catalog_kinds);
+        assert_eq!(
+            PAGE_BUILDER_ERROR_CATALOG[3].code,
+            Some(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE)
+        );
         assert_eq!(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE, "FEATURE_DISABLED");
     }
 
@@ -159,46 +166,45 @@ mod tests {
     fn fallback_matrix_keeps_read_paths_alive() {
         let matrix = fallback_matrix();
         assert_eq!(matrix.len(), 4);
-        assert!(matrix
-            .iter()
-            .all(|row| row.profile != BuilderToggleProfile::AllOn || row.tree_available));
+        assert!(matrix.iter().all(|row| row.read_paths == "stable"));
+        assert!(
+            matrix[0].disabled_capabilities.is_empty(),
+            "the fully enabled profile must expose every builder capability"
+        );
     }
 
     #[test]
     fn disabled_capability_returns_typed_error() {
-        let flags = BuilderCapabilityFlags::from_profile(BuilderToggleProfile::PublishOff);
+        let flags = BuilderToggleProfile::PublishOff.flags();
         let error = ensure_capability(&flags, BuilderCapabilityKind::Publish)
             .expect_err("publish should be disabled");
-        assert!(matches!(error, BuilderRolloutError::FeatureDisabled(_)));
         assert_eq!(
-            error.stable_code(),
-            PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE
+            error,
+            BuilderRolloutError::CapabilityDisabled(BuilderCapabilityKind::Publish.as_str())
         );
     }
 
     #[test]
     fn health_snapshot_roundtrip_is_stable() {
-        let snapshot = ProviderHealthSnapshot {
-            state: ProviderHealthState::Degraded,
-            reason: Some(ProviderDegradationReason::SanitizeBackpressure),
-            evidence: ProviderHealthEvidence {
-                observed_at: "2026-07-13T00:00:00Z".to_string(),
-                slo_status: ProviderSloStatus::Violated,
-                thresholds: ProviderSloThresholds {
-                    preview_p95_ms: 750,
-                    publish_p95_ms: 1_500,
-                    error_rate_bps: 100,
-                },
-                observations: ProviderSloObservations {
-                    preview_p95_ms: 820,
-                    publish_p95_ms: 1_200,
-                    error_rate_bps: 50,
-                },
-            },
+        let observed = ProviderSloObservations {
+            preview_p95_ms: 820,
+            publish_p95_ms: 1_200,
+            sanitize_failure_rate: 0.02,
+            runtime_error_rate: 0.005,
         };
+        let snapshot = ProviderHealthSnapshot::evaluate(observed);
+        assert_eq!(snapshot.state, ProviderHealthState::Degraded);
+        assert_eq!(
+            snapshot.degradation_reasons,
+            vec![ProviderDegradationReason::SanitizeBackpressure]
+        );
         let value = serde_json::to_value(&snapshot).expect("serialize health snapshot");
         let decoded: ProviderHealthSnapshot =
             serde_json::from_value(value).expect("deserialize health snapshot");
         assert_eq!(decoded, snapshot);
+
+        let evidence = ProviderHealthEvidence::from_observations(observed);
+        assert_eq!(evidence.module_slug, "page_builder");
+        assert_eq!(evidence.slo_evaluation.overall, ProviderSloStatus::Fail);
     }
 }

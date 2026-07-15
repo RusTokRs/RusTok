@@ -178,7 +178,7 @@ fn TraitEditorRow(
                     class="rounded border border-border px-2 py-1 text-xs"
                     on:click=move |_| {
                         value.set(String::new());
-                        clear_runtime.dispatch(UiIntent::Execute(EditorCommand::Patch {
+                        clear_runtime.dispatch(UiIntent::execute(EditorCommand::Patch {
                             component_id: clear_component_id.clone(),
                             patch: clear_schema.remove_patch(),
                         }));
@@ -196,7 +196,7 @@ fn apply_trait_value(
     value: &str,
 ) {
     match schema.patch_from_text(value) {
-        Ok(patch) => runtime.dispatch(UiIntent::Execute(EditorCommand::Patch {
+        Ok(patch) => runtime.dispatch(UiIntent::execute(EditorCommand::Patch {
             component_id: component_id.to_string(),
             patch,
         })),

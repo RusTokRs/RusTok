@@ -791,7 +791,6 @@ pub fn render_nested_json_children(
                             <>
                                 <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                     let root_type = root_type.clone();
-                                    let root_value = root_value;
                                     let path = path.clone();
                                     move |_| {
                                         if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newText", serde_json::Value::String(String::new())) {
@@ -801,7 +800,6 @@ pub fn render_nested_json_children(
                                 }>{tr(locale, "Add text", "Добавить текст")}</button>
                                 <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                     let root_type = root_type.clone();
-                                    let root_value = root_value;
                                     let path = path.clone();
                                     move |_| {
                                         if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newFlag", serde_json::Value::Bool(false)) {
@@ -811,7 +809,6 @@ pub fn render_nested_json_children(
                                 }>{tr(locale, "Add flag", "Добавить флаг")}</button>
                                 <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                     let root_type = root_type.clone();
-                                    let root_value = root_value;
                                     let path = path.clone();
                                     move |_| {
                                         if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newNumber", serde_json::json!(0)) {
@@ -821,7 +818,6 @@ pub fn render_nested_json_children(
                                 }>{tr(locale, "Add number", "Добавить число")}</button>
                                 <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                     let root_type = root_type.clone();
-                                    let root_value = root_value;
                                     let path = path.clone();
                                     move |_| {
                                         if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newObject", serde_json::json!({})) {
@@ -831,7 +827,6 @@ pub fn render_nested_json_children(
                                 }>{tr(locale, "Add object", "Добавить объект")}</button>
                                 <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                     let root_type = root_type.clone();
-                                    let root_value = root_value;
                                     let path = path.clone();
                                     move |_| {
                                         if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newArray", serde_json::json!([])) {
@@ -850,7 +845,6 @@ pub fn render_nested_json_children(
                                     class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                     disabled={
                                         let root_type = root_type.clone();
-                                        let root_value = root_value;
                                         let path = path.clone();
                                         let property_key = property_key.clone();
                                         move || {
@@ -865,7 +859,6 @@ pub fn render_nested_json_children(
                                     }
                                     on:click={
                                         let root_type = root_type.clone();
-                                        let root_value = root_value;
                                         let path = path.clone();
                                         let property_key = property_key.clone();
                                         let property_shape = property_shape.clone();
@@ -905,7 +898,6 @@ pub fn render_nested_json_children(
                                         <div class="flex flex-wrap items-center gap-2">
                                             <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() || schema_locks_keys on:change={
                                                 let root_type = root_type.clone();
-                                                let root_value = root_value;
                                                 move |event| {
                                                     if let Ok(next) = nested_object_key_renamed(&root_value.get(), &root_type, &item_path_for_rename, &event_target_value(&event)) {
                                                         on_input.run(next);
@@ -916,7 +908,6 @@ pub fn render_nested_json_children(
                                         </div>
                                         <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                             let root_type = root_type.clone();
-                                            let root_value = root_value;
                                             move |_| {
                                                 if let Ok(next) = nested_value_removed(&root_value.get(), &root_type, &item_path_for_remove) {
                                                     on_input.run(next);
@@ -931,7 +922,6 @@ pub fn render_nested_json_children(
                                         disabled,
                                         Callback::new({
                                             let root_type = root_type.clone();
-                                            let root_value = root_value;
                                             move |next_value| {
                                                 if let Ok(next) = nested_value_updated(
                                                     &root_value.get(),
@@ -956,7 +946,6 @@ pub fn render_nested_json_children(
                                         <div class="flex flex-wrap items-center gap-2">
                                             <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() || schema_locks_keys on:change={
                                                 let root_type = root_type.clone();
-                                                let root_value = root_value;
                                                 move |event| {
                                                     if let Ok(next) = nested_object_key_renamed(&root_value.get(), &root_type, &item_path_for_rename, &event_target_value(&event)) {
                                                         on_input.run(next);
@@ -967,7 +956,6 @@ pub fn render_nested_json_children(
                                         </div>
                                         <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                             let root_type = root_type.clone();
-                                            let root_value = root_value;
                                             move |_| {
                                                 if let Ok(next) = nested_value_removed(&root_value.get(), &root_type, &item_path_for_remove) {
                                                     on_input.run(next);
@@ -995,7 +983,6 @@ pub fn render_nested_json_children(
                         view! {
                             <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                 let root_type = root_type.clone();
-                                let root_value = root_value;
                                 let path = path.clone();
                                 let item_shape = item_shape.clone();
                                 move |_| {
@@ -1015,7 +1002,6 @@ pub fn render_nested_json_children(
                             <>
                                 <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                     let root_type = root_type.clone();
-                                    let root_value = root_value;
                                     let path = path.clone();
                                     move |_| {
                                         if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::Value::String(String::new())) {
@@ -1025,7 +1011,6 @@ pub fn render_nested_json_children(
                                 }>{tr(locale, "Add text", "Добавить текст")}</button>
                                 <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                     let root_type = root_type.clone();
-                                    let root_value = root_value;
                                     let path = path.clone();
                                     move |_| {
                                         if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::Value::Bool(false)) {
@@ -1035,7 +1020,6 @@ pub fn render_nested_json_children(
                                 }>{tr(locale, "Add flag", "Добавить флаг")}</button>
                                 <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                     let root_type = root_type.clone();
-                                    let root_value = root_value;
                                     let path = path.clone();
                                     move |_| {
                                         if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::json!(0)) {
@@ -1045,7 +1029,6 @@ pub fn render_nested_json_children(
                                 }>{tr(locale, "Add number", "Добавить число")}</button>
                                 <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                     let root_type = root_type.clone();
-                                    let root_value = root_value;
                                     let path = path.clone();
                                     move |_| {
                                         if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::json!({})) {
@@ -1055,7 +1038,6 @@ pub fn render_nested_json_children(
                                 }>{tr(locale, "Add object", "Добавить объект")}</button>
                                 <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                     let root_type = root_type.clone();
-                                    let root_value = root_value;
                                     let path = path.clone();
                                     move |_| {
                                         if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::json!([])) {
@@ -1090,7 +1072,6 @@ pub fn render_nested_json_children(
                                         <div class="flex flex-wrap gap-2">
                                             <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                                 let root_type = root_type.clone();
-                                                let root_value = root_value;
                                                 move |_| {
                                                     if let Ok(next) = nested_array_item_moved(&root_value.get(), &root_type, &item_path_for_move_up, -1) {
                                                         on_input.run(next);
@@ -1099,7 +1080,6 @@ pub fn render_nested_json_children(
                                             }>{tr(locale, "Up", "Вверх")}</button>
                                             <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                                 let root_type = root_type.clone();
-                                                let root_value = root_value;
                                                 move |_| {
                                                     if let Ok(next) = nested_array_item_moved(&root_value.get(), &root_type, &item_path_for_move_down, 1) {
                                                         on_input.run(next);
@@ -1108,7 +1088,6 @@ pub fn render_nested_json_children(
                                             }>{tr(locale, "Down", "Вниз")}</button>
                                             <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                                 let root_type = root_type.clone();
-                                                let root_value = root_value;
                                                 move |_| {
                                                     if let Ok(next) = nested_value_removed(&root_value.get(), &root_type, &item_path_for_remove) {
                                                         on_input.run(next);
@@ -1124,7 +1103,6 @@ pub fn render_nested_json_children(
                                         disabled,
                                         Callback::new({
                                             let root_type = root_type.clone();
-                                            let root_value = root_value;
                                             move |next_value| {
                                                 if let Ok(next) = nested_value_updated(
                                                     &root_value.get(),
@@ -1154,7 +1132,6 @@ pub fn render_nested_json_children(
                                         <div class="flex flex-wrap gap-2">
                                             <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                                 let root_type = root_type.clone();
-                                                let root_value = root_value;
                                                 move |_| {
                                                     if let Ok(next) = nested_array_item_moved(&root_value.get(), &root_type, &item_path_for_move_up, -1) {
                                                         on_input.run(next);
@@ -1163,7 +1140,6 @@ pub fn render_nested_json_children(
                                             }>{tr(locale, "Up", "Вверх")}</button>
                                             <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                                 let root_type = root_type.clone();
-                                                let root_value = root_value;
                                                 move |_| {
                                                     if let Ok(next) = nested_array_item_moved(&root_value.get(), &root_type, &item_path_for_move_down, 1) {
                                                         on_input.run(next);
@@ -1172,7 +1148,6 @@ pub fn render_nested_json_children(
                                             }>{tr(locale, "Down", "Вниз")}</button>
                                             <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
                                                 let root_type = root_type.clone();
-                                                let root_value = root_value;
                                                 move |_| {
                                                     if let Ok(next) = nested_value_removed(&root_value.get(), &root_type, &item_path_for_remove) {
                                                         on_input.run(next);
@@ -1224,7 +1199,6 @@ pub fn StructuredObjectEditor(
                                         class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                         disabled=move || disabled.get()
                                         on:click={
-                                            let value = value;
                                             move |_| {
                                                 if let Ok(next) = object_with_new_property(
                                                     &value.get(),
@@ -1243,7 +1217,6 @@ pub fn StructuredObjectEditor(
                                         class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                         disabled=move || disabled.get()
                                         on:click={
-                                            let value = value;
                                             move |_| {
                                                 if let Ok(next) = object_with_new_property(
                                                     &value.get(),
@@ -1262,7 +1235,6 @@ pub fn StructuredObjectEditor(
                                         class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                         disabled=move || disabled.get()
                                         on:click={
-                                            let value = value;
                                             move |_| {
                                                 if let Ok(next) = object_with_new_property(
                                                     &value.get(),
@@ -1293,7 +1265,6 @@ pub fn StructuredObjectEditor(
                                             type="button"
                                             class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                             disabled={
-                                                let value = value;
                                                 let property_key = property_key.clone();
                                                 move || {
                                                     disabled.get()
@@ -1303,7 +1274,6 @@ pub fn StructuredObjectEditor(
                                                 }
                                             }
                                             on:click={
-                                                let value = value;
                                                 let property_key = property_key.clone();
                                                 let property_shape = property_shape.clone();
                                                 move |_| {
@@ -1350,7 +1320,6 @@ pub fn StructuredObjectEditor(
                                         <div class="flex flex-wrap items-center justify-between gap-2">
                                             <div class="flex flex-wrap items-center gap-2">
                                                 <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() || schema_locks_keys on:change={
-                                                    let value = value;
                                                     move |event| {
                                                         if let Ok(next) = object_with_renamed_property(&value.get(), &key_for_rename, &event_target_value(&event)) {
                                                             on_input.run(next);
@@ -1366,7 +1335,6 @@ pub fn StructuredObjectEditor(
                                                 class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                                 disabled=move || disabled.get()
                                                 on:click={
-                                                    let value = value;
                                                     move |_| {
                                                         if let Ok(next) = object_without_property(&value.get(), &key_for_remove) {
                                                             on_input.run(next);
@@ -1389,7 +1357,6 @@ pub fn StructuredObjectEditor(
                                                         locale,
                                                         disabled,
                                                         Callback::new({
-                                                            let value = value;
                                                             move |next_value| {
                                                                 if let Ok(next) = object_with_updated_property(
                                                                     &value.get(),
@@ -1471,7 +1438,6 @@ pub fn StructuredArrayEditor(
                                     class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                     disabled=move || disabled.get()
                                     on:click={
-                                        let value = value;
                                         let item_shape = item_shape.clone();
                                         move |_| {
                                             if let Ok(next) = array_with_appended_item(
@@ -1498,7 +1464,6 @@ pub fn StructuredArrayEditor(
                                     class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                     disabled=move || disabled.get()
                                     on:click={
-                                        let value = value;
                                         let item_type = item_type.clone();
                                         move |_| {
                                             if let Ok(next) = array_with_appended_item(
@@ -1521,7 +1486,6 @@ pub fn StructuredArrayEditor(
                                         class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                         disabled=move || disabled.get()
                                         on:click={
-                                            let value = value;
                                             move |_| {
                                                 if let Ok(next) = array_with_appended_item(
                                                     &value.get(),
@@ -1539,7 +1503,6 @@ pub fn StructuredArrayEditor(
                                         class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                         disabled=move || disabled.get()
                                         on:click={
-                                            let value = value;
                                             move |_| {
                                                 if let Ok(next) = array_with_appended_item(
                                                     &value.get(),
@@ -1557,7 +1520,6 @@ pub fn StructuredArrayEditor(
                                         class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                         disabled=move || disabled.get()
                                         on:click={
-                                            let value = value;
                                             move |_| {
                                                 if let Ok(next) =
                                                     array_with_appended_item(&value.get(), serde_json::json!(0))
@@ -1606,7 +1568,6 @@ pub fn StructuredArrayEditor(
                                                     class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                                     disabled=move || disabled.get()
                                                     on:click={
-                                                        let value = value;
                                                         move |_| {
                                                             if let Ok(next) = array_item_moved(&value.get(), index, -1) {
                                                                 on_input.run(next);
@@ -1621,7 +1582,6 @@ pub fn StructuredArrayEditor(
                                                     class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                                     disabled=move || disabled.get()
                                                     on:click={
-                                                        let value = value;
                                                         move |_| {
                                                             if let Ok(next) = array_item_moved(&value.get(), index, 1) {
                                                                 on_input.run(next);
@@ -1636,7 +1596,6 @@ pub fn StructuredArrayEditor(
                                                     class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                                     disabled=move || disabled.get()
                                                     on:click={
-                                                        let value = value;
                                                         move |_| {
                                                             if let Ok(next) = array_without_item(&value.get(), index) {
                                                                 on_input.run(next);
@@ -1659,7 +1618,6 @@ pub fn StructuredArrayEditor(
                                                         locale,
                                                         disabled,
                                                         Callback::new({
-                                                            let value = value;
                                                             move |next_value| {
                                                                 if let Ok(next) = array_with_updated_item(
                                                                     &value.get(),
@@ -1725,12 +1683,10 @@ pub fn ComplexSettingEditor(
 ) -> impl IntoView {
     let locale = use_i18n().get_locale();
     let status = Signal::derive({
-        let value = value;
         let field_type = field_type.clone();
         move || json_editor_summary(&field_type, &value.get(), locale)
     });
     let nested_root = Signal::derive({
-        let value = value;
         let field_type = field_type.clone();
         move || parse_json_root(&value.get(), &field_type).ok()
     });
@@ -1818,7 +1774,6 @@ pub fn ComplexSettingEditor(
                     class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                     disabled=move || disabled.get()
                     on:click={
-                        let value = value;
                         let field_type = field_type.clone();
                         move |_| {
                             match parse_json_editor_value(&value.get(), &field_type, locale) {
@@ -1849,7 +1804,6 @@ pub fn ComplexSettingEditor(
                             class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                             disabled=move || disabled.get()
                             on:click={
-                                let value = value;
                                 let field_type = field_type.clone();
                                 move |_| {
                                     let next = match field_type.as_str() {

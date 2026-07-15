@@ -26,7 +26,7 @@ impl AdminCanvasController {
         let patch = asset
             .component_patch(source_attribute)
             .map_err(|error| error.to_string())?;
-        Ok(UiIntent::Execute(EditorCommand::Patch {
+        Ok(UiIntent::execute(EditorCommand::Patch {
             component_id: selected.id,
             patch,
         }))
@@ -68,7 +68,7 @@ impl AdminCanvasController {
             }
         };
 
-        Ok(UiIntent::Execute(EditorCommand::Move {
+        Ok(UiIntent::execute(EditorCommand::Move {
             component_id: selected.id,
             new_parent_id: location.parent_component_id,
             index,
@@ -111,7 +111,10 @@ mod tests {
     fn down_intent_accounts_for_remove_then_insert_index() {
         let controller = controller();
         let intent = controller.move_selected_down_intent().expect("move");
-        let UiIntent::Execute(EditorCommand::Move { index, .. }) = intent else {
+        let UiIntent::Execute(command) = intent else {
+            panic!("expected move command");
+        };
+        let EditorCommand::Move { index, .. } = *command else {
             panic!("expected move command");
         };
         assert_eq!(index, 3);

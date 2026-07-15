@@ -3,7 +3,7 @@ use rustok_api::Permission;
 use rustok_api::{graphql::require_module_enabled, AuthContext, RequestContext};
 use rustok_cart::{
     bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_storefront_port,
-    CartStorefrontPort, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
+    CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
 };
 use rustok_payment::PaymentService;
 use uuid::Uuid;

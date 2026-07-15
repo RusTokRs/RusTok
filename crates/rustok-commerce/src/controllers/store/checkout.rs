@@ -6,8 +6,7 @@ use axum::{
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_cart::{
     bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_checkout_port,
-    in_process_cart_storefront_port, CartStorefrontPort, CartStorefrontReadRequest,
-    PrepareCartCheckoutSnapshotRequest,
+    in_process_cart_storefront_port, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
 };
 use rustok_payment::PaymentService;
 use rustok_web::{HttpError, HttpResult};

@@ -199,7 +199,7 @@ impl CartService {
     ) -> CartResult<CartResponse> {
         let txn = self.db.begin().await?;
         let now = Utc::now().fixed_offset();
-        let completed_at = mark_completed.then(|| now.clone());
+        let completed_at = mark_completed.then_some(now);
         let allowed_from = allowed_from
             .iter()
             .map(|status| status.as_str())

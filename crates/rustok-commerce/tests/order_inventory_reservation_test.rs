@@ -18,7 +18,7 @@ use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
     Statement,
 };
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 mod support;

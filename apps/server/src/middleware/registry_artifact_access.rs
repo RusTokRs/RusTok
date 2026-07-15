@@ -61,11 +61,16 @@ pub async fn enforce(
         Ok(request) => request,
         Err(response) => return response,
     };
+    // Copy only the authentication context before awaiting authorization I/O.
+    // Borrowing `Request<Body>` across an await makes this Axum middleware future
+    // non-Send because request bodies are not Sync.
+    let auth = request.extensions().get::<AuthContextExtension>().cloned();
 
     match operation {
         RegistryOperation::PublishStatus => {
             if let Err(response) =
-                authorize_user_access(&ctx, &request, &publish_request, PublishAccess::Manage).await
+                authorize_user_access(&ctx, auth.as_ref(), &publish_request, PublishAccess::Manage)
+                    .await
             {
                 return response;
             }
@@ -73,7 +78,8 @@ pub async fn enforce(
         }
         RegistryOperation::ArtifactUpload => {
             if let Err(response) =
-                authorize_user_access(&ctx, &request, &publish_request, PublishAccess::Manage).await
+                authorize_user_access(&ctx, auth.as_ref(), &publish_request, PublishAccess::Manage)
+                    .await
             {
                 return response;
             }
@@ -85,9 +91,13 @@ pub async fn enforce(
         }
         RegistryOperation::ArtifactDownload => {
             if !runner_token_is_valid(&ctx, &request) {
-                if let Err(response) =
-                    authorize_user_access(&ctx, &request, &publish_request, PublishAccess::Manage)
-                        .await
+                if let Err(response) = authorize_user_access(
+                    &ctx,
+                    auth.as_ref(),
+                    &publish_request,
+                    PublishAccess::Manage,
+                )
+                .await
                 {
                     return response;
                 }
@@ -96,7 +106,8 @@ pub async fn enforce(
         }
         RegistryOperation::ManageMutation => {
             if let Err(response) =
-                authorize_user_access(&ctx, &request, &publish_request, PublishAccess::Manage).await
+                authorize_user_access(&ctx, auth.as_ref(), &publish_request, PublishAccess::Manage)
+                    .await
             {
                 return response;
             }
@@ -104,7 +115,8 @@ pub async fn enforce(
         }
         RegistryOperation::ReviewMutation => {
             if let Err(response) =
-                authorize_user_access(&ctx, &request, &publish_request, PublishAccess::Review).await
+                authorize_user_access(&ctx, auth.as_ref(), &publish_request, PublishAccess::Review)
+                    .await
             {
                 return response;
             }
@@ -191,13 +203,11 @@ enum PublishAccess {
 
 async fn authorize_user_access(
     ctx: &ServerRuntimeContext,
-    request: &Request<Body>,
+    auth_extension: Option<&AuthContextExtension>,
     publish_request: &registry_publish_request::Model,
     access: PublishAccess,
 ) -> Result<(), Response> {
-    let auth = request
-        .extensions()
-        .get::<AuthContextExtension>()
+    let auth = auth_extension
         .map(|extension| &extension.0)
         .ok_or_else(|| unauthorized("Registry publish request access requires authentication"))?;
     if auth.client_id.is_some() && auth.session_id.is_nil() {

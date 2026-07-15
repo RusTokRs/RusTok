@@ -740,9 +740,9 @@ fn map_token_row(row: sea_orm::QueryResult) -> Result<McpTokenPayload, ServerFnE
         .try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", "revoked_at")
         .map_err(server_error)?;
     let is_active = revoked_at.is_none()
-        && expires_at.as_ref().map_or(true, |expires_at| {
-            expires_at.timestamp() > chrono::Utc::now().timestamp()
-        });
+        && expires_at
+            .as_ref()
+            .is_none_or(|expires_at| expires_at.timestamp() > chrono::Utc::now().timestamp());
 
     Ok(McpTokenPayload {
         id: row

@@ -28,7 +28,7 @@ pub enum CheckoutStagePipelineError {
     #[error(transparent)]
     Plan(#[from] CheckoutOrderPlanError),
     #[error(transparent)]
-    OrderStage(#[from] CheckoutOrderStageError),
+    OrderStage(Box<CheckoutOrderStageError>),
     #[error(transparent)]
     PaymentStage(#[from] CheckoutPaymentStageError),
     #[error(transparent)]
@@ -46,6 +46,12 @@ pub enum CheckoutStagePipelineError {
 }
 
 pub type CheckoutStagePipelineResult<T> = Result<T, CheckoutStagePipelineError>;
+
+impl From<CheckoutOrderStageError> for CheckoutStagePipelineError {
+    fn from(error: CheckoutOrderStageError) -> Self {
+        Self::OrderStage(Box::new(error))
+    }
+}
 
 pub struct CheckoutStagePipeline {
     operation_journal: CheckoutOperationJournal,

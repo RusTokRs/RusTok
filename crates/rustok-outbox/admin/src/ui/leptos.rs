@@ -89,24 +89,24 @@ pub fn OutboxAdmin() -> impl IntoView {
 }
 
 fn shell_text(locale: Option<&str>) -> OutboxAdminShellText {
-    OutboxAdminShellText::new(
-        t(locale, "outbox.badge", "outbox"),
-        t(locale, "outbox.title", "Outbox Relay"),
-        t(
+    OutboxAdminShellText {
+        badge: t(locale, "outbox.badge", "outbox"),
+        title: t(locale, "outbox.title", "Outbox Relay"),
+        subtitle: t(
             locale,
             "outbox.subtitle",
             "Module-owned overview for transactional event persistence, retry pressure, and relay health.",
         ),
-        t(locale, "outbox.health", "Health"),
-        t(locale, "outbox.tenantContext", "Tenant context"),
-        t(locale, "outbox.global", "global"),
-        t(locale, "outbox.notes.title", "Relay Notes"),
-        t(
+        health_label: t(locale, "outbox.health", "Health"),
+        tenant_context_label: t(locale, "outbox.tenantContext", "Tenant context"),
+        global_tenant_label: t(locale, "outbox.global", "global"),
+        relay_notes_title: t(locale, "outbox.notes.title", "Relay Notes"),
+        load_error_prefix: t(
             locale,
             "outbox.error.loadBootstrap",
             "Failed to load outbox bootstrap",
         ),
-    )
+    }
 }
 
 #[component]

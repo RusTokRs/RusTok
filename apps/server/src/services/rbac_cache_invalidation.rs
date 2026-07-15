@@ -8,10 +8,10 @@ use once_cell::sync::Lazy;
 use rustok_cache::{
     BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError, CacheInvalidationMessage,
     CacheInvalidationObservation, CacheInvalidationOutcome, CacheInvalidationPayloadError,
-    CacheService, DurableCacheInvalidationRecord, VersionedCacheInvalidation,
+    CacheService, DurableCacheInvalidationRecord, LocalCacheInvalidationSubscription,
+    VersionedCacheInvalidation,
 };
 use sea_orm::DatabaseConnection;
-use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -362,7 +362,7 @@ async fn publish_rbac_invalidation(
 }
 
 async fn run_local_invalidation_worker(
-    mut local: broadcast::Receiver<CacheInvalidationMessage>,
+    mut local: LocalCacheInvalidationSubscription,
     listener: RbacCacheInvalidationListener,
 ) {
     loop {
@@ -376,7 +376,7 @@ async fn run_local_invalidation_worker(
                     );
                 }
             }
-            Err(broadcast::error::RecvError::Lagged(skipped)) => {
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                 tracing::warn!(
                     skipped,
                     "RBAC cache invalidation listener lagged; clearing all permission snapshots"
@@ -392,7 +392,7 @@ async fn run_local_invalidation_worker(
                     );
                 }
             }
-            Err(broadcast::error::RecvError::Closed) => {
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                 tracing::error!("Local RBAC cache invalidation subscription closed");
                 return;
             }

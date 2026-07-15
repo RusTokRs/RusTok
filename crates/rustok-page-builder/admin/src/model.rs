@@ -112,10 +112,7 @@ impl AdminCanvasController {
     ) -> Result<Vec<AdminCanvasEffect>, AdminCanvasError> {
         self.validate_navigation_intent(&intent)?;
         let snapshot = self.clone();
-        let effects = match self.ui.dispatch(intent) {
-            Ok(effects) => effects,
-            Err(error) => return Err(error.into()),
-        };
+        let effects = self.ui.dispatch(intent)?;
         let mut outgoing = Vec::new();
 
         for effect in effects {
@@ -205,7 +202,7 @@ impl AdminCanvasController {
                 Ok(())
             }
             UiEffect::Command(command) => {
-                let report = self.editor.apply(command)?;
+                let report = self.editor.apply(*command)?;
                 self.synchronize(report);
                 Ok(())
             }
@@ -382,9 +379,9 @@ impl AdminCanvasController {
                         "selected component `{selected_id}` does not exist"
                     ))
                 })?;
-                if registries.accepts_child_type(Some(selected.component_type()), child_type) {
-                    Ok((Some(selected_id.to_string()), selected.children().len()))
-                } else if location.depth == 0 {
+                if location.depth == 0
+                    || registries.accepts_child_type(Some(selected.component_type()), child_type)
+                {
                     Ok((Some(selected_id.to_string()), selected.children().len()))
                 } else {
                     Ok((
@@ -522,7 +519,7 @@ mod tests {
     fn mutation_and_save_emit_canonical_publish_request() {
         let mut controller = controller();
         controller
-            .dispatch(UiIntent::Execute(EditorCommand::Patch {
+            .dispatch(UiIntent::execute(EditorCommand::Patch {
                 component_id: "hero".to_string(),
                 patch: ComponentPatch {
                     attributes: Map::from_iter([("aria-label".to_string(), json!("Hero"))]),
@@ -556,7 +553,7 @@ mod tests {
         controller.dispatch(UiIntent::CopySelection).expect("copy");
         let snapshot = controller.clone();
         assert!(controller
-            .dispatch(UiIntent::Execute(EditorCommand::Patch {
+            .dispatch(UiIntent::execute(EditorCommand::Patch {
                 component_id: "missing".to_string(),
                 patch: ComponentPatch::default(),
             }))
@@ -593,10 +590,10 @@ mod tests {
     fn page_navigation_is_non_mutating_and_scopes_selection() {
         let mut controller = controller();
         controller
-            .dispatch(UiIntent::Execute(EditorCommand::Page {
+            .dispatch(UiIntent::execute(EditorCommand::Page {
                 command: PageCommand::Add {
                     index: 1,
-                    page: blank_page("about", "About"),
+                    page: Box::new(blank_page("about", "About")),
                 },
             }))
             .expect("add page");

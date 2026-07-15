@@ -1,7 +1,6 @@
 use crate::model::PageBody;
-use fly::PageSelection;
 use leptos::prelude::*;
-use rustok_page_builder_storefront::PageBuilderStorefront;
+use rustok_page_builder_storefront::{PageBuilderStorefront, PageSelection};
 use serde_json::Value;
 
 pub const GRAPESJS_V1_BODY_FORMAT: &str = "grapesjs_v1";
@@ -36,8 +35,8 @@ pub fn PageBuilderPageBody(
         Ok(project_data) => view! {
             <PageBuilderStorefront
                 project_data
-                selection=Some(PageSelection::First)
-                class=Some(class)
+                selection=PageSelection::First
+                class=class
             />
         }
         .into_any(),

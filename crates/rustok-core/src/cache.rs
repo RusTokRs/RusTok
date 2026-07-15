@@ -82,7 +82,7 @@ impl Expiry<String, InMemoryCacheValue> for InMemoryCacheExpiry {
     }
 }
 
-fn in_memory_entry_weight(key: &String, value: &InMemoryCacheValue) -> u32 {
+fn in_memory_entry_weight(key: &str, value: &InMemoryCacheValue) -> u32 {
     let weight = key
         .len()
         .saturating_add(value.payload.len())
@@ -113,7 +113,7 @@ impl InMemoryCacheBackend {
                 .build(),
             InMemoryCacheCapacity::WeightBytes(max_weight_bytes) => Cache::builder()
                 .expire_after(InMemoryCacheExpiry)
-                .weigher(in_memory_entry_weight)
+                .weigher(|key, value| in_memory_entry_weight(key, value))
                 .max_capacity(max_weight_bytes)
                 .build(),
         };

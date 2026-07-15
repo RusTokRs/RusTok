@@ -5,11 +5,9 @@ pub mod types;
 
 use chrono::Utc;
 use sea_orm::{
-    sea_query::{Expr, ExprTrait},
-    ActiveModelTrait,
-    ActiveValue::Set,
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, TransactionTrait,
+    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition,
+    DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -75,20 +73,17 @@ fn aggregate_agent_workflow_status<'a>(
     stage_statuses: impl Iterator<Item = &'a str>,
 ) -> &'static str {
     let stage_statuses = stage_statuses.collect::<Vec<_>>();
-    if stage_statuses.iter().any(|status| *status == "failed") {
+    if stage_statuses.contains(&"failed") {
         "failed"
-    } else if stage_statuses.iter().any(|status| *status == "cancelled") {
+    } else if stage_statuses.contains(&"cancelled") {
         "cancelled"
     } else if !stage_statuses.is_empty()
         && stage_statuses.iter().all(|status| *status == "completed")
     {
         "completed"
-    } else if stage_statuses
-        .iter()
-        .any(|status| *status == "waiting_approval")
-    {
+    } else if stage_statuses.contains(&"waiting_approval") {
         "waiting_approval"
-    } else if stage_statuses.iter().any(|status| *status == "running") {
+    } else if stage_statuses.contains(&"running") {
         "running"
     } else {
         "queued"
@@ -298,7 +293,7 @@ impl AiManagementService {
         let affected_workflow_runs = ai_agent_workflow_stages::Entity::find()
             .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
             .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
-            .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.lt(now.clone()))
+            .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.lt(now))
             .select_only()
             .column(ai_agent_workflow_stages::Column::WorkflowRunId)
             .into_tuple::<Uuid>()
@@ -414,7 +409,7 @@ impl AiManagementService {
         let completed = stages
             .iter()
             .filter(|stage| stage.status == "completed")
-            .map(|stage| stage.stage_id.as_str())
+            .map(|stage| stage.stage_id.clone())
             .collect::<std::collections::BTreeSet<_>>();
         let now = Utc::now();
         let mut promoted = 0;
@@ -443,7 +438,7 @@ impl AiManagementService {
                     )
                     .col_expr(
                         ai_agent_workflow_stages::Column::UpdatedAt,
-                        Expr::value(now.clone()),
+                        Expr::value(now),
                     )
                     .exec(db)
                     .await
@@ -491,10 +486,10 @@ impl AiManagementService {
         let mut active: ai_agent_workflow_runs::ActiveModel = run.into();
         active.status = Set(status.to_string());
         if set_started_at {
-            active.started_at = Set(Some(now.clone().into()));
+            active.started_at = Set(Some(now.into()));
         }
         if set_completed_at {
-            active.completed_at = Set(Some(now.clone().into()));
+            active.completed_at = Set(Some(now.into()));
         }
         active.updated_at = Set(now.into());
         active.update(db).await.map_err(db_err)?;
@@ -577,12 +572,12 @@ impl AiManagementService {
                 if input.approved {
                     Expr::cust("NULL")
                 } else {
-                    Expr::value(now.clone())
+                    Expr::value(now)
                 },
             )
             .col_expr(
                 ai_agent_workflow_stages::Column::UpdatedAt,
-                Expr::value(now.clone()),
+                Expr::value(now),
             )
             .exec(db)
             .await
@@ -613,7 +608,7 @@ impl AiManagementService {
                 )
                 .col_expr(
                     ai_agent_workflow_runs::Column::CompletedAt,
-                    Expr::value(now.clone()),
+                    Expr::value(now),
                 )
                 .col_expr(ai_agent_workflow_runs::Column::UpdatedAt, Expr::value(now))
                 .exec(db)
@@ -740,7 +735,7 @@ impl AiManagementService {
                 provider_profile_id: Some(assignment.provider_profile_id),
                 model_override: assignment.model_override,
                 task_profile_id: task_profile.id,
-                execution_mode: execution_mode_from_slug(&assignment.execution_mode)?,
+                execution_mode: Some(execution_mode_from_slug(&assignment.execution_mode)?),
                 locale: agent_operator.preferred_locale.clone(),
                 task_input_json: stage.input_payload.clone(),
                 metadata: json!({
@@ -885,7 +880,8 @@ impl AiManagementService {
         input: CreateAiAgentPrincipalInput,
     ) -> AiResult<AiAgentPrincipalRecord> {
         validate_slug(&input.slug)?;
-        let descriptor = crate::agent_catalog()?
+        let catalog = crate::agent_catalog()?;
+        let descriptor = catalog
             .descriptor(&input.descriptor_slug)
             .filter(|descriptor| descriptor.owner == input.descriptor_owner)
             .ok_or_else(|| {
@@ -927,7 +923,8 @@ impl AiManagementService {
             .await
             .map_err(db_err)?
             .ok_or_else(|| AiError::NotFound("AI agent principal not found".to_string()))?;
-        let descriptor = crate::agent_catalog()?
+        let catalog = crate::agent_catalog()?;
+        let descriptor = catalog
             .descriptor(&existing.descriptor_slug)
             .filter(|descriptor| descriptor.owner == existing.descriptor_owner)
             .ok_or_else(|| {
@@ -998,7 +995,8 @@ impl AiManagementService {
                 "AI provider profile is inactive".to_string(),
             ));
         }
-        let descriptor = crate::agent_catalog()?
+        let catalog = crate::agent_catalog()?;
+        let descriptor = catalog
             .descriptor(&principal.descriptor_slug)
             .filter(|descriptor| descriptor.owner == principal.descriptor_owner)
             .ok_or_else(|| {
@@ -1132,10 +1130,10 @@ impl AiManagementService {
                     }
                 }),
             )),
-            created_at: Set(now.clone().into()),
+            created_at: Set(now.into()),
             started_at: Set(None),
             completed_at: Set(None),
-            updated_at: Set(now.clone().into()),
+            updated_at: Set(now.into()),
         }
         .insert(&transaction)
         .await
@@ -1267,10 +1265,10 @@ impl AiManagementService {
                 lease_token: Set(None),
                 lease_expires_at: Set(None),
                 attempt_count: Set(0),
-                created_at: Set(now.clone().into()),
+                created_at: Set(now.into()),
                 started_at: Set(None),
                 completed_at: Set(None),
-                updated_at: Set(now.clone().into()),
+                updated_at: Set(now.into()),
             }
             .insert(&transaction)
             .await
@@ -1615,7 +1613,7 @@ mod approval_outcome_tests {
         let first_id = Uuid::new_v4();
         let second_id = Uuid::new_v4();
         let first_created_at = Utc::now();
-        let second_created_at = first_created_at.clone() + chrono::Duration::seconds(1);
+        let second_created_at = first_created_at + chrono::Duration::seconds(1);
         let other_batch_created_at = Utc::now();
         for (id, batch, status, created_at) in [
             (first_id, "batch-a", "pending", first_created_at),

@@ -19,7 +19,6 @@ use rustok_channel::{
 use rustok_test_utils::setup_test_db;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use sea_orm_migration::SchemaManager;
-use std::sync::Arc;
 use uuid::Uuid;
 
 async fn setup_channel_db() -> DatabaseConnection {

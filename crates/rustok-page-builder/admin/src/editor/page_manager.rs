@@ -177,10 +177,10 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         let name = if name.is_empty() { "Untitled page".to_string() } else { name };
                         let id = unique_page_id(&add_runtime, &name);
                         let index = add_runtime.controller.with(|controller| controller.page_summaries().len());
-                        add_runtime.dispatch(UiIntent::Execute(EditorCommand::Page {
+                        add_runtime.dispatch(UiIntent::execute(EditorCommand::Page {
                             command: PageCommand::Add {
                                 index,
-                                page: blank_page(id.clone(), name),
+                                page: Box::new(blank_page(id.clone(), name)),
                             },
                         }));
                         if add_runtime.last_error.get_untracked().is_none() {
@@ -216,7 +216,7 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             identity_runtime.fail("page id must not be empty");
                             return;
                         }
-                        identity_runtime.dispatch(UiIntent::Execute(EditorCommand::Page {
+                        identity_runtime.dispatch(UiIntent::execute(EditorCommand::Page {
                             command: PageCommand::Patch {
                                 locator: identity_runtime.controller.with(|controller| controller.active_page_locator()),
                                 patch: PagePatch {
@@ -263,7 +263,7 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             metadata.open_graph_description = Some(open_graph_description.get_untracked());
                             metadata.open_graph_image = Some(open_graph_image.get_untracked());
                             metadata.no_index = no_index.get_untracked();
-                            metadata_runtime.dispatch(UiIntent::Execute(EditorCommand::Page {
+                            metadata_runtime.dispatch(UiIntent::execute(EditorCommand::Page {
                                 command: PageCommand::Patch {
                                     locator: metadata_runtime.controller.with(|controller| controller.active_page_locator()),
                                     patch: metadata.normalized().into_page_patch(),
@@ -284,7 +284,7 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         if index == 0 {
                             return;
                         }
-                        move_up_action_runtime.dispatch(UiIntent::Execute(EditorCommand::Page {
+                        move_up_action_runtime.dispatch(UiIntent::execute(EditorCommand::Page {
                             command: PageCommand::Move {
                                 locator: move_up_action_runtime.controller.with(|controller| controller.active_page_locator()),
                                 index: index - 1,
@@ -305,7 +305,7 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         if index + 1 >= len {
                             return;
                         }
-                        move_down_action_runtime.dispatch(UiIntent::Execute(EditorCommand::Page {
+                        move_down_action_runtime.dispatch(UiIntent::execute(EditorCommand::Page {
                             command: PageCommand::Move {
                                 locator: move_down_action_runtime.controller.with(|controller| controller.active_page_locator()),
                                 index: index + 2,
@@ -317,7 +317,7 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     type="button"
                     class="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive"
                     disabled=move || remove_disabled_runtime.controller.with(|controller| controller.page_summaries().len() <= 1)
-                    on:click=move |_| remove_action_runtime.dispatch(UiIntent::Execute(EditorCommand::Page {
+                    on:click=move |_| remove_action_runtime.dispatch(UiIntent::execute(EditorCommand::Page {
                         command: PageCommand::Remove {
                             locator: remove_action_runtime.controller.with(|controller| controller.active_page_locator()),
                         },

@@ -38,13 +38,16 @@ mod tests {
         let second = ensure_cache_service(&ctx);
 
         let outcome = second
-            .publish_invalidation(rustok_cache::CacheInvalidationMessage {
-                channel: "cache-runtime-test".to_string(),
-                payload: "payload".to_string(),
-            })
+            .publish_invalidation(rustok_cache::CacheInvalidationMessage::new(
+                "cache-runtime-test",
+                "cache-runtime-test-key",
+            ))
             .await;
         assert_eq!(outcome.local_subscribers, 1);
-        assert_eq!(subscriber.recv().await.unwrap().payload, "payload");
+        assert_eq!(
+            subscriber.recv().await.unwrap().key,
+            "cache-runtime-test-key"
+        );
         assert!(ctx.shared_get::<CacheService>().is_some());
     }
 }

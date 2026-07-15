@@ -1,4 +1,6 @@
 use rustok_api::PortError;
+#[cfg(test)]
+use rustok_api::PortErrorKind;
 use rustok_cart::AtomicCartCheckoutHandle;
 use serde_json::Value;
 use sha2::{Digest, Sha256};

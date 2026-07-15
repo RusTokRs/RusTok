@@ -5,10 +5,8 @@ use rustok_api::{
     graphql::{require_module_enabled, GraphQLError},
     AuthContext, RequestContext, TenantContext,
 };
-use rustok_cart::{in_process_cart_storefront_port, CartStorefrontPort, CartStorefrontReadRequest};
-use rustok_customer::{
-    in_process_customer_read_port, CustomerReadPort, CustomerUserProjectionRequest,
-};
+use rustok_cart::{in_process_cart_storefront_port, CartStorefrontReadRequest};
+use rustok_customer::{in_process_customer_read_port, CustomerUserProjectionRequest};
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;

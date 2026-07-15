@@ -23,6 +23,14 @@ pub struct TypedCacheLoadResult<T> {
     pub source_revision: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct TypedCacheLoadOptions {
+    pub expected_schema_version: u32,
+    pub policy: CacheLoadPolicy,
+    pub max_encoded_bytes: usize,
+    pub now_unix_ms: u64,
+}
+
 impl CacheService {
     /// Load a typed, versioned envelope using the system clock for freshness decisions.
     pub async fn load_enveloped_or_fill<T, F, Fut>(
@@ -41,10 +49,12 @@ impl CacheService {
         self.load_enveloped_or_fill_with_limit_at(
             backend,
             key,
-            expected_schema_version,
-            policy,
-            DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
-            current_unix_ms(),
+            TypedCacheLoadOptions {
+                expected_schema_version,
+                policy,
+                max_encoded_bytes: DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+                now_unix_ms: current_unix_ms(),
+            },
             loader,
         )
         .await
@@ -60,10 +70,7 @@ impl CacheService {
         &self,
         backend: Arc<dyn CacheBackend>,
         key: impl Into<String>,
-        expected_schema_version: u32,
-        policy: CacheLoadPolicy,
-        max_encoded_bytes: usize,
-        now_unix_ms: u64,
+        options: TypedCacheLoadOptions,
         loader: F,
     ) -> rustok_core::Result<TypedCacheLoadResult<T>>
     where
@@ -72,6 +79,12 @@ impl CacheService {
         Fut: Future<Output = rustok_core::Result<CacheEnvelope<T>>>,
     {
         let key = key.into();
+        let TypedCacheLoadOptions {
+            expected_schema_version,
+            policy,
+            max_encoded_bytes,
+            now_unix_ms,
+        } = options;
         validate_typed_cache_request(&key, expected_schema_version, max_encoded_bytes)?;
 
         if let Some(bytes) = backend.get(&key).await? {
@@ -236,10 +249,12 @@ mod tests {
             .load_enveloped_or_fill_with_limit_at(
                 backend.clone(),
                 "typed",
-                2,
-                policy(),
-                1024,
-                1_500,
+                TypedCacheLoadOptions {
+                    expected_schema_version: 2,
+                    policy: policy(),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 1_500,
+                },
                 || async {
                     calls.fetch_add(1, Ordering::SeqCst);
                     CacheEnvelope::new(2, 1_000, "value".to_string())
@@ -252,10 +267,12 @@ mod tests {
             .load_enveloped_or_fill_with_limit_at(
                 backend,
                 "typed",
-                2,
-                policy(),
-                1024,
-                1_500,
+                TypedCacheLoadOptions {
+                    expected_schema_version: 2,
+                    policy: policy(),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 1_500,
+                },
                 || async {
                     calls.fetch_add(1, Ordering::SeqCst);
                     CacheEnvelope::new(2, 1_000, "duplicate".to_string())
@@ -286,10 +303,12 @@ mod tests {
             .load_enveloped_or_fill_with_limit_at(
                 backend,
                 "typed",
-                2,
-                policy(),
-                1024,
-                1_500,
+                TypedCacheLoadOptions {
+                    expected_schema_version: 2,
+                    policy: policy(),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 1_500,
+                },
                 || async {
                     CacheEnvelope::new(2, 1_400, "new".to_string()).map_err(envelope_error_to_core)
                 },
@@ -320,10 +339,12 @@ mod tests {
             .load_enveloped_or_fill_with_limit_at(
                 backend.clone(),
                 "typed",
-                1,
-                policy(),
-                1024,
-                1_500,
+                TypedCacheLoadOptions {
+                    expected_schema_version: 1,
+                    policy: policy(),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 1_500,
+                },
                 || async {
                     CacheEnvelope::new(1, 1_400, "fresh".to_string())
                         .map_err(envelope_error_to_core)
@@ -345,10 +366,12 @@ mod tests {
             .load_enveloped_or_fill_with_limit_at(
                 backend,
                 "stale",
-                1,
-                policy(),
-                1024,
-                2_500,
+                TypedCacheLoadOptions {
+                    expected_schema_version: 1,
+                    policy: policy(),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 2_500,
+                },
                 || async {
                     CacheEnvelope::new(1, 2_500, "should-not-run".to_string())
                         .map_err(envelope_error_to_core)
@@ -372,10 +395,12 @@ mod tests {
                 .load_enveloped_or_fill_with_limit_at(
                     backend.clone(),
                     key,
-                    1,
-                    policy(),
-                    1024,
-                    1_500,
+                    TypedCacheLoadOptions {
+                        expected_schema_version: 1,
+                        policy: policy(),
+                        max_encoded_bytes: 1024,
+                        now_unix_ms: 1_500,
+                    },
                     || async {
                         calls.fetch_add(1, Ordering::SeqCst);
                         CacheEnvelope::new(1, 1_400, "unexpected".to_string())
@@ -414,10 +439,12 @@ mod tests {
                 .load_enveloped_or_fill_with_limit_at(
                     backend.clone(),
                     "typed-config",
-                    expected_schema_version,
-                    policy(),
-                    max_encoded_bytes,
-                    1_500,
+                    TypedCacheLoadOptions {
+                        expected_schema_version,
+                        policy: policy(),
+                        max_encoded_bytes,
+                        now_unix_ms: 1_500,
+                    },
                     || async {
                         calls.fetch_add(1, Ordering::SeqCst);
                         CacheEnvelope::new(1, 1_400, "unexpected".to_string())
@@ -499,10 +526,12 @@ mod tests {
             .load_enveloped_or_fill_with_limit_at(
                 trait_backend,
                 "raced",
-                2,
-                policy(),
-                1024,
-                1_500,
+                TypedCacheLoadOptions {
+                    expected_schema_version: 2,
+                    policy: policy(),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 1_500,
+                },
                 || async {
                     CacheEnvelope::new(2, 1_400, "new".to_string()).map_err(envelope_error_to_core)
                 },
@@ -523,10 +552,12 @@ mod tests {
             .load_enveloped_or_fill_with_limit_at(
                 backend.clone(),
                 "expired-loader",
-                1,
-                policy(),
-                1024,
-                2_000,
+                TypedCacheLoadOptions {
+                    expected_schema_version: 1,
+                    policy: policy(),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 2_000,
+                },
                 || async {
                     CacheEnvelope::new(1, 1_000, "expired".to_string())
                         .unwrap()

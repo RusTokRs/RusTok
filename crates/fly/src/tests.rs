@@ -30,11 +30,11 @@ fn commands_and_history_are_transactional() {
         .apply(EditorCommand::Insert {
             parent_id: Some("root".to_string()),
             index: 1,
-            component: ComponentNode::Object(ComponentObject {
+            component: ComponentNode::Object(Box::new(ComponentObject {
                 id: Some("new-section".to_string()),
                 component_type: Some("section".to_string()),
                 ..ComponentObject::default()
-            }),
+            })),
         })
         .expect("insert");
     assert!(editor.document().contains_component("new-section"));
@@ -101,11 +101,11 @@ fn stable_id_assignment_avoids_existing_ids() {
         .push(ComponentNode::object("section"));
     root.children_mut()
         .expect("root children")
-        .push(ComponentNode::Object(ComponentObject {
+        .push(ComponentNode::Object(Box::new(ComponentObject {
             id: Some("fly-section-1".to_string()),
             component_type: Some("section".to_string()),
             ..ComponentObject::default()
-        }));
+        })));
     let mut generator = SequentialIdGenerator::default();
     document.ensure_stable_ids(&mut generator);
     let ids = document

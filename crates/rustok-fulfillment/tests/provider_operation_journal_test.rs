@@ -7,15 +7,29 @@ use rustok_fulfillment::{
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 mod support;
+
+async fn ensure_provider_journal_guards(db: &sea_orm::DatabaseConnection) {
+    let manager = SchemaManager::new(db);
+    for migration in rustok_fulfillment::migrations::migrations()
+        .into_iter()
+        .skip(6)
+    {
+        migration
+            .up(&manager)
+            .await
+            .expect("provider journal migration should run");
+    }
+}
 
 #[tokio::test]
 async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconciliation() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
-    support::ensure_provider_journal_guards(&db).await;
+    ensure_provider_journal_guards(&db).await;
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
     let journal = FulfillmentProviderOperationJournal::new(db.clone());
@@ -102,7 +116,7 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
 async fn manual_success_reconciliation_validates_provider_identity() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
-    support::ensure_provider_journal_guards(&db).await;
+    ensure_provider_journal_guards(&db).await;
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
     let journal = FulfillmentProviderOperationJournal::new(db.clone());
@@ -171,7 +185,7 @@ async fn manual_success_reconciliation_validates_provider_identity() {
 async fn fulfillment_metadata_commits_provider_operation_in_the_same_database_write() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
-    support::ensure_provider_journal_guards(&db).await;
+    ensure_provider_journal_guards(&db).await;
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
     let now = Utc::now().fixed_offset();

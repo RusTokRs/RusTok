@@ -6,22 +6,18 @@ use axum::{
     response::Response,
 };
 use rustok_cache::{
-    CacheEnvelope, CacheInvalidationMessage, CacheKeyBuilder as CanonicalCacheKeyBuilder,
-    CacheLoadPolicy, CacheLoadSource, CacheService, CacheTtlPolicy, NegativeCachePolicy,
+    CacheEnvelope, CacheKeyBuilder as CanonicalCacheKeyBuilder, CacheLoadPolicy, CacheLoadSource,
+    CacheService, CacheTtlPolicy, NegativeCachePolicy,
 };
 use rustok_core::tenant_validation::TenantIdentifierValidator;
-#[cfg(feature = "redis-cache")]
-use rustok_core::EventConsumerRuntime;
 use rustok_core::{CacheBackend, Error as CoreError};
 use rustok_tenant::{
     PortActor, PortContext, PortError, PortErrorKind, TenantReadPort, TenantReadProjection,
     TenantReadRequest, TenantReadSelector, TenantService,
 };
-use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::common::{
@@ -34,19 +30,15 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 const TENANT_CACHE_VERSION: &str = "v2";
 const TENANT_CONTEXT_SCHEMA_VERSION: u32 = 1;
 const TENANT_NEGATIVE_SCHEMA_VERSION: u32 = 1;
-const TENANT_INVALIDATION_CHANNEL: &str = "tenant.cache.invalidate";
 const TENANT_CACHE_TTL: Duration = Duration::from_secs(300);
 const TENANT_NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(60);
 const TENANT_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
 const TENANT_NEGATIVE_CACHE_MAX_WEIGHT_BYTES: u64 = 1024 * 1024;
-const TENANT_CACHE_MAX_ENCODED_BYTES: usize = 1024 * 1024;
 const TENANT_NEGATIVE_MAX_ENCODED_BYTES: usize = 64 * 1024;
 const TENANT_CACHE_LOADER_TIMEOUT: Duration = Duration::from_secs(10);
 const TENANT_CACHE_JITTER_PERCENT: u8 = 10;
 #[cfg(feature = "redis-cache")]
 const TENANT_CACHE_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
-#[cfg(feature = "redis-cache")]
-const TENANT_INVALIDATION_RETRY_DELAY: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Copy)]
 pub enum TenantIdentifierKind {
@@ -149,8 +141,6 @@ pub struct TenantCacheInfrastructure {
     key_builder: TenantCacheKeyBuilder,
     load_policy: CacheLoadPolicy,
     negative_policy: NegativeCachePolicy,
-    invalidation_publisher: Arc<TenantInvalidationPublisher>,
-    invalidation_listener_state: Arc<TenantInvalidationListenerState>,
     cache_service: CacheService,
 }
 
@@ -216,35 +206,6 @@ impl TenantIdentifierKind {
 }
 
 #[derive(Clone)]
-struct TenantInvalidationPublisher {
-    cache_service: CacheService,
-}
-
-impl TenantInvalidationPublisher {
-    fn new(cache_service: &CacheService) -> Self {
-        Self {
-            cache_service: cache_service.clone(),
-        }
-    }
-
-    async fn publish(&self, cache_key: &str) {
-        let outcome = self
-            .cache_service
-            .publish_invalidation(CacheInvalidationMessage::new(
-                TENANT_INVALIDATION_CHANNEL,
-                cache_key,
-            ))
-            .await;
-        if self.cache_service.has_redis() && !outcome.redis_published {
-            tracing::warn!(
-                channel = TENANT_INVALIDATION_CHANNEL,
-                "Tenant cache invalidation was not published to Redis"
-            );
-        }
-    }
-}
-
-#[derive(Clone)]
 struct TenantCacheMetricsStore {
     local_hits: Arc<AtomicU64>,
     local_misses: Arc<AtomicU64>,
@@ -254,101 +215,6 @@ struct TenantCacheMetricsStore {
     coalesced_requests: Arc<AtomicU64>,
     #[cfg(feature = "redis-cache")]
     redis_client: Option<redis::Client>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TenantInvalidationListenerStatus {
-    Disabled,
-    Starting,
-    Healthy,
-    Degraded,
-}
-
-impl TenantInvalidationListenerStatus {
-    fn as_u8(self) -> u8 {
-        match self {
-            Self::Disabled => 0,
-            Self::Starting => 1,
-            Self::Healthy => 2,
-            Self::Degraded => 3,
-        }
-    }
-
-    fn from_u8(value: u8) -> Self {
-        match value {
-            1 => Self::Starting,
-            2 => Self::Healthy,
-            3 => Self::Degraded,
-            _ => Self::Disabled,
-        }
-    }
-
-    pub fn metric_value(self) -> i64 {
-        i64::from(self.as_u8())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TenantInvalidationListenerSnapshot {
-    pub status: TenantInvalidationListenerStatus,
-    pub last_error: Option<String>,
-}
-
-#[derive(Debug)]
-struct TenantInvalidationListenerState {
-    status: AtomicU8,
-    last_error: RwLock<Option<String>>,
-}
-
-impl TenantInvalidationListenerState {
-    fn new() -> Self {
-        Self {
-            status: AtomicU8::new(TenantInvalidationListenerStatus::Disabled.as_u8()),
-            last_error: RwLock::new(None),
-        }
-    }
-
-    async fn mark_disabled(&self, reason: impl Into<String>) {
-        self.status.store(
-            TenantInvalidationListenerStatus::Disabled.as_u8(),
-            Ordering::Relaxed,
-        );
-        *self.last_error.write().await = Some(reason.into());
-    }
-
-    #[cfg(feature = "redis-cache")]
-    async fn mark_starting(&self) {
-        self.status.store(
-            TenantInvalidationListenerStatus::Starting.as_u8(),
-            Ordering::Relaxed,
-        );
-        *self.last_error.write().await = None;
-    }
-
-    #[cfg(feature = "redis-cache")]
-    async fn mark_healthy(&self) {
-        self.status.store(
-            TenantInvalidationListenerStatus::Healthy.as_u8(),
-            Ordering::Relaxed,
-        );
-        *self.last_error.write().await = None;
-    }
-
-    #[cfg(feature = "redis-cache")]
-    async fn mark_degraded(&self, reason: impl Into<String>) {
-        self.status.store(
-            TenantInvalidationListenerStatus::Degraded.as_u8(),
-            Ordering::Relaxed,
-        );
-        *self.last_error.write().await = Some(reason.into());
-    }
-
-    async fn snapshot(&self) -> TenantInvalidationListenerSnapshot {
-        TenantInvalidationListenerSnapshot {
-            status: TenantInvalidationListenerStatus::from_u8(self.status.load(Ordering::Relaxed)),
-            last_error: self.last_error.read().await.clone(),
-        }
-    }
 }
 
 impl TenantCacheMetricsStore {
@@ -412,7 +278,7 @@ impl TenantCacheMetricsStore {
             coalesced_requests: self
                 .read_metric("coalesced_requests", &self.coalesced_requests)
                 .await,
-            invalidation_listener_status: TenantInvalidationListenerStatus::Disabled.metric_value(),
+            invalidation_listener_status: 0,
         }
     }
 
@@ -500,8 +366,6 @@ impl TenantCacheInfrastructure {
             key_builder: TenantCacheKeyBuilder::new(TENANT_CACHE_VERSION),
             load_policy,
             negative_policy,
-            invalidation_publisher: Arc::new(TenantInvalidationPublisher::new(cache_service)),
-            invalidation_listener_state: Arc::new(TenantInvalidationListenerState::new()),
             cache_service: cache_service.clone(),
         }
     }
@@ -553,15 +417,6 @@ impl TenantCacheInfrastructure {
             .incr("negative_inserts", &self.metrics.local_negative_inserts)
             .await;
         Ok(())
-    }
-
-    async fn invalidate_pair(&self, cache_key: &str, negative_key: &str) {
-        if let Err(error) = self.tenant_cache.invalidate(cache_key).await {
-            tracing::warn!(%error, cache_key, "Tenant data cache invalidation failed");
-        }
-        if let Err(error) = self.tenant_negative_cache.invalidate(negative_key).await {
-            tracing::warn!(%error, negative_key, "Tenant negative cache invalidation failed");
-        }
     }
 
     async fn get_or_load_with_coalescing<F, Fut>(
@@ -629,120 +484,9 @@ pub async fn init_tenant_cache_infrastructure(
         return;
     }
 
-    let infra = Arc::new(TenantCacheInfrastructure::new(cache_service).await);
-    ctx.shared_insert(infra.clone());
-
-    if let Some(task) = spawn_invalidation_listener(infra.clone(), cache_service).await {
-        ctx.shared_insert(task);
-    } else {
-        infra
-            .invalidation_listener_state
-            .mark_disabled("redis pubsub invalidation listener is disabled")
-            .await;
-    }
-}
-
-async fn spawn_invalidation_listener(
-    infra: Arc<TenantCacheInfrastructure>,
-    cache_service: &CacheService,
-) -> Option<JoinHandle<()>> {
-    #[cfg(feature = "redis-cache")]
-    {
-        if !cache_service.has_redis() {
-            return None;
-        }
-        let invalidations = cache_service.invalidations();
-        let listener_state = infra.invalidation_listener_state.clone();
-        let task = tokio::spawn(async move {
-            let runtime = EventConsumerRuntime::new("tenant_invalidation_listener");
-            let mut reason = "startup";
-
-            loop {
-                runtime.restarted(reason);
-                listener_state.mark_starting().await;
-
-                if let Err(error) = consume_tenant_invalidation_messages(
-                    invalidations.clone(),
-                    infra.clone(),
-                    listener_state.clone(),
-                )
-                .await
-                {
-                    listener_state.mark_degraded(error.clone()).await;
-                    runtime.closed();
-                    tracing::warn!(
-                        consumer = runtime.consumer(),
-                        channel = TENANT_INVALIDATION_CHANNEL,
-                        retry_delay_secs = TENANT_INVALIDATION_RETRY_DELAY.as_secs(),
-                        error = %error,
-                        "Tenant invalidation listener stopped unexpectedly; scheduling resubscribe"
-                    );
-                } else {
-                    runtime.closed();
-                    tracing::warn!(
-                        consumer = runtime.consumer(),
-                        channel = TENANT_INVALIDATION_CHANNEL,
-                        retry_delay_secs = TENANT_INVALIDATION_RETRY_DELAY.as_secs(),
-                        "Tenant invalidation listener stopped without error; scheduling resubscribe"
-                    );
-                }
-
-                reason = "retry";
-                tokio::time::sleep(TENANT_INVALIDATION_RETRY_DELAY).await;
-            }
-        });
-
-        return Some(task);
-    }
-
-    #[allow(unreachable_code)]
-    None
-}
-
-#[cfg(feature = "redis-cache")]
-async fn consume_tenant_invalidation_messages(
-    invalidations: rustok_cache::CacheInvalidationService,
-    infra: Arc<TenantCacheInfrastructure>,
-    listener_state: Arc<TenantInvalidationListenerState>,
-) -> Result<(), String> {
-    invalidations
-        .consume_subscription_with_ready(
-            TENANT_INVALIDATION_CHANNEL,
-            {
-                let listener_state = listener_state.clone();
-                move || async move {
-                    listener_state.mark_healthy().await;
-                }
-            },
-            move |message| {
-                let infra = infra.clone();
-                async move {
-                    let Some((cache_key, negative_key)) = parse_invalidation_payload(&message.key)
-                    else {
-                        tracing::warn!(
-                            channel = %message.channel,
-                            payload = %message.key,
-                            "Ignoring malformed tenant invalidation payload"
-                        );
-                        return;
-                    };
-
-                    infra.invalidate_pair(cache_key, negative_key).await;
-                }
-            },
-        )
-        .await
-}
-
-#[cfg(feature = "redis-cache")]
-fn parse_invalidation_payload(payload: &str) -> Option<(&str, &str)> {
-    let mut parts = payload.split('|');
-    let cache_key = parts.next()?;
-    let negative_key = parts.next()?;
-    if cache_key.is_empty() || negative_key.is_empty() || parts.next().is_some() {
-        return None;
-    }
-    Some((cache_key, negative_key))
+    ctx.shared_insert(Arc::new(
+        TenantCacheInfrastructure::new(cache_service).await,
+    ));
 }
 
 fn tenant_infra(ctx: &ServerRuntimeContext) -> Option<Arc<TenantCacheInfrastructure>> {
@@ -1008,17 +752,6 @@ fn classify_and_validate_identifier(
     })
 }
 
-fn classify_identifier(value: String) -> ResolvedTenantIdentifier {
-    match classify_and_validate_identifier(&value) {
-        Ok(resolved) => resolved,
-        Err(_) => ResolvedTenantIdentifier {
-            value: value.clone(),
-            kind: TenantIdentifierKind::Uuid,
-            uuid: value.parse::<Uuid>().unwrap_or(Uuid::nil()),
-        },
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct TenantCacheStats {
     pub hits: u64,
@@ -1047,63 +780,13 @@ pub async fn tenant_cache_stats(ctx: &ServerRuntimeContext) -> TenantCacheStats 
             negative_entries: 0,
             negative_inserts: 0,
             coalesced_requests: 0,
-            invalidation_listener_status: TenantInvalidationListenerStatus::Disabled.metric_value(),
+            invalidation_listener_status: 0,
         };
     };
 
     let stats = infra.tenant_cache.stats();
     let negative_stats = infra.tenant_negative_cache.stats();
-    let listener_snapshot = infra.invalidation_listener_state.snapshot().await;
-    let mut snapshot = infra.metrics.snapshot(stats, negative_stats).await;
-    snapshot.invalidation_listener_status = listener_snapshot.status.metric_value();
-    snapshot
-}
-
-pub async fn tenant_invalidation_listener_snapshot(
-    ctx: &ServerRuntimeContext,
-) -> TenantInvalidationListenerSnapshot {
-    let Some(infra) = tenant_infra(ctx) else {
-        return TenantInvalidationListenerSnapshot {
-            status: TenantInvalidationListenerStatus::Disabled,
-            last_error: Some("tenant cache infrastructure not initialized".to_string()),
-        };
-    };
-
-    infra.invalidation_listener_state.snapshot().await
-}
-
-pub async fn invalidate_tenant_cache(ctx: &ServerRuntimeContext, identifier: &str) {
-    let resolved = classify_identifier(identifier.to_string());
-    invalidate_cache_keys(ctx, resolved.kind, &resolved.value).await;
-}
-
-pub async fn invalidate_tenant_cache_by_host(ctx: &ServerRuntimeContext, host: &str) {
-    invalidate_cache_keys(ctx, TenantIdentifierKind::Host, host).await;
-}
-
-pub async fn invalidate_tenant_cache_by_uuid(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
-    invalidate_cache_keys(ctx, TenantIdentifierKind::Uuid, &tenant_id.to_string()).await;
-}
-
-pub async fn invalidate_tenant_cache_by_slug(ctx: &ServerRuntimeContext, slug: &str) {
-    invalidate_cache_keys(ctx, TenantIdentifierKind::Slug, slug).await;
-}
-
-async fn invalidate_cache_keys(
-    ctx: &ServerRuntimeContext,
-    kind: TenantIdentifierKind,
-    value: &str,
-) {
-    let Some(infra) = tenant_infra(ctx) else {
-        return;
-    };
-
-    let cache_key = infra.key_builder.kind_key(kind, value);
-    let negative_key = infra.key_builder.kind_negative_key(kind, value);
-    infra.invalidate_pair(&cache_key, &negative_key).await;
-
-    let payload = format!("{cache_key}|{negative_key}");
-    infra.invalidation_publisher.publish(&payload).await;
+    infra.metrics.snapshot(stats, negative_stats).await
 }
 
 fn cache_load_error_to_status(error: CoreError) -> StatusCode {

@@ -71,16 +71,12 @@ pub fn FulfillmentAdmin() -> impl IntoView {
                 transport::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;
             let request =
                 shipping_option_list_request(search_value, currency_value, provider_value);
-            transport::fetch_shipping_options(
-                token_value,
-                tenant_value,
-                bootstrap.current_tenant.id,
-                request.search,
-                request.currency_code,
-                request.provider_id,
-                request.page,
-                request.per_page,
-            )
+            transport::fetch_shipping_options(transport::FetchShippingOptionsRequest {
+                token: token_value,
+                tenant_slug: tenant_value,
+                tenant_id: bootstrap.current_tenant.id,
+                filter: request,
+            })
             .await
         },
     );

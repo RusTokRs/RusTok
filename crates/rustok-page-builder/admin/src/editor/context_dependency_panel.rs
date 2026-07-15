@@ -71,8 +71,9 @@ pub fn ContextDependencyPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         })}
                         <div class="space-y-1">
                             {nodes.into_iter().map(|node| {
-                                let external = node.sources.iter()
-                                    .any(|source| *source == RuntimeContextPathSource::External);
+                                let external = node
+                                    .sources
+                                    .contains(&RuntimeContextPathSource::External);
                                 let unused = node.consumers.is_empty();
                                 let sources = node.sources.iter().map(|source| source_label(*source))
                                     .collect::<Vec<_>>().join(", ");

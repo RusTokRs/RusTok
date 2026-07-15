@@ -53,7 +53,7 @@ where
                     set_success_message.set(Some(message));
                 }
                 Err(e) => {
-                    set_form_state.set(FormState::with_form_error(format!("{}", e)));
+                    set_form_state.set(FormState::with_form_error(e.to_string()));
                     set_success_message.set(None);
                 }
             }

@@ -13,7 +13,7 @@ pub use order_change::{order_change_resolution_summary, prepare_order_change_act
 pub use presentation::{
     cart_adjustment_view_model, promotion_preview_view_model, shipping_profile_summary_view_model,
 };
-pub use promotion::prepare_cart_promotion_command;
+pub use promotion::{prepare_cart_promotion_command, CartPromotionForm};
 pub use shipping_profile::{
     empty_shipping_profile_form_state, prepare_shipping_profile_draft, shipping_profile_form_state,
 };

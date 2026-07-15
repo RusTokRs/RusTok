@@ -832,6 +832,17 @@ fn validate_availability_request_quantity(requested_quantity: i32) -> CommerceRe
     Ok(())
 }
 
+struct InventoryQuantityUpdate {
+    quantity: i32,
+    inventory_policy: String,
+}
+
+struct InventoryState {
+    location: entities::stock_location::Model,
+    inventory_item: entities::inventory_item::Model,
+    level: entities::inventory_level::Model,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1043,15 +1054,4 @@ mod tests {
             })
         );
     }
-}
-
-struct InventoryQuantityUpdate {
-    quantity: i32,
-    inventory_policy: String,
-}
-
-struct InventoryState {
-    location: entities::stock_location::Model,
-    inventory_item: entities::inventory_item::Model,
-    level: entities::inventory_level::Model,
 }

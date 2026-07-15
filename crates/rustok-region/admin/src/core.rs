@@ -709,19 +709,24 @@ pub struct RegionAdminDetailPanelLabels {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminDetailPanelReadyViewModel {
+    pub title: String,
+    pub subtitle: String,
+    pub policy_title: String,
+    pub countries_title: String,
+    pub countries_summary: String,
+    pub header: RegionAdminDetailHeaderViewModel,
+    pub policy: RegionAdminPolicySectionViewModel,
+    pub raw_sections: RegionAdminRawSectionsViewModel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegionAdminDetailPanelViewModel {
     Empty {
         message: String,
     },
     Ready {
-        title: String,
-        subtitle: String,
-        policy_title: String,
-        countries_title: String,
-        countries_summary: String,
-        header: RegionAdminDetailHeaderViewModel,
-        policy: RegionAdminPolicySectionViewModel,
-        raw_sections: RegionAdminRawSectionsViewModel,
+        detail: Box<RegionAdminDetailPanelReadyViewModel>,
     },
 }
 
@@ -736,18 +741,23 @@ pub fn build_region_admin_detail_panel_view_model(
 ) -> RegionAdminDetailPanelViewModel {
     detail
         .map(|detail| RegionAdminDetailPanelViewModel::Ready {
-            title: panel_labels.title.clone(),
-            subtitle: panel_labels.subtitle.clone(),
-            policy_title: panel_labels.policy_title.clone(),
-            countries_title: panel_labels.countries_title.clone(),
-            countries_summary: region_admin_countries_summary(detail),
-            header: build_region_admin_detail_header_view_model(
-                detail,
-                detail_labels,
-                header_labels,
-            ),
-            policy: build_region_admin_policy_section_view_model(detail, policy_labels),
-            raw_sections: build_region_admin_raw_sections_view_model(detail, raw_section_labels),
+            detail: Box::new(RegionAdminDetailPanelReadyViewModel {
+                title: panel_labels.title.clone(),
+                subtitle: panel_labels.subtitle.clone(),
+                policy_title: panel_labels.policy_title.clone(),
+                countries_title: panel_labels.countries_title.clone(),
+                countries_summary: region_admin_countries_summary(detail),
+                header: build_region_admin_detail_header_view_model(
+                    detail,
+                    detail_labels,
+                    header_labels,
+                ),
+                policy: build_region_admin_policy_section_view_model(detail, policy_labels),
+                raw_sections: build_region_admin_raw_sections_view_model(
+                    detail,
+                    raw_section_labels,
+                ),
+            }),
         })
         .unwrap_or_else(|| RegionAdminDetailPanelViewModel::Empty {
             message: panel_labels.empty.clone(),
@@ -1373,16 +1383,17 @@ mod tests {
         );
 
         match ready {
-            RegionAdminDetailPanelViewModel::Ready {
-                title,
-                subtitle,
-                policy_title,
-                countries_title,
-                countries_summary,
-                header,
-                policy,
-                raw_sections,
-            } => {
+            RegionAdminDetailPanelViewModel::Ready { detail } => {
+                let RegionAdminDetailPanelReadyViewModel {
+                    title,
+                    subtitle,
+                    policy_title,
+                    countries_title,
+                    countries_summary,
+                    header,
+                    policy,
+                    raw_sections,
+                } = *detail;
                 assert_eq!(title, "Region Detail");
                 assert_eq!(subtitle, "Inspect policy");
                 assert_eq!(policy_title, "Policy Baseline");

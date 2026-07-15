@@ -1,7 +1,7 @@
+use rustok_build::build::Entity as BuildEntity;
+use rustok_build::NoopBuildEventPublisher;
 use rustok_core::ModuleRegistry;
-use rustok_server::models::build::Entity as BuildEntity;
 use rustok_server::modules::{ManifestDiff, ManifestModuleSpec, ModulesManifest};
-use rustok_server::services::build_service::NoopBuildEventPublisher;
 use rustok_server::services::platform_composition::{
     PlatformCompositionBuildError, PlatformCompositionBuildService, PlatformCompositionService,
 };

@@ -47,7 +47,7 @@ pub enum CheckoutInventoryExecutionError {
         code: String,
         message: String,
         retryable: bool,
-        journal: CheckoutInventoryReservationError,
+        journal: Box<CheckoutInventoryReservationError>,
     },
 }
 
@@ -137,16 +137,16 @@ impl CheckoutInventoryReservationExecutor {
             let provider_result = self
                 .reservation_port
                 .reserve_inventory_by_identity(
-                    inventory_port_context(
+                    inventory_port_context(InventoryPortContextInput {
                         tenant_id,
-                        actor.clone(),
+                        actor: actor.clone(),
                         snapshot,
                         operation_id,
-                        line.id,
-                        planned.external_id.as_str(),
-                        self.port_deadline,
-                        "reserve",
-                    ),
+                        cart_line_item_id: line.id,
+                        idempotency_key: planned.external_id.as_str(),
+                        deadline: self.port_deadline,
+                        action: "reserve",
+                    }),
                     InventoryIdentityReservationRequest {
                         reservation_id: planned.reservation_id,
                         external_id: planned.external_id.clone(),
@@ -247,16 +247,16 @@ impl CheckoutInventoryReservationExecutor {
                     let boundary = self
                         .reservation_port
                         .release_inventory_by_identity(
-                            inventory_port_context(
+                            inventory_port_context(InventoryPortContextInput {
                                 tenant_id,
-                                actor.clone(),
+                                actor: actor.clone(),
                                 snapshot,
                                 operation_id,
-                                reservation.cart_line_item_id,
-                                reservation.external_id.as_str(),
-                                self.port_deadline,
-                                "release",
-                            ),
+                                cart_line_item_id: reservation.cart_line_item_id,
+                                idempotency_key: reservation.external_id.as_str(),
+                                deadline: self.port_deadline,
+                                action: "release",
+                            }),
                             InventoryIdentityReservationReleaseRequest {
                                 reservation_id: reservation.reservation_id,
                                 external_id: reservation.external_id.clone(),
@@ -368,7 +368,7 @@ impl CheckoutInventoryReservationExecutor {
                 code: boundary.code,
                 message: boundary.message,
                 retryable: boundary.retryable,
-                journal,
+                journal: Box::new(journal),
             },
         }
     }
@@ -393,31 +393,37 @@ fn validate_operation_snapshot(
     Ok(())
 }
 
-fn inventory_port_context(
+struct InventoryPortContextInput<'a> {
     tenant_id: Uuid,
     actor: PortActor,
-    snapshot: &PreparedCartCheckoutSnapshot,
+    snapshot: &'a PreparedCartCheckoutSnapshot,
     operation_id: Uuid,
     cart_line_item_id: Uuid,
-    idempotency_key: &str,
+    idempotency_key: &'a str,
     deadline: Duration,
-    action: &str,
-) -> PortContext {
-    let locale = snapshot
+    action: &'a str,
+}
+
+fn inventory_port_context(input: InventoryPortContextInput<'_>) -> PortContext {
+    let locale = input
+        .snapshot
         .cart
         .locale_code
         .as_deref()
         .unwrap_or(PLATFORM_FALLBACK_LOCALE);
     let mut context = PortContext::new(
-        tenant_id.to_string(),
-        actor,
+        input.tenant_id.to_string(),
+        input.actor,
         locale,
-        format!("checkout:{operation_id}:inventory:{action}:{cart_line_item_id}"),
+        format!(
+            "checkout:{}:inventory:{}:{}",
+            input.operation_id, input.action, input.cart_line_item_id
+        ),
     )
-    .with_causation_id(operation_id.to_string())
-    .with_idempotency_key(idempotency_key.to_string())
-    .with_deadline(deadline);
-    if let Some(channel) = snapshot.cart.channel_slug.as_deref() {
+    .with_causation_id(input.operation_id.to_string())
+    .with_idempotency_key(input.idempotency_key.to_string())
+    .with_deadline(input.deadline);
+    if let Some(channel) = input.snapshot.cart.channel_slug.as_deref() {
         context = context.with_channel(channel.to_string());
     }
     context

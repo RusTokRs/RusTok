@@ -5,7 +5,7 @@ use rustok_payment::migrations;
 use rustok_payment::PaymentService;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, Statement};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 mod support;

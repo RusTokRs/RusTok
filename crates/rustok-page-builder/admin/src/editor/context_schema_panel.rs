@@ -125,7 +125,7 @@ pub fn ContextSchemaPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                         stable_suffix(&path)
                                     ))
                             });
-                            field_runtime.dispatch(UiIntent::Execute(EditorCommand::Context {
+                            field_runtime.dispatch(UiIntent::execute(EditorCommand::Context {
                                 command: ContextCommand::UpsertField {
                                     field: ContextFieldDefinition {
                                         id,
@@ -196,7 +196,7 @@ pub fn ContextSchemaPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                         stable_suffix(&path)
                                     ))
                             });
-                            computed_runtime.dispatch(UiIntent::Execute(EditorCommand::Context {
+                            computed_runtime.dispatch(UiIntent::execute(EditorCommand::Context {
                                 command: ContextCommand::UpsertComputed {
                                     computed: ComputedContextValue {
                                         id,
@@ -236,7 +236,7 @@ pub fn ContextSchemaPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                         type="button"
                                         class="shrink-0 text-destructive"
                                         on:click=move |_| remove_runtime.dispatch(
-                                            UiIntent::Execute(EditorCommand::Context {
+                                            UiIntent::execute(EditorCommand::Context {
                                                 command: ContextCommand::RemoveField {
                                                     field_id: id.clone(),
                                                 },
@@ -260,7 +260,7 @@ pub fn ContextSchemaPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                         type="button"
                                         class="shrink-0 text-destructive"
                                         on:click=move |_| remove_runtime.dispatch(
-                                            UiIntent::Execute(EditorCommand::Context {
+                                            UiIntent::execute(EditorCommand::Context {
                                                 command: ContextCommand::RemoveComputed {
                                                     computed_id: id.clone(),
                                                 },

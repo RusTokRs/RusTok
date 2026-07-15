@@ -12,10 +12,25 @@ use rustok_core::{CacheBackend, CacheCompareAndSetOutcome};
 
 use crate::{
     CacheEnvelope, CacheEnvelopeFreshness, CacheLoadPolicy, CacheLoadSource, CacheService,
-    TypedCacheLoadResult, DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+    TypedCacheLoadOptions, TypedCacheLoadResult, DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
 };
 
 pub const MAX_CACHE_REFRESH_KEY_BYTES: usize = crate::service::MAX_CACHE_LOAD_KEY_BYTES;
+
+#[derive(Debug, Clone)]
+pub struct CacheRefreshLoadOptions {
+    pub expected_schema_version: u32,
+    pub policy: CacheLoadPolicy,
+    pub max_encoded_bytes: usize,
+    pub now_unix_ms: u64,
+}
+
+struct RefreshEnvelopeRequest {
+    backend: Arc<dyn CacheBackend>,
+    key: String,
+    observed_bytes: Vec<u8>,
+    options: CacheRefreshLoadOptions,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct CacheRefreshKey {
@@ -310,10 +325,12 @@ impl CacheService {
             coordinator,
             backend,
             key,
-            expected_schema_version,
-            policy,
-            DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
-            current_unix_ms(),
+            CacheRefreshLoadOptions {
+                expected_schema_version,
+                policy,
+                max_encoded_bytes: DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+                now_unix_ms: current_unix_ms(),
+            },
             loader,
         )
         .await
@@ -330,10 +347,7 @@ impl CacheService {
         coordinator: &CacheRefreshCoordinator,
         backend: Arc<dyn CacheBackend>,
         key: impl Into<String>,
-        expected_schema_version: u32,
-        policy: CacheLoadPolicy,
-        max_encoded_bytes: usize,
-        now_unix_ms: u64,
+        options: CacheRefreshLoadOptions,
         loader: F,
     ) -> rustok_core::Result<StaleWhileRevalidateResult<T>>
     where
@@ -342,6 +356,12 @@ impl CacheService {
         Fut: Future<Output = rustok_core::Result<CacheEnvelope<T>>> + Send + 'static,
     {
         let key = key.into();
+        let CacheRefreshLoadOptions {
+            expected_schema_version,
+            policy,
+            max_encoded_bytes,
+            now_unix_ms,
+        } = options;
         validate_refresh_request(&key, expected_schema_version, max_encoded_bytes)?;
 
         if let Some(observed_bytes) = backend.get(&key).await? {
@@ -360,13 +380,17 @@ impl CacheService {
                         let refresh_loader = loader.clone();
                         coordinator.schedule(&backend, key, move || async move {
                             refresh_envelope(
-                                refresh_backend,
-                                refresh_key,
-                                observed_bytes,
-                                expected_schema_version,
-                                refresh_policy,
-                                max_encoded_bytes,
-                                now_unix_ms,
+                                RefreshEnvelopeRequest {
+                                    backend: refresh_backend,
+                                    key: refresh_key,
+                                    observed_bytes,
+                                    options: CacheRefreshLoadOptions {
+                                        expected_schema_version,
+                                        policy: refresh_policy,
+                                        max_encoded_bytes,
+                                        now_unix_ms,
+                                    },
+                                },
                                 refresh_loader,
                             )
                             .await
@@ -392,11 +416,13 @@ impl CacheService {
             .load_enveloped_or_fill_with_limit_at(
                 backend,
                 key,
-                expected_schema_version,
-                policy,
-                max_encoded_bytes,
-                now_unix_ms,
-                move || foreground_loader(),
+                TypedCacheLoadOptions {
+                    expected_schema_version,
+                    policy,
+                    max_encoded_bytes,
+                    now_unix_ms,
+                },
+                foreground_loader,
             )
             .await?;
 
@@ -423,13 +449,7 @@ fn typed_hit_result<T>(
 }
 
 async fn refresh_envelope<T, F, Fut>(
-    backend: Arc<dyn CacheBackend>,
-    key: String,
-    observed_bytes: Vec<u8>,
-    expected_schema_version: u32,
-    policy: CacheLoadPolicy,
-    max_encoded_bytes: usize,
-    now_unix_ms: u64,
+    request: RefreshEnvelopeRequest,
     loader: F,
 ) -> rustok_core::Result<()>
 where
@@ -437,6 +457,18 @@ where
     F: FnOnce() -> Fut + Send + 'static,
     Fut: Future<Output = rustok_core::Result<CacheEnvelope<T>>> + Send + 'static,
 {
+    let RefreshEnvelopeRequest {
+        backend,
+        key,
+        observed_bytes,
+        options:
+            CacheRefreshLoadOptions {
+                expected_schema_version,
+                policy,
+                max_encoded_bytes,
+                now_unix_ms,
+            },
+    } = request;
     let ttl = match policy.ttl.ttl_for(&key) {
         Some(ttl) if ttl.is_zero() => {
             return Err(rustok_core::Error::Cache(
@@ -750,10 +782,12 @@ mod tests {
                 &coordinator,
                 backend,
                 "x".repeat(MAX_CACHE_REFRESH_KEY_BYTES + 1),
-                1,
-                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
-                1024,
-                2_000,
+                CacheRefreshLoadOptions {
+                    expected_schema_version: 1,
+                    policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 2_000,
+                },
                 move || {
                     let loader_calls = Arc::clone(&loader_calls);
                     async move {
@@ -797,10 +831,14 @@ mod tests {
                     &coordinator,
                     backend.clone(),
                     "document",
-                    expected_schema_version,
-                    CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
-                    max_encoded_bytes,
-                    2_000,
+                    CacheRefreshLoadOptions {
+                        expected_schema_version,
+                        policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(
+                            60,
+                        ))),
+                        max_encoded_bytes,
+                        now_unix_ms: 2_000,
+                    },
                     move || {
                         let loader_calls = Arc::clone(&loader_calls);
                         async move {
@@ -843,10 +881,12 @@ mod tests {
                 &coordinator,
                 backend.clone(),
                 "document",
-                1,
-                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
-                1024,
-                2_000,
+                CacheRefreshLoadOptions {
+                    expected_schema_version: 1,
+                    policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 2_000,
+                },
                 || async {
                     CacheEnvelope::new(1, 2_000, "fresh".to_string())
                         .unwrap()
@@ -956,10 +996,12 @@ mod tests {
                 &coordinator,
                 backend.clone(),
                 "document",
-                1,
-                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
-                1024,
-                2_000,
+                CacheRefreshLoadOptions {
+                    expected_schema_version: 1,
+                    policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 2_000,
+                },
                 move || {
                     let loader_calls = Arc::clone(&loader_calls);
                     async move {
@@ -1017,10 +1059,12 @@ mod tests {
                 &coordinator,
                 backend.clone(),
                 "document",
-                1,
-                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
-                1024,
-                2_000,
+                CacheRefreshLoadOptions {
+                    expected_schema_version: 1,
+                    policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 2_000,
+                },
                 move || {
                     let loader_started = Arc::clone(&loader_started);
                     let loader_release = Arc::clone(&loader_release);
@@ -1082,10 +1126,12 @@ mod tests {
                 &coordinator,
                 backend,
                 "foreground-stale",
-                1,
-                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
-                1024,
-                2_000,
+                CacheRefreshLoadOptions {
+                    expected_schema_version: 1,
+                    policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 2_000,
+                },
                 move || {
                     let loader_calls = Arc::clone(&loader_calls);
                     async move {

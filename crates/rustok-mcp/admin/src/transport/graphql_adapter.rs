@@ -344,46 +344,6 @@ fn optional_graphql_string(value: String) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rotate_token_variables_keep_client_id_outside_input() {
-        let request = rotate_token_request(RotateMcpTokenPayload {
-            client_id: "client-1".to_string(),
-            token_name: "rotated".to_string(),
-            expires_at: String::new(),
-            revoke_existing_tokens: true,
-        });
-        let json = serde_json::to_value(request.variables).expect("variables serialize");
-
-        assert_eq!(json["clientId"], "client-1");
-        assert!(json["input"].get("clientId").is_none());
-        assert_eq!(json["input"]["tokenName"], "rotated");
-        assert!(json["input"]["expiresAt"].is_null());
-        assert_eq!(json["input"]["revokeExistingTokens"], true);
-    }
-
-    #[test]
-    fn policy_variables_use_graphql_camel_case() {
-        let request = update_policy_request(UpdateMcpPolicyPayload {
-            client_id: "client-1".to_string(),
-            allowed_tools: vec!["modules.list".to_string()],
-            denied_tools: Vec::new(),
-            granted_permissions: vec!["mcp:read".to_string()],
-            granted_scopes: vec!["tenant".to_string()],
-        });
-        let json = serde_json::to_value(request.variables).expect("variables serialize");
-
-        assert_eq!(json["clientId"], "client-1");
-        assert!(json["input"].get("clientId").is_none());
-        assert_eq!(json["input"]["allowedTools"][0], "modules.list");
-        assert_eq!(json["input"]["grantedPermissions"][0], "mcp:read");
-        assert_eq!(json["input"]["grantedScopes"][0], "tenant");
-    }
-}
-
 pub fn revoke_token_request(
     token_id: String,
     reason: Option<String>,
@@ -426,5 +386,45 @@ pub fn apply_scaffold_draft_request(
             draft_id: input.draft_id.clone(),
             input,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rotate_token_variables_keep_client_id_outside_input() {
+        let request = rotate_token_request(RotateMcpTokenPayload {
+            client_id: "client-1".to_string(),
+            token_name: "rotated".to_string(),
+            expires_at: String::new(),
+            revoke_existing_tokens: true,
+        });
+        let json = serde_json::to_value(request.variables).expect("variables serialize");
+
+        assert_eq!(json["clientId"], "client-1");
+        assert!(json["input"].get("clientId").is_none());
+        assert_eq!(json["input"]["tokenName"], "rotated");
+        assert!(json["input"]["expiresAt"].is_null());
+        assert_eq!(json["input"]["revokeExistingTokens"], true);
+    }
+
+    #[test]
+    fn policy_variables_use_graphql_camel_case() {
+        let request = update_policy_request(UpdateMcpPolicyPayload {
+            client_id: "client-1".to_string(),
+            allowed_tools: vec!["modules.list".to_string()],
+            denied_tools: Vec::new(),
+            granted_permissions: vec!["mcp:read".to_string()],
+            granted_scopes: vec!["tenant".to_string()],
+        });
+        let json = serde_json::to_value(request.variables).expect("variables serialize");
+
+        assert_eq!(json["clientId"], "client-1");
+        assert!(json["input"].get("clientId").is_none());
+        assert_eq!(json["input"]["allowedTools"][0], "modules.list");
+        assert_eq!(json["input"]["grantedPermissions"][0], "mcp:read");
+        assert_eq!(json["input"]["grantedScopes"][0], "tenant");
     }
 }

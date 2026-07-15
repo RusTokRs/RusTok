@@ -27,30 +27,6 @@ pub struct OutboxAdminShellText {
     pub load_error_prefix: String,
 }
 
-impl OutboxAdminShellText {
-    pub fn new(
-        badge: impl Into<String>,
-        title: impl Into<String>,
-        subtitle: impl Into<String>,
-        health_label: impl Into<String>,
-        tenant_context_label: impl Into<String>,
-        global_tenant_label: impl Into<String>,
-        relay_notes_title: impl Into<String>,
-        load_error_prefix: impl Into<String>,
-    ) -> Self {
-        Self {
-            badge: badge.into(),
-            title: title.into(),
-            subtitle: subtitle.into(),
-            health_label: health_label.into(),
-            tenant_context_label: tenant_context_label.into(),
-            global_tenant_label: global_tenant_label.into(),
-            relay_notes_title: relay_notes_title.into(),
-            load_error_prefix: load_error_prefix.into(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutboxInfoCardViewModel {
     pub label: String,
@@ -101,16 +77,16 @@ mod tests {
             }],
             relay_notes: vec![],
         };
-        let text = OutboxAdminShellText::new(
-            "outbox",
-            "Outbox Relay",
-            "subtitle",
-            "Health",
-            "Tenant context",
-            "global",
-            "Relay Notes",
-            "Failed",
-        );
+        let text = OutboxAdminShellText {
+            badge: "outbox".to_string(),
+            title: "Outbox Relay".to_string(),
+            subtitle: "subtitle".to_string(),
+            health_label: "Health".to_string(),
+            tenant_context_label: "Tenant context".to_string(),
+            global_tenant_label: "global".to_string(),
+            relay_notes_title: "Relay Notes".to_string(),
+            load_error_prefix: "Failed".to_string(),
+        };
 
         let cards = outbox_info_cards(&bootstrap, &text);
 

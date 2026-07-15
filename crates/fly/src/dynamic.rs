@@ -37,17 +37,12 @@ pub struct RuntimeCondition {
     pub extensions: Map<String, Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum EmptyRepeaterBehavior {
+    #[default]
     Hide,
     KeepTemplate,
-}
-
-impl Default for EmptyRepeaterBehavior {
-    fn default() -> Self {
-        Self::Hide
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -541,12 +536,12 @@ fn expand_repeater(
             repeater.id
         )));
     };
-    let template = ComponentNode::Object(
+    let template = ComponentNode::Object(Box::new(
         document
             .component(&repeater.component_id)
             .ok_or_else(|| FlyError::ComponentNotFound(repeater.component_id.clone()))?
             .clone(),
-    );
+    ));
     let values = resolve_path(context, &repeater.path)
         .and_then(Value::as_array)
         .cloned()
@@ -619,7 +614,7 @@ fn hide_runtime_component(document: &mut ProjectDocument, component_id: &str) ->
         .pages
         .get_mut(location.page_index)
         .ok_or_else(|| FlyError::PageNotFound(location.page_index.to_string()))?;
-    page.component = Some(ComponentNode::Object(ComponentObject {
+    page.component = Some(ComponentNode::Object(Box::new(ComponentObject {
         id: Some(component_id.to_string()),
         component_type: Some("wrapper".to_string()),
         style: Some(Value::Object(Map::from_iter([(
@@ -628,7 +623,7 @@ fn hide_runtime_component(document: &mut ProjectDocument, component_id: &str) ->
         )]))),
         components: ComponentChildren::Nodes(Vec::new()),
         ..ComponentObject::default()
-    }));
+    })));
     Ok(())
 }
 

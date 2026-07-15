@@ -1,6 +1,6 @@
 use crate::core::{
     oauth_app_list_item_view, oauth_app_type_defaults, prepare_create_oauth_app_input,
-    prepare_update_oauth_app_input, OAuthAppListItemViewModel,
+    prepare_update_oauth_app_input, CreateOAuthAppForm, OAuthAppListItemViewModel,
 };
 use crate::i18n::t;
 use crate::model::{AppType, OAuthApp};
@@ -199,16 +199,16 @@ pub fn CreateAppForm(
         };
 
         let tenant_value = tenant.clone();
-        let input = prepare_create_oauth_app_input(
-            name.get_untracked(),
-            slug.get_untracked(),
-            description.get_untracked(),
-            icon_url.get_untracked(),
-            app_type.get_untracked(),
-            redirect_uris.get_untracked(),
-            scopes.get_untracked(),
-            grant_types.get_untracked(),
-        );
+        let input = prepare_create_oauth_app_input(CreateOAuthAppForm {
+            name: name.get_untracked(),
+            slug: slug.get_untracked(),
+            description: description.get_untracked(),
+            icon_url: icon_url.get_untracked(),
+            app_type: app_type.get_untracked(),
+            redirect_uris: redirect_uris.get_untracked(),
+            scopes: scopes.get_untracked(),
+            grant_types: grant_types.get_untracked(),
+        });
         let on_success = on_success.clone();
 
         set_submitting.set(true);

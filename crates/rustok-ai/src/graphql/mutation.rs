@@ -465,7 +465,6 @@ impl AiMutation {
             crate::StartAiChatSessionInput {
                 title: input.title,
                 provider_profile_id: input.provider_profile_id,
-                model_override: input.model_override,
                 task_profile_id: input.task_profile_id,
                 tool_profile_id: input.tool_profile_id,
                 execution_mode: None,

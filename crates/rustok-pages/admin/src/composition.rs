@@ -27,8 +27,8 @@ pub fn PagesAdmin() -> impl IntoView {
     let selected_page_query = use_route_query_value(AdminQueryKey::PageId.as_str());
     let token = use_token();
     let tenant = use_tenant();
-    let resource_token = token.clone();
-    let resource_tenant = tenant.clone();
+    let resource_token = token;
+    let resource_tenant = tenant;
     let default_locale = route_context.locale.clone().unwrap_or_default();
     let loading_label = t(
         route_context.locale.as_deref(),
@@ -86,8 +86,8 @@ pub fn PagesAdmin() -> impl IntoView {
                                     page
                                     baseline
                                     release_status
-                                    token=token.clone()
-                                    tenant=tenant.clone()
+                                    token=token
+                                    tenant=tenant
                                     default_locale=default_locale.clone()
                                 />
                             }.into_any(),
@@ -151,8 +151,8 @@ fn PagesFlyBuilder(
         Ok(controller) => {
             let page_id = page.id.clone();
             let snapshot_default_locale = default_locale.clone();
-            let facade_token = token.clone();
-            let facade_tenant = tenant.clone();
+            let facade_token = token;
+            let facade_tenant = tenant;
             let facade: Arc<dyn PageBuilderAdminFacade> = Arc::new(PagesBuilderFacade::new(
                 move || PagesBuilderSaveSnapshot {
                     token: facade_token.get_untracked(),
@@ -166,8 +166,8 @@ fn PagesFlyBuilder(
             let persistence_error = RwSignal::new(None::<String>);
             let server_status = RwSignal::new(release_status);
             let baseline_page_id = page.id.clone();
-            let baseline_token = token.clone();
-            let baseline_tenant = tenant.clone();
+            let baseline_token = token;
+            let baseline_tenant = tenant;
             let on_baseline = Callback::new(
                 move |change: PageBuilderScenarioBaselineChange| {
                     let PageBuilderScenarioBaselineChange {

@@ -198,25 +198,27 @@ pub(crate) fn empty_price_draft(
     }
 }
 
-pub(crate) fn build_price_draft(
-    currency_code: String,
-    amount: String,
-    compare_at_amount: String,
-    price_list_id: String,
-    channel_id: String,
-    channel_slug: String,
-    min_quantity: String,
-    max_quantity: String,
-) -> PricingPriceDraft {
+pub(crate) struct PriceDraftForm {
+    pub currency_code: String,
+    pub amount: String,
+    pub compare_at_amount: String,
+    pub price_list_id: String,
+    pub channel_id: String,
+    pub channel_slug: String,
+    pub min_quantity: String,
+    pub max_quantity: String,
+}
+
+pub(crate) fn build_price_draft(form: PriceDraftForm) -> PricingPriceDraft {
     PricingPriceDraft {
-        currency_code,
-        amount,
-        compare_at_amount,
-        price_list_id,
-        channel_id,
-        channel_slug,
-        min_quantity,
-        max_quantity,
+        currency_code: form.currency_code,
+        amount: form.amount,
+        compare_at_amount: form.compare_at_amount,
+        price_list_id: form.price_list_id,
+        channel_id: form.channel_id,
+        channel_slug: form.channel_slug,
+        min_quantity: form.min_quantity,
+        max_quantity: form.max_quantity,
     }
 }
 

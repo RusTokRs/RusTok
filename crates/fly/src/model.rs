@@ -174,16 +174,16 @@ pub struct ProjectPage {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum ComponentNode {
-    Object(ComponentObject),
+    Object(Box<ComponentObject>),
     Opaque(Value),
 }
 
 impl ComponentNode {
     pub fn object(component_type: impl Into<String>) -> Self {
-        Self::Object(ComponentObject {
+        Self::Object(Box::new(ComponentObject {
             component_type: Some(component_type.into()),
             ..ComponentObject::default()
-        })
+        }))
     }
 
     pub fn as_object(&self) -> Option<&ComponentObject> {

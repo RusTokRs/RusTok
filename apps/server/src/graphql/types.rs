@@ -12,7 +12,6 @@ use crate::graphql::loaders::TenantNameLoader;
 use crate::models::users;
 use crate::modules::{module_setting_shape_value, InstalledManifestModule, ModuleSettingSpec};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
-use crate::services::module_lifecycle::ModuleOperationRecoveryPlan as ServiceModuleOperationRecoveryPlan;
 use crate::services::rbac_service::RbacService;
 use crate::services::registry_principal::RegistryPrincipalRef;
 use rustok_api::graphql::PageInfo;
@@ -20,6 +19,7 @@ use rustok_build::build::{BuildStage, BuildStatus, DeploymentProfile, Model as B
 use rustok_build::release::{Model as ReleaseModel, ReleaseStatus};
 use rustok_build::BuildEvent;
 use rustok_build::BuildExecutionPlan;
+use rustok_modules::ModuleOperationRecoveryPlan as ServiceModuleOperationRecoveryPlan;
 
 #[derive(SimpleObject, Clone)]
 pub struct Tenant {
@@ -549,6 +549,8 @@ pub enum GqlDeploymentProfile {
     ServerWithAdmin,
     ServerWithStorefront,
     HeadlessApi,
+    Worker,
+    Registry,
 }
 
 impl From<DeploymentProfile> for GqlDeploymentProfile {
@@ -558,6 +560,8 @@ impl From<DeploymentProfile> for GqlDeploymentProfile {
             DeploymentProfile::ServerWithAdmin => Self::ServerWithAdmin,
             DeploymentProfile::ServerWithStorefront => Self::ServerWithStorefront,
             DeploymentProfile::HeadlessApi => Self::HeadlessApi,
+            DeploymentProfile::Worker => Self::Worker,
+            DeploymentProfile::Registry => Self::Registry,
         }
     }
 }

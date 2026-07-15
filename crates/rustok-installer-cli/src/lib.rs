@@ -353,7 +353,7 @@ fn failed(error: impl std::fmt::Display) -> CliCoreError {
 #[cfg(test)]
 mod tests {
     use super::{command_provider, RuntimeComposition};
-    use rustok_cli_core::{CommandProvider, CommandRequest};
+    use rustok_cli_core::CommandRequest;
 
     #[tokio::test]
     async fn plan_command_redacts_plaintext_secrets_without_runtime_database() {

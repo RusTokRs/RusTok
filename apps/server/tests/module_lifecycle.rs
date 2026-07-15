@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use rustok_core::{ModuleContext, ModuleKind, ModuleRegistry, RusToKModule};
+use rustok_modules::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
 use rustok_server::models::_entities::{module_operations, tenant_modules};
 use rustok_server::services::module_lifecycle::{
-    ModuleLifecycleService, ModuleOperationIssue, ModuleOperationRecoveryAction,
-    ModuleOperationRecoveryError, ModuleOperationStatus, ToggleModuleError,
+    ModuleLifecycleService, ModuleOperationRecoveryError, ToggleModuleError,
 };
 use sea_orm::{
     ColumnTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,

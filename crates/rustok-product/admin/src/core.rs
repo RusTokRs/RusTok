@@ -979,7 +979,7 @@ pub(crate) fn empty_product_admin_editor_form_state() -> ProductAdminEditorFormS
 #[derive(Clone, Debug)]
 pub(crate) enum ProductAdminOpenProductViewModel {
     Ready {
-        product: ProductDetail,
+        product: Box<ProductDetail>,
         form_state: ProductAdminEditorFormState,
     },
     Empty {
@@ -996,7 +996,7 @@ pub(crate) fn build_product_admin_open_product_view_model<E: std::fmt::Display>(
     match result {
         Ok(Some(product)) => ProductAdminOpenProductViewModel::Ready {
             form_state: build_product_admin_editor_form_state(&product, requested_locale),
-            product,
+            product: Box::new(product),
         },
         Ok(None) => ProductAdminOpenProductViewModel::Empty {
             form_state: empty_product_admin_editor_form_state(),

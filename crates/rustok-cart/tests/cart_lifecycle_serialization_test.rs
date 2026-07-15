@@ -3,7 +3,7 @@ use rustok_cart::migrations;
 use rustok_cart::CartService;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 
 mod support;
 

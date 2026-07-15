@@ -161,7 +161,7 @@ fn install_resize_listeners(
             }
             let result = active.update(event).or_else(|| preview.get_untracked());
             if let Some(result) = result {
-                up_runtime.dispatch(UiIntent::Execute(EditorCommand::Patch {
+                up_runtime.dispatch(UiIntent::execute(EditorCommand::Patch {
                     component_id: active.resize.component_id.clone(),
                     patch: active.resize.component_patch(result),
                 }));

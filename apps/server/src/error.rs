@@ -37,6 +37,10 @@ pub enum Error {
     NotFound,
     #[error("{0}")]
     BadRequest(String),
+    #[error("validation failed: {0}")]
+    Validation(String),
+    #[error("cache operation failed: {0}")]
+    Cache(String),
     #[error("internal server error")]
     InternalServerError,
 }
@@ -51,7 +55,7 @@ impl IntoResponse for Error {
                 error_response(StatusCode::UNAUTHORIZED, "unauthorized", message)
             }
             Self::NotFound => error_response(StatusCode::NOT_FOUND, "not_found", "Not found"),
-            Self::BadRequest(message) => {
+            Self::BadRequest(message) | Self::Validation(message) => {
                 error_response(StatusCode::BAD_REQUEST, "bad_request", message)
             }
             Self::Message(error) => {

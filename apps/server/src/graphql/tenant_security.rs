@@ -7,9 +7,8 @@ use async_graphql::extensions::{
 use async_graphql::parser::types::{
     ExecutableDocument, OperationDefinition, Selection, SelectionSet,
 };
-use async_graphql::{
-    ConstValue, FieldError, Name, Pos, Request, Response, ServerResult, Value, Variables,
-};
+use async_graphql::{FieldError, Name, Pos, Request, Response, ServerResult, Variables};
+use async_graphql_value::{ConstValue, Value};
 use rustok_api::graphql::GraphQLError;
 use rustok_api::TenantContext;
 use uuid::Uuid;

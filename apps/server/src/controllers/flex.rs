@@ -439,6 +439,7 @@ mod tests {
                 Permission::FLEX_ENTRIES_LIST,
             ],
             inferred_role: UserRole::Admin,
+            actor_kind: rustok_core::SecurityActorKind::User,
             client_id: None,
             scopes: Vec::new(),
             grant_type: "direct".to_string(),

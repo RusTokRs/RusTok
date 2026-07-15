@@ -122,10 +122,10 @@ impl ModuleLifecycleService {
         )
         .await
         .map_err(map_toggle_execution_error)?;
-        TenantModulesEntity::find_by_id(result.state.id)
+        Ok(TenantModulesEntity::find_by_id(result.state.id)
             .one(db)
             .await?
-            .ok_or_else(|| DbErr::RecordNotFound("tenant_modules.toggle_state".to_string()))
+            .ok_or_else(|| DbErr::RecordNotFound("tenant_modules.toggle_state".to_string()))?)
     }
 
     pub async fn module_operation_recovery_plan(

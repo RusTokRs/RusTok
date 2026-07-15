@@ -69,7 +69,7 @@ pub struct PagePatch {
 pub enum PageCommand {
     Add {
         index: usize,
-        page: ProjectPage,
+        page: Box<ProjectPage>,
     },
     Remove {
         locator: PageLocator,
@@ -116,10 +116,10 @@ pub fn blank_page(id: impl Into<String>, name: impl Into<String>) -> ProjectPage
     let name = name.into();
     ProjectPage {
         id: (!id.trim().is_empty()).then_some(id),
-        component: Some(ComponentNode::Object(ComponentObject {
+        component: Some(ComponentNode::Object(Box::new(ComponentObject {
             component_type: Some("wrapper".to_string()),
             ..ComponentObject::default()
-        })),
+        }))),
         frames: None,
         extensions: Map::from_iter([("name".to_string(), Value::String(name))]),
     }
@@ -135,7 +135,7 @@ pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand)
                 });
             }
             ensure_page_id_available(document, page.id.as_deref(), None)?;
-            document.project.pages.insert(*index, page.clone());
+            document.project.pages.insert(*index, page.as_ref().clone());
             Ok(())
         }
         PageCommand::Remove { locator } => {
@@ -307,7 +307,7 @@ mod tests {
             &mut document,
             &PageCommand::Add {
                 index: 2,
-                page: blank_page("c", "Page C"),
+                page: Box::new(blank_page("c", "Page C")),
             },
         )
         .expect("add");
@@ -354,7 +354,7 @@ mod tests {
             &mut document,
             &PageCommand::Add {
                 index: 2,
-                page: blank_page("a", "Duplicate"),
+                page: Box::new(blank_page("a", "Duplicate")),
             },
         )
         .expect_err("duplicate id");

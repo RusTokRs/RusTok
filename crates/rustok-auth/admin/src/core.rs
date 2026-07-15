@@ -282,30 +282,32 @@ pub fn oauth_app_type_defaults(app_type: &str) -> OAuthAppTypeDefaults {
     }
 }
 
-pub fn prepare_create_oauth_app_input(
-    name: String,
-    slug: String,
-    description: String,
-    icon_url: String,
-    app_type: String,
-    redirect_uris: String,
-    scopes: String,
-    grant_types: String,
-) -> CreateOAuthAppInput {
-    let redirect_uris = normalize_lines(&redirect_uris);
+pub struct CreateOAuthAppForm {
+    pub name: String,
+    pub slug: String,
+    pub description: String,
+    pub icon_url: String,
+    pub app_type: String,
+    pub redirect_uris: String,
+    pub scopes: String,
+    pub grant_types: String,
+}
+
+pub fn prepare_create_oauth_app_input(form: CreateOAuthAppForm) -> CreateOAuthAppInput {
+    let redirect_uris = normalize_lines(&form.redirect_uris);
     CreateOAuthAppInput {
-        name: name.trim().to_string(),
-        slug: slug.trim().to_string(),
-        description: optional_trimmed(description),
-        icon_url: optional_trimmed(icon_url),
-        app_type: match app_type.as_str() {
+        name: form.name.trim().to_string(),
+        slug: form.slug.trim().to_string(),
+        description: optional_trimmed(form.description),
+        icon_url: optional_trimmed(form.icon_url),
+        app_type: match form.app_type.as_str() {
             "Mobile" => AppType::Mobile,
             "Service" => AppType::Service,
             _ => AppType::ThirdParty,
         },
         redirect_uris: (!redirect_uris.is_empty()).then_some(redirect_uris),
-        scopes: normalize_lines(&scopes),
-        grant_types: normalize_lines(&grant_types),
+        scopes: normalize_lines(&form.scopes),
+        grant_types: normalize_lines(&form.grant_types),
         granted_permissions: Vec::new(),
     }
 }
@@ -621,16 +623,16 @@ mod tests {
 
     #[test]
     fn create_oauth_app_input_normalizes_form_values() {
-        let input = prepare_create_oauth_app_input(
-            " Integration ".into(),
-            " com.example.app ".into(),
-            "  Description  ".into(),
-            "   ".into(),
-            "Mobile".into(),
-            " myapp://one \n\n myapp://two ".into(),
-            " read \n write ".into(),
-            " authorization_code ".into(),
-        );
+        let input = prepare_create_oauth_app_input(CreateOAuthAppForm {
+            name: " Integration ".into(),
+            slug: " com.example.app ".into(),
+            description: "  Description  ".into(),
+            icon_url: "   ".into(),
+            app_type: "Mobile".into(),
+            redirect_uris: " myapp://one \n\n myapp://two ".into(),
+            scopes: " read \n write ".into(),
+            grant_types: " authorization_code ".into(),
+        });
 
         assert_eq!(input.name, "Integration");
         assert_eq!(input.slug, "com.example.app");

@@ -3,18 +3,20 @@ pub struct CartPromotionCommand {
     pub draft: crate::model::CommerceCartPromotionDraft,
 }
 
-pub fn prepare_cart_promotion_command(
-    cart_id: &str,
-    kind: &str,
-    scope: &str,
-    line_item_id: &str,
-    source_id: &str,
-    discount_percent: &str,
-    amount: &str,
-    metadata_json: &str,
-) -> Option<CartPromotionCommand> {
-    let cart_id = cart_id.trim().to_string();
-    let source_id = source_id.trim().to_string();
+pub struct CartPromotionForm<'a> {
+    pub cart_id: &'a str,
+    pub kind: &'a str,
+    pub scope: &'a str,
+    pub line_item_id: &'a str,
+    pub source_id: &'a str,
+    pub discount_percent: &'a str,
+    pub amount: &'a str,
+    pub metadata_json: &'a str,
+}
+
+pub fn prepare_cart_promotion_command(form: CartPromotionForm<'_>) -> Option<CartPromotionCommand> {
+    let cart_id = form.cart_id.trim().to_string();
+    let source_id = form.source_id.trim().to_string();
 
     if cart_id.is_empty() || source_id.is_empty() {
         return None;
@@ -23,13 +25,13 @@ pub fn prepare_cart_promotion_command(
     Some(CartPromotionCommand {
         cart_id,
         draft: crate::model::CommerceCartPromotionDraft {
-            kind: parse_promotion_kind(kind),
-            scope: parse_promotion_scope(scope),
-            line_item_id: line_item_id.trim().to_string(),
+            kind: parse_promotion_kind(form.kind),
+            scope: parse_promotion_scope(form.scope),
+            line_item_id: form.line_item_id.trim().to_string(),
             source_id,
-            discount_percent: discount_percent.trim().to_string(),
-            amount: amount.trim().to_string(),
-            metadata_json: metadata_json.trim().to_string(),
+            discount_percent: form.discount_percent.trim().to_string(),
+            amount: form.amount.trim().to_string(),
+            metadata_json: form.metadata_json.trim().to_string(),
         },
     })
 }
@@ -56,16 +58,16 @@ mod tests {
 
     #[test]
     fn cart_promotion_command_trims_and_maps_form_values() {
-        let command = prepare_cart_promotion_command(
-            " cart-1 ",
-            "percentage_discount",
-            "line_item",
-            " line-1 ",
-            " promo ",
-            " 10 ",
-            " 4.99 ",
-            " { } ",
-        )
+        let command = prepare_cart_promotion_command(CartPromotionForm {
+            cart_id: " cart-1 ",
+            kind: "percentage_discount",
+            scope: "line_item",
+            line_item_id: " line-1 ",
+            source_id: " promo ",
+            discount_percent: " 10 ",
+            amount: " 4.99 ",
+            metadata_json: " { } ",
+        })
         .expect("valid command");
 
         assert_eq!(command.cart_id, "cart-1");
@@ -86,27 +88,27 @@ mod tests {
 
     #[test]
     fn cart_promotion_command_requires_cart_and_source() {
-        assert!(prepare_cart_promotion_command(
-            "",
-            DEFAULT_PROMOTION_KIND,
-            DEFAULT_PROMOTION_SCOPE,
-            "",
-            "source",
-            "",
-            DEFAULT_PROMOTION_AMOUNT,
-            "",
-        )
+        assert!(prepare_cart_promotion_command(CartPromotionForm {
+            cart_id: "",
+            kind: DEFAULT_PROMOTION_KIND,
+            scope: DEFAULT_PROMOTION_SCOPE,
+            line_item_id: "",
+            source_id: "source",
+            discount_percent: "",
+            amount: DEFAULT_PROMOTION_AMOUNT,
+            metadata_json: "",
+        })
         .is_none());
-        assert!(prepare_cart_promotion_command(
-            "cart",
-            DEFAULT_PROMOTION_KIND,
-            DEFAULT_PROMOTION_SCOPE,
-            "",
-            "  ",
-            "",
-            DEFAULT_PROMOTION_AMOUNT,
-            "",
-        )
+        assert!(prepare_cart_promotion_command(CartPromotionForm {
+            cart_id: "cart",
+            kind: DEFAULT_PROMOTION_KIND,
+            scope: DEFAULT_PROMOTION_SCOPE,
+            line_item_id: "",
+            source_id: "  ",
+            discount_percent: "",
+            amount: DEFAULT_PROMOTION_AMOUNT,
+            metadata_json: "",
+        })
         .is_none());
     }
 }

@@ -31,7 +31,7 @@ mod tests {
     #[test]
     fn provider_operations_remain_in_merged_schema() {
         let schema = Schema::build(
-            CommerceQuery::default(),
+            CommerceQuery,
             CommerceMutation::default(),
             EmptySubscription,
         )

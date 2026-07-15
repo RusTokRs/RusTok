@@ -27,7 +27,7 @@ pub enum UiIntent {
     CopySelection,
     CutSelection,
     PasteClipboard,
-    Execute(EditorCommand),
+    Execute(Box<EditorCommand>),
     Undo,
     Redo,
     RequestSave,
@@ -43,7 +43,7 @@ pub enum UiIntent {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum UiEffect {
     None,
-    Command(EditorCommand),
+    Command(Box<EditorCommand>),
     Undo,
     Redo,
     CopySelection,
@@ -107,13 +107,15 @@ impl FlyUiStateMachine {
                     self.state.overlays.insertion = None;
                     self.state.overlays.resize_handles_visible = false;
                     self.state.drag = None;
-                    vec![UiEffect::Command(EditorCommand::Select {
+                    vec![UiEffect::Command(Box::new(EditorCommand::Select {
                         component_id: None,
-                    })]
+                    }))]
                 }
                 UiIntent::Select(component_id) => {
                     self.state.selection.component_id = component_id.clone();
-                    vec![UiEffect::Command(EditorCommand::Select { component_id })]
+                    vec![UiEffect::Command(Box::new(EditorCommand::Select {
+                        component_id,
+                    }))]
                 }
                 UiIntent::Hover(component_id) => {
                     self.state.selection.hovered_component_id = component_id;
@@ -193,7 +195,7 @@ impl FlyUiStateMachine {
                     let command = command_for_drop(drag.source, &candidate)?;
                     self.mark_dirty();
                     vec![
-                        UiEffect::Command(command),
+                        UiEffect::Command(Box::new(command)),
                         UiEffect::Announce("Component dropped".to_string()),
                     ]
                 }
@@ -227,7 +229,7 @@ impl FlyUiStateMachine {
                     vec![UiEffect::PasteClipboard]
                 }
                 UiIntent::Execute(command) => {
-                    if !matches!(&command, EditorCommand::Select { .. }) {
+                    if !matches!(&*command, EditorCommand::Select { .. }) {
                         self.require_edit_capability("edit", self.state.capabilities.edit)?;
                         self.mark_dirty();
                     }
@@ -304,5 +306,12 @@ impl FlyUiStateMachine {
         self.state.dirty.dirty = true;
         self.state.dirty.command_sequence = self.state.dirty.command_sequence.saturating_add(1);
         self.state.dirty.save_failed = false;
+    }
+}
+
+impl UiIntent {
+    /// Constructs a command intent without exposing the enum's storage optimization.
+    pub fn execute(command: EditorCommand) -> Self {
+        Self::Execute(Box::new(command))
     }
 }

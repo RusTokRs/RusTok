@@ -20,32 +20,39 @@ pub struct SearchRouteFilters {
     pub sort_desc: bool,
 }
 
-pub fn parse_search_route_filters(
-    channel_id: Option<&str>,
-    entity_types: Option<&str>,
-    source_modules: Option<&str>,
-    statuses: Option<&str>,
-    category_ids: Option<&str>,
-    attribute_code: Option<&str>,
-    attribute_values: Option<&str>,
-    attribute_min: Option<&str>,
-    attribute_max: Option<&str>,
-    sort_attribute_code: Option<&str>,
-    sort_desc: Option<&str>,
-) -> SearchRouteFilters {
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SearchRouteFilterQuery {
+    pub channel_id: Option<String>,
+    pub entity_types: Option<String>,
+    pub source_modules: Option<String>,
+    pub statuses: Option<String>,
+    pub category_ids: Option<String>,
+    pub attribute_code: Option<String>,
+    pub attribute_values: Option<String>,
+    pub attribute_min: Option<String>,
+    pub attribute_max: Option<String>,
+    pub sort_attribute_code: Option<String>,
+    pub sort_desc: Option<String>,
+}
+
+pub fn parse_search_route_filters(query: SearchRouteFilterQuery) -> SearchRouteFilters {
     SearchRouteFilters {
-        channel_id: optional_text(channel_id.unwrap_or_default()),
-        entity_types: parse_csv(entity_types.unwrap_or_default()),
-        source_modules: parse_csv(source_modules.unwrap_or_default()),
-        statuses: parse_csv(statuses.unwrap_or_default()),
-        category_ids: parse_csv(category_ids.unwrap_or_default()),
-        attribute_code: optional_text(attribute_code.unwrap_or_default()),
-        attribute_values: parse_csv(attribute_values.unwrap_or_default()),
-        attribute_min: optional_text(attribute_min.unwrap_or_default()),
-        attribute_max: optional_text(attribute_max.unwrap_or_default()),
-        sort_attribute_code: optional_text(sort_attribute_code.unwrap_or_default()),
+        channel_id: optional_text(query.channel_id.as_deref().unwrap_or_default()),
+        entity_types: parse_csv(query.entity_types.as_deref().unwrap_or_default()),
+        source_modules: parse_csv(query.source_modules.as_deref().unwrap_or_default()),
+        statuses: parse_csv(query.statuses.as_deref().unwrap_or_default()),
+        category_ids: parse_csv(query.category_ids.as_deref().unwrap_or_default()),
+        attribute_code: optional_text(query.attribute_code.as_deref().unwrap_or_default()),
+        attribute_values: parse_csv(query.attribute_values.as_deref().unwrap_or_default()),
+        attribute_min: optional_text(query.attribute_min.as_deref().unwrap_or_default()),
+        attribute_max: optional_text(query.attribute_max.as_deref().unwrap_or_default()),
+        sort_attribute_code: optional_text(
+            query.sort_attribute_code.as_deref().unwrap_or_default(),
+        ),
         sort_desc: matches!(
-            sort_desc
+            query
+                .sort_desc
+                .as_deref()
                 .unwrap_or_default()
                 .trim()
                 .to_ascii_lowercase()
@@ -180,19 +187,19 @@ mod tests {
 
     #[test]
     fn parse_search_route_filters_handles_missing_and_csv_values() {
-        let parsed = parse_search_route_filters(
-            Some("a0f903ea-7bd8-4e01-ae11-4fc58faac647"),
-            Some(" product , pages "),
-            None,
-            Some(" published, draft ,"),
-            Some("9d76985c-7500-4ad7-a101-860b8f40d5a0"),
-            Some("color"),
-            Some("red,blue"),
-            None,
-            None,
-            Some("price"),
-            Some("desc"),
-        );
+        let parsed = parse_search_route_filters(SearchRouteFilterQuery {
+            channel_id: Some("a0f903ea-7bd8-4e01-ae11-4fc58faac647".to_string()),
+            entity_types: Some(" product , pages ".to_string()),
+            source_modules: None,
+            statuses: Some(" published, draft ,".to_string()),
+            category_ids: Some("9d76985c-7500-4ad7-a101-860b8f40d5a0".to_string()),
+            attribute_code: Some("color".to_string()),
+            attribute_values: Some("red,blue".to_string()),
+            attribute_min: None,
+            attribute_max: None,
+            sort_attribute_code: Some("price".to_string()),
+            sort_desc: Some("desc".to_string()),
+        });
 
         assert_eq!(
             parsed,

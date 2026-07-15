@@ -110,7 +110,7 @@ fn DiagnosticsHealthCard(
                                                     .map(|issue| issue.target_kind.clone());
                                                 let fix_button = if let Some(kind) = first_kind {
                                                     let payload = default_schema_payload_for_slug(&kind).unwrap_or_default();
-                                                    let on_click = on_queue_schema_fix.clone();
+                                        let on_click = on_queue_schema_fix;
                                                     let kind_clone = kind.clone();
                                                     let queue_fix_label_clone = queue_fix_label.get_value();
                                                     view! {

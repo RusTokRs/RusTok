@@ -1769,7 +1769,7 @@ async fn admin_graphql_order_query_exposes_tax_breakdown_with_provider_ids() {
     assert_eq!(tax_lines.len(), 3);
     assert!(tax_lines
         .iter()
-        .all(|line| line["providerId"] == Value::from("region_default")));
+        .all(|line| line["providerId"] == "region_default"));
     assert!(tax_lines
         .iter()
         .any(|line| line["lineItemId"].as_str().is_some()));
@@ -2739,7 +2739,7 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
     assert_eq!(tax_lines.len(), 3);
     assert!(tax_lines
         .iter()
-        .all(|line| line["providerId"] == Value::from("region_default")));
+        .all(|line| line["providerId"] == "region_default"));
     assert!(tax_lines
         .iter()
         .any(|line| line["lineItemId"].as_str().is_some() && line["shippingOptionId"].is_null()));

@@ -592,7 +592,8 @@ pub fn RegionAdmin() -> impl IntoView {
                         &policy_labels,
                         &raw_section_labels,
                     ) {
-                        RegionAdminDetailPanelViewModel::Ready {
+                        RegionAdminDetailPanelViewModel::Ready { detail } => {
+                            let crate::core::RegionAdminDetailPanelReadyViewModel {
                             title,
                             subtitle,
                             policy_title,
@@ -601,7 +602,8 @@ pub fn RegionAdmin() -> impl IntoView {
                             header,
                             policy,
                             raw_sections,
-                        } => view! {
+                            } = *detail;
+                            view! {
                             <section class="space-y-6 rounded-3xl border border-border bg-card p-6 shadow-sm">
                                 <div class="space-y-2">
                                     <h3 class="text-lg font-semibold text-card-foreground">{title}</h3>
@@ -647,7 +649,8 @@ pub fn RegionAdmin() -> impl IntoView {
                                     <pre class="mt-4 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">{raw_sections.metadata.body}</pre>
                                 </div>
                             </section>
-                        }.into_any(),
+                            }.into_any()
+                        },
                         RegionAdminDetailPanelViewModel::Empty { message } => view! {
                             <section class="rounded-3xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{message}</section>
                         }.into_any(),

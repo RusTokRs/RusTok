@@ -5,9 +5,7 @@ use axum::{
 };
 use rustok_api::{RequestContext, TenantContext};
 use rustok_customer::dto::CustomerResponse;
-use rustok_customer::{
-    in_process_customer_read_port, CustomerReadPort, CustomerUserProjectionRequest,
-};
+use rustok_customer::{in_process_customer_read_port, CustomerUserProjectionRequest};
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;
 use rustok_web::{HttpError, HttpResult};

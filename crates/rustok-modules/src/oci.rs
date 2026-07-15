@@ -137,7 +137,7 @@ impl OciDistributionArtifactRegistry {
             while let Some(chunk) = stream.next().await {
                 let chunk =
                     chunk.map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
-                received = received.checked_add(chunk.len() as u64).ok_or_else(|| {
+                received = received.checked_add(chunk.len() as u64).ok_or({
                     ModuleInstallationError::ArtifactTooLarge {
                         kind: "payload",
                         limit: limits.max_payload_bytes,

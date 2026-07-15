@@ -21,7 +21,10 @@ use crate::model::{
 };
 use crate::{ProviderSlug, ProviderTargetId};
 
-static AI_RUN_CANCELLATIONS: Lazy<Arc<Mutex<HashMap<Uuid, watch::Sender<()>>>>> =
+type AiRunCancellationSenders = HashMap<Uuid, watch::Sender<()>>;
+type SharedAiRunCancellations = Arc<Mutex<AiRunCancellationSenders>>;
+
+static AI_RUN_CANCELLATIONS: Lazy<SharedAiRunCancellations> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 #[derive(Clone)]

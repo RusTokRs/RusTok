@@ -548,7 +548,11 @@ where
 #[derive(Default)]
 pub struct InMemoryArtifactBlobStore {
     blobs: Mutex<HashMap<String, Vec<u8>>>,
-    staged: Mutex<HashMap<Uuid, (String, String, Vec<u8>)>>,
+    staged: Mutex<HashMap<Uuid, InMemoryStagedArtifact>>,
+}
+
+struct InMemoryStagedArtifact {
+    bytes: Vec<u8>,
 }
 
 #[async_trait]
@@ -618,23 +622,21 @@ impl DurableArtifactBlobStore for InMemoryArtifactBlobStore {
             .map_err(|_| ModuleInstallationError::Blob("blob store lock poisoned".into()))?
             .insert(
                 staged.stage_id,
-                (
-                    staged.digest.clone(),
-                    staged.media_type.clone(),
-                    bytes.to_vec(),
-                ),
+                InMemoryStagedArtifact {
+                    bytes: bytes.to_vec(),
+                },
             );
         Ok(staged)
     }
 
     async fn publish(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError> {
-        let (_, _, bytes) = self
+        let stored = self
             .staged
             .lock()
             .map_err(|_| ModuleInstallationError::Blob("blob store lock poisoned".into()))?
             .remove(&staged.stage_id)
             .ok_or_else(|| ModuleInstallationError::Blob("staged blob is unavailable".into()))?;
-        self.put_verified(&staged.digest, &bytes).await
+        self.put_verified(&staged.digest, &stored.bytes).await
     }
 
     async fn discard(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError> {

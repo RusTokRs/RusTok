@@ -785,9 +785,9 @@ impl RootMutation {
         )
         .await
         .map_err(map_module_operation_recovery_error)?;
-        let plan = crate::services::module_lifecycle::ModuleOperationRecoveryPlan::from_operation(
-            &operation,
-        );
+        let plan = ModuleLifecycleService::module_operation_recovery_plan(db, operation.id)
+            .await
+            .map_err(map_module_operation_recovery_error)?;
 
         Ok(ModuleOperationRecoveryPlan::from(&plan))
     }

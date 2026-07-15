@@ -1073,10 +1073,6 @@ fn default_registry_remote_executor_requeue_scan_interval_ms() -> u64 {
     15_000
 }
 
-fn default_build_deployment_filesystem_root_dir() -> String {
-    "artifacts/releases".to_string()
-}
-
 fn default_build_deployment_docker_bin() -> String {
     "docker".to_string()
 }

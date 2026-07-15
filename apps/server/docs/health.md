@@ -46,7 +46,7 @@ to pull ecommerce or content surfaces it doesn't need.
   `tenants`, `users`, `sys_events` when `rustok.events.transport = "outbox"` and
   `search_documents` when `rustok.features.search_indexing = true`;
 - `cache_backend` — basic check of tenant cache path;
-- `tenant_cache_invalidation` — non-critical check of Redis pubsub listener for cross-instance invalidation;
+- `tenant_cache_invalidation` — non-critical check of the durable tenant-cache generation listener for cross-instance invalidation;
 - `event_transport` — critical check of event transport initialization;
 - `search_backend` — non-critical check of search connectivity;
 - `email_backend` — non-critical configuration check of email transport: `smtp` must be enabled;

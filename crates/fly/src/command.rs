@@ -625,7 +625,7 @@ mod tests {
         editor
             .apply(EditorCommand::Binding {
                 command: BindingCommand::Upsert {
-                    binding: RuntimeBinding {
+                    binding: Box::new(RuntimeBinding {
                         id: "hero-content".to_string(),
                         component_id: "hero".to_string(),
                         path: "page.hero".to_string(),
@@ -635,7 +635,7 @@ mod tests {
                         fallback: None,
                         transform: BindingTransform::Identity,
                         extensions: Map::new(),
-                    },
+                    }),
                 },
             })
             .expect("binding command");

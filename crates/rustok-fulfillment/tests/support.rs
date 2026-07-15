@@ -2,7 +2,6 @@ use rustok_fulfillment::entities::{
     fulfillment, fulfillment_item, provider_operation, shipping_option, shipping_option_translation,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Schema};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
 
 pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
     if db.get_database_backend() != DbBackend::Sqlite {
@@ -42,19 +41,6 @@ pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(provider_operation::Entity),
     )
     .await;
-}
-
-pub async fn ensure_provider_journal_guards(db: &DatabaseConnection) {
-    let manager = SchemaManager::new(db);
-    for migration in rustok_fulfillment::migrations::migrations()
-        .into_iter()
-        .skip(6)
-    {
-        migration
-            .up(&manager)
-            .await
-            .expect("provider journal migration should run");
-    }
 }
 
 async fn create_entity_table(

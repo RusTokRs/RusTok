@@ -168,7 +168,7 @@ impl<'de> Deserialize<'de> for ModuleErrorCode {
 pub struct ModuleControlPlaneError {
     pub code: ModuleErrorCode,
     pub message: String,
-    pub details: serde_json::Value,
+    pub details: Box<serde_json::Value>,
     pub retryable: bool,
 }
 
@@ -181,7 +181,7 @@ impl ModuleControlPlaneError {
         Self {
             code,
             message: message.into(),
-            details,
+            details: Box::new(details),
             retryable: false,
         }
     }
@@ -194,7 +194,7 @@ impl ModuleControlPlaneError {
         Self {
             code,
             message: message.into(),
-            details,
+            details: Box::new(details),
             retryable: false,
         }
     }

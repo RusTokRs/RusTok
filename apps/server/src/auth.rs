@@ -3,7 +3,7 @@ pub use rustok_auth::{
     AuthConfig, AuthError, AuthSettingsOverrides, Claims, InviteClaims, JwtAlgorithm,
 };
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;

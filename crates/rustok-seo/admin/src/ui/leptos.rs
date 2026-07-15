@@ -380,7 +380,7 @@ pub fn SeoAdmin() -> impl IntoView {
             rustok_seo::SeoBulkApplyMode,
             String,
         )| {
-            let select_tab = select_tab.clone();
+            let select_tab = select_tab;
             select_tab.run(SeoAdminTab::Bulk);
             bulk_action_form.update(|draft| {
                 draft.prefill_schema_fix(apply_mode, payload);

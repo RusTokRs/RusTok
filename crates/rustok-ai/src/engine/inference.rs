@@ -14,7 +14,7 @@ use rig::{
     image_generation::ImageGenerationModel,
     message::{AssistantContent, ToolCall as RigToolCall, ToolFunction, UserContent},
     providers::{
-        anthropic, azure, chatgpt, cohere, copilot, deepseek, galadriel, gemini, groq, huggingface,
+        anthropic, azure, chatgpt, cohere, copilot, deepseek, gemini, groq, huggingface,
         hyperbolic, llamafile, minimax, mira, mistral, moonshot, ollama, openai, openrouter,
         perplexity, together, xai, xiaomimimo, zai,
     },
@@ -258,7 +258,11 @@ pub async fn inference_for_slug(
         ProviderIntegration::GithubCopilot => keyed_engine!(copilot),
         ProviderIntegration::Cohere => keyed_engine!(cohere),
         ProviderIntegration::DeepSeek => keyed_engine!(deepseek),
-        ProviderIntegration::Galadriel => keyed_engine!(galadriel),
+        ProviderIntegration::Galadriel => {
+            return Err(AiError::Provider(
+                "Galadriel is not supported by the configured Rig provider runtime".to_string(),
+            ));
+        }
         ProviderIntegration::Groq => keyed_engine!(groq),
         ProviderIntegration::HuggingFace => {
             let mut builder = huggingface::Client::builder().api_key(api_key);
@@ -540,6 +544,9 @@ async fn stream_with<M: CompletionModel>(
             StreamedAssistantContent::Reasoning(_)
             | StreamedAssistantContent::ReasoningDelta { .. }
             | StreamedAssistantContent::Final(_) => {}
+            StreamedAssistantContent::Unknown(_) => {
+                tracing::debug!(provider, "received an unmodeled provider streaming item");
+            }
         }
     }
     if let Some(emitter) = &emitter {

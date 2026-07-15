@@ -570,7 +570,7 @@ async fn admin_graphql_rejects_unknown_shipping_profile_references() {
     );
 
     let product_response = schema
-        .execute(Request::new(format!(
+        .execute(Request::new(
             r#"
             mutation {{
               createProduct(
@@ -591,7 +591,8 @@ async fn admin_graphql_rejects_unknown_shipping_profile_references() {
               }}
             }}
             "#
-        )))
+            .to_string(),
+        ))
         .await;
     assert_eq!(product_response.errors.len(), 1);
     assert!(

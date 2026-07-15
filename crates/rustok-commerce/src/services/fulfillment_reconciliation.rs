@@ -14,6 +14,9 @@ use crate::dto::{
     CancelFulfillmentInput, FulfillmentResponse, ReshipFulfillmentInput, ShipFulfillmentInput,
 };
 
+#[cfg(test)]
+use crate::dto::FulfillmentItemQuantityInput;
+
 use super::fulfillment_orchestration::{
     FulfillmentOrchestrationError, FulfillmentOrchestrationResult,
 };

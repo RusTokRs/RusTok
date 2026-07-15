@@ -1,10 +1,18 @@
 mod graphql_adapter;
 
+use crate::core::ShippingOptionListRequest;
 use crate::model::{
     FulfillmentAdminBootstrap, ShippingOption, ShippingOptionDraft, ShippingOptionList,
     ShippingProfile,
 };
 pub use graphql_adapter::ApiError;
+
+pub(crate) struct FetchShippingOptionsRequest {
+    pub token: Option<String>,
+    pub tenant_slug: Option<String>,
+    pub tenant_id: String,
+    pub filter: ShippingOptionListRequest,
+}
 
 pub async fn fetch_bootstrap(
     token: Option<String>,
@@ -14,26 +22,9 @@ pub async fn fetch_bootstrap(
 }
 
 pub async fn fetch_shipping_options(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    search: Option<String>,
-    currency_code: Option<String>,
-    provider_id: Option<String>,
-    page: u64,
-    per_page: u64,
+    request: FetchShippingOptionsRequest,
 ) -> Result<ShippingOptionList, ApiError> {
-    graphql_adapter::fetch_shipping_options(
-        token,
-        tenant_slug,
-        tenant_id,
-        search,
-        currency_code,
-        provider_id,
-        page,
-        per_page,
-    )
-    .await
+    graphql_adapter::fetch_shipping_options(request).await
 }
 
 pub async fn fetch_shipping_option(

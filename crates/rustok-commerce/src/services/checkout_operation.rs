@@ -115,6 +115,23 @@ pub struct CheckoutOperationJournal {
     db: DatabaseConnection,
 }
 
+struct LeaseErrorTransition {
+    lease_owner: String,
+    expected_status: CheckoutOperationStatus,
+    next_status: CheckoutOperationStatus,
+    error_code: String,
+    error_message: String,
+}
+
+struct TerminalTransition {
+    lease_owner: String,
+    expected_status: CheckoutOperationStatus,
+    next_status: CheckoutOperationStatus,
+    next_stage: Option<CheckoutOperationStage>,
+    error_code: Option<String>,
+    error_message: Option<String>,
+}
+
 impl CheckoutOperationJournal {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
@@ -386,11 +403,13 @@ impl CheckoutOperationJournal {
         self.release_lease_with_error(
             tenant_id,
             id,
-            lease_owner.into(),
-            CheckoutOperationStatus::Executing,
-            CheckoutOperationStatus::RetryableError,
-            error_code.into(),
-            error_message.into(),
+            LeaseErrorTransition {
+                lease_owner: lease_owner.into(),
+                expected_status: CheckoutOperationStatus::Executing,
+                next_status: CheckoutOperationStatus::RetryableError,
+                error_code: error_code.into(),
+                error_message: error_message.into(),
+            },
         )
         .await
     }
@@ -406,11 +425,13 @@ impl CheckoutOperationJournal {
         self.release_lease_with_error(
             tenant_id,
             id,
-            lease_owner.into(),
-            CheckoutOperationStatus::Executing,
-            CheckoutOperationStatus::CompensationRequired,
-            error_code.into(),
-            error_message.into(),
+            LeaseErrorTransition {
+                lease_owner: lease_owner.into(),
+                expected_status: CheckoutOperationStatus::Executing,
+                next_status: CheckoutOperationStatus::CompensationRequired,
+                error_code: error_code.into(),
+                error_message: error_message.into(),
+            },
         )
         .await
     }
@@ -482,11 +503,13 @@ impl CheckoutOperationJournal {
         self.release_lease_with_error(
             tenant_id,
             id,
-            lease_owner.into(),
-            CheckoutOperationStatus::Compensating,
-            CheckoutOperationStatus::CompensationRequired,
-            error_code.into(),
-            error_message.into(),
+            LeaseErrorTransition {
+                lease_owner: lease_owner.into(),
+                expected_status: CheckoutOperationStatus::Compensating,
+                next_status: CheckoutOperationStatus::CompensationRequired,
+                error_code: error_code.into(),
+                error_message: error_message.into(),
+            },
         )
         .await
     }
@@ -500,12 +523,14 @@ impl CheckoutOperationJournal {
         self.mark_terminal(
             tenant_id,
             id,
-            lease_owner.into(),
-            CheckoutOperationStatus::Executing,
-            CheckoutOperationStatus::Completed,
-            Some(CheckoutOperationStage::Completed),
-            None,
-            None,
+            TerminalTransition {
+                lease_owner: lease_owner.into(),
+                expected_status: CheckoutOperationStatus::Executing,
+                next_status: CheckoutOperationStatus::Completed,
+                next_stage: Some(CheckoutOperationStage::Completed),
+                error_code: None,
+                error_message: None,
+            },
         )
         .await
     }
@@ -519,12 +544,14 @@ impl CheckoutOperationJournal {
         self.mark_terminal(
             tenant_id,
             id,
-            lease_owner.into(),
-            CheckoutOperationStatus::Compensating,
-            CheckoutOperationStatus::Compensated,
-            None,
-            None,
-            None,
+            TerminalTransition {
+                lease_owner: lease_owner.into(),
+                expected_status: CheckoutOperationStatus::Compensating,
+                next_status: CheckoutOperationStatus::Compensated,
+                next_stage: None,
+                error_code: None,
+                error_message: None,
+            },
         )
         .await
     }
@@ -550,12 +577,14 @@ impl CheckoutOperationJournal {
         self.mark_terminal(
             tenant_id,
             id,
-            lease_owner.into(),
-            expected_status,
-            CheckoutOperationStatus::Failed,
-            None,
-            Some(error_code.into()),
-            Some(error_message.into()),
+            TerminalTransition {
+                lease_owner: lease_owner.into(),
+                expected_status,
+                next_status: CheckoutOperationStatus::Failed,
+                next_stage: None,
+                error_code: Some(error_code.into()),
+                error_message: Some(error_message.into()),
+            },
         )
         .await
     }
@@ -564,20 +593,16 @@ impl CheckoutOperationJournal {
         &self,
         tenant_id: Uuid,
         id: Uuid,
-        lease_owner: String,
-        expected_status: CheckoutOperationStatus,
-        next_status: CheckoutOperationStatus,
-        error_code: String,
-        error_message: String,
+        transition: LeaseErrorTransition,
     ) -> CheckoutOperationResult<checkout_operation::Model> {
-        let lease_owner = normalize_lease_owner(lease_owner)?;
-        let error_code = normalize_error_code(error_code)?;
-        let error_message = normalize_error_message(error_message)?;
+        let lease_owner = normalize_lease_owner(transition.lease_owner)?;
+        let error_code = normalize_error_code(transition.error_code)?;
+        let error_message = normalize_error_message(transition.error_message)?;
         let now = Utc::now().fixed_offset();
         let update = checkout_operation::Entity::update_many()
             .col_expr(
                 checkout_operation::Column::Status,
-                Expr::value(next_status.as_str()),
+                Expr::value(transition.next_status.as_str()),
             )
             .col_expr(
                 checkout_operation::Column::LeaseOwner,
@@ -601,14 +626,14 @@ impl CheckoutOperationJournal {
             )
             .filter(checkout_operation::Column::TenantId.eq(tenant_id))
             .filter(checkout_operation::Column::Id.eq(id))
-            .filter(checkout_operation::Column::Status.eq(expected_status.as_str()))
+            .filter(checkout_operation::Column::Status.eq(transition.expected_status.as_str()))
             .filter(checkout_operation::Column::LeaseOwner.eq(lease_owner))
             .filter(checkout_operation::Column::LeaseExpiresAt.gt(now))
             .exec(&self.db)
             .await?;
         if update.rows_affected == 0 {
             return Err(self
-                .cas_conflict(tenant_id, id, next_status.as_str())
+                .cas_conflict(tenant_id, id, transition.next_status.as_str())
                 .await?);
         }
         self.get(tenant_id, id).await
@@ -618,21 +643,22 @@ impl CheckoutOperationJournal {
         &self,
         tenant_id: Uuid,
         id: Uuid,
-        lease_owner: String,
-        expected_status: CheckoutOperationStatus,
-        next_status: CheckoutOperationStatus,
-        next_stage: Option<CheckoutOperationStage>,
-        error_code: Option<String>,
-        error_message: Option<String>,
+        transition: TerminalTransition,
     ) -> CheckoutOperationResult<checkout_operation::Model> {
-        let lease_owner = normalize_lease_owner(lease_owner)?;
-        let error_code = error_code.map(normalize_error_code).transpose()?;
-        let error_message = error_message.map(normalize_error_message).transpose()?;
+        let lease_owner = normalize_lease_owner(transition.lease_owner)?;
+        let error_code = transition
+            .error_code
+            .map(normalize_error_code)
+            .transpose()?;
+        let error_message = transition
+            .error_message
+            .map(normalize_error_message)
+            .transpose()?;
         let now = Utc::now().fixed_offset();
         let mut update = checkout_operation::Entity::update_many()
             .col_expr(
                 checkout_operation::Column::Status,
-                Expr::value(next_status.as_str()),
+                Expr::value(transition.next_status.as_str()),
             )
             .col_expr(
                 checkout_operation::Column::LeaseOwner,
@@ -660,10 +686,10 @@ impl CheckoutOperationJournal {
             )
             .filter(checkout_operation::Column::TenantId.eq(tenant_id))
             .filter(checkout_operation::Column::Id.eq(id))
-            .filter(checkout_operation::Column::Status.eq(expected_status.as_str()))
+            .filter(checkout_operation::Column::Status.eq(transition.expected_status.as_str()))
             .filter(checkout_operation::Column::LeaseOwner.eq(lease_owner))
             .filter(checkout_operation::Column::LeaseExpiresAt.gt(now));
-        if let Some(next_stage) = next_stage {
+        if let Some(next_stage) = transition.next_stage {
             update = update.col_expr(
                 checkout_operation::Column::Stage,
                 Expr::value(next_stage.as_str()),
@@ -672,7 +698,7 @@ impl CheckoutOperationJournal {
         let result = update.exec(&self.db).await?;
         if result.rows_affected == 0 {
             return Err(self
-                .cas_conflict(tenant_id, id, next_status.as_str())
+                .cas_conflict(tenant_id, id, transition.next_status.as_str())
                 .await?);
         }
         self.get(tenant_id, id).await

@@ -26,7 +26,7 @@ fn full_and_inline_modes_can_drive_commands() {
     for presentation in [Presentation::Full, Presentation::Inline] {
         let mut machine = FlyUiStateMachine::new(presentation);
         let effects = machine
-            .dispatch(UiIntent::Execute(EditorCommand::Patch {
+            .dispatch(UiIntent::execute(EditorCommand::Patch {
                 component_id: "hero".to_string(),
                 patch: Default::default(),
             }))
@@ -74,7 +74,7 @@ fn drag_state_emits_framework_neutral_command() {
     let effects = machine.dispatch(UiIntent::Drop).expect("drop");
     assert!(matches!(
         effects.first(),
-        Some(UiEffect::Command(EditorCommand::Insert { .. }))
+        Some(UiEffect::Command(command)) if matches!(command.as_ref(), EditorCommand::Insert { .. })
     ));
     assert!(machine.state.drag.is_none());
 }

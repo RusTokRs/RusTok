@@ -1,4 +1,4 @@
-use fly::{PageHead, PageSelection, RenderPolicy, RenderedPage, RuntimeRenderResult};
+use fly::{PageHead, RenderPolicy, RenderedPage, RuntimeRenderResult};
 use leptos::prelude::*;
 use rustok_page_builder::render::{
     render_page_builder_project, render_page_builder_runtime, PageBuilderRenderRequest,
@@ -6,6 +6,9 @@ use rustok_page_builder::render::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// Page selection contract used by the public storefront renderer.
+pub use fly::PageSelection;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StorefrontPageOutput {

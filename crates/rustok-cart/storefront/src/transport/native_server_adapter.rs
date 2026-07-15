@@ -65,6 +65,14 @@ fn transactional_event_bus_from_runtime(
         })
 }
 
+#[cfg(feature = "ssr")]
+fn port_error_to_server_fn_error(error: rustok_api::PortError) -> ServerFnError {
+    // Port errors are structured transport failures. Server functions expose a
+    // string error contract, so forward the domain-safe message explicitly
+    // instead of relying on a Display implementation that PortError omits.
+    ServerFnError::new(error.message)
+}
+
 pub async fn fetch_storefront_cart_server(
     selected_cart_id: Option<String>,
     locale: Option<String>,
@@ -346,7 +354,7 @@ async fn reprice_storefront_cart_line_items(
                 },
             )
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))?;
+            .map_err(port_error_to_server_fn_error)?;
         updates.push(storefront_cart_pricing_update(
             line_item.id,
             line_item.quantity,
@@ -449,7 +457,7 @@ async fn storefront_cart_decrement_line_item(
                     },
                 )
                 .await
-                .map_err(|err| ServerFnError::new(err.to_string()))?;
+                .map_err(port_error_to_server_fn_error)?;
 
             let pricing_update =
                 storefront_cart_pricing_update(parsed_line_item_id, next_quantity, &resolved_price);

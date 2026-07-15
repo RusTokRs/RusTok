@@ -61,29 +61,31 @@ pub fn RegionView() -> impl IntoView {
                                 Err(err) => {
                                     let error_view_model = core::region_error_view_model(
                                         (&err).into(),
-                                        load_error,
-                                        t(
+                                        core::RegionErrorCopy {
+                                        title: load_error,
+                                        native_unavailable_body: t(
                                             error_locale.as_deref(),
                                             "region.error.nativeUnavailable",
                                             "The native region data path is unavailable for this request.",
                                         ),
-                                        t(
+                                        graphql_unavailable_body: t(
                                             error_locale.as_deref(),
                                             "region.error.graphqlUnavailable",
                                             "GraphQL region data path is unavailable for this request.",
                                         ),
-                                        t(
+                                        native_status_label: t(
                                             error_locale.as_deref(),
                                             "region.error.status.nativeUnavailable",
                                             "Native unavailable",
                                         ),
-                                        t(
+                                        graphql_status_label: t(
                                             error_locale.as_deref(),
                                             "region.error.status.graphqlUnavailable",
                                             "GraphQL unavailable",
                                         ),
-                                        t(error_locale.as_deref(), "region.error.nativeLabel", "native"),
-                                        t(error_locale.as_deref(), "region.error.graphqlLabel", "graphql"),
+                                        native_label: t(error_locale.as_deref(), "region.error.nativeLabel", "native"),
+                                        graphql_label: t(error_locale.as_deref(), "region.error.graphqlLabel", "graphql"),
+                                        },
                                     );
                                     view! { <RegionErrorMessage error=error_view_model /> }.into_any()
                                 },
@@ -162,29 +164,33 @@ fn SelectedRegionCard(region: Option<StorefrontRegion>) -> impl IntoView {
         "region.common.taxExcluded",
         "tax excluded",
     );
+    let countries_label = t(locale.as_deref(), "region.common.countries", "countries");
+    let no_countries_label = t(
+        locale.as_deref(),
+        "region.selected.noCountries",
+        "No countries configured",
+    );
     let view_model = core::selected_region_card_view_model(
         &region,
-        tax_included_label.as_str(),
-        tax_excluded_label.as_str(),
-        &t(locale.as_deref(), "region.common.countries", "countries"),
-        &t(
-            locale.as_deref(),
-            "region.selected.noCountries",
-            "No countries configured",
-        ),
-        t(locale.as_deref(), "region.selected.currency", "Currency"),
-        t(locale.as_deref(), "region.selected.taxRate", "Tax rate"),
-        t(
-            locale.as_deref(),
-            "region.selected.taxProvider",
-            "Tax provider",
-        ),
-        t(locale.as_deref(), "region.selected.coverage", "Coverage"),
-        t(
-            locale.as_deref(),
-            "region.selected.countryPolicyCount",
-            "Country policies",
-        ),
+        core::SelectedRegionCardCopy {
+            tax_included_label: tax_included_label.as_str(),
+            tax_excluded_label: tax_excluded_label.as_str(),
+            countries_label: countries_label.as_str(),
+            no_countries_label: no_countries_label.as_str(),
+            currency_title: t(locale.as_deref(), "region.selected.currency", "Currency"),
+            tax_rate_title: t(locale.as_deref(), "region.selected.taxRate", "Tax rate"),
+            tax_provider_title: t(
+                locale.as_deref(),
+                "region.selected.taxProvider",
+                "Tax provider",
+            ),
+            coverage_title: t(locale.as_deref(), "region.selected.coverage", "Coverage"),
+            country_policy_count_title: t(
+                locale.as_deref(),
+                "region.selected.countryPolicyCount",
+                "Country policies",
+            ),
+        },
     );
     let country_policy_summaries = view_model.country_policy_summaries.clone();
     let has_country_policy_summaries = !country_policy_summaries.is_empty();
@@ -333,14 +339,18 @@ mod ssr_tests {
                 native_error: Some("native failed".to_string()),
                 graphql_error: Some("graphql failed".to_string()),
             },
-            "Failed to load region storefront data".to_string(),
-            "The native region data path is unavailable for this request.".to_string(),
-            "Both native and GraphQL region data paths are unavailable for this request."
-                .to_string(),
-            "Native unavailable".to_string(),
-            "GraphQL unavailable".to_string(),
-            "native".to_string(),
-            "graphql".to_string(),
+            core::RegionErrorCopy {
+                title: "Failed to load region storefront data".to_string(),
+                native_unavailable_body:
+                    "The native region data path is unavailable for this request.".to_string(),
+                graphql_unavailable_body:
+                    "Both native and GraphQL region data paths are unavailable for this request."
+                        .to_string(),
+                native_status_label: "Native unavailable".to_string(),
+                graphql_status_label: "GraphQL unavailable".to_string(),
+                native_label: "native".to_string(),
+                graphql_label: "graphql".to_string(),
+            },
         );
 
         let html = region_error_message_view(error).into_view().to_html();

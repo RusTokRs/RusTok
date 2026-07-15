@@ -113,7 +113,7 @@ impl CacheKeyBuilder {
         mut self,
         additional: [String; N],
     ) -> Result<Self, CacheKeyError> {
-        let next_count = self.identity_count.checked_add(1).unwrap_or(usize::MAX);
+        let next_count = self.identity_count.saturating_add(1);
         if next_count > MAX_CACHE_KEY_DYNAMIC_COMPONENTS {
             return Err(CacheKeyError::TooManyDynamicComponents {
                 count: next_count,

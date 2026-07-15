@@ -149,8 +149,8 @@ impl ModuleDefinitionCatalog {
         if let Some(existing) = self.definitions.get(&definition.slug) {
             return Err(ModuleDefinitionError::AmbiguousActiveDefinition {
                 slug: definition.slug,
-                existing: existing.source.clone(),
-                incoming: definition.source,
+                existing: Box::new(existing.source.clone()),
+                incoming: Box::new(definition.source),
             });
         }
         self.definitions.insert(definition.slug.clone(), definition);
@@ -173,8 +173,8 @@ pub enum ModuleDefinitionError {
     #[error("module `{slug}` has ambiguous active implementations")]
     AmbiguousActiveDefinition {
         slug: String,
-        existing: ModuleDefinitionSource,
-        incoming: ModuleDefinitionSource,
+        existing: Box<ModuleDefinitionSource>,
+        incoming: Box<ModuleDefinitionSource>,
     },
 }
 

@@ -140,30 +140,34 @@ pub struct IssueBannerView<'a> {
     pub guidance: &'a str,
 }
 
+pub struct IssueBannerCopy<'a> {
+    pub validation_label: &'a str,
+    pub sanitization_label: &'a str,
+    pub runtime_label: &'a str,
+    pub validation_guidance: &'a str,
+    pub sanitization_guidance: &'a str,
+    pub runtime_guidance: &'a str,
+    pub feature_disabled_guidance: &'a str,
+}
+
 pub fn issue_banner_view<'a>(
     issue: &WritePathIssue,
-    validation_label: &'a str,
-    sanitization_label: &'a str,
-    runtime_label: &'a str,
-    validation_guidance: &'a str,
-    sanitization_guidance: &'a str,
-    runtime_guidance: &'a str,
-    feature_disabled_guidance: &'a str,
+    copy: IssueBannerCopy<'a>,
 ) -> IssueBannerView<'a> {
     IssueBannerView {
         class_name: issue_banner_class(issue.kind),
         label: issue_label(
             issue.kind,
-            validation_label,
-            sanitization_label,
-            runtime_label,
+            copy.validation_label,
+            copy.sanitization_label,
+            copy.runtime_label,
         ),
         guidance: issue_guidance(
             issue,
-            validation_guidance,
-            sanitization_guidance,
-            runtime_guidance,
-            feature_disabled_guidance,
+            copy.validation_guidance,
+            copy.sanitization_guidance,
+            copy.runtime_guidance,
+            copy.feature_disabled_guidance,
         ),
     }
 }
@@ -331,11 +335,7 @@ fn body_to_project_data(body: &crate::model::PageBody) -> Option<Value> {
 
 pub fn default_project_data(title: &str) -> Value {
     let normalized_title = normalize_ui_text(title);
-    let title = if let Some(normalized_title) = normalized_title.as_deref() {
-        normalized_title
-    } else {
-        "New page"
-    };
+    let title = normalized_title.as_deref().unwrap_or("New page");
 
     json!({
         "assets": [],
@@ -640,6 +640,15 @@ pub struct AdminPageRowActionLabels {
     pub delete: String,
 }
 
+pub struct AdminPageRowActionCopy {
+    pub busy: String,
+    pub editing: String,
+    pub edit: String,
+    pub unpublish: String,
+    pub publish: String,
+    pub delete: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AdminPageRowActionState {
     pub edit_busy: bool,
@@ -662,32 +671,27 @@ pub fn admin_page_row_action_labels(
     is_editing: bool,
     is_published: bool,
     state: AdminPageRowActionState,
-    busy_label: String,
-    editing_label: String,
-    edit_label: String,
-    unpublish_label: String,
-    publish_label: String,
-    delete_label: String,
+    copy: AdminPageRowActionCopy,
 ) -> AdminPageRowActionLabels {
     AdminPageRowActionLabels {
         edit: if state.edit_busy {
-            busy_label.clone()
+            copy.busy.clone()
         } else if is_editing {
-            editing_label
+            copy.editing
         } else {
-            edit_label
+            copy.edit
         },
         publish: if state.publish_busy {
-            busy_label.clone()
+            copy.busy.clone()
         } else if is_published {
-            unpublish_label
+            copy.unpublish
         } else {
-            publish_label
+            copy.publish
         },
         delete: if state.delete_busy {
-            busy_label
+            copy.busy
         } else {
-            delete_label
+            copy.delete
         },
     }
 }
@@ -851,13 +855,15 @@ mod tests {
 
         let banner = issue_banner_view(
             &issue,
-            "validation",
-            "sanitize",
-            "runtime",
-            "validation guidance",
-            "sanitize guidance",
-            "runtime guidance",
-            "feature disabled guidance",
+            IssueBannerCopy {
+                validation_label: "validation",
+                sanitization_label: "sanitize",
+                runtime_label: "runtime",
+                validation_guidance: "validation guidance",
+                sanitization_guidance: "sanitize guidance",
+                runtime_guidance: "runtime guidance",
+                feature_disabled_guidance: "feature disabled guidance",
+            },
         );
         assert_eq!(banner.label, "runtime");
         assert_eq!(banner.guidance, "feature disabled guidance");
@@ -949,12 +955,14 @@ mod tests {
             false,
             true,
             state,
-            "...".to_string(),
-            "Editing".to_string(),
-            "Edit".to_string(),
-            "Unpublish".to_string(),
-            "Publish".to_string(),
-            "Delete".to_string(),
+            AdminPageRowActionCopy {
+                busy: "...".to_string(),
+                editing: "Editing".to_string(),
+                edit: "Edit".to_string(),
+                unpublish: "Unpublish".to_string(),
+                publish: "Publish".to_string(),
+                delete: "Delete".to_string(),
+            },
         );
 
         assert_eq!(labels.edit, "Edit");

@@ -425,7 +425,7 @@ fn kubernetes_error(error: impl std::fmt::Display) -> SecretError {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::SocketAddr, path::PathBuf};
+    use std::net::SocketAddr;
 
     use secrecy::{ExposeSecret, SecretString};
     use tokio::{
@@ -475,8 +475,8 @@ mod tests {
     async fn kubernetes_resolver_uses_service_account_token_and_namespace() {
         let response = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 37\r\nconnection: close\r\n\r\n{\"data\":{\"token\":\"azhzLXNlY3JldA==\"}}";
         let (address, request) = mock_server(response).await;
-        let token_path = PathBuf::from(std::env::temp_dir())
-            .join(format!("rustok-secrets-kubernetes-test-{}", Uuid::new_v4()));
+        let token_path =
+            std::env::temp_dir().join(format!("rustok-secrets-kubernetes-test-{}", Uuid::new_v4()));
         std::fs::write(&token_path, "workload-token\n").unwrap();
         let resolver = KubernetesSecretResolver::with_client(
             reqwest::Client::builder().no_proxy().build().unwrap(),

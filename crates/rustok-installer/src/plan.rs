@@ -407,7 +407,10 @@ impl InstallPlan {
 
 #[cfg(test)]
 mod tests {
-    use super::{InstallRole, InstallSurface, InstallTopology, InstallTopologyMode, SeedProfile};
+    use super::{
+        DatabaseEngine, InstallEnvironment, InstallProfile, InstallRole, InstallSurface,
+        InstallTopology, InstallTopologyMode, SeedProfile,
+    };
 
     #[test]
     fn development_seed_profile_enables_the_canonical_module_set() {

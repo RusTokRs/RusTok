@@ -41,6 +41,15 @@ const DELIVERY_STATUS_SENT: &str = "sent";
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PublicOrigin(String);
 
+struct SitemapEventPublication {
+    tenant_id: Uuid,
+    job_id: Uuid,
+    event_type: String,
+    idempotency_key: String,
+    event: DomainEvent,
+    occurred_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
 impl PublicOrigin {
     fn resolve(tenant: &TenantContext) -> SeoResult<Self> {
         let public_url = std::env::var("RUSTOK_PUBLIC_URL").ok();
@@ -244,16 +253,18 @@ impl SeoService {
         );
         self.publish_sitemap_event_in_tx(
             &txn,
-            tenant.id,
-            job.id,
-            event_type,
-            idempotency_key.clone(),
-            DomainEvent::SeoSitemapGenerated {
+            SitemapEventPublication {
+                tenant_id: tenant.id,
                 job_id: job.id,
-                file_count,
-                idempotency_key,
+                event_type: event_type.to_string(),
+                idempotency_key: idempotency_key.clone(),
+                event: DomainEvent::SeoSitemapGenerated {
+                    job_id: job.id,
+                    file_count,
+                    idempotency_key,
+                },
+                occurred_at: completed_at,
             },
-            completed_at,
         )
         .await?;
 
@@ -296,18 +307,20 @@ impl SeoService {
         );
         self.publish_sitemap_event_in_tx(
             &txn,
-            tenant_id,
-            job_id,
-            event_type,
-            idempotency_key.clone(),
-            DomainEvent::SeoSitemapSubmitted {
+            SitemapEventPublication {
+                tenant_id,
                 job_id,
-                endpoint_count,
-                success,
-                error,
-                idempotency_key,
+                event_type: event_type.to_string(),
+                idempotency_key: idempotency_key.clone(),
+                event: DomainEvent::SeoSitemapSubmitted {
+                    job_id,
+                    endpoint_count,
+                    success,
+                    error,
+                    idempotency_key,
+                },
+                occurred_at: now,
             },
-            now,
         )
         .await?;
 
@@ -318,13 +331,16 @@ impl SeoService {
     async fn publish_sitemap_event_in_tx(
         &self,
         txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        job_id: Uuid,
-        event_type: &str,
-        idempotency_key: String,
-        event: DomainEvent,
-        occurred_at: chrono::DateTime<chrono::FixedOffset>,
+        publication: SitemapEventPublication,
     ) -> SeoResult<()> {
+        let SitemapEventPublication {
+            tenant_id,
+            job_id,
+            event_type,
+            idempotency_key,
+            event,
+            occurred_at,
+        } = publication;
         let existing = seo_event_delivery::Entity::find()
             .filter(seo_event_delivery::Column::TenantId.eq(tenant_id))
             .filter(seo_event_delivery::Column::IdempotencyKey.eq(idempotency_key.as_str()))
@@ -342,7 +358,7 @@ impl SeoService {
         seo_event_delivery::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
-            event_type: Set(event_type.to_string()),
+            event_type: Set(event_type),
             idempotency_key: Set(idempotency_key),
             source_kind: Set(Some("sitemap_job".to_string())),
             source_id: Set(Some(job_id)),

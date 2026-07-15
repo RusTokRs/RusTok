@@ -79,124 +79,115 @@ impl CheckoutFinalizationExecutor {
         let lease_owner = lease_owner.into();
         let cart_id = validate_state(tenant_id, &state)?;
 
-        for _ in 0..3 {
-            let operation = self
-                .operation_journal
-                .get(tenant_id, state.operation_id)
-                .await?;
-            if operation.cart_id != cart_id {
+        let operation = self
+            .operation_journal
+            .get(tenant_id, state.operation_id)
+            .await?;
+        if operation.cart_id != cart_id {
+            return Err(CheckoutFinalizationError::Conflict(format!(
+                "checkout operation {} is bound to cart {}, not {}",
+                operation.id, operation.cart_id, cart_id
+            )));
+        }
+        if operation.status == CheckoutOperationStatus::Completed.as_str() {
+            if operation.stage != CheckoutOperationStage::Completed.as_str() {
                 return Err(CheckoutFinalizationError::Conflict(format!(
-                    "checkout operation {} is bound to cart {}, not {}",
-                    operation.id, operation.cart_id, cart_id
+                    "checkout operation {} is completed at invalid stage `{}`",
+                    operation.id, operation.stage
                 )));
             }
-            if operation.status == CheckoutOperationStatus::Completed.as_str() {
-                if operation.stage != CheckoutOperationStage::Completed.as_str() {
+            let cart = self.read_cart(tenant_id, actor_id, cart_id, &state).await?;
+            ensure_completed_cart(&cart, cart_id, &state)?;
+            return Ok(CheckoutCompletedState {
+                operation_id: operation.id,
+                cart,
+                checkout: state,
+            });
+        }
+        if operation.status != CheckoutOperationStatus::Executing.as_str() {
+            return Err(CheckoutFinalizationError::Conflict(format!(
+                "checkout operation {} must be executing, not `{}`",
+                operation.id, operation.status
+            )));
+        }
+
+        match operation.stage.as_str() {
+            stage if stage == CheckoutOperationStage::FulfillmentCreated.as_str() => {
+                let current = self.read_cart(tenant_id, actor_id, cart_id, &state).await?;
+                validate_cart_identity(&current, cart_id, &state)?;
+                let cart = if current.status == CartStatus::Completed.as_str() {
+                    current
+                } else if matches!(
+                    current.status.as_str(),
+                    status if status == CartStatus::CheckingOut.as_str()
+                        || status == CartStatus::Active.as_str()
+                ) {
+                    self.cart_checkout_port
+                        .complete_cart_checkout(
+                            cart_context(
+                                tenant_id,
+                                actor_id,
+                                &state,
+                                self.port_deadline,
+                                "complete",
+                                true,
+                            ),
+                            CartCheckoutLifecycleRequest { cart_id },
+                        )
+                        .await
+                        .map_err(|error| cart_error("complete_cart_checkout", error))?
+                } else {
                     return Err(CheckoutFinalizationError::Conflict(format!(
-                        "checkout operation {} is completed at invalid stage `{}`",
-                        operation.id, operation.stage
+                        "cart {} cannot complete checkout from status `{}`",
+                        current.id, current.status
                     )));
-                }
-                let cart = self.read_cart(tenant_id, actor_id, cart_id, &state).await?;
+                };
                 ensure_completed_cart(&cart, cart_id, &state)?;
-                return Ok(CheckoutCompletedState {
+                self.operation_journal
+                    .checkpoint(CheckoutOperationCheckpoint {
+                        tenant_id,
+                        operation_id: operation.id,
+                        lease_owner: lease_owner.clone(),
+                        expected_stage: CheckoutOperationStage::FulfillmentCreated,
+                        next_stage: CheckoutOperationStage::CartCompleted,
+                        snapshot_hash: None,
+                        order_id: operation.order_id,
+                        payment_collection_id: operation.payment_collection_id,
+                        lease_seconds: self.lease_seconds,
+                    })
+                    .await?;
+                self.operation_journal
+                    .mark_completed(tenant_id, operation.id, lease_owner.clone())
+                    .await?;
+                Ok(CheckoutCompletedState {
                     operation_id: operation.id,
                     cart,
                     checkout: state,
-                });
+                })
             }
-            if operation.status != CheckoutOperationStatus::Executing.as_str() {
-                return Err(CheckoutFinalizationError::Conflict(format!(
-                    "checkout operation {} must be executing, not `{}`",
+            stage if stage == CheckoutOperationStage::CartCompleted.as_str() => {
+                let cart = self.read_cart(tenant_id, actor_id, cart_id, &state).await?;
+                ensure_completed_cart(&cart, cart_id, &state)?;
+                self.operation_journal
+                    .mark_completed(tenant_id, operation.id, lease_owner.clone())
+                    .await?;
+                Ok(CheckoutCompletedState {
+                    operation_id: operation.id,
+                    cart,
+                    checkout: state,
+                })
+            }
+            stage if stage == CheckoutOperationStage::Completed.as_str() => {
+                Err(CheckoutFinalizationError::Conflict(format!(
+                    "checkout operation {} has completed stage while status is `{}`",
                     operation.id, operation.status
-                )));
+                )))
             }
-
-            match operation.stage.as_str() {
-                stage if stage == CheckoutOperationStage::FulfillmentCreated.as_str() => {
-                    let current = self.read_cart(tenant_id, actor_id, cart_id, &state).await?;
-                    validate_cart_identity(&current, cart_id, &state)?;
-                    let cart = if current.status == CartStatus::Completed.as_str() {
-                        current
-                    } else if matches!(
-                        current.status.as_str(),
-                        status if status == CartStatus::CheckingOut.as_str()
-                            || status == CartStatus::Active.as_str()
-                    ) {
-                        self.cart_checkout_port
-                            .complete_cart_checkout(
-                                cart_context(
-                                    tenant_id,
-                                    actor_id,
-                                    &state,
-                                    self.port_deadline,
-                                    "complete",
-                                    true,
-                                ),
-                                CartCheckoutLifecycleRequest { cart_id },
-                            )
-                            .await
-                            .map_err(|error| cart_error("complete_cart_checkout", error))?
-                    } else {
-                        return Err(CheckoutFinalizationError::Conflict(format!(
-                            "cart {} cannot complete checkout from status `{}`",
-                            current.id, current.status
-                        )));
-                    };
-                    ensure_completed_cart(&cart, cart_id, &state)?;
-                    self.operation_journal
-                        .checkpoint(CheckoutOperationCheckpoint {
-                            tenant_id,
-                            operation_id: operation.id,
-                            lease_owner: lease_owner.clone(),
-                            expected_stage: CheckoutOperationStage::FulfillmentCreated,
-                            next_stage: CheckoutOperationStage::CartCompleted,
-                            snapshot_hash: None,
-                            order_id: operation.order_id,
-                            payment_collection_id: operation.payment_collection_id,
-                            lease_seconds: self.lease_seconds,
-                        })
-                        .await?;
-                    self.operation_journal
-                        .mark_completed(tenant_id, operation.id, lease_owner.clone())
-                        .await?;
-                    return Ok(CheckoutCompletedState {
-                        operation_id: operation.id,
-                        cart,
-                        checkout: state,
-                    });
-                }
-                stage if stage == CheckoutOperationStage::CartCompleted.as_str() => {
-                    let cart = self.read_cart(tenant_id, actor_id, cart_id, &state).await?;
-                    ensure_completed_cart(&cart, cart_id, &state)?;
-                    self.operation_journal
-                        .mark_completed(tenant_id, operation.id, lease_owner.clone())
-                        .await?;
-                    return Ok(CheckoutCompletedState {
-                        operation_id: operation.id,
-                        cart,
-                        checkout: state,
-                    });
-                }
-                stage if stage == CheckoutOperationStage::Completed.as_str() => {
-                    return Err(CheckoutFinalizationError::Conflict(format!(
-                        "checkout operation {} has completed stage while status is `{}`",
-                        operation.id, operation.status
-                    )));
-                }
-                stage => {
-                    return Err(CheckoutFinalizationError::Conflict(format!(
-                        "checkout operation {} cannot finalize from stage `{stage}`",
-                        operation.id
-                    )));
-                }
-            }
+            stage => Err(CheckoutFinalizationError::Conflict(format!(
+                "checkout operation {} cannot finalize from stage `{stage}`",
+                operation.id
+            ))),
         }
-
-        Err(CheckoutFinalizationError::Conflict(format!(
-            "checkout operation {} did not reach completed within the bounded finalization loop",
-            state.operation_id
-        )))
     }
 
     async fn read_cart(

@@ -1,7 +1,3 @@
-#[cfg(feature = "redis-cache")]
-use super::{
-    parse_invalidation_payload, TenantInvalidationListenerState, TenantInvalidationListenerStatus,
-};
 use super::{
     resolve_identifier, should_bypass_tenant_resolution, subdomain_identifier,
     tenant_context_from_projection, CachedTenantMiss, TenantCacheKeyBuilder,
@@ -23,45 +19,10 @@ fn sample_tenant_projection(is_active: bool) -> TenantReadProjection {
     }
 }
 
-#[cfg(feature = "redis-cache")]
-#[test]
-fn parse_invalidation_payload_returns_both_keys() {
-    let builder = TenantCacheKeyBuilder::new("v2");
-    let cache_key = builder.kind_key(super::TenantIdentifierKind::Slug, "demo");
-    let negative_key = builder.kind_negative_key(super::TenantIdentifierKind::Slug, "demo");
-    let payload = format!("{cache_key}|{negative_key}");
-    let parsed = parse_invalidation_payload(&payload);
-
-    assert_eq!(parsed, Some((cache_key.as_str(), negative_key.as_str())));
-}
-
-#[cfg(feature = "redis-cache")]
-#[test]
-fn parse_invalidation_payload_rejects_malformed_payload() {
-    assert_eq!(parse_invalidation_payload("tenant:v2:slug:demo"), None);
-    assert_eq!(
-        parse_invalidation_payload("|tenant-negative:v2:slug:demo"),
-        None
-    );
-    assert_eq!(parse_invalidation_payload("tenant:v2:slug:demo|"), None);
-}
-
-#[cfg(feature = "redis-cache")]
-#[tokio::test]
-async fn listener_state_snapshot_reflects_degraded_status() {
-    let state = TenantInvalidationListenerState::new();
-    state.mark_degraded("redis unavailable").await;
-
-    let snapshot = state.snapshot().await;
-
-    assert_eq!(snapshot.status, TenantInvalidationListenerStatus::Degraded);
-    assert_eq!(snapshot.last_error.as_deref(), Some("redis unavailable"));
-}
-
 #[test]
 fn canonical_tenant_keys_are_bounded_and_do_not_embed_long_identifiers() {
     let builder = TenantCacheKeyBuilder::new("v2");
-    let identifier = "tenant-".to_string() + &"x".repeat(2_048);
+    let identifier = format!("tenant-{}", "x".repeat(2_048));
     let key = builder.kind_key(super::TenantIdentifierKind::Slug, &identifier);
     let negative = builder.kind_negative_key(super::TenantIdentifierKind::Slug, &identifier);
 

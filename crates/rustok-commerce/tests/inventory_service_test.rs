@@ -7,8 +7,9 @@ use rustok_api::{PortActor, PortContext};
 use rustok_commerce::CommerceError;
 use rustok_inventory::entities;
 use rustok_inventory::{
-    InventoryAvailabilityRequest, InventoryReservationPort, InventoryReservationReleaseRequest,
-    InventoryReservationRequest, InventoryService,
+    in_process_inventory_reservation_identity_port, InventoryAvailabilityRequest,
+    InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationRequest,
+    InventoryReservationPort, InventoryService,
 };
 use rustok_product::dto::{
     AdjustInventoryInput, CreateProductInput, CreateVariantInput, PriceInput,
@@ -100,7 +101,7 @@ fn inventory_port_context(tenant_id: Uuid, correlation_id: &str, write: bool) ->
 
 #[tokio::test]
 async fn inventory_reservation_port_executes_checkout_reservation_lifecycle_against_persistence() {
-    let (_db, service, catalog) = setup().await;
+    let (db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
@@ -110,27 +111,32 @@ async fn inventory_reservation_port_executes_checkout_reservation_lifecycle_agai
         .await
         .expect("inventory fixture must have available stock");
 
-    let availability = service
-        .check_availability(
-            inventory_port_context(tenant_id, "inventory-port-availability", false),
-            InventoryAvailabilityRequest {
-                variant_id,
-                requested_quantity: 3,
-                channel_slug: Some("storefront".to_string()),
-            },
-        )
-        .await
-        .expect("availability port call must succeed");
+    let availability = <InventoryService as InventoryReservationPort>::check_availability(
+        &service,
+        inventory_port_context(tenant_id, "inventory-port-availability", false),
+        InventoryAvailabilityRequest {
+            variant_id,
+            requested_quantity: 3,
+            channel_slug: Some("storefront".to_string()),
+        },
+    )
+    .await
+    .expect("availability port call must succeed");
     assert!(availability.available);
 
-    let reservation = service
-        .reserve_inventory(
+    let reservation_id = Uuid::new_v4();
+    let external_id = format!("checkout-reservation:{reservation_id}");
+    let reservation_port = in_process_inventory_reservation_identity_port(db);
+    let reservation = reservation_port
+        .reserve_inventory_by_identity(
             inventory_port_context(tenant_id, "inventory-port-reserve", true),
-            InventoryReservationRequest {
+            InventoryIdentityReservationRequest {
+                reservation_id,
+                external_id: external_id.clone(),
                 variant_id,
                 quantity: 3,
-                cart_id: Some(Uuid::new_v4()),
                 line_item_id: Some(Uuid::new_v4()),
+                metadata: serde_json::json!({ "source": "inventory_service_test" }),
             },
         )
         .await
@@ -139,14 +145,12 @@ async fn inventory_reservation_port_executes_checkout_reservation_lifecycle_agai
     assert_eq!(reservation.available_quantity, 2);
     assert!(reservation.in_stock);
 
-    let release = service
-        .release_inventory_reservation(
+    let release = reservation_port
+        .release_inventory_by_identity(
             inventory_port_context(tenant_id, "inventory-port-release", true),
-            InventoryReservationReleaseRequest {
-                variant_id,
-                quantity: 3,
-                order_id: Some(Uuid::new_v4()),
-                line_item_id: Some(Uuid::new_v4()),
+            InventoryIdentityReservationReleaseRequest {
+                reservation_id,
+                external_id,
             },
         )
         .await

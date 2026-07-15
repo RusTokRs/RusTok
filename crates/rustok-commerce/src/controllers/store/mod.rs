@@ -15,12 +15,10 @@ use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
 use rustok_api::{PortActor, PortContext, RequestContext};
 use rustok_cart::{
-    in_process_cart_storefront_port, CartError, CartStorefrontContextUpdateRequest,
-    CartStorefrontPort, CartStorefrontRepriceRequest,
+    in_process_cart_storefront_port, CartStorefrontContextUpdateRequest, CartStorefrontPort,
+    CartStorefrontRepriceRequest,
 };
-use rustok_customer::{
-    in_process_customer_read_port, CustomerReadPort, CustomerUserProjectionRequest,
-};
+use rustok_customer::{in_process_customer_read_port, CustomerUserProjectionRequest};
 use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::check_variant_availability_for_public_channel;
 use rustok_order::OrderService;
@@ -974,15 +972,6 @@ pub(crate) async fn validate_store_variant_inventory(
     }
 
     Ok(())
-}
-
-pub(crate) fn map_cart_error(error: CartError) -> HttpError {
-    match error {
-        CartError::CartNotFound(_) | CartError::CartLineItemNotFound(_) => {
-            HttpError::not_found("commerce_store_not_found", "Commerce resource not found")
-        }
-        other => HttpError::bad_request("commerce_store_invalid", other.to_string()),
-    }
 }
 
 pub(crate) fn default_metadata() -> Value {

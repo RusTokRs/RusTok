@@ -102,10 +102,6 @@ impl TenantLocaleCache {
             })
     }
 
-    async fn insert(&self, tenant_id: Uuid, locales: Arc<Vec<TenantLocaleRecord>>) {
-        self.cache.insert(tenant_id, locales).await;
-    }
-
     async fn invalidate(&self, tenant_id: Uuid) {
         self.invalidations.fetch_add(1, Ordering::Relaxed);
         self.cache.invalidate(&tenant_id).await;
@@ -324,6 +320,7 @@ mod tests {
         assert!(cache.get(tenant_id).await.is_none());
         cache.record_db_query();
         cache
+            .cache
             .insert(
                 tenant_id,
                 Arc::new(vec![TenantLocaleRecord {

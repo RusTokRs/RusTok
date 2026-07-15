@@ -657,16 +657,24 @@ pub fn CommerceAdmin() -> impl IntoView {
     let preview_required_label = promotion_required_label.clone();
     let preview_query_writer = query_writer.clone();
     let preview_promotion = Callback::new(move |_| {
-        let Some(command) = core::prepare_cart_promotion_command(
-            promotion_cart_id.get_untracked().as_str(),
-            promotion_kind.get_untracked().as_str(),
-            promotion_scope.get_untracked().as_str(),
-            promotion_line_item_id.get_untracked().as_str(),
-            promotion_source_id.get_untracked().as_str(),
-            promotion_discount_percent.get_untracked().as_str(),
-            promotion_amount.get_untracked().as_str(),
-            promotion_metadata_json.get_untracked().as_str(),
-        ) else {
+        let promotion_cart_id = promotion_cart_id.get_untracked();
+        let promotion_kind = promotion_kind.get_untracked();
+        let promotion_scope = promotion_scope.get_untracked();
+        let promotion_line_item_id = promotion_line_item_id.get_untracked();
+        let promotion_source_id = promotion_source_id.get_untracked();
+        let promotion_discount_percent = promotion_discount_percent.get_untracked();
+        let promotion_amount = promotion_amount.get_untracked();
+        let promotion_metadata_json = promotion_metadata_json.get_untracked();
+        let Some(command) = core::prepare_cart_promotion_command(core::CartPromotionForm {
+            cart_id: &promotion_cart_id,
+            kind: &promotion_kind,
+            scope: &promotion_scope,
+            line_item_id: &promotion_line_item_id,
+            source_id: &promotion_source_id,
+            discount_percent: &promotion_discount_percent,
+            amount: &promotion_amount,
+            metadata_json: &promotion_metadata_json,
+        }) else {
             set_promotion_error.set(Some(preview_required_label.clone()));
             return;
         };
@@ -691,16 +699,24 @@ pub fn CommerceAdmin() -> impl IntoView {
     let apply_required_label = promotion_required_label.clone();
     let apply_query_writer = query_writer.clone();
     let apply_promotion = Callback::new(move |_| {
-        let Some(command) = core::prepare_cart_promotion_command(
-            promotion_cart_id.get_untracked().as_str(),
-            promotion_kind.get_untracked().as_str(),
-            promotion_scope.get_untracked().as_str(),
-            promotion_line_item_id.get_untracked().as_str(),
-            promotion_source_id.get_untracked().as_str(),
-            promotion_discount_percent.get_untracked().as_str(),
-            promotion_amount.get_untracked().as_str(),
-            promotion_metadata_json.get_untracked().as_str(),
-        ) else {
+        let promotion_cart_id = promotion_cart_id.get_untracked();
+        let promotion_kind = promotion_kind.get_untracked();
+        let promotion_scope = promotion_scope.get_untracked();
+        let promotion_line_item_id = promotion_line_item_id.get_untracked();
+        let promotion_source_id = promotion_source_id.get_untracked();
+        let promotion_discount_percent = promotion_discount_percent.get_untracked();
+        let promotion_amount = promotion_amount.get_untracked();
+        let promotion_metadata_json = promotion_metadata_json.get_untracked();
+        let Some(command) = core::prepare_cart_promotion_command(core::CartPromotionForm {
+            cart_id: &promotion_cart_id,
+            kind: &promotion_kind,
+            scope: &promotion_scope,
+            line_item_id: &promotion_line_item_id,
+            source_id: &promotion_source_id,
+            discount_percent: &promotion_discount_percent,
+            amount: &promotion_amount,
+            metadata_json: &promotion_metadata_json,
+        }) else {
             set_promotion_error.set(Some(apply_required_label.clone()));
             return;
         };

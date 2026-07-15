@@ -27,16 +27,28 @@ pub fn alloy_task_payload(
     serde_json::to_string(&payload)
 }
 
-pub fn image_task_payload(
-    prompt: String,
-    negative_prompt: Option<String>,
-    title: Option<String>,
-    alt_text: Option<String>,
-    caption: Option<String>,
-    file_name: Option<String>,
-    size: Option<String>,
-    assistant_prompt: Option<String>,
-) -> Result<String, serde_json::Error> {
+pub struct ImageTaskPayloadInput {
+    pub prompt: String,
+    pub negative_prompt: Option<String>,
+    pub title: Option<String>,
+    pub alt_text: Option<String>,
+    pub caption: Option<String>,
+    pub file_name: Option<String>,
+    pub size: Option<String>,
+    pub assistant_prompt: Option<String>,
+}
+
+pub fn image_task_payload(input: ImageTaskPayloadInput) -> Result<String, serde_json::Error> {
+    let ImageTaskPayloadInput {
+        prompt,
+        negative_prompt,
+        title,
+        alt_text,
+        caption,
+        file_name,
+        size,
+        assistant_prompt,
+    } = input;
     let payload = serde_json::json!({
         "prompt": prompt,
         "negative_prompt": negative_prompt,
@@ -50,16 +62,28 @@ pub fn image_task_payload(
     serde_json::to_string(&payload)
 }
 
-pub fn product_task_payload(
-    product_id: String,
-    source_locale: Option<String>,
-    source_title: Option<String>,
-    source_description: Option<String>,
-    source_meta_title: Option<String>,
-    source_meta_description: Option<String>,
-    copy_instructions: Option<String>,
-    assistant_prompt: Option<String>,
-) -> Result<String, serde_json::Error> {
+pub struct ProductTaskPayloadInput {
+    pub product_id: String,
+    pub source_locale: Option<String>,
+    pub source_title: Option<String>,
+    pub source_description: Option<String>,
+    pub source_meta_title: Option<String>,
+    pub source_meta_description: Option<String>,
+    pub copy_instructions: Option<String>,
+    pub assistant_prompt: Option<String>,
+}
+
+pub fn product_task_payload(input: ProductTaskPayloadInput) -> Result<String, serde_json::Error> {
+    let ProductTaskPayloadInput {
+        product_id,
+        source_locale,
+        source_title,
+        source_description,
+        source_meta_title,
+        source_meta_description,
+        copy_instructions,
+        assistant_prompt,
+    } = input;
     let product_id = uuid::Uuid::parse_str(product_id.trim()).map_err(invalid_input_error)?;
     let payload = serde_json::json!({
         "product_id": product_id,
@@ -97,16 +121,30 @@ fn parse_csv_urls(value: String) -> Result<Vec<String>, serde_json::Error> {
     Ok(parsed)
 }
 
+pub struct ProductAttributesTaskPayloadInput {
+    pub product_id: String,
+    pub category_slug: Option<String>,
+    pub source_locale: Option<String>,
+    pub source_title: Option<String>,
+    pub source_description: Option<String>,
+    pub image_urls_csv: String,
+    pub copy_instructions: Option<String>,
+    pub assistant_prompt: Option<String>,
+}
+
 pub fn product_attributes_task_payload(
-    product_id: String,
-    category_slug: Option<String>,
-    source_locale: Option<String>,
-    source_title: Option<String>,
-    source_description: Option<String>,
-    image_urls_csv: String,
-    copy_instructions: Option<String>,
-    assistant_prompt: Option<String>,
+    input: ProductAttributesTaskPayloadInput,
 ) -> Result<String, serde_json::Error> {
+    let ProductAttributesTaskPayloadInput {
+        product_id,
+        category_slug,
+        source_locale,
+        source_title,
+        source_description,
+        image_urls_csv,
+        copy_instructions,
+        assistant_prompt,
+    } = input;
     let product_id = uuid::Uuid::parse_str(product_id.trim()).map_err(invalid_input_error)?;
 
     let source_title = source_title.map(|value| value.trim().to_string());
@@ -138,20 +176,36 @@ pub fn product_attributes_task_payload(
     serde_json::to_string(&payload)
 }
 
-pub fn blog_task_payload(
-    post_id: Option<String>,
-    source_locale: Option<String>,
-    source_title: Option<String>,
-    source_body: Option<String>,
-    source_excerpt: Option<String>,
-    source_seo_title: Option<String>,
-    source_seo_description: Option<String>,
-    tags: Vec<String>,
-    category_id: Option<String>,
-    featured_image_url: Option<String>,
-    copy_instructions: Option<String>,
-    assistant_prompt: Option<String>,
-) -> Result<String, serde_json::Error> {
+pub struct BlogTaskPayloadInput {
+    pub post_id: Option<String>,
+    pub source_locale: Option<String>,
+    pub source_title: Option<String>,
+    pub source_body: Option<String>,
+    pub source_excerpt: Option<String>,
+    pub source_seo_title: Option<String>,
+    pub source_seo_description: Option<String>,
+    pub tags: Vec<String>,
+    pub category_id: Option<String>,
+    pub featured_image_url: Option<String>,
+    pub copy_instructions: Option<String>,
+    pub assistant_prompt: Option<String>,
+}
+
+pub fn blog_task_payload(input: BlogTaskPayloadInput) -> Result<String, serde_json::Error> {
+    let BlogTaskPayloadInput {
+        post_id,
+        source_locale,
+        source_title,
+        source_body,
+        source_excerpt,
+        source_seo_title,
+        source_seo_description,
+        tags,
+        category_id,
+        featured_image_url,
+        copy_instructions,
+        assistant_prompt,
+    } = input;
     let post_id = post_id
         .map(|value| uuid::Uuid::parse_str(value.trim()).map_err(invalid_input_error))
         .transpose()?;
@@ -195,11 +249,7 @@ impl RecentRunSummaryStats {
 }
 
 pub fn average_latency_ms(total_latency_ms: u64, samples: u64) -> u64 {
-    if samples == 0 {
-        0
-    } else {
-        total_latency_ms / samples
-    }
+    total_latency_ms.checked_div(samples).unwrap_or_default()
 }
 
 pub fn summarize_recent_runs<I, S>(runs: I) -> RecentRunSummaryStats
@@ -237,31 +287,31 @@ mod tests {
 
     #[test]
     fn product_attributes_payload_requires_seed_content() {
-        let result = product_attributes_task_payload(
-            uuid::Uuid::new_v4().to_string(),
-            Some("Electronics".to_string()),
-            Some("en".to_string()),
-            Some("  ".to_string()),
-            Some("".to_string()),
-            String::new(),
-            None,
-            None,
-        );
+        let result = product_attributes_task_payload(ProductAttributesTaskPayloadInput {
+            product_id: uuid::Uuid::new_v4().to_string(),
+            category_slug: Some("Electronics".to_string()),
+            source_locale: Some("en".to_string()),
+            source_title: Some("  ".to_string()),
+            source_description: Some("".to_string()),
+            image_urls_csv: String::new(),
+            copy_instructions: None,
+            assistant_prompt: None,
+        });
         assert!(result.is_err());
     }
 
     #[test]
     fn product_attributes_payload_normalizes_category_slug() {
-        let payload = product_attributes_task_payload(
-            uuid::Uuid::new_v4().to_string(),
-            Some("  Electronics / Audio  ".to_string()),
-            Some("en".to_string()),
-            Some("Title".to_string()),
-            None,
-            "https://example.com/a.jpg".to_string(),
-            None,
-            None,
-        )
+        let payload = product_attributes_task_payload(ProductAttributesTaskPayloadInput {
+            product_id: uuid::Uuid::new_v4().to_string(),
+            category_slug: Some("  Electronics / Audio  ".to_string()),
+            source_locale: Some("en".to_string()),
+            source_title: Some("Title".to_string()),
+            source_description: None,
+            image_urls_csv: "https://example.com/a.jpg".to_string(),
+            copy_instructions: None,
+            assistant_prompt: None,
+        })
         .expect("payload should be valid");
 
         let json: serde_json::Value =
@@ -274,16 +324,16 @@ mod tests {
 
     #[test]
     fn product_attributes_payload_accepts_multiple_https_urls() {
-        let payload = product_attributes_task_payload(
-            uuid::Uuid::new_v4().to_string(),
-            Some("electronics".to_string()),
-            Some("en".to_string()),
-            Some("Title".to_string()),
-            None,
-            "https://example.com/a.jpg, https://cdn.example.com/b.webp".to_string(),
-            None,
-            None,
-        )
+        let payload = product_attributes_task_payload(ProductAttributesTaskPayloadInput {
+            product_id: uuid::Uuid::new_v4().to_string(),
+            category_slug: Some("electronics".to_string()),
+            source_locale: Some("en".to_string()),
+            source_title: Some("Title".to_string()),
+            source_description: None,
+            image_urls_csv: "https://example.com/a.jpg, https://cdn.example.com/b.webp".to_string(),
+            copy_instructions: None,
+            assistant_prompt: None,
+        })
         .expect("payload should be valid");
 
         let json: serde_json::Value =
@@ -297,46 +347,46 @@ mod tests {
 
     #[test]
     fn product_attributes_payload_rejects_non_http_urls() {
-        let result = product_attributes_task_payload(
-            uuid::Uuid::new_v4().to_string(),
-            Some("Electronics".to_string()),
-            Some("en".to_string()),
-            Some("Title".to_string()),
-            None,
-            "ftp://example.com/a.jpg".to_string(),
-            None,
-            None,
-        );
+        let result = product_attributes_task_payload(ProductAttributesTaskPayloadInput {
+            product_id: uuid::Uuid::new_v4().to_string(),
+            category_slug: Some("Electronics".to_string()),
+            source_locale: Some("en".to_string()),
+            source_title: Some("Title".to_string()),
+            source_description: None,
+            image_urls_csv: "ftp://example.com/a.jpg".to_string(),
+            copy_instructions: None,
+            assistant_prompt: None,
+        });
         assert!(result.is_err());
     }
 
     #[test]
     fn product_attributes_payload_rejects_http_without_host() {
-        let result = product_attributes_task_payload(
-            uuid::Uuid::new_v4().to_string(),
-            Some("Electronics".to_string()),
-            Some("en".to_string()),
-            Some("Title".to_string()),
-            None,
-            "http://".to_string(),
-            None,
-            None,
-        );
+        let result = product_attributes_task_payload(ProductAttributesTaskPayloadInput {
+            product_id: uuid::Uuid::new_v4().to_string(),
+            category_slug: Some("Electronics".to_string()),
+            source_locale: Some("en".to_string()),
+            source_title: Some("Title".to_string()),
+            source_description: None,
+            image_urls_csv: "http://".to_string(),
+            copy_instructions: None,
+            assistant_prompt: None,
+        });
         assert!(result.is_err());
     }
 
     #[test]
     fn product_attributes_payload_allows_empty_image_urls() {
-        let result = product_attributes_task_payload(
-            uuid::Uuid::new_v4().to_string(),
-            Some("Electronics".to_string()),
-            Some("en".to_string()),
-            Some("Title".to_string()),
-            None,
-            String::new(),
-            None,
-            None,
-        );
+        let result = product_attributes_task_payload(ProductAttributesTaskPayloadInput {
+            product_id: uuid::Uuid::new_v4().to_string(),
+            category_slug: Some("Electronics".to_string()),
+            source_locale: Some("en".to_string()),
+            source_title: Some("Title".to_string()),
+            source_description: None,
+            image_urls_csv: String::new(),
+            copy_instructions: None,
+            assistant_prompt: None,
+        });
         assert!(result.is_ok());
     }
 

@@ -34,6 +34,27 @@ pub struct PageBuilderScenarioBaselineService {
     db: DatabaseConnection,
 }
 
+pub struct SaveIfCurrentScenarioBaselineRequest {
+    pub tenant_id: Uuid,
+    pub security: SecurityContext,
+    pub page_id: Uuid,
+    pub baseline: RuntimeScenarioReleaseBaseline,
+    pub expected_baseline_hash: Option<String>,
+    pub promoted_by: Uuid,
+    pub promotion_note: Option<String>,
+}
+
+struct SaveScenarioBaselineRequest {
+    tenant_id: Uuid,
+    security: SecurityContext,
+    page_id: Uuid,
+    baseline: RuntimeScenarioReleaseBaseline,
+    expected_baseline_hash: Option<String>,
+    enforce_expected_state: bool,
+    promoted_by: Option<Uuid>,
+    promotion_note: Option<String>,
+}
+
 impl PageBuilderScenarioBaselineService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
@@ -69,47 +90,50 @@ impl PageBuilderScenarioBaselineService {
         page_id: Uuid,
         baseline: RuntimeScenarioReleaseBaseline,
     ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
-        self.save_internal(
-            tenant_id, security, page_id, baseline, None, false, None, None,
-        )
+        self.save_internal(SaveScenarioBaselineRequest {
+            tenant_id,
+            security,
+            page_id,
+            baseline,
+            expected_baseline_hash: None,
+            enforce_expected_state: false,
+            promoted_by: None,
+            promotion_note: None,
+        })
         .await
     }
 
     pub async fn save_if_current(
         &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        page_id: Uuid,
-        baseline: RuntimeScenarioReleaseBaseline,
-        expected_baseline_hash: Option<&str>,
-        promoted_by: Uuid,
-        promotion_note: Option<&str>,
+        request: SaveIfCurrentScenarioBaselineRequest,
     ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
-        self.save_internal(
+        self.save_internal(SaveScenarioBaselineRequest {
+            tenant_id: request.tenant_id,
+            security: request.security,
+            page_id: request.page_id,
+            baseline: request.baseline,
+            expected_baseline_hash: request.expected_baseline_hash,
+            enforce_expected_state: true,
+            promoted_by: Some(request.promoted_by),
+            promotion_note: request.promotion_note,
+        })
+        .await
+    }
+
+    async fn save_internal(
+        &self,
+        request: SaveScenarioBaselineRequest,
+    ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
+        let SaveScenarioBaselineRequest {
             tenant_id,
             security,
             page_id,
             baseline,
             expected_baseline_hash,
-            true,
-            Some(promoted_by),
+            enforce_expected_state,
+            promoted_by,
             promotion_note,
-        )
-        .await
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    async fn save_internal(
-        &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        page_id: Uuid,
-        baseline: RuntimeScenarioReleaseBaseline,
-        expected_baseline_hash: Option<&str>,
-        enforce_expected_state: bool,
-        promoted_by: Option<Uuid>,
-        promotion_note: Option<&str>,
-    ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
+        } = request;
         let page = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(&security, Resource::Pages, Action::Update, page.author_id)?;
         let diagnostics = baseline.validate();
@@ -134,14 +158,14 @@ impl PageBuilderScenarioBaselineService {
             .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
             .one(&self.db)
             .await?;
-        let promotion_note = normalized_promotion_note(promotion_note);
+        let promotion_note = normalized_promotion_note(promotion_note.as_deref());
         if enforce_expected_state && existing.is_some() && promotion_note.is_none() {
             return Err(PagesError::validation(format!(
                 "{PAGE_BUILDER_SCENARIO_BASELINE_PROMOTION_NOTE_REQUIRED_ERROR_CODE}: replacing an existing scenario baseline requires a review note"
             )));
         }
 
-        match (existing, expected_baseline_hash) {
+        match (existing, expected_baseline_hash.as_deref()) {
             (Some(existing), Some(expected_hash)) => {
                 let previous_hash = existing.baseline_hash.clone();
                 let result = page_builder_scenario_baseline::Entity::update_many()
@@ -175,7 +199,7 @@ impl PageBuilderScenarioBaselineService {
                     )
                     .col_expr(
                         page_builder_scenario_baseline::Column::PromotedAt,
-                        Expr::value(now.clone()),
+                        Expr::value(now),
                     )
                     .col_expr(
                         page_builder_scenario_baseline::Column::UpdatedAt,
@@ -203,7 +227,7 @@ impl PageBuilderScenarioBaselineService {
                 active.previous_baseline_hash = Set(Some(previous_hash));
                 active.promoted_by = Set(promoted_by);
                 active.promotion_note = Set(promotion_note);
-                active.promoted_at = Set(Some(now.clone()));
+                active.promoted_at = Set(Some(now));
                 active.updated_at = Set(now);
                 active.update(&self.db).await?;
             }
@@ -220,8 +244,8 @@ impl PageBuilderScenarioBaselineService {
                     previous_baseline_hash: Set(None),
                     promoted_by: Set(promoted_by),
                     promotion_note: Set(promotion_note),
-                    promoted_at: Set(Some(now.clone())),
-                    created_at: Set(now.clone()),
+                    promoted_at: Set(Some(now)),
+                    created_at: Set(now),
                     updated_at: Set(now),
                 }
                 .insert(&self.db)

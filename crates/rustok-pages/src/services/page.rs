@@ -560,7 +560,7 @@ impl PageService {
         let module = self.load_tenant_pages_module(tenant_id).await?;
         let enabled = module
             .as_ref()
-            .map(|settings| is_builder_preview_enabled(settings))
+            .map(is_builder_preview_enabled)
             .unwrap_or(true);
         if !enabled {
             return Err(PagesError::feature_disabled(
@@ -578,7 +578,7 @@ impl PageService {
         let module = self.load_tenant_pages_module(tenant_id).await?;
         let enabled = module
             .as_ref()
-            .map(|settings| is_builder_properties_enabled(settings))
+            .map(is_builder_properties_enabled)
             .unwrap_or(true);
         if !enabled {
             return Err(PagesError::feature_disabled(
@@ -682,7 +682,7 @@ impl PageService {
         let module = self.load_tenant_pages_module(tenant_id).await?;
         let enabled = module
             .as_ref()
-            .map(|settings| is_builder_publish_enabled(settings))
+            .map(is_builder_publish_enabled)
             .unwrap_or(true);
         if !enabled {
             return Err(PagesError::feature_disabled(
@@ -694,10 +694,7 @@ impl PageService {
 
     async fn ensure_builder_enabled(&self, tenant_id: Uuid) -> PagesResult<()> {
         let module = self.load_tenant_pages_module(tenant_id).await?;
-        let enabled = module
-            .as_ref()
-            .map(|settings| is_builder_enabled(settings))
-            .unwrap_or(true);
+        let enabled = module.as_ref().map(is_builder_enabled).unwrap_or(true);
         if !enabled {
             return Err(PagesError::feature_disabled(FEATURE_BUILDER_ENABLED));
         }

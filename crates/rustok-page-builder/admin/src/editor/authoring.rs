@@ -5,11 +5,12 @@ use fly_leptos::{
     DropZonePolicy,
 };
 use fly_ui::{DragSource, DropPosition, HitTestCandidate, UiIntent};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 /// Geometry reported by the isolated canvas and consumed by the editor's
 /// platform-neutral hit-testing policy.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CanvasComponentGeometry {
     pub component_id: String,
     pub parent_component_id: Option<String>,
@@ -179,7 +180,7 @@ impl AdminCanvasController {
                 .unwrap_or_else(|| "palette insertion was rejected".to_string()));
         }
 
-        Ok(UiIntent::Execute(EditorCommand::Insert {
+        Ok(UiIntent::execute(EditorCommand::Insert {
             parent_id,
             index,
             component: block.component,
@@ -205,7 +206,7 @@ impl AdminCanvasController {
         if selected.is_root {
             return Err("the page root cannot be removed".to_string());
         }
-        Ok(UiIntent::Execute(EditorCommand::Remove {
+        Ok(UiIntent::execute(EditorCommand::Remove {
             component_id: selected.id,
         }))
     }
@@ -388,10 +389,10 @@ mod tests {
     fn palette_and_layers_are_derived_from_active_page() {
         let mut controller = controller();
         controller
-            .dispatch(UiIntent::Execute(EditorCommand::Page {
+            .dispatch(UiIntent::execute(EditorCommand::Page {
                 command: PageCommand::Add {
                     index: 1,
-                    page: blank_page("about", "About"),
+                    page: Box::new(blank_page("about", "About")),
                 },
             }))
             .expect("add page");
@@ -418,9 +419,12 @@ mod tests {
         let intent = controller
             .insert_palette_block_intent("text")
             .expect("insert intent");
-        let UiIntent::Execute(EditorCommand::Insert {
+        let UiIntent::Execute(command) = intent else {
+            panic!("expected insert command");
+        };
+        let EditorCommand::Insert {
             parent_id, index, ..
-        }) = intent
+        } = *command
         else {
             panic!("expected insert command");
         };
@@ -434,9 +438,12 @@ mod tests {
         let intent = controller
             .insert_palette_block_intent("text")
             .expect("insert intent");
-        let UiIntent::Execute(EditorCommand::Insert {
+        let UiIntent::Execute(command) = intent else {
+            panic!("expected insert command");
+        };
+        let EditorCommand::Insert {
             parent_id, index, ..
-        }) = intent
+        } = *command
         else {
             panic!("expected insert command");
         };

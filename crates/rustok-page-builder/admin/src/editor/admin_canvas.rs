@@ -454,7 +454,7 @@ fn selected_patch_intent(
     let component_id = controller
         .with(|controller| controller.ui().state.selection.component_id.clone())
         .ok_or_else(|| "select a component before editing properties".to_string())?;
-    Ok(UiIntent::Execute(EditorCommand::Patch {
+    Ok(UiIntent::execute(EditorCommand::Patch {
         component_id,
         patch,
     }))

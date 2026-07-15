@@ -16,13 +16,7 @@ pub mod security_headers;
 #[path = "tenant.rs"]
 mod tenant_legacy;
 
-/// Public tenant middleware surface.
-///
-/// The resolver implementation remains in the historical `tenant.rs` module while cache
-/// invalidation readiness and listener metrics are intentionally overridden with the canonical
-/// generation listener. Explicit items win over names imported through the glob re-export, so
-/// existing call sites keep `crate::middleware::tenant::*` without observing the dead per-key
-/// Pub/Sub status.
+/// Public tenant middleware surface backed by durable cache generations.
 pub mod tenant {
     pub use super::tenant_legacy::*;
     pub use crate::services::tenant_cache_generation_status::{
@@ -38,23 +32,18 @@ pub mod tenant {
     use std::time::{SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
-    /// Initialize the tenant resolver caches without leaving the superseded per-key Redis
-    /// subscriber running. Durable namespace generations are the only cross-instance invalidation
-    /// authority. The historical listener stores an unwrapped `JoinHandle<()>`; preserve any
-    /// pre-existing value in that generic slot while extracting and aborting only the listener
-    /// created by the legacy initializer.
+    /// Initialize tenant resolver caches. Cross-instance invalidation is handled by the
+    /// durable generation listener initialized with the application runtime.
     pub async fn init_tenant_cache_infrastructure(
         ctx: &ServerRuntimeContext,
         cache_service: &CacheService,
     ) {
-        let previous_task = ctx.shared_take::<tokio::task::JoinHandle<()>>();
         super::tenant_legacy::init_tenant_cache_infrastructure(ctx, cache_service).await;
-        if let Some(legacy_listener) = ctx.shared_take::<tokio::task::JoinHandle<()>>() {
-            legacy_listener.abort();
-        }
-        if let Some(previous_task) = previous_task {
-            ctx.shared_insert(previous_task);
-        }
+    }
+
+    /// Invalidate the tenant resolver namespace through a durable generation rotation.
+    pub async fn invalidate_tenant_cache(ctx: &ServerRuntimeContext, _identifier: &str) {
+        rotate_tenant_cache_generation(ctx, None, "manual_tenant_invalidation").await;
     }
 
     /// Compatibility entry point for callers that used to publish a per-key host invalidation.

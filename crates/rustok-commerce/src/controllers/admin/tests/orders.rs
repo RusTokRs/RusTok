@@ -156,14 +156,8 @@ async fn admin_order_transport_returns_order_with_payment_and_fulfillment() {
         payload["order"]["tax_lines"][0]["provider_id"],
         json!("region_default")
     );
-    assert_eq!(
-        payload["order"]["tax_lines"][0]["line_item_id"].is_string(),
-        true
-    );
-    assert_eq!(
-        payload["order"]["tax_lines"][1]["shipping_option_id"].is_string(),
-        true
-    );
+    assert!(payload["order"]["tax_lines"][0]["line_item_id"].is_string());
+    assert!(payload["order"]["tax_lines"][1]["shipping_option_id"].is_string());
     assert_eq!(
         payload["order"]["tax_lines"][2]["line_item_id"],
         json!(null)

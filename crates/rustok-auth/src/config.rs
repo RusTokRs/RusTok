@@ -234,7 +234,7 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
 
     match config.algorithm {
         JwtAlgorithm::HS256 => {
-            if config.secret.as_bytes().len() < MIN_HS256_SECRET_BYTES {
+            if config.secret.len() < MIN_HS256_SECRET_BYTES {
                 return Err(AuthError::Internal(format!(
                     "HS256 secret must contain at least {MIN_HS256_SECRET_BYTES} bytes"
                 )));

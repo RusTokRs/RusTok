@@ -893,7 +893,7 @@ pub fn blog_post_admin_body_format_select_view(
     let selected_format = normalize_blog_post_body_format(selected_format);
     BlogPostAdminBodyFormatSelectViewModel {
         options: supported_blog_post_body_formats()
-            .into_iter()
+            .iter()
             .copied()
             .map(|format| BlogPostAdminBodyFormatOptionViewModel {
                 value: format.to_string(),

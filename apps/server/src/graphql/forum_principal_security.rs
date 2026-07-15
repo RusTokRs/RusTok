@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn classifies_human_owned_forum_actions_inside_fragments() {
-        let policy = policy(
+        let forum_policy = policy(
             r#"
                 mutation {
                     ...ForumActions
@@ -222,12 +222,12 @@ mod tests {
                 }
             "#,
         );
-        assert!(policy.human_only);
+        assert!(forum_policy.human_only);
     }
 
     #[test]
     fn classifies_personal_forum_projections_only_inside_forum_results() {
-        let policy = policy(
+        let forum_policy = policy(
             r#"
                 query {
                     forumTopics {
@@ -239,7 +239,7 @@ mod tests {
                 }
             "#,
         );
-        assert!(policy.personal_projection);
+        assert!(forum_policy.personal_projection);
 
         let unrelated = policy(
             r#"

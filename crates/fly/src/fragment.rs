@@ -34,7 +34,7 @@ impl ProjectFragment {
         let component = document
             .component(component_id)
             .ok_or_else(|| FlyError::ComponentNotFound(component_id.to_string()))?;
-        let node = ComponentNode::Object(component.clone());
+        let node = ComponentNode::Object(Box::new(component.clone()));
         let mut requirements = BTreeMap::<String, Option<String>>::new();
         node.visit(0, "fragment.components[0]", &mut |component, _, _| {
             if let Some(provider) = component.provider.as_ref() {

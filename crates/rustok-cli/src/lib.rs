@@ -204,7 +204,7 @@ fn filter_commands(
 ) -> Vec<CommandDescriptor> {
     commands
         .iter()
-        .filter(|command| namespace.map_or(true, |namespace| command.namespace == namespace))
+        .filter(|command| namespace.is_none_or(|namespace| command.namespace == namespace))
         .cloned()
         .collect()
 }

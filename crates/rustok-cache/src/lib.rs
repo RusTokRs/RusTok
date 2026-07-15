@@ -85,8 +85,9 @@ pub use observability::{
 pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
 pub use redis_status::{format_redis_cache_status_prometheus_metrics, RedisCacheStatus};
 pub use refresh::{
-    CacheRefreshCoordinator, CacheRefreshCoordinatorError, CacheRefreshSchedule, CacheRefreshStats,
-    StaleWhileRevalidateResult, MAX_CACHE_REFRESH_KEY_BYTES,
+    CacheRefreshCoordinator, CacheRefreshCoordinatorError, CacheRefreshLoadOptions,
+    CacheRefreshSchedule, CacheRefreshStats, StaleWhileRevalidateResult,
+    MAX_CACHE_REFRESH_KEY_BYTES,
 };
 pub use rustok_core::CacheCompareAndSetOutcome;
 pub use service::{
@@ -101,7 +102,7 @@ pub use tenant_generation_observability::{
     format_tenant_generation_listener_prometheus_metrics,
     record_tenant_generation_listener_metrics, TenantGenerationListenerMetrics,
 };
-pub use typed::TypedCacheLoadResult;
+pub use typed::{TypedCacheLoadOptions, TypedCacheLoadResult};
 
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};

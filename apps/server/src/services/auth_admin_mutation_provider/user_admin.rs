@@ -151,7 +151,7 @@ where
                 users::Entity::update_many()
                     .col_expr(
                         users::Column::UpdatedAt,
-                        Expr::col(users::Column::UpdatedAt),
+                        Expr::col(users::Column::UpdatedAt).into(),
                     )
                     .filter(users::Column::Id.eq(user.id))
                     .filter(users::Column::TenantId.eq(tenant_id))
@@ -491,7 +491,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             true,
         )
         .await?;
-        AuthLifecycleService::soft_delete_user_in_tx(&tx, context.tenant_id, user.id)
+        AuthLifecycleService::deactivate_user_in_tx(&tx, context.tenant_id, user.id)
             .await
             .map_err(map_lifecycle_error)?;
         revoke_active_sessions(&tx, context.tenant_id, user.id).await?;

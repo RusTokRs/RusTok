@@ -8,6 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+#![recursion_limit = "256"]
+
 pub mod auth;
 pub mod channels;
 pub mod common;

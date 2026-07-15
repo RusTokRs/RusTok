@@ -39,6 +39,8 @@ use super::components::tool_panel::AiToolPanel;
 use crate::core::{
     alloy_task_payload, blog_task_payload, image_task_payload, optional_text, parse_csv,
     product_attributes_task_payload, product_task_payload, summarize_recent_runs,
+    BlogTaskPayloadInput, ImageTaskPayloadInput, ProductAttributesTaskPayloadInput,
+    ProductTaskPayloadInput,
 };
 use crate::i18n::t;
 #[cfg(target_arch = "wasm32")]
@@ -1139,16 +1141,16 @@ pub fn AiAdmin() -> impl IntoView {
             return;
         }
 
-        let payload = image_task_payload(
-            image_prompt.get_untracked(),
-            optional_text(image_negative_prompt.get_untracked()),
-            optional_text(image_asset_title.get_untracked()),
-            optional_text(image_alt_text.get_untracked()),
-            optional_text(image_caption.get_untracked()),
-            optional_text(image_file_name.get_untracked()),
-            optional_text(image_size.get_untracked()),
-            optional_text(image_assistant_prompt.get_untracked()),
-        );
+        let payload = image_task_payload(ImageTaskPayloadInput {
+            prompt: image_prompt.get_untracked(),
+            negative_prompt: optional_text(image_negative_prompt.get_untracked()),
+            title: optional_text(image_asset_title.get_untracked()),
+            alt_text: optional_text(image_alt_text.get_untracked()),
+            caption: optional_text(image_caption.get_untracked()),
+            file_name: optional_text(image_file_name.get_untracked()),
+            size: optional_text(image_size.get_untracked()),
+            assistant_prompt: optional_text(image_assistant_prompt.get_untracked()),
+        });
         let Ok(payload) = payload else {
             set_error.set(Some(err_image_payload.clone()));
             return;
@@ -1193,16 +1195,16 @@ pub fn AiAdmin() -> impl IntoView {
             return;
         }
 
-        let payload = product_task_payload(
-            product_id.get_untracked(),
-            optional_text(product_source_locale.get_untracked()),
-            optional_text(product_source_title.get_untracked()),
-            optional_text(product_source_description.get_untracked()),
-            optional_text(product_source_meta_title.get_untracked()),
-            optional_text(product_source_meta_description.get_untracked()),
-            optional_text(product_copy_instructions.get_untracked()),
-            optional_text(product_assistant_prompt.get_untracked()),
-        );
+        let payload = product_task_payload(ProductTaskPayloadInput {
+            product_id: product_id.get_untracked(),
+            source_locale: optional_text(product_source_locale.get_untracked()),
+            source_title: optional_text(product_source_title.get_untracked()),
+            source_description: optional_text(product_source_description.get_untracked()),
+            source_meta_title: optional_text(product_source_meta_title.get_untracked()),
+            source_meta_description: optional_text(product_source_meta_description.get_untracked()),
+            copy_instructions: optional_text(product_copy_instructions.get_untracked()),
+            assistant_prompt: optional_text(product_assistant_prompt.get_untracked()),
+        });
         let Ok(payload) = payload else {
             set_error.set(Some(err_product_payload.clone()));
             return;
@@ -1257,8 +1259,7 @@ pub fn AiAdmin() -> impl IntoView {
         has_product_id && matches_product_attributes
     };
 
-    let can_submit_product_attributes_signal =
-        Signal::derive(move || can_submit_product_attributes());
+    let can_submit_product_attributes_signal = Signal::derive(can_submit_product_attributes);
 
     let on_run_product_attributes_job = move |ev: SubmitEvent| {
         ev.prevent_default();
@@ -1285,16 +1286,18 @@ pub fn AiAdmin() -> impl IntoView {
             return;
         }
 
-        let payload = product_attributes_task_payload(
-            product_attributes_product_id.get_untracked(),
-            optional_text(product_attributes_category_slug.get_untracked()),
-            optional_text(product_attributes_source_locale.get_untracked()),
-            optional_text(product_attributes_source_title.get_untracked()),
-            optional_text(product_attributes_source_description.get_untracked()),
-            product_attributes_image_urls.get_untracked(),
-            optional_text(product_attributes_copy_instructions.get_untracked()),
-            optional_text(product_attributes_assistant_prompt.get_untracked()),
-        );
+        let payload = product_attributes_task_payload(ProductAttributesTaskPayloadInput {
+            product_id: product_attributes_product_id.get_untracked(),
+            category_slug: optional_text(product_attributes_category_slug.get_untracked()),
+            source_locale: optional_text(product_attributes_source_locale.get_untracked()),
+            source_title: optional_text(product_attributes_source_title.get_untracked()),
+            source_description: optional_text(
+                product_attributes_source_description.get_untracked(),
+            ),
+            image_urls_csv: product_attributes_image_urls.get_untracked(),
+            copy_instructions: optional_text(product_attributes_copy_instructions.get_untracked()),
+            assistant_prompt: optional_text(product_attributes_assistant_prompt.get_untracked()),
+        });
         let Ok(payload) = payload else {
             set_error.set(Some(err_product_attributes_payload.clone()));
             return;
@@ -1338,20 +1341,20 @@ pub fn AiAdmin() -> impl IntoView {
             return;
         }
 
-        let payload = blog_task_payload(
-            optional_text(blog_post_id.get_untracked()),
-            optional_text(blog_source_locale.get_untracked()),
-            optional_text(blog_source_title.get_untracked()),
-            optional_text(blog_source_body.get_untracked()),
-            optional_text(blog_source_excerpt.get_untracked()),
-            optional_text(blog_source_seo_title.get_untracked()),
-            optional_text(blog_source_seo_description.get_untracked()),
-            parse_csv(blog_tags.get_untracked()),
-            optional_text(blog_category_id.get_untracked()),
-            optional_text(blog_featured_image_url.get_untracked()),
-            optional_text(blog_copy_instructions.get_untracked()),
-            optional_text(blog_assistant_prompt.get_untracked()),
-        );
+        let payload = blog_task_payload(BlogTaskPayloadInput {
+            post_id: optional_text(blog_post_id.get_untracked()),
+            source_locale: optional_text(blog_source_locale.get_untracked()),
+            source_title: optional_text(blog_source_title.get_untracked()),
+            source_body: optional_text(blog_source_body.get_untracked()),
+            source_excerpt: optional_text(blog_source_excerpt.get_untracked()),
+            source_seo_title: optional_text(blog_source_seo_title.get_untracked()),
+            source_seo_description: optional_text(blog_source_seo_description.get_untracked()),
+            tags: parse_csv(blog_tags.get_untracked()),
+            category_id: optional_text(blog_category_id.get_untracked()),
+            featured_image_url: optional_text(blog_featured_image_url.get_untracked()),
+            copy_instructions: optional_text(blog_copy_instructions.get_untracked()),
+            assistant_prompt: optional_text(blog_assistant_prompt.get_untracked()),
+        });
         let Ok(payload) = payload else {
             set_error.set(Some(err_blog_payload.clone()));
             return;
@@ -1565,13 +1568,13 @@ pub fn AiAdmin() -> impl IntoView {
                     let on_update_provider = on_update_provider.clone();
                     let on_test_provider = on_test_provider.clone();
                     let on_deactivate_provider = on_deactivate_provider.clone();
-                    let reset_provider_form = reset_provider_form.clone();
+                    let reset_provider_form = reset_provider_form;
                     let on_create_tool_profile = on_create_tool_profile.clone();
                     let on_update_tool_profile = on_update_tool_profile.clone();
-                    let reset_tool_form = reset_tool_form.clone();
+                    let reset_tool_form = reset_tool_form;
                     let on_create_task_profile = on_create_task_profile.clone();
                     let on_update_task_profile = on_update_task_profile.clone();
-                    let reset_task_form = reset_task_form.clone();
+                    let reset_task_form = reset_task_form;
                     let on_run_blog_job = on_run_blog_job.clone();
                     let on_run_product_job = on_run_product_job.clone();
                     let on_run_product_attributes_job = on_run_product_attributes_job.clone();
@@ -1622,7 +1625,7 @@ pub fn AiAdmin() -> impl IntoView {
                                             on_update_provider=Callback::new(on_update_provider.clone())
                                             on_test_provider=Callback::new(on_test_provider.clone())
                                             on_deactivate_provider=Callback::new(on_deactivate_provider.clone())
-                                            on_reset=reset_provider_form.clone()
+                                            on_reset=reset_provider_form
                                             select_provider_query_writer=select_provider_query_writer.clone()
                                         />
 
@@ -1646,7 +1649,7 @@ pub fn AiAdmin() -> impl IntoView {
                                             tool_active=tool_active
                                             on_create_tool_profile=Callback::new(on_create_tool_profile.clone())
                                             on_update_tool_profile=Callback::new(on_update_tool_profile.clone())
-                                            on_reset=reset_tool_form.clone()
+                                            on_reset=reset_tool_form
                                             select_tool_query_writer=select_tool_query_writer.clone()
                                         />
 
@@ -1664,7 +1667,7 @@ pub fn AiAdmin() -> impl IntoView {
                                             task_active=task_active
                                             on_create_task_profile=Callback::new(on_create_task_profile.clone())
                                             on_update_task_profile=Callback::new(on_update_task_profile.clone())
-                                            on_reset=reset_task_form.clone()
+                                            on_reset=reset_task_form
                                             select_task_query_writer=select_task_query_writer.clone()
                                         />
                                     </section>

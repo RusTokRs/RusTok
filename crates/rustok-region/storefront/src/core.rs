@@ -75,6 +75,17 @@ pub struct RegionErrorViewModel {
     pub technical_detail: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionErrorCopy {
+    pub title: String,
+    pub native_unavailable_body: String,
+    pub graphql_unavailable_body: String,
+    pub native_status_label: String,
+    pub graphql_status_label: String,
+    pub native_label: String,
+    pub graphql_label: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RegionErrorDomEvidence {
     pub status_attribute: &'static str,
@@ -85,29 +96,26 @@ pub struct RegionErrorDomEvidence {
 
 pub fn region_error_view_model(
     evidence: RegionErrorEvidence,
-    title: String,
-    native_unavailable_body: String,
-    graphql_unavailable_body: String,
-    native_status_label: String,
-    fallback_status_label: String,
-    native_label: String,
-    graphql_label: String,
+    copy: RegionErrorCopy,
 ) -> RegionErrorViewModel {
     let status_code = region_error_status_code(&evidence);
     let status_locale_key = region_error_status_descriptor(status_code).locale_key;
     let (status_label, body) = match status_code {
-        RegionErrorStatusCode::NativeUnavailable => (native_status_label, native_unavailable_body),
+        RegionErrorStatusCode::NativeUnavailable => {
+            (copy.native_status_label, copy.native_unavailable_body)
+        }
         RegionErrorStatusCode::GraphqlUnavailable => {
-            (fallback_status_label, graphql_unavailable_body)
+            (copy.graphql_status_label, copy.graphql_unavailable_body)
         }
     };
-    let technical_detail = region_error_technical_detail(&evidence, &native_label, &graphql_label);
+    let technical_detail =
+        region_error_technical_detail(&evidence, &copy.native_label, &copy.graphql_label);
 
     RegionErrorViewModel {
         status_code,
         status_locale_key,
         status_label,
-        title,
+        title: copy.title,
         body,
         technical_detail,
     }
@@ -389,36 +397,46 @@ pub fn selected_region_metrics(
     ]
 }
 
+pub struct SelectedRegionCardCopy<'a> {
+    pub tax_included_label: &'a str,
+    pub tax_excluded_label: &'a str,
+    pub countries_label: &'a str,
+    pub no_countries_label: &'a str,
+    pub currency_title: String,
+    pub tax_rate_title: String,
+    pub tax_provider_title: String,
+    pub coverage_title: String,
+    pub country_policy_count_title: String,
+}
+
 pub fn selected_region_card_view_model(
     region: &StorefrontRegion,
-    tax_included_label: &str,
-    tax_excluded_label: &str,
-    countries_label: &str,
-    no_countries_label: &str,
-    currency_title: String,
-    tax_rate_title: String,
-    tax_provider_title: String,
-    coverage_title: String,
-    country_policy_count_title: String,
+    copy: SelectedRegionCardCopy<'_>,
 ) -> SelectedRegionCardViewModel {
     SelectedRegionCardViewModel {
         name: region.name.clone(),
         currency_code: region.currency_code.clone(),
-        tax_mode_label: tax_mode_label(region.tax_included, tax_included_label, tax_excluded_label),
-        countries_count_label: country_count_label(region.countries.len(), countries_label),
+        tax_mode_label: tax_mode_label(
+            region.tax_included,
+            copy.tax_included_label,
+            copy.tax_excluded_label,
+        ),
+        countries_count_label: country_count_label(region.countries.len(), copy.countries_label),
         metrics: selected_region_metrics(
             region,
-            currency_title,
-            tax_rate_title,
-            tax_provider_title,
-            coverage_title,
-            country_policy_count_title,
+            copy.currency_title,
+            copy.tax_rate_title,
+            copy.tax_provider_title,
+            copy.coverage_title,
+            copy.country_policy_count_title,
         ),
-        countries_summary: countries_summary(&region.countries, no_countries_label),
+        countries_summary: countries_summary(&region.countries, copy.no_countries_label),
         country_policy_summaries: region
             .country_tax_policies
             .iter()
-            .map(|policy| country_policy_summary(policy, tax_included_label, tax_excluded_label))
+            .map(|policy| {
+                country_policy_summary(policy, copy.tax_included_label, copy.tax_excluded_label)
+            })
             .collect(),
     }
 }
@@ -531,13 +549,15 @@ mod tests {
                 native_error: Some("native failed".to_string()),
                 graphql_error: Some("graphql failed".to_string()),
             },
-            "Failed to load".to_string(),
-            "Native path is unavailable.".to_string(),
-            "Native and GraphQL paths are unavailable.".to_string(),
-            "Native unavailable".to_string(),
-            "GraphQL unavailable".to_string(),
-            "native".to_string(),
-            "graphql".to_string(),
+            RegionErrorCopy {
+                title: "Failed to load".to_string(),
+                native_unavailable_body: "Native path is unavailable.".to_string(),
+                graphql_unavailable_body: "Native and GraphQL paths are unavailable.".to_string(),
+                native_status_label: "Native unavailable".to_string(),
+                graphql_status_label: "GraphQL unavailable".to_string(),
+                native_label: "native".to_string(),
+                graphql_label: "graphql".to_string(),
+            },
         );
         let evidence = region_error_dom_evidence(&view_model);
 
@@ -562,13 +582,15 @@ mod tests {
                 native_error: Some("tenant context missing".to_string()),
                 graphql_error: Some("network unavailable".to_string()),
             },
-            "Failed to load".to_string(),
-            "Native path is unavailable.".to_string(),
-            "Native and GraphQL paths are unavailable.".to_string(),
-            "Native unavailable".to_string(),
-            "GraphQL unavailable".to_string(),
-            "native".to_string(),
-            "graphql".to_string(),
+            RegionErrorCopy {
+                title: "Failed to load".to_string(),
+                native_unavailable_body: "Native path is unavailable.".to_string(),
+                graphql_unavailable_body: "Native and GraphQL paths are unavailable.".to_string(),
+                native_status_label: "Native unavailable".to_string(),
+                graphql_status_label: "GraphQL unavailable".to_string(),
+                native_label: "native".to_string(),
+                graphql_label: "graphql".to_string(),
+            },
         );
 
         assert_eq!(
@@ -598,13 +620,15 @@ mod tests {
                 native_error: Some("ssr required".to_string()),
                 graphql_error: None,
             },
-            "Failed to load".to_string(),
-            "Native path is unavailable.".to_string(),
-            "Native and GraphQL paths are unavailable.".to_string(),
-            "Native unavailable".to_string(),
-            "GraphQL unavailable".to_string(),
-            "native".to_string(),
-            "graphql".to_string(),
+            RegionErrorCopy {
+                title: "Failed to load".to_string(),
+                native_unavailable_body: "Native path is unavailable.".to_string(),
+                graphql_unavailable_body: "Native and GraphQL paths are unavailable.".to_string(),
+                native_status_label: "Native unavailable".to_string(),
+                graphql_status_label: "GraphQL unavailable".to_string(),
+                native_label: "native".to_string(),
+                graphql_label: "graphql".to_string(),
+            },
         );
 
         assert_eq!(
@@ -763,15 +787,17 @@ mod tests {
 
         let view_model = selected_region_card_view_model(
             &region,
-            "tax included",
-            "tax excluded",
-            "countries",
-            "no countries",
-            "Currency".to_string(),
-            "Tax rate".to_string(),
-            "Provider".to_string(),
-            "Coverage".to_string(),
-            "Country policies".to_string(),
+            SelectedRegionCardCopy {
+                tax_included_label: "tax included",
+                tax_excluded_label: "tax excluded",
+                countries_label: "countries",
+                no_countries_label: "no countries",
+                currency_title: "Currency".to_string(),
+                tax_rate_title: "Tax rate".to_string(),
+                tax_provider_title: "Provider".to_string(),
+                coverage_title: "Coverage".to_string(),
+                country_policy_count_title: "Country policies".to_string(),
+            },
         );
 
         assert_eq!(view_model.name, "Europe");

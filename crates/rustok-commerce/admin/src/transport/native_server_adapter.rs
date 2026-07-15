@@ -268,7 +268,7 @@ async fn preview_cart_promotion_native_with_context(
     payload: CommerceCartPromotionDraft,
 ) -> Result<CommerceCartPromotionPreview, ServerFnError> {
     use rustok_api::Permission;
-    use rustok_cart::{in_process_cart_promotion_port, CartPromotionPort};
+    use rustok_cart::in_process_cart_promotion_port;
 
     ensure_permission(
         &auth.permissions,
@@ -299,7 +299,7 @@ async fn apply_cart_promotion_native_with_context(
     payload: CommerceCartPromotionDraft,
 ) -> Result<CommerceAdminCartSnapshot, ServerFnError> {
     use rustok_api::Permission;
-    use rustok_cart::{in_process_cart_promotion_port, CartPromotionPort};
+    use rustok_cart::in_process_cart_promotion_port;
 
     ensure_permission(
         &auth.permissions,

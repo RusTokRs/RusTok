@@ -330,86 +330,33 @@ pub fn list_post_locale_meta(locale_label: &str, effective_locale: &str) -> Stri
     label_value_pair(locale_label, effective_locale)
 }
 
-pub fn list_post_card_fields(
-    slug: Option<String>,
-    missing_slug_fallback: &str,
-    excerpt: Option<String>,
-    excerpt_fallback: &str,
-    module_route_base: &str,
-    open_label: &str,
-    locale_label: &str,
-    effective_locale: &str,
-) -> (String, String, String, String) {
+pub struct PublishedPostCardInput<'a> {
+    pub slug: Option<String>,
+    pub missing_slug_fallback: &'a str,
+    pub excerpt: Option<String>,
+    pub excerpt_fallback: &'a str,
+    pub module_route_base: &'a str,
+    pub open_label: &'a str,
+    pub locale_label: &'a str,
+    pub effective_locale: &'a str,
+    pub status: String,
+}
+
+pub fn published_post_card_view(input: PublishedPostCardInput<'_>) -> PublishedPostCardView {
     let (resolved_excerpt, href, resolved_open_label) = list_post_summary(
-        slug,
-        missing_slug_fallback,
-        excerpt,
-        excerpt_fallback,
-        module_route_base,
-        open_label,
-    );
-    let locale_meta = list_post_locale_meta(locale_label, effective_locale);
-    (resolved_excerpt, href, resolved_open_label, locale_meta)
-}
-
-pub fn list_post_card_view(
-    slug: Option<String>,
-    missing_slug_fallback: &str,
-    excerpt: Option<String>,
-    excerpt_fallback: &str,
-    module_route_base: &str,
-    open_label: &str,
-    locale_label: &str,
-    effective_locale: &str,
-    status: String,
-) -> (String, String, String, String, String) {
-    let (resolved_excerpt, href, resolved_open_label, locale_meta) = list_post_card_fields(
-        slug,
-        missing_slug_fallback,
-        excerpt,
-        excerpt_fallback,
-        module_route_base,
-        open_label,
-        locale_label,
-        effective_locale,
-    );
-    (
-        status,
-        resolved_excerpt,
-        href,
-        resolved_open_label,
-        locale_meta,
-    )
-}
-
-pub fn published_post_card_view(
-    slug: Option<String>,
-    missing_slug_fallback: &str,
-    excerpt: Option<String>,
-    excerpt_fallback: &str,
-    module_route_base: &str,
-    open_label: &str,
-    locale_label: &str,
-    effective_locale: &str,
-    status: String,
-) -> PublishedPostCardView {
-    let (status, excerpt, href, open_label, locale_meta) = list_post_card_view(
-        slug,
-        missing_slug_fallback,
-        excerpt,
-        excerpt_fallback,
-        module_route_base,
-        open_label,
-        locale_label,
-        effective_locale,
-        status,
+        input.slug,
+        input.missing_slug_fallback,
+        input.excerpt,
+        input.excerpt_fallback,
+        input.module_route_base,
+        input.open_label,
     );
     PublishedPostCardView {
-        status,
-        excerpt,
+        status: input.status,
+        excerpt: resolved_excerpt,
         href,
-        open_label,
-        locale_meta,
+        open_label: resolved_open_label,
+        locale_meta: list_post_locale_meta(input.locale_label, input.effective_locale),
     }
 }
 
@@ -787,17 +734,17 @@ mod tests {
 
     #[test]
     fn published_post_card_view_maps_tuple_to_typed_payload() {
-        let view = published_post_card_view(
-            None,
-            "missing-slug",
-            None,
-            "No excerpt yet.",
-            "/store/modules/blog",
-            "Open",
-            "locale",
-            "en",
-            "published".to_string(),
-        );
+        let view = published_post_card_view(PublishedPostCardInput {
+            slug: None,
+            missing_slug_fallback: "missing-slug",
+            excerpt: None,
+            excerpt_fallback: "No excerpt yet.",
+            module_route_base: "/store/modules/blog",
+            open_label: "Open",
+            locale_label: "locale",
+            effective_locale: "en",
+            status: "published".to_string(),
+        });
         assert_eq!(view.status, "published".to_string());
         assert_eq!(view.excerpt, "No excerpt yet.".to_string());
         assert_eq!(
@@ -943,44 +890,22 @@ mod tests {
             list_post_locale_meta("locale", "en"),
             "locale: en".to_string()
         );
-        assert_eq!(
-            list_post_card_fields(
-                None,
-                "missing-slug",
-                None,
-                "No excerpt yet.",
-                "/store/modules/blog",
-                "Open",
-                "locale",
-                "en",
-            ),
-            (
-                "No excerpt yet.".to_string(),
-                "/store/modules/blog?slug=missing-slug".to_string(),
-                "Open missing-slug".to_string(),
-                "locale: en".to_string(),
-            )
-        );
-        assert_eq!(
-            list_post_card_view(
-                None,
-                "missing-slug",
-                None,
-                "No excerpt yet.",
-                "/store/modules/blog",
-                "Open",
-                "locale",
-                "en",
-                "published".to_string(),
-            ),
-            (
-                "published".to_string(),
-                "No excerpt yet.".to_string(),
-                "/store/modules/blog?slug=missing-slug".to_string(),
-                "Open missing-slug".to_string(),
-                "locale: en".to_string(),
-            )
-        );
+        let card = published_post_card_view(PublishedPostCardInput {
+            slug: None,
+            missing_slug_fallback: "missing-slug",
+            excerpt: None,
+            excerpt_fallback: "No excerpt yet.",
+            module_route_base: "/store/modules/blog",
+            open_label: "Open",
+            locale_label: "locale",
+            effective_locale: "en",
+            status: "published".to_string(),
+        });
+        assert_eq!(card.status, "published");
+        assert_eq!(card.excerpt, "No excerpt yet.");
+        assert_eq!(card.href, "/store/modules/blog?slug=missing-slug");
+        assert_eq!(card.open_label, "Open missing-slug");
+        assert_eq!(card.locale_meta, "locale: en");
     }
 
     #[test]

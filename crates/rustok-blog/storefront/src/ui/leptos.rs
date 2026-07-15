@@ -266,16 +266,20 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
                         );
                         let open_label = t(locale.as_deref(), "blog.list.open", "Open");
                         let locale_label = t(locale.as_deref(), "blog.list.localeLabel", "locale");
+                        let no_excerpt_fallback =
+                            t(locale.as_deref(), "blog.list.noExcerpt", "No excerpt yet.");
                         let post_card_view = core::published_post_card_view(
-                            post.slug,
-                            missing_slug_fallback.as_str(),
-                            post.excerpt,
-                            &t(locale.as_deref(), "blog.list.noExcerpt", "No excerpt yet."),
-                            module_route_base.as_str(),
-                            open_label.as_str(),
-                            locale_label.as_str(),
-                            post.effective_locale.as_str(),
-                            post.status,
+                            core::PublishedPostCardInput {
+                                slug: post.slug,
+                                missing_slug_fallback: missing_slug_fallback.as_str(),
+                                excerpt: post.excerpt,
+                                excerpt_fallback: no_excerpt_fallback.as_str(),
+                                module_route_base: module_route_base.as_str(),
+                                open_label: open_label.as_str(),
+                                locale_label: locale_label.as_str(),
+                                effective_locale: post.effective_locale.as_str(),
+                                status: post.status,
+                            },
                         );
                         view! {
                             <article class="rounded-2xl border border-border bg-background p-5">

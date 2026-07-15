@@ -56,7 +56,7 @@ reqwest = { workspace = true, features = ["json", "stream"] }
 rhai = { workspace = true, optional = true }
 rig = { workspace = true, optional = true }
 rig-bedrock = { workspace = true, optional = true }
-rig-fastembed = { workspace = true, optional = true }
+rig-fastembed = { workspace = true, optional = true, features = ["ort-download-binaries"] }
 rig-gemini-grpc = { workspace = true, optional = true }
 rig-vertexai = { workspace = true, optional = true }
 rustok-ai-content = { workspace = true, optional = true }

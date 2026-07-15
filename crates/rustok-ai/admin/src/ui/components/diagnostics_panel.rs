@@ -82,7 +82,6 @@ pub fn AiDiagnosticsPanel(ui_locale: Option<String>, bootstrap: AiAdminBootstrap
                                                 .recent_runs
                                                 .iter()
                                                 .take(8)
-                                                .cloned()
                                                 .map(|run| {
                                                     let error_message = run.error_message.clone().unwrap_or_default();
                                                     let has_error = !error_message.trim().is_empty();
@@ -144,7 +143,6 @@ pub fn AiDiagnosticsPanel(ui_locale: Option<String>, bootstrap: AiAdminBootstrap
                                                 .recent_stream_events
                                                 .iter()
                                                 .take(6)
-                                                .cloned()
                                                 .map(|event| {
                                                     let status = stream_event_kind_label(
                                                         ui_locale_diagnostics.as_deref(),

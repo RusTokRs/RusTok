@@ -1084,10 +1084,18 @@ mod tests {
         let healthy = TenantInvalidationListenerSnapshot {
             status: TenantInvalidationListenerStatus::Healthy,
             last_error: None,
+            redis_required: false,
+            local_ready: true,
+            subscriber_ready: true,
+            reconciliation_healthy: true,
         };
         let degraded = TenantInvalidationListenerSnapshot {
             status: TenantInvalidationListenerStatus::Degraded,
             last_error: Some("redis unavailable".to_string()),
+            redis_required: true,
+            local_ready: true,
+            subscriber_ready: false,
+            reconciliation_healthy: false,
         };
 
         assert_eq!(healthy.status.metric_value(), 2);

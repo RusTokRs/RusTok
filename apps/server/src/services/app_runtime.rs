@@ -383,7 +383,7 @@ mod tests {
     use crate::common::settings::{RuntimeHostMode, RuntimeSettings, RustokSettings};
     use crate::modules::DeploymentSurfaceContract;
     use rustok_build::DeploymentProfile;
-    use rustok_test_utils::setup_test_db_with_migrations;
+    use rustok_test_utils::db::setup_test_db_with_migrations;
 
     #[test]
     fn compiled_surface_contract_rejects_missing_embedded_admin() {

@@ -437,6 +437,7 @@ fn validate_module_semantics_contract_rejects_path_module_with_non_first_party_o
         ui_classification: "no_ui".to_string(),
         recommended_admin_surfaces: Vec::new(),
         showcase_admin_surfaces: Vec::new(),
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_semantics_contract("demo", &spec, &metadata)
@@ -470,6 +471,7 @@ fn validate_module_semantics_contract_rejects_required_module_without_core_trust
         ui_classification: "no_ui".to_string(),
         recommended_admin_surfaces: Vec::new(),
         showcase_admin_surfaces: Vec::new(),
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_semantics_contract("demo", &spec, &metadata)
@@ -503,6 +505,7 @@ fn validate_module_semantics_contract_rejects_optional_module_with_core_trust_le
         ui_classification: "no_ui".to_string(),
         recommended_admin_surfaces: Vec::new(),
         showcase_admin_surfaces: Vec::new(),
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_semantics_contract("demo", &spec, &metadata)

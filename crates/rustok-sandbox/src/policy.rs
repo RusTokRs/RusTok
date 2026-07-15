@@ -44,21 +44,12 @@ impl Default for SandboxLimits {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct SandboxPolicy {
     #[serde(default)]
     pub grants: Vec<CapabilityGrant>,
     #[serde(default)]
     pub limits: SandboxLimits,
-}
-
-impl Default for SandboxPolicy {
-    fn default() -> Self {
-        Self {
-            grants: Vec::new(),
-            limits: SandboxLimits::default(),
-        }
-    }
 }
 
 impl SandboxPolicy {

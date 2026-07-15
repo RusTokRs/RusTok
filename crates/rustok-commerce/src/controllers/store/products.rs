@@ -3,7 +3,7 @@ use axum::{
     Json,
 };
 use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
-use rustok_cart::{in_process_cart_storefront_port, CartStorefrontPort, CartStorefrontReadRequest};
+use rustok_cart::{in_process_cart_storefront_port, CartStorefrontReadRequest};
 use rustok_fulfillment::FulfillmentService;
 use rustok_product::{
     entities::{product, product_translation},

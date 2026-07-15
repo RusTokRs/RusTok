@@ -111,7 +111,7 @@ pub async fn resolve_permissions_with_cache<S, C>(
 ) -> Result<crate::PermissionResolution, S::Error>
 where
     S: RelationPermissionStore,
-    C: PermissionCache,
+    C: PermissionCache + Sync,
 {
     for _ in 0..MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS {
         let (cached_permissions, token) = cache.lookup(tenant_id, user_id).await.into_parts();
@@ -143,7 +143,7 @@ where
     })
 }
 
-pub async fn invalidate_cached_permissions<C: PermissionCache>(
+pub async fn invalidate_cached_permissions<C: PermissionCache + Sync>(
     cache: &C,
     tenant_id: &uuid::Uuid,
     user_id: &uuid::Uuid,

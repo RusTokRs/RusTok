@@ -62,7 +62,7 @@ pub fn AiChatSessionPanel(
                                     <Suspense fallback=move || view! { <div class="h-64 animate-pulse rounded-xl bg-muted"></div> }>
                                         {move || {
                                             let ui_locale = ui_locale_operator.clone();
-                                            let on_send_message = on_send_message.clone();
+                                            let on_send_message = on_send_message;
                                             session_detail.get().map(|result| match result {
                                             Ok(Some(detail)) => {
                                                 let ui_locale_form = ui_locale.clone();

@@ -722,7 +722,7 @@ async fn split_topic(
         tenant_id: Set(tenant_id),
         category_id: Set(source_topic.category_id),
         author_id: Set(source_topic.author_id),
-        status: Set(source_topic.status.clone()),
+        status: Set(source_topic.status),
         metadata: Set(source_topic.metadata.clone()),
         is_pinned: Set(false),
         is_locked: Set(source_topic.is_locked),
@@ -1974,19 +1974,19 @@ mod tests {
     fn forum_reply_status_mapping_is_explicit() {
         let now = Utc::now().fixed_offset();
         assert_eq!(
-            map_forum_reply_status_to_comment_status(reply_status::APPROVED, now).0,
+            map_forum_reply_status_to_comment_status(ReplyStatus::Approved, now).0,
             CommentStatus::Approved
         );
         assert_eq!(
-            map_forum_reply_status_to_comment_status(reply_status::PENDING, now).0,
+            map_forum_reply_status_to_comment_status(ReplyStatus::Pending, now).0,
             CommentStatus::Pending
         );
         assert_eq!(
-            map_forum_reply_status_to_comment_status(reply_status::FLAGGED, now).0,
+            map_forum_reply_status_to_comment_status(ReplyStatus::Flagged, now).0,
             CommentStatus::Spam
         );
         assert_eq!(
-            map_forum_reply_status_to_comment_status(reply_status::DELETED, now).0,
+            map_forum_reply_status_to_comment_status(ReplyStatus::Deleted, now).0,
             CommentStatus::Trash
         );
     }
@@ -1996,19 +1996,19 @@ mod tests {
         let now = Utc::now().fixed_offset();
         assert_eq!(
             map_comment_status_to_forum_reply_status(CommentStatus::Approved, None),
-            reply_status::APPROVED
+            ReplyStatus::Approved
         );
         assert_eq!(
             map_comment_status_to_forum_reply_status(CommentStatus::Spam, None),
-            reply_status::FLAGGED
+            ReplyStatus::Flagged
         );
         assert_eq!(
             map_comment_status_to_forum_reply_status(CommentStatus::Trash, None),
-            reply_status::HIDDEN
+            ReplyStatus::Hidden
         );
         assert_eq!(
             map_comment_status_to_forum_reply_status(CommentStatus::Trash, Some(now)),
-            reply_status::DELETED
+            ReplyStatus::Deleted
         );
     }
 
@@ -2472,7 +2472,7 @@ mod tests {
         assert_eq!(replies[1].content, "Second blog comment");
         assert!(replies
             .iter()
-            .all(|reply| reply.status == reply_status::PENDING));
+            .all(|reply| reply.status == ReplyStatus::Pending.as_str()));
 
         let stored_replies = forum_reply::Entity::find()
             .filter(forum_reply::Column::TopicId.eq(demoted.target_id))

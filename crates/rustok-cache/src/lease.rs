@@ -57,7 +57,7 @@ impl CacheLeaseOptions {
 }
 
 pub enum CacheLeaseOutcome {
-    Acquired(DistributedCacheLease),
+    Acquired(Box<DistributedCacheLease>),
     Contended,
 }
 
@@ -152,7 +152,7 @@ impl DistributedCacheLease {
                 self.ttl = ttl;
                 self.expires_at = expires_at;
             }
-            return Ok(extended);
+            Ok(extended)
         }
 
         #[cfg(not(feature = "redis-cache"))]
@@ -182,7 +182,7 @@ impl DistributedCacheLease {
             )
             .await?
                 == 1;
-            return Ok(released);
+            Ok(released)
         }
 
         #[cfg(not(feature = "redis-cache"))]
@@ -233,24 +233,26 @@ impl CacheService {
             )
             .await?;
 
-            return if response.is_some() {
+            if response.is_some() {
                 let expires_at = started_at
                     .checked_add(options.ttl)
                     .ok_or(CacheLeaseError::DeadlineOverflow)?;
                 if Instant::now() >= expires_at {
                     return Err(CacheLeaseError::ExpiredBeforeConfirmation);
                 }
-                Ok(CacheLeaseOutcome::Acquired(DistributedCacheLease {
-                    client,
-                    key,
-                    token,
-                    ttl: options.ttl,
-                    operation_timeout: options.operation_timeout,
-                    expires_at,
-                }))
+                Ok(CacheLeaseOutcome::Acquired(Box::new(
+                    DistributedCacheLease {
+                        client,
+                        key,
+                        token,
+                        ttl: options.ttl,
+                        operation_timeout: options.operation_timeout,
+                        expires_at,
+                    },
+                )))
             } else {
                 Ok(CacheLeaseOutcome::Contended)
-            };
+            }
         }
 
         #[cfg(not(feature = "redis-cache"))]

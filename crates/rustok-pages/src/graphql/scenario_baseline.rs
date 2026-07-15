@@ -11,7 +11,7 @@ use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::PageBuilderScenarioBaselineService;
+use crate::{PageBuilderScenarioBaselineService, SaveIfCurrentScenarioBaselineRequest};
 
 const MODULE_SLUG: &str = "pages";
 
@@ -191,15 +191,15 @@ impl PageBuilderScenarioBaselineMutation {
             })?;
         let service = PageBuilderScenarioBaselineService::new(db.clone());
         let baseline = service
-            .save_if_current(
+            .save_if_current(SaveIfCurrentScenarioBaselineRequest {
                 tenant_id,
-                page_security(&auth),
+                security: page_security(&auth),
                 page_id,
                 baseline,
-                input.expected_baseline_hash.as_deref(),
-                auth.user_id,
-                input.promotion_note.as_deref(),
-            )
+                expected_baseline_hash: input.expected_baseline_hash,
+                promoted_by: auth.user_id,
+                promotion_note: input.promotion_note,
+            })
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         GqlPageBuilderScenarioBaseline::from_baseline(page_id, baseline)

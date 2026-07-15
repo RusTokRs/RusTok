@@ -9,6 +9,8 @@ use rustok_test_utils::db::setup_test_db;
 use std::str::FromStr;
 use uuid::Uuid;
 
+#[path = "support/order_schema.rs"]
+mod order_support;
 mod support;
 
 async fn setup() -> PaymentService {
@@ -492,7 +494,7 @@ async fn list_refunds_supports_order_id_filter() {
 
     let db = rustok_test_utils::db::setup_test_db().await;
     support::ensure_payment_schema(&db).await;
-    support::ensure_order_schema(&db).await;
+    order_support::ensure_order_schema(&db).await;
     let service = PaymentService::new(db.clone());
     let order_service = rustok_order::services::OrderService::new(
         db,
@@ -656,7 +658,7 @@ async fn list_refunds_combined_order_and_collection_filters_require_intersection
 
     let db = rustok_test_utils::db::setup_test_db().await;
     support::ensure_payment_schema(&db).await;
-    support::ensure_order_schema(&db).await;
+    order_support::ensure_order_schema(&db).await;
     let service = PaymentService::new(db.clone());
     let order_service = rustok_order::services::OrderService::new(
         db,

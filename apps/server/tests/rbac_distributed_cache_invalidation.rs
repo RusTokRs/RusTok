@@ -10,8 +10,7 @@ use rustok_server::common::settings::RustokSettings;
 use rustok_server::models::_entities::{permissions, role_permissions, roles, user_roles};
 use rustok_server::models::{tenants, users};
 use rustok_server::services::rbac_cache_invalidation::{
-    start_rbac_cache_invalidation_listener, RBAC_PERMISSION_GENERATION_PREFIX,
-    RBAC_PERMISSION_INVALIDATION_CHANNEL,
+    start_rbac_cache_invalidation_listener, RBAC_PERMISSION_INVALIDATION_CHANNEL,
 };
 use rustok_server::services::rbac_service::RbacService;
 use rustok_server::services::server_runtime_context::ServerRuntimeContext;
@@ -60,12 +59,7 @@ async fn insert_user(db: &sea_orm::DatabaseConnection, tenant_id: Uuid, email: &
     user_id
 }
 
-async fn publish_generation(cache: &CacheService, tenant_id: Uuid, user_id: Uuid) -> u64 {
-    let generation = cache
-        .bump_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX)
-        .await
-        .expect("bump RBAC generation")
-        .generation;
+async fn publish_generation(cache: &CacheService, tenant_id: Uuid, user_id: Uuid, generation: u64) {
     let message = VersionedCacheInvalidation::new(
         RBAC_PERMISSION_INVALIDATION_CHANNEL,
         format!("{tenant_id}:{user_id}"),
@@ -77,7 +71,6 @@ async fn publish_generation(cache: &CacheService, tenant_id: Uuid, user_id: Uuid
     .expect("encode RBAC invalidation");
     let outcome = cache.publish_invalidation(message).await;
     assert!(outcome.local_subscribers > 0);
-    generation
 }
 
 async fn wait_for_permission(
@@ -146,7 +139,7 @@ async fn local_generation_delivery_invalidates_target_and_gap_clears_all_snapsho
         .await
         .expect("remove first user's admin relation without cache invalidation");
 
-    publish_generation(&cache, tenant_id, first_user).await;
+    publish_generation(&cache, tenant_id, first_user, 1).await;
     wait_for_permission(&db, tenant_id, first_user, false).await;
     assert!(RbacService::has_permission(
         &db,
@@ -172,10 +165,7 @@ async fn local_generation_delivery_invalidates_target_and_gap_clears_all_snapsho
         .await
         .expect("remove admin permission link without cache invalidation");
 
-    cache
-        .bump_cache_backend_generation(RBAC_PERMISSION_GENERATION_PREFIX)
-        .await
-        .expect("create intentionally skipped RBAC generation");
-    publish_generation(&cache, tenant_id, second_user).await;
+    publish_generation(&cache, tenant_id, first_user, 2).await;
+    publish_generation(&cache, tenant_id, second_user, 3).await;
     wait_for_permission(&db, tenant_id, second_user, false).await;
 }

@@ -230,7 +230,7 @@ pub fn UserDetails() -> impl IntoView {
                         </Show>
                         <div class="flex gap-3">
                             <Button
-                                on_click=confirm_delete.clone()
+                                on_click=confirm_delete
                                 disabled=Signal::derive(move || delete_form_state.get().is_submitting)
                                 class="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             >

@@ -17,6 +17,16 @@ pub struct TenantAdminInfoCards {
     pub status_value: String,
 }
 
+pub struct TenantAdminInfoCardCopy {
+    pub tenant_label: String,
+    pub name_label: String,
+    pub domain_label: String,
+    pub status_label: String,
+    pub not_available: String,
+    pub active: String,
+    pub inactive: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TenantAdminModulesCopy {
     pub title: String,
@@ -55,28 +65,22 @@ pub fn shell_copy(
 
 pub fn info_cards(
     bootstrap: &TenantAdminBootstrap,
-    tenant_label: impl Into<String>,
-    name_label: impl Into<String>,
-    domain_label: impl Into<String>,
-    status_label: impl Into<String>,
-    not_available: impl Into<String>,
-    active: impl Into<String>,
-    inactive: impl Into<String>,
+    copy: TenantAdminInfoCardCopy,
 ) -> TenantAdminInfoCards {
     TenantAdminInfoCards {
-        tenant_label: tenant_label.into(),
-        name_label: name_label.into(),
-        domain_label: domain_label.into(),
-        status_label: status_label.into(),
+        tenant_label: copy.tenant_label,
+        name_label: copy.name_label,
+        domain_label: copy.domain_label,
+        status_label: copy.status_label,
         domain_value: bootstrap
             .tenant
             .domain
             .clone()
-            .unwrap_or_else(|| not_available.into()),
+            .unwrap_or(copy.not_available),
         status_value: if bootstrap.tenant.is_active {
-            active.into()
+            copy.active
         } else {
-            inactive.into()
+            copy.inactive
         },
     }
 }

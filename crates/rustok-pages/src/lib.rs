@@ -56,7 +56,10 @@ pub use dto::*;
 pub use entities::{Block, Menu, Page, PageBuilderScenarioBaseline};
 pub use error::{PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
-pub use services::{BlockService, MenuService, PageBuilderScenarioBaselineService, PageService};
+pub use services::{
+    BlockService, MenuService, PageBuilderScenarioBaselineService, PageService,
+    SaveIfCurrentScenarioBaselineRequest,
+};
 
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};

@@ -79,13 +79,15 @@ pub fn TenantAdmin() -> impl IntoView {
                         Ok(bootstrap) => {
                             let info = core::info_cards(
                                 &bootstrap,
-                                t(locale.as_deref(), "tenant.info.tenant", "Tenant"),
-                                t(locale.as_deref(), "tenant.info.name", "Name"),
-                                t(locale.as_deref(), "tenant.info.domain", "Domain"),
-                                t(locale.as_deref(), "tenant.info.status", "Status"),
-                                t(locale.as_deref(), "tenant.value.notAvailable", "n/a"),
-                                t(locale.as_deref(), "tenant.value.active", "active"),
-                                t(locale.as_deref(), "tenant.value.inactive", "inactive"),
+                                core::TenantAdminInfoCardCopy {
+                                    tenant_label: t(locale.as_deref(), "tenant.info.tenant", "Tenant"),
+                                    name_label: t(locale.as_deref(), "tenant.info.name", "Name"),
+                                    domain_label: t(locale.as_deref(), "tenant.info.domain", "Domain"),
+                                    status_label: t(locale.as_deref(), "tenant.info.status", "Status"),
+                                    not_available: t(locale.as_deref(), "tenant.value.notAvailable", "n/a"),
+                                    active: t(locale.as_deref(), "tenant.value.active", "active"),
+                                    inactive: t(locale.as_deref(), "tenant.value.inactive", "inactive"),
+                                },
                             );
                             view! {
                             <section class="grid gap-4 lg:grid-cols-4">

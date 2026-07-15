@@ -802,6 +802,115 @@ fn StatCard(title: String, value: String, hint: String) -> impl IntoView {
     }
 }
 
+fn inventory_translation_for_locale<'a>(
+    translations: &'a [crate::model::InventoryProductTranslation],
+    requested_locale: Option<&str>,
+) -> Option<&'a crate::model::InventoryProductTranslation> {
+    requested_locale
+        .and_then(|requested_locale| {
+            translations
+                .iter()
+                .find(|translation| locale_tags_match(&translation.locale, requested_locale))
+        })
+        .or_else(|| translations.first())
+}
+
+fn localized_product_status(locale: Option<&str>, status: &str) -> String {
+    match status {
+        "ACTIVE" => t(locale, "inventory.status.active", "Active"),
+        "ARCHIVED" => t(locale, "inventory.status.archived", "Archived"),
+        _ => t(locale, "inventory.status.draft", "Draft"),
+    }
+}
+
+fn format_product_meta(locale: Option<&str>, product: &InventoryProductListItem) -> String {
+    let vendor = product
+        .vendor
+        .clone()
+        .unwrap_or_else(|| t(locale, "inventory.common.notSet", "not set"));
+    let product_type = product
+        .product_type
+        .clone()
+        .unwrap_or_else(|| t(locale, "inventory.common.notSet", "not set"));
+    format!(
+        "handle: {} | vendor: {} | type: {}",
+        product.handle, vendor, product_type
+    )
+}
+
+fn format_variant_identity(locale: Option<&str>, variant: &InventoryVariant) -> String {
+    let sku = variant
+        .sku
+        .clone()
+        .unwrap_or_else(|| t(locale, "inventory.common.notSet", "not set"));
+    let barcode = variant
+        .barcode
+        .clone()
+        .unwrap_or_else(|| t(locale, "inventory.common.notSet", "not set"));
+    format!("sku: {sku} | barcode: {barcode}")
+}
+
+fn format_variant_price(locale: Option<&str>, variant: &InventoryVariant) -> String {
+    if variant.prices.is_empty() {
+        t(locale, "inventory.common.noPricing", "no pricing")
+    } else {
+        variant
+            .prices
+            .iter()
+            .map(|price| format!("{} {}", price.currency_code, price.amount))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+fn inventory_health_label(locale: Option<&str>, variant: &InventoryVariant) -> String {
+    inventory_health_label_for_state(locale, inventory_health_state(variant))
+}
+
+fn inventory_health_badge(variant: &InventoryVariant) -> &'static str {
+    inventory_health_badge_for_state(inventory_health_state(variant))
+}
+
+fn inventory_health_label_for_state(locale: Option<&str>, state: InventoryHealthState) -> String {
+    match state {
+        InventoryHealthState::Backorder => t(locale, "inventory.health.backorder", "Backorder"),
+        InventoryHealthState::OutOfStock => {
+            t(locale, "inventory.health.outOfStock", "Out of stock")
+        }
+        InventoryHealthState::LowStock => t(locale, "inventory.health.lowStock", "Low stock"),
+        InventoryHealthState::Healthy => t(locale, "inventory.health.healthy", "Healthy"),
+    }
+}
+
+fn inventory_health_badge_for_state(state: InventoryHealthState) -> &'static str {
+    match state {
+        InventoryHealthState::Backorder => "border-sky-200 bg-sky-50 text-sky-700",
+        InventoryHealthState::OutOfStock => "border-rose-200 bg-rose-50 text-rose-700",
+        InventoryHealthState::LowStock => "border-amber-200 bg-amber-50 text-amber-700",
+        InventoryHealthState::Healthy => "border-emerald-200 bg-emerald-50 text-emerald-700",
+    }
+}
+
+fn bool_label(locale: Option<&str>, value: bool) -> String {
+    if value {
+        t(locale, "inventory.bool.yes", "yes")
+    } else {
+        t(locale, "inventory.bool.no", "no")
+    }
+}
+
+fn text_or_none(value: String) -> Option<String> {
+    normalize_ui_text(value.as_str())
+}
+
+fn status_badge(status: &str) -> &'static str {
+    match status {
+        "ACTIVE" => "border-emerald-200 bg-emerald-50 text-emerald-700",
+        "ARCHIVED" => "border-slate-200 bg-slate-100 text-slate-700",
+        _ => "border-amber-200 bg-amber-50 text-amber-700",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1149,114 +1258,5 @@ mod tests {
                 inventory_health_badge(&variant)
             );
         }
-    }
-}
-
-fn inventory_translation_for_locale<'a>(
-    translations: &'a [crate::model::InventoryProductTranslation],
-    requested_locale: Option<&str>,
-) -> Option<&'a crate::model::InventoryProductTranslation> {
-    requested_locale
-        .and_then(|requested_locale| {
-            translations
-                .iter()
-                .find(|translation| locale_tags_match(&translation.locale, requested_locale))
-        })
-        .or_else(|| translations.first())
-}
-
-fn localized_product_status(locale: Option<&str>, status: &str) -> String {
-    match status {
-        "ACTIVE" => t(locale, "inventory.status.active", "Active"),
-        "ARCHIVED" => t(locale, "inventory.status.archived", "Archived"),
-        _ => t(locale, "inventory.status.draft", "Draft"),
-    }
-}
-
-fn format_product_meta(locale: Option<&str>, product: &InventoryProductListItem) -> String {
-    let vendor = product
-        .vendor
-        .clone()
-        .unwrap_or_else(|| t(locale, "inventory.common.notSet", "not set"));
-    let product_type = product
-        .product_type
-        .clone()
-        .unwrap_or_else(|| t(locale, "inventory.common.notSet", "not set"));
-    format!(
-        "handle: {} | vendor: {} | type: {}",
-        product.handle, vendor, product_type
-    )
-}
-
-fn format_variant_identity(locale: Option<&str>, variant: &InventoryVariant) -> String {
-    let sku = variant
-        .sku
-        .clone()
-        .unwrap_or_else(|| t(locale, "inventory.common.notSet", "not set"));
-    let barcode = variant
-        .barcode
-        .clone()
-        .unwrap_or_else(|| t(locale, "inventory.common.notSet", "not set"));
-    format!("sku: {sku} | barcode: {barcode}")
-}
-
-fn format_variant_price(locale: Option<&str>, variant: &InventoryVariant) -> String {
-    if variant.prices.is_empty() {
-        t(locale, "inventory.common.noPricing", "no pricing")
-    } else {
-        variant
-            .prices
-            .iter()
-            .map(|price| format!("{} {}", price.currency_code, price.amount))
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-}
-
-fn inventory_health_label(locale: Option<&str>, variant: &InventoryVariant) -> String {
-    inventory_health_label_for_state(locale, inventory_health_state(variant))
-}
-
-fn inventory_health_badge(variant: &InventoryVariant) -> &'static str {
-    inventory_health_badge_for_state(inventory_health_state(variant))
-}
-
-fn inventory_health_label_for_state(locale: Option<&str>, state: InventoryHealthState) -> String {
-    match state {
-        InventoryHealthState::Backorder => t(locale, "inventory.health.backorder", "Backorder"),
-        InventoryHealthState::OutOfStock => {
-            t(locale, "inventory.health.outOfStock", "Out of stock")
-        }
-        InventoryHealthState::LowStock => t(locale, "inventory.health.lowStock", "Low stock"),
-        InventoryHealthState::Healthy => t(locale, "inventory.health.healthy", "Healthy"),
-    }
-}
-
-fn inventory_health_badge_for_state(state: InventoryHealthState) -> &'static str {
-    match state {
-        InventoryHealthState::Backorder => "border-sky-200 bg-sky-50 text-sky-700",
-        InventoryHealthState::OutOfStock => "border-rose-200 bg-rose-50 text-rose-700",
-        InventoryHealthState::LowStock => "border-amber-200 bg-amber-50 text-amber-700",
-        InventoryHealthState::Healthy => "border-emerald-200 bg-emerald-50 text-emerald-700",
-    }
-}
-
-fn bool_label(locale: Option<&str>, value: bool) -> String {
-    if value {
-        t(locale, "inventory.bool.yes", "yes")
-    } else {
-        t(locale, "inventory.bool.no", "no")
-    }
-}
-
-fn text_or_none(value: String) -> Option<String> {
-    normalize_ui_text(value.as_str())
-}
-
-fn status_badge(status: &str) -> &'static str {
-    match status {
-        "ACTIVE" => "border-emerald-200 bg-emerald-50 text-emerald-700",
-        "ARCHIVED" => "border-slate-200 bg-slate-100 text-slate-700",
-        _ => "border-amber-200 bg-amber-50 text-amber-700",
     }
 }

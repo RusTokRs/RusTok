@@ -131,6 +131,7 @@ leptos_axum.workspace = true
 axum-extra = { version = "0.12", features = ["typed-header"] }
 sea-orm.workspace = true
 async-graphql = { workspace = true, features = ["dataloader"] }
+async-graphql-value.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true

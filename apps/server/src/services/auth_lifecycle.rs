@@ -203,6 +203,30 @@ impl AuthLifecycleService {
         Ok(user)
     }
 
+    /// Deactivate a tenant user without erasing records referenced by audits,
+    /// orders, sessions, or permissions. Session revocation is coordinated by
+    /// the administrative mutation in the same transaction.
+    pub(crate) async fn deactivate_user_in_tx<C>(
+        db: &C,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+    ) -> std::result::Result<(), AuthLifecycleError>
+    where
+        C: ConnectionTrait,
+    {
+        let user = users::Entity::find_by_id(user_id)
+            .filter(users::Column::TenantId.eq(tenant_id))
+            .one(db)
+            .await
+            .map_err(AuthLifecycleError::from)?
+            .ok_or(AuthLifecycleError::UserNotFound)?;
+
+        let mut active: users::ActiveModel = user.into();
+        active.status = Set(rustok_core::UserStatus::Inactive);
+        active.update(db).await.map_err(AuthLifecycleError::from)?;
+        Ok(())
+    }
+
     pub async fn update_profile_runtime(
         ctx: &ServerRuntimeContext,
         tenant_id: uuid::Uuid,
@@ -692,7 +716,7 @@ mod tests {
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
         ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-        QuerySelect, Set,
+        QuerySelect, Set, TransactionTrait,
     };
     use serial_test::serial;
     use std::sync::atomic::Ordering;
@@ -926,6 +950,39 @@ mod tests {
             !resolved_permissions.contains(&rustok_api::Permission::USERS_MANAGE),
             "manager role should not get admin-only permissions"
         );
+    }
+
+    #[tokio::test]
+    async fn deactivating_user_preserves_record_and_marks_it_inactive() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Deactivation tenant", "deactivation-tenant")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+        let user = AuthLifecycleService::create_user_db(
+            &db,
+            tenant.id,
+            "deactivate@example.com",
+            "Password123!",
+            None,
+            rustok_core::UserRole::Customer,
+            None,
+        )
+        .await
+        .expect("failed to create user");
+
+        let tx = db.begin().await.expect("failed to begin transaction");
+        AuthLifecycleService::deactivate_user_in_tx(&tx, tenant.id, user.id)
+            .await
+            .expect("deactivation should succeed");
+        tx.commit().await.expect("failed to commit deactivation");
+
+        let persisted = users::Entity::find_by_id(user.id)
+            .one(&db)
+            .await
+            .expect("failed to load deactivated user")
+            .expect("deactivated user record should remain");
+        assert_eq!(persisted.status, UserStatus::Inactive);
     }
 
     #[tokio::test]

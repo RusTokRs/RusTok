@@ -188,7 +188,7 @@ pub fn DynamicRuntimePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                                 stable_suffix(&condition_component_id)
                                             ))
                                     });
-                                    condition_apply_runtime.dispatch(UiIntent::Execute(
+                                    condition_apply_runtime.dispatch(UiIntent::execute(
                                         EditorCommand::Dynamic {
                                             command: DynamicCommand::UpsertCondition {
                                                 condition: RuntimeCondition {
@@ -282,7 +282,7 @@ pub fn DynamicRuntimePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                                 stable_suffix(&repeater_component_id)
                                             ))
                                     });
-                                    repeater_apply_runtime.dispatch(UiIntent::Execute(
+                                    repeater_apply_runtime.dispatch(UiIntent::execute(
                                         EditorCommand::Dynamic {
                                             command: DynamicCommand::UpsertRepeater {
                                                 repeater: RuntimeRepeater {
@@ -363,7 +363,7 @@ fn DefinitionList(
                         <button
                             type="button"
                             class="shrink-0 text-destructive"
-                            on:click=move |_| remove_runtime.dispatch(UiIntent::Execute(
+                            on:click=move |_| remove_runtime.dispatch(UiIntent::execute(
                                 EditorCommand::Dynamic {
                                     command: DynamicCommand::RemoveCondition {
                                         condition_id: id.clone(),
@@ -384,7 +384,7 @@ fn DefinitionList(
                         <button
                             type="button"
                             class="shrink-0 text-destructive"
-                            on:click=move |_| remove_runtime.dispatch(UiIntent::Execute(
+                            on:click=move |_| remove_runtime.dispatch(UiIntent::execute(
                                 EditorCommand::Dynamic {
                                     command: DynamicCommand::RemoveRepeater {
                                         repeater_id: id.clone(),

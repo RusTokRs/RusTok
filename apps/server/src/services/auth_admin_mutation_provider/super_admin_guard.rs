@@ -94,7 +94,7 @@ where
                 roles::Entity::update_many()
                     .col_expr(
                         roles::Column::UpdatedAt,
-                        Expr::col(roles::Column::UpdatedAt),
+                        Expr::col(roles::Column::UpdatedAt).into(),
                     )
                     .filter(roles::Column::Id.eq(role.id))
                     .exec(db)

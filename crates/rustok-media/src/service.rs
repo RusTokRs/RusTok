@@ -311,138 +311,6 @@ fn normalize_original_name(value: &str, extension: &str) -> String {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::io;
-
-    use bytes::Bytes;
-    use uuid::Uuid;
-
-    use super::{
-        classify_cleanup_probe, normalize_original_name, validate_upload_policy, verify_media_type,
-        MediaStorageCleanupDecision, MediaStorageCleanupReport,
-    };
-    use crate::{
-        dto::{UploadInput, DEFAULT_MAX_SIZE},
-        error::MediaError,
-    };
-    use rustok_storage::StorageError;
-
-    fn upload_input(content_type: &str, data: Vec<u8>) -> UploadInput {
-        UploadInput {
-            tenant_id: Uuid::new_v4(),
-            uploaded_by: None,
-            original_name: "asset.bin".to_string(),
-            content_type: content_type.to_string(),
-            data: Bytes::from(data),
-        }
-    }
-
-    #[test]
-    fn cleanup_report_helpers_expose_operability_state() {
-        let empty = MediaStorageCleanupReport::default();
-        assert!(empty.is_empty());
-        assert!(empty.completed_without_retry());
-        assert!(!empty.should_retry());
-        assert_eq!(empty.changed_records(), 0);
-
-        let report = MediaStorageCleanupReport {
-            inspected: 3,
-            deleted_records: 1,
-            kept_records: 1,
-            retry_later: 1,
-        };
-
-        assert!(!report.is_empty());
-        assert_eq!(report.changed_records(), 1);
-        assert!(!report.completed_without_retry());
-        assert!(report.should_retry());
-    }
-
-    #[test]
-    fn validate_upload_policy_accepts_supported_signature() {
-        let input = upload_input("image/png", b"\x89PNG\r\n\x1a\nrest".to_vec());
-        let (size, media_type) = validate_upload_policy(&input).expect("valid PNG");
-        assert_eq!(size, input.data.len() as u64);
-        assert_eq!(media_type.mime_type, "image/png");
-        assert_eq!(media_type.extension, "png");
-    }
-
-    #[test]
-    fn validate_upload_policy_rejects_unsupported_or_spoofed_content() {
-        let html = upload_input("image/png", b"<html><script>alert(1)</script>".to_vec());
-        assert!(matches!(
-            validate_upload_policy(&html),
-            Err(MediaError::InvalidMediaContent { .. })
-        ));
-
-        let svg = upload_input("image/svg+xml", b"<svg onload='alert(1)'>".to_vec());
-        assert!(matches!(
-            validate_upload_policy(&svg),
-            Err(MediaError::UnsupportedMimeType(_))
-        ));
-    }
-
-    #[test]
-    fn validate_upload_policy_rejects_payloads_over_limit() {
-        let input = upload_input("application/pdf", vec![0_u8; DEFAULT_MAX_SIZE as usize + 1]);
-        let error = validate_upload_policy(&input).expect_err("oversized upload must be rejected");
-        assert!(matches!(
-            error,
-            MediaError::FileTooLarge { size, max }
-                if size == DEFAULT_MAX_SIZE + 1 && max == DEFAULT_MAX_SIZE
-        ));
-    }
-
-    #[test]
-    fn content_type_parameters_are_normalized() {
-        let media_type = verify_media_type("application/pdf; charset=binary", b"%PDF-1.7\n")
-            .expect("PDF signature");
-        assert_eq!(media_type.mime_type, "application/pdf");
-    }
-
-    #[test]
-    fn uploaded_display_name_cannot_preserve_path_components() {
-        assert_eq!(normalize_original_name("../../evil.png", "png"), "evil.png");
-        assert_eq!(
-            normalize_original_name("..\\..\\evil.png", "png"),
-            "evil.png"
-        );
-        assert_eq!(normalize_original_name("...", "jpg"), "upload.jpg");
-    }
-
-    #[test]
-    fn classify_cleanup_probe_deletes_only_missing_or_invalid_paths() {
-        assert_eq!(
-            classify_cleanup_probe(&Err(StorageError::NotFound("missing".to_string()))),
-            MediaStorageCleanupDecision::DeleteRecord
-        );
-        assert_eq!(
-            classify_cleanup_probe(&Err(StorageError::InvalidPath("../bad".to_string()))),
-            MediaStorageCleanupDecision::DeleteRecord
-        );
-    }
-
-    #[test]
-    fn classify_cleanup_probe_keeps_readable_objects_and_retries_transient_errors() {
-        assert_eq!(
-            classify_cleanup_probe(&Ok(Bytes::from_static(b"object"))),
-            MediaStorageCleanupDecision::KeepRecord
-        );
-        assert_eq!(
-            classify_cleanup_probe(&Err(StorageError::Backend("timeout".to_string()))),
-            MediaStorageCleanupDecision::RetryLater
-        );
-        assert_eq!(
-            classify_cleanup_probe(&Err(StorageError::Io(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "timeout",
-            )))),
-            MediaStorageCleanupDecision::RetryLater
-        );
-    }
-}
-
 impl MediaService {
     pub fn new(db: DatabaseConnection, storage: StorageService) -> Self {
         Self { db, storage }
@@ -720,5 +588,137 @@ impl MediaService {
             metadata: model.metadata,
             created_at: model.created_at.with_timezone(&Utc),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use bytes::Bytes;
+    use uuid::Uuid;
+
+    use super::{
+        classify_cleanup_probe, normalize_original_name, validate_upload_policy, verify_media_type,
+        MediaStorageCleanupDecision, MediaStorageCleanupReport,
+    };
+    use crate::{
+        dto::{UploadInput, DEFAULT_MAX_SIZE},
+        error::MediaError,
+    };
+    use rustok_storage::StorageError;
+
+    fn upload_input(content_type: &str, data: Vec<u8>) -> UploadInput {
+        UploadInput {
+            tenant_id: Uuid::new_v4(),
+            uploaded_by: None,
+            original_name: "asset.bin".to_string(),
+            content_type: content_type.to_string(),
+            data: Bytes::from(data),
+        }
+    }
+
+    #[test]
+    fn cleanup_report_helpers_expose_operability_state() {
+        let empty = MediaStorageCleanupReport::default();
+        assert!(empty.is_empty());
+        assert!(empty.completed_without_retry());
+        assert!(!empty.should_retry());
+        assert_eq!(empty.changed_records(), 0);
+
+        let report = MediaStorageCleanupReport {
+            inspected: 3,
+            deleted_records: 1,
+            kept_records: 1,
+            retry_later: 1,
+        };
+
+        assert!(!report.is_empty());
+        assert_eq!(report.changed_records(), 1);
+        assert!(!report.completed_without_retry());
+        assert!(report.should_retry());
+    }
+
+    #[test]
+    fn validate_upload_policy_accepts_supported_signature() {
+        let input = upload_input("image/png", b"\x89PNG\r\n\x1a\nrest".to_vec());
+        let (size, media_type) = validate_upload_policy(&input).expect("valid PNG");
+        assert_eq!(size, input.data.len() as u64);
+        assert_eq!(media_type.mime_type, "image/png");
+        assert_eq!(media_type.extension, "png");
+    }
+
+    #[test]
+    fn validate_upload_policy_rejects_unsupported_or_spoofed_content() {
+        let html = upload_input("image/png", b"<html><script>alert(1)</script>".to_vec());
+        assert!(matches!(
+            validate_upload_policy(&html),
+            Err(MediaError::InvalidMediaContent { .. })
+        ));
+
+        let svg = upload_input("image/svg+xml", b"<svg onload='alert(1)'>".to_vec());
+        assert!(matches!(
+            validate_upload_policy(&svg),
+            Err(MediaError::UnsupportedMimeType(_))
+        ));
+    }
+
+    #[test]
+    fn validate_upload_policy_rejects_payloads_over_limit() {
+        let input = upload_input("application/pdf", vec![0_u8; DEFAULT_MAX_SIZE as usize + 1]);
+        let error = validate_upload_policy(&input).expect_err("oversized upload must be rejected");
+        assert!(matches!(
+            error,
+            MediaError::FileTooLarge { size, max }
+                if size == DEFAULT_MAX_SIZE + 1 && max == DEFAULT_MAX_SIZE
+        ));
+    }
+
+    #[test]
+    fn content_type_parameters_are_normalized() {
+        let media_type = verify_media_type("application/pdf; charset=binary", b"%PDF-1.7\n")
+            .expect("PDF signature");
+        assert_eq!(media_type.mime_type, "application/pdf");
+    }
+
+    #[test]
+    fn uploaded_display_name_cannot_preserve_path_components() {
+        assert_eq!(normalize_original_name("../../evil.png", "png"), "evil.png");
+        assert_eq!(
+            normalize_original_name("..\\..\\evil.png", "png"),
+            "evil.png"
+        );
+        assert_eq!(normalize_original_name("...", "jpg"), "upload.jpg");
+    }
+
+    #[test]
+    fn classify_cleanup_probe_deletes_only_missing_or_invalid_paths() {
+        assert_eq!(
+            classify_cleanup_probe(&Err(StorageError::NotFound("missing".to_string()))),
+            MediaStorageCleanupDecision::DeleteRecord
+        );
+        assert_eq!(
+            classify_cleanup_probe(&Err(StorageError::InvalidPath("../bad".to_string()))),
+            MediaStorageCleanupDecision::DeleteRecord
+        );
+    }
+
+    #[test]
+    fn classify_cleanup_probe_keeps_readable_objects_and_retries_transient_errors() {
+        assert_eq!(
+            classify_cleanup_probe(&Ok(Bytes::from_static(b"object"))),
+            MediaStorageCleanupDecision::KeepRecord
+        );
+        assert_eq!(
+            classify_cleanup_probe(&Err(StorageError::Backend("timeout".to_string()))),
+            MediaStorageCleanupDecision::RetryLater
+        );
+        assert_eq!(
+            classify_cleanup_probe(&Err(StorageError::Io(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "timeout",
+            )))),
+            MediaStorageCleanupDecision::RetryLater
+        );
     }
 }

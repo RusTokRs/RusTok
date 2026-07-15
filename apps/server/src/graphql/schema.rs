@@ -165,6 +165,10 @@ pub fn build_schema(
         tokio::spawn,
     ));
 
+    tracing::debug!(
+        factories = ?schema_codegen::MODULE_GRAPHQL_RUNTIME_DATA_FACTORIES,
+        "Attaching manifest-declared GraphQL runtime data"
+    );
     let builder = schema_codegen::attach_module_graphql_data(builder, &graphql_runtime_inputs)
         .expect("manifest GraphQL runtime-data factory must materialize");
     let builder = builder

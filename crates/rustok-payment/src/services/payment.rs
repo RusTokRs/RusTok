@@ -32,6 +32,17 @@ pub struct PaymentService {
     db: DatabaseConnection,
 }
 
+struct CartCollectionRecovery {
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    order_id: Option<Uuid>,
+    customer_id: Option<Uuid>,
+    currency_code: String,
+    amount: Decimal,
+    metadata: serde_json::Value,
+    conflict: sea_orm::DbErr,
+}
+
 impl PaymentService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
@@ -88,16 +99,16 @@ impl PaymentService {
         match insert {
             Ok(_) => self.get_collection(tenant_id, collection_id).await,
             Err(error) if cart_id.is_some() && is_unique_constraint(&error) => {
-                self.recover_active_cart_collection(
+                self.recover_active_cart_collection(CartCollectionRecovery {
                     tenant_id,
-                    cart_id.expect("cart_id was checked before race recovery"),
+                    cart_id: cart_id.expect("cart_id was checked before race recovery"),
                     order_id,
                     customer_id,
-                    currency_code.as_str(),
+                    currency_code,
                     amount,
                     metadata,
-                    error,
-                )
+                    conflict: error,
+                })
                 .await
             }
             Err(error) => Err(error.into()),
@@ -106,15 +117,18 @@ impl PaymentService {
 
     async fn recover_active_cart_collection(
         &self,
-        tenant_id: Uuid,
-        cart_id: Uuid,
-        order_id: Option<Uuid>,
-        customer_id: Option<Uuid>,
-        currency_code: &str,
-        amount: Decimal,
-        metadata: serde_json::Value,
-        conflict: sea_orm::DbErr,
+        recovery: CartCollectionRecovery,
     ) -> PaymentResult<PaymentCollectionResponse> {
+        let CartCollectionRecovery {
+            tenant_id,
+            cart_id,
+            order_id,
+            customer_id,
+            currency_code,
+            amount,
+            metadata,
+            conflict,
+        } = recovery;
         let Some(existing) = self
             .find_reusable_collection_by_cart(tenant_id, cart_id)
             .await?
@@ -122,7 +136,7 @@ impl PaymentService {
             return Err(conflict.into());
         };
 
-        validate_reusable_collection(&existing, cart_id, customer_id, currency_code, amount)?;
+        validate_reusable_collection(&existing, cart_id, customer_id, &currency_code, amount)?;
 
         match order_id {
             Some(order_id) => {

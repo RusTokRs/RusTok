@@ -610,7 +610,7 @@ fn required<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{require_grant, validate_requested_scopes};
+    use super::{require_grant, validate_requested_scopes, REFRESH_TOKEN_GRANT};
     use crate::models::oauth_apps;
     use sea_orm::prelude::DateTimeWithTimeZone;
     use uuid::Uuid;

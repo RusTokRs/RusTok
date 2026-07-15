@@ -972,13 +972,15 @@ pub fn PagesAdmin() -> impl IntoView {
                                         );
                                         let banner = core::issue_banner_view(
                                             &issue,
-                                            validation_issue_label.as_str(),
-                                            sanitize_issue_label.as_str(),
-                                            runtime_issue_label.as_str(),
-                                            validation_issue_guidance.as_str(),
-                                            sanitize_issue_guidance.as_str(),
-                                            runtime_issue_guidance.as_str(),
-                                            feature_disabled_issue_guidance.as_str(),
+                                            core::IssueBannerCopy {
+                                                validation_label: validation_issue_label.as_str(),
+                                                sanitization_label: sanitize_issue_label.as_str(),
+                                                runtime_label: runtime_issue_label.as_str(),
+                                                validation_guidance: validation_issue_guidance.as_str(),
+                                                sanitization_guidance: sanitize_issue_guidance.as_str(),
+                                                runtime_guidance: runtime_issue_guidance.as_str(),
+                                                feature_disabled_guidance: feature_disabled_issue_guidance.as_str(),
+                                            },
                                         );
 
                                         view! {
@@ -1142,12 +1144,14 @@ fn PagesTable(
                                     is_editing,
                                     is_published,
                                     action_state,
-                                    "...".to_string(),
-                                    t(locale.as_deref(), "pages.table.editing", "Editing"),
-                                    t(locale.as_deref(), "pages.table.edit", "Edit"),
-                                    t(locale.as_deref(), "pages.table.unpublish", "Unpublish"),
-                                    t(locale.as_deref(), "pages.table.publish", "Publish"),
-                                    t(locale.as_deref(), "pages.table.delete", "Delete"),
+                                    core::AdminPageRowActionCopy {
+                                        busy: "...".to_string(),
+                                        editing: t(locale.as_deref(), "pages.table.editing", "Editing"),
+                                        edit: t(locale.as_deref(), "pages.table.edit", "Edit"),
+                                        unpublish: t(locale.as_deref(), "pages.table.unpublish", "Unpublish"),
+                                        publish: t(locale.as_deref(), "pages.table.publish", "Publish"),
+                                        delete: t(locale.as_deref(), "pages.table.delete", "Delete"),
+                                    },
                                 );
 
                                 view! {

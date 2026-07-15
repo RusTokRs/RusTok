@@ -544,7 +544,7 @@ mod tests {
     };
     use crate::common::settings::{BuildRuntimeSettings, RustokSettings};
     use crate::services::server_runtime_context::ServerRuntimeContext;
-    use rustok_core::events::MemoryTransport;
+    use rustok_core::events::{EventBus, MemoryTransport};
     use rustok_outbox::{OutboxRelay, OutboxTransport};
     use rustok_test_utils::setup_test_db;
     use std::{sync::Arc, time::Duration};
@@ -615,6 +615,7 @@ mod tests {
         };
         let runtime = Arc::new(EventRuntime {
             transport: Arc::new(OutboxTransport::new(db.clone())),
+            listener_bus: EventBus::new(),
             relay_config: Some(relay_config),
             channel_capacity: 128,
             relay_fallback_active: false,
@@ -649,6 +650,7 @@ mod tests {
         let db = setup_test_db().await;
         let runtime = Arc::new(EventRuntime {
             transport: Arc::new(OutboxTransport::new(db.clone())),
+            listener_bus: EventBus::new(),
             relay_config: None,
             channel_capacity: 128,
             relay_fallback_active: false,
