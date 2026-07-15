@@ -33,6 +33,7 @@ The source contract now includes:
 - versioned invalidation payloads and generation-gap detection;
 - fail-safe full invalidation of field-definition cache state after event-consumer lag;
 - byte-weighted capacity in active field-definition, tenant, channel, locale, RBAC and SEO caches;
+- bounded, hashed and single-flight registry marketplace list and module-detail caches;
 - synchronized crate and architecture documentation.
 
 Redis pub/sub remains a best-effort at-most-once fast path. The capability can detect gaps
@@ -125,6 +126,14 @@ generation, but the transactional outbox/stream source remains domain/platform w
     - all active instrumentation and weighted wrappers delegate CAS;
     - SWR publishes through CAS and treats a mismatch as an authoritative newer write.
 
+12. **Registry marketplace host cache**
+    - catalog lists use byte-weighted Moka capacity and bounded SHA-256 cache identities;
+    - catalog misses are coalesced with `try_get_with` and share a global fetch semaphore;
+    - response bodies are streamed with a hard byte ceiling before JSON parsing;
+    - module-detail lookups use a separate byte-weighted, hashed and single-flight cache;
+    - missing detail entries use a short independently configurable negative TTL;
+    - the public wrapper preserves the previously verified catalog implementation byte-for-byte.
+
 ## Verification in progress
 
 Atomic CAS source changes were merged through PR `#1713`. The focused hosted `Cache hardening`
@@ -136,28 +145,26 @@ workflow is still the source of truth for compiled and live-service evidence. Th
   isolated Redis 7 service, including binary-safe CAS applied/mismatch behavior.
 
 Do not mark the atomic CAS phase compiled/live verified until those jobs complete successfully.
+The marketplace detail-cache wrapper also requires the hosted server compile and architecture test
+before it can be marked operationally verified.
 
 ## Remaining work
 
-1. **Harden the registry marketplace host cache.** Replace count-only capacity and raw URL/query
-   keys with a byte-weighted cache, bounded hashed identity and coalesced remote fetches. Keep this
-   as a dedicated change because `marketplace_catalog.rs` is large and concurrently edited.
-
-2. **Complete host adoption.** Continue migrating correctness-sensitive caches to canonical keys,
+1. **Complete host adoption.** Continue migrating correctness-sensitive caches to canonical keys,
    envelopes, explicit load/negative policy and shared generations. Tenant is the reference path;
    remaining callers should not silently accept incompatible payloads or process-local-only
    invalidation.
 
-3. **Connect durable recoverable invalidation.** Supply `VersionedCacheInvalidation` generations
+2. **Connect durable recoverable invalidation.** Supply `VersionedCacheInvalidation` generations
    from transactional outbox/event offsets, seed consumers from persisted offsets and execute
    domain recovery actions on `UnverifiedFirst`/`Gap`.
 
-4. **Operational proof and tuning.** Add load and chaos gates for synchronized expiry, oversized
+3. **Operational proof and tuning.** Add load and chaos gates for synchronized expiry, oversized
    payloads, Redis latency/restart, CAS contention/timeouts, generation capacity/read/bump failure,
-   refresh saturation, lease expiry and invalidation listener lag. Tune byte budgets and TTLs from
-   production payload distributions rather than assumptions.
+   refresh saturation, lease expiry, invalidation listener lag and marketplace hot-slug contention.
+   Tune byte budgets and TTLs from production payload distributions rather than assumptions.
 
-5. **Local CAS expiry semantics.** Verify under stress that Moka expiration/eviction cannot revive an
+4. **Local CAS expiry semantics.** Verify under stress that Moka expiration/eviction cannot revive an
    entry between comparison and replacement. If the implementation cannot prove this invariant,
    move local CAS to a backend primitive that couples value comparison and entry mutation.
 
@@ -171,6 +178,7 @@ cargo check -p rustok-server --lib
 cargo test -p rustok-core cache --lib
 cargo test -p rustok-cache --lib
 cargo test -p rustok-server --test cache_architecture_guard --test tenant_cache_architecture_guard
+cargo test -p rustok-server --test marketplace_cache_architecture_guard
 cargo clippy -p rustok-core --lib -- -D warnings
 cargo clippy -p rustok-cache --lib -- -D warnings
 cargo clippy -p rustok-server --lib -- -D warnings

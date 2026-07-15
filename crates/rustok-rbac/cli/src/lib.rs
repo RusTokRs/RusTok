@@ -6,9 +6,12 @@ use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
 use rustok_rbac::{
-    load_consistency_stats, repair_system_roles, RbacSystemRoleRepairOptions,
+    apply_system_role_repair_in_transaction, load_consistency_stats,
+    plan_system_role_repair, reserve_permission_invalidation_generation,
+    RbacSystemRoleRepairReport,
 };
 use rustok_runtime::{db_clone, RuntimeComposition};
+use sea_orm::{DatabaseConnection, DatabaseTransaction, TransactionTrait};
 use uuid::Uuid;
 
 pub struct RbacCommandProvider {
@@ -85,9 +88,16 @@ impl RbacCommandProvider {
             });
         }
         let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
-        let report = repair_system_roles(&db, RbacSystemRoleRepairOptions { tenant_id, apply })
-            .await
-            .map_err(command_failed)?;
+        let (report, durable_generation) = if apply {
+            apply_repair_with_generation(&db, tenant_id).await?
+        } else {
+            (
+                plan_system_role_repair(&db, tenant_id)
+                    .await
+                    .map_err(command_failed)?,
+                None,
+            )
+        };
         let changes_total = report.changes_total();
         let mut data = serde_json::to_value(&report).map_err(command_failed)?;
         let Some(object) = data.as_object_mut() else {
@@ -100,7 +110,13 @@ impl RbacCommandProvider {
         );
         object.insert(
             "runtime_restart_required_if_applied".to_string(),
-            (!report.affected_users.is_empty()).into(),
+            false.into(),
+        );
+        object.insert(
+            "durable_generation".to_string(),
+            durable_generation
+                .map(serde_json::Value::from)
+                .unwrap_or(serde_json::Value::Null),
         );
         object.insert(
             "scope".to_string(),
@@ -113,11 +129,47 @@ impl RbacCommandProvider {
         write_output_if_requested(&args, &data)?;
 
         let message = if apply {
-            "RBAC system role repair applied"
+            "RBAC system role repair applied with durable invalidation"
         } else {
             "RBAC system role repair plan collected"
         };
         Ok(CommandOutcome::success(message).with_data(data))
+    }
+}
+
+async fn apply_repair_with_generation(
+    db: &DatabaseConnection,
+    tenant_id: Option<Uuid>,
+) -> CliCoreResult<(RbacSystemRoleRepairReport, Option<u64>)> {
+    let tx = db.begin().await.map_err(command_failed)?;
+    let mut report = match apply_system_role_repair_in_transaction(&tx, tenant_id).await {
+        Ok(report) => report,
+        Err(error) => return Err(rollback_command_failure(tx, error).await),
+    };
+    let durable_generation = if report.affected_users.is_empty() {
+        None
+    } else {
+        match reserve_permission_invalidation_generation(&tx).await {
+            Ok(generation) => Some(generation),
+            Err(error) => return Err(rollback_command_failure(tx, error).await),
+        }
+    };
+    tx.commit().await.map_err(command_failed)?;
+    report.applied = true;
+    report.runtime_restart_required = false;
+    Ok((report, durable_generation))
+}
+
+async fn rollback_command_failure(
+    tx: DatabaseTransaction,
+    error: impl std::fmt::Display,
+) -> CliCoreError {
+    let primary = error.to_string();
+    match tx.rollback().await {
+        Ok(()) => command_failed(primary),
+        Err(rollback_error) => command_failed(format!(
+            "{primary}; rollback failed: {rollback_error}"
+        )),
     }
 }
 

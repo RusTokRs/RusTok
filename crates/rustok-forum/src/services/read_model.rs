@@ -153,7 +153,7 @@ impl ForumReadModelService {
             let cursor = decode_topic_cursor(cursor)?;
             select = select.filter(
                 Condition::any()
-                    .add(forum_topic::Column::UpdatedAt.lt(cursor.updated_at.clone()))
+                    .add(forum_topic::Column::UpdatedAt.lt(cursor.updated_at))
                     .add(
                         Condition::all()
                             .add(forum_topic::Column::UpdatedAt.eq(cursor.updated_at))

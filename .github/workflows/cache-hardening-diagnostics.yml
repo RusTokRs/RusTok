@@ -1,0 +1,119 @@
+name: Cache hardening diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ci-diagnostics-placeholder"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: cache-hardening-diagnostics-main
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-hardening-diagnostics
+      - name: Collect diagnostics
+        id: diagnostics
+        shell: bash
+        run: |
+          set +e
+          rustfmt --edition 2021 --check \
+            apps/server/src/middleware/channel.rs \
+            apps/server/src/middleware/locale.rs \
+            apps/server/src/services/cache_redis_status_monitor.rs \
+            apps/server/src/services/field_definition_cache.rs \
+            apps/server/src/services/marketplace_catalog_cache.rs \
+            apps/server/src/services/marketplace_catalog_cache_base.rs \
+            apps/server/src/services/rbac_cache_invalidation.rs \
+            apps/server/src/services/rbac_invalidation_generation.rs \
+            apps/server/src/services/runtime_guardrails.rs \
+            apps/server/src/services/runtime_guardrails_base.rs \
+            apps/server/tests/cache_worker_guardrail_architecture_guard.rs \
+            apps/server/tests/channel_cache_architecture_guard.rs \
+            apps/server/tests/field_definition_cache_runtime_guard.rs \
+            apps/server/tests/locale_cache_architecture_guard.rs \
+            apps/server/tests/marketplace_cache_architecture_guard.rs \
+            crates/rustok-cache/tests/invalidation_failure_metrics.rs \
+            > /tmp/fmt.log 2>&1
+          fmt_status=$?
+          cargo check -p rustok-server --lib > /tmp/check.log 2>&1
+          check_status=$?
+          cargo test -p rustok-server \
+            --test marketplace_cache_architecture_guard \
+            --test channel_cache_architecture_guard \
+            --test locale_cache_architecture_guard \
+            --test field_definition_cache_runtime_guard \
+            --test cache_worker_guardrail_architecture_guard \
+            > /tmp/tests.log 2>&1
+          test_status=$?
+
+          sed -r 's/\x1B\[[0-9;]*[mK]//g' /tmp/check.log > /tmp/check.clean
+          sed -r 's/\x1B\[[0-9;]*[mK]//g' /tmp/tests.log > /tmp/tests.clean
+          grep -n -E 'error(\[[A-Z0-9]+\])?:|could not compile|warning:' /tmp/check.clean -A12 -B5 \
+            > /tmp/check.filtered || true
+          grep -n -E 'error(\[[A-Z0-9]+\])?:|could not compile|FAILED|failures:|test result:' /tmp/tests.clean -A12 -B5 \
+            > /tmp/tests.filtered || true
+          if [ ! -s /tmp/check.filtered ]; then tail -n 80 /tmp/check.clean > /tmp/check.filtered; fi
+          if [ ! -s /tmp/tests.filtered ]; then tail -n 100 /tmp/tests.clean > /tmp/tests.filtered; fi
+
+          {
+            echo "## Cache hardening diagnostics summary"
+            echo
+            echo "Commit: $GITHUB_SHA"
+            echo "focused_fmt_status=$fmt_status check_status=$check_status test_status=$test_status"
+          } > /tmp/summary.md
+          {
+            echo "## Focused rustfmt diagnostics"
+            echo
+            echo '```text'
+            tail -c 12000 /tmp/fmt.log
+            echo
+            echo '```'
+          } > /tmp/fmt.md
+          {
+            echo "## Filtered server compile diagnostics"
+            echo
+            echo '```text'
+            tail -c 20000 /tmp/check.filtered
+            echo
+            echo '```'
+          } > /tmp/check.md
+          {
+            echo "## Filtered cache architecture-test diagnostics"
+            echo
+            echo '```text'
+            tail -c 20000 /tmp/tests.filtered
+            echo
+            echo '```'
+          } > /tmp/tests.md
+          echo "fmt_status=$fmt_status" >> "$GITHUB_OUTPUT"
+          echo "check_status=$check_status" >> "$GITHUB_OUTPUT"
+          echo "test_status=$test_status" >> "$GITHUB_OUTPUT"
+      - name: Publish diagnostics
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIAGNOSTICS_ISSUE: "1754"
+        run: |
+          gh issue comment "$DIAGNOSTICS_ISSUE" --body-file /tmp/summary.md
+          gh issue comment "$DIAGNOSTICS_ISSUE" --body-file /tmp/fmt.md
+          gh issue comment "$DIAGNOSTICS_ISSUE" --body-file /tmp/check.md
+          gh issue comment "$DIAGNOSTICS_ISSUE" --body-file /tmp/tests.md
+      - name: Fail when diagnostics fail
+        if: steps.diagnostics.outputs.fmt_status != '0' || steps.diagnostics.outputs.check_status != '0' || steps.diagnostics.outputs.test_status != '0'
+        run: exit 1

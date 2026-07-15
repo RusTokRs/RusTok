@@ -68,3 +68,37 @@ enum RbacInvalidationState {
     Generation,
     UpdatedAt,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Migration;
+    use sea_orm_migration::prelude::SchemaManager;
+    use sea_orm_migration::sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sea_orm_migration::MigrationTrait;
+
+    #[tokio::test]
+    async fn replay_keeps_one_row_and_preserves_advanced_generation() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let manager = SchemaManager::new(&db);
+        let migration = Migration;
+        migration.up(&manager).await.unwrap();
+        db.execute_unprepared(
+            "UPDATE rbac_invalidation_state SET generation = 9 WHERE scope = 'permissions'",
+        )
+        .await
+        .unwrap();
+
+        migration.up(&manager).await.unwrap();
+
+        let row = db
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS row_count, MAX(generation) AS generation FROM rbac_invalidation_state WHERE scope = 'permissions'".to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.try_get::<i64>("", "row_count").unwrap(), 1);
+        assert_eq!(row.try_get::<i64>("", "generation").unwrap(), 9);
+    }
+}

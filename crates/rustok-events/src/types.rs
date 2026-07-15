@@ -24,7 +24,7 @@ pub struct EventEnvelope {
 
 impl EventEnvelope {
     pub fn new(tenant_id: Uuid, actor_id: Option<Uuid>, event: DomainEvent) -> Self {
-        let id = Uuid::from_bytes(Ulid::new().to_bytes());
+        let id = Uuid::from_bytes(Ulid::gen().to_bytes());
         let event_type = event.event_type().to_string();
         let schema_version = event.schema_version();
         Self {
@@ -1703,7 +1703,7 @@ impl ValidateEvent for DomainEvent {
                 installation_id,
                 artifact_digest,
                 media_type,
-                size_bytes,
+                size_bytes: _,
             } => {
                 validators::validate_not_nil_uuid("installation_id", installation_id)?;
                 validators::validate_not_empty("artifact_digest", artifact_digest)?;

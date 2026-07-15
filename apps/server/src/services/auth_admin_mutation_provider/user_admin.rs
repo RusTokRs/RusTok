@@ -298,13 +298,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(map_custom_field_error)?;
         }
-        let durable_generation = reserve_rbac_invalidation_generation(&tx)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         tx.commit()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation).await;
         self.user_record(user).await
     }
 
@@ -358,6 +354,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .as_deref()
             .map(parse_user_status)
             .transpose()?;
+        let invalidates_authorization = requested_role.is_some() || requested_status.is_some();
 
         let locale = context
             .locale
@@ -451,13 +448,22 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(map_custom_field_error)?;
         }
-        let durable_generation = reserve_rbac_invalidation_generation(&tx)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        let durable_generation = if invalidates_authorization {
+            Some(
+                reserve_rbac_invalidation_generation(&tx)
+                    .await
+                    .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?,
+            )
+        } else {
+            None
+        };
         tx.commit()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation).await;
+        if let Some(durable_generation) = durable_generation {
+            publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation)
+                .await;
+        }
         self.user_record(user).await
     }
 

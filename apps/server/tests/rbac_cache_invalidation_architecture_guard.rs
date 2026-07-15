@@ -15,7 +15,7 @@ fn source(relative: &str) -> String {
 }
 
 #[test]
-fn rbac_invalidation_startup_is_serialized_and_publishable_after_recovery_attempt() {
+fn rbac_invalidation_startup_is_serialized_supervised_and_publishable_after_recovery() {
     let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
     let event_runtime = source("apps/server/src/services/event_transport_factory.rs");
 
@@ -23,26 +23,43 @@ fn rbac_invalidation_startup_is_serialized_and_publishable_after_recovery_attemp
         "RbacCacheInvalidationListenerStartLock",
         "shared_insert_if_absent(RbacCacheInvalidationListenerStartLock::default())",
         "let _start_guard = start_lock.0.lock().await;",
+        "AbortOnDropInvalidationTask",
+        "RbacCacheInvalidationRuntime",
+        "self.task.abort();",
+        "existing.is_running()",
+        "existing.abort();",
         "if let Err(error) = listener.recover_generation_and_clear().await",
         "startup_recovery_deferred",
         "RBAC_INVALIDATION_CACHE_SERVICE",
-        "ctx.shared_insert(RbacCacheInvalidationListenerHandle);",
+        "spawn_supervised_rbac_invalidation_worker",
+        "AssertUnwindSafe(worker_factory()).catch_unwind().await",
+        "local_worker_restart",
+        "redis_worker_restart",
+        "reconcile_worker_restart",
+        "listener_handle_reports_terminal_workers",
+        "invalidation_worker_supervisor_restarts_after_panic",
+        "let runtime = RbacCacheInvalidationListenerHandle::new(",
+        "ctx.shared_insert(runtime);",
     ] {
         assert!(rbac.contains(required), "RBAC startup must retain {required}");
     }
 
+    let early_subscription = rbac
+        .find("let initial_local = cache")
+        .expect("RBAC listener must subscribe locally before startup recovery");
     let recovery = rbac
         .find("if let Err(error) = listener.recover_generation_and_clear().await")
         .expect("RBAC listener must attempt recovery before becoming publishable");
+    let runtime_commit = rbac
+        .rfind("ctx.shared_insert(runtime);")
+        .expect("supervised RBAC runtime must be installed");
     let publisher_commit = rbac
         .rfind("*RBAC_INVALIDATION_CACHE_SERVICE")
-        .expect("RBAC publisher must be installed after the recovery attempt");
-    let handle_commit = rbac
-        .rfind("ctx.shared_insert(RbacCacheInvalidationListenerHandle);")
-        .expect("RBAC listener handle must be committed after startup");
+        .expect("RBAC publisher must be installed after the runtime");
 
-    assert!(recovery < publisher_commit);
-    assert!(publisher_commit < handle_commit);
+    assert!(early_subscription < recovery);
+    assert!(recovery < runtime_commit);
+    assert!(runtime_commit < publisher_commit);
     assert!(event_runtime.contains(
         "start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;"
     ));
@@ -55,6 +72,8 @@ fn rbac_invalidation_startup_is_serialized_and_publishable_after_recovery_attemp
 fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
     let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
     let generation = source("apps/server/src/services/rbac_invalidation_generation.rs");
+    let generation_store = source("crates/rustok-rbac/src/invalidation_generation.rs");
+    let exports = source("crates/rustok-rbac/src/lib.rs");
     let committed = source("apps/server/src/services/rbac_committed_mutations.rs");
     let admin = source("apps/server/src/services/auth_admin_mutation_provider/user_admin.rs");
     let repair = source("apps/server/src/services/rbac_repair.rs");
@@ -86,10 +105,33 @@ fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
         );
     }
 
-    assert!(generation.contains("reserve_rbac_invalidation_generation"));
-    assert!(generation.contains("UPDATE rbac_invalidation_state"));
-    assert!(generation.contains("shared_insert_if_absent(RbacInvalidationGenerationWatchdogHandle)"));
-    assert!(generation.contains("applied_generation_state_is_monotonic"));
+    for required in [
+        "rustok_rbac::reserve_permission_invalidation_generation(db)",
+        "rustok_rbac::read_permission_invalidation_generation(db)",
+        "RbacInvalidationGenerationWatchdogStartLock",
+        "RbacInvalidationGenerationWatchdogHandle::new(task)",
+        "supervise_rbac_invalidation_generation_watchdog",
+        "applied_generation_state_is_monotonic",
+    ] {
+        assert!(
+            generation.contains(required),
+            "server generation adapter must retain {required}"
+        );
+    }
+    for required in [
+        "pub async fn reserve_permission_invalidation_generation(",
+        "db: &DatabaseTransaction",
+        "UPDATE rbac_invalidation_state",
+        "read_permission_invalidation_generation(db).await",
+        "reservation_is_rolled_back_with_the_owner_transaction",
+    ] {
+        assert!(
+            generation_store.contains(required),
+            "shared generation store must retain {required}"
+        );
+    }
+    assert!(exports.contains("reserve_permission_invalidation_generation"));
+    assert!(exports.contains("read_permission_invalidation_generation"));
 
     assert!(!rbac.contains("bump_cache_backend_generation"));
     assert!(!rbac.contains("RBAC_PERMISSION_GENERATION_PREFIX"));
@@ -155,13 +197,17 @@ fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
     assert!(exports.contains("PermissionCacheLookup"));
 
     for required in [
-        "RBAC_PERMISSION_CACHE_EPOCH",
+        "RBAC_PERMISSION_CACHE_GLOBAL_EPOCH",
+        "RBAC_PERMISSION_CACHE_KEY_EPOCHS",
+        "RBAC_PERMISSION_CACHE_EPOCH_STRIPES",
         "CachedPermissionSnapshot",
         "RBAC_PERMISSION_CACHE_LOOKUP_ATTEMPTS",
-        "current_permission_cache_epoch() != token",
-        "advance_permission_cache_epoch();",
+        "current_permission_cache_token(&key)",
+        "advance_permission_cache_key_epoch(&key);",
+        "advance_permission_cache_global_epoch();",
         "return false;",
         "stale_permission_fill_is_rejected_after_invalidation",
+        "targeted_invalidation_preserves_an_unrelated_epoch_stripe",
         "assert!(!published);",
         "invalidate_current_rbac_request_scope(tenant_id, user_id)",
         "database_rejects_cross_tenant_role_links_and_loader_keeps_local_role",
@@ -171,6 +217,7 @@ fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
             "RBAC Moka adapter must retain {required}"
         );
     }
+    assert!(!runtime.contains("static RBAC_PERMISSION_CACHE_EPOCH: AtomicU64"));
 
     for required in [
         "struct RbacRequestScopeState",
@@ -191,20 +238,21 @@ fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
     let request_scope_expiry = runtime[invalidate_impl..]
         .find("invalidate_current_rbac_request_scope(tenant_id, user_id)")
         .expect("adapter invalidation must expire the matching request scope");
-    let epoch_advance = runtime[invalidate_impl..]
-        .find("advance_permission_cache_epoch();")
-        .expect("every adapter invalidation must advance the epoch");
+    let key_epoch_advance = runtime[invalidate_impl..]
+        .find("advance_permission_cache_key_epoch(&key);")
+        .expect("targeted invalidation must advance its bounded key epoch");
     let physical_invalidation = runtime[invalidate_impl..]
-        .find("USER_PERMISSION_CACHE")
+        .find("USER_PERMISSION_CACHE.invalidate(&key).await;")
         .expect("adapter invalidation must remove the physical entry");
-    assert!(request_scope_expiry < epoch_advance);
-    assert!(epoch_advance < physical_invalidation);
+    assert!(request_scope_expiry < key_epoch_advance);
+    assert!(key_epoch_advance < physical_invalidation);
 
     let conditional_insert = runtime
         .find("async fn insert_if_current(")
         .expect("Moka adapter must implement conditional insert");
     let conditional_insert = &runtime[conditional_insert..];
     assert!(conditional_insert.contains(") -> bool {"));
+    assert!(conditional_insert.contains("current_permission_cache_token(&key) != Some(token)"));
     assert!(conditional_insert.contains("return false;"));
     assert!(conditional_insert.contains("true\n    }"));
 }

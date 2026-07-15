@@ -32,8 +32,8 @@ fn production_bootstrap_uses_the_hardened_registry_provider() {
 }
 
 #[test]
-fn marketplace_registry_cache_is_bounded_hashed_and_single_flight() {
-    let provider = source("apps/server/src/services/marketplace_catalog_cache.rs");
+fn marketplace_registry_list_cache_is_bounded_hashed_and_single_flight() {
+    let provider = source("apps/server/src/services/marketplace_catalog_cache_base.rs");
     for required in [
         "DEFAULT_REGISTRY_CACHE_MAX_WEIGHT_BYTES",
         "DEFAULT_REGISTRY_RESPONSE_MAX_BYTES",
@@ -49,13 +49,43 @@ fn marketplace_registry_cache_is_bounded_hashed_and_single_flight() {
     ] {
         assert!(
             provider.contains(required),
-            "marketplace cache hardening must retain {required}"
+            "marketplace list-cache hardening must retain {required}"
         );
     }
     assert!(
         !provider.contains("format!(\"{}#{}\", registry_url"),
-        "marketplace cache keys must not expose raw registry URL/query input"
+        "marketplace list-cache keys must not expose raw registry URL/query input"
     );
+}
+
+#[test]
+fn marketplace_registry_detail_cache_is_bounded_hashed_and_single_flight() {
+    let provider = source("apps/server/src/services/marketplace_catalog_cache.rs");
+    for required in [
+        "include!(\"marketplace_catalog_cache_base.rs\")",
+        "DEFAULT_REGISTRY_DETAIL_CACHE_MAX_WEIGHT_BYTES",
+        "DEFAULT_REGISTRY_DETAIL_NEGATIVE_TTL_SECS",
+        "MAX_REGISTRY_DETAIL_CACHE_KEY_BYTES",
+        "REGISTRY_DETAIL_CACHE_KEY_PREFIX",
+        "module_cache: Cache<String, Arc<CachedRegistryModule>>",
+        ".weigher(cached_registry_module_weight)",
+        ".expire_after(RegistryModuleExpiry",
+        "load_module_detail(&self.module_cache, cache_key",
+        ".try_get_with(cache_key",
+        "registry_module_cache_key(slug)",
+        "estimate_catalog_module_bytes",
+        "detail_cache_key_is_bounded_and_hashed",
+        "concurrent_module_detail_misses_are_single_flight",
+        "negative_module_details_expire_quickly",
+    ] {
+        assert!(
+            provider.contains(required),
+            "marketplace detail-cache hardening must retain {required}"
+        );
+    }
+    assert!(provider.contains("RUSTOK_MARKETPLACE_REGISTRY_DETAIL_CACHE_MAX_BYTES"));
+    assert!(provider.contains("RUSTOK_MARKETPLACE_REGISTRY_DETAIL_NEGATIVE_TTL_SECS"));
+    assert!(!provider.contains("format!(\"registry-module:v1:{slug}\")"));
 }
 
 #[test]

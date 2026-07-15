@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod event_contract;
 pub mod postgres;
 pub mod read_model;

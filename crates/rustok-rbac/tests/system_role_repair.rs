@@ -2,11 +2,14 @@ use rustok_api::Permission;
 use rustok_core::UserRole;
 use rustok_migrations::Migrator;
 use rustok_rbac::{
-    repair_system_roles, RbacRoleAssignmentDbWriter, RbacSystemRoleRepairError,
-    RbacSystemRoleRepairOptions,
+    apply_system_role_repair_in_transaction, plan_system_role_repair,
+    read_permission_invalidation_generation, reserve_permission_invalidation_generation,
+    RbacRoleAssignmentDbWriter, RbacSystemRoleRepairError,
 };
 use rustok_test_utils::db::setup_test_db_with_migrations;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
+};
 use uuid::Uuid;
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
@@ -140,15 +143,9 @@ async fn dry_run_is_read_only_and_apply_repairs_permission_drift() {
     let stale_permission_id =
         insert_stale_role_permission(&db, tenant_id, manager_role_id).await;
 
-    let plan = repair_system_roles(
-        &db,
-        RbacSystemRoleRepairOptions {
-            tenant_id: Some(tenant_id),
-            apply: false,
-        },
-    )
-    .await
-    .expect("build repair plan");
+    let plan = plan_system_role_repair(&db, Some(tenant_id))
+        .await
+        .expect("build repair plan");
 
     assert!(!plan.applied);
     assert!(plan.role_permission_links_removed >= 1);
@@ -157,19 +154,23 @@ async fn dry_run_is_read_only_and_apply_repairs_permission_drift() {
         .iter()
         .any(|affected| affected.tenant_id == tenant_id && affected.user_id == user_id));
     assert!(role_permission_exists(&db, manager_role_id, stale_permission_id).await);
+    assert_eq!(read_permission_invalidation_generation(&db).await.unwrap(), 0);
 
-    let applied = repair_system_roles(
-        &db,
-        RbacSystemRoleRepairOptions {
-            tenant_id: Some(tenant_id),
-            apply: true,
-        },
-    )
-    .await
-    .expect("apply repair");
+    let tx = db.begin().await.unwrap();
+    let mut applied = apply_system_role_repair_in_transaction(&tx, Some(tenant_id))
+        .await
+        .expect("apply repair");
+    let generation = reserve_permission_invalidation_generation(&tx)
+        .await
+        .expect("reserve invalidation generation");
+    tx.commit().await.unwrap();
+    applied.applied = true;
+    applied.runtime_restart_required = false;
 
     assert!(applied.applied);
-    assert!(applied.runtime_restart_required);
+    assert!(!applied.runtime_restart_required);
+    assert_eq!(generation, 1);
+    assert_eq!(read_permission_invalidation_generation(&db).await.unwrap(), 1);
     assert!(!role_permission_exists(&db, manager_role_id, stale_permission_id).await);
 }
 
@@ -188,21 +189,18 @@ async fn global_apply_rolls_back_when_any_tenant_has_reserved_slug_collision() {
     )
     .await;
 
-    let error = repair_system_roles(
-        &db,
-        RbacSystemRoleRepairOptions {
-            tenant_id: None,
-            apply: true,
-        },
-    )
-    .await
-    .expect_err("reserved slug collision must reject global repair");
+    let tx = db.begin().await.unwrap();
+    let error = apply_system_role_repair_in_transaction(&tx, None)
+        .await
+        .expect_err("reserved slug collision must reject global repair");
+    tx.rollback().await.unwrap();
 
     assert!(matches!(
         error,
         RbacSystemRoleRepairError::BuiltInRoleSlugCollision { tenant_id, ref slug }
             if tenant_id == collision_tenant_id && slug == "admin"
     ));
+    assert_eq!(read_permission_invalidation_generation(&db).await.unwrap(), 0);
     assert_eq!(role_count(&db, clean_tenant_id).await, 0);
     assert_eq!(role_count(&db, collision_tenant_id).await, 1);
 }

@@ -1,9 +1,12 @@
 //! Cache for Flex field definitions schema/list queries.
 
-use std::sync::Arc;
+use std::future::Future;
+use std::panic::AssertUnwindSafe;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use futures_util::FutureExt;
 use moka::future::Cache;
 use rustok_core::{EventBus, EventConsumerRuntime};
 use tokio::task::JoinHandle;
@@ -15,6 +18,8 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const FIELD_DEFINITION_CACHE_TTL: Duration = Duration::from_secs(30);
 const FIELD_DEFINITION_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
+const FIELD_DEFINITION_INVALIDATION_RESTART_DELAY: Duration = Duration::from_secs(1);
+const FIELD_DEFINITION_INVALIDATION_CHANNEL: &str = "field_definition_cache_invalidator";
 
 #[derive(Clone)]
 pub struct FieldDefinitionCache {
@@ -24,9 +29,48 @@ pub struct FieldDefinitionCache {
 #[derive(Clone)]
 pub struct SharedFieldDefinitionCache(pub Arc<FieldDefinitionCache>);
 
-pub struct FieldDefinitionCacheInvalidationHandle {
-    _handle: JoinHandle<()>,
+struct FieldDefinitionCacheInvalidationRuntime {
+    cache: Arc<FieldDefinitionCache>,
+    task: JoinHandle<()>,
 }
+
+impl Drop for FieldDefinitionCacheInvalidationRuntime {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+#[derive(Clone)]
+pub struct FieldDefinitionCacheInvalidationHandle(Arc<FieldDefinitionCacheInvalidationRuntime>);
+
+impl FieldDefinitionCacheInvalidationHandle {
+    fn new(cache: Arc<FieldDefinitionCache>, task: JoinHandle<()>) -> Self {
+        Self(Arc::new(FieldDefinitionCacheInvalidationRuntime {
+            cache,
+            task,
+        }))
+    }
+
+    fn cache(&self) -> Arc<FieldDefinitionCache> {
+        Arc::clone(&self.0.cache)
+    }
+
+    pub fn is_running(&self) -> bool {
+        !self.0.task.is_finished()
+    }
+
+    fn abort(&self) {
+        self.0.task.abort();
+    }
+
+    #[cfg(test)]
+    fn abort_for_test(&self) {
+        self.abort();
+    }
+}
+
+#[derive(Clone, Default)]
+struct FieldDefinitionCacheStartLock(Arc<Mutex<()>>);
 
 impl Default for FieldDefinitionCache {
     fn default() -> Self {
@@ -111,46 +155,118 @@ pub fn field_definition_cache_from_context(
     ctx: &ServerRuntimeContext,
     bus: EventBus,
 ) -> FieldDefinitionCache {
-    if let Some(shared) = ctx.shared_get::<SharedFieldDefinitionCache>() {
-        return (*shared.0).clone();
-    }
+    let _ = ctx.shared_insert_if_absent(FieldDefinitionCacheStartLock::default());
+    let start_lock = ctx
+        .shared_get::<FieldDefinitionCacheStartLock>()
+        .expect("field definition cache start lock must be available");
+    let _start_guard = start_lock
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-    let cache = Arc::new(FieldDefinitionCache::new());
-
-    let mut receiver = bus.subscribe();
-    let cache_for_task = cache.clone();
-    let consumer_runtime = EventConsumerRuntime::new("field_definition_cache_invalidator");
-    let handle = tokio::spawn(async move {
-        consumer_runtime.restarted("startup");
-        loop {
-            match receiver.recv().await {
-                Ok(envelope) => {
-                    if let Some((tenant_id, entity_type)) =
-                        flex::field_definition_cache_invalidation_target(&envelope.event)
-                    {
-                        cache_for_task.invalidate(tenant_id, entity_type).await;
-                    }
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    consumer_runtime.lagged(skipped);
-                    cache_for_task.invalidate_all();
-                    tracing::warn!(
-                        skipped,
-                        "Field definition cache invalidation consumer lagged; cleared all cached schemas"
-                    );
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    consumer_runtime.closed();
-                    break;
-                }
-            }
+    let cache = match ctx.shared_get::<FieldDefinitionCacheInvalidationHandle>() {
+        Some(existing) if existing.is_running() => return (*existing.cache()).clone(),
+        Some(existing) => {
+            tracing::warn!(
+                "Field definition cache invalidation consumer stopped; replacing runtime"
+            );
+            let cache = existing.cache();
+            existing.abort();
+            drop(existing);
+            let _ = ctx.shared_take::<FieldDefinitionCacheInvalidationHandle>();
+            cache
         }
-    });
+        None => Arc::new(FieldDefinitionCache::new()),
+    };
 
-    ctx.shared_insert(FieldDefinitionCacheInvalidationHandle { _handle: handle });
-    ctx.shared_insert(SharedFieldDefinitionCache(cache.clone()));
+    let task = spawn_field_definition_cache_invalidation_consumer(bus, Arc::clone(&cache));
+    let handle = FieldDefinitionCacheInvalidationHandle::new(Arc::clone(&cache), task);
+    ctx.shared_insert(handle);
+    ctx.shared_insert(SharedFieldDefinitionCache(Arc::clone(&cache)));
 
     (*cache).clone()
+}
+
+fn spawn_field_definition_cache_invalidation_consumer(
+    bus: EventBus,
+    cache: Arc<FieldDefinitionCache>,
+) -> JoinHandle<()> {
+    // Subscribe before committing the runtime handle so no event can fall into
+    // the startup gap. Later supervisor attempts create a fresh subscription.
+    let first_receiver = Arc::new(Mutex::new(Some(bus.subscribe())));
+    tokio::spawn(supervise_field_definition_cache_invalidation(
+        move || {
+            let mut receiver = first_receiver
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+                .unwrap_or_else(|| bus.subscribe());
+            let cache = Arc::clone(&cache);
+            async move {
+                let consumer_runtime =
+                    EventConsumerRuntime::new(FIELD_DEFINITION_INVALIDATION_CHANNEL);
+                consumer_runtime.restarted("startup");
+                loop {
+                    match receiver.recv().await {
+                        Ok(envelope) => {
+                            if let Some((tenant_id, entity_type)) =
+                                flex::field_definition_cache_invalidation_target(&envelope.event)
+                            {
+                                cache.invalidate(tenant_id, entity_type).await;
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                            consumer_runtime.lagged(skipped);
+                            cache.invalidate_all();
+                            tracing::warn!(
+                                skipped,
+                                "Field definition cache invalidation consumer lagged; cleared all cached schemas"
+                            );
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            consumer_runtime.closed();
+                            return;
+                        }
+                    }
+                }
+            }
+        },
+        FIELD_DEFINITION_INVALIDATION_RESTART_DELAY,
+    ))
+}
+
+async fn supervise_field_definition_cache_invalidation<F, Fut>(
+    mut worker_factory: F,
+    restart_delay: Duration,
+) where
+    F: FnMut() -> Fut + Send,
+    Fut: Future<Output = ()> + Send,
+{
+    loop {
+        let worker = match std::panic::catch_unwind(AssertUnwindSafe(&mut worker_factory)) {
+            Ok(worker) => worker,
+            Err(_) => {
+                record_field_definition_consumer_restart("factory_panicked");
+                tokio::time::sleep(restart_delay).await;
+                continue;
+            }
+        };
+        let outcome = AssertUnwindSafe(worker).catch_unwind().await;
+        if outcome.is_err() {
+            record_field_definition_consumer_restart("worker_panicked");
+        } else {
+            record_field_definition_consumer_restart("worker_exited");
+        }
+        tokio::time::sleep(restart_delay).await;
+    }
+}
+
+fn record_field_definition_consumer_restart(reason: &'static str) {
+    tracing::error!(
+        reason,
+        "Field definition cache invalidation consumer stopped; restarting"
+    );
+    rustok_telemetry::metrics::record_event_error(FIELD_DEFINITION_INVALIDATION_CHANNEL, reason);
 }
 
 #[async_trait]
@@ -171,7 +287,9 @@ impl flex::FieldDefinitionCachePort for FieldDefinitionCache {
 #[cfg(test)]
 mod tests {
     use super::{
-        field_definition_cache_from_context, field_definition_entry_weight, FieldDefinitionCache,
+        field_definition_cache_from_context, field_definition_entry_weight,
+        supervise_field_definition_cache_invalidation, FieldDefinitionCache,
+        FieldDefinitionCacheInvalidationHandle,
     };
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -180,6 +298,8 @@ mod tests {
     use rustok_events::{DomainEvent, EventEnvelope};
     use sea_orm::Database;
     use serde_json::json;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
     use std::time::Duration;
     use tokio::time::sleep;
     use uuid::Uuid;
@@ -343,5 +463,45 @@ mod tests {
             },
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn invalidation_handle_reports_terminal_worker() {
+        let cache = Arc::new(FieldDefinitionCache::new());
+        let handle = FieldDefinitionCacheInvalidationHandle::new(
+            cache,
+            tokio::spawn(async { std::future::pending::<()>().await }),
+        );
+        assert!(handle.is_running());
+        handle.abort_for_test();
+        tokio::task::yield_now().await;
+        assert!(!handle.is_running());
+    }
+
+    #[tokio::test]
+    async fn invalidation_supervisor_restarts_after_panic() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let worker_attempts = Arc::clone(&attempts);
+        let supervisor = tokio::spawn(supervise_field_definition_cache_invalidation(
+            move || {
+                let attempt = worker_attempts.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if attempt == 0 {
+                        panic!("field definition invalidation regression fixture");
+                    }
+                    std::future::pending::<()>().await;
+                }
+            },
+            Duration::from_millis(1),
+        ));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while attempts.load(Ordering::SeqCst) < 2 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("field definition invalidation supervisor should restart worker");
+        supervisor.abort();
     }
 }

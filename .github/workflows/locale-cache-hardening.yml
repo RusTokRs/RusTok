@@ -1,0 +1,47 @@
+name: Locale cache hardening
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/server/src/middleware/locale.rs"
+      - "apps/server/tests/locale_cache_architecture_guard.rs"
+      - ".github/workflows/locale-cache-hardening.yml"
+  pull_request:
+    paths:
+      - "apps/server/src/middleware/locale.rs"
+      - "apps/server/tests/locale_cache_architecture_guard.rs"
+      - ".github/workflows/locale-cache-hardening.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: locale-cache-hardening-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  locale-cache:
+    name: Locale cache contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: locale-cache-hardening
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Compile server
+        run: cargo check -p rustok-server --lib
+      - name: Locale cache tests
+        run: |
+          cargo test -p rustok-server tenant_locale_cache --lib
+          cargo test -p rustok-server --test locale_cache_architecture_guard
+      - name: Clippy
+        run: cargo clippy -p rustok-server --lib -- -D warnings
