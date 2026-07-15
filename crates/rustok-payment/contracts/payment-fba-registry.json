@@ -42,8 +42,8 @@
     }
   ],
   "evidence": {
-    "local_plan": "crates/rustok-payment/docs/implementation-plan.md",
-    "status_source_of_truth": "crates/rustok-payment/docs/implementation-plan.md",
+    "local_plan_redirect": "crates/rustok-payment/docs/implementation-plan.md",
+    "status_source_of_truth": "crates/rustok-commerce/docs/implementation-plan.md#payment-workstream",
     "webhook_contract": "crates/rustok-payment/contracts/payment-provider-webhook-v1.json",
     "webhook_runbook": "crates/rustok-payment/docs/provider-webhooks.md",
     "webhook_source_status": "implemented_not_executed",
