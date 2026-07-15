@@ -9,6 +9,12 @@ status, execution order, or promotion decision. Those belong to the main ecommer
 plan because `rustok-payment` is an owner module inside the ecommerce family, not
 the family orchestration root.
 
+Compatibility metadata for the generic module verifier follows. It mirrors the
+main plan and must not be edited as an independent planning decision:
+
+- FBA status: `boundary_ready`
+- Registry: `payment-fba-registry.json`
+
 Payment-specific behavioral and operational documentation remains in:
 
 - `crates/rustok-payment/docs/provider-webhooks.md`
