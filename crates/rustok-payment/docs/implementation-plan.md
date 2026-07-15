@@ -15,6 +15,12 @@ Payment-specific behavioral and operational documentation remains in:
 - `crates/rustok-payment/contracts/payment-fba-registry.json`
 - `crates/rustok-payment/contracts/payment-provider-webhook-v1.json`
 
+The payment storefront owner transport continues to use
+`execute_selected_transport` for `create_payment_collection`,
+`fetch_payment_collection`, and `fetch_refund_summary`. Completion and verification
+status for that boundary is maintained only in the payment workstream of the main
+commerce plan.
+
 The payment storefront boundary guard remains:
 
 `npm run verify:payment:storefront-boundary`
