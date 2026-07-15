@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_web::{HttpError, HttpResult};
@@ -13,11 +13,12 @@ use super::{
 };
 use crate::dto::CartResponse;
 use rustok_cart::{
-    in_process_cart_storefront_port, CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
+    CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
     CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
     CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
+    in_process_cart_storefront_port,
 };
-use rustok_pricing::PricingService;
+use rustok_pricing::{PricingReadPort, ResolveProductPriceRequest, in_process_pricing_read_port};
 
 fn map_cart_port_error(error: rustok_api::PortError) -> HttpError {
     HttpError::bad_request("commerce_operation_failed", error.message)
@@ -268,7 +269,7 @@ pub async fn add_cart_line_item(
         .map_err(map_cart_port_error)?;
     super::ensure_store_cart_access(&existing, customer_id)?;
     let event_bus = runtime.event_bus();
-    let pricing_service = PricingService::new(runtime.db_clone(), event_bus.clone());
+    let pricing_read_port = in_process_pricing_read_port(runtime.db_clone(), event_bus.clone());
     let pricing_context =
         super::build_store_pricing_context(&existing, &request_context, input.quantity);
     let public_channel_slug =
@@ -277,7 +278,7 @@ pub async fn add_cart_line_item(
         runtime.db(),
         tenant.id,
         super::StoreLineItemResolution {
-            pricing_service: &pricing_service,
+            pricing_read_port: pricing_read_port.as_ref(),
             pricing_context: &pricing_context,
             locale: existing
                 .locale_code
@@ -385,22 +386,30 @@ pub async fn update_cart_line_item(
         .find(|item| item.id == line_id)
         .and_then(|item| item.variant_id)
     {
-        let pricing_service = PricingService::new(runtime.db_clone(), event_bus);
+        let pricing_read_port = in_process_pricing_read_port(runtime.db_clone(), event_bus);
         let pricing_context =
             super::build_store_pricing_context(&existing, &request_context, input.quantity);
-        let resolved_price = pricing_service
-            .resolve_variant_price(tenant.id, variant_id, pricing_context)
+        let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
+            .resolve_product_price(
+                super::storefront_pricing_port_context(tenant.id, &request_context, id, line_id),
+                ResolveProductPriceRequest {
+                    product_id: existing
+                        .line_items
+                        .iter()
+                        .find(|item| item.id == line_id)
+                        .and_then(|item| item.product_id),
+                    variant_id,
+                    region_id: pricing_context.region_id,
+                    channel_id: pricing_context.channel_id,
+                    channel_slug: pricing_context.channel_slug,
+                    price_list_id: pricing_context.price_list_id,
+                    quantity: pricing_context.quantity,
+                    currency_code: pricing_context.currency_code,
+                },
+            )
             .await
-            .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?
-            .ok_or_else(|| {
-                HttpError::bad_request(
-                    "commerce_operation_failed",
-                    format!(
-                        "No storefront price for variant {} in currency {}",
-                        variant_id, existing.currency_code
-                    ),
-                )
-            })?;
+            .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?
+            .into();
 
         let pricing_update =
             super::storefront_cart_pricing_update(line_id, input.quantity, &resolved_price);

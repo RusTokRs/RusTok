@@ -1,17 +1,17 @@
 use async_graphql::{Context, Object, Result};
-use rustok_api::{graphql::require_module_enabled, AuthContext, RequestContext, TenantContext};
+use rustok_api::{AuthContext, RequestContext, TenantContext, graphql::require_module_enabled};
 use uuid::Uuid;
 
 use crate::StoreContextService;
 use rustok_cart::{
-    in_process_cart_storefront_port, CartStorefrontAddLineItemRequest,
-    CartStorefrontContextUpdateRequest, CartStorefrontCreateRequest,
-    CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
-    CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
+    CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
+    CartStorefrontCreateRequest, CartStorefrontLineItemPricingRequest,
+    CartStorefrontLineItemQuantityRequest, CartStorefrontPort, CartStorefrontReadRequest,
+    CartStorefrontRemoveLineItemRequest, in_process_cart_storefront_port,
 };
-use rustok_pricing::PricingService;
+use rustok_pricing::{PricingReadPort, ResolveProductPriceRequest, in_process_pricing_read_port};
 
-use super::super::{current_tenant_scope, types::*, MODULE_SLUG};
+use super::super::{MODULE_SLUG, current_tenant_scope, types::*};
 use super::helpers::*;
 
 #[derive(Default)]
@@ -138,7 +138,7 @@ impl CommerceCartMutation {
             .map_err(cart_port_error)?;
         ensure_storefront_cart_access(&cart, customer_id)?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let pricing_service = PricingService::new(db.clone(), event_bus.clone());
+        let pricing_read_port = in_process_pricing_read_port(db.clone(), event_bus.clone());
         let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, ctx);
         let pricing_context = build_storefront_pricing_context(
             &cart,
@@ -149,9 +149,9 @@ impl CommerceCartMutation {
         let resolved_input = resolve_storefront_line_item_input(
             db,
             tenant_id,
-            &pricing_service,
+            pricing_read_port.as_ref(),
+            storefront_pricing_port_context(tenant_id, request_context, cart_id, input.variant_id),
             &pricing_context,
-            &cart.currency_code,
             cart.locale_code
                 .as_deref()
                 .unwrap_or(request_context.locale.as_str()),
@@ -382,29 +382,38 @@ impl CommerceCartMutation {
                 .await?;
             }
         }
-        let updated = if let Some(variant_id) = cart
+        let updated = if let Some((variant_id, product_id)) = cart
             .line_items
             .iter()
             .find(|item| item.id == line_id)
-            .and_then(|item| item.variant_id)
-        {
-            let pricing_service = PricingService::new(db.clone(), event_bus.clone());
+            .and_then(|item| {
+                item.variant_id
+                    .map(|variant_id| (variant_id, item.product_id))
+            }) {
+            let pricing_read_port = in_process_pricing_read_port(db.clone(), event_bus.clone());
             let pricing_context = build_storefront_pricing_context(
                 &cart,
                 request_context,
                 public_channel_slug.as_deref(),
                 input.quantity,
             );
-            let resolved_price = pricing_service
-                .resolve_variant_price(tenant_id, variant_id, pricing_context)
+            let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
+                .resolve_product_price(
+                    storefront_pricing_port_context(tenant_id, request_context, cart_id, line_id),
+                    ResolveProductPriceRequest {
+                        product_id,
+                        variant_id,
+                        region_id: pricing_context.region_id,
+                        channel_id: pricing_context.channel_id,
+                        channel_slug: pricing_context.channel_slug,
+                        price_list_id: pricing_context.price_list_id,
+                        quantity: pricing_context.quantity,
+                        currency_code: pricing_context.currency_code,
+                    },
+                )
                 .await
-                .map_err(|err| async_graphql::Error::new(err.to_string()))?
-                .ok_or_else(|| {
-                    async_graphql::Error::new(format!(
-                        "No storefront price for variant {} in currency {}",
-                        variant_id, cart.currency_code
-                    ))
-                })?;
+                .map_err(cart_port_error)?
+                .into();
 
             let pricing_update =
                 storefront_cart_pricing_update(line_id, input.quantity, &resolved_price);

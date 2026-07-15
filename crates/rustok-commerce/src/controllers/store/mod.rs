@@ -15,16 +15,19 @@ use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
 use rustok_api::{PortActor, PortContext, RequestContext};
 use rustok_cart::{
-    in_process_cart_storefront_port, CartError, CartStorefrontContextUpdateRequest,
-    CartStorefrontPort, CartStorefrontRepriceRequest,
+    CartError, CartStorefrontContextUpdateRequest, CartStorefrontPort,
+    CartStorefrontRepriceRequest, in_process_cart_storefront_port,
 };
 use rustok_customer::{
-    in_process_customer_read_port, CustomerReadPort, CustomerUserProjectionRequest,
+    CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
 };
 use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::check_variant_availability_for_public_channel;
 use rustok_order::OrderService;
-use rustok_pricing::{PriceResolutionContext, PricingService};
+use rustok_pricing::{
+    PriceResolutionContext, PricingReadPort, PricingService, ResolveProductPriceRequest,
+    in_process_pricing_read_port,
+};
 use rustok_product::entities::{
     product, product_translation, product_variant, variant_translation,
 };
@@ -32,13 +35,14 @@ use rustok_web::{HttpError, HttpResult};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::common::PaginationParams;
 use crate::{
+    StoreContextService,
     dto::{
         AddCartLineItemInput, CartResponse, ResolveStoreContextInput, StoreContextResponse,
         UpdateCartContextInput,
@@ -51,7 +55,6 @@ use crate::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
-    StoreContextService,
 };
 
 pub const MODULE_SLUG: &str = "commerce";
@@ -404,7 +407,7 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
         return Ok(cart);
     }
 
-    let pricing_service = PricingService::new(db.clone(), event_bus);
+    let pricing_read_port = in_process_pricing_read_port(db.clone(), event_bus);
     let mut updates = Vec::new();
     for line_item in &cart.line_items {
         let Some(variant_id) = line_item.variant_id else {
@@ -412,19 +415,23 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
         };
         let pricing_context =
             build_store_pricing_context(&cart, request_context, line_item.quantity);
-        let resolved_price = pricing_service
-            .resolve_variant_price(tenant_id, variant_id, pricing_context)
+        let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
+            .resolve_product_price(
+                storefront_pricing_port_context(tenant_id, request_context, cart.id, line_item.id),
+                ResolveProductPriceRequest {
+                    product_id: line_item.product_id,
+                    variant_id,
+                    region_id: pricing_context.region_id,
+                    channel_id: pricing_context.channel_id,
+                    channel_slug: pricing_context.channel_slug,
+                    price_list_id: pricing_context.price_list_id,
+                    quantity: pricing_context.quantity,
+                    currency_code: pricing_context.currency_code,
+                },
+            )
             .await
-            .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?
-            .ok_or_else(|| {
-                HttpError::bad_request(
-                    "commerce_store_invalid",
-                    format!(
-                        "No storefront price for variant {} in currency {}",
-                        variant_id, cart.currency_code
-                    ),
-                )
-            })?;
+            .map_err(|error| HttpError::bad_request("commerce_store_invalid", error.message))?
+            .into();
         updates.push(storefront_cart_pricing_update(
             line_item.id,
             line_item.quantity,
@@ -453,6 +460,26 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
             .await
             .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))
     }
+}
+
+pub(crate) fn storefront_pricing_port_context(
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    cart_id: Uuid,
+    line_item_id: Uuid,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-commerce.storefront-pricing"),
+        request_context.locale.as_str(),
+        format!("storefront-pricing:{cart_id}:{line_item_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    request_context
+        .channel_slug
+        .as_deref()
+        .map(|channel| context.with_channel(channel))
+        .unwrap_or(context)
 }
 
 pub(crate) fn storefront_cart_pricing_update(
@@ -716,7 +743,7 @@ pub(crate) fn build_store_pricing_context(
 }
 
 pub(crate) struct StoreLineItemResolution<'a> {
-    pub(crate) pricing_service: &'a PricingService,
+    pub(crate) pricing_read_port: &'a dyn PricingReadPort,
     pub(crate) pricing_context: &'a PriceResolutionContext,
     pub(crate) locale: &'a str,
     pub(crate) default_locale: &'a str,
@@ -730,7 +757,7 @@ pub(crate) async fn resolve_store_line_item_input(
     resolution: StoreLineItemResolution<'_>,
 ) -> HttpResult<ResolvedStoreLineItemInput> {
     let StoreLineItemResolution {
-        pricing_service,
+        pricing_read_port,
         pricing_context,
         locale,
         default_locale,
@@ -778,19 +805,23 @@ pub(crate) async fn resolve_store_line_item_input(
         .await
         .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
 
-    let resolved_price = pricing_service
-        .resolve_variant_price(tenant_id, variant.id, pricing_context.clone())
+    let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
+        .resolve_product_price(
+            store_line_item_pricing_port_context(tenant_id, variant.id, locale, pricing_context),
+            ResolveProductPriceRequest {
+                product_id: Some(product_model.id),
+                variant_id: variant.id,
+                region_id: pricing_context.region_id,
+                channel_id: pricing_context.channel_id,
+                channel_slug: pricing_context.channel_slug.clone(),
+                price_list_id: pricing_context.price_list_id,
+                quantity: pricing_context.quantity,
+                currency_code: pricing_context.currency_code.clone(),
+            },
+        )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?
-        .ok_or_else(|| {
-            HttpError::bad_request(
-                "commerce_store_invalid",
-                format!(
-                    "No storefront price for variant {} in currency {}",
-                    variant.id, pricing_context.currency_code
-                ),
-            )
-        })?;
+        .map_err(|error| HttpError::bad_request("commerce_store_invalid", error.message))?
+        .into();
     let (base_unit_price, pricing_adjustment) =
         storefront_cart_pricing_snapshot(input.quantity, &resolved_price);
     validate_store_variant_inventory(db, tenant_id, &variant, input.quantity, public_channel_slug)
@@ -833,6 +864,26 @@ pub(crate) async fn resolve_store_line_item_input(
         },
         pricing_adjustment,
     })
+}
+
+fn store_line_item_pricing_port_context(
+    tenant_id: Uuid,
+    variant_id: Uuid,
+    locale: &str,
+    pricing_context: &PriceResolutionContext,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-commerce.storefront-pricing"),
+        locale,
+        format!("storefront-add-line-item:{variant_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    pricing_context
+        .channel_slug
+        .as_deref()
+        .map(|channel| context.with_channel(channel))
+        .unwrap_or(context)
 }
 
 pub(crate) fn pick_product_translation<'a>(

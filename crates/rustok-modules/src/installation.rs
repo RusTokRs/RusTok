@@ -443,6 +443,25 @@ pub struct ArtifactRollbackResult {
     pub target_revision: u64,
 }
 
+/// Removes an inactive artifact selection from one scope without deleting its
+/// immutable evidence or CAS bytes. A separate retention/purge policy owns
+/// physical deletion.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactUninstallRequest {
+    pub installation_id: Uuid,
+    pub scope: ModuleInstallationScope,
+    pub expected_revision: u64,
+    pub actor_id: Uuid,
+    pub reason: String,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactUninstallResult {
+    pub operation_id: Uuid,
+    pub revision: u64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactAdmissionStage {
@@ -655,6 +674,122 @@ pub struct SeaOrmArtifactInstallationStore {
 impl SeaOrmArtifactInstallationStore {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+
+    /// Removes one inactive scope selection while retaining immutable evidence
+    /// for rollback/audit and deferred CAS retention.
+    pub async fn uninstall_artifact(
+        &self,
+        request: ArtifactUninstallRequest,
+    ) -> Result<ArtifactUninstallResult, ModuleInstallationError> {
+        if request.expected_revision == 0 || request.reason.trim().is_empty() {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "uninstall requires a positive revision and non-empty reason".into(),
+            ));
+        }
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        configure_rls_scope(&transaction, &request.scope).await?;
+        let backend = transaction.get_database_backend();
+        let (scope_kind, tenant_id) = match request.scope {
+            ModuleInstallationScope::Platform => ("platform", None),
+            ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(tenant_id)),
+        };
+        let scope = match backend {
+            DbBackend::Postgres => {
+                "installation.scope_kind = $2 AND installation.tenant_id IS NOT DISTINCT FROM $3"
+            }
+            _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
+        };
+        let row = transaction.query_one(Statement::from_sql_and_values(backend, format!(
+            "SELECT installation.slug, admission.status, admission.revision FROM module_artifact_installations installation JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id WHERE installation.installation_id = {} AND {scope}", if backend == DbBackend::Postgres { "$1" } else { "?1" }), vec![uuid_value(request.installation_id, backend), scope_kind.into(), optional_uuid_value(tenant_id, backend)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?.ok_or_else(|| ModuleInstallationError::AdmissionRevisionConflict("installation is absent from the requested scope".into()))?;
+        let status: String = row
+            .try_get("", "status")
+            .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        let revision: i64 = row
+            .try_get("", "revision")
+            .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        if status != "inactive" || revision != request.expected_revision as i64 {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "installation must be inactive at the expected revision before uninstall".into(),
+            ));
+        }
+        let target_slug: String = row
+            .try_get("", "slug")
+            .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        let dependents = transaction
+            .query_all(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT installation.slug, CAST(installation.descriptor AS TEXT) AS descriptor \
+                     FROM module_artifact_installations installation \
+                     JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id \
+                     WHERE installation.installation_id <> {} AND {scope} AND admission.status = 'active'",
+                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                ),
+                vec![
+                    uuid_value(request.installation_id, backend),
+                    scope_kind.into(),
+                    optional_uuid_value(tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        for dependent in dependents {
+            let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
+                &dependent
+                    .try_get::<String>("", "descriptor")
+                    .map_err(|e| ModuleInstallationError::Store(e.to_string()))?,
+            )
+            .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+            if descriptor
+                .dependencies
+                .iter()
+                .any(|dependency| dependency.slug == target_slug)
+            {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                    "uninstall is blocked by an active dependent in the same scope".into(),
+                ));
+            }
+        }
+        let operation_id = Uuid::new_v4();
+        let p = if backend == DbBackend::Postgres {
+            "$1,$2,$3,$4,$5,$6,NOW()"
+        } else {
+            "?1,?2,?3,?4,?5,?6,datetime('now')"
+        };
+        transaction.execute(Statement::from_sql_and_values(backend, format!("INSERT INTO module_artifact_uninstall_operations (operation_id, installation_id, expected_revision, actor_id, reason, idempotency_key, committed_at) VALUES ({p})"), vec![uuid_value(operation_id, backend), uuid_value(request.installation_id, backend), revision.into(), uuid_value(request.actor_id, backend), request.reason.into(), uuid_value(request.idempotency_key, backend)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        let updated = transaction.execute(Statement::from_sql_and_values(backend, format!("UPDATE module_artifact_admissions SET revision = revision + 1 WHERE installation_id = {} AND revision = {} AND status = 'inactive'", if backend == DbBackend::Postgres { "$1" } else { "?1" }, if backend == DbBackend::Postgres { "$2" } else { "?2" }), vec![uuid_value(request.installation_id, backend), revision.into()])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        if updated.rows_affected() != 1 {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "installation became stale during uninstall".into(),
+            ));
+        }
+        OutboxTransport::new(self.db.clone())
+            .write_to_outbox(
+                &transaction,
+                EventEnvelope::new(
+                    Uuid::new_v4(),
+                    tenant_id,
+                    DomainEvent::ModuleArtifactUninstalled {
+                        installation_id: request.installation_id,
+                        revision: request.expected_revision + 1,
+                    },
+                ),
+            )
+            .await
+            .map_err(|e| ModuleInstallationError::Outbox(e.to_string()))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        Ok(ArtifactUninstallResult {
+            operation_id,
+            revision: request.expected_revision + 1,
+        })
     }
 
     /// Applies the durable selection half of a rollback. Runtime activation is
@@ -976,7 +1111,10 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .db
             .query_all(Statement::from_string(
                 backend,
-                "SELECT payload_digest FROM module_artifact_admissions".to_string(),
+                "SELECT admission.payload_digest FROM module_artifact_admissions admission \
+                 WHERE NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
+                 WHERE uninstall.installation_id = admission.installation_id)"
+                    .to_string(),
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;

@@ -50,6 +50,12 @@
 - Depends on `rustok-commerce-foundation` for shared commerce DTOs, entities, and errors.
 - Depends on `rustok-product` data model through variant references.
 - Used by `rustok-commerce` as the umbrella/root module of the ecommerce family.
+- Provides the owner-managed `PricingReadPort` factory consumed by durable
+  commerce checkout pricing, REST/GraphQL storefront add-to-cart/repricing,
+  GraphQL effective-price projection, and storefront active-price-list
+  projection plus admin product-pricing projection, without exposing
+  `PricingService` across those boundaries; GraphQL storefront product-pricing
+  detail uses the same owner port.
 - `apps/admin` consumes `rustok-pricing-admin` through manifest-driven composition,
   and now gets native module-owned base-price and active price-list override write
   actions there, plus base-row percentage-discount preview/apply and selected

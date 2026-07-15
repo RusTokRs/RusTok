@@ -1,15 +1,19 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
-use rustok_api::{graphql::require_module_enabled, PortActor, PortContext, TenantContext};
+use rustok_api::{PortActor, PortContext, TenantContext, graphql::require_module_enabled};
 use uuid::Uuid;
 
 use rustok_cart::{
-    in_process_cart_promotion_port, CartPromotionKindRequest, CartPromotionPort,
-    CartPromotionRequest, CartPromotionScopeRequest,
+    CartPromotionKindRequest, CartPromotionPort, CartPromotionRequest, CartPromotionScopeRequest,
+    in_process_cart_promotion_port,
 };
-use rustok_pricing::PricingService;
+use rustok_pricing::{
+    ApplyVariantDiscountRequest, PreviewVariantDiscountRequest, PricingReadPort, PricingService,
+    PricingWritePort, SetPriceListScopeRequest, in_process_pricing_read_port,
+    in_process_pricing_write_port,
+};
 
-use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
+use super::super::{MODULE_SLUG, require_commerce_permission, types::*};
 use super::helpers::*;
 
 fn cart_promotion_port_context(
@@ -31,6 +35,41 @@ fn cart_promotion_port_context(
     } else {
         context
     }
+}
+
+fn pricing_preview_port_context(
+    tenant_id: Uuid,
+    user_id: Uuid,
+    variant_id: Uuid,
+    channel_slug: Option<&str>,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(user_id.to_string()),
+        "en",
+        format!("admin-pricing-preview:{variant_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    channel_slug
+        .map(|channel| context.with_channel(channel))
+        .unwrap_or(context)
+}
+
+fn pricing_write_port_context(
+    tenant_id: Uuid,
+    user_id: Uuid,
+    operation: &str,
+    aggregate_id: Uuid,
+) -> PortContext {
+    let correlation_id = format!("admin-pricing:{operation}:{aggregate_id}");
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(user_id.to_string()),
+        "en",
+        correlation_id.clone(),
+    )
+    .with_deadline(std::time::Duration::from_secs(2))
+    .with_idempotency_key(correlation_id)
 }
 
 fn admin_cart_promotion_request(
@@ -156,7 +195,6 @@ impl CommercePricingMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let service = PricingService::new(db.clone(), event_bus.clone());
         let currency_code = parse_pricing_currency_code(&input.currency_code)?;
         let amount = parse_decimal(&input.amount)?;
         let compare_at_amount = parse_optional_decimal(input.compare_at_amount.as_deref())?;
@@ -220,7 +258,7 @@ impl CommercePricingMutation {
         input: AdminPricingVariantDiscountInput,
     ) -> Result<GqlPricingAdjustmentPreview> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ, Permission::PRODUCTS_UPDATE],
             "Permission denied: products:read required",
@@ -228,35 +266,29 @@ impl CommercePricingMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let service = PricingService::new(db.clone(), event_bus.clone());
         let currency_code = parse_pricing_currency_code(&input.currency_code)?;
         let discount_percent = parse_decimal(&input.discount_percent)?;
         let channel_slug = normalize_pricing_channel_slug(input.channel_slug.as_deref());
 
-        let preview = if let Some(price_list_id) = input.price_list_id {
-            service
-                .preview_price_list_percentage_discount_with_channel(
+        let preview = in_process_pricing_read_port(db.clone(), event_bus.clone())
+            .preview_variant_discount(
+                pricing_preview_port_context(
                     tenant_id,
+                    auth.user_id,
                     variant_id,
-                    price_list_id,
-                    currency_code.as_str(),
-                    discount_percent,
-                    input.channel_id,
-                    channel_slug,
-                )
-                .await
-        } else {
-            service
-                .preview_percentage_discount_with_channel(
+                    channel_slug.as_deref(),
+                ),
+                PreviewVariantDiscountRequest {
                     variant_id,
-                    currency_code.as_str(),
+                    price_list_id: input.price_list_id,
+                    currency_code,
                     discount_percent,
-                    input.channel_id,
+                    channel_id: input.channel_id,
                     channel_slug,
-                )
-                .await
-        }
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+                },
+            )
+            .await
+            .map_err(|error| async_graphql::Error::new(error.message))?;
 
         Ok(preview.into())
     }
@@ -277,38 +309,29 @@ impl CommercePricingMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let service = PricingService::new(db.clone(), event_bus.clone());
         let currency_code = parse_pricing_currency_code(&input.currency_code)?;
         let discount_percent = parse_decimal(&input.discount_percent)?;
         let channel_slug = normalize_pricing_channel_slug(input.channel_slug.as_deref());
 
-        let preview = if let Some(price_list_id) = input.price_list_id {
-            service
-                .apply_price_list_percentage_discount_with_channel(
+        let preview = in_process_pricing_write_port(db.clone(), event_bus.clone())
+            .apply_variant_discount(
+                pricing_write_port_context(
                     tenant_id,
                     auth.user_id,
+                    "apply-variant-discount",
                     variant_id,
-                    price_list_id,
-                    currency_code.as_str(),
-                    discount_percent,
-                    input.channel_id,
-                    channel_slug,
-                )
-                .await
-        } else {
-            service
-                .apply_percentage_discount_with_channel(
-                    tenant_id,
-                    auth.user_id,
+                ),
+                ApplyVariantDiscountRequest {
                     variant_id,
-                    currency_code.as_str(),
+                    price_list_id: input.price_list_id,
+                    currency_code,
                     discount_percent,
-                    input.channel_id,
+                    channel_id: input.channel_id,
                     channel_slug,
-                )
-                .await
-        }
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+                },
+            )
+            .await
+            .map_err(|error| async_graphql::Error::new(error.message))?;
 
         Ok(preview.into())
     }
@@ -371,18 +394,22 @@ impl CommercePricingMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let service = PricingService::new(db.clone(), event_bus.clone());
-
-        let option = service
+        let option = in_process_pricing_write_port(db.clone(), event_bus.clone())
             .set_price_list_scope(
-                tenant_id,
-                auth.user_id,
-                price_list_id,
-                input.channel_id,
-                normalize_pricing_channel_slug(input.channel_slug.as_deref()),
+                pricing_write_port_context(
+                    tenant_id,
+                    auth.user_id,
+                    "set-price-list-scope",
+                    price_list_id,
+                ),
+                SetPriceListScopeRequest {
+                    price_list_id,
+                    channel_id: input.channel_id,
+                    channel_slug: normalize_pricing_channel_slug(input.channel_slug.as_deref()),
+                },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| async_graphql::Error::new(error.message))?;
 
         Ok(option.into())
     }

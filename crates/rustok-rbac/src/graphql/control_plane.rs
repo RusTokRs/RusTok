@@ -2,10 +2,7 @@ use async_graphql::{FieldError, Result};
 use rustok_api::{graphql::GraphQLError, AuthContext};
 use uuid::Uuid;
 
-pub(super) fn require_direct_control_plane_user(
-    auth: &AuthContext,
-    tenant_id: Uuid,
-) -> Result<()> {
+pub(super) fn require_direct_control_plane_user(auth: &AuthContext, tenant_id: Uuid) -> Result<()> {
     if auth.client_id.is_some() || auth.grant_type != "direct" || auth.session_id.is_nil() {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "RBAC control plane requires a direct, session-bound user principal",

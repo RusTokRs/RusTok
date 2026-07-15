@@ -1,11 +1,15 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use rustok_api::{PortError, PortErrorKind};
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_cart::{
     AtomicCartCheckoutPricingResolver, CartCheckoutLineItemPricingUpdate, CartCheckoutPricingPlan,
     CartPricingAdjustmentUpdate, CartResponse, PrepareCartCheckoutSnapshotRequest,
 };
 use rustok_outbox::TransactionalEventBus;
+use rustok_pricing::{
+    PricingReadPort, ResolveProductPriceRequest, ResolvedProductPriceSnapshot,
+    in_process_pricing_read_port,
+};
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
@@ -37,8 +41,8 @@ impl AtomicCartCheckoutPricingResolver for StorefrontCheckoutPricingResolver {
         cart: &CartResponse,
         request: &PrepareCartCheckoutSnapshotRequest,
     ) -> Result<CartCheckoutPricingPlan, PortError> {
-        let pricing_service =
-            rustok_pricing::PricingService::new(self.db.clone(), self.event_bus.clone());
+        let pricing_read_port =
+            in_process_pricing_read_port(self.db.clone(), self.event_bus.clone());
         let effective_region_id = cart.region_id.or(request.region_id);
         let cart_channel_slug = normalize_channel_slug(cart.channel_slug.as_deref());
         let currency_code = cart.currency_code.trim().to_ascii_uppercase();
@@ -48,17 +52,18 @@ impl AtomicCartCheckoutPricingResolver for StorefrontCheckoutPricingResolver {
             let Some(variant_id) = line_item.variant_id else {
                 continue;
             };
-            let resolved_price = pricing_service
-                .resolve_variant_price(
-                    tenant_id,
-                    variant_id,
-                    rustok_pricing::PriceResolutionContext {
-                        currency_code: currency_code.clone(),
+            let resolved_price = pricing_read_port
+                .resolve_product_price(
+                    checkout_pricing_port_context(tenant_id, cart, line_item.id),
+                    ResolveProductPriceRequest {
+                        product_id: line_item.product_id,
+                        variant_id,
                         region_id: effective_region_id,
-                        price_list_id: None,
                         channel_id: cart.channel_id,
                         channel_slug: cart_channel_slug.clone(),
+                        price_list_id: None,
                         quantity: Some(line_item.quantity),
+                        currency_code: currency_code.clone(),
                     },
                 )
                 .await
@@ -107,11 +112,29 @@ impl AtomicCartCheckoutPricingResolver for StorefrontCheckoutPricingResolver {
     }
 }
 
+fn checkout_pricing_port_context(
+    tenant_id: Uuid,
+    cart: &CartResponse,
+    line_item_id: Uuid,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-commerce.checkout-pricing"),
+        cart.locale_code.as_deref().unwrap_or("en"),
+        format!("checkout-pricing:{}:{line_item_id}", cart.id),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    cart.channel_slug
+        .as_deref()
+        .map(|channel| context.with_channel(channel))
+        .unwrap_or(context)
+}
+
 fn checkout_line_item_pricing_update(
     line_item_id: Uuid,
     variant_id: Uuid,
     quantity: i32,
-    resolved_price: &rustok_pricing::ResolvedPrice,
+    resolved_price: &ResolvedProductPriceSnapshot,
 ) -> CartCheckoutLineItemPricingUpdate {
     let base_unit_price = resolved_price
         .compare_at_amount

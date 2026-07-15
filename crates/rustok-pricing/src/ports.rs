@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
+use rustok_outbox::TransactionalEventBus;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use uuid::Uuid;
 
 /// Transport-neutral owner boundary for pricing read projections.
@@ -18,6 +20,75 @@ pub trait PricingReadPort: Send + Sync {
         context: PortContext,
         request: PriceListProjectionRequest,
     ) -> Result<PriceListProjectionSnapshot, PortError>;
+
+    async fn list_active_price_list_projections(
+        &self,
+        context: PortContext,
+        request: ActivePriceListProjectionRequest,
+    ) -> Result<Vec<ActivePriceListProjectionSnapshot>, PortError>;
+
+    async fn read_admin_product_pricing_projection(
+        &self,
+        context: PortContext,
+        request: AdminProductPricingProjectionRequest,
+    ) -> Result<crate::AdminPricingProductDetail, PortError>;
+
+    async fn read_storefront_product_pricing_projection(
+        &self,
+        context: PortContext,
+        request: StorefrontProductPricingProjectionRequest,
+    ) -> Result<Option<crate::StorefrontPricingProductDetail>, PortError>;
+
+    async fn preview_variant_discount(
+        &self,
+        context: PortContext,
+        request: PreviewVariantDiscountRequest,
+    ) -> Result<crate::PriceAdjustmentPreview, PortError>;
+}
+
+/// Builds the owner-managed in-process pricing read provider for explicit consumers.
+pub fn in_process_pricing_read_port(
+    db: sea_orm::DatabaseConnection,
+    event_bus: TransactionalEventBus,
+) -> Arc<dyn PricingReadPort> {
+    Arc::new(crate::PricingService::new(db, event_bus))
+}
+
+pub fn in_process_pricing_write_port(
+    db: sea_orm::DatabaseConnection,
+    event_bus: TransactionalEventBus,
+) -> Arc<dyn PricingWritePort> {
+    Arc::new(crate::PricingService::new(db, event_bus))
+}
+
+#[async_trait]
+pub trait PricingWritePort: Send + Sync {
+    async fn set_price_list_scope(
+        &self,
+        context: PortContext,
+        request: SetPriceListScopeRequest,
+    ) -> Result<crate::ActivePriceListOption, PortError>;
+    async fn apply_variant_discount(
+        &self,
+        context: PortContext,
+        request: ApplyVariantDiscountRequest,
+    ) -> Result<crate::PriceAdjustmentPreview, PortError>;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SetPriceListScopeRequest {
+    pub price_list_id: Uuid,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ApplyVariantDiscountRequest {
+    pub variant_id: Uuid,
+    pub price_list_id: Option<Uuid>,
+    pub currency_code: String,
+    pub discount_percent: Decimal,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -38,6 +109,37 @@ pub struct PriceListProjectionRequest {
     pub locale: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ActivePriceListProjectionRequest {
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+    pub fallback_locale: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AdminProductPricingProjectionRequest {
+    pub product_id: Uuid,
+    pub fallback_locale: Option<String>,
+    pub selected_price_list_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StorefrontProductPricingProjectionRequest {
+    pub handle: String,
+    pub fallback_locale: Option<String>,
+    pub public_channel_slug: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PreviewVariantDiscountRequest {
+    pub variant_id: Uuid,
+    pub price_list_id: Option<Uuid>,
+    pub currency_code: String,
+    pub discount_percent: Decimal,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ResolvedProductPriceSnapshot {
     pub product_id: Option<Uuid>,
@@ -55,6 +157,24 @@ pub struct ResolvedProductPriceSnapshot {
     pub channel_slug: Option<String>,
 }
 
+impl From<ResolvedProductPriceSnapshot> for crate::ResolvedPrice {
+    fn from(snapshot: ResolvedProductPriceSnapshot) -> Self {
+        Self {
+            currency_code: snapshot.currency_code,
+            amount: snapshot.amount,
+            compare_at_amount: snapshot.compare_at_amount,
+            discount_percent: snapshot.discount_percent,
+            on_sale: snapshot.on_sale,
+            region_id: snapshot.region_id,
+            min_quantity: snapshot.min_quantity,
+            max_quantity: snapshot.max_quantity,
+            price_list_id: snapshot.price_list_id,
+            channel_id: snapshot.channel_id,
+            channel_slug: snapshot.channel_slug,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PriceListProjectionSnapshot {
     pub price_list_id: Uuid,
@@ -62,6 +182,17 @@ pub struct PriceListProjectionSnapshot {
     pub currency_code: Option<String>,
     pub starts_at: Option<String>,
     pub ends_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ActivePriceListProjectionSnapshot {
+    pub price_list_id: Uuid,
+    pub title: String,
+    pub list_type: String,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+    pub rule_kind: Option<String>,
+    pub adjustment_percent: Option<Decimal>,
 }
 
 #[async_trait]
@@ -175,6 +306,173 @@ impl PricingReadPort for crate::PricingService {
             starts_at: None,
             ends_at: None,
         })
+    }
+
+    async fn list_active_price_list_projections(
+        &self,
+        context: PortContext,
+        request: ActivePriceListProjectionRequest,
+    ) -> Result<Vec<ActivePriceListProjectionSnapshot>, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        let lists = self
+            .list_active_price_lists_for_channel(
+                tenant_id,
+                request.channel_id,
+                request.channel_slug.as_deref(),
+                Some(context.locale.as_str()),
+                request.fallback_locale.as_deref(),
+            )
+            .await
+            .map_err(pricing_error_to_port_error)?;
+
+        Ok(lists
+            .into_iter()
+            .map(|list| ActivePriceListProjectionSnapshot {
+                price_list_id: list.id,
+                title: list.name,
+                list_type: list.list_type,
+                channel_id: list.channel_id,
+                channel_slug: list.channel_slug,
+                rule_kind: list.rule_kind,
+                adjustment_percent: list.adjustment_percent,
+            })
+            .collect())
+    }
+
+    async fn read_admin_product_pricing_projection(
+        &self,
+        context: PortContext,
+        request: AdminProductPricingProjectionRequest,
+    ) -> Result<crate::AdminPricingProductDetail, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        self.get_admin_product_pricing_with_locale_fallback(
+            tenant_id,
+            request.product_id,
+            context.locale.as_str(),
+            request.fallback_locale.as_deref(),
+            request.selected_price_list_id,
+        )
+        .await
+        .map_err(pricing_error_to_port_error)
+    }
+
+    async fn read_storefront_product_pricing_projection(
+        &self,
+        context: PortContext,
+        request: StorefrontProductPricingProjectionRequest,
+    ) -> Result<Option<crate::StorefrontPricingProductDetail>, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        self.get_published_product_pricing_by_handle_with_locale_fallback(
+            tenant_id,
+            request.handle.trim(),
+            context.locale.as_str(),
+            request.fallback_locale.as_deref(),
+            request.public_channel_slug.as_deref(),
+        )
+        .await
+        .map_err(pricing_error_to_port_error)
+    }
+
+    async fn preview_variant_discount(
+        &self,
+        context: PortContext,
+        request: PreviewVariantDiscountRequest,
+    ) -> Result<crate::PriceAdjustmentPreview, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        let preview = if let Some(price_list_id) = request.price_list_id {
+            self.preview_price_list_percentage_discount_with_channel(
+                tenant_id,
+                request.variant_id,
+                price_list_id,
+                request.currency_code.as_str(),
+                request.discount_percent,
+                request.channel_id,
+                request.channel_slug,
+            )
+            .await
+        } else {
+            self.preview_percentage_discount_with_channel(
+                request.variant_id,
+                request.currency_code.as_str(),
+                request.discount_percent,
+                request.channel_id,
+                request.channel_slug,
+            )
+            .await
+        };
+        preview.map_err(pricing_error_to_port_error)
+    }
+}
+
+#[async_trait]
+impl PricingWritePort for crate::PricingService {
+    async fn set_price_list_scope(
+        &self,
+        context: PortContext,
+        request: SetPriceListScopeRequest,
+    ) -> Result<crate::ActivePriceListOption, PortError> {
+        context.require_write_semantics()?;
+        context.require_policy(PortCallPolicy::write())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        let actor_id = Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
+            PortError::validation(
+                "pricing.actor_id_invalid",
+                "pricing write actor must be a UUID",
+            )
+        })?;
+        self.set_price_list_scope(
+            tenant_id,
+            actor_id,
+            request.price_list_id,
+            request.channel_id,
+            request.channel_slug,
+        )
+        .await
+        .map_err(pricing_error_to_port_error)
+    }
+    async fn apply_variant_discount(
+        &self,
+        context: PortContext,
+        request: ApplyVariantDiscountRequest,
+    ) -> Result<crate::PriceAdjustmentPreview, PortError> {
+        context.require_write_semantics()?;
+        context.require_policy(PortCallPolicy::write())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        let actor_id = Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
+            PortError::validation(
+                "pricing.actor_id_invalid",
+                "pricing write actor must be a UUID",
+            )
+        })?;
+        let result = if let Some(price_list_id) = request.price_list_id {
+            self.apply_price_list_percentage_discount_with_channel(
+                tenant_id,
+                actor_id,
+                request.variant_id,
+                price_list_id,
+                request.currency_code.as_str(),
+                request.discount_percent,
+                request.channel_id,
+                request.channel_slug,
+            )
+            .await
+        } else {
+            self.apply_percentage_discount_with_channel(
+                tenant_id,
+                actor_id,
+                request.variant_id,
+                request.currency_code.as_str(),
+                request.discount_percent,
+                request.channel_id,
+                request.channel_slug,
+            )
+            .await
+        };
+        result.map_err(pricing_error_to_port_error)
     }
 }
 

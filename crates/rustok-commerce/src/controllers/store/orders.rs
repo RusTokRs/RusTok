@@ -1,12 +1,12 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use rustok_api::{RequestContext, TenantContext};
 use rustok_customer::dto::CustomerResponse;
 use rustok_customer::{
-    in_process_customer_read_port, CustomerReadPort, CustomerUserProjectionRequest,
+    CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
 };
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;
@@ -15,8 +15,8 @@ use uuid::Uuid;
 
 use super::{
     super::{
-        common::{PaginatedResponse, PaginationMeta, PaginationParams},
         CommerceHttpRuntime,
+        common::{PaginatedResponse, PaginationMeta, PaginationParams},
     },
     StoreOrderChangesParams, StoreOrderRefundsParams, StoreOrderReturnsParams,
 };

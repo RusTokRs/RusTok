@@ -18,6 +18,20 @@ The port accepts variant-first resolution when a cart snapshot has no product
 id and returns the full resolved-price projection required to persist pricing
 adjustments; cart storefront repricing therefore no longer calls
 `PricingService::resolve_variant_price` directly.
+The durable checkout pricing resolver also calls `PricingReadPort` with typed
+tenant, service-actor, locale, channel, correlation, and deadline context.
+REST, GraphQL, and native storefront cart repricing, plus REST and GraphQL
+add-to-cart line-item resolution, use the same projection port instead of
+resolving variants through `PricingService` directly. The commerce GraphQL
+admin/storefront pricing roots also resolve each effective variant price through
+the projection port while preserving an absent-price result as `null`.
+The storefront active-price-list GraphQL root now uses a typed list projection
+operation with context-derived locale and channel scope.
+The admin product-pricing GraphQL root also uses a typed owner projection with
+an authenticated actor, locale, channel, correlation, and deadline context.
+The storefront product-pricing-by-handle GraphQL root uses the matching public
+projection operation and retains its channel-visibility input.
+The GraphQL discount preview uses the typed read port with an authenticated actor.
 
 ## FFA/FBA status
 

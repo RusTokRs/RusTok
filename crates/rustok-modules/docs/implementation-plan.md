@@ -198,6 +198,13 @@ absence of a tenant identifier.
   prohibit arbitrary untrusted SQL/native migrations.
 - Implement upgrade, rollback, quarantine, revocation, and uninstall.
 
+The next owner operation is artifact uninstall. It will replace a scoped,
+inactive marketplace selection only after checking active direct dependents and
+will record actor, reason, revision, idempotency, and outbox evidence in one
+transaction. It will deliberately retain CAS bytes, tenant data, evidence, and
+rollback history for the retention/reconciler path; purge is a separately
+authorized destructive operation.
+
 ### M5 - Build and Publication Orchestration
 
 - Define immutable build request/result contracts before adding another crate.

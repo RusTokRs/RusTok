@@ -1,13 +1,13 @@
 use axum::{
+    Json,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    Json,
 };
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_cart::{
+    CartStorefrontPort, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
     bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_checkout_port,
-    in_process_cart_storefront_port, CartStorefrontPort, CartStorefrontReadRequest,
-    PrepareCartCheckoutSnapshotRequest,
+    in_process_cart_storefront_port,
 };
 use rustok_payment::PaymentService;
 use rustok_web::{HttpError, HttpResult};
@@ -271,7 +271,9 @@ fn required_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
     Ok(value.to_string())
 }
 
-fn recovering_checkout_http_error(error: crate::services::RecoveringStagedCheckoutError) -> HttpError {
+fn recovering_checkout_http_error(
+    error: crate::services::RecoveringStagedCheckoutError,
+) -> HttpError {
     match error {
         crate::services::RecoveringStagedCheckoutError::Staged(staged) => {
             staged_checkout_http_error(staged)

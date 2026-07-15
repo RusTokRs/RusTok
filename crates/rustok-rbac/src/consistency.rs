@@ -96,11 +96,13 @@ async fn load_system_role_permission_drift(
                 "invalid system role slug `{role_slug}` in RBAC consistency query: {error}"
             ))
         })?;
-        let snapshot = snapshots.entry(role_id).or_insert_with(|| SystemRoleSnapshot {
-            role,
-            permissions: HashSet::new(),
-            invalid_permission_rows: 0,
-        });
+        let snapshot = snapshots
+            .entry(role_id)
+            .or_insert_with(|| SystemRoleSnapshot {
+                role,
+                permissions: HashSet::new(),
+                invalid_permission_rows: 0,
+            });
 
         let resource: Option<String> = row.try_get("", "permission_resource")?;
         let action: Option<String> = row.try_get("", "permission_action")?;

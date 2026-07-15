@@ -14,12 +14,14 @@ pub mod graphql;
 pub mod locale;
 pub mod manifest_hash;
 pub mod module_registry_contract;
+pub mod module_work;
 pub mod permissions;
 pub mod ports;
 #[cfg(feature = "server")]
 pub mod request;
 #[cfg(feature = "server")]
 pub mod runtime;
+pub mod tenant_rbac;
 pub mod write_path_feedback;
 
 #[cfg(feature = "server")]
@@ -38,6 +40,9 @@ pub use locale::{
     locale_primary_language, locale_tags_match, normalize_locale_tag, push_locale_candidate,
     PLATFORM_FALLBACK_LOCALE,
 };
+pub use module_work::{
+    ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
+};
 pub use permissions::{Action, Permission, Resource};
 pub use ports::{
     PortActor, PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,
@@ -47,4 +52,8 @@ pub use ports::{
 pub use request::RequestContext;
 #[cfg(feature = "server")]
 pub use runtime::{HostRuntimeContext, HostSettingsSnapshot};
+pub use tenant_rbac::{
+    SharedTenantRbacCatalog, TenantRbacCatalog, TenantRbacCatalogError, TenantRbacPermission,
+    TenantRbacRole,
+};
 pub use write_path_feedback::{classify_write_path_issue, WritePathIssue, WritePathIssueKind};

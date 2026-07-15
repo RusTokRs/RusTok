@@ -10,7 +10,8 @@
       "contract_version": "pricing.read_projection.v1",
       "registry": "crates/rustok-pricing/contracts/pricing-fba-registry.json",
       "ports": [
-        "PricingReadPort"
+        "PricingReadPort",
+        "PricingWritePort"
       ],
       "profiles": [
         "checkout_pricing_projection"

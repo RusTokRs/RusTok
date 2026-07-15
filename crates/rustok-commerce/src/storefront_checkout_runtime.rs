@@ -1,15 +1,16 @@
 use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
 use rustok_cart::{
-    in_process_cart_checkout_port, in_process_cart_storefront_port, CartCheckoutPort,
-    CartCheckoutSnapshotRequest, CartStorefrontContextUpdateRequest, CartStorefrontPort,
-    CartStorefrontReadRequest, CartStorefrontRepriceRequest,
+    CartCheckoutPort, CartCheckoutSnapshotRequest, CartStorefrontContextUpdateRequest,
+    CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRepriceRequest,
+    in_process_cart_checkout_port, in_process_cart_storefront_port,
 };
 use rustok_customer::{
-    in_process_customer_read_port, CustomerReadPort, CustomerUserProjectionRequest,
+    CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
 };
 use rustok_outbox::TransactionalEventBus;
+use rustok_pricing::{PricingReadPort, ResolveProductPriceRequest, in_process_pricing_read_port};
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -512,8 +513,7 @@ async fn reprice_storefront_cart_line_items(
         return Ok(cart);
     }
 
-    let pricing_service =
-        rustok_pricing::PricingService::new(runtime.db_clone(), runtime.event_bus());
+    let pricing_read_port = in_process_pricing_read_port(runtime.db_clone(), runtime.event_bus());
     let channel_id = cart
         .channel_id
         .or_else(|| request_context.and_then(|ctx| ctx.channel_id));
@@ -525,23 +525,29 @@ async fn reprice_storefront_cart_line_items(
         let Some(variant_id) = line_item.variant_id else {
             continue;
         };
-        let pricing_context = rustok_pricing::PriceResolutionContext {
-            currency_code: cart.currency_code.to_ascii_uppercase(),
-            region_id: cart.region_id,
-            price_list_id: None,
-            channel_id,
-            channel_slug: channel_slug.clone(),
-            quantity: Some(line_item.quantity),
-        };
-        let resolved_price = pricing_service
-            .resolve_variant_price(tenant_id, variant_id, pricing_context)
+        let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
+            .resolve_product_price(
+                storefront_cart_storefront_port_context(
+                    tenant_id,
+                    cart.id,
+                    request_context,
+                    "price-read",
+                    false,
+                ),
+                ResolveProductPriceRequest {
+                    product_id: line_item.product_id,
+                    variant_id,
+                    region_id: cart.region_id,
+                    price_list_id: None,
+                    channel_id,
+                    channel_slug: channel_slug.clone(),
+                    quantity: Some(line_item.quantity),
+                    currency_code: cart.currency_code.to_ascii_uppercase(),
+                },
+            )
             .await
             .map_err(runtime_error)?
-            .ok_or_else(|| {
-                StorefrontCheckoutRuntimeError::new(
-                    "Unable to resolve storefront price for cart line item",
-                )
-            })?;
+            .into();
         updates.push(storefront_cart_pricing_update(
             line_item.id,
             line_item.quantity,

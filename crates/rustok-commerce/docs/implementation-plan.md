@@ -91,6 +91,22 @@ already handed to payment-owned storefront transport.
   checkout adapters use the same owner ports for their cart boundary.
 - GraphQL and native admin cart promotions call cart-owned `CartPromotionPort`; no
   production `rustok-commerce` adapter constructs `CartService` directly.
+- Durable checkout pricing resolves variants through pricing-owned
+  `PricingReadPort`; the checkout snapshot resolver no longer constructs
+  `PricingService` directly.
+- REST, GraphQL, and native storefront cart repricing, plus REST and GraphQL
+  add-to-cart and line-item quantity resolution, consume `PricingReadPort`
+  with typed context and no direct variant-price bypass.
+- GraphQL admin/storefront pricing-product roots resolve effective variant prices
+  through `PricingReadPort`; the typed not-found result preserves the existing
+  nullable effective-price response rather than failing the whole projection.
+- The storefront active-price-list GraphQL root consumes the pricing-owned list
+  projection port instead of constructing `PricingService` directly.
+- The admin pricing-product GraphQL root consumes the owner projection port and
+  carries the authenticated actor plus request-derived locale/channel context.
+- The storefront pricing-product-by-handle GraphQL root also consumes the owner
+  projection port with its public channel scope rather than constructing a
+  pricing service.
 - Targeted compiled provider-consumer execution is recorded by
   `cargo test -p rustok-commerce --test checkout_service_test
   validation::complete_checkout_rejects_line_item_without_channel_visible_inventory -- --exact`.

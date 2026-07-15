@@ -129,6 +129,12 @@ hasNone(aiGraphqlRuntime, ['AiHostRuntime::new(', 'AiGraphqlRoleSlugProvider', '
 hasNone(aiProviderNative, ['AiHostRuntime::new(', 'SELECT roles.slug'], 'ai native runtime/RBAC ownership');
 const aiRouter = read('crates/rustok-ai/src/router.rs');
 hasAll(aiRouter, ['provider role restriction awaits the platform tenant RBAC catalog'], 'ai router legacy role policy');
+const tenantRbacContract = read('crates/rustok-api/src/tenant_rbac.rs');
+hasAll(tenantRbacContract, ['pub trait TenantRbacCatalog: Send + Sync', 'pub struct SharedTenantRbacCatalog'], 'tenant RBAC catalog contract');
+const tenantRbacProvider = read('crates/rustok-rbac/src/catalog.rs');
+hasAll(tenantRbacProvider, ['impl TenantRbacCatalog for BuiltinTenantRbacCatalog', 'validate_assignment'], 'tenant RBAC catalog provider');
+const rbacModule = read('crates/rustok-rbac/src/lib.rs');
+hasAll(rbacModule, ['SharedTenantRbacCatalog(Arc::new(BuiltinTenantRbacCatalog))'], 'tenant RBAC runtime registration');
 const aiPlan = read(aiRegistry.evidence.local_plan);
 hasAll(aiPlan, ['- FBA status: `boundary_ready`', aiRegistryPath, aiRegistry.evidence.static_matrix, aiRegistry.evidence.runtime_fallback_smoke, 'verify-ai-fba-baseline.mjs'], 'ai local plan');
 hasAll(central, ['| `ai` |', aiRegistryPath, aiRegistry.evidence.runtime_fallback_smoke], 'ai central registry');

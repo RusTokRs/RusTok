@@ -59,11 +59,7 @@ pub trait PermissionCache {
 
     async fn invalidate(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid);
 
-    async fn lookup(
-        &self,
-        tenant_id: &uuid::Uuid,
-        user_id: &uuid::Uuid,
-    ) -> PermissionCacheLookup {
+    async fn lookup(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) -> PermissionCacheLookup {
         PermissionCacheLookup::new(self.get(tenant_id, user_id).await, 0)
     }
 
@@ -129,12 +125,7 @@ where
         let resolved_permissions =
             resolve_permissions_from_relations(store, tenant_id, user_id).await?;
         if cache
-            .insert_if_current(
-                tenant_id,
-                user_id,
-                token,
-                resolved_permissions.clone(),
-            )
+            .insert_if_current(tenant_id, user_id, token, resolved_permissions.clone())
             .await
         {
             return Ok(crate::PermissionResolution {
@@ -465,7 +456,12 @@ mod tests {
         assert_eq!(result.permissions, vec![Permission::USERS_READ]);
         assert_eq!(cache.publication_attempts.load(Ordering::Acquire), 2);
         assert_eq!(
-            cache.values.lock().await.get(&(tenant_id, user_id)).cloned(),
+            cache
+                .values
+                .lock()
+                .await
+                .get(&(tenant_id, user_id))
+                .cloned(),
             Some(vec![Permission::USERS_READ])
         );
     }

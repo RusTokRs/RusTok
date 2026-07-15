@@ -87,6 +87,9 @@
   active `price_list` rule/scope updates, not just pricing-authoritative
   read roots;
 - shared DTOs, entities and error surface come from `rustok-commerce-foundation`.
+- `rustok-commerce` durable checkout pricing and REST/GraphQL storefront cart
+  pricing consume the owner-managed `PricingReadPort` factory rather than
+  constructing `PricingService`.
 
 ## Integration
 

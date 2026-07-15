@@ -1,8 +1,6 @@
 use std::collections::HashSet;
 
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -15,9 +13,7 @@ pub enum RbacRoleAssignmentError {
     Database(String),
     #[error("RBAC role assignment did not persist {0}")]
     MissingPersistedRecord(&'static str),
-    #[error(
-        "RBAC user {user_id} belongs to tenant {actual_tenant_id}, not {expected_tenant_id}"
-    )]
+    #[error("RBAC user {user_id} belongs to tenant {actual_tenant_id}, not {expected_tenant_id}")]
     UserTenantMismatch {
         user_id: Uuid,
         expected_tenant_id: Uuid,
@@ -25,7 +21,9 @@ pub enum RbacRoleAssignmentError {
     },
     #[error("RBAC role assignment does not support database backend {0}")]
     UnsupportedBackend(&'static str),
-    #[error("RBAC built-in role slug `{slug}` is occupied by a non-system role in tenant {tenant_id}")]
+    #[error(
+        "RBAC built-in role slug `{slug}` is occupied by a non-system role in tenant {tenant_id}"
+    )]
     BuiltInRoleSlugCollision { tenant_id: Uuid, slug: String },
 }
 
@@ -359,9 +357,7 @@ where
     ) -> Result<Vec<Uuid>, RbacRoleAssignmentError> {
         let backend = self.db.get_database_backend();
         let sql = match backend {
-            DbBackend::Sqlite => {
-                "SELECT permission_id FROM role_permissions WHERE role_id = ?1"
-            }
+            DbBackend::Sqlite => "SELECT permission_id FROM role_permissions WHERE role_id = ?1",
             DbBackend::Postgres | DbBackend::MySql => {
                 "SELECT permission_id FROM role_permissions WHERE role_id = $1"
             }
@@ -540,8 +536,9 @@ mod tests {
     fn user_role_markers_keep_user_and_role_positions() {
         assert!(render_insert_sql(USER_ROLE_INSERT, DbBackend::Postgres)
             .contains("VALUES ($1, $2, $3)"));
-        assert!(render_insert_sql(USER_ROLE_INSERT, DbBackend::Sqlite)
-            .contains("VALUES (?1, ?2, ?3)"));
+        assert!(
+            render_insert_sql(USER_ROLE_INSERT, DbBackend::Sqlite).contains("VALUES (?1, ?2, ?3)")
+        );
     }
 
     #[test]

@@ -78,6 +78,12 @@ AI no longer queries RBAC tables for actor roles. Provider profiles cannot
 accept role slugs, and any legacy persisted role restriction is fail-closed
 until the platform-owned `TenantRbacCatalog` supplies a typed selection.
 
+The first platform prerequisite is now available: `rustok-api` defines the
+generic `TenantRbacCatalog` contract and `rustok-rbac` publishes its built-in
+tenant-scoped role/permission provider through `ModuleRuntimeExtensions`.
+The AI adapter and role-selection UI remain pending until the generic scheduler
+contract is available too; no AI-specific host wiring is introduced.
+
 Rig agent recovery never executes unknown or policy-denied tool calls. It
 persists a synthetic skipped result and lets the model finish the turn. A
 sensitive model turn is represented as one approval batch: non-sensitive

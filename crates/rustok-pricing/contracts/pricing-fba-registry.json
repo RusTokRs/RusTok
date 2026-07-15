@@ -10,11 +10,24 @@
       "owner": "pricing",
       "operations": [
         "resolve_product_price",
-        "read_price_list_projection"
+        "read_price_list_projection",
+        "list_active_price_list_projections",
+        "read_admin_product_pricing_projection",
+        "read_storefront_product_pricing_projection",
+        "preview_variant_discount"
       ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": false,
+      "deadline_required": true
+    },
+    {
+      "name": "PricingWritePort",
+      "owner": "pricing",
+      "operations": ["set_price_list_scope"],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
       "deadline_required": true
     }
   ],
@@ -86,6 +99,49 @@
           "typed_port_error_mapping",
           "context_deadline_preserved"
         ]
+      },
+      {
+        "operation": "list_active_price_list_projections",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "read_admin_product_pricing_projection",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "read_storefront_product_pricing_projection",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "preview_variant_discount",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]
+      },
+      {
+        "operation": "set_price_list_scope",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
       }
     ],
     "fallback_smoke": {

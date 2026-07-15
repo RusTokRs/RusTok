@@ -60,6 +60,11 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   const cartPromotionMutationSource = read('crates/rustok-commerce/src/graphql/mutations/pricing.rs');
   const cartPromotionNativeAdapterSource = read('crates/rustok-commerce/admin/src/transport/native_server_adapter.rs')
     .split('#[cfg(all(test, feature = "ssr"))]')[0];
+  const checkoutPricingSource = read('crates/rustok-commerce/src/storefront_checkout_pricing.rs');
+  const graphqlMutationHelpersSource = read('crates/rustok-commerce/src/graphql/mutations/helpers.rs');
+  const pricingQuerySource = read('crates/rustok-commerce/src/graphql/query.rs');
+  const storefrontControllerSource = read('crates/rustok-commerce/src/controllers/store/mod.rs');
+  const storefrontCheckoutRuntimeSource = read('crates/rustok-commerce/src/storefront_checkout_runtime.rs');
 
   if (trace.schema_version !== 1) fail('commerce-domain invocation trace schema_version drift');
   if (trace.status !== 'executable_no_compile') fail('commerce-domain invocation trace status drift');
@@ -237,6 +242,108 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   }
   if (cartPromotionNativeAdapterSource.includes('CartService::new(')) {
     fail('Native cart promotion adapter must not construct CartService outside CartPromotionPort');
+  }
+  for (const marker of [
+    'in_process_pricing_read_port(',
+    '.resolve_product_price(',
+    'ResolveProductPriceRequest {',
+    'checkout_pricing_port_context(',
+    'PortActor::service("rustok-commerce.checkout-pricing")',
+    '.with_deadline(std::time::Duration::from_secs(2))',
+  ]) {
+    if (!checkoutPricingSource.includes(marker)) {
+      fail(`checkout pricing provider-consumer boundary missing: ${marker}`);
+    }
+  }
+  if (checkoutPricingSource.includes('PricingService::new(')) {
+    fail('checkout pricing must not construct PricingService outside PricingReadPort');
+  }
+  const effectivePriceBody = functionBody(pricingQuerySource, 'attach_effective_prices');
+  if (!effectivePriceBody) fail('GraphQL effective-price attachment implementation body missing');
+  for (const marker of [
+    '.resolve_product_price(',
+    'ResolveProductPriceRequest {',
+    'pricing_query_port_context(',
+    'PortErrorKind::NotFound',
+  ]) {
+    if (!effectivePriceBody.includes(marker)) {
+      fail(`GraphQL effective-price attachment missing PricingReadPort marker: ${marker}`);
+    }
+  }
+  if (effectivePriceBody.includes('PricingService::new(') || effectivePriceBody.includes('.resolve_variant_price(')) {
+    fail('GraphQL effective-price attachment must not bypass PricingReadPort');
+  }
+  for (const functionName of ['admin_pricing_product', 'storefront_pricing_product']) {
+    const body = functionBody(pricingQuerySource, functionName);
+    if (!body) fail(`GraphQL pricing query implementation body missing: ${functionName}`);
+    for (const marker of ['in_process_pricing_read_port(', 'attach_effective_prices(']) {
+      if (!body.includes(marker)) {
+        fail(`GraphQL pricing query ${functionName} missing PricingReadPort composition marker: ${marker}`);
+      }
+    }
+    if (body.includes('PricingService::new(')) {
+      fail(`GraphQL pricing query ${functionName} must not construct PricingService outside PricingReadPort`);
+    }
+  }
+  const activePriceListsBody = functionBody(pricingQuerySource, 'storefront_active_price_lists');
+  if (!activePriceListsBody) fail('GraphQL active-price-list query implementation body missing');
+  for (const marker of [
+    'in_process_pricing_read_port(',
+    '.list_active_price_list_projections(',
+    'ActivePriceListProjectionRequest {',
+    'pricing_active_lists_port_context(',
+  ]) {
+    if (!activePriceListsBody.includes(marker)) {
+      fail(`GraphQL active-price-list query missing PricingReadPort marker: ${marker}`);
+    }
+  }
+  if (activePriceListsBody.includes('PricingService::new(') || activePriceListsBody.includes('.list_active_price_lists_for_channel(')) {
+    fail('GraphQL active-price-list query must not bypass PricingReadPort');
+  }
+  for (const [surface, source, functionName, providerSource, providerFunctionName] of [
+    ['GraphQL storefront repricing helper', graphqlMutationHelpersSource, 'reprice_storefront_cart_line_items'],
+    [
+      'GraphQL storefront add-line-item helper',
+      graphqlMutationHelpersSource,
+      'resolve_storefront_line_item_input',
+      cartStorefrontMutationSource,
+      'add_storefront_cart_line_item',
+    ],
+    [
+      'GraphQL storefront update-line-item mutation',
+      cartStorefrontMutationSource,
+      'update_storefront_cart_line_item',
+    ],
+    ['REST storefront repricing helper', storefrontControllerSource, 'reprice_storefront_cart_line_items_for_db'],
+    [
+      'REST storefront add-line-item helper',
+      storefrontControllerSource,
+      'resolve_store_line_item_input',
+      cartStorefrontRestSource,
+      'add_cart_line_item',
+    ],
+    ['Storefront checkout runtime repricing helper', storefrontCheckoutRuntimeSource, 'reprice_storefront_cart_line_items'],
+  ]) {
+    const body = functionBody(source, functionName);
+    if (!body) fail(`${surface} implementation body missing`);
+    const providerBody = providerFunctionName
+      ? functionBody(providerSource, providerFunctionName)
+      : body;
+    if (!providerBody) fail(`${surface} provider implementation body missing`);
+    if (!providerBody.includes('in_process_pricing_read_port(')) {
+      fail(`${surface} missing PricingReadPort provider factory`);
+    }
+    for (const marker of [
+      '.resolve_product_price(',
+      'ResolveProductPriceRequest {',
+    ]) {
+      if (!body.includes(marker)) {
+        fail(`${surface} missing PricingReadPort consumer marker: ${marker}`);
+      }
+    }
+    if (body.includes('PricingService::new(') || body.includes('.resolve_variant_price(')) {
+      fail(`${surface} must not bypass PricingReadPort`);
+    }
   }
 
   for (const module of modules) {

@@ -152,7 +152,7 @@ async fn storefront_line_item_resolution_uses_backend_variant_title_and_price() 
         &db,
         tenant_id,
         StoreLineItemResolution {
-            pricing_service: &pricing_service,
+            pricing_read_port: &pricing_service,
             pricing_context: &pricing_context,
             locale: "de",
             default_locale: "en",
@@ -215,7 +215,7 @@ async fn storefront_line_item_resolution_rejects_missing_price_for_cart_currency
         &db,
         tenant_id,
         StoreLineItemResolution {
-            pricing_service: &pricing_service,
+            pricing_read_port: &pricing_service,
             pricing_context: &pricing_context,
             locale: "de",
             default_locale: "en",
@@ -240,8 +240,8 @@ async fn storefront_line_item_resolution_rejects_missing_price_for_cart_currency
 }
 
 #[tokio::test]
-async fn storefront_line_item_resolution_falls_back_to_first_product_translation_when_locale_missing(
-) {
+async fn storefront_line_item_resolution_falls_back_to_first_product_translation_when_locale_missing()
+ {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
     let service = CatalogService::new(db.clone(), mock_transactional_event_bus());
@@ -269,7 +269,7 @@ async fn storefront_line_item_resolution_falls_back_to_first_product_translation
         &db,
         tenant_id,
         StoreLineItemResolution {
-            pricing_service: &pricing_service,
+            pricing_read_port: &pricing_service,
             pricing_context: &pricing_context,
             locale: "fr",
             default_locale: "en",
@@ -309,7 +309,7 @@ async fn storefront_line_item_resolution_returns_not_found_for_unknown_variant()
         &db,
         tenant_id,
         StoreLineItemResolution {
-            pricing_service: &pricing_service,
+            pricing_read_port: &pricing_service,
             pricing_context: &pricing_context,
             locale: "de",
             default_locale: "en",
@@ -357,7 +357,7 @@ async fn storefront_line_item_resolution_rejects_quantity_above_channel_visible_
         &db,
         tenant_id,
         StoreLineItemResolution {
-            pricing_service: &pricing_service,
+            pricing_read_port: &pricing_service,
             pricing_context: &pricing_context,
             locale: "de",
             default_locale: "en",

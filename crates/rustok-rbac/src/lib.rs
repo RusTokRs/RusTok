@@ -1,4 +1,5 @@
 pub mod bootstrap;
+pub mod catalog;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -10,6 +11,7 @@ pub mod repair;
 pub mod services;
 
 pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
+pub use catalog::BuiltinTenantRbacCatalog;
 pub use consistency::{load_consistency_stats, RbacConsistencyStats};
 pub use error::RbacError;
 pub use integration::{
@@ -49,9 +51,12 @@ pub use services::relation_permission_resolver::{
 pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
 
 use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+use rustok_api::{Permission, SharedTenantRbacCatalog};
+use rustok_core::module::{
+    HealthStatus, MigrationSource, ModuleKind, ModuleRuntimeExtensions, RusToKModule,
+};
 use sea_orm_migration::MigrationTrait;
+use std::sync::Arc;
 
 pub struct RbacModule;
 
@@ -91,6 +96,10 @@ impl RusToKModule for RbacModule {
             Permission::LOGS_READ,
             Permission::LOGS_LIST,
         ]
+    }
+
+    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+        extensions.insert(SharedTenantRbacCatalog(Arc::new(BuiltinTenantRbacCatalog)));
     }
 
     async fn health(&self) -> HealthStatus {

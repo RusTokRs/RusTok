@@ -6,7 +6,9 @@ license.workspace = true
 description = "Host runtime foundation helpers for RusToK server and module adapters"
 
 [dependencies]
+async-trait.workspace = true
 rustok-api = { workspace = true, features = ["server"] }
 sea-orm.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true

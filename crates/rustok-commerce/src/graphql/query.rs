@@ -1,19 +1,23 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_api::locale_tags_match;
 use rustok_api::Permission;
+use rustok_api::locale_tags_match;
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError},
     AuthContext, RequestContext, TenantContext,
+    graphql::{GraphQLError, require_module_enabled},
 };
-use rustok_cart::{in_process_cart_storefront_port, CartStorefrontPort, CartStorefrontReadRequest};
+use rustok_cart::{CartStorefrontPort, CartStorefrontReadRequest, in_process_cart_storefront_port};
 use rustok_customer::{
-    in_process_customer_read_port, CustomerReadPort, CustomerUserProjectionRequest,
+    CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
 };
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentService;
-use rustok_pricing::PricingService;
+use rustok_pricing::{
+    ActivePriceListProjectionRequest, AdminProductPricingProjectionRequest, PricingReadPort,
+    ResolveProductPriceRequest, StorefrontProductPricingProjectionRequest,
+    in_process_pricing_read_port,
+};
 use rustok_product::services::catalog::helpers::product_channel_visibility_condition;
 use rustok_product::{CatalogService, ProductCatalogSchemaService};
 use rustok_region::{RegionListRequest, RegionReadPort, RegionService};
@@ -26,6 +30,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::{
+    CommerceError, ShippingProfileService, StoreContextService,
     search::product_translation_title_search_condition,
     storefront_channel::{
         apply_public_channel_inventory_to_product, is_metadata_visible_for_public_channel,
@@ -35,13 +40,12 @@ use crate::{
         enrich_cart_delivery_groups, is_shipping_option_compatible_with_profiles,
         load_cart_shipping_profile_slugs, product_shipping_profile_slug,
     },
-    CommerceError, ShippingProfileService, StoreContextService,
 };
 use rustok_product::entities::{product, product_translation};
 
 use super::{
-    map_product_service_error, product_query_tenant, require_commerce_permission, types::*,
-    MODULE_SLUG, PRODUCT_MODULE_SLUG,
+    MODULE_SLUG, PRODUCT_MODULE_SLUG, map_product_service_error, product_query_tenant,
+    require_commerce_permission, types::*,
 };
 
 #[derive(Default)]
@@ -102,29 +106,43 @@ impl CommerceQuery {
             selected_channel_slug.clone(),
             quantity,
         )?;
-        let service = PricingService::new(db.clone(), event_bus.clone());
-        let detail = match service
-            .get_admin_product_pricing_with_locale_fallback(
-                tenant_id,
-                id,
-                requested_locale.as_str(),
-                Some(tenant.default_locale.as_str()),
-                resolution_context
-                    .as_ref()
-                    .and_then(|context| context.price_list_id),
+        let pricing_read_port = in_process_pricing_read_port(db.clone(), event_bus.clone());
+        let detail = match pricing_read_port
+            .read_admin_product_pricing_projection(
+                pricing_admin_product_port_context(
+                    tenant_id,
+                    ctx.data_opt::<AuthContext>(),
+                    requested_locale.as_str(),
+                    resolution_context.as_ref(),
+                    id,
+                ),
+                AdminProductPricingProjectionRequest {
+                    product_id: id,
+                    fallback_locale: Some(tenant.default_locale.clone()),
+                    selected_price_list_id: resolution_context
+                        .as_ref()
+                        .and_then(|context| context.price_list_id),
+                },
             )
             .await
         {
             Ok(detail) => Some(detail),
-            Err(CommerceError::ProductNotFound(_)) => None,
-            Err(err) => return Err(map_product_service_error(err, "pricing_query")),
+            Err(error) if error.kind == rustok_api::PortErrorKind::NotFound => None,
+            Err(error) => return Err(async_graphql::Error::new(error.message)),
         };
 
         match detail {
             Some(detail) => {
                 let mut detail = GqlPricingProductDetail::from(detail);
                 if let Some(context) = resolution_context.as_ref() {
-                    attach_effective_prices(&service, tenant_id, &mut detail, context).await?;
+                    attach_effective_prices(
+                        pricing_read_port.as_ref(),
+                        tenant_id,
+                        requested_locale.as_str(),
+                        &mut detail,
+                        context,
+                    )
+                    .await?;
                 }
                 Ok(Some(detail))
             }
@@ -181,18 +199,23 @@ impl CommerceQuery {
             channel_id.or_else(|| request_context.and_then(|item| item.channel_id));
         let selected_channel_slug = normalize_public_channel_slug(channel_slug.as_deref())
             .or_else(|| request_context.and_then(public_channel_slug_from_request));
-        let service = PricingService::new(db.clone(), event_bus.clone());
-        let items = service
-            .list_active_price_lists_for_channel(
-                tenant_id,
-                selected_channel_id,
-                selected_channel_slug.as_deref(),
-                request_context
-                    .as_ref()
-                    .map(|context| context.locale.as_str()),
-                Some(tenant.default_locale.as_str()),
+        let pricing_read_port = in_process_pricing_read_port(db.clone(), event_bus.clone());
+        let items = pricing_read_port
+            .list_active_price_list_projections(
+                pricing_active_lists_port_context(
+                    tenant_id,
+                    request_context,
+                    tenant.default_locale.as_str(),
+                    selected_channel_slug.as_deref(),
+                ),
+                ActivePriceListProjectionRequest {
+                    channel_id: selected_channel_id,
+                    channel_slug: selected_channel_slug,
+                    fallback_locale: Some(tenant.default_locale.clone()),
+                },
             )
-            .await?;
+            .await
+            .map_err(|error| async_graphql::Error::new(error.message))?;
 
         Ok(items.into_iter().map(Into::into).collect())
     }
@@ -239,6 +262,7 @@ impl CommerceQuery {
             channel_id.or_else(|| request_context.and_then(|item| item.channel_id));
         let selected_channel_slug = normalize_pricing_channel_slug(channel_slug.as_deref())
             .or_else(|| request_public_channel_slug(ctx));
+        let requested_handle = handle.trim().to_string();
         let resolution_context = build_pricing_resolution_context(
             currency_code,
             region_id,
@@ -247,23 +271,36 @@ impl CommerceQuery {
             selected_channel_slug.clone(),
             quantity,
         )?;
-        let service = PricingService::new(db.clone(), event_bus.clone());
-        let detail = service
-            .get_published_product_pricing_by_handle_with_locale_fallback(
-                tenant_id,
-                handle.trim(),
-                requested_locale.as_str(),
-                Some(tenant.default_locale.as_str()),
-                selected_channel_slug.as_deref(),
+        let pricing_read_port = in_process_pricing_read_port(db.clone(), event_bus.clone());
+        let detail = pricing_read_port
+            .read_storefront_product_pricing_projection(
+                pricing_storefront_product_port_context(
+                    tenant_id,
+                    requested_locale.as_str(),
+                    selected_channel_slug.as_deref(),
+                    requested_handle.as_str(),
+                ),
+                StorefrontProductPricingProjectionRequest {
+                    handle: requested_handle,
+                    fallback_locale: Some(tenant.default_locale.clone()),
+                    public_channel_slug: selected_channel_slug.clone(),
+                },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| async_graphql::Error::new(error.message))?;
 
         match detail {
             Some(detail) => {
                 let mut detail = GqlPricingProductDetail::from(detail);
                 if let Some(context) = resolution_context.as_ref() {
-                    attach_effective_prices(&service, tenant_id, &mut detail, context).await?;
+                    attach_effective_prices(
+                        pricing_read_port.as_ref(),
+                        tenant_id,
+                        requested_locale.as_str(),
+                        &mut detail,
+                        context,
+                    )
+                    .await?;
                 }
                 Ok(Some(detail))
             }
@@ -2084,20 +2121,119 @@ fn build_pricing_resolution_context(
 }
 
 async fn attach_effective_prices(
-    service: &PricingService,
+    pricing_read_port: &dyn PricingReadPort,
     tenant_id: Uuid,
+    locale: &str,
     detail: &mut GqlPricingProductDetail,
     context: &rustok_pricing::PriceResolutionContext,
 ) -> Result<()> {
     for variant in &mut detail.variants {
-        let effective_price = service
-            .resolve_variant_price(tenant_id, variant.id, context.clone())
+        let effective_price = match pricing_read_port
+            .resolve_product_price(
+                pricing_query_port_context(tenant_id, locale, context, detail.id, variant.id),
+                ResolveProductPriceRequest {
+                    product_id: Some(detail.id),
+                    variant_id: variant.id,
+                    region_id: context.region_id,
+                    channel_id: context.channel_id,
+                    channel_slug: context.channel_slug.clone(),
+                    price_list_id: context.price_list_id,
+                    quantity: context.quantity,
+                    currency_code: context.currency_code.clone(),
+                },
+            )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-        variant.effective_price = effective_price.map(Into::into);
+        {
+            Ok(snapshot) => Some(rustok_pricing::ResolvedPrice::from(snapshot).into()),
+            Err(error) if error.kind == rustok_api::PortErrorKind::NotFound => None,
+            Err(error) => return Err(async_graphql::Error::new(error.message)),
+        };
+        variant.effective_price = effective_price;
     }
 
     Ok(())
+}
+
+fn pricing_query_port_context(
+    tenant_id: Uuid,
+    locale: &str,
+    pricing_context: &rustok_pricing::PriceResolutionContext,
+    product_id: Uuid,
+    variant_id: Uuid,
+) -> rustok_api::PortContext {
+    let context = rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        rustok_api::PortActor::service("rustok-commerce.pricing-query"),
+        locale,
+        format!("pricing-query:{product_id}:{variant_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    pricing_context
+        .channel_slug
+        .as_deref()
+        .map(|channel| context.with_channel(channel))
+        .unwrap_or(context)
+}
+
+fn pricing_active_lists_port_context(
+    tenant_id: Uuid,
+    request_context: Option<&RequestContext>,
+    default_locale: &str,
+    channel_slug: Option<&str>,
+) -> rustok_api::PortContext {
+    let context = rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        rustok_api::PortActor::service("rustok-commerce.pricing-query"),
+        request_context
+            .map(|context| context.locale.as_str())
+            .unwrap_or(default_locale),
+        "pricing-active-lists",
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    channel_slug
+        .map(|channel| context.with_channel(channel))
+        .unwrap_or(context)
+}
+
+fn pricing_admin_product_port_context(
+    tenant_id: Uuid,
+    auth: Option<&AuthContext>,
+    locale: &str,
+    pricing_context: Option<&rustok_pricing::PriceResolutionContext>,
+    product_id: Uuid,
+) -> rustok_api::PortContext {
+    let actor = auth
+        .map(|auth| rustok_api::PortActor::user(auth.user_id.to_string()))
+        .unwrap_or_else(|| rustok_api::PortActor::service("rustok-commerce.pricing-query"));
+    let context = rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        actor,
+        locale,
+        format!("admin-pricing-product:{product_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    pricing_context
+        .and_then(|context| context.channel_slug.as_deref())
+        .map(|channel| context.with_channel(channel))
+        .unwrap_or(context)
+}
+
+fn pricing_storefront_product_port_context(
+    tenant_id: Uuid,
+    locale: &str,
+    channel_slug: Option<&str>,
+    handle: &str,
+) -> rustok_api::PortContext {
+    let context = rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        rustok_api::PortActor::service("rustok-commerce.pricing-query"),
+        locale,
+        format!("storefront-pricing-product:{handle}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    channel_slug
+        .map(|channel| context.with_channel(channel))
+        .unwrap_or(context)
 }
 
 async fn load_product_list_items(

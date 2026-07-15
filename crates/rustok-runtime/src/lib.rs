@@ -1,5 +1,10 @@
 use sea_orm::DatabaseConnection;
+use std::collections::BTreeMap;
+use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::RwLock;
+
+use rustok_api::{ModuleWorkError, ModuleWorkHandler, ModuleWorkOutcome, ModuleWorkSource};
 
 pub use rustok_api::HostRuntimeContext;
 
@@ -99,6 +104,57 @@ where
     runtime
         .shared_get::<T>()
         .ok_or(RuntimeHandleError::MissingSharedHandle { handle })
+}
+
+/// Generic runtime scheduler for tenant-scoped durable module work.
+///
+/// Module owners provide queue persistence through `ModuleWorkSource`; the
+/// runtime never imports capability-specific work payloads or database tables.
+#[derive(Clone)]
+pub struct ModuleWorkScheduler {
+    source: Arc<dyn ModuleWorkSource>,
+    handlers: Arc<RwLock<BTreeMap<String, Arc<dyn ModuleWorkHandler>>>>,
+}
+
+impl ModuleWorkScheduler {
+    pub fn new(source: Arc<dyn ModuleWorkSource>) -> Self {
+        Self {
+            source,
+            handlers: Arc::new(RwLock::new(BTreeMap::new())),
+        }
+    }
+
+    pub async fn register(
+        &self,
+        handler: Arc<dyn ModuleWorkHandler>,
+    ) -> Result<(), ModuleWorkError> {
+        let slug = handler.worker_slug().to_string();
+        let mut handlers = self.handlers.write().await;
+        if handlers.contains_key(&slug) {
+            return Err(ModuleWorkError::DuplicateHandler(slug));
+        }
+        handlers.insert(slug, handler);
+        Ok(())
+    }
+
+    pub async fn run_once(&self) -> Result<usize, ModuleWorkError> {
+        let handlers = self.handlers.read().await.clone();
+        let mut executed = 0;
+        for (slug, handler) in handlers {
+            let Some(item) = self.source.claim(&slug).await? else {
+                continue;
+            };
+            let outcome = match handler.execute(item.clone()).await {
+                Ok(outcome) => outcome,
+                Err(error) => ModuleWorkOutcome::Retryable {
+                    message: error.to_string(),
+                },
+            };
+            self.source.complete(&item, outcome).await?;
+            executed += 1;
+        }
+        Ok(executed)
+    }
 }
 
 #[cfg(test)]

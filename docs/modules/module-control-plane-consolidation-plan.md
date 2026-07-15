@@ -781,13 +781,13 @@ migrations or arbitrary SQL.
 
 The owner boundary is fixed by the [module artifact rollback ADR](../../DECISIONS/2026-07-13-module-artifact-rollback-boundary.md): an explicit CAS-revision command selects the durable predecessor, re-evaluates grants, audits actor/reason, and writes an outbox event in one transaction. Runtime activation and tenant enablement remain downstream operations.
 
-- [ ] Rollback selects a previously admitted immutable release; it never edits
+- [x] Rollback selects a previously admitted immutable release; it never edits
   the failed release.
-- [ ] Capability grants are re-evaluated for the target release.
+- [x] Capability grants are re-evaluated for the target release.
 - [ ] Data migrations declare whether rollback is reversible, compensating, or
   prohibited.
 - [ ] Runtime activation and tenant enablement rollback remain distinct.
-- [ ] Every rollback is a new audited operation with actor and reason.
+- [x] Every rollback is a new audited operation with actor and reason.
 - [ ] Define disable, deactivate, uninstall, and purge as distinct operations:
   - disable preserves installation and data;
   - deactivate removes runtime bindings but preserves admitted release/rollback;
@@ -798,6 +798,18 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   artifacts.
 - [ ] Garbage collection runs only after reference, retention, legal-hold,
   rollback, and audit checks.
+
+#### Next Atomic Work Package: Owner-Owned Artifact Uninstall
+
+`apps/server` currently has a static-manifest uninstall flow only. It is not
+an artifact uninstall path and must not be reused for marketplace artifacts.
+The owner command will require an inactive selection, a scope-bound expected
+revision, actor/reason/idempotency metadata, and an absence of active direct
+dependents. Its one transaction records the uninstall audit fact, removes the
+installation's CAS reference, and emits an outbox event. It does not delete
+CAS bytes, tenant data, evidence, logs, or rollback history; the existing
+reconciler may reclaim an unreferenced blob only after retention and legal-hold
+policy permits it. Purge remains a separate destructive command.
 
 ### Verification Gate
 

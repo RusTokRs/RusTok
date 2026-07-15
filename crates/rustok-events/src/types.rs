@@ -508,6 +508,10 @@ pub enum DomainEvent {
         installation_id: Uuid,
         target_installation_id: Uuid,
     },
+    ModuleArtifactUninstalled {
+        installation_id: Uuid,
+        revision: u64,
+    },
     LocaleEnabled {
         tenant_id: Uuid,
         locale: String,
@@ -690,6 +694,7 @@ impl DomainEvent {
             Self::ModuleArtifactAdmitted { .. } => "module.artifact.admitted",
             Self::ModuleArtifactReverified { .. } => "module.artifact.reverified",
             Self::ModuleArtifactRolledBack { .. } => "module.artifact.rolled_back",
+            Self::ModuleArtifactUninstalled { .. } => "module.artifact.uninstalled",
             Self::LocaleEnabled { .. } => "locale.enabled",
             Self::LocaleDisabled { .. } => "locale.disabled",
             Self::PlatformSettingsChanged { .. } => "platform_settings.changed",
@@ -827,6 +832,7 @@ impl DomainEvent {
             Self::ModuleArtifactAdmitted { .. } => 1,
             Self::ModuleArtifactReverified { .. } => 1,
             Self::ModuleArtifactRolledBack { .. } => 1,
+            Self::ModuleArtifactUninstalled { .. } => 1,
             Self::LocaleEnabled { .. } => 1,
             Self::LocaleDisabled { .. } => 1,
             Self::PlatformSettingsChanged { .. } => 1,
@@ -1728,6 +1734,18 @@ impl ValidateEvent for DomainEvent {
             } => {
                 validators::validate_not_nil_uuid("installation_id", installation_id)?;
                 validators::validate_not_nil_uuid("target_installation_id", target_installation_id)
+            }
+            Self::ModuleArtifactUninstalled {
+                installation_id,
+                revision,
+            } => {
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                if *revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "revision must be positive".to_string(),
+                    ));
+                }
+                Ok(())
             }
             Self::LocaleEnabled { tenant_id, locale }
             | Self::LocaleDisabled { tenant_id, locale } => {

@@ -1940,6 +1940,22 @@ impl From<rustok_pricing::ActivePriceListOption> for GqlActivePriceListOption {
     }
 }
 
+impl From<rustok_pricing::ActivePriceListProjectionSnapshot> for GqlActivePriceListOption {
+    fn from(value: rustok_pricing::ActivePriceListProjectionSnapshot) -> Self {
+        Self {
+            id: value.price_list_id,
+            name: value.title,
+            list_type: value.list_type,
+            channel_id: value.channel_id,
+            channel_slug: value.channel_slug,
+            rule_kind: value.rule_kind,
+            adjustment_percent: value
+                .adjustment_percent
+                .map(|item| item.normalize().to_string()),
+        }
+    }
+}
+
 impl From<rustok_pricing::ResolvedPrice> for GqlPricingEffectivePrice {
     fn from(value: rustok_pricing::ResolvedPrice) -> Self {
         Self {

@@ -2,9 +2,7 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -165,9 +163,8 @@ where
             report.roles_created = report.roles_created.saturating_add(1);
             if apply {
                 create_system_role(db, tenant_id, &slug).await?;
-                let (role_id, is_system) = find_role(db, tenant_id, &slug)
-                    .await?
-                    .ok_or_else(|| {
+                let (role_id, is_system) =
+                    find_role(db, tenant_id, &slug).await?.ok_or_else(|| {
                         RbacSystemRoleRepairError::Database(
                             "system role insert completed without a persisted role".to_string(),
                         )
@@ -294,9 +291,7 @@ where
         Some(tenant_id) => (
             match backend {
                 DbBackend::Sqlite => "SELECT id FROM tenants WHERE id = ?1",
-                DbBackend::Postgres | DbBackend::MySql => {
-                    "SELECT id FROM tenants WHERE id = $1"
-                }
+                DbBackend::Postgres | DbBackend::MySql => "SELECT id FROM tenants WHERE id = $1",
             },
             vec![tenant_id.into()],
         ),
