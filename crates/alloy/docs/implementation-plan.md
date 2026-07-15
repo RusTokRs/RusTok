@@ -14,7 +14,7 @@ and release governance belong to `rustok-modules`.
 The cross-component sequence and completion rules are defined by the
 [canonical module-platform plan](../../../docs/modules/module-control-plane-consolidation-plan.md).
 
-## Current State
+## Current state
 
 Implemented:
 
