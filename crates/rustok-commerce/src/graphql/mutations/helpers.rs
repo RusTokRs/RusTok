@@ -642,7 +642,7 @@ pub(crate) fn storefront_cart_port_context(
     let context = request_context
         .channel_slug
         .as_deref()
-        .map(|channel| context.with_channel(channel))
+        .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context);
     if is_write {
         context.with_idempotency_key(correlation_id)
@@ -1272,7 +1272,7 @@ pub(crate) fn storefront_pricing_port_context(
     request_context
         .channel_slug
         .as_deref()
-        .map(|channel| context.with_channel(channel))
+        .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context)
 }
 

@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
+use ::rhai;
 use parking_lot::RwLock;
 use rhai::{
     Dynamic, Engine, EvalAltResult, LexError, ParseError, ParseErrorType, RhaiNativeFunc, Scope,
     AST,
 };
-use rhai_full as rhai;
 
 use super::{RhaiConfig, RhaiError, RhaiResult};
 

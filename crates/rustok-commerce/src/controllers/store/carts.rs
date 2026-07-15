@@ -15,9 +15,9 @@ use crate::dto::CartResponse;
 use rustok_cart::{
     in_process_cart_storefront_port, CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
     CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
-    CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
+    CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
 };
-use rustok_pricing::{in_process_pricing_read_port, PricingReadPort, ResolveProductPriceRequest};
+use rustok_pricing::{in_process_pricing_read_port, ResolveProductPriceRequest};
 
 fn map_cart_port_error(error: rustok_api::PortError) -> HttpError {
     HttpError::bad_request("commerce_operation_failed", error.message)

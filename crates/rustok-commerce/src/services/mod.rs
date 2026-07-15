@@ -100,7 +100,6 @@ pub use fulfillment_reconciliation::FulfillmentReconciliationService;
 pub use journaled_checkout::{
     JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
 };
-pub(crate) use journaled_fulfillment_orchestration::JournaledFulfillmentOrchestrationService;
 pub(crate) use paid_order_create_label::PaidOrderCreateLabelHandler;
 pub use paid_order_create_label_sweep::{
     PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService,

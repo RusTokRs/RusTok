@@ -314,7 +314,10 @@ fn order_request_hash(
             "failed to encode order creation request: {error}"
         ))
     })?;
-    Ok(format!("{:x}", Sha256::digest(payload)))
+    Ok(Sha256::digest(payload)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn canonicalize_json(value: Value) -> Value {

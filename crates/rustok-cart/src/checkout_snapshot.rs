@@ -222,7 +222,10 @@ fn hash_cart_snapshot(cart: &CartResponse) -> Result<String, CartError> {
         CartError::Validation(format!("failed to encode cart checkout snapshot: {error}"))
     })?;
 
-    Ok(format!("{:x}", Sha256::digest(payload)))
+    Ok(Sha256::digest(payload)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn normalize_snapshot_value(value: &mut Value) -> Result<(), CartError> {

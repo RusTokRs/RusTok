@@ -2,6 +2,7 @@ mod admin_shell;
 mod authoring;
 mod binding_panel;
 mod canvas_document;
+#[cfg(any(target_arch = "wasm32", test))]
 mod canvas_protocol;
 mod context_compatibility_panel;
 mod context_contract_tools;
@@ -26,12 +27,15 @@ mod toolbar;
 mod trait_panel;
 
 pub use admin_shell::AdminShell;
-pub use authoring::{LayerItemView, PaletteBlockView, SelectedComponentView};
-pub(crate) use binding_panel::BindingPanel;
-pub(crate) use canvas_document::{render_canvas_srcdoc, render_canvas_srcdoc_with_context};
-pub(crate) use canvas_protocol::{
-    decode_canvas_message, CanvasBridgeMessage, CanvasComponentGeometry,
+pub use authoring::{
+    CanvasComponentGeometry, LayerItemView, PaletteBlockView, SelectedComponentView,
 };
+pub(crate) use binding_panel::BindingPanel;
+pub(crate) use canvas_document::render_canvas_srcdoc_with_context;
+#[cfg(target_arch = "wasm32")]
+pub(crate) use canvas_protocol::decode_canvas_message;
+#[cfg(target_arch = "wasm32")]
+pub(crate) use canvas_protocol::CanvasBridgeMessage;
 pub(crate) use context_compatibility_panel::ContextCompatibilityPanel;
 pub(crate) use context_contract_tools::ContextContractToolsPanel;
 pub(crate) use context_dependency_panel::ContextDependencyPanel;

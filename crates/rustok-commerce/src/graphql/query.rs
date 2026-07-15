@@ -2171,7 +2171,7 @@ fn pricing_query_port_context(
     pricing_context
         .channel_slug
         .as_deref()
-        .map(|channel| context.with_channel(channel))
+        .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context)
 }
 
@@ -2191,7 +2191,7 @@ fn pricing_active_lists_port_context(
     )
     .with_deadline(std::time::Duration::from_secs(2));
     channel_slug
-        .map(|channel| context.with_channel(channel))
+        .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context)
 }
 
@@ -2214,7 +2214,7 @@ fn pricing_admin_product_port_context(
     .with_deadline(std::time::Duration::from_secs(2));
     pricing_context
         .and_then(|context| context.channel_slug.as_deref())
-        .map(|channel| context.with_channel(channel))
+        .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context)
 }
 
@@ -2232,7 +2232,7 @@ fn pricing_storefront_product_port_context(
     )
     .with_deadline(std::time::Duration::from_secs(2));
     channel_slug
-        .map(|channel| context.with_channel(channel))
+        .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context)
 }
 

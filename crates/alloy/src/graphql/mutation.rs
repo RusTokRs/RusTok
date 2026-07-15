@@ -39,7 +39,7 @@ impl AlloyMutation {
         require_admin(ctx).await?;
         validate_cron_trigger(&input.trigger)?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
-        let mut scope = rhai_full::Scope::new();
+        let mut scope = rhai::Scope::new();
         runtime
             .engine
             .compile(&input.name, &input.code, &mut scope)
@@ -92,7 +92,7 @@ impl AlloyMutation {
         }
         if let Some(code) = input.code {
             runtime.engine.invalidate(&script.name);
-            let mut scope = rhai_full::Scope::new();
+            let mut scope = rhai::Scope::new();
             runtime
                 .engine
                 .compile(&script.name, &code, &mut scope)
@@ -152,7 +152,7 @@ impl AlloyMutation {
 
         let params = input
             .params
-            .map(|params| -> Result<HashMap<String, rhai_full::Dynamic>> {
+            .map(|params| -> Result<HashMap<String, rhai::Dynamic>> {
                 let object = params
                     .0
                     .as_object()

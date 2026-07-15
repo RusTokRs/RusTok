@@ -10,7 +10,9 @@ use leptos_ui_routing::use_route_query_value;
 use rustok_page_builder::runtime_context::{
     generate_page_builder_runtime_example, PageBuilderRuntimeExampleRequest,
 };
-use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
+use rustok_page_builder::runtime_scenario_release::{
+    PageBuilderScenarioBaselineChange, RuntimeScenarioReleaseBaseline,
+};
 use rustok_page_builder::{RuntimeContextExamplePolicy, RuntimeContextScenario};
 use rustok_page_builder_admin::{
     PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext,
@@ -51,12 +53,12 @@ pub fn PagesAdmin() -> impl IntoView {
         async move {
             let Some(page_id) = page_id.filter(|page_id| core::optional_ui_text(page_id).is_some())
             else {
-                return Ok(None);
+                return Ok::<_, transport::TransportError>(None);
             };
             let Some(page) =
                 transport::fetch_page(token.clone(), tenant.clone(), page_id.clone()).await?
             else {
-                return Ok(None);
+                return Ok::<_, transport::TransportError>(None);
             };
             let baseline = transport::fetch_page_builder_scenario_baseline(
                 token.clone(),
@@ -112,7 +114,7 @@ pub fn PagesAdmin() -> impl IntoView {
 #[component]
 fn PagesFlyBuilder(
     page: PageDetail,
-    #[prop(optional)] baseline: Option<RuntimeScenarioReleaseBaseline>,
+    baseline: Option<RuntimeScenarioReleaseBaseline>,
     release_status: PageBuilderScenarioReleaseStatus,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
@@ -167,7 +169,11 @@ fn PagesFlyBuilder(
             let baseline_token = token.clone();
             let baseline_tenant = tenant.clone();
             let on_baseline = Callback::new(
-                move |baseline: Option<RuntimeScenarioReleaseBaseline>| {
+                move |change: PageBuilderScenarioBaselineChange| {
+                    let PageBuilderScenarioBaselineChange {
+                        baseline,
+                        promotion_note,
+                    } = change;
                     let page_id = baseline_page_id.clone();
                     let token = baseline_token.get_untracked();
                     let tenant = baseline_tenant.get_untracked();
@@ -181,6 +187,7 @@ fn PagesFlyBuilder(
                                 page_id.clone(),
                                 baseline,
                                 expected_baseline_hash,
+                                promotion_note,
                             )
                             .await
                             .map(|_| ()),

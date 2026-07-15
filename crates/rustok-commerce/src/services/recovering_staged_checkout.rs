@@ -14,6 +14,8 @@ const RECONCILIATION_REQUIRED_STATUS: &str = "reconciliation_required";
 pub enum RecoveringStagedCheckoutError {
     #[error(transparent)]
     Staged(#[from] StagedCheckoutError),
+    #[error(transparent)]
+    Journal(#[from] CheckoutOperationError),
     #[error("checkout failed: {staged}; recovery lookup failed: {journal}")]
     StagedAndJournal {
         staged: Box<StagedCheckoutError>,
@@ -68,15 +70,20 @@ impl RecoveringStagedCheckoutService {
         {
             Ok(response) => Ok(response),
             Err(staged) => {
-                let operation = self
+                let operation = match self
                     .staged
                     .operation_journal()
                     .find_by_key(tenant_id, cart_id, idempotency_key.as_str())
                     .await
-                    .map_err(|journal| RecoveringStagedCheckoutError::StagedAndJournal {
-                        staged: Box::new(staged),
-                        journal,
-                    })?;
+                {
+                    Ok(operation) => operation,
+                    Err(journal) => {
+                        return Err(RecoveringStagedCheckoutError::StagedAndJournal {
+                            staged: Box::new(staged),
+                            journal,
+                        });
+                    }
+                };
                 let Some(operation) = operation else {
                     return Err(staged.into());
                 };

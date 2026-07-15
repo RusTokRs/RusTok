@@ -76,10 +76,7 @@ pub use services::{
     StoreContextResult, StoreContextService, DEFAULT_CHECKOUT_LEASE_SECONDS,
     MAX_CHECKOUT_LEASE_SECONDS,
 };
-pub(crate) use services::{
-    FulfillmentOrchestrationError, FulfillmentOrchestrationService,
-    JournaledFulfillmentOrchestrationService,
-};
+pub(crate) use services::{FulfillmentOrchestrationError, FulfillmentOrchestrationService};
 pub(crate) use storefront_checkout_pricing::StorefrontCheckoutPricingResolver;
 
 pub struct CommerceModule;

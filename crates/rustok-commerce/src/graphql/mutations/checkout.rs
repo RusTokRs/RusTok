@@ -1,6 +1,6 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
-use rustok_api::{graphql::require_module_enabled, AuthContext, RequestContext, TenantContext};
+use rustok_api::{graphql::require_module_enabled, AuthContext, RequestContext};
 use rustok_cart::{
     bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_storefront_port,
     CartStorefrontPort, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
@@ -29,7 +29,6 @@ impl CommerceCheckoutMutation {
         super::super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let tenant_id =
@@ -121,7 +120,6 @@ impl CommerceCheckoutMutation {
         super::super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let tenant_id = current_tenant_scope(ctx, tenant_id, "Storefront checkout")?;

@@ -24,14 +24,16 @@ pub fn RuntimeScenarioMatrixPanel(runtime: AdminEditorRuntime) -> impl IntoView 
     view! {
         <Show when=move || has_scenarios>
             <section class="space-y-3 rounded-xl border border-border bg-card p-3">
-                <h2 class="font-semibold">{title}</h2>
-                {move || {
+                <h2 class="font-semibold">{title.clone()}</h2>
+                {{
+                    let report_scenarios = Arc::clone(&scenarios);
+                    move || {
                     let matrix = report_runtime.controller.with(|controller| {
                         render_runtime_scenario_matrix(
                             controller.editor().document(),
                             &PageSelection::Index(controller.active_page_index()),
                             &RenderPolicy::default(),
-                            scenarios.as_slice(),
+                            report_scenarios.as_slice(),
                         )
                     });
                     let blocking = matrix
@@ -132,6 +134,7 @@ pub fn RuntimeScenarioMatrixPanel(runtime: AdminEditorRuntime) -> impl IntoView 
                                 </p>
                             }).collect_view()}
                         </div>
+                    }
                     }
                 }}
             </section>

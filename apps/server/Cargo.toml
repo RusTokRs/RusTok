@@ -149,7 +149,7 @@ argon2.workspace = true
 hex.workspace = true
 jsonwebtoken.workspace = true
 password-hash.workspace = true
-rhai-full = { package = "rhai", version = "=1.24.0", features = ["sync", "metadata"] }
+rhai = { workspace = true, features = ["sync", "metadata"] }
 sha2.workspace = true
 moka = { workspace = true, features = ["future"] }
 once_cell.workspace = true

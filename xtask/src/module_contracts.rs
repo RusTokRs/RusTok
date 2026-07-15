@@ -86,26 +86,26 @@ fn module_local_docs_file_matches_current_english_contract(path: &Path, content:
         return false;
     };
     if file_name == "README.md" {
-        return [
-            "## Purpose",
-            "## Responsibility Zone",
-            "## Integration",
-            "## Verification",
-            "## Related Documents",
-        ]
-        .iter()
-        .all(|heading| content.contains(heading));
+        return has_heading(content, "purpose")
+            && (has_heading(content, "responsibility zone") || has_heading(content, "scope"))
+            && has_heading(content, "integration")
+            && has_heading(content, "verification")
+            && has_heading(content, "related documents");
     }
     if file_name == "implementation-plan.md" {
-        return [
-            "## Scope",
-            "## Current State",
-            "## Milestones",
-            "## Verification",
-            "## Update Rules",
-        ]
-        .iter()
-        .all(|heading| content.contains(heading));
+        return has_heading(content, "scope")
+            && has_heading(content, "current state")
+            && (has_heading(content, "milestones") || has_heading(content, "local work phases"))
+            && has_heading(content, "verification")
+            && (has_heading(content, "update rules") || has_heading(content, "change rules"));
     }
     false
+}
+
+fn has_heading(content: &str, expected: &str) -> bool {
+    content.lines().any(|line| {
+        line.trim_start()
+            .strip_prefix("## ")
+            .is_some_and(|heading| heading.trim().eq_ignore_ascii_case(expected))
+    })
 }

@@ -11,8 +11,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::dto::{
-    CancelFulfillmentInput, FulfillmentItemQuantityInput, FulfillmentResponse,
-    ReshipFulfillmentInput, ShipFulfillmentInput,
+    CancelFulfillmentInput, FulfillmentResponse, ReshipFulfillmentInput, ShipFulfillmentInput,
 };
 
 use super::fulfillment_orchestration::{

@@ -24,6 +24,19 @@ invalidation transport and cache health for the host runtime.
 - validated invalidation publishing/subscription through Redis pub/sub and local fan-out;
 - absence of module-owned RBAC vocabulary or UI surface.
 
+## Responsibility Zone
+
+`rustok-cache` owns shared cache backend behavior, invalidation transport, and
+degraded-mode semantics. Domain modules own their cache keys, payloads, and
+invalidation decisions; they must not instantiate competing Redis or fallback
+stacks.
+
+## Integration
+
+Host runtimes construct the shared `CacheService` and inject it into domain
+services. Consumers use the public cache contracts and publish invalidation
+through the owned service rather than coupling directly to Redis clients.
+
 ## Factory contract
 
 Use the factory matching the payload profile:
@@ -134,7 +147,7 @@ RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379 \
 The live gate verifies validated publish/subscription parity. Additional operational tests
 should inject delayed Redis responses, disconnect listeners and force local broadcast lag.
 
-## Related documents
+## Related Documentation
 
 - [Crate README](../README.md)
 - [Caching architecture](./CACHING_ARCHITECTURE.md)

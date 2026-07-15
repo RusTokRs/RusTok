@@ -36,7 +36,7 @@ pub fn RuntimeScenarioPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     view! {
         <Show when=move || has_scenarios>
             <section class="space-y-3 rounded-xl border border-border bg-card p-3">
-                <h2 class="font-semibold">{title}</h2>
+                <h2 class="font-semibold">{title.clone()}</h2>
                 <div class="flex gap-2">
                     <select
                         class="min-w-0 flex-1 rounded border border-input bg-background px-2 py-1 text-sm"
@@ -50,16 +50,22 @@ pub fn RuntimeScenarioPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     <button
                         type="button"
                         class="shrink-0 rounded border border-border px-2 py-1 text-xs"
-                        on:click=move |_| {
+                        on:click={
+                            let apply_runtime = apply_runtime.clone();
+                            move |_| {
                             let scenario_id = selected.get_untracked();
                             if !scenario_id.is_empty() {
                                 apply_runtime.apply_runtime_scenario(&scenario_id);
                             }
+                            }
                         }
-                    >{apply_label}</button>
+                    >{apply_label.clone()}</button>
                 </div>
 
-                {move || {
+                {{
+                    let report_runtime = report_runtime.clone();
+                    let report_scenarios = Arc::clone(&report_scenarios);
+                    move || {
                     let suite = report_runtime.controller.with(|controller| {
                         preflight_runtime_context_scenarios(
                             controller.editor().document(),
@@ -104,6 +110,7 @@ pub fn RuntimeScenarioPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                 </p>
                             }).collect_view()}
                         </div>
+                    }
                     }
                 }}
             </section>

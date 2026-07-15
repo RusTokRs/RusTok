@@ -301,7 +301,7 @@ impl CheckoutOperationJournal {
             )
             .col_expr(
                 checkout_operation::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .filter(checkout_operation::Column::TenantId.eq(tenant_id))
             .filter(checkout_operation::Column::Id.eq(id))
@@ -336,7 +336,7 @@ impl CheckoutOperationJournal {
             )
             .col_expr(
                 checkout_operation::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .filter(checkout_operation::Column::TenantId.eq(input.tenant_id))
             .filter(checkout_operation::Column::Id.eq(input.operation_id))
@@ -458,7 +458,7 @@ impl CheckoutOperationJournal {
             )
             .col_expr(
                 checkout_operation::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .filter(checkout_operation::Column::TenantId.eq(tenant_id))
             .filter(checkout_operation::Column::Id.eq(id))
@@ -597,7 +597,7 @@ impl CheckoutOperationJournal {
             )
             .col_expr(
                 checkout_operation::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .filter(checkout_operation::Column::TenantId.eq(tenant_id))
             .filter(checkout_operation::Column::Id.eq(id))
@@ -656,7 +656,7 @@ impl CheckoutOperationJournal {
             )
             .col_expr(
                 checkout_operation::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .filter(checkout_operation::Column::TenantId.eq(tenant_id))
             .filter(checkout_operation::Column::Id.eq(id))

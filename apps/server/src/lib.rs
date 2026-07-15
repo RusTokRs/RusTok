@@ -8,8 +8,6 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-extern crate rhai_full as rhai;
-
 pub mod auth;
 pub mod channels;
 pub mod common;

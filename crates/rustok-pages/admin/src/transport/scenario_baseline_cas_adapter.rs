@@ -23,6 +23,8 @@ struct SaveInput {
         skip_serializing_if = "Option::is_none"
     )]
     expected_baseline_hash: Option<String>,
+    #[serde(rename = "promotionNote", skip_serializing_if = "Option::is_none")]
+    promotion_note: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,6 +61,7 @@ pub async fn save(
     page_id: String,
     baseline: RuntimeScenarioReleaseBaseline,
     expected_baseline_hash: Option<String>,
+    promotion_note: Option<String>,
 ) -> Result<RuntimeScenarioReleaseBaseline, GraphqlHttpError> {
     let baseline = serde_json::to_value(baseline).map_err(|error| {
         GraphqlHttpError::Graphql(format!("Unable to encode scenario baseline: {error}"))
@@ -72,6 +75,7 @@ pub async fn save(
                 input: SaveInput {
                     baseline,
                     expected_baseline_hash,
+                    promotion_note,
                 },
             }),
         ),

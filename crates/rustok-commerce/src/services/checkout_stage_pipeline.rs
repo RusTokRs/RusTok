@@ -237,7 +237,7 @@ impl CheckoutStagePipeline {
         let operation_id_text = operation_id.to_string();
         let fulfillments = self
             .fulfillment_service
-            .list_by_order(tenant_id, captured.order.id, 500, 0)
+            .list_by_order(tenant_id, captured.order.id)
             .await?
             .into_iter()
             .filter(|fulfillment| {

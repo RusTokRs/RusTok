@@ -8,7 +8,7 @@ description = "Neutral sandbox execution foundation for RusToK"
 
 [features]
 default = []
-rhai = ["dep:rhai-full", "dep:parking_lot"]
+rhai = ["dep:rhai", "dep:parking_lot"]
 wasm-component = ["dep:wasmtime"]
 
 [dependencies]
@@ -20,6 +20,6 @@ thiserror.workspace = true
 uuid.workspace = true
 url.workspace = true
 tokio = { workspace = true, features = ["rt"] }
-rhai-full = { package = "rhai", version = "=1.24.0", features = ["sync", "metadata"], optional = true }
+rhai = { workspace = true, features = ["sync", "metadata"], optional = true }
 parking_lot = { version = "0.12", optional = true }
 wasmtime = { version = "46.0.1", default-features = false, features = ["runtime", "component-model", "cranelift"], optional = true }

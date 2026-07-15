@@ -303,7 +303,7 @@ pub async fn validate_script(
     Json(req): Json<CreateScriptRequest>,
 ) -> HttpResult<Json<serde_json::Value>> {
     let runtime = runtime.scoped(tenant.id)?;
-    let mut scope = rhai_full::Scope::new();
+    let mut scope = rhai::Scope::new();
 
     match runtime
         .engine

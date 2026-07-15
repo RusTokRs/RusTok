@@ -10,7 +10,7 @@ must not become server Cargo dependencies through this crate.
 The cross-component sequence and completion rules are defined by the
 [canonical module-platform plan](../../../docs/modules/module-control-plane-consolidation-plan.md).
 
-## Current State
+## Current state
 
 ## FFA/FBA status
 
@@ -224,7 +224,7 @@ authorized destructive operation.
   bindings; custom untrusted UI and native UI follow the central isolation and
   static-promotion rules.
 
-## Local Verification
+## Verification
 
 - Artifact descriptor, executor selection, lineage, and immutable-release tests.
 - OCI identity, media type, digest, signature, SBOM, and provenance tests.

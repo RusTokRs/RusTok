@@ -19,8 +19,6 @@ const PUBLISH_PAGE_MUTATION: &str =
 const UNPUBLISH_PAGE_MUTATION: &str =
     "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id status updatedAt translation { locale title slug } } }";
 const DELETE_PAGE_MUTATION: &str = "mutation DeletePage($id: UUID!) { deletePage(id: $id) }";
-const SAVE_PAGE_BUILDER_SCENARIO_BASELINE_MUTATION: &str = "mutation SavePageBuilderScenarioBaseline($pageId: UUID!, $input: SaveGqlPageBuilderScenarioBaselineInput!) { savePageBuilderScenarioBaseline(pageId: $pageId, input: $input) { baseline } }";
-const DELETE_PAGE_BUILDER_SCENARIO_BASELINE_MUTATION: &str = "mutation DeletePageBuilderScenarioBaseline($pageId: UUID!) { deletePageBuilderScenarioBaseline(pageId: $pageId) }";
 
 #[derive(Debug, Deserialize)]
 struct PagesResponse {
@@ -47,18 +45,6 @@ struct PageBuilderScenarioBaselinePayload {
 struct PageBuilderScenarioBaselineResponse {
     #[serde(rename = "pageBuilderScenarioBaseline")]
     page_builder_scenario_baseline: Option<PageBuilderScenarioBaselinePayload>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SavePageBuilderScenarioBaselineResponse {
-    #[serde(rename = "savePageBuilderScenarioBaseline")]
-    save_page_builder_scenario_baseline: PageBuilderScenarioBaselinePayload,
-}
-
-#[derive(Debug, Deserialize)]
-struct DeletePageBuilderScenarioBaselineResponse {
-    #[serde(rename = "deletePageBuilderScenarioBaseline")]
-    delete_page_builder_scenario_baseline: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -160,18 +146,6 @@ struct PageBuilderScenarioBaselineVariables {
     page_id: String,
 }
 
-#[derive(Debug, Serialize)]
-struct SavePageBuilderScenarioBaselineVariables {
-    #[serde(rename = "pageId")]
-    page_id: String,
-    input: SavePageBuilderScenarioBaselineInput,
-}
-
-#[derive(Debug, Serialize)]
-struct SavePageBuilderScenarioBaselineInput {
-    baseline: Value,
-}
-
 fn graphql_url() -> String {
     if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
         return url.to_string();
@@ -262,47 +236,6 @@ pub async fn fetch_page_builder_scenario_baseline(
                 "Invalid Page Builder scenario baseline response: {error}"
             ))
         })
-}
-
-pub async fn save_page_builder_scenario_baseline(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    page_id: String,
-    baseline: RuntimeScenarioReleaseBaseline,
-) -> Result<RuntimeScenarioReleaseBaseline, ApiError> {
-    let baseline = serde_json::to_value(baseline).map_err(|error| {
-        GraphqlHttpError::Graphql(format!("Unable to encode scenario baseline: {error}"))
-    })?;
-    let response: SavePageBuilderScenarioBaselineResponse = request(
-        SAVE_PAGE_BUILDER_SCENARIO_BASELINE_MUTATION,
-        SavePageBuilderScenarioBaselineVariables {
-            page_id,
-            input: SavePageBuilderScenarioBaselineInput { baseline },
-        },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    serde_json::from_value(response.save_page_builder_scenario_baseline.baseline).map_err(|error| {
-        GraphqlHttpError::Graphql(format!(
-            "Invalid saved Page Builder scenario baseline response: {error}"
-        ))
-    })
-}
-
-pub async fn delete_page_builder_scenario_baseline(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    page_id: String,
-) -> Result<bool, ApiError> {
-    let response: DeletePageBuilderScenarioBaselineResponse = request(
-        DELETE_PAGE_BUILDER_SCENARIO_BASELINE_MUTATION,
-        PageBuilderScenarioBaselineVariables { page_id },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.delete_page_builder_scenario_baseline)
 }
 
 pub async fn create_page(

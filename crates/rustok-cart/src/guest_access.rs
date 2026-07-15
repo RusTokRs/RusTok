@@ -149,7 +149,10 @@ pub fn verify_guest_cart_token(metadata: &Value, presented_token: Option<&str>) 
 }
 
 pub fn hash_guest_cart_token(token: &str) -> String {
-    format!("{:x}", Sha256::digest(token.as_bytes()))
+    Sha256::digest(token.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 pub fn normalize_presented_guest_cart_token(token: &str) -> Option<String> {

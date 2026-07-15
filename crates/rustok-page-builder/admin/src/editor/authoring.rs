@@ -1,4 +1,3 @@
-use crate::editor::CanvasComponentGeometry;
 use crate::AdminCanvasController;
 use fly::{ComponentNode, ComponentObject, EditorCommand};
 use fly_leptos::{
@@ -7,6 +6,16 @@ use fly_leptos::{
 };
 use fly_ui::{DragSource, DropPosition, HitTestCandidate, UiIntent};
 use serde_json::{Map, Value};
+
+/// Geometry reported by the isolated canvas and consumed by the editor's
+/// platform-neutral hit-testing policy.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CanvasComponentGeometry {
+    pub component_id: String,
+    pub parent_component_id: Option<String>,
+    pub index: usize,
+    pub rect: fly_leptos::BrowserRect,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PaletteBlockView {

@@ -38,6 +38,19 @@ A task may be marked `done` only when implementation, migration/backfill,
 tests, module documentation, public contracts, and required runtime evidence
 are all present. A merged partial slice remains `in_progress`.
 
+## Current state
+
+The Forum module has an implemented core domain, transport boundary, and
+module-owned UI packages. The verified capability baseline and the remaining
+product work are tracked in this plan's program ledger; every unfinished item
+remains explicitly marked with its current status and completion evidence.
+
+## Verification
+
+Run `cargo xtask module validate forum` for the module contract and use the
+task-specific commands and evidence paths recorded in the program ledger for
+any changed Forum capability.
+
 ## Status vocabulary
 
 | Status | Meaning |

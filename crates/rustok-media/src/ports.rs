@@ -130,6 +130,10 @@ fn media_error_to_port_error(error: MediaError) -> PortError {
             "media.unsupported_mime_type",
             format!("unsupported media type: {content_type}"),
         ),
+        MediaError::InvalidMediaContent { declared, reason } => PortError::validation(
+            "media.invalid_content",
+            format!("media content does not match declared type {declared}: {reason}"),
+        ),
         MediaError::FileTooLarge { size, max } => PortError::validation(
             "media.file_too_large",
             format!("file too large: {size} bytes; max {max} bytes"),

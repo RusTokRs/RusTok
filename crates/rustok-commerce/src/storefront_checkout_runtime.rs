@@ -1,14 +1,12 @@
 use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
 use rustok_cart::{
-    in_process_cart_checkout_port, in_process_cart_storefront_port, CartCheckoutPort,
-    CartCheckoutSnapshotRequest, CartStorefrontContextUpdateRequest, CartStorefrontPort,
-    CartStorefrontReadRequest, CartStorefrontRepriceRequest,
+    in_process_cart_checkout_port, in_process_cart_storefront_port, CartCheckoutSnapshotRequest,
+    CartStorefrontContextUpdateRequest, CartStorefrontPort, CartStorefrontReadRequest,
+    CartStorefrontRepriceRequest,
 };
-use rustok_customer::{
-    in_process_customer_read_port, CustomerReadPort, CustomerUserProjectionRequest,
-};
+use rustok_customer::{in_process_customer_read_port, CustomerUserProjectionRequest};
 use rustok_outbox::TransactionalEventBus;
-use rustok_pricing::{in_process_pricing_read_port, PricingReadPort, ResolveProductPriceRequest};
+use rustok_pricing::{in_process_pricing_read_port, ResolveProductPriceRequest};
 use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
 use thiserror::Error;
@@ -446,7 +444,7 @@ fn storefront_cart_storefront_port_context(
     .with_deadline(std::time::Duration::from_secs(2));
     let context = request_context
         .and_then(|request| request.channel_slug.as_deref())
-        .map(|channel| context.with_channel(channel))
+        .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context);
     if is_write {
         context.with_idempotency_key(correlation_id)
@@ -680,6 +678,6 @@ fn normalize_public_channel_slug(value: Option<&str>) -> Option<String> {
         .map(|value| value.to_ascii_lowercase())
 }
 
-fn runtime_error(error: impl std::fmt::Display) -> StorefrontCheckoutRuntimeError {
-    StorefrontCheckoutRuntimeError::new(error.to_string())
+fn runtime_error(error: impl std::fmt::Debug) -> StorefrontCheckoutRuntimeError {
+    StorefrontCheckoutRuntimeError::new(format!("{error:?}"))
 }

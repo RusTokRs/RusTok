@@ -110,6 +110,7 @@ impl GqlPageBuilderScenarioReleaseStatus {
 pub struct SaveGqlPageBuilderScenarioBaselineInput {
     pub baseline: Value,
     pub expected_baseline_hash: Option<String>,
+    pub promotion_note: Option<String>,
 }
 
 #[derive(Default)]
@@ -196,6 +197,8 @@ impl PageBuilderScenarioBaselineMutation {
                 page_id,
                 baseline,
                 input.expected_baseline_hash.as_deref(),
+                auth.user_id,
+                input.promotion_note.as_deref(),
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;

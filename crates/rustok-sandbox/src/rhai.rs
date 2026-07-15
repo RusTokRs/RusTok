@@ -12,9 +12,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
+use ::rhai;
 use async_trait::async_trait;
 use rhai::{Dynamic, Engine, EvalAltResult, Map, Scope};
-use rhai_full as rhai;
 use serde_json::Value;
 
 use crate::{

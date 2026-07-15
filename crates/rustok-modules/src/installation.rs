@@ -963,7 +963,7 @@ impl SeaOrmArtifactInstallationStore {
             placeholders.3,
             placeholders.4,
             placeholders.5,
-        ) + &scope_predicate;
+        ) + scope_predicate.as_str();
         let mut values = vec![
             SqlValue::Json(Some(Box::new(evidence))),
             status.as_str().into(),

@@ -30,4 +30,4 @@ hex.workspace = true
 parking_lot = "0.12"
 cron = "0.17"
 email_address = "0.2.9"
-rhai-full = { package = "rhai", version = "=1.24.0", features = ["sync", "metadata"] }
+rhai = { workspace = true, features = ["sync", "metadata"] }

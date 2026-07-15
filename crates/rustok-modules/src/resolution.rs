@@ -362,16 +362,18 @@ fn validate_constraint(
 fn constraints_for(
     dependencies: &[ModuleDependencyConstraint],
 ) -> Result<DependencyConstraints<String, Ranges<Version>>, ModuleResolutionError> {
-    let mut constraints: DependencyConstraints<String, Ranges<Version>> =
-        DependencyConstraints::default();
+    // PubGrub 0.4 keeps constraints in an ordered vector so duplicate package
+    // keys remain meaningful to the solver. Intersect duplicate declarations
+    // here because the module descriptor contract treats them as cumulative.
+    let mut merged = BTreeMap::<String, Ranges<Version>>::new();
     for dependency in dependencies {
         let range = version_requirement_range(&dependency.version_requirement)?;
-        constraints
+        merged
             .entry(dependency.slug.clone())
             .and_modify(|existing| *existing = existing.intersection(&range))
             .or_insert(range);
     }
-    Ok(constraints)
+    Ok(merged.into_iter().collect())
 }
 
 fn version_requirement_range(requirement: &str) -> Result<Ranges<Version>, ModuleResolutionError> {

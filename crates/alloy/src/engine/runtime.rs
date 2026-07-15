@@ -1,12 +1,6 @@
-use std::sync::Arc;
-
-use rhai::{Dynamic, Engine, RhaiNativeFunc, Scope};
-use rustok_sandbox::rhai::{CompiledRhai, RhaiConfig, RhaiEngine};
-
-use crate::context::ExecutionContext;
 use crate::error::{ScriptError, ScriptResult};
-
-pub struct CompiledScript(Arc<CompiledRhai>);
+use rhai::{Engine, RhaiNativeFunc, Scope};
+use rustok_sandbox::rhai::{RhaiConfig, RhaiEngine};
 
 /// Alloy-specific adapter over the neutral Rhai execution kernel.
 ///
@@ -42,38 +36,10 @@ impl ScriptEngine {
         self.inner.engine_mut()
     }
 
-    pub fn compile(
-        &self,
-        name: &str,
-        source: &str,
-        scope: &mut Scope,
-    ) -> ScriptResult<Arc<CompiledScript>> {
+    pub fn compile(&self, name: &str, source: &str, scope: &mut Scope) -> ScriptResult<()> {
         self.inner
             .compile(name, source, scope)
-            .map(|compiled| Arc::new(CompiledScript(compiled)))
-            .map_err(ScriptError::from)
-    }
-
-    #[cfg(test)]
-    pub fn execute(
-        &self,
-        name: &str,
-        source: &str,
-        context: &ExecutionContext,
-    ) -> ScriptResult<Dynamic> {
-        self.inner
-            .execute(name, source, context)
-            .map_err(ScriptError::from)
-    }
-
-    #[cfg(test)]
-    pub fn execute_compiled(
-        &self,
-        compiled: &CompiledScript,
-        context: &ExecutionContext,
-    ) -> ScriptResult<Dynamic> {
-        self.inner
-            .execute_compiled(&compiled.0, context)
+            .map(|_| ())
             .map_err(ScriptError::from)
     }
 

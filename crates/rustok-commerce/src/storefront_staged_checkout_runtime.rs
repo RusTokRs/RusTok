@@ -201,7 +201,8 @@ fn map_checkout_error(
         } => StorefrontStagedCheckoutRuntimeError::ReconciliationRequired,
         crate::RecoveringStagedCheckoutError::StagedAndJournal { .. }
         | crate::RecoveringStagedCheckoutError::StagedAndCompensation { .. }
-        | crate::RecoveringStagedCheckoutError::Staged(_) => {
+        | crate::RecoveringStagedCheckoutError::Staged(_)
+        | crate::RecoveringStagedCheckoutError::Journal(_) => {
             StorefrontStagedCheckoutRuntimeError::CheckoutFailed
         }
     }

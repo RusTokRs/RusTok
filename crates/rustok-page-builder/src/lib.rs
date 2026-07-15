@@ -1,6 +1,5 @@
 pub mod adapters;
 pub mod dto;
-mod dto_display;
 pub mod health;
 pub mod render;
 pub mod rollout;

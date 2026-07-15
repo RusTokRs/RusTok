@@ -1,12 +1,14 @@
+#[cfg(any(target_arch = "wasm32", test))]
+use fly::render_page;
 use fly::{
-    render_page, render_page_with_runtime_context, PageSelection, ProjectDocument, RenderPolicy,
-    RenderedPage,
+    render_page_with_runtime_context, PageSelection, ProjectDocument, RenderPolicy, RenderedPage,
 };
 use fly_leptos::FLY_IFRAME_PROTOCOL_V1;
 use serde_json::Value;
 
 const CANVAS_SCRIPT: &str = include_str!("canvas_runtime.js");
 
+#[cfg(any(target_arch = "wasm32", test))]
 pub fn render_canvas_srcdoc(document: &ProjectDocument, instance_id: &str) -> String {
     let rendered = render_page(document, &PageSelection::First, &canvas_render_policy());
     render_srcdoc(rendered, instance_id, 0, 0)

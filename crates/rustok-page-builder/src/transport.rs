@@ -1,8 +1,7 @@
-use crate::dto::{
-    BuilderCapabilityKind, PageBuilderCapabilityRequest, PageBuilderCapabilityResponse,
-    PageBuilderErrorKind,
-};
+use crate::dto::{BuilderCapabilityKind, PageBuilderCapabilityResponse, PageBuilderErrorKind};
 
+#[cfg(feature = "server")]
+use crate::dto::PageBuilderCapabilityRequest;
 #[cfg(feature = "server")]
 use crate::service::{
     AuthorizedPageBuilderHandlers, PageBuilderCapabilityService, PageBuilderRequestAuth,

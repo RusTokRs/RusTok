@@ -1,14 +1,7 @@
-use fly_leptos::{BrowserPoint, BrowserRect, PointerSample, FLY_IFRAME_PROTOCOL_V1};
+use crate::editor::CanvasComponentGeometry;
+use fly_leptos::{BrowserPoint, PointerSample, FLY_IFRAME_PROTOCOL_V1};
 use fly_ui::KeyStroke;
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct CanvasComponentGeometry {
-    pub component_id: String,
-    pub parent_component_id: Option<String>,
-    pub index: usize,
-    pub rect: BrowserRect,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]

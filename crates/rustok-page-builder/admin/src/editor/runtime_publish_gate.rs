@@ -25,11 +25,13 @@ pub fn RuntimePublishGatePanel(runtime: AdminEditorRuntime) -> impl IntoView {
         <Show when=move || has_policy>
             <section class="space-y-3 rounded-xl border border-border bg-card p-3">
                 <div class="flex items-center justify-between gap-2">
-                    <h2 class="font-semibold">{title}</h2>
+                    <h2 class="font-semibold">{title.clone()}</h2>
                     <button
                         type="button"
                         class="rounded border border-border px-2 py-1 text-xs"
-                        on:click=move |_| {
+                        on:click={
+                            let check_runtime = check_runtime.clone();
+                            move |_| {
                             if let Some(evaluation) = check_runtime.evaluate_runtime_publish_gate() {
                                 let allowed = evaluation.allowed;
                                 check_runtime.runtime_publish_gate_evaluation.set(Some(evaluation));
@@ -40,11 +42,14 @@ pub fn RuntimePublishGatePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                     check_runtime.fail("Runtime publish gate has blocking issues");
                                 }
                             }
+                            }
                         }
-                    >{check_label}</button>
+                    >{check_label.clone()}</button>
                 </div>
 
-                {move || {
+                {{
+                    let report_runtime = report_runtime.clone();
+                    move || {
                     let _tracked_context = report_runtime.runtime_context.get();
                     let evaluation = report_runtime.evaluate_runtime_publish_gate();
                     let Some(evaluation) = evaluation else {
@@ -96,6 +101,7 @@ pub fn RuntimePublishGatePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         </div>
                     }
                     .into_any()
+                    }
                 }}
             </section>
         </Show>

@@ -31,6 +31,12 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 - typed application boundaries `UserAdminMutationPort` and `OAuthAdminPort` for admin commands, OAuth reads and consent lifecycle without module crate dependency on host transport;
 - owner-owned OAuth GraphQL query/mutation/types behind `graphql` feature; `apps/server` only implements the runtime port over the DB and connects roots into the common schema.
 
+## Responsibility Zone
+
+`rustok-auth` owns authentication, OAuth, credential, token, and user-lifecycle
+contracts. Host applications own transport extraction, persistence adapters,
+and composition, but must not duplicate auth policy or token semantics.
+
 ## Integration
 
 - depends only on `rustok-core` and common libraries, without dependency on `rustok-rbac`;
@@ -95,7 +101,7 @@ On auth degradation:
 - `cargo xtask module test auth`
 - targeted server tests for auth/RBAC contracts when changing runtime wiring
 
-## Related documents
+## Related Documentation
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)

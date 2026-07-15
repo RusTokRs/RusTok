@@ -16,7 +16,7 @@ completion status, verification status, and promotion gates.
 - Contract registries and evidence packets describe machine-readable boundaries;
   they must link back here instead of maintaining independent task lists.
 
-## Current boundary
+## Current state
 
 - FFA status: `in_progress`
 - FBA status: `boundary_ready`
@@ -233,7 +233,7 @@ Evidence:
 - `crates/rustok-migrations/tests/payment_provider_event_normalized_facts_smoke.rs`
 - payment provider/lifecycle tests under `crates/rustok-payment/tests/`
 
-## Verification and promotion checklist
+## Verification
 
 These tasks remain unchecked until they are actually executed. Source inspection is
 not sufficient.

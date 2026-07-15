@@ -163,7 +163,7 @@ impl RusToKModule for CacheModule {
     }
 
     fn description(&self) -> &'static str {
-        "Centralised cache backend factory — Redis lifecycle, fallback, health checks."
+        "Centralised bounded cache capability — Redis lifecycle/timeouts, weighted fallback, atomic compare-and-set, invalidation and anti-stampede loading."
     }
 
     fn version(&self) -> &'static str {

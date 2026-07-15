@@ -74,15 +74,6 @@ impl AtomicCartCheckoutPricingResolver for StorefrontCheckoutPricingResolver {
                         "checkout pricing is temporarily unavailable",
                         true,
                     )
-                })?
-                .ok_or_else(|| {
-                    PortError::validation(
-                        "pricing.checkout_price_missing",
-                        format!(
-                            "no checkout price is available for cart line item {}",
-                            line_item.id
-                        ),
-                    )
                 })?;
             if !resolved_price
                 .currency_code
@@ -126,7 +117,7 @@ fn checkout_pricing_port_context(
     .with_deadline(std::time::Duration::from_secs(2));
     cart.channel_slug
         .as_deref()
-        .map(|channel| context.with_channel(channel))
+        .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context)
 }
 

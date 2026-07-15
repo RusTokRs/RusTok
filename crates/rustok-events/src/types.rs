@@ -1742,7 +1742,8 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("installation_id", installation_id)?;
                 if *revision == 0 {
                     return Err(EventValidationError::InvalidValue(
-                        "revision must be positive".to_string(),
+                        "revision",
+                        "must be positive".to_string(),
                     ));
                 }
                 Ok(())

@@ -260,7 +260,10 @@ fn hash_payload(value: Value) -> CheckoutOrderPlanResult<String> {
     let payload = serde_json::to_vec(&canonical).map_err(|error| {
         CheckoutOrderPlanError::Validation(format!("failed to encode checkout order plan: {error}"))
     })?;
-    Ok(format!("{:x}", Sha256::digest(payload)))
+    Ok(Sha256::digest(payload)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn canonicalize_json(value: Value) -> Value {

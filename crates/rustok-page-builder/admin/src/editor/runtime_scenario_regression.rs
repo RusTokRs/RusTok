@@ -13,8 +13,8 @@ use std::sync::Arc;
 #[component]
 pub fn RuntimeScenarioRegressionPanel(
     runtime: AdminEditorRuntime,
-    #[prop(optional)] initial_baseline: Option<RuntimeScenarioReleaseBaseline>,
-    #[prop(optional)] on_baseline_change: Option<Callback<PageBuilderScenarioBaselineChange>>,
+    initial_baseline: Option<RuntimeScenarioReleaseBaseline>,
+    on_baseline_change: Option<Callback<PageBuilderScenarioBaselineChange>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
@@ -57,10 +57,10 @@ pub fn RuntimeScenarioRegressionPanel(
     view! {
         <Show when=move || has_scenarios>
             <section class="space-y-3 rounded-xl border border-border bg-card p-3">
-                <h2 class="font-semibold">{title}</h2>
+                <h2 class="font-semibold">{title.clone()}</h2>
                 <input
                     class="w-full rounded border border-input bg-background px-2 py-1 text-xs"
-                    placeholder=promotion_note_label
+                    placeholder=promotion_note_label.clone()
                     prop:value=move || promotion_note.get()
                     on:input=move |event| promotion_note.set(event_target_value(&event))
                 />
@@ -71,7 +71,10 @@ pub fn RuntimeScenarioRegressionPanel(
                     <button
                         type="button"
                         class="rounded border border-border px-2 py-1 text-xs"
-                        on:click=move |_| {
+                        on:click={
+                            let capture_runtime = capture_runtime.clone();
+                            let capture_scenarios = Arc::clone(&capture_scenarios);
+                            move |_| {
                             let replacing = baseline.get_untracked().is_some();
                             let note = normalized_note(&promotion_note.get_untracked());
                             if replacing && note.is_none() {
@@ -114,12 +117,15 @@ pub fn RuntimeScenarioRegressionPanel(
                             promotion_note.set(String::new());
                             capture_runtime.last_error.set(None);
                             capture_runtime.announce("Scenario release baseline captured");
+                            }
                         }
-                    >{capture_label}</button>
+                    >{capture_label.clone()}</button>
                     <button
                         type="button"
                         class="rounded border border-border px-2 py-1 text-xs"
-                        on:click=move |_| {
+                        on:click={
+                            let import_runtime = import_runtime.clone();
+                            move |_| {
                             let replacing = baseline.get_untracked().is_some();
                             let note = normalized_note(&promotion_note.get_untracked());
                             if replacing && note.is_none() {
@@ -170,8 +176,9 @@ pub fn RuntimeScenarioRegressionPanel(
                                     "Invalid scenario release baseline JSON: {error}",
                                 )),
                             }
+                            }
                         }
-                    >{import_label}</button>
+                    >{import_label.clone()}</button>
                     <button
                         type="button"
                         class="rounded border border-border px-2 py-1 text-xs"
@@ -184,7 +191,7 @@ pub fn RuntimeScenarioRegressionPanel(
                             }
                             promotion_note.set(String::new());
                         }
-                    >{clear_label}</button>
+                    >{clear_label.clone()}</button>
                 </div>
 
                 <textarea

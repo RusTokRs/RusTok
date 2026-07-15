@@ -40,9 +40,10 @@ pub(crate) fn validate_module_server_registry_contract(
             &server_modules_content,
             slug,
             &inferred_module_entry,
-        ) {
+        ) && !server_modules_content.contains("pub use rustok_distribution::build_registry;")
+        {
             anyhow::bail!(
-                "Required module '{slug}' must be registered directly in apps/server/src/modules/mod.rs"
+                "Required module '{slug}' must be registered directly in apps/server/src/modules/mod.rs or through rustok_distribution::build_registry"
             );
         }
         return Ok(());

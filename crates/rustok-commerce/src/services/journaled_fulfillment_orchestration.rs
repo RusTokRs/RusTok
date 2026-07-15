@@ -8,7 +8,6 @@ use rustok_fulfillment::{
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
 use sea_orm::DatabaseConnection;
-use serde::Serialize;
 use serde_json::Value;
 use uuid::Uuid;
 use validator::Validate;

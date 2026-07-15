@@ -4,13 +4,12 @@ use rustok_api::{graphql::require_module_enabled, PortActor, PortContext, Tenant
 use uuid::Uuid;
 
 use rustok_cart::{
-    in_process_cart_promotion_port, CartPromotionKindRequest, CartPromotionPort,
-    CartPromotionRequest, CartPromotionScopeRequest,
+    in_process_cart_promotion_port, CartPromotionKindRequest, CartPromotionRequest,
+    CartPromotionScopeRequest,
 };
 use rustok_pricing::{
     in_process_pricing_read_port, in_process_pricing_write_port, ApplyVariantDiscountRequest,
-    PreviewVariantDiscountRequest, PricingReadPort, PricingService, PricingWritePort,
-    SetPriceListScopeRequest,
+    PreviewVariantDiscountRequest, PricingService, SetPriceListScopeRequest,
 };
 
 use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
@@ -51,7 +50,7 @@ fn pricing_preview_port_context(
     )
     .with_deadline(std::time::Duration::from_secs(2));
     channel_slug
-        .map(|channel| context.with_channel(channel))
+        .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context)
 }
 
@@ -195,6 +194,7 @@ impl CommercePricingMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let service = PricingService::new(db.clone(), event_bus.clone());
         let currency_code = parse_pricing_currency_code(&input.currency_code)?;
         let amount = parse_decimal(&input.amount)?;
         let compare_at_amount = parse_optional_decimal(input.compare_at_amount.as_deref())?;

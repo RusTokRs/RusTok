@@ -21,16 +21,14 @@ use std::sync::Arc;
 #[component]
 pub fn AdminCanvas(
     controller: AdminCanvasController,
-    #[prop(optional)] facade: Option<Arc<dyn PageBuilderAdminFacade>>,
-    #[prop(optional)] trait_schemas: Option<Arc<TraitSchemaRegistry>>,
-    #[prop(optional)] runtime_context: Option<Value>,
-    #[prop(optional)] runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
-    #[prop(optional)] runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
-    #[prop(optional)] runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
-    #[prop(optional)] on_runtime_scenario_baseline: Option<
-        Callback<PageBuilderScenarioBaselineChange>,
-    >,
-    #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
+    facade: Option<Arc<dyn PageBuilderAdminFacade>>,
+    trait_schemas: Option<Arc<TraitSchemaRegistry>>,
+    runtime_context: Option<Value>,
+    runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
+    runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
+    runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
+    on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
+    on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;

@@ -113,6 +113,7 @@ pub fn PageBuilderAdmin() -> impl IntoView {
                 runtime_publish_gate_policy=context.runtime_publish_gate_policy
                 runtime_scenario_baseline=context.runtime_scenario_baseline
                 on_runtime_scenario_baseline=context.on_runtime_scenario_baseline
+                on_request=None
             />
         }
         .into_any(),
@@ -135,7 +136,7 @@ pub fn PageBuilderAdmin() -> impl IntoView {
             );
 
             view! {
-                <AdminShell title subtitle=Some(subtitle)>
+                <AdminShell title subtitle>
                     <section class="rustok-page-builder-admin__unbound" role="status">
                         <h2>{unbound_title}</h2>
                         <p>{unbound_body}</p>
@@ -150,26 +151,24 @@ pub fn PageBuilderAdmin() -> impl IntoView {
 #[component]
 pub fn PageBuilderAdminWithController(
     controller: AdminCanvasController,
-    #[prop(optional)] facade: Option<Arc<dyn PageBuilderAdminFacade>>,
-    #[prop(optional)] trait_schemas: Option<Arc<TraitSchemaRegistry>>,
-    #[prop(optional)] runtime_context: Option<Value>,
-    #[prop(optional)] runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
-    #[prop(optional)] runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
-    #[prop(optional)] runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
-    #[prop(optional)] on_runtime_scenario_baseline: Option<
-        Callback<PageBuilderScenarioBaselineChange>,
-    >,
-    #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
+    facade: Option<Arc<dyn PageBuilderAdminFacade>>,
+    trait_schemas: Option<Arc<TraitSchemaRegistry>>,
+    runtime_context: Option<Value>,
+    runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
+    runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
+    runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
+    on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
+    on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
     let title_prefix = t(locale.as_deref(), "page_builder.title", "Page Builder");
     let title = format!("{title_prefix}: {}", controller.page_id());
-    let subtitle = Some(t(
+    let subtitle = t(
         locale.as_deref(),
         "page_builder.editorSubtitle",
         "Full Fly authoring surface. Persistence remains owned by the consumer module facade.",
-    ));
+    );
 
     view! {
         <AdminShell title subtitle>

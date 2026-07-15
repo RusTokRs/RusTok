@@ -1,5 +1,5 @@
-use rustok_api::{PortError, PortErrorKind};
-use rustok_cart::{AtomicCartCheckoutHandle, PreparedCartCheckoutSnapshot};
+use rustok_api::PortError;
+use rustok_cart::AtomicCartCheckoutHandle;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -372,7 +372,10 @@ fn checkout_request_hash(
             "failed to encode checkout request hash payload: {error}"
         ))
     })?;
-    Ok(format!("{:x}", Sha256::digest(payload)))
+    Ok(Sha256::digest(payload)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn canonicalize_json(value: Value) -> Value {

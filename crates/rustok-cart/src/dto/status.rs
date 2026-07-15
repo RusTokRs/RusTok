@@ -24,7 +24,7 @@ impl CartStatus {
         }
     }
 
-    pub const fn parse(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "active" => Some(Self::Active),
             "checking_out" => Some(Self::CheckingOut),

@@ -378,17 +378,6 @@ impl PageBuilderScenarioBaselineService {
         .map_err(|error| PagesError::validation(error.to_string()))
     }
 
-    async fn load_unchecked(
-        &self,
-        tenant_id: Uuid,
-        page_id: Uuid,
-    ) -> PagesResult<Option<RuntimeScenarioReleaseBaseline>> {
-        Ok(self
-            .load_record_unchecked(tenant_id, page_id)
-            .await?
-            .map(|record| record.baseline))
-    }
-
     async fn load_record_unchecked(
         &self,
         tenant_id: Uuid,

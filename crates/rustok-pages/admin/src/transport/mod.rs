@@ -46,6 +46,7 @@ pub async fn save_page_builder_scenario_baseline(
     page_id: String,
     baseline: RuntimeScenarioReleaseBaseline,
     expected_baseline_hash: Option<String>,
+    promotion_note: Option<String>,
 ) -> Result<RuntimeScenarioReleaseBaseline, TransportError> {
     scenario_baseline_cas_adapter::save(
         token,
@@ -53,6 +54,7 @@ pub async fn save_page_builder_scenario_baseline(
         page_id,
         baseline,
         expected_baseline_hash,
+        promotion_note,
     )
     .await
 }

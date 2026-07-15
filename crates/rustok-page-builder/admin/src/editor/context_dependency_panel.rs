@@ -10,14 +10,12 @@ use rustok_ui_core::UiRouteContext;
 #[component]
 pub fn ContextDependencyPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let locale = route_context.locale;
     let title = t(
-        locale.as_deref(),
+        route_context.locale.as_deref(),
         "page_builder.panel.contextDependencies",
         "Context dependencies",
     );
     let filter = RwSignal::new(String::new());
-    let report_runtime = runtime;
 
     view! {
         <section class="space-y-3 rounded-xl border border-border bg-card p-3">
@@ -28,35 +26,29 @@ pub fn ContextDependencyPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 prop:value=move || filter.get()
                 on:input=move |event| filter.set(event_target_value(&event))
             />
-
             {move || {
-                let graph = report_runtime.controller.with(|controller| {
+                let graph = runtime.controller.with(|controller| {
                     analyze_runtime_context_dependencies(controller.editor().document())
                 });
                 let query = filter.get().trim().to_ascii_lowercase();
-                let nodes = graph
-                    .nodes
-                    .into_iter()
-                    .filter(|node| {
-                        query.is_empty()
-                            || node.path.to_ascii_lowercase().contains(&query)
-                            || node.consumers.iter().any(|consumer| {
-                                consumer_label(consumer)
-                                    .to_ascii_lowercase()
-                                    .contains(&query)
-                            })
-                    })
-                    .collect::<Vec<_>>();
-                let blocking = graph
-                    .diagnostics
-                    .iter()
+                let nodes = graph.nodes.into_iter().filter(|node| {
+                    query.is_empty()
+                        || node.path.to_ascii_lowercase().contains(&query)
+                        || node.consumers.iter().any(|consumer| {
+                            consumer_label(consumer).to_ascii_lowercase().contains(&query)
+                        })
+                }).collect::<Vec<_>>();
+                let blocking = graph.diagnostics.iter()
                     .filter(|diagnostic| diagnostic.severity == ValidationSeverity::Error)
                     .count();
-                let warnings = graph
-                    .diagnostics
-                    .iter()
+                let warnings = graph.diagnostics.iter()
                     .filter(|diagnostic| diagnostic.severity == ValidationSeverity::Warning)
                     .count();
+                let status_class = if blocking > 0 {
+                    "rounded bg-destructive/10 px-2 py-1 text-destructive"
+                } else {
+                    "rounded bg-emerald-500/10 px-2 py-1 text-emerald-700"
+                };
                 view! {
                     <div class="space-y-2 text-xs">
                         <p class="text-muted-foreground">{format!(
@@ -66,12 +58,7 @@ pub fn ContextDependencyPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             graph.external_path_count,
                             graph.consumer_count,
                         )}</p>
-                        <p class=if blocking > 0 {
-                            "rounded bg-destructive/10 px-2 py-1 text-destructive"
-                        } else {
-                            "rounded bg-emerald-500/10 px-2 py-1 text-emerald-700"
-                        }>{format!("{blocking} blocking · {warnings} warnings")}</p>
-
+                        <p class=status_class>{format!("{blocking} blocking · {warnings} warnings")}</p>
                         {(!graph.computed_evaluation_order.is_empty()).then(|| view! {
                             <details>
                                 <summary class="cursor-pointer font-medium">"Computed evaluation order"</summary>
@@ -82,28 +69,20 @@ pub fn ContextDependencyPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                 </ol>
                             </details>
                         })}
-
                         <div class="space-y-1">
                             {nodes.into_iter().map(|node| {
-                                let external = node
-                                    .sources
-                                    .iter()
+                                let external = node.sources.iter()
                                     .any(|source| *source == RuntimeContextPathSource::External);
                                 let unused = node.consumers.is_empty();
-                                let source_text = node
-                                    .sources
-                                    .iter()
-                                    .map(|source| source_label(*source))
-                                    .collect::<Vec<_>>()
-                                    .join(", ");
+                                let sources = node.sources.iter().map(|source| source_label(*source))
+                                    .collect::<Vec<_>>().join(", ");
                                 view! {
                                     <details class="rounded bg-muted/50 px-2 py-1">
                                         <summary class="cursor-pointer">
                                             <span class="break-all font-medium">{node.path.clone()}</span>
-                                            <span class="ml-1 text-muted-foreground">{format!(
-                                                "· {source_text} · {} consumer(s)",
-                                                node.consumers.len()
-                                            )}</span>
+                                            <span class="ml-1 text-muted-foreground">
+                                                {format!("· {sources} · {} consumer(s)", node.consumers.len())}
+                                            </span>
                                             {external.then(|| view! {
                                                 <span class="ml-1 text-amber-700">"host input"</span>
                                             })}
@@ -112,12 +91,8 @@ pub fn ContextDependencyPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                             })}
                                         </summary>
                                         <div class="mt-1 space-y-1 pl-2">
-                                            {node.required.then(|| view! {
-                                                <p>"Required input"</p>
-                                            })}
-                                            {node.has_default.then(|| view! {
-                                                <p>"Has default"</p>
-                                            })}
+                                            {node.required.then(|| view! { <p>"Required input"</p> })}
+                                            {node.has_default.then(|| view! { <p>"Has default"</p> })}
                                             {node.consumers.into_iter().map(|consumer| view! {
                                                 <p class="break-all rounded bg-background/70 px-2 py-1">
                                                     {consumer_label(&consumer)}
@@ -128,16 +103,18 @@ pub fn ContextDependencyPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                 }
                             }).collect_view()}
                         </div>
-
-                        {graph.diagnostics.into_iter().take(12).map(|diagnostic| view! {
-                            <p class=match diagnostic.severity {
+                        {graph.diagnostics.into_iter().take(12).map(|diagnostic| {
+                            let class = match diagnostic.severity {
                                 ValidationSeverity::Error => "rounded bg-destructive/10 px-2 py-1 text-destructive",
                                 ValidationSeverity::Warning => "rounded bg-amber-500/10 px-2 py-1 text-amber-700",
                                 ValidationSeverity::Info => "rounded bg-muted px-2 py-1 text-muted-foreground",
-                            }>
-                                <strong>{diagnostic.code}</strong>
-                                <span class="ml-1">{diagnostic.message}</span>
-                            </p>
+                            };
+                            view! {
+                                <p class=class>
+                                    <strong>{diagnostic.code}</strong>
+                                    <span class="ml-1">{diagnostic.message}</span>
+                                </p>
+                            }
                         }).collect_view()}
                     </div>
                 }

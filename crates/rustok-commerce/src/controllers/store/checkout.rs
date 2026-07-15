@@ -281,6 +281,9 @@ fn recovering_checkout_http_error(
         crate::services::RecoveringStagedCheckoutError::StagedAndJournal { .. } => {
             HttpError::internal("Checkout failed and recovery journal lookup is unavailable")
         }
+        crate::services::RecoveringStagedCheckoutError::Journal(_) => {
+            HttpError::internal("Checkout recovery journal lookup is unavailable")
+        }
         crate::services::RecoveringStagedCheckoutError::StagedAndCompensation {
             compensation: crate::CheckoutCompensationError::ManualReconciliation(_),
             ..

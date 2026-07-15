@@ -25,7 +25,7 @@ use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::check_variant_availability_for_public_channel;
 use rustok_order::OrderService;
 use rustok_pricing::{
-    in_process_pricing_read_port, PriceResolutionContext, PricingReadPort, PricingService,
+    in_process_pricing_read_port, PriceResolutionContext, PricingReadPort,
     ResolveProductPriceRequest,
 };
 use rustok_product::entities::{
@@ -239,7 +239,7 @@ pub(crate) fn storefront_cart_port_context(
     let context = request_context
         .channel_slug
         .as_deref()
-        .map(|channel| context.with_channel(channel))
+        .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context);
     if is_write {
         context.with_idempotency_key(correlation_id)
@@ -478,7 +478,7 @@ pub(crate) fn storefront_pricing_port_context(
     request_context
         .channel_slug
         .as_deref()
-        .map(|channel| context.with_channel(channel))
+        .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context)
 }
 
@@ -882,7 +882,7 @@ fn store_line_item_pricing_port_context(
     pricing_context
         .channel_slug
         .as_deref()
-        .map(|channel| context.with_channel(channel))
+        .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context)
 }
 

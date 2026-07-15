@@ -24,7 +24,7 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute(Statement::from_string(
                 manager.get_database_backend(),
-                statement.into(),
+                statement,
             ))
             .await?;
         Ok(())
@@ -37,7 +37,7 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute(Statement::from_string(
                 manager.get_database_backend(),
-                statement.into(),
+                statement,
             ))
             .await?;
         Ok(())

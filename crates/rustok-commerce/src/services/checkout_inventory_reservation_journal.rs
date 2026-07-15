@@ -279,7 +279,7 @@ impl CheckoutInventoryReservationJournal {
             )
             .col_expr(
                 checkout_inventory_reservation::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
             .filter(checkout_inventory_reservation::Column::ReservationId.eq(reservation_id))
@@ -349,7 +349,7 @@ impl CheckoutInventoryReservationJournal {
             )
             .col_expr(
                 checkout_inventory_reservation::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
             .filter(checkout_inventory_reservation::Column::ReservationId.eq(reservation_id))
@@ -399,7 +399,7 @@ impl CheckoutInventoryReservationJournal {
             )
             .col_expr(
                 checkout_inventory_reservation::Column::UpdatedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             )
             .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
             .filter(checkout_inventory_reservation::Column::ReservationId.eq(reservation_id))
@@ -410,11 +410,11 @@ impl CheckoutInventoryReservationJournal {
         update = match target {
             CheckoutInventoryReservationStatus::Released => update.col_expr(
                 checkout_inventory_reservation::Column::ReleasedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             ),
             CheckoutInventoryReservationStatus::Consumed => update.col_expr(
                 checkout_inventory_reservation::Column::ConsumedAt,
-                Expr::current_timestamp(),
+                Expr::current_timestamp().into(),
             ),
             _ => unreachable!("terminal reservation disposition must be released or consumed"),
         };

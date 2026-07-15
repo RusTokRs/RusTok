@@ -1,10 +1,15 @@
-use crate::editor::{
-    decode_canvas_message, dispatch_shortcut, render_canvas_srcdoc_with_context,
-    AdminEditorRuntime, CanvasBridgeMessage, CanvasComponentGeometry, ResizeHandles,
-};
+#[cfg(target_arch = "wasm32")]
+use crate::editor::decode_canvas_message;
+#[cfg(target_arch = "wasm32")]
+use crate::editor::{dispatch_shortcut, CanvasBridgeMessage, CanvasComponentGeometry};
+use crate::editor::{render_canvas_srcdoc_with_context, AdminEditorRuntime, ResizeHandles};
+#[cfg(target_arch = "wasm32")]
 use fly_leptos::BrowserPoint;
-use fly_ui::{resolve_editor_shortcut, CanvasRect, UiIntent, ViewportState};
+#[cfg(target_arch = "wasm32")]
+use fly_ui::{resolve_editor_shortcut, UiIntent};
+use fly_ui::{CanvasRect, ViewportState};
 use leptos::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use std::collections::BTreeMap;
 
 #[component]
@@ -18,6 +23,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
     });
     let instance_id = format!("fly-canvas-{instance_seed}");
     let iframe_id = format!("{instance_id}-frame");
+    #[cfg(target_arch = "wasm32")]
     let geometry = RwSignal::new(BTreeMap::<String, CanvasComponentGeometry>::new());
     let ready = RwSignal::new(false);
     let pointer = RwSignal::new(None::<String>);
@@ -52,9 +58,9 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
         let expected_instance_id = instance_id.clone();
         move |_| {
             ready.set(false);
-            geometry.set(BTreeMap::new());
             #[cfg(target_arch = "wasm32")]
             {
+                geometry.set(BTreeMap::new());
                 bridge_subscription.set_value(None);
                 let decoder_instance = expected_instance_id.clone();
                 let message_runtime = runtime.clone();
@@ -159,6 +165,7 @@ fn OverlayLayer(runtime: AdminEditorRuntime, kind: OverlayKind) -> impl IntoView
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 fn handle_canvas_message(
     runtime: &AdminEditorRuntime,
     geometry: RwSignal<BTreeMap<String, CanvasComponentGeometry>>,
@@ -256,6 +263,7 @@ fn handle_canvas_message(
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 fn update_drag_candidates(
     runtime: &AdminEditorRuntime,
     geometry: RwSignal<BTreeMap<String, CanvasComponentGeometry>>,
@@ -274,6 +282,7 @@ fn update_drag_candidates(
     runtime.dispatch(UiIntent::UpdateHitTest(candidates));
 }
 
+#[cfg(target_arch = "wasm32")]
 fn synchronize_overlays(
     runtime: &AdminEditorRuntime,
     geometry: RwSignal<BTreeMap<String, CanvasComponentGeometry>>,
@@ -298,6 +307,7 @@ fn synchronize_overlays(
     runtime.dispatch(UiIntent::SetHoveredOverlay(hovered));
 }
 
+#[cfg(target_arch = "wasm32")]
 fn canvas_rect(rect: fly_leptos::BrowserRect) -> CanvasRect {
     CanvasRect {
         x: rect.left,
