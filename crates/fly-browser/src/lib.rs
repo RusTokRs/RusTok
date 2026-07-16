@@ -125,6 +125,8 @@ impl BrowserIntentEnvelope {
                 | "create_page"
                 | "rename_page"
                 | "remove_page"
+                | "set_runtime_context"
+                | "set_runtime_locale"
                 | "undo"
                 | "redo"
                 | "cut"
@@ -264,7 +266,7 @@ mod tests {
     }
 
     #[test]
-    fn command_producing_intents_are_mutating() {
+    fn command_producing_and_draft_intents_are_mutating() {
         for intent in [
             "insert_block",
             "drop",
@@ -277,6 +279,8 @@ mod tests {
             "create_page",
             "rename_page",
             "remove_page",
+            "set_runtime_context",
+            "set_runtime_locale",
             "undo",
             "redo",
             "cut",
