@@ -16,7 +16,7 @@ current cache contract, completed source phases, remaining priorities and target
   particular, RBAC policy recovery belongs to the `rustok-rbac` plan and event-forwarder
   lifecycle belongs to the events/runtime owner; neither is duplicated here.
 
-Last reconciled with `main`: 2026-07-15.
+Last reconciled with `main`: 2026-07-16.
 
 ## Current state
 
@@ -152,12 +152,12 @@ The ownership boundary is:
 
 ## Remaining work, in priority order
 
-### P0. Replace temporary diagnostics with durable verification evidence
+### P0. Complete durable verification evidence
 
-- [ ] Remove the temporary cache diagnostic/formatter workflows, trigger placeholder files and
+- [x] Remove the temporary cache diagnostic/formatter workflows, trigger placeholder files and
   diagnostic issue after their useful evidence is captured.
-- [ ] Keep one permanent path-scoped `Cache hardening` workflow covering format, core/cache/server
-  compilation, targeted tests, Clippy, module validation and module tests.
+- [x] Keep one permanent path-scoped `Cache hardening` workflow covering format, core/cache/server
+  compilation, current host architecture guards, Clippy, module validation and module tests.
 - [ ] Run the permanent gate on one reconciled `main` revision after unrelated workspace compile
   blockers are resolved.
 - [ ] Fix every cache-specific compile, lint or test failure before marking source-complete phases
@@ -231,6 +231,7 @@ cargo check -p rustok-cache --lib
 cargo check -p rustok-server --lib
 cargo test -p rustok-core cache --lib
 cargo test -p rustok-cache --lib
+cargo test -p rustok-cache --test invalidation_failure_metrics
 cargo test -p rustok-server \
   --test cache_architecture_guard \
   --test tenant_cache_architecture_guard \
