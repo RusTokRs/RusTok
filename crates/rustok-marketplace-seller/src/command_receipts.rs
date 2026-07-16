@@ -122,7 +122,6 @@ pub(crate) fn replay_command<R: DeserializeOwned>(
 ) -> MarketplaceSellerResult<R> {
     if receipt.command_kind != expected_command_kind
         || receipt.request_hash != expected_request_hash
-        || receipt.actor_id == Uuid::nil()
     {
         return Err(MarketplaceSellerError::IdempotencyConflict(
             receipt.idempotency_key,
