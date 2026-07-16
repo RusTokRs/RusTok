@@ -12,6 +12,7 @@ fn tenant_locale_cache_uses_the_durable_tenant_generation_channel() {
 
     assert!(listener.contains("TENANT_CACHE_GENERATION_CHANNEL"));
     assert!(listener.contains("TENANT_CACHE_BACKEND_PREFIX"));
+    assert!(listener.contains("if event.key == \"*\""));
     assert!(listener.contains("invalidate_tenant_locale_cache(&self.ctx, tenant_id).await"));
     assert!(listener.contains("invalidate_all_tenant_locale_cache(&self.ctx).await"));
     assert!(listener.contains("CacheInvalidationObservation::UnverifiedFirst"));
@@ -38,6 +39,11 @@ fn tenant_locale_cache_uses_the_durable_tenant_generation_channel() {
         .find("start_tenant_locale_generation_listener")
         .expect("tenant middleware must start locale generation recovery");
     assert!(tenant_init < locale_start);
+
+    assert!(middleware.contains(
+        "let invalidation_key = tenant_id\n            .map(|tenant_id| tenant_id.to_string())\n            .unwrap_or_else(|| \"*\".to_string())"
+    ));
+    assert!(!middleware.contains("\"tenant-manual-invalidation\","));
 
     assert!(guardrails.contains("TenantLocaleGenerationListenerHandle"));
     assert!(guardrails.contains("tenant locale durable generation runtime"));
