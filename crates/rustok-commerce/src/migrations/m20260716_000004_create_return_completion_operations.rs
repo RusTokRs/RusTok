@@ -151,7 +151,7 @@ impl MigrationTrait for Migration {
             manager
                 .get_connection()
                 .execute_unprepared(
-                    "DROP FUNCTION IF EXISTS enforce_return_completion_operation_integrity();",
+                    "DROP FUNCTION IF EXISTS enforce_return_completion_operation_integrity() CASCADE;",
                 )
                 .await?;
         }
