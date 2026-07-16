@@ -1,7 +1,8 @@
 use crate::{
     analyze_runtime_context_dependencies, extract_runtime_context_contract,
-    validate_binding_definitions, validate_dynamic_definitions, validate_project_locale_policy,
-    validate_translation_definitions, ProjectDocument, ValidationDiagnostic, ValidationReport,
+    validate_binding_definitions, validate_dynamic_definitions, validate_localized_page_routes,
+    validate_project_locale_policy, validate_translation_definitions, ProjectDocument,
+    ValidationDiagnostic, ValidationReport,
 };
 use std::collections::BTreeSet;
 
@@ -9,6 +10,7 @@ pub fn validate_runtime_extensions(document: &ProjectDocument) -> Vec<Validation
     let mut diagnostics = extract_runtime_context_contract(document).definition_diagnostics;
     diagnostics.extend(validate_project_locale_policy(document));
     diagnostics.extend(validate_translation_definitions(document));
+    diagnostics.extend(validate_localized_page_routes(document));
     diagnostics.extend(validate_binding_definitions(document));
     diagnostics.extend(validate_dynamic_definitions(document));
     diagnostics.extend(analyze_runtime_context_dependencies(document).diagnostics);
@@ -155,6 +157,27 @@ mod tests {
         }));
         assert!(diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "localized_metadata_required_locale_missing"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
+    }
+
+    #[test]
+    fn duplicate_localized_slugs_block_publish_validation() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "one",
+                "flyPageMeta": { "slug": { "$localized": { "en": "shared" } } },
+                "component": { "id": "root-one", "type": "wrapper" }
+            }, {
+                "id": "two",
+                "flyPageMeta": { "slug": { "$localized": { "en": "shared" } } },
+                "component": { "id": "root-two", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let diagnostics = validate_runtime_extensions(&document);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "duplicate_localized_page_slug"
                 && diagnostic.severity == crate::ValidationSeverity::Error
         }));
     }
