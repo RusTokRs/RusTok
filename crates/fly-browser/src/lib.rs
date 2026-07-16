@@ -108,6 +108,7 @@ impl BrowserIntentEnvelope {
         matches!(
             self.intent.as_str(),
             "insert_block"
+                | "drop"
                 | "drop_requested"
                 | "remove_selected"
                 | "move_selected"
@@ -234,6 +235,7 @@ mod tests {
     fn command_producing_intents_are_mutating() {
         for intent in [
             "insert_block",
+            "drop",
             "drop_requested",
             "remove_selected",
             "move_selected_up",
