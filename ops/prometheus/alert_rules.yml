@@ -99,6 +99,28 @@ groups:
           summary: "Event processing lag is too high"
           description: "P95 event lag is {{ $value | humanizeDuration }} (threshold: 30s)"
 
+      # Broadcast lag means a long-lived consumer actually skipped one or more messages.
+      - alert: EventConsumerSkippedMessages
+        expr: increase(rustok_event_consumer_lagged_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: eventbus
+        annotations:
+          summary: "Event consumer skipped messages"
+          description: "Consumer {{$labels.consumer}} reported broadcast lag in the last five minutes. Execute its owner-defined gap recovery before acknowledging new events."
+
+      # Supervisors record bounded restart reasons through the shared event error metric.
+      - alert: RepeatedRuntimeWorkerRestarts
+        expr: increase(rustok_event_bus_errors_total{error_type=~".*restart.*"}[10m]) > 3
+        for: 2m
+        labels:
+          severity: warning
+          component: runtime
+        annotations:
+          summary: "Runtime worker is repeatedly restarting"
+          description: "Worker {{$labels.event_type}} restarted more than three times in ten minutes. Inspect the terminal error and readiness state before increasing restart delays."
+
   - name: rustok_circuit_breaker_alerts
     interval: 30s
     rules:
@@ -263,7 +285,7 @@ groups:
           description: "P95 query duration is {{ $value | humanizeDuration }} (threshold: 100ms)"
 
       # Very Slow Database Queries
-      - alert: VerySlowDatabaseQueries
+      - alert: VerySlowRequestLatency
         expr: |
           histogram_quantile(
             0.95,
