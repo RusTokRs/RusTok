@@ -12,7 +12,8 @@
       "operations": [
         "read_seller",
         "list_sellers",
-        "read_membership"
+        "read_membership",
+        "list_members"
       ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
@@ -65,7 +66,7 @@
       "module": "marketplace_seller_admin",
       "profile": "marketplace_seller_admin",
       "degraded_modes": [
-        "read_only_seller_shell",
+        "seller_directory_unavailable",
         "seller_write_retry_required"
       ],
       "fallback_profiles": [
@@ -81,7 +82,11 @@
     "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs",
     "receipt_entity": "crates/rustok-marketplace-seller/src/entities/seller_command_receipt.rs",
     "receipt_executor": "crates/rustok-marketplace-seller/src/command_receipts.rs",
-    "receipted_commands": "crates/rustok-marketplace-seller/src/receipted_commands.rs"
+    "receipted_commands": "crates/rustok-marketplace-seller/src/receipted_commands.rs",
+    "graphql_owner_transport": "crates/rustok-marketplace-seller/src/graphql.rs",
+    "native_admin_adapter": "crates/rustok-marketplace-seller/admin/src/transport/native_server_adapter.rs",
+    "graphql_admin_adapter": "crates/rustok-marketplace-seller/admin/src/transport/graphql_adapter.rs",
+    "admin_workflows": "crates/rustok-marketplace-seller/admin/src/ui/leptos.rs"
   },
   "in_process_provider_impl": {
     "service": "MarketplaceSellerService",
@@ -107,6 +112,14 @@
         "operation": "list_sellers",
         "assertions": [
           "bounded_pagination",
+          "tenant_scope_preserved",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "list_members",
+        "assertions": [
+          "seller_scope_preserved",
           "tenant_scope_preserved",
           "context_deadline_preserved"
         ]
@@ -141,8 +154,17 @@
           "owner_membership_cannot_be_disabled",
           "owner_membership_cannot_be_demoted"
         ]
+      },
+      {
+        "operation": "admin_transport_parity",
+        "assertions": [
+          "native_and_graphql_share_command_envelope",
+          "native_and_graphql_require_same_idempotency_key",
+          "selected_transport_never_implicitly_falls_back",
+          "retry_reuses_original_idempotency_key"
+        ]
       }
     ],
-    "known_gap": "compiled migration, replay contention, mounted native and GraphQL transport, and remote-profile evidence are not yet retained"
+    "known_gap": "compiled migration, replay contention, mounted native and GraphQL execution, and remote-profile evidence are not yet retained"
   }
 }
