@@ -56,6 +56,10 @@ const files = {
   orderChangeOrchestration:
     "crates/rustok-commerce/src/services/order_change_orchestration.rs",
   orderChangeGuard: "apps/server/tests/commerce_order_change_transport_guard.rs",
+  adminReturns: "crates/rustok-commerce/src/controllers/admin/returns.rs",
+  returnCompletionOrchestration:
+    "crates/rustok-commerce/src/services/return_completion_orchestration.rs",
+  returnCompletionGuard: "apps/server/tests/commerce_return_completion_transport_guard.rs",
   legacyApi: "crates/rustok-commerce/admin/src/api.rs",
   implementationPlan: "crates/rustok-commerce/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
@@ -87,6 +91,9 @@ const fulfillmentGuard = readRepo(files.fulfillmentGuard);
 const adminChanges = readRepo(files.adminChanges);
 const orderChangeOrchestration = readRepo(files.orderChangeOrchestration);
 const orderChangeGuard = readRepo(files.orderChangeGuard);
+const adminReturns = readRepo(files.adminReturns);
+const returnCompletionOrchestration = readRepo(files.returnCompletionOrchestration);
+const returnCompletionGuard = readRepo(files.returnCompletionGuard);
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
 const packageJson = readRepo(files.packageJson);
@@ -228,6 +235,78 @@ assertContains(
   orderChangeGuard,
   "order_change_application_uses_commerce_orchestration",
   `${files.orderChangeGuard}: order-change transport source guard is missing`,
+);
+
+assertContains(
+  adminReturns,
+  "ReturnCompletionOrchestrationService::new(",
+  `${files.adminReturns}: REST return completion must use commerce orchestration`,
+);
+assertContains(
+  adminReturns,
+  ".complete_return(tenant.id, auth.user_id, id, command)",
+  `${files.adminReturns}: REST return completion must pass the complete command`,
+);
+for (const marker of [
+  ".create_refund_idempotent(",
+  "attach_return_order_change_context(",
+]) {
+  assertNotContains(
+    adminReturns,
+    marker,
+    `${files.adminReturns}: REST return transport must not own cross-domain orchestration (${marker})`,
+  );
+}
+
+assertContains(
+  graphqlFulfillment,
+  "return_completion_orchestration_from_context(",
+  `${files.graphqlFulfillment}: GraphQL return completion must use composed commerce orchestration`,
+);
+assertContains(
+  graphqlFulfillment,
+  ".complete_return(tenant_id, auth.user_id, id, command)",
+  `${files.graphqlFulfillment}: GraphQL return completion must pass the complete command`,
+);
+for (const marker of [
+  "build_provider_refund_resolution_return_completion(",
+  "build_exchange_resolution_return_completion(",
+  "build_claim_resolution_return_completion(",
+  ".create_refund_idempotent(",
+]) {
+  assertNotContains(
+    graphqlFulfillment,
+    marker,
+    `${files.graphqlFulfillment}: GraphQL return transport must not own cross-domain orchestration (${marker})`,
+  );
+}
+assertContains(
+  graphqlRuntime,
+  "pub(crate) fn return_completion_orchestration_from_context(",
+  `${files.graphqlRuntime}: GraphQL runtime must compose return completion orchestration`,
+);
+
+const returnValidation = returnCompletionOrchestration.indexOf("validate_completion_shape(&input)");
+const returnFirstEffect = returnCompletionOrchestration.indexOf("if let Some(refund_input) = refund");
+if (returnValidation < 0 || returnFirstEffect < 0 || returnValidation >= returnFirstEffect) {
+  fail(`${files.returnCompletionOrchestration}: complete command must be validated before side effects`);
+}
+for (const marker of [
+  "refund, exchange, and claim helpers are mutually exclusive",
+  "resolution helpers cannot be combined with explicit refund_id or order_change_id",
+  'format!("order_return:{return_id}:refund")',
+  ".complete_return(tenant_id, return_id, owner_input)",
+]) {
+  assertContains(
+    returnCompletionOrchestration,
+    marker,
+    `${files.returnCompletionOrchestration}: missing return completion invariant ${marker}`,
+  );
+}
+assertContains(
+  returnCompletionGuard,
+  "return_completion_uses_one_commerce_orchestration_boundary",
+  `${files.returnCompletionGuard}: return completion source guard is missing`,
 );
 
 assertContains(implementationPlan, "verify-commerce-admin-boundary.mjs", `${files.implementationPlan}: local plan must mention commerce admin guardrail`);
