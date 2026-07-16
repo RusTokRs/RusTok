@@ -35,7 +35,18 @@
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": true,
-      "deadline_required": true
+      "deadline_required": true,
+      "durable_receipt": {
+        "table": "marketplace_seller_command_receipts",
+        "identity_scope": [
+          "tenant_id",
+          "idempotency_key"
+        ],
+        "request_identity": "canonical_sha256_v1",
+        "result_snapshot": "normalized_owner_response_json",
+        "atomic_with_owner_write": true,
+        "conflicting_payload": "marketplace_seller.idempotency_conflict"
+      }
     }
   ],
   "consumers": [
@@ -67,7 +78,10 @@
     "local_plan": "crates/rustok-marketplace-seller/docs/implementation-plan.md",
     "central_plan": "crates/rustok-commerce/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs"
+    "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs",
+    "receipt_entity": "crates/rustok-marketplace-seller/src/entities/seller_command_receipt.rs",
+    "receipt_executor": "crates/rustok-marketplace-seller/src/command_receipts.rs",
+    "receipted_commands": "crates/rustok-marketplace-seller/src/receipted_commands.rs"
   },
   "in_process_provider_impl": {
     "service": "MarketplaceSellerService",
@@ -103,6 +117,9 @@
           "deadline_required",
           "idempotency_key_required",
           "seller_and_owner_membership_atomic",
+          "receipt_and_owner_write_atomic",
+          "lost_response_replay_returns_saved_result",
+          "conflicting_payload_rejected",
           "duplicate_handle_conflict"
         ]
       },
@@ -112,6 +129,7 @@
           "deadline_required",
           "idempotency_key_required",
           "expected_state_transition",
+          "receipt_and_transition_atomic",
           "concurrent_transition_conflict"
         ]
       },
@@ -119,11 +137,12 @@
         "operation": "update_seller_member",
         "assertions": [
           "seller_scope_preserved",
+          "receipt_and_member_write_atomic",
           "owner_membership_cannot_be_disabled",
           "owner_membership_cannot_be_demoted"
         ]
       }
     ],
-    "known_gap": "command idempotency keys are boundary-required but durable command receipts are not yet implemented"
+    "known_gap": "compiled migration, replay contention, mounted native and GraphQL transport, and remote-profile evidence are not yet retained"
   }
 }
