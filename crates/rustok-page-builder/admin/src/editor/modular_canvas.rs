@@ -1,5 +1,5 @@
 use crate::editor::{
-    AdminEditorRuntime, AuthoringToolbar, BindingPanel, ContextCompatibilityPanel,
+    AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, ContextCompatibilityPanel,
     ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel, DynamicRuntimePanel,
     IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
     ResponsiveStylePanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
@@ -85,6 +85,7 @@ pub fn AdminCanvas(
     let page_runtime = runtime.clone();
     let palette_runtime = runtime.clone();
     let canvas_runtime = runtime.clone();
+    let audit_runtime = runtime.clone();
     let gate_runtime = runtime.clone();
     let scenario_runtime = runtime.clone();
     let scenario_matrix_runtime = runtime.clone();
@@ -139,6 +140,7 @@ pub fn AdminCanvas(
                     <SsrTranslationsPanel runtime=ssr_translations_runtime />
                     <SsrLocalizedMetadataPanel runtime=ssr_localized_metadata_runtime />
                     <SsrInspectorPanel runtime=ssr_inspector_runtime />
+                    <AuditPanel runtime=audit_runtime />
                     <RuntimePublishGatePanel runtime=gate_runtime />
                     <RuntimeScenarioPanel runtime=scenario_runtime />
                     <RuntimeScenarioMatrixPanel runtime=scenario_matrix_runtime />
