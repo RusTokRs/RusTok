@@ -1,6 +1,7 @@
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod invalidation_generation;
 pub mod migrations;
 pub mod policy;
 pub mod ports;
@@ -21,6 +22,9 @@ pub use dto::{
     UpdateChannelResolutionRuleInput, UpdateChannelTargetInput, UpdateResolutionRuleRequest,
 };
 pub use error::{ChannelError, ChannelResult};
+pub use invalidation_generation::{
+    read_resolution_invalidation_generation, CHANNEL_RESOLUTION_INVALIDATION_SCOPE,
+};
 pub use policy::{
     ChannelResolutionRuleDefinition, ResolutionAction, ResolutionPredicate,
     StoredChannelResolutionRule, CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION,
