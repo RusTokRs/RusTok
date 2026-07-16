@@ -222,6 +222,31 @@ fn cache_workflow_retains_channel_compiled_evidence() {
     assert!(runtime.contains("wait_for_readiness(&handle_a, false).await;"));
     assert!(runtime.contains("wait_for_readiness(&handle_b, true).await;"));
 
+    let services_mod = source("apps/server/src/services/mod.rs");
+    assert!(services_mod.contains("mod channel_cache_invalidation_resolved_value_tests;"));
+    let lag_resolved =
+        source("apps/server/src/services/channel_cache_invalidation_resolved_value_tests.rs");
+    for required in [
+        "local_listener_lag_recovers_readiness_and_remote_resolved_value",
+        "channel_middleware::resolve",
+        "Some(\"Before listener lag\")",
+        "for _ in 0..300",
+        "assert_eq!(outcome.local_subscribers, 2);",
+        "assert!(!outcome.redis_published);",
+        "RecvError::Lagged",
+        "wait_for_readiness(&handle, false).await;",
+        "No replacement fast-path publication is sent.",
+        "restore_generation_state(&db, generation).await;",
+        "wait_for_channel_name(&app, &tenant_context, \"After listener lag\").await;",
+        "wait_for_readiness(&handle, true).await;",
+    ] {
+        assert!(
+            lag_resolved.contains(required),
+            "combined channel lag/value evidence must retain {required}"
+        );
+    }
+    assert!(!lag_resolved.contains("publish_channel_resolution_invalidation"));
+
     let resolved = source("apps/server/tests/channel_cache_resolved_value.rs");
     for required in [
         "missed_publication_refreshes_remote_resolved_value_via_durable_poll",
