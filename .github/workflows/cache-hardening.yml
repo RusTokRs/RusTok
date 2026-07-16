@@ -7,6 +7,7 @@ on:
       - "crates/rustok-cache/**"
       - "crates/flex/src/cache_generation.rs"
       - "crates/flex/src/lib.rs"
+      - "crates/flex/tests/**"
       - "crates/rustok-auth/Cargo.toml"
       - "crates/rustok-auth/src/migrations/**"
       - "crates/rustok-product/src/migrations/**"
@@ -41,7 +42,7 @@ on:
       - "apps/server/src/services/event_transport_factory.rs"
       - "apps/server/src/services/field_definition_cache.rs"
       - "apps/server/src/services/field_definition_cache_base.rs"
-      - "apps/server/src/services/field_definition_cache_reconciliation.rs"
+      - "apps/server/src/services/field_definition_cache_reconciliation*.rs"
       - "apps/server/src/services/graphql_schema.rs"
       - "apps/server/src/services/marketplace_catalog_cache.rs"
       - "apps/server/src/services/marketplace_catalog_cache_base.rs"
@@ -90,6 +91,7 @@ on:
       - "crates/rustok-cache/**"
       - "crates/flex/src/cache_generation.rs"
       - "crates/flex/src/lib.rs"
+      - "crates/flex/tests/**"
       - "crates/rustok-auth/Cargo.toml"
       - "crates/rustok-auth/src/migrations/**"
       - "crates/rustok-product/src/migrations/**"
@@ -124,7 +126,7 @@ on:
       - "apps/server/src/services/event_transport_factory.rs"
       - "apps/server/src/services/field_definition_cache.rs"
       - "apps/server/src/services/field_definition_cache_base.rs"
-      - "apps/server/src/services/field_definition_cache_reconciliation.rs"
+      - "apps/server/src/services/field_definition_cache_reconciliation*.rs"
       - "apps/server/src/services/graphql_schema.rs"
       - "apps/server/src/services/marketplace_catalog_cache.rs"
       - "apps/server/src/services/marketplace_catalog_cache_base.rs"
@@ -215,6 +217,7 @@ jobs:
           cargo test -p rustok-cache --test generation_store_regression
           cargo test -p rustok-cache --test invalidation_failure_metrics
           cargo test -p rustok-cache --test redis_health_regression
+          cargo test -p flex cache_generation --lib
           cargo test -p rustok-channel invalidation_generation --lib
           cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib
           cargo test -p rustok-server --test cache_architecture_guard --test cache_legacy_fallback_guard --test cache_redis_monitor_architecture_guard --test cache_redis_status_architecture_guard --test cache_worker_guardrail_architecture_guard --test channel_cache_architecture_guard --test field_definition_cache_generation_guard --test field_definition_cache_runtime_guard --test generation_store_architecture_guard --test locale_cache_architecture_guard --test marketplace_cache_architecture_guard --test rate_limit_cache_runtime_guard --test seo_redirect_cache_reconciliation_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard --test tenant_locale_generation_guard
@@ -244,7 +247,7 @@ jobs:
           cargo xtask module test cache
 
   postgres-channel:
-    name: PostgreSQL channel generation contract
+    name: PostgreSQL cache generation contracts
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -263,6 +266,7 @@ jobs:
           --health-retries 20
     env:
       RUSTOK_CHANNEL_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/rustok_channel
+      RUSTOK_FLEX_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/rustok_channel
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -273,6 +277,8 @@ jobs:
           shared-key: cache-hardening
       - name: PostgreSQL channel generation recovery
         run: cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1
+      - name: PostgreSQL Flex generation recovery
+        run: cargo test -p flex --test postgres_cache_generation -- --ignored --nocapture --test-threads=1
 
   live-redis:
     name: Live Redis cache contract
