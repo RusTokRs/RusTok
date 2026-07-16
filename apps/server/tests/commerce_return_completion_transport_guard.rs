@@ -11,6 +11,9 @@ fn return_completion_uses_one_commerce_orchestration_boundary() {
     let graphql_runtime = include_str!(
         "../../../crates/rustok-commerce/src/graphql_runtime.rs"
     );
+    let recovery = include_str!(
+        "../../../crates/rustok-commerce/src/services/return_completion_recovery.rs"
+    );
     let orchestration = include_str!(
         "../../../crates/rustok-commerce/src/services/return_completion_orchestration.rs"
     );
@@ -63,19 +66,27 @@ fn return_completion_uses_one_commerce_orchestration_boundary() {
         "GraphQL runtime must compose return completion orchestration"
     );
 
-    let validation = orchestration
+    let validation = recovery
         .find("validate_completion_shape(&input)")
         .expect("return completion must validate the complete command");
-    let admission = orchestration
+    let admission = recovery
+        .find(".admit_command_and_operation(")
+        .expect("return completion must atomically admit command and operation");
+    let delegation = recovery
+        .find("self.core_service()")
+        .expect("recovery facade must delegate execution to the core orchestration");
+    assert!(
+        validation < admission && admission < delegation,
+        "return completion must validate and durably admit before execution"
+    );
+
+    let journal_admission = orchestration
         .find(".begin(BeginReturnCompletionOperation")
-        .expect("return completion must durably admit the request");
+        .expect("core return completion must reuse the execution journal");
     let first_effect = orchestration
         .find(".create_refund_idempotent(")
         .expect("return completion refund path must exist");
-    assert!(
-        validation < admission && admission < first_effect,
-        "return completion must validate and journal the command before side effects"
-    );
+    assert!(journal_admission < first_effect);
     for marker in [
         "refund, exchange, and claim helpers are mutually exclusive",
         "resolution helpers cannot be combined with explicit refund_id or order_change_id",
@@ -177,4 +188,92 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
         .find(".begin(BeginReturnCompletionOperation")
         .expect("journal admission must exist");
     assert!(journal_admission < refund_effect && refund_effect < owner_completion);
+}
+
+#[test]
+fn return_completion_command_inbox_and_operator_surface_are_safe() {
+    let entity = include_str!(
+        "../../../crates/rustok-commerce/src/entities/return_completion_command.rs"
+    );
+    let migration = include_str!(
+        "../../../crates/rustok-commerce/src/migrations/m20260716_000006_create_return_completion_commands.rs"
+    );
+    let recovery = include_str!(
+        "../../../crates/rustok-commerce/src/services/return_completion_recovery.rs"
+    );
+    let services = include_str!(
+        "../../../crates/rustok-commerce/src/services/mod.rs"
+    );
+    let controller = include_str!(
+        "../../../crates/rustok-commerce/src/controllers/return_completion_operations.rs"
+    );
+    let controllers = include_str!(
+        "../../../crates/rustok-commerce/src/controllers/mod.rs"
+    );
+    let openapi = include_str!(
+        "../../../crates/rustok-commerce/src/openapi.rs"
+    );
+
+    assert!(entity.contains("table_name = \"return_completion_commands\""));
+    for marker in [
+        "ux_return_completion_commands_return",
+        "request_payload",
+        "request completion command identity and payload are immutable",
+        "return completion command return tenant mismatch",
+        "retry_count cannot decrease",
+        "DROP FUNCTION IF EXISTS enforce_return_completion_command_integrity() CASCADE",
+    ] {
+        assert!(
+            migration.contains(marker)
+                || migration.contains(&marker.replace("request completion", "return completion")),
+            "return completion command migration is missing invariant {marker}"
+        );
+    }
+
+    for marker in [
+        "admit_command_and_operation(",
+        "let txn = self.db.begin()",
+        ".insert(&txn)",
+        "txn.commit()",
+        "ensure_same_command(",
+        "ensure_same_operation(",
+        "record_retry(tenant_id, command.id, retry_actor_id)",
+        "Column::TenantId.eq(tenant_id)",
+        "command.requested_by_actor_id",
+    ] {
+        assert!(
+            recovery.contains(marker),
+            "return completion recovery facade is missing invariant {marker}"
+        );
+    }
+    assert!(
+        !recovery.contains("tenant_id_for_command_placeholder"),
+        "return completion retry must not retain placeholder tenant scope"
+    );
+    let response_start = recovery
+        .find("pub struct ReturnCompletionOperationResponse")
+        .expect("safe operation response must exist");
+    let response_end = recovery[response_start..]
+        .find("/// Durable return-completion facade")
+        .map(|offset| response_start + offset)
+        .expect("safe operation response boundary must exist");
+    assert!(
+        !recovery[response_start..response_end].contains("request_payload"),
+        "operator projections must not expose the stored command payload"
+    );
+
+    assert!(services.contains("mod return_completion_recovery;"));
+    assert!(services.contains("ReturnCompletionOrchestrationService,"));
+    assert!(controller.contains("Permission::ORDERS_READ"));
+    assert!(controller.contains("Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE"));
+    assert!(controller.contains(".retry_operation(tenant.id, auth.user_id, id)"));
+    assert!(controllers.contains("/admin/return-completion-operations"));
+    for marker in [
+        "list_return_completion_operations",
+        "show_return_completion_operation",
+        "retry_return_completion_operation",
+        "ReturnCompletionOperationResponse",
+    ] {
+        assert!(openapi.contains(marker), "OpenAPI is missing {marker}");
+    }
 }
