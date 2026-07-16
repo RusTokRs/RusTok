@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 const paths = {
   runtimeLocale: 'crates/fly/src/runtime_locale.rs',
+  localePolicy: 'crates/fly/src/locale_policy.rs',
   translations: 'crates/fly/src/translation.rs',
   command: 'crates/fly/src/command.rs',
   pageMetadataLocale: 'crates/fly/src/page_metadata_locale.rs',
@@ -54,16 +55,32 @@ requireMarkers('runtimeLocale', [
   'regional_locale_falls_back_to_language',
   'unresolved_localized_value_is_preserved_losslessly',
 ], 'Fly runtime locale resolver');
+requireMarkers('localePolicy', [
+  'pub const FLY_LOCALES_FIELD',
+  'pub struct ProjectLocalePolicy',
+  'pub enforce_required_locales: bool',
+  'pub fn set_project_locale_policy',
+  'pub fn clear_project_locale_policy',
+  'pub fn materialize_project_locale_context',
+  'pub fn validate_project_locale_policy',
+  'translation_required_locale_missing',
+  'localized_metadata_required_locale_missing',
+  'required_locale_coverage_is_warning_until_enforcement_is_enabled',
+  'unsupported_runtime_locale_falls_back_to_project_default',
+], 'Fly project locale policy');
 requireMarkers('translations', [
   'pub const FLY_TRANSLATIONS_FIELD',
   'pub const RUNTIME_TRANSLATIONS_CONTEXT_FIELD',
   'pub struct TranslationEntry',
   'pub enum TranslationCommand',
+  'SetLocalePolicy',
+  'ClearLocalePolicy',
   'pub struct TranslationCatalog',
   'pub fn apply_translation_command',
   'pub fn materialize_project_translations',
   'pub fn validate_translation_definitions',
   'unknown_entries',
+  'locale_policy_commands_share_translation_transaction_surface',
   'catalog_materializes_into_binding_context',
 ], 'Fly project translation catalog');
 requireMarkers('command', [
@@ -81,20 +98,24 @@ requireMarkers('pageMetadataLocale', [
   'unresolved_metadata_wrapper_is_preserved_losslessly',
 ], 'localized page metadata runtime');
 requireMarkers('runtimePipeline', [
-  'materialize_project_translations(document, input_context)',
+  'materialize_project_locale_context(document, input_context)',
+  'materialize_project_translations(document, &locale_policy_context)',
   'materialize_runtime_locale_context(&translation_context)',
   'materialize_localized_page_metadata(document, &localized_input_context)',
   'materialize_context(&localized_document, &localized_input_context)',
   'materialize_bindings(&localized_document, &effective_context)',
   'materialize_runtime(&document, &effective_context)',
+  'project_locale_policy_defaults_before_translation_materialization',
   'project_translation_catalog_materializes_before_bindings',
   'localized_page_metadata_is_materialized_before_render_selection',
 ], 'multilingual Fly runtime ordering');
 requireMarkers('runtimeValidation', [
+  'validate_project_locale_policy(document)',
   'validate_translation_definitions(document)',
   'translation_locale_invalid',
   'duplicate_translation_id',
-], 'translation publish validation');
+  'strict_project_locale_policy_promotes_missing_coverage_to_errors',
+], 'locale and translation publish validation');
 requireMarkers('browserContract', [
   '"upsert_translation"',
   '"remove_translation"',
