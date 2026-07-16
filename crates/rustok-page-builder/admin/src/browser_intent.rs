@@ -80,10 +80,10 @@ fn dispatch_named_intent(
                 .map_err(BrowserIntentDispatchError::Authoring)?;
             controller.dispatch(intent)?
         }
-        "clear_locale_policy" => {
-            let intent = controller.ssr_clear_locale_policy_intent();
-            controller.dispatch(intent)?
-        }
+        "clear_locale_policy" => match controller.ssr_clear_locale_policy_intent() {
+            Some(intent) => controller.dispatch(intent)?,
+            None => Vec::new(),
+        },
         "upsert_localized_page_metadata" => {
             let request = serde_json::from_value::<SsrLocalizedPageMetadataRequest>(payload.clone())
                 .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
@@ -491,6 +491,18 @@ mod tests {
                 ["default_locale"],
             "ru"
         );
+    }
+
+    #[test]
+    fn clearing_missing_locale_policy_is_a_clean_no_op() {
+        let mut controller = controller();
+        let result = dispatch_browser_intent(
+            &mut controller,
+            intent("clear_locale_policy", json!({})),
+        )
+        .expect("clear missing locale policy");
+        assert!(!result.dirty);
+        assert_eq!(controller.editor().history().undo_len(), 0);
     }
 
     #[test]
