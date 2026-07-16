@@ -1,16 +1,15 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rust_decimal::Decimal;
 use rustok_api::Permission;
 use rustok_api::{
     graphql::{require_module_enabled, GraphQLError},
     AuthContext,
 };
 use rustok_order::OrderService;
-use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::graphql_runtime::post_order_orchestration_from_context;
-use crate::ExchangeDifferenceRefundInput;
+use crate::graphql_runtime::{
+    order_change_orchestration_from_context, post_order_orchestration_from_context,
+};
 
 use super::super::{current_tenant_scope, require_commerce_permission, types::*, MODULE_SLUG};
 use super::helpers::*;
@@ -205,64 +204,26 @@ impl CommerceFulfillmentMutation {
         )?;
         let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Apply order change")?;
 
+        let difference_refund = input
+            .difference_refund
+            .map(|diff| {
+                Ok(crate::ExchangeDifferenceRefundInput {
+                    amount: parse_decimal(&diff.amount)?,
+                    reason: diff.reason,
+                    metadata: parse_optional_metadata(diff.metadata.as_deref())?,
+                })
+            })
+            .transpose()?;
+        let metadata = parse_optional_metadata(input.metadata.as_deref())?;
+
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let order_service = OrderService::new(db.clone(), event_bus.clone());
-        let orchestration_service =
-            post_order_orchestration_from_context(ctx, db.clone(), event_bus.clone());
+        let result = order_change_orchestration_from_context(ctx, db.clone(), event_bus.clone())
+            .apply_order_change(tenant_id, id, difference_refund, metadata)
+            .await
+            .map_err(|err| FieldError::new(err.to_string()))?;
 
-        let order_change = order_service.get_order_change(tenant_id, id).await?;
-
-        let result = match order_change.change_type.as_str() {
-            "exchange" => {
-                let difference_refund = if let Some(diff) = input.difference_refund {
-                    let amount = Decimal::from_str(&diff.amount).map_err(|e| {
-                        FieldError::new(format!("invalid difference refund amount: {e}"))
-                    })?;
-                    let metadata = parse_optional_metadata(diff.metadata.as_deref())?;
-                    Some(ExchangeDifferenceRefundInput {
-                        amount,
-                        reason: diff.reason,
-                        metadata,
-                    })
-                } else {
-                    None
-                };
-                let metadata = parse_optional_metadata(input.metadata.as_deref())?;
-                orchestration_service
-                    .apply_exchange_order_change(
-                        tenant_id,
-                        order_change.order_id,
-                        id,
-                        difference_refund,
-                        metadata,
-                    )
-                    .await
-                    .map_err(|err| FieldError::new(err.to_string()))?
-                    .order_change
-            }
-            "claim" => {
-                let metadata = parse_optional_metadata(input.metadata.as_deref())?;
-                orchestration_service
-                    .apply_claim_order_change(tenant_id, id, metadata)
-                    .await
-                    .map_err(|err| FieldError::new(err.to_string()))?
-                    .order_change
-            }
-            _ => {
-                order_service
-                    .apply_order_change(
-                        tenant_id,
-                        id,
-                        crate::dto::ApplyOrderChangeInput {
-                            metadata: parse_optional_metadata(input.metadata.as_deref())?,
-                        },
-                    )
-                    .await?
-            }
-        };
-
-        Ok(result.into())
+        Ok(result.order_change.into())
     }
 
     async fn cancel_order_change(
