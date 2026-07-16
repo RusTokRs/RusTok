@@ -18,11 +18,12 @@ use rustok_server::{
         cache_runtime::ensure_cache_service,
         channel_cache_invalidation::{
             publish_channel_resolution_invalidation, start_channel_cache_invalidation_listener,
+            ChannelCacheInvalidationListenerHandle,
         },
         server_runtime_context::ServerRuntimeContext,
     },
 };
-use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, EntityTrait, Set};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -116,18 +117,63 @@ async fn insert_default_channel(
         .expect("default channel should insert")
 }
 
-async fn rename_channel(db: &sea_orm::DatabaseConnection, channel_id: Uuid) {
+async fn rename_channel(db: &sea_orm::DatabaseConnection, channel_id: Uuid, name: &str) {
     let model = channel::Entity::find_by_id(channel_id)
         .one(db)
         .await
         .expect("channel lookup should succeed")
         .expect("channel should exist");
     let mut active: channel::ActiveModel = model.into();
-    active.name = Set("After invalidation".to_string());
+    active.name = Set(name.to_string());
     active
         .update(db)
         .await
         .expect("channel update should commit");
+}
+
+async fn wait_for_channel_name(
+    app: &Router,
+    tenant: &TenantContext,
+    expected: &str,
+    timeout: Duration,
+) {
+    tokio::time::timeout(timeout, async {
+        loop {
+            if request_channel_name(app, tenant).await.as_deref() == Some(expected) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("channel value did not converge to {expected}"));
+}
+
+async fn wait_for_readiness(
+    handle: &ChannelCacheInvalidationListenerHandle,
+    expected: bool,
+    timeout: Duration,
+) {
+    tokio::time::timeout(timeout, async {
+        while handle.is_ready() != expected {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("channel invalidation readiness did not become {expected}"));
+}
+
+async fn install_generation_state(db: &sea_orm::DatabaseConnection, generation: u64) {
+    db.execute_unprepared(
+        "CREATE TABLE channel_resolution_invalidation_state (scope TEXT PRIMARY KEY, generation BIGINT NOT NULL)",
+    )
+    .await
+    .expect("generation state table should be restored");
+    db.execute_unprepared(&format!(
+        "INSERT INTO channel_resolution_invalidation_state (scope, generation) VALUES ('resolution', {generation})"
+    ))
+    .await
+    .expect("generation state row should be restored");
 }
 
 #[tokio::test]
@@ -151,7 +197,7 @@ async fn missed_publication_refreshes_remote_resolved_value_via_durable_poll() {
             .as_deref(),
         Some("Before invalidation")
     );
-    rename_channel(&db, channel.id).await;
+    rename_channel(&db, channel.id, "After invalidation").await;
 
     // No publication occurs. The stale value must remain visible until the
     // durable generation worker reaches its next database reconciliation.
@@ -162,20 +208,114 @@ async fn missed_publication_refreshes_remote_resolved_value_via_durable_poll() {
         Some("Before invalidation")
     );
 
-    tokio::time::timeout(Duration::from_secs(7), async {
-        loop {
-            if request_channel_name(&app_b, &tenant_context)
-                .await
-                .as_deref()
-                == Some("After invalidation")
-            {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-    })
+    wait_for_channel_name(
+        &app_b,
+        &tenant_context,
+        "After invalidation",
+        Duration::from_secs(7),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn database_state_loss_fails_closed_and_recovers_resolved_value() {
+    let db = rustok_test_utils::db::setup_test_db_with_migrations::<Migrator>().await;
+    let tenant = insert_tenant(&db).await;
+    let tenant_context = tenant_context(&tenant);
+    let channel = insert_default_channel(&db, tenant.id).await;
+
+    let ctx_b = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+    let cache_b = ensure_cache_service(&ctx_b);
+    start_channel_cache_invalidation_listener(&ctx_b, cache_b)
+        .await
+        .expect("remote listener should start");
+    let handle = ctx_b
+        .shared_get::<ChannelCacheInvalidationListenerHandle>()
+        .expect("remote listener handle");
+    let app_b = channel_router(ctx_b);
+
+    assert_eq!(
+        request_channel_name(&app_b, &tenant_context)
+            .await
+            .as_deref(),
+        Some("Before invalidation")
+    );
+    rename_channel(&db, channel.id, "After database recovery").await;
+    let generation = rustok_channel::read_resolution_invalidation_generation(&db)
+        .await
+        .expect("generation should be readable before state loss");
+    db.execute_unprepared("DROP TABLE channel_resolution_invalidation_state")
+        .await
+        .expect("generation state should be removable for the outage fixture");
+
+    assert_eq!(
+        request_channel_name(&app_b, &tenant_context)
+            .await
+            .as_deref(),
+        Some("Before invalidation")
+    );
+    wait_for_readiness(&handle, false, Duration::from_secs(7)).await;
+
+    install_generation_state(&db, generation).await;
+    wait_for_channel_name(
+        &app_b,
+        &tenant_context,
+        "After database recovery",
+        Duration::from_secs(7),
+    )
+    .await;
+    assert!(handle.is_ready());
+}
+
+#[tokio::test]
+async fn generation_regression_rebuilds_remote_resolved_value() {
+    let db = rustok_test_utils::db::setup_test_db_with_migrations::<Migrator>().await;
+    let tenant = insert_tenant(&db).await;
+    let tenant_context = tenant_context(&tenant);
+    let channel = insert_default_channel(&db, tenant.id).await;
+
+    let ctx_b = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+    let cache_b = ensure_cache_service(&ctx_b);
+    start_channel_cache_invalidation_listener(&ctx_b, cache_b)
+        .await
+        .expect("remote listener should start");
+    let app_b = channel_router(ctx_b);
+
+    assert_eq!(
+        request_channel_name(&app_b, &tenant_context)
+            .await
+            .as_deref(),
+        Some("Before invalidation")
+    );
+    rename_channel(&db, channel.id, "Forward generation").await;
+    wait_for_channel_name(
+        &app_b,
+        &tenant_context,
+        "Forward generation",
+        Duration::from_secs(7),
+    )
+    .await;
+
+    db.execute_unprepared(
+        "UPDATE channel_resolution_invalidation_state SET generation = 0 WHERE scope = 'resolution'",
+    )
     .await
-    .expect("durable polling did not recover the missed channel invalidation");
+    .expect("generation should be regressed for the recovery fixture");
+    rename_channel(&db, channel.id, "After generation regression").await;
+
+    assert_eq!(
+        request_channel_name(&app_b, &tenant_context)
+            .await
+            .as_deref(),
+        Some("Forward generation")
+    );
+    wait_for_channel_name(
+        &app_b,
+        &tenant_context,
+        "After generation regression",
+        Duration::from_secs(7),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -213,7 +353,7 @@ async fn redis_invalidation_refreshes_remote_resolved_channel_value_before_poll(
         .await
         .expect("remote listener should start");
 
-    rename_channel(&db, channel.id).await;
+    rename_channel(&db, channel.id, "After invalidation").await;
 
     tokio::time::timeout(Duration::from_secs(3), async {
         loop {
