@@ -34,6 +34,8 @@ pub mod oauth_token_service;
 pub mod paid_order_label_worker;
 #[cfg(feature = "mod-payment")]
 pub mod payment_provider_event_worker;
+#[cfg(feature = "mod-payment")]
+pub mod payment_provider_runtime;
 pub mod platform_composition;
 
 pub mod event_transport_factory;
