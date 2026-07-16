@@ -1,7 +1,7 @@
 use crate::{
     extract_runtime_context_contract, materialize_bindings, materialize_context,
-    materialize_runtime, BindingMaterialization, ContextMaterialization, ProjectDocument,
-    RuntimeMaterialization, ValidationDiagnostic,
+    materialize_runtime, materialize_runtime_locale_context, BindingMaterialization,
+    ContextMaterialization, ProjectDocument, RuntimeMaterialization, ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -28,9 +28,12 @@ pub fn materialize_project_with_runtime_context(
     document: &ProjectDocument,
     input_context: &Value,
 ) -> RuntimeProjectMaterialization {
+    let locale_materialization = materialize_runtime_locale_context(input_context);
+    let localized_input_context = locale_materialization.context;
     let contract = extract_runtime_context_contract(document);
     let contract_is_valid = contract.is_valid();
-    let mut diagnostics = contract.definition_diagnostics;
+    let mut diagnostics = locale_materialization.diagnostics;
+    diagnostics.extend(contract.definition_diagnostics);
     let (
         effective_context,
         defaults_applied,
@@ -47,7 +50,7 @@ pub fn materialize_project_with_runtime_context(
             computed_fallbacks,
             unresolved_computed,
             type_mismatches,
-        } = materialize_context(document, input_context);
+        } = materialize_context(document, &localized_input_context);
         diagnostics.extend(context_diagnostics);
         (
             context,
@@ -58,7 +61,7 @@ pub fn materialize_project_with_runtime_context(
             type_mismatches,
         )
     } else {
-        (input_context.clone(), 0, 0, 0, 0, 0)
+        (localized_input_context.clone(), 0, 0, 0, 0, 0)
     };
 
     let BindingMaterialization {
@@ -158,7 +161,68 @@ mod tests {
     }
 
     #[test]
-    fn invalid_context_contract_does_not_replace_root_context() {
+    fn locale_resolution_runs_before_computed_values_and_bindings() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "title",
+                        "type": "text",
+                        "content": "Static"
+                    }]
+                }
+            }],
+            "flyRuntimeComputed": [{
+                "id": "title",
+                "path": "page.title",
+                "expression": {
+                    "op": "format",
+                    "template": "{{page.prefix}} мир"
+                }
+            }],
+            "flyRuntimeBindings": [{
+                "id": "title-content",
+                "component_id": "title",
+                "path": "page.title",
+                "target": "field",
+                "name": "content"
+            }]
+        }))
+        .expect("document");
+        let materialized = materialize_project_with_runtime_context(
+            &document,
+            &json!({
+                "$locale": "ru-RU",
+                "page": {
+                    "prefix": {
+                        "$localized": {
+                            "en": "Hello",
+                            "ru": "Привет"
+                        }
+                    }
+                }
+            }),
+        );
+        assert_eq!(materialized.effective_context["page"]["prefix"], "Привет");
+        assert_eq!(materialized.effective_context["page"]["title"], "Привет мир");
+        assert_eq!(
+            materialized
+                .document
+                .component("title")
+                .and_then(|component| component.extensions.get("content"))
+                .and_then(Value::as_str),
+            Some("Привет мир")
+        );
+        assert!(materialized
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_localized_value_fallback"));
+    }
+
+    #[test]
+    fn invalid_context_contract_does_not_replace_localized_root_context() {
         let document = GrapesJsV1Codec::decode_value(json!({
             "pages": [{
                 "component": {
@@ -179,9 +243,17 @@ mod tests {
             }]
         }))
         .expect("document");
-        let input = json!({ "safe": true });
+        let input = json!({
+            "$locale": "ru",
+            "safe": {
+                "$localized": {
+                    "en": "safe",
+                    "ru": "безопасно"
+                }
+            }
+        });
         let materialized = materialize_project_with_runtime_context(&document, &input);
-        assert_eq!(materialized.effective_context, input);
+        assert_eq!(materialized.effective_context["safe"], "безопасно");
         assert_eq!(materialized.defaults_applied, 0);
         assert!(materialized
             .diagnostics
