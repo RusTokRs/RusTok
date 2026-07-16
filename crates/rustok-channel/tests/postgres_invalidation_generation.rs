@@ -1,5 +1,9 @@
+use std::time::Duration;
+
 use rustok_channel::read_resolution_invalidation_generation;
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, TransactionTrait};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, TransactionTrait,
+};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 
 const GENERATION_MIGRATION: &str =
@@ -12,6 +16,15 @@ const CHANNEL_TABLES: &[&str] = &[
     "channel_resolution_policy_sets",
     "channel_resolution_policy_rules",
 ];
+
+async fn connect_postgres(url: &str) -> DatabaseConnection {
+    let mut options = ConnectOptions::new(url.to_string());
+    options
+        .connect_timeout(Duration::from_secs(5))
+        .acquire_timeout(Duration::from_secs(5))
+        .sqlx_logging(false);
+    Database::connect(options).await.unwrap()
+}
 
 async fn reset_fixture(db: &DatabaseConnection) {
     db.execute_unprepared(
@@ -48,8 +61,8 @@ fn generation_migration() -> Box<dyn MigrationTrait> {
 async fn postgres_generation_is_transactional_concurrent_and_recoverable() {
     let url = std::env::var("RUSTOK_CHANNEL_TEST_POSTGRES_URL")
         .expect("RUSTOK_CHANNEL_TEST_POSTGRES_URL must be configured");
-    let writer = Database::connect(&url).await.unwrap();
-    let replica = Database::connect(&url).await.unwrap();
+    let writer = connect_postgres(url.as_str()).await;
+    let replica = connect_postgres(url.as_str()).await;
     reset_fixture(&writer).await;
 
     let migration = generation_migration();
