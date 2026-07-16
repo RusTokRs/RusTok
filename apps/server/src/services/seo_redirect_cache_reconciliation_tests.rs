@@ -120,6 +120,16 @@ async fn wait_for_replica(
     });
 }
 
+async fn wait_for_stopped(handle: &SeoRedirectCacheReconciliationHandle) {
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while handle.is_running() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("SEO reconciliation task did not stop after abort");
+}
+
 async fn wait_for_tenants(
     invalidator: &RecordingInvalidator,
     expected: &HashSet<Uuid>,
@@ -247,10 +257,10 @@ async fn seo_redirect_cache_reconciliation_recovers_two_replicas_across_cursor_f
     wait_for_full_clears(&invalidator_b, 4).await;
 
     handle_a.abort();
-    tokio::task::yield_now().await;
-    assert!(!handle_a.is_running());
+    wait_for_stopped(&handle_a).await;
     assert!(!handle_a.is_ready());
     assert!(handle_b.is_running());
     assert!(handle_b.is_ready());
     handle_b.abort();
+    wait_for_stopped(&handle_b).await;
 }
