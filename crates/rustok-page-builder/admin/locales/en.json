@@ -111,6 +111,30 @@
       "newPageNamePlaceholder": "New page name",
       "pageFallback": "Page"
     },
+    "translations": {
+      "title": "Project translations",
+      "description": "Translations are stored losslessly in the canonical project and exposed to bindings under translations.<id>.",
+      "empty": "No project translations have been defined.",
+      "createTitle": "Create or update translation",
+      "idLabel": "Translation id",
+      "idPlaceholder": "hero-title",
+      "valuesLabel": "Locale values JSON",
+      "valuesHelp": "Use a JSON object keyed by locale, for example en, ru, or de-DE.",
+      "valuesPlaceholder": "{\n  \"en\": \"Welcome\",\n  \"ru\": \"Добро пожаловать\"\n}",
+      "fallbackLabel": "Entry fallback locale",
+      "fallbackPlaceholder": "en",
+      "save": "Save translation",
+      "existing": "Existing translations",
+      "locales": "Locales",
+      "fallback": "Fallback",
+      "bindTitle": "Bind selected component",
+      "bindHelp": "Select a component on the canvas, then bind this translation to one field, attribute, or style property.",
+      "bindKind": "Binding target",
+      "bindName": "Target name",
+      "bindNamePlaceholder": "content, aria-label, color...",
+      "bind": "Save and bind translation",
+      "remove": "Remove translation and bindings"
+    },
     "traits": {
       "empty": "Select a component to edit its traits."
     },
