@@ -148,16 +148,27 @@ async fn redis_publication_drives_remote_replica_readiness_recovery() {
         .await
         .unwrap();
 
-    let remote = ctx_b
+    let degraded_remote = ctx_b
         .shared_get::<ChannelCacheInvalidationListenerHandle>()
-        .expect("remote replica listener handle");
-    assert!(remote.is_ready());
+        .expect("remote degradation listener handle");
+    assert!(degraded_remote.is_ready());
 
     db.execute_unprepared("DROP TABLE channel_resolution_invalidation_state")
         .await
         .unwrap();
-    publish_redis_until_readiness(&cache_a, &remote, false, 2).await;
+    publish_redis_until_readiness(&cache_a, &degraded_remote, false, 2).await;
+
+    let ctx_c = ServerRuntimeContext::new(db.clone(), settings_with_redis(url.as_str()));
+    let cache_c = ensure_cache_service(&ctx_c);
+    assert!(cache_c.redis_client_initialized());
+    start_channel_cache_invalidation_listener(&ctx_c, cache_c)
+        .await
+        .unwrap();
+    let recovering_remote = ctx_c
+        .shared_get::<ChannelCacheInvalidationListenerHandle>()
+        .expect("remote recovery listener handle");
+    assert!(!recovering_remote.is_ready());
 
     install_generation_state(&db, 2).await;
-    publish_redis_until_readiness(&cache_a, &remote, true, 2).await;
+    publish_redis_until_readiness(&cache_a, &recovering_remote, true, 2).await;
 }
