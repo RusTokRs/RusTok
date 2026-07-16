@@ -77,9 +77,9 @@ pub fn LocalizedPageBuilderStorefront(
             let repeated_nodes = output.result.repeated_nodes;
             let page = output.result.page;
             let page_id = page.page_id.unwrap_or_default();
+            let canonical_redirect = output.route.canonical_redirect_needed();
             let matched_locale = output.route.matched_locale.unwrap_or_default();
             let canonical_slug = output.route.canonical_slug;
-            let canonical_redirect = output.route.canonical_redirect_needed();
             let css = page.css;
             let html = page.html;
             view! {
