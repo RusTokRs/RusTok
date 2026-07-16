@@ -8,9 +8,14 @@ use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::commerce_provider_runtime::attach_commerce_provider_registries;
 use crate::services::event_bus::{event_bus_from_context, transactional_event_bus_from_context};
 use crate::services::field_definition_cache::field_definition_cache_from_context;
+#[cfg(feature = "mod-seo")]
+use crate::services::seo_redirect_cache_reconciliation::start_seo_redirect_cache_reconciliation;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
+    #[cfg(feature = "mod-seo")]
+    start_seo_redirect_cache_reconciliation(ctx);
+
     if let Some(shared) = ctx.shared_get::<SharedGraphqlSchema>() {
         return shared.0.clone();
     }
