@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "module": "marketplace_seller",
+  "family": "marketplace",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "marketplace.seller.v1",
+  "ports": [
+    {
+      "name": "MarketplaceSellerReadPort",
+      "owner": "marketplace_seller",
+      "operations": [
+        "read_seller",
+        "list_sellers",
+        "read_membership"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": false,
+      "deadline_required": true
+    },
+    {
+      "name": "MarketplaceSellerCommandPort",
+      "owner": "marketplace_seller",
+      "operations": [
+        "create_seller",
+        "update_seller_profile",
+        "submit_seller_onboarding",
+        "review_seller_onboarding",
+        "suspend_seller",
+        "reactivate_seller",
+        "add_seller_member",
+        "update_seller_member"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "marketplace",
+      "profile": "marketplace_seller_directory",
+      "degraded_modes": [
+        "seller_directory_unavailable"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "remote_adapter_placeholder"
+      ]
+    },
+    {
+      "module": "marketplace_seller_admin",
+      "profile": "marketplace_seller_admin",
+      "degraded_modes": [
+        "read_only_seller_shell",
+        "seller_write_retry_required"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_admin_compat"
+      ]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-marketplace-seller/docs/implementation-plan.md",
+    "central_plan": "crates/rustok-commerce/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "MarketplaceSellerService",
+    "source": "crates/rustok-marketplace-seller/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "read_seller",
+        "assertions": [
+          "tenant_scope_preserved",
+          "typed_not_found",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "list_sellers",
+        "assertions": [
+          "bounded_pagination",
+          "tenant_scope_preserved",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "create_seller",
+        "assertions": [
+          "deadline_required",
+          "idempotency_key_required",
+          "seller_and_owner_membership_atomic",
+          "duplicate_handle_conflict"
+        ]
+      },
+      {
+        "operation": "review_seller_onboarding",
+        "assertions": [
+          "deadline_required",
+          "idempotency_key_required",
+          "expected_state_transition",
+          "concurrent_transition_conflict"
+        ]
+      },
+      {
+        "operation": "update_seller_member",
+        "assertions": [
+          "seller_scope_preserved",
+          "owner_membership_cannot_be_disabled",
+          "owner_membership_cannot_be_demoted"
+        ]
+      }
+    ],
+    "known_gap": "command idempotency keys are boundary-required but durable command receipts are not yet implemented"
+  }
+}
