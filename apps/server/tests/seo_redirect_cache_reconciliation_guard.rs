@@ -54,14 +54,23 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
     let clear = worker
         .find("invalidate_all_redirect_cache().await")
         .expect("startup must clear entries covered by the seed cursor");
+    let healthy = worker
+        .find("healthy.store(true, Ordering::Release)")
+        .expect("readiness must become healthy only after startup recovery");
     let changes = worker
         .find("redirect_cache_changes_after(")
         .expect("worker must consume rows after the seed cursor");
     assert!(latest < clear);
-    assert!(clear < changes);
+    assert!(clear < healthy);
+    assert!(healthy < changes);
 
     assert!(worker.contains("SEO_REDIRECT_CACHE_BATCH_LIMIT: u64 = 256"));
     assert!(worker.contains("if full_batch"));
+    assert!(worker.contains("healthy: Arc<AtomicBool>"));
+    assert!(worker.contains(
+        "!self.task.is_finished() && self.healthy.load(Ordering::Acquire)"
+    ));
+    assert!(worker.contains("healthy.store(false, Ordering::Release)"));
     assert!(worker.contains("impl Drop for AbortOnDropSeoRedirectCacheTask"));
     assert!(worker.contains("SeoRedirectCacheReconciliationStartLock"));
     assert!(worker.contains("ctx.settings().runtime.is_registry_only()"));
