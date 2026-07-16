@@ -694,6 +694,7 @@ fn admin_create_refund_mutation(
           createRefund(
             tenantId: "{tenant_id}",
             paymentCollectionId: "{payment_collection_id}",
+            idempotencyKey: "graphql-refund-{step}",
             input: {{
               amount: "{amount}"
               reason: "{reason}"
