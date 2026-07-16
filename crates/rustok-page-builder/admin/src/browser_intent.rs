@@ -281,9 +281,9 @@ pub enum BrowserIntentDispatchError {
     Fly(#[from] fly::FlyError),
     #[error("browser intent payload is invalid: {0}")]
     Payload(String),
-    #[error("browser intent is missing field `{0}`")]
+    #[error("browser intent is missing field `{0}")]
     MissingField(String),
-    #[error("unsupported browser intent `{0}`")]
+    #[error("unsupported browser intent `{0}")]
     Unsupported(String),
     #[error("browser intent `{0}` requires geometry-resolved hit-test state")]
     GeometryRequired(String),
@@ -329,6 +329,8 @@ mod tests {
             page_id: Some("home".to_string()),
             revision: Some("rev-1".to_string()),
             project_hash: None,
+            draft_token: None,
+            draft_generation: None,
         }
     }
 
