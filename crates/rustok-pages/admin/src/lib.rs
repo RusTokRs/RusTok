@@ -12,4 +12,6 @@ pub mod ui;
 pub use browser_intent::{
     dispatch_pages_browser_intent, PagesBrowserIntentError, PagesBrowserIntentResponse,
 };
+pub use builder::PagesBuilderSaveSnapshot;
 pub use composition::PagesAdmin;
+pub use fly_browser::BrowserIntentEnvelope;
