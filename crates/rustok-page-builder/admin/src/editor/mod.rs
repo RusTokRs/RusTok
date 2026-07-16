@@ -23,6 +23,7 @@ mod runtime_scenario_regression;
 mod runtime_scenarios;
 mod selection_commands;
 mod shortcut_dispatch;
+mod ssr_drop;
 mod toolbar;
 mod trait_panel;
 
@@ -54,5 +55,6 @@ pub(crate) use runtime_scenario_matrix::RuntimeScenarioMatrixPanel;
 pub(crate) use runtime_scenario_regression::RuntimeScenarioRegressionPanel;
 pub(crate) use runtime_scenarios::RuntimeScenarioPanel;
 pub(crate) use shortcut_dispatch::dispatch_shortcut;
+pub(crate) use ssr_drop::{SsrDropRequest, SsrDropSource};
 pub(crate) use toolbar::AuthoringToolbar;
 pub(crate) use trait_panel::TraitPanel;
