@@ -1,4 +1,4 @@
-use crate::editor::SsrDropRequest;
+use crate::editor::{SsrDropRequest, SsrLocalizedPageMetadataRequest};
 use crate::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
 use fly::{GrapesJsV1Codec, ProjectHash};
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentError};
@@ -67,6 +67,14 @@ fn dispatch_named_intent(
                 .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
             let intent = controller
                 .ssr_drop_intent(request)
+                .map_err(BrowserIntentDispatchError::Authoring)?;
+            controller.dispatch(intent)?
+        }
+        "upsert_localized_page_metadata" => {
+            let request = serde_json::from_value::<SsrLocalizedPageMetadataRequest>(payload.clone())
+                .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
+            let intent = controller
+                .ssr_localized_page_metadata_intent(request)
                 .map_err(BrowserIntentDispatchError::Authoring)?;
             controller.dispatch(intent)?
         }
@@ -222,6 +230,7 @@ fn is_mutating_intent(envelope: &BrowserIntentEnvelope) -> bool {
             envelope.intent.as_str(),
             "patch_component_property"
                 | "patch_page_metadata"
+                | "upsert_localized_page_metadata"
                 | "create_page"
                 | "rename_page"
                 | "remove_page"
@@ -370,47 +379,23 @@ mod tests {
     }
 
     #[test]
-    fn classic_form_uses_normal_fly_patch_history() {
+    fn server_dispatch_selects_and_inserts_without_wasm() {
         let mut controller = controller();
-        let result = dispatch_browser_intent(
+        let selected = dispatch_browser_intent(
+            &mut controller,
+            intent("select", json!({ "component_id": "hero" })),
+        )
+        .expect("select");
+        assert_eq!(selected.selected_component_id.as_deref(), Some("hero"));
+        let inserted = dispatch_browser_intent(
             &mut controller,
             intent(
-                "patch_component_property",
-                json!({
-                    "component_id": "hero",
-                    "kind": "attribute",
-                    "name": "aria-label",
-                    "value": "Hero section",
-                    "remove": false
-                }),
+                "insert_block",
+                json!({ "block_id": "text", "selected_component_id": "hero" }),
             ),
         )
-        .expect("form patch");
-        assert!(result.dirty);
-        assert_eq!(
-            controller.editor().document().component("hero").unwrap().attributes
-                ["aria-label"],
-            "Hero section"
-        );
-    }
-
-    #[test]
-    fn stale_classic_form_is_rejected_before_dispatch() {
-        let mut request = intent(
-            "patch_component_property",
-            json!({
-                "component_id": "hero",
-                "kind": "field",
-                "name": "content",
-                "value": "Changed",
-                "remove": false
-            }),
-        );
-        request.revision = Some("old".to_string());
-        assert!(matches!(
-            dispatch_browser_intent(&mut controller(), request),
-            Err(BrowserIntentDispatchError::RevisionConflict { .. })
-        ));
+        .expect("insert");
+        assert!(inserted.dirty);
     }
 
     #[test]
@@ -429,5 +414,74 @@ mod tests {
         )
         .expect("drop");
         assert!(result.dirty);
+        assert_eq!(
+            controller
+                .editor()
+                .document()
+                .component_child_count("hero"),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn no_hydration_property_form_uses_normal_patch_history() {
+        let mut controller = controller();
+        let result = dispatch_browser_intent(
+            &mut controller,
+            intent(
+                "patch_component_property",
+                json!({
+                    "component_id": "hero",
+                    "kind": "attribute",
+                    "name": "aria-label",
+                    "value": "Hero section",
+                    "remove": false
+                }),
+            ),
+        )
+        .expect("form patch");
+        assert!(result.dirty);
+        assert_eq!(
+            controller
+                .editor()
+                .document()
+                .component("hero")
+                .unwrap()
+                .attributes["aria-label"],
+            "Hero section"
+        );
+    }
+
+    #[test]
+    fn localized_metadata_form_uses_revision_protected_page_history() {
+        let mut controller = controller();
+        let result = dispatch_browser_intent(
+            &mut controller,
+            intent(
+                "upsert_localized_page_metadata",
+                json!({
+                    "page_id": "home",
+                    "metadata_json": "{\"title\":{\"en\":\"Home\",\"ru\":\"Главная\"}}",
+                    "fallback_locale": "en"
+                }),
+            ),
+        )
+        .expect("localized metadata");
+        assert!(result.dirty);
+        assert!(controller.editor().document().project.pages[0].extensions["flyPageMeta"]
+            ["title"]["$localized"]
+            .is_object());
+    }
+
+    #[test]
+    fn stale_mutation_is_rejected_before_command_dispatch() {
+        let mut request = intent("remove_selected", json!({ "selected_component_id": "hero" }));
+        request.revision = Some("old".to_string());
+        let error = dispatch_browser_intent(&mut controller(), request)
+            .expect_err("revision conflict");
+        assert!(matches!(
+            error,
+            BrowserIntentDispatchError::RevisionConflict { .. }
+        ));
     }
 }
