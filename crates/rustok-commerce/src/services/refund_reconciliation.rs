@@ -11,10 +11,8 @@ use super::payment_orchestration::{PaymentOrchestrationError, PaymentOrchestrati
 const MANUAL_PROVIDER_ID: &str = "manual";
 
 /// Resume a refund provider operation from the durable payment-owned journal.
-///
-/// Pending and provider-error operations are retried with the exact persisted
-/// request and idempotency key. Provider-succeeded operations only finalize the
-/// local journal and never invoke the adapter again.
+/// Only pending/provider-error operations may invoke the provider again. Unknown
+/// outcomes remain in reconciliation until provider state is confirmed externally.
 pub struct RefundReconciliationService {
     payment_service: PaymentService,
     provider_operation_journal: PaymentProviderOperationJournal,
@@ -79,19 +77,9 @@ impl RefundReconciliationService {
 
         match refund.status.as_str() {
             "pending" => {}
-            "refunded"
-                if matches!(
-                    operation.status.as_str(),
-                    PROVIDER_OPERATION_COMMITTED
-                        | PROVIDER_OPERATION_SUCCEEDED
-                        | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-                ) => {}
+            "refunded" if operation.status == PROVIDER_OPERATION_COMMITTED => return Ok(refund),
             "refunded" => {
-                return Err(PaymentError::Validation(format!(
-                    "refund {refund_id} is already refunded, but provider operation {} has no recorded success; automatic retry is unsafe",
-                    operation.id
-                ))
-                .into())
+                return Err(PaymentError::provider_outcome_unknown(&provider_id, "refund").into())
             }
             "cancelled" => {
                 return Err(PaymentError::Validation(format!(
@@ -110,26 +98,32 @@ impl RefundReconciliationService {
         if operation.status == PROVIDER_OPERATION_COMMITTED {
             return Ok(refund);
         }
-        if matches!(
-            operation.status.as_str(),
-            PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-        ) {
+        if operation.status == PROVIDER_OPERATION_SUCCEEDED {
             self.provider_operation_journal
                 .mark_committed(operation.id)
-                .await?;
+                .await
+                .map_err(|_| {
+                    PaymentOrchestrationError::ProviderAfterRefundReservation {
+                        refund_id,
+                        source: PaymentError::provider_outcome_unknown(&provider_id, "refund"),
+                    }
+                })?;
             return self
                 .payment_service
                 .get_refund(tenant_id, refund_id)
                 .await
                 .map_err(Into::into);
         }
+        if operation.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+            return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
+                refund_id,
+                source: PaymentError::provider_outcome_unknown(&provider_id, "refund"),
+            });
+        }
 
         let request: PaymentProviderOperationRequest =
-            serde_json::from_value(operation.request_payload.clone()).map_err(|error| {
-                PaymentError::Validation(format!(
-                    "provider operation {} contains an invalid persisted request: {error}",
-                    operation.id
-                ))
+            serde_json::from_value(operation.request_payload.clone()).map_err(|_| {
+                PaymentError::provider_invalid_response(&provider_id, "refund_journal_request")
             })?;
         if request.tenant_id != tenant_id
             || request.collection_id != refund.payment_collection_id
@@ -149,23 +143,44 @@ impl RefundReconciliationService {
         {
             Ok(result) => result,
             Err(source) => {
-                let _ = self
-                    .provider_operation_journal
-                    .mark_provider_error(operation.id, source.to_string())
-                    .await;
+                let journal_result = if source.requires_provider_reconciliation() {
+                    self.provider_operation_journal
+                        .mark_reconciliation_required(operation.id, source.to_string())
+                        .await
+                } else {
+                    self.provider_operation_journal
+                        .mark_provider_error(operation.id, source.to_string())
+                        .await
+                };
+                let source = if journal_result.is_err() {
+                    PaymentError::provider_outcome_unknown(&provider_id, "refund")
+                } else {
+                    source
+                };
                 return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
                     refund_id,
                     source,
                 });
             }
         };
-        let provider_result_payload = serde_json::to_value(&provider_result).map_err(|error| {
-            PaymentError::Validation(format!(
-                "failed to serialize refund provider result: {error}"
-            ))
-        })?;
+        let provider_result_payload = match serde_json::to_value(&provider_result) {
+            Ok(payload) => payload,
+            Err(_) => {
+                let _ = self
+                    .provider_operation_journal
+                    .mark_reconciliation_required(
+                        operation.id,
+                        "refund provider result serialization failed after external success",
+                    )
+                    .await;
+                return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
+                    refund_id,
+                    source: PaymentError::provider_outcome_unknown(&provider_id, "refund"),
+                });
+            }
+        };
 
-        if let Err(source) = self
+        if self
             .provider_operation_journal
             .mark_provider_succeeded(
                 operation.id,
@@ -173,24 +188,36 @@ impl RefundReconciliationService {
                 provider_result_payload,
             )
             .await
-        {
-            return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
-                refund_id,
-                source: reconciliation_error(operation.id, "record provider success", source),
-            });
-        }
-        if let Err(source) = self
-            .provider_operation_journal
-            .mark_committed(operation.id)
-            .await
+            .is_err()
         {
             let _ = self
                 .provider_operation_journal
-                .mark_reconciliation_required(operation.id, source.to_string())
+                .mark_reconciliation_required(
+                    operation.id,
+                    "refund provider success could not be durably checkpointed",
+                )
                 .await;
             return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
                 refund_id,
-                source: reconciliation_error(operation.id, "commit journal", source),
+                source: PaymentError::provider_outcome_unknown(&provider_id, "refund"),
+            });
+        }
+        if self
+            .provider_operation_journal
+            .mark_committed(operation.id)
+            .await
+            .is_err()
+        {
+            let _ = self
+                .provider_operation_journal
+                .mark_reconciliation_required(
+                    operation.id,
+                    "refund provider journal commit failed after external success",
+                )
+                .await;
+            return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
+                refund_id,
+                source: PaymentError::provider_outcome_unknown(&provider_id, "refund"),
             });
         }
 
@@ -199,10 +226,4 @@ impl RefundReconciliationService {
             .await
             .map_err(Into::into)
     }
-}
-
-fn reconciliation_error(operation_id: Uuid, stage: &str, source: PaymentError) -> PaymentError {
-    PaymentError::Validation(format!(
-        "provider side effect succeeded, but failed to {stage} for operation {operation_id}: {source}"
-    ))
 }
