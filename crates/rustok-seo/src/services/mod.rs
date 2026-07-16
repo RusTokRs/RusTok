@@ -14,6 +14,22 @@ pub struct SeoRedirectCacheChange {
     pub cursor: SeoRedirectCacheCursor,
 }
 
+/// Count all persisted redirect delivery rows.
+///
+/// The delivery log is append-only in runtime code. Reconciliation compares this independent
+/// count with cursor-ordered rows processed since the previous poll. A mismatch detects a late or
+/// out-of-order commit whose timestamp/UUID sorts behind the current cursor and forces a safe full
+/// cache clear plus cursor reseed.
+pub async fn redirect_cache_change_count(db: &DatabaseConnection) -> SeoResult<u64> {
+    use sea_orm::PaginatorTrait as _;
+
+    crate::entities::seo_event_delivery::Entity::find()
+        .filter(crate::entities::seo_event_delivery::Column::SourceKind.eq("redirect"))
+        .count(db)
+        .await
+        .map_err(SeoError::from)
+}
+
 /// Read the newest persisted redirect delivery cursor.
 ///
 /// Callers should read this cursor before clearing the complete process-local redirect cache on
