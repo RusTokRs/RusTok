@@ -111,3 +111,29 @@ fn live_redis_hardening_retains_latency_circuit_and_restart_recovery() {
         );
     }
 }
+
+#[test]
+fn permanent_gate_executes_expiry_eviction_and_concurrent_local_cas() {
+    let cas = include_str!("atomic_cas.rs");
+    let workflow = include_str!("../../../.github/workflows/cache-hardening.yml");
+
+    for required in [
+        "concurrent_local_compare_and_set_has_exactly_one_winner",
+        "expired_local_entry_cannot_be_revived_by_compare_and_set",
+        "evicted_local_entry_cannot_be_revived_by_compare_and_set",
+        "concurrent_local_invalidation_cannot_be_lost_to_compare_and_set",
+        "while backend.stats().entries > 1",
+        "capacity-one cache retained both entries",
+        "for iteration in 0..128",
+    ] {
+        assert!(
+            cas.contains(required),
+            "local CAS execution evidence must retain {required}"
+        );
+    }
+
+    assert!(workflow.contains("cargo test -p rustok-cache --test atomic_cas\n"));
+    assert!(!workflow.contains(
+        "cargo test -p rustok-cache --test atomic_cas concurrent_local_compare_and_set_has_exactly_one_winner"
+    ));
+}
