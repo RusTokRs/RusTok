@@ -16,9 +16,18 @@ facade, native server adapter, and REST secondary adapter; it is host-neutral.
 
 The host channel cache is byte-weighted, uses bounded request facts, and has a
 bounded monotonic tenant-generation registry with full-clear rollover and
-fail-safe bypass on allocator exhaustion. Its invalidation is currently
-process-local; another replica may retain the previous resolution until the
-60-second TTL expires unless the owner adopts a durable generation.
+fail-safe bypass on allocator exhaustion. Channel mutations advance
+`channel_resolution_invalidation_state` through database triggers in the same
+transaction as the changed channel row. Successful REST/native mutations clear
+the local tenant token and publish the durable generation as a low-latency fast
+path. Every serving replica owns supervised local/Redis/reconcile workers; the
+five-second database reconciliation performs a safe namespace-wide local clear
+when delivery was missed, the generation regressed, or a replica starts from an
+unverified baseline. The worker runtime is a critical host guardrail.
+
+This durable cross-replica contract is source-complete but not compiled or
+multi-replica verified on the current revision until the permanent cache gate
+and failure-recovery scenarios pass.
 
 ## FFA/FBA boundary
 
@@ -41,22 +50,24 @@ contracts documented and source-locked.
 
 ## Open results
 
-1. **Approve or replace the cross-replica cache stale bound.** Decide explicitly
-   whether the current 60-second TTL is an acceptable bound after a channel or
-   policy mutation. If it is not, reserve a channel-resolution generation in the
-   committing transaction or consume a persisted event offset on every replica;
-   rotate the affected tenant token before acknowledging recovery and perform a
-   full clear on an unverified first event or gap.
-   **Depends on:** channel mutation ownership and an approved durable delivery
-   source; process-local middleware invalidation alone is insufficient.
-   **Done when:** the owner documentation names the accepted stale bound, and
-   multi-replica evidence proves either bounded TTL convergence or durable
-   generation recovery during missed-event scenarios.
+1. **Execute durable cross-replica cache recovery evidence.** The owner decision
+   is implemented in source: database triggers reserve one global resolution
+   generation in the committing transaction, PubSub is the fast path, and every
+   serving replica periodically reconciles from the database before accepting a
+   new baseline. Prove this behavior rather than reverting to a TTL-only stale
+   bound.
+   **Depends on:** the permanent compiled cache gate, migrated PostgreSQL and
+   SQLite fixtures, multiple serving replicas, and controllable Redis failure.
+   **Done when:** tests prove startup seeding, normal publication, concurrent
+   mutations, dropped publication, listener lag, Redis disconnect/reconnect,
+   database outage/recovery, generation regression handling, and terminal-worker
+   readiness without serving a stale channel resolution beyond the documented
+   five-second reconciliation interval.
 
 2. **Collect full runtime evidence for channel resolution.** Exercise
    `ChannelReadPort` and server middleware with real locale/OAuth facts, policy
    selection, inactive/degraded behavior, cache isolation, generation rollover,
-   and the approved cross-replica behavior before promotion beyond
+   and the durable cross-replica behavior before promotion beyond
    `boundary_ready`.
    **Depends on:** a composed server runtime and representative request fixtures.
    **Done when:** targeted Rust middleware/port tests provide reproducible
@@ -82,6 +93,11 @@ contracts documented and source-locked.
 - `npm run verify:channel:fba`
 - `npm run verify:channel:resolution-contract`
 - `npm run verify:channel:proof-points`
+- `cargo check -p rustok-channel --lib`
+- `cargo test -p rustok-channel invalidation_generation --lib`
+- `cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib`
+- `cargo test -p rustok-server channel_cache_invalidation --lib`
+- `cargo test -p rustok-server --test channel_cache_architecture_guard`
 - `cargo xtask module validate channel`
 - `cargo xtask module test channel`
 - Targeted server middleware, generation rollover, multi-replica convergence,
@@ -90,11 +106,14 @@ contracts documented and source-locked.
 ## References
 
 - [Host cache contract inventory](../../rustok-cache/docs/host-cache-inventory.md)
+- [Cache operations and recovery runbook](../../rustok-cache/docs/operations.md)
 
 ## Change rules
 
 1. Keep resolution precedence and policy ownership in this module.
-2. Update local docs, `rustok-module.toml`, server middleware docs, and route
+2. Keep durable generation allocation in the same database transaction as the
+   channel mutation; PubSub must never become the source of truth.
+3. Update local docs, `rustok-module.toml`, server middleware docs, and route
    selection documentation with a public contract change.
-3. Update this status block and `docs/modules/registry.md` with an FFA/FBA
+4. Update this status block and `docs/modules/registry.md` with an FFA/FBA
    boundary change.
