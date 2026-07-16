@@ -102,8 +102,9 @@ Last reconciled with `main`: 2026-07-16.
   trigger-backed database generation reserved with every channel-table mutation, local/Redis fast
   publication, five-second database reconciliation, atomic namespace rollover, critical worker
   guardrails and fail-safe cache bypass on allocator exhaustion. Source tests cover SQLite replica
-  readers, two independent server runtimes without Redis, database state loss/recovery and a wired
-  PostgreSQL commit/rollback/concurrency/replay scenario.
+  readers, two independent server runtimes without Redis, database state loss/recovery, deterministic
+  local broadcast lag, PostgreSQL commit/rollback/concurrency/replay, live Redis remote readiness,
+  remote Axum resolved-value refresh and completely missed-publication recovery through polling.
 - [x] RBAC permissions use weighted typed identity, bounded striped epochs and database-backed durable
   generation recovery.
 - [x] SEO redirects reconcile from transactionally persisted rows with a bounded `(created_at, id)`
@@ -127,8 +128,9 @@ The detailed active-cache contract is maintained in
 - [x] Maintain one permanent path-scoped `Cache hardening` workflow covering format,
   core/cache/channel/Flex-owner/server compilation, regression/architecture tests, Clippy, module
   validation, ephemeral PostgreSQL 17 channel-generation evidence and isolated Redis 7 jobs.
-- [x] Guard the channel workflow path scope, Channel/Flex Clippy commands, PostgreSQL job and durable
-  replica-recovery test sources from accidental removal.
+- [x] Guard the channel workflow path scope, Channel/Flex Clippy commands, PostgreSQL job, missed
+  publication command, live Redis readiness/resolved-value commands and durable recovery sources
+  from accidental removal.
 - [x] Guard Redis, generation, PubSub, refresh and CAS Prometheus alert metric names in
   `tests/alert_rules_guard.rs`.
 - [x] Publish operational alerts for Redis degradation, generation bump failure, PubSub failure,
@@ -148,14 +150,11 @@ The detailed active-cache contract is maintained in
 
 ### P0. Live and failure-recovery evidence
 
-- [ ] Execute the source-complete channel SQLite reader, two-server-runtime and PostgreSQL 17 jobs on
-  the same revision and record their results.
+- [ ] Execute the source-complete channel SQLite reader, two-server-runtime, missed-publication,
+  local-lag, PostgreSQL 17 and live Redis jobs on the same revision and record their results.
 - [ ] Run ignored `rustok-cache` and `rustok-core` suites against isolated Redis 7.
-- [ ] Add and execute channel stale-resolution assertions for validated local/Redis publication,
-  dropped publication, listener lag, Redis disconnect/reconnect and periodic namespace recovery
-  across multiple replicas.
-- [ ] Prove channel convergence during database outage/recovery and generation regression while
-  checking the resolved channel value in addition to critical worker readiness.
+- [ ] Add resolved-value assertions for channel listener lag, Redis disconnect/reconnect,
+  database outage/recovery and generation regression across multiple replicas.
 - [ ] Prove exact/wildcard tenant-locale recovery, listener lag handling and periodic generation
   reconciliation across multiple replicas.
 - [ ] Prove Flex singleton generation and all four owner triggers on PostgreSQL and SQLite, including
@@ -206,6 +205,8 @@ cargo test -p rustok-cache --test invalidation_failure_metrics
 cargo test -p rustok-channel invalidation_generation --lib
 cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib
 cargo test -p rustok-server channel_cache_invalidation --lib
+cargo test -p rustok-server --test channel_cache_resolved_value \
+  missed_publication_refreshes_remote_resolved_value_via_durable_poll
 cargo test -p rustok-server field_definition_cache_generation --lib
 cargo test -p rustok-server \
   --test cache_architecture_guard \
@@ -233,6 +234,12 @@ RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
   cargo test -p rustok-cache -- --ignored --nocapture --test-threads=1
 RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
   cargo test -p rustok-core cache -- --ignored --nocapture --test-threads=1
+RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
+  cargo test -p rustok-server redis_publication_drives_remote_replica_readiness_recovery \
+  --lib -- --ignored --nocapture --test-threads=1
+RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
+  cargo test -p rustok-server --test channel_cache_resolved_value \
+  -- --ignored --nocapture --test-threads=1
 ```
 
 ## Completion gates
