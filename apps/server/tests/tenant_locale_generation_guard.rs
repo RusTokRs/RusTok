@@ -10,15 +10,28 @@ fn tenant_locale_cache_uses_the_durable_tenant_generation_channel() {
     assert!(locale.contains("ctx.shared_get::<Arc<TenantLocaleCache>>()"));
     assert!(!locale.contains("tenant_locale_cache(ctx).invalidate_all"));
 
-    assert!(listener.contains("TENANT_CACHE_GENERATION_CHANNEL"));
-    assert!(listener.contains("TENANT_CACHE_BACKEND_PREFIX"));
-    assert!(listener.contains("if event.key == \"*\""));
-    assert!(listener.contains("invalidate_tenant_locale_cache(&self.ctx, tenant_id).await"));
-    assert!(listener.contains("invalidate_all_tenant_locale_cache(&self.ctx).await"));
-    assert!(listener.contains("CacheInvalidationObservation::UnverifiedFirst"));
-    assert!(listener.contains("CacheInvalidationObservation::Gap"));
-    assert!(listener.contains("async fn recover_if_advanced"));
-    assert!(listener.contains("previous.is_none_or(|previous| generation > previous)"));
+    for required in [
+        "TENANT_CACHE_GENERATION_CHANNEL",
+        "TENANT_CACHE_BACKEND_PREFIX",
+        "if event.key == \"*\"",
+        "invalidate_tenant_locale_cache(&self.ctx, tenant_id).await",
+        "invalidate_all_tenant_locale_cache(&self.ctx).await",
+        "CacheInvalidationObservation::UnverifiedFirst",
+        "CacheInvalidationObservation::Gap",
+        "async fn recover_if_advanced",
+        "previous.is_none_or(|previous| generation > previous)",
+        "struct TenantLocaleGenerationHealth",
+        "ready: AtomicBool",
+        "self.health.mark_ready()",
+        "self.health.mark_failed()",
+        "pub fn is_ready(&self) -> bool",
+        "listener.health.mark_failed();",
+    ] {
+        assert!(
+            listener.contains(required),
+            "tenant locale generation contract must retain {required}"
+        );
+    }
 
     let subscription = listener
         .find("subscribe_local_channel(TENANT_CACHE_GENERATION_CHANNEL)")
@@ -47,5 +60,6 @@ fn tenant_locale_cache_uses_the_durable_tenant_generation_channel() {
 
     assert!(guardrails.contains("TenantLocaleGenerationListenerHandle"));
     assert!(guardrails.contains("tenant locale durable generation runtime"));
+    assert!(guardrails.contains(".map(|handle| handle.is_ready())"));
     assert!(guardrails.contains("RuntimeGuardrailStatus::Critical"));
 }
