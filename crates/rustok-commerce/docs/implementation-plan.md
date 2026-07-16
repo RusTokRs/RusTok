@@ -4,124 +4,14 @@ Last reviewed: 2026-07-16
 
 ## Source of truth
 
-This file is the single human-maintained source of truth for implementation work,
-completion marks, verification state, execution order, and promotion gates across
-the ecommerce family.
+This file is the single human-maintained source of truth for ecommerce
+implementation work, completion marks, verification state, execution order, and
+promotion gates.
 
-- FFA status: `in_progress`.
-- FBA status: `boundary_ready` (`core_transport_ui`); source inspection and
-  committed recovery code do not promote the boundary without live execution.
-- Structural shape: `core_transport_ui`.
-- The commerce consumer registry is
-  `crates/rustok-commerce/contracts/commerce-fba-registry.json`; its runtime
-  invocation trace is
-  `crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json`.
-- Provider contracts remain owner-owned: `crates/rustok-pricing/contracts/pricing-fba-registry.json`,
-  `crates/rustok-inventory/contracts/inventory-fba-registry.json`,
-  `crates/rustok-order/contracts/order-fba-registry.json`,
-  `crates/rustok-payment/contracts/payment-fba-registry.json`,
-  `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`,
-  `crates/rustok-product/contracts/product-fba-registry.json`,
-  `crates/rustok-customer/contracts/customer-fba-registry.json`, and
-  `crates/rustok-cart/contracts/cart-fba-registry.json`.
-- The bounded checkout → inventory availability seam now calls the injected
-  `InventoryReservationPort` with tenant, user actor, normalized cart locale,
-  channel, correlation id, and a read deadline. It maps provider failures to
-  `CheckoutError::BoundaryFailure` and no longer uses the inventory public
-  helper directly. The status remains `in_progress`: the targeted
-  `complete_checkout_rejects_line_item_without_channel_visible_inventory`
-  integration test still needs a completed local or CI execution record before
-  this provider-consumer seam can be counted as live evidence.
-- Checkout now also reads product and variant-first catalog projections through
-  `ProductCatalogReadPort`. The product owner resolves a variant id to its
-  product projection, while checkout keeps cart-specific channel and shipping
-  snapshot validation. Checkout no longer imports product entities. This
-  additive owner operation has static contract evidence only; the FBA status
-  remains `in_progress` until provider-consumer execution is recorded.
-- Checkout now calls cart-owned `CartCheckoutPort` for snapshot reads, context
-  updates, and `begin/release/complete` lifecycle transitions. Every write has
-  a checkout-derived idempotency key and deadline; direct `CartService` use is
-  removed from checkout orchestration. Runtime evidence remains required.
-- `CheckoutOperationJournal` persists the operation identity, request and cart
-  snapshot hashes, execution lease, recovery status, stage checkpoints, and
-  owner aggregate ids. `CheckoutInventoryReservationJournal` adds one immutable
-  reservation identity per checkout/cart-line pair and enforces tenant, cart,
-  variant, quantity, location, status-transition, and timestamp integrity in
-  PostgreSQL and SQLite.
-- Storefront checkout now requires a stable `Idempotency-Key` and uses
-  `StagedCheckoutService` rather than the former monolithic
-  `CheckoutService::complete_checkout` production entrypoint.
-- `CheckoutPlanBuilder` validates product, inventory, shipping, channel, locale,
-  and store context from the prepared cart and produces one immutable order and
-  fulfillment plan before cross-domain side effects begin.
-- `CheckoutStagePipeline` resumes through `cart_locked`,
-  `inventory_reserved`, `order_created`, `payment_ready`,
-  `payment_authorized`, `payment_captured`, `fulfillment_created`,
-  `cart_completed`, and `completed`.
-- `CheckoutInventoryReservationExecutor` invokes the inventory-owned
-  `InventoryReservationIdentityPort` from the immutable prepared cart snapshot,
-  adopts existing owner reservations on replay, records provider failures, and
-  checkpoints `inventory_reserved` only after every variant-backed line is
-  confirmed. Order creation adopts those identities into order lines, while
-  the lifecycle cutover prevents the legacy confirmation trigger from reserving
-  the same demand a second time. The executor is not yet composed into
-  `JournaledCheckoutService` because the current order-confirmation trigger
-  also reserves inventory, and enabling both paths would double-reserve demand.
-- Order, payment collection, provider operation, fulfillment, and cart
-  completion stages use durable owner identities and accept already committed
-  results on replay.
-- `CheckoutCompensationService` separates pre-order identity release from
-  post-order cancellation. Adopted stock is released through the order
-  lifecycle trigger; only remaining pre-adoption identities are released
-  directly. Captured or uncertain provider outcomes are not automatically
-  reversed and remain reconciliation work.
-- `RecoveringStagedCheckoutService` attempts safe compensation immediately
-  after a storefront failure. `CheckoutCompensationSweepService` provides a
-  bounded lease-protected retry path for compensation backlog and expired
-  compensation workers.
-- `PaymentProviderOperationJournal::list_by_collection` gives orchestration an
-  owner-supported read of provider side effects before automatic cancellation.
-- REST storefront cart handlers plus GraphQL cart reads and mutations call
-  cart-owned `CartStorefrontPort` for cart reads, creation, line-item
-  mutations, context updates, and repricing; REST, GraphQL, and native
-  checkout adapters use the same owner ports for their cart boundary.
-- GraphQL and native admin cart promotions call cart-owned `CartPromotionPort`; no
-  production `rustok-commerce` adapter constructs `CartService` directly.
-- Durable checkout pricing resolves variants through pricing-owned
-  `PricingReadPort`; the checkout snapshot resolver no longer constructs
-  `PricingService` directly.
-- REST, GraphQL, and native storefront cart repricing, plus REST and GraphQL
-  add-to-cart and line-item quantity resolution, consume `PricingReadPort`
-  with typed context and no direct variant-price bypass.
-- GraphQL admin/storefront pricing-product roots resolve effective variant prices
-  through `PricingReadPort`; the typed not-found result preserves the existing
-  nullable effective-price response rather than failing the whole projection.
-- The storefront active-price-list GraphQL root consumes the pricing-owned list
-  projection port instead of constructing `PricingService` directly.
-- The admin pricing-product GraphQL root consumes the owner projection port and
-  carries the authenticated actor plus request-derived locale/channel context.
-- The storefront pricing-product-by-handle GraphQL root also consumes the owner
-  projection port with its public channel scope rather than constructing a
-  pricing service.
-- GraphQL admin pricing writes consume `PricingWritePort` for variant-price upsert,
-  discount application, active price-list rule changes, and scope changes; the
-  commerce adapter does not construct `PricingService` or perform a post-write
-  owner lookup directly.
-- Targeted compiled provider-consumer execution is recorded by
-  `cargo test -p rustok-commerce --test checkout_service_test
-  validation::complete_checkout_rejects_line_item_without_channel_visible_inventory -- --exact`.
-  It executes the real cart, product, and inventory providers through checkout
-  and proves that channel-hidden inventory blocks checkout. It does not cover
-  the remaining checkout providers or fallback/degraded paths, so commerce
-  remains `in_progress`.
-- No new staged-checkout code has live compile, migration, concurrency, or
-  kill-point evidence yet. FFA/FBA status therefore remains `in_progress`.
-- FFA guardrails: `scripts/verify/verify-commerce-admin-boundary.mjs` locks
-  `admin/src/transport/native_server_adapter.rs`, removed root GraphQL and state-machine aliases,
-  and the core/transport/UI owner boundary;
-  `scripts/verify/verify-commerce-storefront-transport-handoff.mjs` protects
-  the checkout aggregate handoff through
-  `storefront/src/transport/native_server_adapter.rs`.
+The ecommerce family includes `rustok-commerce` and the owner modules it
+orchestrates: product, cart, customer, region, pricing, inventory, order, payment,
+fulfillment, tax, promotion, market/store, seller/offer, commission, ledger, and
+payout.
 
 Rules:
 
@@ -129,7 +19,7 @@ Rules:
   `main`.
 - `[ ]` means implementation or required execution evidence remains outstanding.
 - Source implementation and runtime verification are separate checklist items.
-- A task is checked in the same change that lands the source or retained evidence.
+- A task is checked in the same change that lands its source or retained evidence.
 - Owner-module runbooks and contracts describe behavior; they do not maintain a
   second roadmap or completion checklist.
 - Newly discovered ecommerce work must be added here before or with its source
@@ -142,16 +32,26 @@ orchestration.
 
 ## Current boundary
 
-- Commerce FFA status: `in_progress`.
-- Commerce FBA status: `boundary_ready` / `core_transport_ui`.
+- FFA status: `in_progress`.
+- FBA status: `boundary_ready`.
+- Structural shape: `core_transport_ui`.
 - Payment FFA status: `in_progress`.
-- Payment FBA status: `boundary_ready` / `core_transport_ui`.
+- Payment FBA status: `boundary_ready`.
 - Source inspection and authored tests do not promote a boundary without compile,
   migration, transport, concurrency, and external-provider execution evidence.
 - Commerce consumer registry:
   `crates/rustok-commerce/contracts/commerce-fba-registry.json`.
-- Owner provider registries remain in their owner modules, including payment,
-  fulfillment, pricing, inventory, product, order, cart, customer, and region.
+- Runtime provider invocation trace:
+  `crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json`.
+- Owner provider registries:
+  - `crates/rustok-pricing/contracts/pricing-fba-registry.json`
+  - `crates/rustok-inventory/contracts/inventory-fba-registry.json`
+  - `crates/rustok-order/contracts/order-fba-registry.json`
+  - `crates/rustok-payment/contracts/payment-fba-registry.json`
+  - `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`
+  - `crates/rustok-product/contracts/product-fba-registry.json`
+  - `crates/rustok-customer/contracts/customer-fba-registry.json`
+  - `crates/rustok-cart/contracts/cart-fba-registry.json`
 
 ## Architecture invariants
 
@@ -173,6 +73,10 @@ orchestration.
   `rustok-payment::PaymentService`.
 - [x] Keep fulfillment lifecycle persistence and carrier policy in
   `rustok-fulfillment`.
+- [x] Maintain this file as the only ecommerce task checklist; owner plan files may
+  only redirect or document module-local behavior without completion marks.
+- [x] Remove the duplicated legacy commerce status block and obsolete statements
+  that contradicted the staged production runtime.
 - [ ] Execute the complete provider-consumer graph with retained runtime evidence.
 
 ## Checkout orchestration workstream
@@ -196,7 +100,7 @@ orchestration.
 ### Durable stages and replay
 
 - [x] Persist checkout operation identity, request hash, cart snapshot hash,
-  lease, stage, error code, and owner aggregate ids.
+  execution lease, stage, error code, and owner aggregate ids.
 - [x] Resume through `cart_locked`, `inventory_reserved`, `order_created`,
   `payment_ready`, `payment_authorized`, `payment_captured`,
   `fulfillment_created`, `cart_completed`, and `completed`.
@@ -206,6 +110,8 @@ orchestration.
 - [x] Accept already committed owner results for order, payment, fulfillment, and
   cart completion replay.
 - [x] Prevent a second active checkout operation for the same cart.
+- [x] Route REST, GraphQL, native storefront, and the historical journal wrapper
+  through the same recovering staged runtime.
 - [ ] Add and execute kill points after every owner call and before every
   checkpoint.
 - [ ] Prove process restart does not duplicate reservations, orders, collections,
@@ -225,15 +131,29 @@ orchestration.
 - [x] Block new checkout and payment provider execution while reconciliation is
   open.
 - [x] Return transport-safe reconciliation errors without SQL/provider details.
+- [x] Publish bounded admin operation reads, compensation commands, and sweep
+  routes with `orders:manage`.
 - [ ] Prove compensation/reconciliation contention and restart behavior on
   PostgreSQL.
-- [ ] Expose and execute complete operator compensation/reconciliation workflows.
+- [ ] Execute complete operator compensation/reconciliation workflows over mounted
+  HTTP routes.
+
+Checkout evidence locations:
+
+- `crates/rustok-commerce/src/services/staged_checkout.rs`
+- `crates/rustok-commerce/src/services/checkout_stage_pipeline.rs`
+- `crates/rustok-commerce/src/services/checkout_compensation.rs`
+- `crates/rustok-commerce/src/services/recovering_staged_checkout.rs`
+- `crates/rustok-commerce/src/controllers/store/mod.rs`
+- `crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs`
+- `scripts/verify/verify-commerce-admin-boundary.mjs`
+- `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`
 
 ## Payment workstream
 
 This section replaces the former task checklist in
-`crates/rustok-payment/docs/implementation-plan.md`. The payment file is now only
-a redirect to this plan.
+`crates/rustok-payment/docs/implementation-plan.md`. The payment file is only a
+compatibility redirect to this plan.
 
 ### Payment ownership and checkout boundary
 
@@ -247,8 +167,10 @@ a redirect to this plan.
 - [x] Enforce write idempotency for collection creation/reuse.
 - [x] Keep native storefront transport host-neutral through
   `HostRuntimeContext`.
-- [x] Retain GraphQL as fallback for collection creation, collection reads, and
-  refund summaries.
+- [x] Retain GraphQL as fallback for `create_payment_collection`,
+  `fetch_payment_collection`, and `fetch_refund_summary`.
+- [x] Use `execute_selected_transport` for payment storefront transport
+  selection.
 - [x] Lock the storefront core/transport/UI split with
   `verify-payment-storefront-boundary.mjs`.
 - [ ] Execute the checkout payment port through a real remote adapter.
