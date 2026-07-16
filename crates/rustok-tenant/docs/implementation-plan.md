@@ -14,10 +14,12 @@ duplicate tenant persistence semantics. The module keeps inactive tenants hidden
 unless explicitly requested and requires read deadlines. Cache invalidation after
 lifecycle changes remains a server-owned integration responsibility.
 
-The tenant-resolution cache has shared namespace generation recovery. The
-separate tenant-locale cache is byte-weighted and atomically registered, but its
-invalidation is currently process-local; another replica may retain a previous
-locale/default configuration until the 60-second TTL expires.
+Tenant resolution and the separate byte-weighted tenant-locale cache now share
+the durable tenant generation channel. In-order records invalidate the exact
+tenant locale entry, namespace-wide manual rotations carry `*`, and unverified,
+gapped, lagged or reconciled advancement clears every process-local locale entry
+before acknowledgement. The listener is context-owned, restartable and surfaced
+as a critical runtime guardrail when shared Redis delivery is required.
 
 ## FFA/FBA boundary
 
@@ -35,16 +37,14 @@ locale/default configuration until the 60-second TTL expires.
 
 ## Open results
 
-1. **Approve or replace the tenant-locale cross-replica stale bound.** Decide
-   whether the current 60-second TTL is acceptable after locale enablement,
-   disablement, ordering, or default-locale changes. Otherwise reserve a
-   tenant-locale generation in the committing transaction or consume a persisted
-   lifecycle offset on every replica, invalidate before acknowledgement, and
-   clear all locale entries on an unverified first event or gap.
-   **Depends on:** the locale mutation owner and a durable generation/event
-   source; local `invalidate_tenant_locale_cache` calls alone are insufficient.
-   **Done when:** the accepted stale bound is explicit and multi-replica evidence
-   proves convergence during missed-event and transport-outage scenarios.
+1. **Execute multi-replica tenant-locale recovery evidence.** Exercise exact UUID
+   invalidation, namespace-wide `*` rotation, local broadcast lag, Redis subscriber
+   reconnect, missed-generation reconciliation and configured-but-unavailable
+   Redis readiness behavior.
+   **Depends on:** a composed multi-replica server runtime and isolated Redis.
+   **Done when:** the same durable generation advancement removes stale locale and
+   default-locale data on every replica before recovery is acknowledged, and a
+   terminal required worker makes readiness non-OK.
 
 2. **Collect deployed parity evidence for the native tenant overview.** Confirm
    host locale, tenant-scoped RBAC, disabled/not-found behavior, and typed error
@@ -55,8 +55,8 @@ locale/default configuration until the 60-second TTL expires.
 
 3. **Keep lifecycle and cache behavior synchronized.** Any change to create,
    update, deactivate, domain, locale, or module-toggle behavior must preserve
-   typed `TenantReadPort` use and invalidate the relevant UUID, slug, host, and
-   locale cache keys.
+   typed `TenantReadPort` use and the shared durable generation contract for UUID,
+   slug, host and locale cache views.
    **Depends on:** the server resolver/cache adapters and
    `ModuleLifecycleService`.
    **Done when:** targeted resolver/invalidation tests cover the changed state
@@ -76,8 +76,9 @@ locale/default configuration until the 60-second TTL expires.
 - `cargo xtask module validate tenant`
 - `cargo xtask module test tenant`
 - `cargo test -p rustok-tenant tenant_read_port --test integration`
-- Targeted server resolver, tenant-locale cache, generation, and multi-replica
-  invalidation tests.
+- `cargo test -p rustok-server --test tenant_locale_generation_guard`
+- Targeted server resolver, tenant-locale generation, Redis reconnect and
+  multi-replica invalidation tests.
 
 ## References
 
