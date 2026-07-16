@@ -169,6 +169,7 @@ fn cache_workflow_retains_channel_compiled_evidence() {
     for required in [
         "crates/rustok-channel/**",
         "apps/server/src/services/channel_cache_invalidation*.rs",
+        "apps/server/tests/channel_cache*.rs",
         "cargo check -p rustok-channel --lib",
         "cargo test -p rustok-channel invalidation_generation --lib",
         "cargo test -p rustok-server channel_cache_invalidation --lib",
@@ -178,6 +179,7 @@ fn cache_workflow_retains_channel_compiled_evidence() {
         "RUSTOK_CHANNEL_TEST_POSTGRES_URL",
         "cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1",
         "cargo test -p rustok-server redis_publication_drives_remote_replica_readiness_recovery --lib -- --ignored --nocapture --test-threads=1",
+        "cargo test -p rustok-server --test channel_cache_resolved_value -- --ignored --nocapture --test-threads=1",
     ] {
         assert!(
             workflow.contains(required),
@@ -212,6 +214,21 @@ fn cache_workflow_retains_channel_compiled_evidence() {
     }
     assert!(runtime.contains("wait_for_readiness(&handle_a, false).await;"));
     assert!(runtime.contains("wait_for_readiness(&handle_b, true).await;"));
+
+    let resolved = source("apps/server/tests/channel_cache_resolved_value.rs");
+    for required in [
+        "redis_invalidation_refreshes_remote_resolved_channel_value_before_poll",
+        "channel_middleware::resolve",
+        "Before invalidation",
+        "After invalidation",
+        "tokio::time::timeout(Duration::from_secs(3)",
+        "publish_channel_resolution_invalidation(&ctx_a, tenant.id).await;",
+    ] {
+        assert!(
+            resolved.contains(required),
+            "resolved channel value evidence must retain {required}"
+        );
+    }
 
     let postgres = source("crates/rustok-channel/tests/postgres_invalidation_generation.rs");
     for required in [
