@@ -133,7 +133,13 @@
       "bindName": "Target name",
       "bindNamePlaceholder": "content, aria-label, color...",
       "bind": "Save and bind translation",
-      "remove": "Remove translation and bindings"
+      "remove": "Remove translation and bindings",
+      "localizedMetadataTitle": "Localized page metadata",
+      "localizedMetadataHelp": "Provide locale maps for title, description, slug, canonical_url, open_graph_title, open_graph_description, or open_graph_image. Existing unknown metadata is preserved.",
+      "localizedMetadataValuesLabel": "Localized metadata JSON",
+      "localizedMetadataValuesPlaceholder": "{\n  \"title\": {\"en\": \"Home\", \"ru\": \"Главная\"},\n  \"description\": {\"en\": \"Welcome\", \"ru\": \"Добро пожаловать\"}\n}",
+      "localizedMetadataFallbackLabel": "Metadata fallback locale",
+      "localizedMetadataSave": "Save localized metadata"
     },
     "traits": {
       "empty": "Select a component to edit its traits."
