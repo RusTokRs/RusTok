@@ -154,7 +154,20 @@ impl TenantLocaleGenerationListener {
     }
 
     async fn handle_message(&self, message: CacheInvalidationMessage) -> Result<()> {
-        let result = self.handle_message_inner(message).await;
+        let result = async {
+            let event = VersionedCacheInvalidation::from_message(&message)
+                .map_err(|error| Error::Cache(error.to_string()))?;
+            let received_generation = event.generation;
+            self.handle_event(event).await?;
+            let durable = self.current_generation().await?;
+            if durable < received_generation {
+                return Err(Error::Cache(format!(
+                    "shared tenant locale generation {durable} trails received {received_generation}"
+                )));
+            }
+            Ok(())
+        }
+        .await;
         match &result {
             Ok(()) => self.health.mark_ready(),
             Err(_) => self.health.mark_failed(),
@@ -162,9 +175,7 @@ impl TenantLocaleGenerationListener {
         result
     }
 
-    async fn handle_message_inner(&self, message: CacheInvalidationMessage) -> Result<()> {
-        let event = VersionedCacheInvalidation::from_message(&message)
-            .map_err(|error| Error::Cache(error.to_string()))?;
+    async fn handle_event(&self, event: VersionedCacheInvalidation) -> Result<()> {
         if event.channel != TENANT_CACHE_GENERATION_CHANNEL {
             return Err(Error::Validation(format!(
                 "unexpected tenant locale invalidation channel {}",
