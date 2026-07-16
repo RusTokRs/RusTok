@@ -9,6 +9,7 @@ use futures_util::FutureExt;
 use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 
+use crate::common::settings::RuntimeHostMode;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const SEO_REDIRECT_CACHE_RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
@@ -64,10 +65,17 @@ impl SeoRedirectCacheReconciliationHandle {
 #[derive(Clone, Default)]
 struct SeoRedirectCacheReconciliationStartLock(Arc<Mutex<()>>);
 
+pub fn seo_redirect_cache_reconciliation_required(ctx: &ServerRuntimeContext) -> bool {
+    !matches!(
+        ctx.settings().runtime.host_mode,
+        RuntimeHostMode::RegistryOnly | RuntimeHostMode::Worker
+    )
+}
+
 /// Ensure every serving runtime reconciles its process-local redirect cache from the
 /// transactionally persisted SEO delivery log.
 pub fn start_seo_redirect_cache_reconciliation(ctx: &ServerRuntimeContext) {
-    if ctx.settings().runtime.is_registry_only() {
+    if !seo_redirect_cache_reconciliation_required(ctx) {
         return;
     }
 
