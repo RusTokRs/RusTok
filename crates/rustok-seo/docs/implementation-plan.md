@@ -12,13 +12,18 @@ additive `v1` surfaces, while Rust and Next storefronts consume the canonical
 The redirect read cache is byte-weighted and tenant-scoped. Redirect mutations
 write the `SeoRedirectUpserted` / `SeoRedirectDisabled` outbox event and a
 `source_kind=redirect` delivery row in the same transaction, then invalidate the
-committing process after commit. Every serving server runtime now owns a bounded
-5-second reconciliation worker over the persisted `(created_at, id)` cursor. On
-startup it reads the high-water mark before clearing all local redirect entries;
-rows after that cursor invalidate exact tenants in batches of 256. The cursor
-query is backed by `(source_kind, created_at, id)`, worker restart is supervised,
-and a missing or terminal worker is a critical runtime guardrail. This removes
-dependence on local-only module-event delivery for cross-replica freshness.
+committing process after commit. Every Full/API/SSR serving runtime owns a
+supervised 5-second reconciliation worker; registry-only and worker-only hosts do
+not poll a cache they cannot serve. Startup reads the append-only redirect-row
+count and high-water `(created_at, id)` cursor before clearing all local redirect
+entries. Later rows invalidate exact tenants in batches of 256, up to 16 pages
+per poll. The independent row count is compared with the number of cursor rows
+processed; clock skew, late/out-of-order commits, deletion, or an oversized
+backlog creates a mismatch and forces a safe full clear plus reseed. The leading
+`(source_kind, created_at, id)` index supports count/cursor scans. Readiness is
+healthy only after seed/clear succeeds and becomes critical while the worker is
+terminal or a database/query failure is being retried. Cross-replica freshness
+therefore no longer depends on local-only module-event delivery.
 
 ## FFA/FBA status
 
@@ -43,15 +48,16 @@ dependence on local-only module-event delivery for cross-replica freshness.
 ## Next results
 
 1. **Execute multi-replica redirect cache recovery evidence.** Prove startup
-   seed-before-clear ordering, exact tenant invalidation, more-than-one-batch
-   catch-up, process restart, database outage/recovery and terminal-worker
-   readiness behavior across two serving replicas.
+   count/cursor-before-clear ordering, exact tenant invalidation, more-than-one-
+   batch catch-up, count-mismatch full-clear recovery, process restart, database
+   outage/recovery, serving-host scoping, and unhealthy-worker readiness across
+   two serving replicas.
    **Depends on:** a composed multi-replica server runtime with the SEO cursor
    index migration applied.
-   **Done when:** a committed redirect mutation is removed from every replica
-   within the documented 5-second polling bound, restart recovery cannot miss a
-   transaction around startup, and a stopped required worker makes readiness
-   non-OK.
+   **Done when:** a committed redirect mutation is removed from every healthy
+   serving replica within one polling/recovery cycle, startup and out-of-order
+   commit races cannot preserve stale redirect state, and a failed required
+   reconciliation path makes readiness non-OK until recovery succeeds.
 
 2. **Execute the D8 backend and host matrix.** Capture deployed GraphQL/REST
    parity, outbox/index before-after counters, Next robots/sitemap/metadata,
@@ -80,8 +86,8 @@ dependence on local-only module-event delivery for cross-replica freshness.
 - `node scripts/verify/verify-seo-admin-boundary.mjs`
 - `cargo test -p rustok-server --test seo_redirect_cache_reconciliation_guard`
 - Targeted backend, outbox/index, Next, Leptos, media fallback, redirect
-  multi-replica recovery, cursor-index, and incident runtime checks defined by
-  the live-evidence template.
+  multi-replica recovery, cursor/count/index, and incident runtime checks defined
+  by the live-evidence template.
 
 ## References
 
