@@ -1593,7 +1593,7 @@ fn map_provider_field(value: &rustok_ai::ProviderConfigField) -> AiProviderField
     AiProviderFieldPayload {
         key: value.key.to_string(),
         label: value.label.to_string(),
-        kind: format!("{:?}", value.kind).to_ascii_lowercase(),
+        kind: value.kind.slug().to_string(),
         required: value.required,
     }
 }
@@ -1702,7 +1702,7 @@ fn map_agent_descriptor(value: &rustok_ai::AgentDescriptor) -> AiAgentDescriptor
         slug: value.slug.clone(),
         display_name: value.display_name.clone(),
         owner: value.owner.clone(),
-        kind: format!("{:?}", value.kind).to_lowercase(),
+        kind: value.kind.slug().to_string(),
         responsibility: value.responsibility.clone(),
         required_permissions: value.required_permissions.iter().cloned().collect(),
         allowed_operations: value.allowed_operations.iter().cloned().collect(),

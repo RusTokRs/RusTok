@@ -182,9 +182,9 @@ module and support/capability crate local docs and does not duplicate local cont
   storefront-side split is also advanced: `rustok-region`, `rustok-product`, `rustok-pricing` and `rustok-cart` already publish their own
   storefront packages, while `rustok-commerce-storefront` is compressed to aggregate checkout workspace with seller-aware delivery-group shipping selection and no catalog/pricing ownership;
   remaining commerce storefront flows still need to be extracted from the umbrella route where ownership boundary is already stable.
-- `rustok-mcp` and `rustok-ai` are considered capability/support
-  layers and are indexed here for navigation, even if they do not belong to the `Core/Optional` taxonomy;
-  at the same time, `rustok-ai` already publishes large operator/admin
+- `rustok-mcp` is a capability/support layer and `rustok-ai` is a deployment-scoped,
+  globally active capability registration; both are indexed here for navigation.
+  `rustok-ai` already publishes large operator/admin
   UI surfaces for Leptos and Next.js hosts.
 - `flex` also remains a capability layer by its role, but is now formalized in
   `modules.toml` as a `capability_only` ghost module; donor persistence ownership

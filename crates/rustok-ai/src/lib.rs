@@ -145,3 +145,15 @@ impl rustok_core::RusToKModule for AiModule {
             ));
     }
 }
+
+#[cfg(all(test, feature = "server"))]
+mod module_tests {
+    use rustok_core::{ModuleKind, RusToKModule};
+
+    #[test]
+    fn ai_module_is_deployment_scoped_and_globally_active() {
+        let module = super::AiModule;
+        assert_eq!(module.slug(), "ai");
+        assert_eq!(module.kind(), ModuleKind::Core);
+    }
+}

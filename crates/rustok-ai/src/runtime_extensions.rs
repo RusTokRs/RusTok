@@ -401,16 +401,20 @@ mod tests {
     }
 
     #[test]
-    fn cloud_resolver_config_deserializes_without_initializing_cloud_clients() {
+    fn every_deployment_resolver_kind_deserializes_without_initializing_clients() {
         let configs = serde_json::from_str::<Vec<DeploymentSecretResolverConfig>>(
             r#"[
+                {"kind":"env","alias":"env","key_prefixes":["RUSTOK_AI_"]},
+                {"kind":"mounted_file","alias":"file","root":"/var/run/secrets/rustok","key_prefixes":["ai/"]},
+                {"kind":"vault","alias":"vault","endpoint":"https://vault.example.test","kv_mount":"secret","key_prefixes":["ai/"],"token_env":"RUSTOK_AI_VAULT_TOKEN"},
+                {"kind":"kubernetes","alias":"kubernetes","namespace":"rustok","key_prefixes":["ai/"]},
                 {"kind":"aws_secrets_manager","alias":"aws","key_prefixes":["ai/"]},
                 {"kind":"gcp_secret_manager","alias":"gcp","project":"rustok-prod1","key_prefixes":["ai/"]},
                 {"kind":"azure_key_vault","alias":"azure","endpoint":"https://rustok.vault.azure.net","key_prefixes":["ai/"]}
             ]"#,
         )
         .expect("deployment resolver JSON must deserialize");
-        assert_eq!(configs.len(), 3);
+        assert_eq!(configs.len(), 7);
         assert!(validate_config_aliases(&configs).is_ok());
     }
 }

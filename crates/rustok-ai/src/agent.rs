@@ -16,6 +16,17 @@ pub enum AgentKind {
     Review,
 }
 
+impl AgentKind {
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::Product => "product",
+            Self::Code => "code",
+            Self::Orchestrator => "orchestrator",
+            Self::Review => "review",
+        }
+    }
+}
+
 /// Tenant-scoped non-human principal used for an AI run.
 ///
 /// The runtime must intersect this principal's permissions with those of the
@@ -631,6 +642,14 @@ mod tests {
                 &serde_json::json!({"product_id":"00000000-0000-0000-0000-000000000001"}),
             )
             .is_ok());
+    }
+
+    #[test]
+    fn agent_kind_slugs_are_closed_and_transport_stable() {
+        assert_eq!(AgentKind::Product.slug(), "product");
+        assert_eq!(AgentKind::Code.slug(), "code");
+        assert_eq!(AgentKind::Orchestrator.slug(), "orchestrator");
+        assert_eq!(AgentKind::Review.slug(), "review");
     }
 
     #[cfg(feature = "server")]
