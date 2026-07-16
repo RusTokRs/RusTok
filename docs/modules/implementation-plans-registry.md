@@ -13,7 +13,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 | Module/Crate | Local plan | Status | Nearest priority |
 | --- | --- | --- | --- |
 | `alloy` | [plan](../../crates/alloy/docs/implementation-plan.md) | `in_progress` | Move Alloy execution through the neutral sandbox, then package source revisions as immutable module artifacts. |
-| `flex` | [plan](../../crates/flex/docs/implementation-plan.md) | `in_progress` | Finish owner transport extraction and targeted runtime evidence. |
+| `flex` | [plan](../../crates/flex/docs/implementation-plan.md) | `in_progress` | Make field-definition cache recovery durable across replicas, then finish owner transport extraction and targeted runtime evidence. |
 | `leptos-auth` | [plan](../../crates/leptos-auth/docs/implementation-plan.md) | `not_started` | Remove the legacy `api` compatibility re-export after migrating callers. |
 | `leptos-hook-form` | [plan](../../crates/leptos-hook-form/docs/implementation-plan.md) | `not_started` | Validate the shared form-state contract with concrete consumers. |
 | `leptos-shadcn-pagination` | [plan](../../crates/leptos-shadcn-pagination/docs/implementation-plan.md) | `not_started` | Remove package-local pagination copy through the host locale contract. |
@@ -32,7 +32,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 | `build` | [plan](../../crates/rustok-build/docs/implementation-plan.md) | `in_progress` | Move the build queue and executor from the server host, then expose the shared execution service to the platform CLI. |
 | `cache` | [plan](../../crates/rustok-cache/docs/implementation-plan.md) | `in_progress` | Run the permanent compiled cache gate on a reconciled `main` after the unrelated inventory baseline blocker is fixed, then record isolated Redis 7 live evidence. |
 | `cart` | [plan](../../crates/rustok-cart/docs/implementation-plan.md) | `not_started` | Continue only with owner-module checkout handoff slices that remove real umbrella presentation/read leakage, or return to parity/evidence hardening for SSR native path, GraphQL selected path, headless cart mutation contracts and DOM evidence. |
-| `channel` | [plan](../../crates/rustok-channel/docs/implementation-plan.md) | `not_started` | Collect full Rust runtime contract evidence for ChannelReadPort and full server middleware test evidence; until Rust runtime evidence FBA remains inprogress, but fallback smoke profiles are now locked by dedicated no-compile executable verifier, resolution-order decision by a fast source verifier, a… |
+| `channel` | [plan](../../crates/rustok-channel/docs/implementation-plan.md) | `in_progress` | Approve the 60-second cross-replica cache stale bound or adopt durable generation recovery, then collect full ChannelReadPort and middleware runtime evidence. |
 | `cli` | [plan](../../crates/rustok-cli/docs/implementation-plan.md) | `in_progress` | Register the first module-local provider, then migrate one owned server workflow to it. |
 | `cli-core` | [plan](../../crates/rustok-cli-core/docs/implementation-plan.md) | `not_started` | Connect the first runtime-aware module-local CLI provider. |
 | `cli-platform` | [plan](../../crates/rustok-cli-platform/docs/implementation-plan.md) | `not_started` | Add another command only after confirming it is platform-owned rather than module-owned. |
@@ -70,14 +70,14 @@ This index contains one entry for each live local plan. Local plans own the curr
 | `runtime` | [plan](../../crates/rustok-runtime/docs/implementation-plan.md) | `not_started` | Use RuntimeComposition in the first DB-backed module CLI provider. |
 | `sandbox` | [plan](../../crates/rustok-sandbox/docs/implementation-plan.md) | `in_progress` | Route Alloy drafts through the implemented Rhai/Wasmtime runtime, then add cancellation, admission, durable audit and capability hardening. |
 | `search` | [plan](../../crates/rustok-search/docs/implementation-plan.md) | `boundary_ready` | Execute live provider evidence, harden ingestion/analytics operations, then stage external engines as adapters. |
-| `seo` | [plan](../../crates/rustok-seo/docs/implementation-plan.md) | `in_progress` | Execute D8 backend/host/media evidence, close D9 incident sign-off, then add SEO only through additive owner routes. |
+| `seo` | [plan](../../crates/rustok-seo/docs/implementation-plan.md) | `in_progress` | Make redirect cache invalidation durable across replicas, then execute D8 backend/host/media evidence and D9 incident sign-off. |
 | `seo-render` | [plan](../../crates/rustok-seo/render/docs/implementation-plan.md) | `in_progress` | Lock cross-host semantic fixtures, exercise storefront SSR, and harden renderer safety regressions. |
 | `seo-admin-support` | [plan](../../crates/rustok-seo-admin-support/docs/implementation-plan.md) | `in_progress` | Lock support/control-plane transport ownership, execute owner-layout coverage, and publish reusable-widget acceptance rules. |
 | `storage` | [plan](../../crates/rustok-storage/docs/implementation-plan.md) | `not_started` | Restore the required crate README and keep storage ownership docs synchronized. |
 | `tax` | [plan](../../crates/rustok-tax/docs/implementation-plan.md) | `not_started` | Replace static contract evidence with runtime contract execution and fallback smoke before any boundaryready promotion. |
 | `taxonomy` | [plan](../../crates/rustok-taxonomy/docs/implementation-plan.md) | `not_started` | Keep dictionary scope and owner-module attachment contracts synchronized. |
 | `telemetry` | [plan](../../crates/rustok-telemetry/docs/implementation-plan.md) | `in_progress` | Prove bootstrap/shutdown modes, harden shared metric safety, and align module instrumentation with operations. |
-| `tenant` | [plan](../../crates/rustok-tenant/docs/implementation-plan.md) | `in_progress` | Continue host-neutral parity/evidence hardening for module-owned native adapters and execute authored runtime smoke when compilation is allowed, without mechanical UI expansion. |
+| `tenant` | [plan](../../crates/rustok-tenant/docs/implementation-plan.md) | `in_progress` | Approve the tenant-locale 60-second cross-replica stale bound or adopt durable generation recovery, then collect composed parity evidence. |
 | `test-utils` | [plan](../../crates/rustok-test-utils/docs/implementation-plan.md) | `in_progress` | Finish neutral server-test migration, lock mock/fixture contracts, and publish consumer-backed testing recipes. |
 | `ui-i18n` | [plan](../../crates/rustok-ui-i18n/docs/implementation-plan.md) | `in_progress` | Lock shared Leptos catalog adoption; add further adapters or parity APIs only for concrete consumers. |
 | `web` | [plan](../../crates/rustok-web/docs/implementation-plan.md) | `not_started` | Consolidate repeated controller helpers through the shared Axum boundary. |
