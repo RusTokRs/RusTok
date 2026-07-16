@@ -54,6 +54,11 @@ Registries and evidence:
 - [x] Keep provider payload parsing and signature verification outside commerce.
 - [x] Keep this file as the only ecommerce checklist.
 - [x] Enforce the payment planning redirect through source guardrails.
+- [x] Route GraphQL fulfillment create, ship, deliver, reopen, reship, and cancel
+  through `FulfillmentOrchestrationService` instead of direct owner-service calls.
+- [x] Guard fulfillment transport ownership with
+  `apps/server/tests/commerce_fulfillment_transport_guard.rs` and
+  `verify-commerce-admin-boundary.mjs`.
 - [ ] Execute the complete provider-consumer graph with retained runtime evidence.
 
 ## Checkout orchestration workstream
@@ -105,7 +110,9 @@ Checkout evidence:
 - `crates/rustok-commerce/src/services/checkout_stage_pipeline.rs`
 - `crates/rustok-commerce/src/services/checkout_compensation.rs`
 - `crates/rustok-commerce/src/services/recovering_staged_checkout.rs`
+- `crates/rustok-commerce/src/services/fulfillment_orchestration_facade.rs`
 - `crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs`
+- `apps/server/tests/commerce_fulfillment_transport_guard.rs`
 - `scripts/verify/verify-commerce-admin-boundary.mjs`
 - `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`
 
@@ -176,6 +183,8 @@ this section.
 - [x] Add and aggregate `verify-payment-stripe-runtime.mjs`.
 - [x] Update the legacy GraphQL runtime parity refund mutation helper to pass
   `idempotencyKey`.
+- [x] Route REST refund completion and cancellation through
+  `PaymentOrchestrationService` to preserve REST/GraphQL write parity.
 - [ ] Execute deployment secret resolution and authorize, capture, cancel, refund,
   and webhook handling against a production-like Stripe endpoint.
 - [ ] Prove adapters never persist payment/refund lifecycle state.
