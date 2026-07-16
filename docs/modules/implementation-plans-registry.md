@@ -70,7 +70,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 | `runtime` | [plan](../../crates/rustok-runtime/docs/implementation-plan.md) | `not_started` | Use RuntimeComposition in the first DB-backed module CLI provider. |
 | `sandbox` | [plan](../../crates/rustok-sandbox/docs/implementation-plan.md) | `in_progress` | Route Alloy drafts through the implemented Rhai/Wasmtime runtime, then add cancellation, admission, durable audit and capability hardening. |
 | `search` | [plan](../../crates/rustok-search/docs/implementation-plan.md) | `boundary_ready` | Execute live provider evidence, harden ingestion/analytics operations, then stage external engines as adapters. |
-| `seo` | [plan](../../crates/rustok-seo/docs/implementation-plan.md) | `in_progress` | Make redirect cache invalidation durable across replicas, then execute D8 backend/host/media evidence and D9 incident sign-off. |
+| `seo` | [plan](../../crates/rustok-seo/docs/implementation-plan.md) | `in_progress` | Execute multi-replica redirect cursor recovery evidence, then complete D8 backend/host/media evidence and D9 incident sign-off. |
 | `seo-render` | [plan](../../crates/rustok-seo/render/docs/implementation-plan.md) | `in_progress` | Lock cross-host semantic fixtures, exercise storefront SSR, and harden renderer safety regressions. |
 | `seo-admin-support` | [plan](../../crates/rustok-seo-admin-support/docs/implementation-plan.md) | `in_progress` | Lock support/control-plane transport ownership, execute owner-layout coverage, and publish reusable-widget acceptance rules. |
 | `storage` | [plan](../../crates/rustok-storage/docs/implementation-plan.md) | `not_started` | Restore the required crate README and keep storage ownership docs synchronized. |
