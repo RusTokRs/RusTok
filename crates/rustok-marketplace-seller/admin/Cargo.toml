@@ -24,9 +24,11 @@ leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
+rustok-graphql.workspace = true
 rustok-marketplace-seller = { workspace = true, optional = true }
 rustok-ui-core.workspace = true
 rustok-ui-i18n-leptos.workspace = true
+rustok-ui-transport.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
