@@ -3,7 +3,9 @@
 //! The crate is deliberately independent from UI frameworks, browser APIs, RusTok modules,
 //! persistence, and transports. Consumers own persistence and framework adapters.
 
+mod action;
 mod asset;
+mod audit;
 mod binding;
 mod codec;
 mod command;
@@ -19,6 +21,7 @@ mod error;
 mod fragment;
 mod ids;
 mod internal_link;
+mod landing_readiness;
 mod locale_coverage;
 mod locale_policy;
 mod localized_route;
@@ -42,7 +45,9 @@ mod trait_model;
 mod translation;
 mod validation;
 
+pub use action::*;
 pub use asset::*;
+pub use audit::*;
 pub use binding::*;
 pub use codec::*;
 pub use command::*;
@@ -58,6 +63,7 @@ pub use error::*;
 pub use fragment::*;
 pub use ids::*;
 pub use internal_link::*;
+pub use landing_readiness::*;
 pub use locale_coverage::*;
 pub use locale_policy::*;
 pub use localized_route::*;
