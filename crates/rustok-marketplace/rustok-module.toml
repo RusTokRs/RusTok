@@ -13,6 +13,7 @@ tags = ["marketplace", "seller", "listing", "settlement"]
 
 [dependencies]
 marketplace_seller = { version_req = ">=0.1.0" }
+marketplace_listing = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "MarketplaceModule"
@@ -20,6 +21,6 @@ entry_type = "MarketplaceModule"
 [fba.consumer]
 registry = "contracts/marketplace-fba-registry.json"
 contract_version = "marketplace.family.v1"
-providers = ["marketplace_seller"]
+providers = ["marketplace_seller", "marketplace_listing"]
 context = "rustok_api::ports::PortContext"
 error = "rustok_api::ports::PortError"
