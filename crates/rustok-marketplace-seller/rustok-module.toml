@@ -15,6 +15,10 @@ tags = ["marketplace", "seller", "membership", "onboarding"]
 [crate]
 entry_type = "MarketplaceSellerModule"
 
+[provides.graphql]
+query = "graphql::MarketplaceSellerQuery"
+mutation = "graphql::MarketplaceSellerMutation"
+
 [provides.admin_ui]
 leptos_crate = "rustok-marketplace-seller-admin"
 route_segment = "marketplace-sellers"
