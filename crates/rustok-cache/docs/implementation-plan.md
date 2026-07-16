@@ -135,6 +135,10 @@ The ownership boundary is:
   every entry before acknowledgement.
 - [x] Own the tenant-locale local/Redis/reconcile workers in one restartable abort-on-drop runtime
   and make terminal required delivery a critical readiness condition.
+- [x] Reconcile SEO redirect caches from transactionally persisted delivery rows with a bounded
+  `(created_at, id)` cursor, seed-before-clear startup ordering and exact tenant invalidation.
+- [x] Back the SEO cursor with a `(source_kind, created_at, id)` index, consume at most 256 rows per
+  page, supervise the serving-runtime worker and make terminal reconciliation critical to readiness.
 - [x] Own the field-definition cache and invalidation consumer in one restartable runtime bundle.
 - [x] Supervise the Redis health/status monitor with serialized restartable startup and
   abort-on-drop ownership.
@@ -150,8 +154,9 @@ The ownership boundary is:
   gaps, key/envelope limits, negative caching, CAS, refresh, leases and live Redis behavior.
 - [x] Add server architecture guards for canonical cache ownership, tenant cache policy,
   marketplace caching, channel generations, locale registration and durable recovery,
-  field-definition runtime, rate-limit cleanup ownership, atomic local CAS, Redis monitor
-  supervision and worker-readiness escalation.
+  SEO redirect transaction/cursor/index/reconciliation ordering, field-definition runtime,
+  rate-limit cleanup ownership, atomic local CAS, Redis monitor supervision and worker-readiness
+  escalation.
 - [x] Add path-scoped workflows for cache hardening and the new host architecture guards.
 - [x] Run deterministic rustfmt over the cache-hardening file set and commit the resulting style
   normalization.
@@ -179,6 +184,8 @@ The ownership boundary is:
   publication failure.
 - [ ] Prove exact and wildcard tenant-locale invalidation, lag recovery and periodic generation
   reconciliation across multiple replicas.
+- [ ] Prove SEO redirect seed-before-clear startup, exact tenant invalidation, multi-page catch-up,
+  database outage recovery and terminal-worker readiness across multiple serving replicas.
 - [ ] Prove binary-safe CAS applied/mismatch behavior and fail-closed fallback behavior.
 - [ ] Exercise Redis latency, disconnect, restart, listener reconnect and circuit-breaker recovery.
 - [ ] Confirm that readiness continues to expose shared-primary degradation while bounded local
@@ -195,11 +202,11 @@ The ownership boundary is:
   payload/schema incompatibility can change behavior; keep process-local Rust-value caches typed
   in memory and document their TTL/invalidation contract instead of adding a redundant wire envelope.
 - [ ] Add shared/durable generations only where a process-local invalidation miss can serve stale
-  correctness-sensitive data on another replica; tenant resolution, tenant locale and RBAC are
-  source-complete, while channel, Flex field definitions and SEO redirects remain owner decisions.
-- [x] Keep each domain-specific recovery action in its owner module plan; channel, Flex field
-  definitions and SEO redirects own their remaining stale-bound or durable-recovery decisions,
-  while the events plan owns the missing inbound persisted-offset consumer contract.
+  correctness-sensitive data on another replica; tenant resolution, tenant locale, RBAC and SEO
+  redirects are source-complete, while channel and Flex field definitions remain owner decisions.
+- [x] Keep each domain-specific recovery action in its owner module plan; channel and Flex field
+  definitions own their remaining stale-bound or durable-recovery decisions, while tenant and SEO
+  now own execution evidence for their implemented recovery paths.
 
 ### P1. Durable recoverable invalidation adoption
 
@@ -208,6 +215,8 @@ The ownership boundary is:
 - [x] Integrate a database-backed durable generation for RBAC in the RBAC owner path.
 - [x] Reuse the durable tenant generation for tenant-locale exact/wildcard invalidation and
   full-clear recovery before acknowledgement.
+- [x] Reconcile SEO redirect caches from transactionally persisted rows with seed-before-clear
+  recovery and ordered bounded cursors.
 - [ ] Connect remaining eligible domain consumers to transactional outbox generations or persisted
   stream offsets.
 - [ ] Seed each such consumer from persisted state before accepting fast-path invalidations.
@@ -220,7 +229,8 @@ The ownership boundary is:
   refresh saturation, lease expiry and invalidation listener lag.
 - [ ] Exercise generation snapshot capacity, generation read/bump failure and CAS contention or
   timeout behavior.
-- [ ] Measure marketplace hot-slug coalescing and channel generation rollover under concurrency.
+- [ ] Measure marketplace hot-slug coalescing, channel generation rollover and SEO redirect cursor
+  catch-up under concurrency.
 - [ ] Tune byte budgets, TTLs, jitter, negative TTLs and concurrency limits from observed
   production payload distributions and latency objectives.
 - [ ] Publish operator guidance and alert thresholds for Redis degradation, repeated worker
@@ -252,6 +262,7 @@ cargo test -p rustok-server \
   --test channel_cache_architecture_guard \
   --test locale_cache_architecture_guard \
   --test tenant_locale_generation_guard \
+  --test seo_redirect_cache_reconciliation_guard \
   --test field_definition_cache_runtime_guard \
   --test rate_limit_cache_runtime_guard \
   --test cache_redis_monitor_architecture_guard \
