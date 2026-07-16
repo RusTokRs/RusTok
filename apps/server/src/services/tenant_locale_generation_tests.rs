@@ -13,6 +13,7 @@ use axum::{
 use rustok_cache::{CacheInvalidationMessage, CacheService, VersionedCacheInvalidation};
 use rustok_migrations::Migrator;
 use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
+use sha2::{Digest, Sha256};
 use tokio::process::{Child, Command};
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -208,7 +209,7 @@ async fn publish_until_locale(
         }
     })
     .await
-    .unwrap_or_else(|_| panic!("remote tenant locale stayed stale at {expected}"));
+    .unwrap_or_else(|_| panic!("remote tenant locale stayed stale instead of becoming {expected}"));
 }
 
 fn reserve_loopback_port() -> u16 {
@@ -289,6 +290,23 @@ async fn wait_for_redis_subscribers(url: &str, expected: usize) {
     .unwrap_or_else(|_| panic!("Redis did not restore {expected} tenant locale subscribers"));
 }
 
+async fn restore_shared_generation(url: &str, generation: u64) {
+    let digest = Sha256::digest(TENANT_CACHE_BACKEND_PREFIX.as_bytes());
+    let key = format!("rustok:cache-generation:v1:{}", hex::encode(digest));
+    let client = redis::Client::open(url).expect("Redis URL should be valid");
+    let mut connection = client
+        .get_multiplexed_async_connection()
+        .await
+        .expect("Redis generation restore connection should open");
+    let reply = redis::cmd("SET")
+        .arg(key)
+        .arg(generation)
+        .query_async::<String>(&mut connection)
+        .await
+        .expect("tenant cache generation should be restored");
+    assert_eq!(reply, "OK");
+}
+
 #[tokio::test]
 #[serial_test::serial]
 async fn exact_and_wildcard_invalidation_refresh_two_replica_locale_values() {
@@ -324,7 +342,8 @@ async fn exact_and_wildcard_invalidation_refresh_two_replica_locale_values() {
     replace_default_locale(&db, tenant_a.id, "fr").await;
     replace_default_locale(&db, tenant_b.id, "de").await;
     let exact_generation = bump_generation(&cache_a).await;
-    let exact = invalidation_message(tenant_a.id.to_string().as_str(), exact_generation);
+    let tenant_a_key = tenant_a.id.to_string();
+    let exact = invalidation_message(tenant_a_key.as_str(), exact_generation);
     listener_a.handle_message(exact.clone()).await.unwrap();
     listener_b.handle_message(exact).await.unwrap();
 
@@ -444,7 +463,7 @@ async fn missed_redis_publication_recovers_remote_locale_via_periodic_generation
 #[tokio::test]
 #[ignore = "requires redis-server via RUSTOK_CACHE_REDIS_SERVER_BIN"]
 #[serial_test::serial]
-async fn redis_restart_rebaselines_generation_and_reconnects_locale_replicas() {
+async fn redis_restart_fails_closed_until_generation_is_restored() {
     let binary = std::env::var("RUSTOK_CACHE_REDIS_SERVER_BIN")
         .expect("RUSTOK_CACHE_REDIS_SERVER_BIN must point to redis-server");
     let port = reserve_loopback_port();
@@ -455,6 +474,7 @@ async fn redis_restart_rebaselines_generation_and_reconnects_locale_replicas() {
     let tenant = insert_tenant(&db, "Tenant locale reconnect").await;
     insert_locale(&db, tenant.id, "en", true, true).await;
     let tenant_context = tenant_context(&tenant);
+    let tenant_key = tenant.id.to_string();
 
     let ctx_a = ServerRuntimeContext::new(db.clone(), settings_with_redis(url.as_str()));
     let ctx_b = ServerRuntimeContext::new(db.clone(), settings_with_redis(url.as_str()));
@@ -481,7 +501,7 @@ async fn redis_restart_rebaselines_generation_and_reconnects_locale_replicas() {
         &cache_a,
         &app_b,
         &tenant_context,
-        tenant.id.to_string().as_str(),
+        tenant_key.as_str(),
         before_restart,
         "fr",
     )
@@ -496,24 +516,27 @@ async fn redis_restart_rebaselines_generation_and_reconnects_locale_replicas() {
     redis_process = spawn_redis(binary.as_str(), port).await;
     wait_for_redis_subscribers(url.as_str(), 2).await;
 
-    // The restarted non-persistent Redis begins at generation zero. The ready
-    // recovery must full-clear and reset the old tracker baseline.
+    // Empty Redis has generation zero while both replicas retain a trusted
+    // higher snapshot. Ready recovery must clear stale values but remain failed.
     wait_for_locale(&app_b, &tenant_context, "de", Duration::from_secs(3)).await;
-    wait_for_readiness(&handle_a, true, Duration::from_secs(3)).await;
-    wait_for_readiness(&handle_b, true, Duration::from_secs(3)).await;
+    assert!(!handle_a.is_ready());
+    assert!(!handle_b.is_ready());
 
+    restore_shared_generation(url.as_str(), before_restart).await;
     replace_default_locale(&db, tenant.id, "ru").await;
-    let after_restart = bump_generation(&cache_a).await;
-    assert_eq!(after_restart, 1);
+    let after_restore = bump_generation(&cache_a).await;
+    assert_eq!(after_restore, before_restart + 1);
     publish_until_locale(
         &cache_a,
         &app_b,
         &tenant_context,
-        tenant.id.to_string().as_str(),
-        after_restart,
+        tenant_key.as_str(),
+        after_restore,
         "ru",
     )
     .await;
+    wait_for_readiness(&handle_a, true, Duration::from_secs(3)).await;
+    wait_for_readiness(&handle_b, true, Duration::from_secs(3)).await;
 
     stop_redis(&mut redis_process).await;
 }
