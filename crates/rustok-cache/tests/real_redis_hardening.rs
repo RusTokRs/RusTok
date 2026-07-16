@@ -1,14 +1,31 @@
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rustok_cache::{
-    CacheGenerationSource, CacheLeaseOptions, CacheLeaseOutcome, CacheService,
+    CacheBackendOptions, CacheGenerationSource, CacheLeaseOptions, CacheLeaseOutcome, CacheService,
     DurableCacheInvalidationRecord, VersionedCacheInvalidation,
 };
+use rustok_core::CircuitBreakerConfig;
 
 fn real_redis_url() -> String {
     std::env::var("RUSTOK_CACHE_REAL_REDIS_URL")
         .expect("RUSTOK_CACHE_REAL_REDIS_URL must point to an isolated Redis instance")
+}
+
+async fn pause_redis_all(url: &str, duration: Duration) {
+    let client = redis::Client::open(url).expect("Redis URL should be valid");
+    let mut connection = client
+        .get_multiplexed_async_connection()
+        .await
+        .expect("Redis control connection should open");
+    let reply = redis::cmd("CLIENT")
+        .arg("PAUSE")
+        .arg(duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .arg("ALL")
+        .query_async::<String>(&mut connection)
+        .await
+        .expect("Redis CLIENT PAUSE should succeed");
+    assert_eq!(reply, "OK");
 }
 
 #[tokio::test]
@@ -183,4 +200,68 @@ async fn shared_client_weighted_backend_honors_subsecond_ttl_and_invalidation() 
         .unwrap();
     backend.invalidate("invalidate").await.unwrap();
     assert_eq!(backend.get("invalidate").await.unwrap(), None);
+}
+
+#[tokio::test]
+#[ignore = "requires Redis 7 CLIENT PAUSE via RUSTOK_CACHE_REAL_REDIS_URL"]
+async fn shared_backend_times_out_opens_circuit_and_recovers_after_latency() {
+    let url = real_redis_url();
+    let service = CacheService::from_url(Some(&url));
+    let mut options = CacheBackendOptions::default();
+    options.redis_circuit_breaker = CircuitBreakerConfig {
+        failure_threshold: 1,
+        success_threshold: 1,
+        timeout: Duration::from_millis(200),
+        half_open_max_requests: Some(1),
+    };
+    let backend = service
+        .backend_shared_client_with_options(
+            &format!("real-latency-{}", uuid::Uuid::new_v4()),
+            Duration::from_secs(30),
+            128,
+            options,
+        )
+        .await;
+    backend
+        .health()
+        .await
+        .expect("shared Redis backend should start healthy");
+
+    pause_redis_all(&url, Duration::from_millis(2_600)).await;
+    tokio::time::sleep(Duration::from_millis(25)).await;
+
+    let timed_out_at = Instant::now();
+    let timeout_error = backend
+        .health()
+        .await
+        .expect_err("paused Redis health must hit the bounded operation timeout");
+    let timeout_elapsed = timed_out_at.elapsed();
+    assert!(
+        timeout_error
+            .to_string()
+            .contains("shared Redis cache operation timed out after 2000 ms")
+    );
+    assert!(timeout_elapsed < Duration::from_millis(2_500));
+
+    let rejected_at = Instant::now();
+    let open_error = backend
+        .health()
+        .await
+        .expect_err("opened Redis circuit must reject the next health probe");
+    assert!(
+        open_error
+            .to_string()
+            .contains("Redis unavailable (circuit breaker open)")
+    );
+    assert!(rejected_at.elapsed() < Duration::from_millis(250));
+
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    backend
+        .health()
+        .await
+        .expect("half-open Redis probe should recover after CLIENT PAUSE expires");
+    backend
+        .health()
+        .await
+        .expect("closed Redis circuit should remain healthy after recovery");
 }
