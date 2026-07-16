@@ -47,6 +47,8 @@ const stripePath = "crates/rustok-payment/src/stripe_provider.rs";
 const migrationPath =
   "crates/rustok-payment/src/migrations/m20260714_000120_allow_uncertain_provider_outcomes.rs";
 const migrationRegistryPath = "crates/rustok-payment/src/migrations/mod.rs";
+const integrationTestPath =
+  "crates/rustok-migrations/tests/payment_provider_operation_uncertain_outcome.rs";
 const registryPath = "crates/rustok-payment/contracts/payment-fba-registry.json";
 const planPath = "crates/rustok-commerce/docs/implementation-plan.md";
 const packagePath = "package.json";
@@ -59,6 +61,7 @@ const refundReconciliation = read(refundReconciliationPath);
 const stripe = read(stripePath);
 const migration = read(migrationPath);
 const migrationRegistry = read(migrationRegistryPath);
+const integrationTest = read(integrationTestPath);
 const registry = readJson(registryPath);
 const plan = read(planPath);
 const packageJson = read(packagePath);
@@ -100,6 +103,15 @@ requireMarker(
   `${migrationRegistryPath}: migration 000120 is not registered`,
 );
 for (const marker of [
+  "uncertain_executing_provider_operation_requires_reconciliation_without_reclaim",
+  "mark_reconciliation_required",
+  "second_claim.is_none()",
+  "mark_committed",
+  "provider_completed_at.is_some()",
+]) {
+  requireMarker(integrationTest, marker, `${integrationTestPath}: missing ${marker}`);
+}
+for (const marker of [
   "source.requires_provider_reconciliation()",
   "mark_reconciliation_required",
   "ProviderOutcomeUnknown",
@@ -120,6 +132,7 @@ forbidMarker(
 for (const marker of [
   "provider_unavailable",
   "provider_rejected",
+  "provider_invalid_response",
   "provider_outcome_unknown",
   "provider_configuration",
   "request_timeout_seconds",
