@@ -20,6 +20,7 @@ pub fn PageBuilderBrowserAdapter(
         };
         let config = config
             .to_json()
+            .map(|json| escape_json_for_script(&json))
             .unwrap_or_else(|_| "{}".to_string());
         let source = format!(
             "globalThis.__FLY_BROWSER_CONFIG__ = Object.freeze({config});\n{FLY_BROWSER_ADAPTER_JS}\nglobalThis.FlyBrowser?.mountAll(globalThis.__FLY_BROWSER_CONFIG__);"
@@ -41,6 +42,14 @@ pub fn PageBuilderBrowserAdapter(
     }
 }
 
+fn escape_json_for_script(json: &str) -> String {
+    json.replace('&', "\\u0026")
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('\u{2028}', "\\u2028")
+        .replace('\u{2029}', "\\u2029")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -50,5 +59,15 @@ mod tests {
         assert!(FLY_BROWSER_ADAPTER_JS.contains("class FlyBrowserAdapter"));
         assert!(FLY_BROWSER_ADAPTER_JS.contains("fly:browser-intent"));
         assert!(!FLY_BROWSER_ADAPTER_JS.contains("wasm_bindgen"));
+    }
+
+    #[test]
+    fn bootstrap_json_cannot_close_the_inline_script() {
+        let escaped = escape_json_for_script(
+            r#"{"endpoint":"</script><script>alert(1)</script>","token":"a&b"}"#,
+        );
+        assert!(!escaped.contains("</script>"));
+        assert!(!escaped.contains('&'));
+        assert!(escaped.contains("\\u003c/script\\u003e"));
     }
 }
