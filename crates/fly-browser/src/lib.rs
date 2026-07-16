@@ -82,6 +82,10 @@ pub struct BrowserIntentEnvelope {
     pub revision: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft_generation: Option<u64>,
 }
 
 impl BrowserIntentEnvelope {
@@ -92,6 +96,7 @@ impl BrowserIntentEnvelope {
         self.page_id = normalize_optional(self.page_id);
         self.revision = normalize_optional(self.revision);
         self.project_hash = normalize_optional(self.project_hash);
+        self.draft_token = normalize_optional(self.draft_token);
         if self.protocol != FLY_BROWSER_PROTOCOL_V1 {
             return Err(BrowserIntentError::Protocol(self.protocol));
         }
@@ -225,10 +230,32 @@ mod tests {
             page_id: None,
             revision: None,
             project_hash: None,
+            draft_token: None,
+            draft_generation: None,
         }
         .normalized()
         .expect_err("protocol mismatch");
         assert!(matches!(error, BrowserIntentError::Protocol(_)));
+    }
+
+    #[test]
+    fn draft_token_is_normalized_without_becoming_project_state() {
+        let request = BrowserIntentEnvelope {
+            protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
+            instance_id: "canvas-a".to_string(),
+            intent: "copy".to_string(),
+            payload: json!({}),
+            sequence: None,
+            page_id: Some("home".to_string()),
+            revision: Some("rev-1".to_string()),
+            project_hash: Some("abc".to_string()),
+            draft_token: Some("  token  ".to_string()),
+            draft_generation: Some(4),
+        }
+        .normalized()
+        .expect("normalized");
+        assert_eq!(request.draft_token.as_deref(), Some("token"));
+        assert_eq!(request.draft_generation, Some(4));
     }
 
     #[test]
@@ -257,6 +284,8 @@ mod tests {
                 page_id: Some("home".to_string()),
                 revision: Some("rev-1".to_string()),
                 project_hash: Some("abc".to_string()),
+                draft_token: None,
+                draft_generation: None,
             };
             assert!(request.is_mutating(), "{intent}");
         }
@@ -269,6 +298,8 @@ mod tests {
             page_id: None,
             revision: None,
             project_hash: None,
+            draft_token: None,
+            draft_generation: None,
         };
         assert!(!selection.is_mutating());
     }
