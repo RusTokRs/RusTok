@@ -22,6 +22,7 @@ mod m20260713_000017_classify_checkout_reconciliation;
 mod m20260716_000003_add_order_field_cache_generation_trigger;
 mod m20260716_000004_create_return_completion_operations;
 mod m20260716_000005_enforce_return_completion_resolution_identity;
+mod m20260716_000006_create_return_completion_commands;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -50,6 +51,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260716_000003_add_order_field_cache_generation_trigger::Migration),
         Box::new(m20260716_000004_create_return_completion_operations::Migration),
         Box::new(m20260716_000005_enforce_return_completion_resolution_identity::Migration),
+        Box::new(m20260716_000006_create_return_completion_commands::Migration),
     ]
 }
 
@@ -156,6 +158,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260716_000005_enforce_return_completion_resolution_identity",
             vec!["m20260716_000004_create_return_completion_operations"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260716_000006_create_return_completion_commands",
+            vec!["m20260716_000005_enforce_return_completion_resolution_identity"],
         ),
     ]
 }
