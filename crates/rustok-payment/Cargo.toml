@@ -8,17 +8,21 @@ description = "Payment domain module extracted from rustok-commerce"
 [features]
 default = []
 server = ["dep:anyhow", "dep:axum", "rustok-api/server"]
+stripe = ["dep:hmac", "dep:reqwest", "dep:secrecy"]
 
 [dependencies]
 anyhow = { workspace = true, optional = true }
 async-trait.workspace = true
 axum = { workspace = true, optional = true }
 chrono.workspace = true
+hmac = { version = "0.12", optional = true }
+reqwest = { workspace = true, optional = true, features = ["json"] }
 rust_decimal.workspace = true
 rustok-core.workspace = true
 rustok-api.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
+secrecy = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
