@@ -127,6 +127,49 @@ async fn independent_replicas_fail_closed_and_recover_without_redis() {
 }
 
 #[tokio::test]
+async fn local_listener_lag_fails_closed_and_recovers_from_durable_state() {
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    install_generation_state(&db, 1).await;
+    let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+    let cache = ensure_cache_service(&ctx);
+    start_channel_cache_invalidation_listener(&ctx, cache.clone())
+        .await
+        .unwrap();
+    let handle = ctx
+        .shared_get::<ChannelCacheInvalidationListenerHandle>()
+        .expect("listener handle");
+    assert!(handle.is_ready());
+
+    let mut probe = cache
+        .invalidations()
+        .subscribe_local_channel(CHANNEL_RESOLUTION_INVALIDATION_CHANNEL);
+    db.execute_unprepared("DROP TABLE channel_resolution_invalidation_state")
+        .await
+        .unwrap();
+
+    // The local bus holds 256 messages. Publishing without Redis has no await
+    // point, so neither subscription can drain until this burst completes.
+    for _ in 0..300 {
+        let outcome = cache
+            .publish_invalidation(invalidation_message(2))
+            .await;
+        assert_eq!(outcome.local_subscribers, 2);
+    }
+    match probe.recv().await {
+        Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+            assert!(skipped >= 44);
+        }
+        other => panic!("expected deterministic local invalidation lag, got {other:?}"),
+    }
+    drop(probe);
+
+    wait_for_readiness(&handle, false).await;
+    install_generation_state(&db, 2).await;
+    publish_local(&cache, 2).await;
+    wait_for_readiness(&handle, true).await;
+}
+
+#[tokio::test]
 #[ignore = "requires an isolated Redis instance via RUSTOK_CACHE_REAL_REDIS_URL"]
 async fn redis_publication_drives_remote_replica_readiness_recovery() {
     let url = std::env::var("RUSTOK_CACHE_REAL_REDIS_URL")
