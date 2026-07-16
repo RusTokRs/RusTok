@@ -29,7 +29,7 @@ capacity. Fixed-size counters may use entry-count capacity.
 | --- | --- | --- | --- | --- | --- |
 | Tenant resolution positive cache | `TenantReadPort` / tenant database state | `CacheService::backend_weighted`; 16 MiB; canonical service/environment/global/domain/schema/resource key with bounded typed identity | 300 s positive TTL with deterministic jitter and bounded loader deadline | Local plus Redis invalidation and shared namespace generation recovery; Redis degradation remains visible while bounded fallback serves eligible reads | Hardened |
 | Tenant resolution negative cache | `TenantReadPort` / tenant database state | Separate weighted backend; 1 MiB; separate schema namespace and bounded envelope | Explicit stable `NotFound` / `Disabled` negatives; 60 s TTL and 64 KiB encoded ceiling | Uses the tenant invalidation/generation path; incompatible and expired negatives are removed before reload | Hardened |
-| Channel resolution cache | Channel database state through `ChannelResolver` | Byte-weighted Moka; 16 MiB; typed key containing tenant, bounded request facts and a monotonic tenant token | 60 s positive TTL; 10 s negative TTL | Atomic process-local registration. Successful REST and native server-function mutations rotate the local tenant token. The per-tenant generation registry is bounded at 16,384 tenants; capacity rollover clears all entries and allocator exhaustion disables caching fail-safe. Cross-replica invalidation is not currently durable | Source hardened; owner decision required for cross-replica stale bound |
+| Channel resolution cache | Channel database state through `ChannelResolver`; durable source is `channel_resolution_invalidation_state` | Byte-weighted Moka; 16 MiB; typed key containing tenant, bounded request facts and a monotonic tenant token | 60 s positive TTL; 10 s negative TTL | Mutations to all six channel-owned tables increment one database generation through transaction-local triggers. Successful REST/native writes clear the local tenant token and publish `channel.resolution.generation.v1` as a fast path. Supervised local/Redis/reconcile workers compare the persisted generation every 5 s and perform a safe namespace-wide local clear when delivery was missed, startup is unverified, or generation regresses. The per-tenant token registry remains bounded at 16,384 tenants; capacity rollover clears all entries and allocator exhaustion disables caching fail-safe | Source hardened; compiled and multi-replica recovery evidence pending |
 | Tenant locale cache | `tenant_locales` database rows | Byte-weighted Moka; 8 MiB; UUID tenant key; atomic process-local registration | 60 s TTL; empty vectors are ordinary short-lived results rather than a separate negative schema | Shares `tenant.cache.generation.v1`: in-order UUID records invalidate one tenant, `*` invalidates the namespace, and unverified/gapped/lagged or reconciled advancement clears all entries before acknowledgement. Local/Redis/reconcile tasks are context-owned and required Redis delivery is a critical readiness dependency | Source hardened; multi-replica execution evidence pending |
 | Rate-limit memory backend | In-process request counters | Entry-count Moka; 100,000 entries; fixed-size counter value; trusted identity dimensions are bounded IP/UUID fields | Time-to-idle equals the configured rate-limit window | Process-local by design. Distributed deployments requiring one global budget must select the Redis backend; Redis identities are SHA-256 hashed. The periodic Moka maintenance worker exits when its task-owned `Arc` is the final limiter reference, so runtime teardown does not retain an orphan cache | Hardened for declared modes |
 | Rate-limit Redis backend | Redis counter script | Redis keys contain configured namespace plus SHA-256 identity; operation timeout is 2 s | Redis expiry equals the bounded rate-limit window | Atomic `INCR`/`EXPIRE` script contract; backend failure is fail-closed with HTTP 503, not local fallback | Hardened |
@@ -53,19 +53,20 @@ capacity. Fixed-size counters may use entry-count capacity.
 
 ### Owner decisions required
 
-- Channel: document whether a 60-second cross-replica stale bound is acceptable. Otherwise add an
-  owner generation/outbox consumer and clear the affected tenant generation on missed events.
 - Field definitions: connect the existing full-clear recovery to a durable event offset or shared
   generation when multiple replicas consume independent local buses.
 
 ### Verification and tuning
 
+- Exercise channel mutation commit, concurrent generation advancement, publication loss, local lag,
+  Redis reconnect, database outage/recovery, generation regression and periodic reconciliation
+  across multiple replicas.
 - Exercise exact/wildcard tenant-locale invalidation, local lag, Redis reconnect and periodic
   generation reconciliation across multiple replicas.
 - Exercise SEO cursor startup races, more-than-one-batch catch-up, database outage/recovery and
   terminal-worker readiness across multiple serving replicas.
 - Measure observed encoded/estimated entry sizes before changing byte budgets.
-- Exercise marketplace hot-key contention, channel generation rollover and RBAC epoch rotation.
+- Exercise marketplace hot-key contention, channel token rollover and RBAC epoch rotation.
 - Run isolated Redis outage/reconnect/CAS/invalidations before promoting cache hardening to live
   verified.
 
