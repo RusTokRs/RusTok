@@ -103,10 +103,10 @@ Last reconciled with `main`: 2026-07-16.
   publication, five-second database reconciliation, atomic namespace rollover, critical worker
   guardrails and fail-safe cache bypass on allocator exhaustion. Source tests cover SQLite replica
   readers, two independent server runtimes without Redis, deterministic local broadcast lag,
-  PostgreSQL commit/rollback/concurrency/replay, live Redis remote readiness, remote Axum
-  resolved-value refresh, completely missed-publication polling, database generation-state
-  loss/recovery, generation regression and self-hosted Redis restart/reconnect across existing
-  replicas.
+  combined listener-lag/readiness/Axum-value recovery without replacement publication, PostgreSQL
+  commit/rollback/concurrency/replay, live Redis remote readiness, remote Axum resolved-value
+  refresh, completely missed-publication polling, database generation-state loss/recovery,
+  generation regression and self-hosted Redis restart/reconnect across existing replicas.
 - [x] RBAC permissions use weighted typed identity, bounded striped epochs and database-backed durable
   generation recovery.
 - [x] SEO redirects reconcile from transactionally persisted rows with a bounded `(created_at, id)`
@@ -131,8 +131,8 @@ The detailed active-cache contract is maintained in
   core/cache/channel/Flex-owner/server compilation, regression/architecture tests, Clippy, module
   validation, ephemeral PostgreSQL 17 channel-generation evidence and isolated Redis 7 jobs.
 - [x] Guard the channel workflow path scope, Channel/Flex Clippy commands, PostgreSQL job, full
-  non-ignored resolved-value suite, live Redis readiness/resolved-value commands, self-hosted Redis
-  restart setup and durable recovery sources from accidental removal.
+  non-ignored resolved-value suite, combined lag/value lib test, live Redis readiness/resolved-value
+  commands, self-hosted Redis restart setup and durable recovery sources from accidental removal.
 - [x] Guard Redis, generation, PubSub, refresh and CAS Prometheus alert metric names in
   `tests/alert_rules_guard.rs`.
 - [x] Publish operational alerts for Redis degradation, generation bump failure, PubSub failure,
@@ -152,12 +152,10 @@ The detailed active-cache contract is maintained in
 
 ### P0. Live and failure-recovery evidence
 
-- [ ] Execute the source-complete channel SQLite reader, two-server-runtime, resolved-value,
-  PostgreSQL 17, live Redis and self-hosted Redis restart jobs on the same revision and record their
-  results.
+- [ ] Execute the source-complete channel SQLite reader, two-server-runtime, listener-lag/value,
+  resolved-value, PostgreSQL 17, live Redis and self-hosted Redis restart jobs on the same revision
+  and record their results.
 - [ ] Run ignored `rustok-cache` and `rustok-core` suites against isolated Redis 7.
-- [ ] Add one combined channel assertion that confirms local listener lag, readiness recovery and
-  resolved-value replacement in the same serving-replica scenario.
 - [ ] Prove exact/wildcard tenant-locale recovery, listener lag handling and periodic generation
   reconciliation across multiple replicas.
 - [ ] Prove Flex singleton generation and all four owner triggers on PostgreSQL and SQLite, including
