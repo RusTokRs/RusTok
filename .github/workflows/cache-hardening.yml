@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "crates/rustok-cache/**"
+      - "crates/rustok-channel/src/invalidation_generation.rs"
+      - "crates/rustok-channel/src/lib.rs"
+      - "crates/rustok-channel/src/migrations/**"
       - "crates/rustok-core/src/cache.rs"
       - "crates/rustok-core/src/cache_atomic.rs"
       - "crates/rustok-core/src/cache_tests.rs"
@@ -18,6 +21,7 @@ on:
       - "apps/server/src/middleware/tenant.rs"
       - "apps/server/src/middleware/tenant_tests.rs"
       - "apps/server/src/middleware/channel.rs"
+      - "apps/server/src/middleware/channel_native_wrapper.rs"
       - "apps/server/src/middleware/channel_tests.rs"
       - "apps/server/src/middleware/locale.rs"
       - "apps/server/src/middleware/locale_base.rs"
@@ -26,6 +30,7 @@ on:
       - "apps/server/src/middleware/rate_limit_tests.rs"
       - "apps/server/src/services/app_runtime.rs"
       - "apps/server/src/services/cache_redis_status_monitor.rs"
+      - "apps/server/src/services/channel_cache_invalidation.rs"
       - "apps/server/src/services/event_transport_factory.rs"
       - "apps/server/src/services/field_definition_cache.rs"
       - "apps/server/src/services/graphql_schema.rs"
@@ -38,6 +43,7 @@ on:
       - "apps/server/src/services/runtime_guardrails.rs"
       - "apps/server/src/services/runtime_guardrails_base.rs"
       - "apps/server/src/services/seo_redirect_cache_reconciliation.rs"
+      - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/src/services/server_runtime_context.rs"
       - "apps/server/src/services/tenant_cache_generation.rs"
       - "apps/server/src/services/tenant_cache_generation_status.rs"
@@ -72,6 +78,9 @@ on:
   pull_request:
     paths:
       - "crates/rustok-cache/**"
+      - "crates/rustok-channel/src/invalidation_generation.rs"
+      - "crates/rustok-channel/src/lib.rs"
+      - "crates/rustok-channel/src/migrations/**"
       - "crates/rustok-core/src/cache.rs"
       - "crates/rustok-core/src/cache_atomic.rs"
       - "crates/rustok-core/src/cache_tests.rs"
@@ -85,6 +94,7 @@ on:
       - "apps/server/src/middleware/tenant.rs"
       - "apps/server/src/middleware/tenant_tests.rs"
       - "apps/server/src/middleware/channel.rs"
+      - "apps/server/src/middleware/channel_native_wrapper.rs"
       - "apps/server/src/middleware/channel_tests.rs"
       - "apps/server/src/middleware/locale.rs"
       - "apps/server/src/middleware/locale_base.rs"
@@ -93,6 +103,7 @@ on:
       - "apps/server/src/middleware/rate_limit_tests.rs"
       - "apps/server/src/services/app_runtime.rs"
       - "apps/server/src/services/cache_redis_status_monitor.rs"
+      - "apps/server/src/services/channel_cache_invalidation.rs"
       - "apps/server/src/services/event_transport_factory.rs"
       - "apps/server/src/services/field_definition_cache.rs"
       - "apps/server/src/services/graphql_schema.rs"
@@ -105,6 +116,7 @@ on:
       - "apps/server/src/services/runtime_guardrails.rs"
       - "apps/server/src/services/runtime_guardrails_base.rs"
       - "apps/server/src/services/seo_redirect_cache_reconciliation.rs"
+      - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/src/services/server_runtime_context.rs"
       - "apps/server/src/services/tenant_cache_generation.rs"
       - "apps/server/src/services/tenant_cache_generation_status.rs"
@@ -165,6 +177,7 @@ jobs:
         run: |
           cargo check -p rustok-core --lib --features redis-cache
           cargo check -p rustok-cache --lib
+          cargo check -p rustok-channel --lib
           cargo check -p rustok-server --lib
       - name: Cache unit and architecture tests
         run: |
@@ -177,12 +190,15 @@ jobs:
           cargo test -p rustok-cache --test generation_store_regression
           cargo test -p rustok-cache --test invalidation_failure_metrics
           cargo test -p rustok-cache --test redis_health_regression
+          cargo test -p rustok-channel invalidation_generation --lib
+          cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib
           cargo test -p rustok-server --test cache_architecture_guard --test cache_legacy_fallback_guard --test cache_redis_monitor_architecture_guard --test cache_redis_status_architecture_guard --test cache_worker_guardrail_architecture_guard --test channel_cache_architecture_guard --test field_definition_cache_runtime_guard --test generation_store_architecture_guard --test locale_cache_architecture_guard --test marketplace_cache_architecture_guard --test rate_limit_cache_runtime_guard --test seo_redirect_cache_reconciliation_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard --test tenant_locale_generation_guard
           cargo test -p rustok-server tenant_cache --lib
           cargo test -p rustok-server tenant_cache_generation --lib
           cargo test -p rustok-server tenant_generation_delivery_gate --lib
           cargo test -p rustok-server tenant_locale_generation --lib
           cargo test -p rustok-server channel_cache --lib
+          cargo test -p rustok-server channel_cache_invalidation --lib
           cargo test -p rustok-server rate_limit --lib
           cargo test -p rustok-server tenant_locale_cache --lib
           cargo test -p rustok-server seo_redirect_cache_reconciliation --lib
@@ -192,6 +208,7 @@ jobs:
         run: |
           cargo clippy -p rustok-core --lib --features redis-cache -- -D warnings
           cargo clippy -p rustok-cache --lib -- -D warnings
+          cargo clippy -p rustok-channel --lib -- -D warnings
           cargo clippy -p rustok-server --lib -- -D warnings
       - name: Module contract
         run: |
