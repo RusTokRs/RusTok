@@ -189,6 +189,61 @@ groups:
           summary: "High cache eviction rate"
           description: "Cache {{$labels.cache}} is evicting {{ $value | humanize }} entries/sec"
 
+      # Configured Redis must remain reachable. Memory-only deployments keep this gauge at zero.
+      - alert: CacheRedisDegraded
+        expr: rustok_cache_redis_degraded == 1
+        for: 2m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Configured cache Redis is degraded"
+          description: "Redis is configured but the client is unavailable or failing connectivity checks for more than two minutes."
+
+      # A failed durable generation bump means replicas cannot safely acknowledge a cache epoch.
+      - alert: CacheGenerationBumpFailure
+        expr: increase(rustok_cache_generation_bump_failures_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Cache generation bump failed"
+          description: "At least one shared cache generation bump failed in the last five minutes; inspect the owning mutation and recovery worker before retrying writes."
+
+      # PubSub is a fast path, but repeated failures increase convergence latency and Redis load.
+      - alert: CacheInvalidationPublishFailures
+        expr: increase(rustok_cache_invalidation_redis_publish_failure_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Cache invalidation publication is failing"
+          description: "Redis invalidation publication failed during the last five minutes. Verify durable generation reconciliation and Redis health."
+
+      # Saturation means stale values may remain until a later refresh or hard expiry.
+      - alert: CacheRefreshSaturated
+        expr: increase(rustok_cache_refresh_saturated_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Cache refresh capacity is saturated"
+          description: "Refresh work was rejected by the bounded coordinator during the last five minutes. Inspect in-flight refreshes and loader latency before raising limits."
+
+      # CAS errors are transport/backend failures, not normal optimistic mismatches.
+      - alert: CacheCompareAndSetFailures
+        expr: increase(rustok_cache_cas_failed_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Cache compare-and-set operations are failing"
+          description: "At least one atomic cache compare-and-set operation failed in the last five minutes. Mismatches are expected; failures require backend investigation."
+
   - name: rustok_database_alerts
     interval: 30s
     rules:
