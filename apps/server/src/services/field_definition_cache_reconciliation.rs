@@ -65,7 +65,11 @@ impl FieldDefinitionCacheGenerationReconciliationHandle {
     }
 
     pub fn is_running(&self) -> bool {
-        self.task.is_running() && self.state.healthy.load(Ordering::Acquire)
+        self.task.is_running()
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.is_running() && self.state.healthy.load(Ordering::Acquire)
     }
 
     pub fn applied_generation(&self) -> u64 {
@@ -74,12 +78,27 @@ impl FieldDefinitionCacheGenerationReconciliationHandle {
 
     fn abort(&self) {
         self.task.abort();
+        self.state.healthy.store(false, Ordering::Release);
     }
 }
 
 pub fn start_field_definition_cache_generation_reconciliation(
     ctx: &ServerRuntimeContext,
     cache: FieldDefinitionCache,
+) {
+    start_field_definition_cache_generation_reconciliation_with_timing(
+        ctx,
+        cache,
+        FLEX_FIELD_CACHE_RECONCILE_INTERVAL,
+        FLEX_FIELD_CACHE_RESTART_DELAY,
+    );
+}
+
+fn start_field_definition_cache_generation_reconciliation_with_timing(
+    ctx: &ServerRuntimeContext,
+    cache: FieldDefinitionCache,
+    reconcile_interval: Duration,
+    restart_delay: Duration,
 ) {
     let _ = ctx.shared_insert_if_absent(FieldDefinitionCacheGenerationStartLock::default());
     let start_lock = ctx
@@ -107,7 +126,14 @@ pub fn start_field_definition_cache_generation_reconciliation(
     let db = ctx.db_clone();
     let worker_state = Arc::clone(&state);
     let task = tokio::spawn(async move {
-        supervise_field_definition_cache_generation(db, cache, worker_state).await;
+        supervise_field_definition_cache_generation(
+            db,
+            cache,
+            worker_state,
+            reconcile_interval,
+            restart_delay,
+        )
+        .await;
     });
     ctx.shared_insert(FieldDefinitionCacheGenerationReconciliationHandle::new(
         state, task,
@@ -118,6 +144,8 @@ async fn supervise_field_definition_cache_generation(
     db: DatabaseConnection,
     cache: FieldDefinitionCache,
     state: Arc<FieldDefinitionCacheGenerationState>,
+    reconcile_interval: Duration,
+    restart_delay: Duration,
 ) {
     loop {
         state.healthy.store(false, Ordering::Release);
@@ -125,6 +153,7 @@ async fn supervise_field_definition_cache_generation(
             db.clone(),
             cache.clone(),
             Arc::clone(&state),
+            reconcile_interval,
         ))
         .catch_unwind()
         .await;
@@ -145,7 +174,7 @@ async fn supervise_field_definition_cache_generation(
             "flex_field_definition_cache_generation",
             "worker_restart",
         );
-        tokio::time::sleep(FLEX_FIELD_CACHE_RESTART_DELAY).await;
+        tokio::time::sleep(restart_delay).await;
     }
 }
 
@@ -153,10 +182,15 @@ async fn run_field_definition_cache_generation_once(
     db: DatabaseConnection,
     cache: FieldDefinitionCache,
     state: Arc<FieldDefinitionCacheGenerationState>,
+    reconcile_interval: Duration,
 ) -> Result<(), String> {
-    let mut applied = read_field_definition_cache_generation(&db)
-        .await
-        .map_err(|error| error.to_string())?;
+    let mut applied = match read_field_definition_cache_generation(&db).await {
+        Ok(generation) => generation,
+        Err(error) => {
+            cache.invalidate_all();
+            return Err(error.to_string());
+        }
+    };
 
     // Seed from durable state before trusting any process-local cache contents.
     cache.invalidate_all();
@@ -164,17 +198,19 @@ async fn run_field_definition_cache_generation_once(
     state.healthy.store(true, Ordering::Release);
 
     loop {
-        tokio::time::sleep(FLEX_FIELD_CACHE_RECONCILE_INTERVAL).await;
+        tokio::time::sleep(reconcile_interval).await;
         let current = match read_field_definition_cache_generation(&db).await {
             Ok(current) => current,
             Err(error) => {
                 state.healthy.store(false, Ordering::Release);
+                cache.invalidate_all();
                 return Err(error.to_string());
             }
         };
 
         if current < applied {
             state.healthy.store(false, Ordering::Release);
+            cache.invalidate_all();
             return Err(format!(
                 "field-definition cache generation regressed from {applied} to {current}"
             ));
@@ -219,14 +255,5 @@ async fn read_field_definition_cache_generation(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::FieldDefinitionCacheGenerationState;
-    use std::sync::atomic::Ordering;
-
-    #[test]
-    fn generation_state_starts_fail_closed() {
-        let state = FieldDefinitionCacheGenerationState::default();
-        assert!(!state.healthy.load(Ordering::Acquire));
-        assert_eq!(state.applied_generation.load(Ordering::Acquire), 0);
-    }
-}
+#[path = "field_definition_cache_reconciliation_tests.rs"]
+mod tests;
