@@ -1,8 +1,8 @@
 use crate::{
     analyze_runtime_context_dependencies, extract_runtime_context_contract,
-    validate_binding_definitions, validate_dynamic_definitions, validate_localized_page_routes,
-    validate_project_locale_policy, validate_translation_definitions, ProjectDocument,
-    ValidationDiagnostic, ValidationReport,
+    validate_binding_definitions, validate_dynamic_definitions, validate_internal_page_links,
+    validate_localized_page_routes, validate_project_locale_policy,
+    validate_translation_definitions, ProjectDocument, ValidationDiagnostic, ValidationReport,
 };
 use std::collections::BTreeSet;
 
@@ -11,6 +11,7 @@ pub fn validate_runtime_extensions(document: &ProjectDocument) -> Vec<Validation
     diagnostics.extend(validate_project_locale_policy(document));
     diagnostics.extend(validate_translation_definitions(document));
     diagnostics.extend(validate_localized_page_routes(document));
+    diagnostics.extend(validate_internal_page_links(document));
     diagnostics.extend(validate_binding_definitions(document));
     diagnostics.extend(validate_dynamic_definitions(document));
     diagnostics.extend(analyze_runtime_context_dependencies(document).diagnostics);
@@ -178,6 +179,31 @@ mod tests {
         let diagnostics = validate_runtime_extensions(&document);
         assert!(diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "duplicate_localized_page_slug"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
+    }
+
+    #[test]
+    fn missing_internal_page_link_target_blocks_publish_validation() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "slug": "home" },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "missing-link",
+                        "type": "link",
+                        "flyPageLink": { "page_id": "missing" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let diagnostics = validate_runtime_extensions(&document);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "internal_page_link_target_missing"
                 && diagnostic.severity == crate::ValidationSeverity::Error
         }));
     }
