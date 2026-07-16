@@ -125,9 +125,12 @@ Last reconciled with `main`: 2026-07-16.
 - [x] SEO redirects reconcile from transactionally persisted rows with a bounded `(created_at, id)`
   cursor, indexed paging, seed-before-clear startup and critical worker readiness.
 - [x] Flex field-definition cache is byte-weighted, keeps exact local EventBus invalidation as a fast
-  path, advances one transaction-local singleton generation from user/product/order/topic table
-  triggers, full-clears before recording startup/advance, polls every five seconds and exposes the
-  fail-closed supervised reconciler as a critical readiness dependency.
+  path and advances one transaction-local singleton generation from user/product/order/topic table
+  triggers. Source tests cover all four SQLite owner triggers with reorder, soft delete, rollback,
+  delete and replay; PostgreSQL statement triggers with an independent replica, rollback and two
+  concurrent mutations; and two independent server caches across startup, advancement, database
+  outage/recovery and generation regression. Database error or regression clears cached schemas,
+  readiness remains failed, and the supervisor recovers only after a monotonic durable generation.
 - [x] Rate-limit memory counters are entry-bounded; Redis identities are hashed and fail closed when
   the selected distributed backend is unavailable.
 - [x] Rate-limit maintenance exits when its task owns the final limiter reference, preventing orphan
@@ -142,13 +145,16 @@ The detailed active-cache contract is maintained in
 
 - [x] Maintain one permanent path-scoped `Cache hardening` workflow covering format,
   core/cache/channel/Flex-owner/server compilation, regression/architecture tests, Clippy, module
-  validation, ephemeral PostgreSQL 17 channel-generation evidence and isolated Redis 7 jobs.
+  validation, PostgreSQL 17 channel/Flex generation evidence and isolated Redis 7 jobs.
 - [x] Guard the channel workflow path scope, Channel/Flex Clippy commands, PostgreSQL job, full
   non-ignored resolved-value suite, combined lag/value lib test, live Redis readiness/resolved-value
   commands, self-hosted Redis restart setup and durable recovery sources from accidental removal.
 - [x] Guard tenant-locale path scope, compiled and ignored Redis commands, exact/wildcard value
   evidence, deterministic lag, missed publication, shared-state loss/restoration, critical readiness
   and durable-before-apply ordering from accidental removal.
+- [x] Guard Flex SQLite/PostgreSQL test paths and commands, all four owner mutation classes,
+  two-replica outage/regression recovery, clear-before-ack ordering and critical `is_ready()` wiring
+  from accidental removal.
 - [x] Guard live Redis latency/circuit and two-restart scenarios plus the production
   timeout/open-circuit markers from accidental removal.
 - [x] Guard the full local CAS command and expiry, eviction, contention and invalidation-race test
@@ -178,9 +184,8 @@ The detailed active-cache contract is maintained in
 - [ ] Run ignored `rustok-cache` and `rustok-core` suites against isolated Redis 7.
 - [ ] Execute and record the source-complete exact/wildcard tenant-locale, listener-lag,
   missed-publication, Redis state-loss/restoration and critical-readiness scenarios.
-- [ ] Prove Flex singleton generation and all four owner triggers on PostgreSQL and SQLite, including
-  reorder/soft delete, concurrent mutation, startup seed-before-clear, database outage/recovery,
-  generation regression and critical readiness across multiple replicas.
+- [ ] Execute and record the source-complete Flex SQLite owner matrix, PostgreSQL
+  transaction/concurrency/replay and two-replica startup/outage/regression recovery scenarios.
 - [ ] Prove SEO seed-before-clear startup, exact tenant invalidation, multi-page catch-up, database
   outage recovery and terminal-worker readiness across multiple replicas.
 - [ ] Prove binary-safe CAS applied/mismatch/failure behavior and fail-closed fallback against live
@@ -226,6 +231,7 @@ cargo test -p rustok-cache --lib
 cargo test -p rustok-cache --test alert_rules_guard
 cargo test -p rustok-cache --test atomic_cas
 cargo test -p rustok-cache --test invalidation_failure_metrics
+cargo test -p flex cache_generation --lib
 cargo test -p rustok-channel invalidation_generation --lib
 cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib
 cargo test -p rustok-server channel_cache_invalidation --lib
@@ -247,6 +253,8 @@ cargo test -p rustok-server \
   --test cache_worker_guardrail_architecture_guard
 RUSTOK_CHANNEL_TEST_POSTGRES_URL=postgres://postgres:postgres@127.0.0.1:5432/rustok_channel \
   cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1
+RUSTOK_FLEX_TEST_POSTGRES_URL=postgres://postgres:postgres@127.0.0.1:5432/rustok_channel \
+  cargo test -p flex --test postgres_cache_generation -- --ignored --nocapture --test-threads=1
 cargo clippy -p rustok-core --lib --features redis-cache -- -D warnings
 cargo clippy -p rustok-cache --lib -- -D warnings
 cargo clippy -p flex --lib -- -D warnings
