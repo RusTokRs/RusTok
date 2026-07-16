@@ -66,8 +66,7 @@ fn terminal_event_forwarder_is_critical_in_runtime_guardrails() {
 
     assert!(forwarder < rbac);
     assert!(source.contains("event bus transport forwarder"));
-    assert!(source.contains(
-        "ctx.shared_get::<EventForwarderHandle>()\n            .map(|handle| handle.is_running())"
-    ));
+    assert!(source.contains("ctx.shared_get::<EventForwarderHandle>()"));
+    assert!(source.contains(".map(|handle| handle.is_running())"));
     assert!(source.contains("RuntimeGuardrailStatus::Critical"));
 }
