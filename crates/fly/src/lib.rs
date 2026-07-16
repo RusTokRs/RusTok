@@ -34,6 +34,7 @@ mod runtime_scenario_snapshot;
 mod runtime_validation;
 mod style_rule;
 mod trait_model;
+mod translation;
 mod validation;
 
 pub use asset::*;
@@ -67,6 +68,7 @@ pub use runtime_scenario_snapshot::*;
 pub use runtime_validation::*;
 pub use style_rule::*;
 pub use trait_model::*;
+pub use translation::*;
 pub use validation::*;
 
 impl Copy for ConditionOperator {}
