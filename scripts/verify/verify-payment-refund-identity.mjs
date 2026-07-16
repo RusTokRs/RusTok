@@ -49,6 +49,8 @@ const graphqlPath =
   "crates/rustok-commerce/src/graphql/mutations/provider_operations.rs";
 const graphqlReturnPath =
   "crates/rustok-commerce/src/graphql/mutations/provider_return_helpers.rs";
+const graphqlParityPath =
+  "crates/rustok-commerce/tests/graphql_runtime_parity_test/main.rs";
 const adminReturnPath = "crates/rustok-commerce/src/controllers/admin/returns.rs";
 const schemaSmokePath = "crates/rustok-migrations/tests/ecommerce_schema_smoke.rs";
 const paymentRegistryPath = "crates/rustok-payment/contracts/payment-fba-registry.json";
@@ -63,6 +65,7 @@ const orchestration = read(orchestrationPath);
 const rest = read(restPath);
 const graphql = read(graphqlPath);
 const graphqlReturn = read(graphqlReturnPath);
+const graphqlParity = read(graphqlParityPath);
 const adminReturn = read(adminReturnPath);
 const schemaSmoke = read(schemaSmokePath);
 const paymentRegistry = readJson(paymentRegistryPath);
@@ -130,6 +133,11 @@ requireMarker(
   `${graphqlPath}: GraphQL refund must use explicit idempotent API`,
 );
 requireMarker(
+  graphqlParity,
+  'idempotencyKey: "graphql-refund-{step}"',
+  `${graphqlParityPath}: runtime parity refund helper must pass deterministic idempotencyKey`,
+);
+requireMarker(
   graphqlReturn,
   'format!("order_return:{return_id}:refund")',
   `${graphqlReturnPath}: GraphQL return refund identity drift`,
@@ -189,7 +197,7 @@ const stripeAdapter = paymentRegistry.provider_spi?.adapters?.find(
 );
 if (
   stripeAdapter?.credential_scope !== "tenant" ||
-  stripeAdapter?.status !== "source_implemented_not_registered_compiled_or_executed"
+  stripeAdapter?.status !== "source_registered_not_compiled_or_executed"
 ) {
   failures.push(`${paymentRegistryPath}: Stripe source/evidence status drift`);
 }
@@ -213,6 +221,11 @@ requireMarker(
   plan,
   "verify-payment-refund-identity.mjs",
   `${planPath}: main plan must list refund identity verifier`,
+);
+requireMarker(
+  plan,
+  "- [x] Update the legacy GraphQL runtime parity refund mutation helper to pass",
+  `${planPath}: runtime parity refund identity task must be marked complete`,
 );
 
 if (failures.length > 0) {
