@@ -21,6 +21,8 @@ const paths = {
   ssrDrop: 'crates/rustok-page-builder/admin/src/editor/ssr_drop.rs',
   ssrForms: 'crates/rustok-page-builder/admin/src/editor/ssr_forms.rs',
   ssrInspector: 'crates/rustok-page-builder/admin/src/editor/ssr_inspector.rs',
+  localeEn: 'crates/rustok-page-builder/admin/locales/en.json',
+  localeRu: 'crates/rustok-page-builder/admin/locales/ru.json',
   palette: 'crates/rustok-page-builder/admin/src/editor/palette_layers.rs',
   toolbar: 'crates/rustok-page-builder/admin/src/editor/toolbar.rs',
   pagesCargo: 'crates/rustok-pages/admin/Cargo.toml',
@@ -44,6 +46,15 @@ const forbidMarker = (key, marker, message) => {
 const requireMarkers = (key, markers, label) => {
   for (const marker of markers) requireMarker(key, marker, `${label} is missing ${marker}`);
 };
+const flattenKeys = (value, prefix = '') => Object.entries(value).flatMap(([key, nested]) => {
+  const path = prefix ? `${prefix}.${key}` : key;
+  return nested && typeof nested === 'object' && !Array.isArray(nested)
+    ? flattenKeys(nested, path)
+    : [path];
+}).sort();
+const localeValue = (locale, path) => path
+  .split('.')
+  .reduce((value, segment) => value && typeof value === 'object' ? value[segment] : undefined, locale);
 
 requireMarkers('appsAdmin', [
   'default = ["ssr"]',
@@ -189,7 +200,61 @@ requireMarkers('ssrInspector', [
   'name="context_json"',
   'data-fly-intent-form="patch_component_property"',
   'data-fly-intent-form="patch_page_metadata"',
-], 'classic SSR inspector');
+  'crate::i18n::t',
+  'UiRouteContext',
+  'page_builder.ssrInspector.title',
+  'page_builder.ssrInspector.runtimeContext',
+  'page_builder.ssrInspector.pageLifecycle',
+], 'localized classic SSR inspector');
+for (const forbidden of [
+  '<h2 class="font-semibold">"Classic SSR inspector"</h2>',
+  '<summary class="cursor-pointer text-xs font-semibold">"Runtime preview context"</summary>',
+  'placeholder="SEO title"',
+  '<strong class="text-xs">"Add page"</strong>',
+]) {
+  forbidMarker('ssrInspector', forbidden, `SSR inspector must not hardcode UI copy: ${forbidden}`);
+}
+const en = JSON.parse(source.localeEn);
+const ru = JSON.parse(source.localeRu);
+if (JSON.stringify(flattenKeys(en)) !== JSON.stringify(flattenKeys(ru))) {
+  failures.push('Page Builder en/ru locale key parity failed');
+}
+const requiredInspectorLocaleKeys = [
+  'page_builder.ssrInspector.title',
+  'page_builder.ssrInspector.description',
+  'page_builder.ssrInspector.runtimeContext',
+  'page_builder.ssrInspector.runtimeContextAria',
+  'page_builder.ssrInspector.runtimeContextHelp',
+  'page_builder.ssrInspector.applyRuntimeContext',
+  'page_builder.ssrInspector.canvasComponent',
+  'page_builder.ssrInspector.componentProperty',
+  'page_builder.ssrInspector.fieldKind',
+  'page_builder.ssrInspector.attributeKind',
+  'page_builder.ssrInspector.inlineStyleKind',
+  'page_builder.ssrInspector.propertyNamePlaceholder',
+  'page_builder.ssrInspector.valuePlaceholder',
+  'page_builder.ssrInspector.removeProperty',
+  'page_builder.ssrInspector.applyComponentPatch',
+  'page_builder.ssrInspector.pageMetadata',
+  'page_builder.ssrInspector.savePageMetadata',
+  'page_builder.ssrInspector.pageLifecycle',
+  'page_builder.ssrInspector.addPage',
+  'page_builder.ssrInspector.renamePage',
+  'page_builder.ssrInspector.removePage',
+  'page_builder.ssrInspector.pageIdPlaceholder',
+  'page_builder.ssrInspector.newPageIdPlaceholder',
+  'page_builder.ssrInspector.pageNamePlaceholder',
+  'page_builder.ssrInspector.newPageNamePlaceholder',
+  'page_builder.ssrInspector.pageFallback',
+];
+for (const [localeName, locale] of [['en', en], ['ru', ru]]) {
+  for (const key of requiredInspectorLocaleKeys) {
+    const value = localeValue(locale, key);
+    if (typeof value !== 'string' || value.trim() === '') {
+      failures.push(`Page Builder ${localeName} locale is missing non-empty ${key}`);
+    }
+  }
+}
 for (const marker of ['data-fly-block-id', 'data-fly-component-id']) {
   requireMarker('palette', marker, `SSR control hooks are missing ${marker}`);
 }
