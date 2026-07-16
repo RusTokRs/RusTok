@@ -50,10 +50,27 @@ const manifestPath = "crates/rustok-payment/rustok-module.toml";
 const commerceUiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
 const commerceRequestsPath = "crates/rustok-commerce/storefront/src/core/requests.rs";
 const planPath = "crates/rustok-commerce/docs/implementation-plan.md";
+const paymentPlanRedirectPath = "crates/rustok-payment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [libPath, corePath, transportPath, graphqlPath, nativeServerFunctionsPath, cargoPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
+for (const filePath of [
+  libPath,
+  corePath,
+  transportPath,
+  graphqlPath,
+  nativeServerFunctionsPath,
+  cargoPath,
+  uiPath,
+  i18nPath,
+  manifestPath,
+  commerceUiPath,
+  commerceRequestsPath,
+  planPath,
+  paymentPlanRedirectPath,
+  registryPath,
+  packagePath,
+]) {
   assertExists(filePath, `${filePath}: expected payment storefront FFA file`);
 }
 
@@ -69,6 +86,7 @@ const manifest = readRepo(manifestPath);
 const commerceUi = readRepo(commerceUiPath);
 const commerceRequests = readRepo(commerceRequestsPath);
 const plan = readRepo(planPath);
+const paymentPlanRedirect = readRepo(paymentPlanRedirectPath);
 const registry = readRepo(registryPath);
 const packageJson = readRepo(packagePath);
 
@@ -155,6 +173,10 @@ assertNotContains(commerceRequests, "build_payment_collection_create_request", `
 assertNotContains(commerceRequests, "build_payment_collection_command_request", `${commerceRequestsPath}: commerce core must not expose a payment request builder after owner UI handoff`);
 assertContains(plan, "## Payment workstream", `${planPath}: main ecommerce plan must own the payment workstream`);
 assertContains(plan, "verify-payment-storefront-boundary.mjs", `${planPath}: main ecommerce plan must mention payment storefront boundary guardrail`);
+assertContains(paymentPlanRedirect, "crates/rustok-commerce/docs/implementation-plan.md#payment-workstream", `${paymentPlanRedirectPath}: payment planning must redirect to the main ecommerce workstream`);
+for (const forbiddenMarker of ["- [x]", "- [ ]", "## Immediate execution order", "## Verification and promotion checklist"]) {
+  assertNotContains(paymentPlanRedirect, forbiddenMarker, `${paymentPlanRedirectPath}: payment redirect must not maintain a second roadmap (${forbiddenMarker})`);
+}
 assertContains(registry, "verify-payment-storefront-boundary.mjs", `${registryPath}: central registry must mention payment storefront boundary guardrail`);
 assertContains(packageJson, "verify:payment:storefront-boundary", `${packagePath}: expected payment storefront boundary script`);
 assertContains(packageJson, "npm run verify:payment:storefront-boundary", `${packagePath}: aggregate FFA migration verification must include storefront payment boundary`);
