@@ -5,6 +5,7 @@ fn cache_alerts_reference_metrics_exported_by_the_capability() {
     let generation_and_refresh = include_str!("../src/observability.rs");
     let cas = include_str!("../src/cas_observability.rs");
     let service = include_str!("../src/service.rs");
+    let telemetry = include_str!("../../rustok-telemetry/src/metrics.rs");
 
     for (alert, metric, source) in [
         (
@@ -32,19 +33,36 @@ fn cache_alerts_reference_metrics_exported_by_the_capability() {
             "rustok_cache_cas_failed_total",
             cas,
         ),
+        (
+            "EventConsumerSkippedMessages",
+            "rustok_event_consumer_lagged_total",
+            telemetry,
+        ),
+        (
+            "RepeatedRuntimeWorkerRestarts",
+            "rustok_event_bus_errors_total",
+            telemetry,
+        ),
     ] {
-        assert!(alerts.contains(alert), "missing cache alert {alert}");
+        assert!(alerts.contains(alert), "missing cache/runtime alert {alert}");
         assert!(
             alerts.contains(metric),
             "alert {alert} must query canonical metric {metric}"
         );
         assert!(
             source.contains(metric),
-            "canonical metric {metric} must remain exported by rustok-cache"
+            "canonical metric {metric} must remain exported"
         );
     }
 
     assert!(alerts.contains("increase(rustok_cache_generation_bump_failures_total[5m]) > 0"));
     assert!(alerts.contains("increase(rustok_cache_cas_failed_total[5m]) > 0"));
+    assert!(alerts.contains("increase(rustok_event_consumer_lagged_total[5m]) > 0"));
+    assert!(alerts.contains(
+        "increase(rustok_event_bus_errors_total{error_type=~\".*restart.*\"}[10m]) > 3"
+    ));
     assert!(!alerts.contains("rustok_cache_cas_mismatch_total[5m]) > 0"));
+
+    assert_eq!(alerts.matches("- alert: VerySlowRequestLatency").count(), 1);
+    assert_eq!(alerts.matches("- alert: VerySlowDatabaseQueries").count(), 1);
 }
