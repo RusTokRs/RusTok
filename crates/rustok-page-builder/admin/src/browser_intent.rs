@@ -81,7 +81,8 @@ fn dispatch_named_intent(
             controller.dispatch(intent)?
         }
         "clear_locale_policy" => {
-            controller.dispatch(controller.ssr_clear_locale_policy_intent())?
+            let intent = controller.ssr_clear_locale_policy_intent();
+            controller.dispatch(intent)?
         }
         "upsert_localized_page_metadata" => {
             let request = serde_json::from_value::<SsrLocalizedPageMetadataRequest>(payload.clone())
