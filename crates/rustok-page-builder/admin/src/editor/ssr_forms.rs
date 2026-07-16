@@ -1,8 +1,8 @@
 use crate::AdminCanvasController;
 use fly::{
-    blank_page, BindingCommand, BindingTarget, BindingTransform, ComponentPatch, EditorCommand,
-    PageCommand, PageLocator, PageMetadata, PagePatch, RuntimeBinding, TranslationCommand,
-    TranslationEntry, FLY_PAGE_METADATA_FIELD,
+    blank_page, BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ComponentPatch,
+    EditorCommand, PageCommand, PageLocator, PageMetadata, PagePatch, RuntimeBinding,
+    TranslationCommand, TranslationEntry, FLY_PAGE_METADATA_FIELD,
 };
 use fly_ui::UiIntent;
 use serde::{Deserialize, Serialize};
@@ -331,9 +331,21 @@ impl AdminCanvasController {
         request: SsrTranslationRemoveRequest,
     ) -> Result<UiIntent, String> {
         let translation_id = normalize_translation_id(&request.translation_id)?;
-        Ok(UiIntent::execute(EditorCommand::Translation {
+        let translation_path = format!("translations.{translation_id}");
+        let mut commands = BindingCatalog::from_document(self.editor().document())
+            .bindings
+            .into_iter()
+            .filter(|binding| binding.path == translation_path)
+            .map(|binding| EditorCommand::Binding {
+                command: BindingCommand::Remove {
+                    binding_id: binding.id,
+                },
+            })
+            .collect::<Vec<_>>();
+        commands.push(EditorCommand::Translation {
             command: TranslationCommand::Remove { translation_id },
-        }))
+        });
+        Ok(UiIntent::execute(EditorCommand::batch(commands)))
     }
 }
 
@@ -362,7 +374,7 @@ fn binding_target(
         SsrComponentPropertyKind::Field => BindingTarget::Field { name },
         SsrComponentPropertyKind::Attribute => BindingTarget::Attribute { name },
         SsrComponentPropertyKind::Style => BindingTarget::Style {
-            property: normalize_css_property(&name)?,
+            name: normalize_css_property(&name)?,
         },
     })
 }
@@ -557,7 +569,38 @@ mod tests {
             BindingCatalog::from_document(controller.editor().document()).bindings[0].path,
             "translations.hero-title"
         );
-        controller.undo().expect("undo translation transaction");
+        controller
+            .dispatch(UiIntent::Undo)
+            .expect("undo translation transaction");
+        assert!(TranslationCatalog::from_document(controller.editor().document())
+            .entries
+            .is_empty());
+        assert!(BindingCatalog::from_document(controller.editor().document())
+            .bindings
+            .is_empty());
+    }
+
+    #[test]
+    fn removing_translation_removes_its_bindings_in_one_history_entry() {
+        let mut controller = controller();
+        let upsert = controller
+            .ssr_upsert_translation_intent(SsrTranslationUpsertRequest {
+                translation_id: "hero".to_string(),
+                values_json: json!({ "en": "Hero" }).to_string(),
+                fallback_locale: "en".to_string(),
+                component_id: "hero".to_string(),
+                bind_kind: Some(SsrComponentPropertyKind::Field),
+                bind_name: "content".to_string(),
+            })
+            .expect("upsert");
+        controller.dispatch(upsert).expect("translation transaction");
+        let remove = controller
+            .ssr_remove_translation_intent(SsrTranslationRemoveRequest {
+                translation_id: "hero".to_string(),
+            })
+            .expect("remove");
+        controller.dispatch(remove).expect("remove transaction");
+        assert_eq!(controller.editor().history().undo_len(), 2);
         assert!(TranslationCatalog::from_document(controller.editor().document())
             .entries
             .is_empty());
