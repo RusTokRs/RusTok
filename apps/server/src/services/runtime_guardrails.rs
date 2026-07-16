@@ -1,7 +1,10 @@
 use crate::services::cache_redis_status_monitor::CacheRedisStatusMonitorHandle;
 use crate::services::channel_cache_invalidation::ChannelCacheInvalidationListenerHandle;
 use crate::services::event_bus::EventForwarderHandle;
-use crate::services::field_definition_cache::FieldDefinitionCacheInvalidationHandle;
+use crate::services::field_definition_cache::{
+    FieldDefinitionCacheGenerationReconciliationHandle,
+    FieldDefinitionCacheInvalidationHandle,
+};
 use crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle;
 use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle;
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -60,6 +63,13 @@ pub async fn collect_runtime_guardrail_snapshot(
             RuntimeGuardrailStatus::Critical,
         );
     }
+    observe_worker(
+        &mut snapshot,
+        "Flex field-definition durable cache reconciliation",
+        ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>()
+            .map(|handle| handle.is_running()),
+        RuntimeGuardrailStatus::Critical,
+    );
     observe_worker(
         &mut snapshot,
         "RBAC cache invalidation runtime",
