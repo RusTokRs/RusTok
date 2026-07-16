@@ -1,3 +1,5 @@
+use std::path::Path;
+
 #[test]
 fn return_completion_uses_one_commerce_orchestration_boundary() {
     let rest = include_str!(
@@ -12,7 +14,14 @@ fn return_completion_uses_one_commerce_orchestration_boundary() {
     let orchestration = include_str!(
         "../../../crates/rustok-commerce/src/services/return_completion_orchestration.rs"
     );
+    let legacy_helper = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "../../crates/rustok-commerce/src/graphql/mutations/provider_return_helpers.rs",
+    );
 
+    assert!(
+        !legacy_helper.exists(),
+        "legacy GraphQL provider return helper module must stay removed"
+    );
     assert!(
         rest.contains("ReturnCompletionOrchestrationService::new("),
         "REST return completion must use the commerce orchestration boundary"
