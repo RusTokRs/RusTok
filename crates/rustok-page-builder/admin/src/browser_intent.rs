@@ -37,6 +37,7 @@ pub fn dispatch_browser_intent(
 ) -> Result<BrowserIntentDispatchResult, BrowserIntentDispatchError> {
     let envelope = envelope.normalized()?;
     validate_revision(controller, &envelope)?;
+    apply_selection_hint(controller, &envelope.payload)?;
     let effects = match envelope.intent.as_str() {
         "select" | "focus_requested" => controller.dispatch(UiIntent::Select(
             optional_component_id(&envelope.payload),
@@ -107,7 +108,12 @@ pub fn dispatch_browser_intent(
             })?
         }
         "key_stroke" => {
-            let stroke = serde_json::from_value::<KeyStroke>(envelope.payload.clone())
+            let stroke_value = envelope
+                .payload
+                .get("stroke")
+                .cloned()
+                .unwrap_or_else(|| envelope.payload.clone());
+            let stroke = serde_json::from_value::<KeyStroke>(stroke_value)
                 .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
             dispatch_shortcut(controller, stroke)?
         }
@@ -189,6 +195,22 @@ fn validate_revision(
     Ok(())
 }
 
+fn apply_selection_hint(
+    controller: &mut AdminCanvasController,
+    payload: &Value,
+) -> Result<(), BrowserIntentDispatchError> {
+    let Some(component_id) = payload
+        .get("selected_component_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|component_id| !component_id.is_empty())
+    else {
+        return Ok(());
+    };
+    controller.dispatch(UiIntent::Select(Some(component_id.to_string())))?;
+    Ok(())
+}
+
 fn result(
     controller: &AdminCanvasController,
     effects: Vec<AdminCanvasEffect>,
@@ -224,6 +246,7 @@ fn effect(effect: AdminCanvasEffect) -> BrowserIntentEffect {
 fn optional_component_id(payload: &Value) -> Option<String> {
     payload
         .get("component_id")
+        .or_else(|| payload.get("selected_component_id"))
         .and_then(Value::as_str)
         .map(ToString::to_string)
 }
@@ -249,9 +272,9 @@ pub enum BrowserIntentDispatchError {
     Fly(#[from] fly::FlyError),
     #[error("browser intent payload is invalid: {0}")]
     Payload(String),
-    #[error("browser intent is missing field `{0}`")]
+    #[error("browser intent is missing field `{0}")]
     MissingField(String),
-    #[error("unsupported browser intent `{0}`")]
+    #[error("unsupported browser intent `{0}")]
     Unsupported(String),
     #[error("browser intent `{0}` requires geometry-resolved hit-test state")]
     GeometryRequired(String),
@@ -312,7 +335,10 @@ mod tests {
 
         let inserted = dispatch_browser_intent(
             &mut controller,
-            intent("insert_block", json!({ "block_id": "fly.text" })),
+            intent(
+                "insert_block",
+                json!({ "block_id": "text", "selected_component_id": "hero" }),
+            ),
         )
         .expect("insert");
         assert!(inserted.dirty);
@@ -320,8 +346,35 @@ mod tests {
     }
 
     #[test]
+    fn nested_iframe_key_stroke_payload_is_accepted() {
+        let mut controller = controller();
+        controller
+            .dispatch(UiIntent::Select(Some("hero".to_string())))
+            .unwrap();
+        let result = dispatch_browser_intent(
+            &mut controller,
+            intent(
+                "key_stroke",
+                json!({
+                    "stroke": {
+                        "key": "Delete",
+                        "code": "Delete",
+                        "ctrl": false,
+                        "meta": false,
+                        "shift": false,
+                        "alt": false,
+                        "repeat": false
+                    }
+                }),
+            ),
+        )
+        .expect("delete shortcut");
+        assert!(result.dirty);
+    }
+
+    #[test]
     fn stale_mutation_is_rejected_before_command_dispatch() {
-        let mut request = intent("remove_selected", json!({}));
+        let mut request = intent("remove_selected", json!({ "selected_component_id": "hero" }));
         request.revision = Some("old".to_string());
         let error = dispatch_browser_intent(&mut controller(), request)
             .expect_err("revision conflict");
@@ -329,13 +382,22 @@ mod tests {
     }
 
     #[test]
-    fn save_returns_canonical consumer request_effect() {
+    fn save_returns_canonical_consumer_request_effect() {
         let mut controller = controller();
-        controller
-            .dispatch(UiIntent::Select(Some("hero".to_string())))
-            .unwrap();
-        let result = dispatch_browser_intent(&mut controller, intent("save", json!({})))
-            .expect("save");
-        assert!(matches!(result.effects.first(), Some(BrowserIntentEffect::Request { .. })));
+        dispatch_browser_intent(
+            &mut controller,
+            intent(
+                "insert_block",
+                json!({ "block_id": "text", "selected_component_id": "hero" }),
+            ),
+        )
+        .expect("mutation");
+        let mut save = intent("save", json!({}));
+        save.project_hash = Some(controller.editor().revision().project_hash.hex());
+        let result = dispatch_browser_intent(&mut controller, save).expect("save");
+        assert!(matches!(
+            result.effects.first(),
+            Some(BrowserIntentEffect::Request { .. })
+        ));
     }
 }
