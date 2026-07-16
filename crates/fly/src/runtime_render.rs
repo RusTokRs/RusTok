@@ -15,6 +15,9 @@ pub struct RuntimeRenderResult {
     pub computed_fallbacks: usize,
     pub unresolved_computed: usize,
     pub context_type_mismatches: usize,
+    pub resolved_internal_links: usize,
+    pub fallback_internal_links: usize,
+    pub unresolved_internal_links: usize,
     pub applied_bindings: usize,
     pub fallback_bindings: usize,
     pub unresolved_bindings: usize,
@@ -44,6 +47,9 @@ pub fn render_page_with_runtime_context(
         computed_fallbacks,
         unresolved_computed,
         context_type_mismatches,
+        resolved_internal_links,
+        fallback_internal_links,
+        unresolved_internal_links,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
@@ -60,6 +66,9 @@ pub fn render_page_with_runtime_context(
         computed_fallbacks,
         unresolved_computed,
         context_type_mismatches,
+        resolved_internal_links,
+        fallback_internal_links,
+        unresolved_internal_links,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
@@ -134,6 +143,7 @@ mod tests {
         .expect("runtime render");
         assert_eq!(result.defaults_applied, 1);
         assert_eq!(result.computed_applied, 1);
+        assert_eq!(result.resolved_internal_links, 0);
         assert_eq!(result.applied_bindings, 1);
         assert_eq!(result.repeated_nodes, 2);
         assert!(result.page.html.contains("FEATURED PRODUCTS"));
