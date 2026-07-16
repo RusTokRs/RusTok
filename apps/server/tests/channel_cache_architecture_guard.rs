@@ -173,6 +173,7 @@ fn cache_workflow_retains_channel_compiled_evidence() {
         "cargo check -p rustok-channel --lib",
         "cargo test -p rustok-channel invalidation_generation --lib",
         "cargo test -p rustok-server channel_cache_invalidation --lib",
+        "cargo test -p rustok-server --test channel_cache_resolved_value missed_publication_refreshes_remote_resolved_value_via_durable_poll",
         "cargo clippy -p flex --lib -- -D warnings",
         "cargo clippy -p rustok-channel --lib -- -D warnings",
         "postgres-channel:",
@@ -217,10 +218,13 @@ fn cache_workflow_retains_channel_compiled_evidence() {
 
     let resolved = source("apps/server/tests/channel_cache_resolved_value.rs");
     for required in [
+        "missed_publication_refreshes_remote_resolved_value_via_durable_poll",
         "redis_invalidation_refreshes_remote_resolved_channel_value_before_poll",
         "channel_middleware::resolve",
         "Before invalidation",
         "After invalidation",
+        "No publication occurs.",
+        "tokio::time::timeout(Duration::from_secs(7)",
         "tokio::time::timeout(Duration::from_secs(3)",
         "publish_channel_resolution_invalidation(&ctx_a, tenant.id).await;",
     ] {
