@@ -180,14 +180,16 @@ The ownership boundary is:
 - [x] Inventory every active host/domain cache and classify its payload size, source of truth,
   invalidation scope, negative-result stability and cross-replica consistency requirement in
   [`host-cache-inventory.md`](./host-cache-inventory.md).
-- [ ] Migrate remaining variable-size caches to byte-weighted factories and remaining dynamic
-  identities to canonical bounded keys.
-- [ ] Use typed envelopes and explicit load/negative policy where incompatible payloads or stale
-  schema versions could change behavior.
+- [x] Migrate active variable-size caches to byte-weighted factories and active dynamic identities
+  to bounded typed or hashed keys.
+- [x] Use typed envelopes and explicit load/negative policy for serialized or shared values where
+  payload/schema incompatibility can change behavior; keep process-local Rust-value caches typed
+  in memory and document their TTL/invalidation contract instead of adding a redundant wire envelope.
 - [ ] Add shared/durable generations only where a process-local invalidation miss can serve stale
   correctness-sensitive data on another replica.
-- [ ] Keep each domain-specific recovery action in its owner module plan; do not add a second
-  generic invalidation policy in the host.
+- [x] Keep each domain-specific recovery action in its owner module plan; channel, tenant locale,
+  Flex field definitions and SEO redirects now own their remaining stale-bound or durable-recovery
+  decisions, while the events plan owns the missing inbound persisted-offset consumer contract.
 
 ### P1. Durable recoverable invalidation adoption
 
