@@ -203,7 +203,47 @@ fn validate_identifier(value: &str) -> Result<(), DbErr> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_identifier;
+    use super::*;
+    use sea_orm_migration::sea_orm::{
+        Database, DatabaseConnection, Statement, TransactionTrait, TryGetable,
+    };
+
+    const OWNERS: [(&str, &str); 4] = [
+        ("user_field_definitions", "flex_user_fd_cache_generation"),
+        (
+            "product_field_definitions",
+            "flex_product_fd_cache_generation",
+        ),
+        ("order_field_definitions", "flex_order_fd_cache_generation"),
+        ("topic_field_definitions", "flex_topic_fd_cache_generation"),
+    ];
+
+    async fn read_generation(db: &DatabaseConnection) -> u64 {
+        let row = db
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                format!(
+                    "SELECT generation FROM {FIELD_DEFINITION_CACHE_GENERATION_TABLE} WHERE id = 1"
+                ),
+            ))
+            .await
+            .expect("generation query should succeed")
+            .expect("generation singleton should exist");
+        let generation: i64 = row
+            .try_get("", "generation")
+            .expect("generation should decode");
+        u64::try_from(generation).expect("generation should remain non-negative")
+    }
+
+    async fn create_owner_tables(db: &DatabaseConnection) {
+        for (table, _) in OWNERS {
+            db.execute_unprepared(&format!(
+                "CREATE TABLE {table} (id INTEGER PRIMARY KEY, position INTEGER NOT NULL DEFAULT 0, is_active INTEGER NOT NULL DEFAULT 1)"
+            ))
+            .await
+            .expect("owner table should create");
+        }
+    }
 
     #[test]
     fn generation_trigger_identifiers_are_strictly_bounded_to_sql_names() {
@@ -211,5 +251,81 @@ mod tests {
         assert!(validate_identifier("flex_user_fd_generation").is_ok());
         assert!(validate_identifier("").is_err());
         assert!(validate_identifier("user; DROP TABLE users").is_err());
+    }
+
+    #[tokio::test]
+    async fn sqlite_all_owner_mutations_are_transactional_and_replay_safe() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite Flex fixture should connect");
+        create_owner_tables(&db).await;
+        let manager = SchemaManager::new(&db);
+        create_field_definition_cache_generation_table(&manager)
+            .await
+            .expect("generation table should create");
+        for (table, trigger) in OWNERS {
+            create_field_definition_cache_generation_trigger(&manager, table, trigger)
+                .await
+                .expect("owner trigger should create");
+        }
+        assert_eq!(read_generation(&db).await, 0);
+
+        for (index, (table, _)) in OWNERS.into_iter().enumerate() {
+            db.execute_unprepared(&format!(
+                "INSERT INTO {table} (id, position, is_active) VALUES ({}, 0, 1)",
+                index + 1
+            ))
+            .await
+            .expect("owner insert should commit");
+        }
+        assert_eq!(read_generation(&db).await, 4);
+
+        for (table, _) in OWNERS {
+            db.execute_unprepared(&format!(
+                "UPDATE {table} SET position = position + 1"
+            ))
+            .await
+            .expect("owner reorder should commit");
+        }
+        assert_eq!(read_generation(&db).await, 8);
+
+        for (table, _) in OWNERS {
+            db.execute_unprepared(&format!(
+                "UPDATE {table} SET is_active = 0"
+            ))
+            .await
+            .expect("owner soft delete should commit");
+        }
+        assert_eq!(read_generation(&db).await, 12);
+
+        let transaction = db.begin().await.expect("rollback transaction should begin");
+        transaction
+            .execute_unprepared(
+                "INSERT INTO user_field_definitions (id, position, is_active) VALUES (99, 0, 1)",
+            )
+            .await
+            .expect("rolled-back owner mutation should execute");
+        transaction
+            .rollback()
+            .await
+            .expect("owner mutation should roll back");
+        assert_eq!(read_generation(&db).await, 12);
+
+        for (table, _) in OWNERS {
+            db.execute_unprepared(&format!("DELETE FROM {table}"))
+                .await
+                .expect("owner delete should commit");
+        }
+        assert_eq!(read_generation(&db).await, 16);
+
+        create_field_definition_cache_generation_table(&manager)
+            .await
+            .expect("generation table replay should succeed");
+        for (table, trigger) in OWNERS {
+            create_field_definition_cache_generation_trigger(&manager, table, trigger)
+                .await
+                .expect("owner trigger replay should succeed");
+        }
+        assert_eq!(read_generation(&db).await, 16);
     }
 }
