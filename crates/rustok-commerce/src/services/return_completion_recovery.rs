@@ -155,7 +155,8 @@ impl ReturnCompletionOrchestrationService {
                 ))
             })?;
         validate_completion_shape(&input)?;
-        self.record_retry(command.id, retry_actor_id).await?;
+        self.record_retry(tenant_id, command.id, retry_actor_id)
+            .await?;
 
         self.core_service()
             .complete_return(
@@ -402,6 +403,7 @@ impl ReturnCompletionOrchestrationService {
 
     async fn record_retry(
         &self,
+        tenant_id: Uuid,
         command_id: Uuid,
         retry_actor_id: Uuid,
     ) -> PostOrderOrchestrationResult<()> {
@@ -423,7 +425,7 @@ impl ReturnCompletionOrchestrationService {
                 return_completion_command::Column::UpdatedAt,
                 Expr::current_timestamp().into(),
             )
-            .filter(return_completion_command::Column::TenantId.eq(tenant_id_for_command_placeholder()))
+            .filter(return_completion_command::Column::TenantId.eq(tenant_id))
             .filter(return_completion_command::Column::Id.eq(command_id))
             .exec(&self.db)
             .await
@@ -435,13 +437,6 @@ impl ReturnCompletionOrchestrationService {
         }
         Ok(())
     }
-}
-
-fn tenant_id_for_command_placeholder() -> Uuid {
-    // The command id is globally unique, but keeping tenant filtering in mutation
-    // paths is mandatory. This placeholder is replaced by the caller-scoped tenant
-    // in `record_retry` before source promotion.
-    Uuid::nil()
 }
 
 fn ensure_operator_retry_allowed(
