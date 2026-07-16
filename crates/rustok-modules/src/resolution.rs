@@ -14,7 +14,24 @@ use pubgrub::{
 use semver::{Comparator, Op, Version, VersionReq};
 use serde::{Deserialize, Serialize};
 
-use crate::{ModuleDependencyConstraint, ModuleDependencyLockGraph, ModuleDependencyLockNode};
+use crate::{
+    ArtifactModuleKind, ModuleDependencyConstraint, ModuleDependencyLockGraph,
+    ModuleDependencyLockNode,
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleResolutionScope {
+    Platform,
+    Tenant,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleResolutionProviderKind {
+    Artifact,
+    StaticCore,
+}
 
 /// Candidate released by the owner catalog and eligible for solver evaluation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +42,9 @@ pub struct ModuleResolutionCandidate {
     pub active: bool,
     pub yanked: bool,
     pub revoked: bool,
+    pub scope: ModuleResolutionScope,
+    pub module_kind: ArtifactModuleKind,
+    pub provider_kind: ModuleResolutionProviderKind,
     /// Constraints from the admitted descriptor for this exact release. The
     /// lock node intentionally stores only the selected dependency slugs.
     #[serde(default)]
@@ -48,6 +68,7 @@ pub trait ModuleResolutionProvider: Send + Sync {
 pub struct ModuleResolutionRequest {
     pub graph_revision: u64,
     pub runtime_abi: String,
+    pub scope: ModuleResolutionScope,
     #[serde(default)]
     pub root_dependencies: Vec<ModuleDependencyConstraint>,
 }
@@ -171,8 +192,13 @@ impl ResolutionSnapshot {
             }
             for candidate in provider.candidates(&constraint).await? {
                 let version = candidate_version(&candidate)?;
-                if !candidate_is_eligible(&candidate, &constraint, &request.runtime_abi, &version)?
-                {
+                if !candidate_is_eligible(
+                    &candidate,
+                    &constraint,
+                    request.scope,
+                    &request.runtime_abi,
+                    &version,
+                )? {
                     continue;
                 }
                 validate_candidate(&candidate)?;
@@ -273,6 +299,7 @@ impl DependencyProvider for ResolutionSnapshot {
 fn candidate_is_eligible(
     candidate: &ModuleResolutionCandidate,
     constraint: &ModuleDependencyConstraint,
+    scope: ModuleResolutionScope,
     runtime_abi: &str,
     version: &Version,
 ) -> Result<bool, ModuleResolutionError> {
@@ -283,6 +310,9 @@ fn candidate_is_eligible(
         && candidate.active
         && !candidate.yanked
         && !candidate.revoked
+        && candidate.scope == scope
+        && candidate.module_kind == ArtifactModuleKind::Optional
+        && candidate.provider_kind == ModuleResolutionProviderKind::Artifact
         && candidate.runtime_abi == runtime_abi
         && requirement.matches(version))
 }
@@ -518,6 +548,9 @@ mod tests {
             active: true,
             yanked: false,
             revoked: false,
+            scope: ModuleResolutionScope::Platform,
+            module_kind: ArtifactModuleKind::Optional,
+            provider_kind: ModuleResolutionProviderKind::Artifact,
             dependencies: dependencies
                 .iter()
                 .map(|(slug, version_requirement)| ModuleDependencyConstraint {
@@ -547,6 +580,7 @@ mod tests {
             ModuleResolutionRequest {
                 graph_revision: 9,
                 runtime_abi: "v1".into(),
+                scope: ModuleResolutionScope::Platform,
                 root_dependencies: vec![ModuleDependencyConstraint {
                     slug: "app".into(),
                     version_requirement: "^1".into(),
@@ -570,6 +604,7 @@ mod tests {
             ModuleResolutionRequest {
                 graph_revision: 1,
                 runtime_abi: "v1".into(),
+                scope: ModuleResolutionScope::Platform,
                 root_dependencies: vec![ModuleDependencyConstraint {
                     slug: "missing".into(),
                     version_requirement: "^1".into(),

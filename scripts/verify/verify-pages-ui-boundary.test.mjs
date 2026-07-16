@@ -31,14 +31,49 @@ ${publicTransportPassthrough ? "pub async fn fetch_pages() {}" : ""}
 function adminLibSource({ publicTransportPassthrough = false, legacyApi = false } = {}) {
   return `
 ${legacyApi ? "mod api;" : ""}
+mod builder;
+mod composition;
 mod core;
 mod i18n;
 mod model;
 mod transport;
 mod ui;
 
-pub use ui::leptos::PagesAdmin;
+pub use composition::PagesAdmin;
 ${publicTransportPassthrough ? "pub async fn fetch_pages() {}" : ""}
+`;
+}
+
+function adminBuilderSource() {
+  return `
+pub struct PagesBuilderFacade;
+
+impl PageBuilderAdminFacade for PagesBuilderFacade {}
+
+fn builder_contract() {
+  let _ = PageBuilderCapabilityRequest::Publish;
+  let _ = transport::fetch_page;
+  let _ = transport::update_page;
+  let _ = REVISION_CONFLICT;
+  let _ = canonicalize_builder_project;
+  let _ = copy_frame_component;
+  let _ = synchronize_frame_component;
+  let _ = controller_from_project;
+}
+`;
+}
+
+function adminCompositionSource() {
+  return `
+pub fn PagesAdmin() {
+  let _ = use_route_query_value;
+  let _ = transport::fetch_page;
+  let _ = PagesBuilderFacade;
+  let _ = PageBuilderAdminHostContext;
+  let _ = provide_context;
+  let _ = PageBuilderAdmin;
+  let _ = crate::ui::leptos::PagesAdmin;
+}
 `;
 }
 
@@ -181,6 +216,8 @@ pub async fn fetch_storefront_pages() {}
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-pages-boundary-"));
   writeFixtureFile(root, "crates/rustok-pages/admin/src/lib.rs", adminLibSource(options));
+  writeFixtureFile(root, "crates/rustok-pages/admin/src/builder.rs", adminBuilderSource());
+  writeFixtureFile(root, "crates/rustok-pages/admin/src/composition.rs", adminCompositionSource());
   writeFixtureFile(root, "crates/rustok-pages/admin/src/core.rs", adminCoreSource(options));
   writeFixtureFile(root, "crates/rustok-pages/admin/src/ui/leptos.rs", adminUiSource(options));
   writeFixtureFile(root, "crates/rustok-pages/admin/src/transport/mod.rs", adminTransportSource(options));
@@ -195,7 +232,7 @@ function withFixture(options = {}) {
   if (options.storefrontLegacyApi) writeFixtureFile(root, "crates/rustok-pages/storefront/src/api.rs", storefrontApiSource());
   writeFixtureFile(root, "crates/rustok-pages/docs/implementation-plan.md", "verify-pages-ui-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-pages-ui-boundary.mjs");
-  writeFixtureFile(root, "crates/rustok-pages/admin/Cargo.toml", "[package]\nname = \"rustok-pages-admin-fixture\"\nversion = \"0.1.0\"\n");
+  writeFixtureFile(root, "crates/rustok-pages/admin/Cargo.toml", "[package]\nname = \"rustok-pages-admin-fixture\"\nversion = \"0.1.0\"\n\n[dependencies]\nrustok-page-builder = { path = \"../../rustok-page-builder\" }\nrustok-page-builder-admin = { path = \"../../rustok-page-builder/admin\" }\n");
   writeFixtureFile(root, "crates/rustok-pages/storefront/Cargo.toml", "[package]\nname = \"rustok-pages-storefront-fixture\"\nversion = \"0.1.0\"\n");
   return root;
 }

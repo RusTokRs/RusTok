@@ -19,6 +19,7 @@ server = [
   "dep:rustok-content",
   "dep:rustok-core",
   "dep:rustok-forum",
+  "dep:rustok-media",
   "dep:rustok-outbox",
   "dep:rustok-pages",
   "dep:rustok-product",
@@ -57,6 +58,7 @@ rustok-commerce-foundation = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 rustok-forum = { workspace = true, optional = true }
+rustok-media = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-pages = { workspace = true, optional = true }
 rustok-product = { workspace = true, optional = true }

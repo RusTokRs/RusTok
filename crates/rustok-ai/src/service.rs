@@ -11,11 +11,12 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 use rustok_api::Permission;
+use rustok_api::TenantRbacCatalog;
 
 use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
 use crate::engine::RigAgentDriver;
@@ -64,6 +65,45 @@ fn ensure_agent_provider_capabilities(
         ));
     }
     Ok(())
+}
+
+/// Resolves the persisted authority of an agent principal from deployment-owned
+/// RBAC roles. A descriptor's permission floor must be fully granted by the
+/// selected roles; callers can never submit arbitrary permission strings.
+fn resolve_agent_principal_rbac(
+    tenant_rbac_catalog: &dyn TenantRbacCatalog,
+    tenant_id: Uuid,
+    requested_role_slugs: Vec<String>,
+    descriptor: &crate::AgentDescriptor,
+) -> AiResult<(Vec<String>, Vec<String>)> {
+    let role_slugs = requested_role_slugs
+        .into_iter()
+        .map(|slug| slug.trim().to_string())
+        .collect::<BTreeSet<_>>();
+    if role_slugs.contains("") {
+        return Err(AiError::Validation(
+            "agent role slugs must not be empty".to_string(),
+        ));
+    }
+    let role_slugs = role_slugs.into_iter().collect::<Vec<_>>();
+    tenant_rbac_catalog
+        .validate_assignment(tenant_id, &role_slugs, &[])
+        .map_err(|error| AiError::Validation(error.to_string()))?;
+
+    let selected_roles = role_slugs.iter().collect::<BTreeSet<_>>();
+    let permission_slugs = tenant_rbac_catalog
+        .roles(tenant_id)
+        .into_iter()
+        .filter(|role| selected_roles.contains(&role.slug))
+        .flat_map(|role| role.permission_slugs)
+        .collect::<BTreeSet<_>>();
+    if !descriptor.required_permissions.is_subset(&permission_slugs) {
+        return Err(AiError::Validation(format!(
+            "selected agent roles do not grant every permission required by descriptor `{}`",
+            descriptor.slug
+        )));
+    }
+    Ok((role_slugs, permission_slugs.into_iter().collect()))
 }
 
 /// Canonical aggregate state for a workflow derived from its persisted stage
@@ -144,9 +184,7 @@ fn agent_workflow_execution_context(
         tenant_id: scheduler_operator.tenant_id,
         user_id: workflow_run.initiator_id,
         permissions,
-        // Roles are not a tenant-supplied agent setting. Until the platform
-        // RBAC catalog provides agent role bindings, routing sees no role.
-        role_slugs: Vec::new(),
+        role_slugs: principal.role_slugs.iter().cloned().collect(),
         preferred_locale,
     })
 }
@@ -877,6 +915,7 @@ impl AiManagementService {
     pub async fn create_agent_principal(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
+        tenant_rbac_catalog: &dyn TenantRbacCatalog,
         input: CreateAiAgentPrincipalInput,
     ) -> AiResult<AiAgentPrincipalRecord> {
         validate_slug(&input.slug)?;
@@ -887,17 +926,20 @@ impl AiManagementService {
             .ok_or_else(|| {
                 AiError::Validation("unknown owner-owned agent descriptor".to_string())
             })?;
+        let (role_slugs, permission_slugs) = resolve_agent_principal_rbac(
+            tenant_rbac_catalog,
+            operator.tenant_id,
+            input.role_slugs,
+            descriptor,
+        )?;
         let saved = ai_agent_principals::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(operator.tenant_id),
             slug: Set(input.slug),
             descriptor_owner: Set(input.descriptor_owner),
             descriptor_slug: Set(input.descriptor_slug),
-            // Agent roles are assigned only through the platform-owned tenant
-            // RBAC catalog. Until it is available, persist the owner-required
-            // permission floor and accept no tenant-supplied RBAC vocabulary.
-            role_slugs: Set(json!([])),
-            permission_slugs: Set(json!(descriptor.required_permissions)),
+            role_slugs: Set(json!(role_slugs)),
+            permission_slugs: Set(json!(permission_slugs)),
             is_active: Set(true),
             metadata: Set(normalize_metadata(input.metadata)),
             created_by: Set(Some(operator.user_id)),
@@ -914,6 +956,7 @@ impl AiManagementService {
     pub async fn update_agent_principal(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
+        tenant_rbac_catalog: &dyn TenantRbacCatalog,
         id: Uuid,
         input: UpdateAiAgentPrincipalInput,
     ) -> AiResult<AiAgentPrincipalRecord> {
@@ -930,9 +973,15 @@ impl AiManagementService {
             .ok_or_else(|| {
                 AiError::Validation("agent descriptor is no longer available".to_string())
             })?;
+        let (role_slugs, permission_slugs) = resolve_agent_principal_rbac(
+            tenant_rbac_catalog,
+            operator.tenant_id,
+            input.role_slugs,
+            descriptor,
+        )?;
         let mut active: ai_agent_principals::ActiveModel = existing.into();
-        active.role_slugs = Set(json!([]));
-        active.permission_slugs = Set(json!(descriptor.required_permissions));
+        active.role_slugs = Set(json!(role_slugs));
+        active.permission_slugs = Set(json!(permission_slugs));
         active.metadata = Set(normalize_metadata(input.metadata));
         active.is_active = Set(input.is_active);
         active.updated_by = Set(Some(operator.user_id));
@@ -1746,6 +1795,87 @@ mod agent_workflow_status_tests {
             aggregate_agent_workflow_status(["failed", "cancelled"].into_iter()),
             "failed"
         );
+    }
+}
+
+#[cfg(test)]
+mod agent_principal_rbac_tests {
+    use std::collections::BTreeSet;
+
+    use rustok_api::{TenantRbacCatalog, TenantRbacPermission, TenantRbacRole};
+    use uuid::Uuid;
+
+    use super::resolve_agent_principal_rbac;
+    use crate::{AgentDescriptor, AgentKind};
+
+    struct TestCatalog;
+
+    impl TenantRbacCatalog for TestCatalog {
+        fn roles(&self, _tenant_id: Uuid) -> Vec<TenantRbacRole> {
+            vec![
+                TenantRbacRole {
+                    slug: "catalog-editor".to_string(),
+                    display_name: "Catalog editor".to_string(),
+                    permission_slugs: vec!["product.read".to_string(), "product.write".to_string()],
+                },
+                TenantRbacRole {
+                    slug: "catalog-reader".to_string(),
+                    display_name: "Catalog reader".to_string(),
+                    permission_slugs: vec!["product.read".to_string()],
+                },
+            ]
+        }
+
+        fn permissions(&self, _tenant_id: Uuid) -> Vec<TenantRbacPermission> {
+            Vec::new()
+        }
+    }
+
+    fn descriptor() -> AgentDescriptor {
+        AgentDescriptor {
+            slug: "catalog-enricher".to_string(),
+            display_name: "Catalog enricher".to_string(),
+            owner: "product".to_string(),
+            kind: AgentKind::Product,
+            responsibility: "Enrich catalog data".to_string(),
+            required_permissions: BTreeSet::from(["product.write".to_string()]),
+            allowed_operations: BTreeSet::new(),
+            required_capabilities: Vec::new(),
+            can_orchestrate: false,
+        }
+    }
+
+    #[test]
+    fn derives_permissions_only_from_catalogued_roles_and_enforces_descriptor_floor() {
+        let tenant_id = Uuid::new_v4();
+        let catalog = TestCatalog;
+        assert_eq!(
+            resolve_agent_principal_rbac(
+                &catalog,
+                tenant_id,
+                vec!["catalog-editor".to_string(), "catalog-editor".to_string()],
+                &descriptor(),
+            )
+            .expect("editor role grants descriptor floor"),
+            (
+                vec!["catalog-editor".to_string()],
+                vec!["product.read".to_string(), "product.write".to_string()],
+            )
+        );
+        assert!(resolve_agent_principal_rbac(
+            &catalog,
+            tenant_id,
+            vec!["catalog-reader".to_string()],
+            &descriptor(),
+        )
+        .is_err());
+        assert!(resolve_agent_principal_rbac(
+            &catalog,
+            tenant_id,
+            vec!["unknown".to_string()],
+            &descriptor(),
+        )
+        .is_err());
     }
 }
 

@@ -17,6 +17,8 @@ Current implementation includes:
 - generic agent-principal, owner-contributed agent catalog, and workflow-stage
   contracts; effective permissions are the intersection of the initiating
   subject and agent principal
+- closed agent taxonomy: `product`, `code`, `orchestrator`, and `review`; only
+  owner modules may publish descriptors and workflows in those categories
 - multilingual locale-aware session/run contracts with arbitrary BCP-47-style locale tags
 - direct task-job execution for first-party verticals `alloy_code`, `image_asset`, `product_copy`,
   and `blog_draft`
@@ -36,11 +38,9 @@ Current implementation includes:
 - large operator/admin surfaces for both Leptos and Next.js hosts
 - dedicated AI diagnostics sub-routes for both admin hosts (`/ai/diagnostics`, `/dashboard/ai/diagnostics`)
 
-Rig is the sole inference path, but the AI capability is not yet complete: the active
-registry-integrity repair must prove that public descriptors, compiled integrations, deployment
-targets, and Rig factories cannot drift. Separately, the host boundary is not complete: the
-platform owner must replace existing direct AI construction in `apps/server` with the generic
-module runtime/transport contribution mechanism. Both items are tracked in the module
+Rig is the sole inference path. The host boundary is composed through generic module runtime
+extensions: `apps/server` transfers typed extension values and runs registered durable workers
+without importing AI capability types. Remaining verification work is tracked in the module
 implementation plan.
 
 ## Responsibilities
@@ -96,6 +96,8 @@ implementation plan.
 
 - `ProviderSlug`, `ProviderFeature`, `provider_catalog()`
 - `ProviderTargetId`, `AiProviderTargetCatalog` (`RUSTOK_AI_PROVIDER_TARGETS_JSON` deployment config)
+- `RUSTOK_AI_SECRET_RESOLVERS_JSON` deployment config for named env, mounted-file, Vault,
+  Kubernetes, AWS Secrets Manager, GCP Secret Manager, and Azure Key Vault resolvers
 - `InferenceEngine`, `RigAgentDriver`, `inference_for_slug(...)`
 - `embed(...)`, `rerank(...)`
 - `AiRouter`
@@ -116,3 +118,26 @@ implementation plan.
 - [Module docs](./docs/README.md)
 - Leptos admin UI package: [`./admin/README.md`](./admin/README.md)
 - Platform docs map: [`../../docs/index.md`](../../docs/index.md)
+
+## Deployment secret resolvers
+
+`RUSTOK_AI_SECRET_RESOLVERS_JSON` is process-owned configuration. Each entry has a unique
+`alias`, non-empty `key_prefixes`, and a `kind`: `env`, `mounted_file`, `vault`, `kubernetes`,
+`aws_secrets_manager`, `gcp_secret_manager`, or `azure_key_vault`. Tenant profiles persist only
+the alias/key `SecretRef`; they cannot supply endpoints, namespaces, cloud projects, or identity
+settings. When this variable is absent, the deployment retains the safe legacy `env` resolver
+with the `RUSTOK_AI_` prefix and can optionally enable the mounted-file resolver through
+`RUSTOK_AI_SECRET_MOUNT_ROOT`.
+
+| Kind | Deployment-only fields |
+| --- | --- |
+| `env` | `alias`, `key_prefixes` |
+| `mounted_file` | `alias`, `root`, `key_prefixes` |
+| `vault` | `alias`, `endpoint`, optional `namespace`, `kv_mount`, `key_prefixes`, and either `token_env`/`token_file` or the three Kubernetes auth fields (`kubernetes_role`, `kubernetes_auth_mount`, `kubernetes_token_path`) |
+| `kubernetes` | `alias`, `namespace`, `key_prefixes`; in-cluster identity only |
+| `aws_secrets_manager` | `alias`, `key_prefixes`; default AWS credential chain only |
+| `gcp_secret_manager` | `alias`, `project`, `key_prefixes`; ADC/workload identity only |
+| `azure_key_vault` | `alias`, HTTPS `endpoint`, `key_prefixes`; default Azure credential only |
+
+The process rejects duplicate aliases, blank prefixes, ambiguous Vault auth, invalid endpoint
+shapes, and invalid cloud coordinates before making a resolver available to tenant profiles.

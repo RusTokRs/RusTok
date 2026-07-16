@@ -1,22 +1,18 @@
-use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_api::{Action, Resource};
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind, PLATFORM_FALLBACK_LOCALE};
 use rustok_comments::{
-    CommentListItem as DomainCommentListItem, CommentRecord as DomainCommentRecord,
-    CommentStatus as DomainCommentStatus, CommentsService,
+    in_process_comments_thread_port, CommentListItem as DomainCommentListItem,
+    CommentRecord as DomainCommentRecord, CommentStatus as DomainCommentStatus, CommentsThreadPort,
     CreateCommentInput as DomainCreateCommentInput, ListCommentsFilter as DomainListCommentsFilter,
-    UpdateCommentInput as DomainUpdateCommentInput,
+    SetCommentStatusRequest, UpdateCommentInput as DomainUpdateCommentInput,
 };
-use rustok_core::{prepare_content_payload, SecurityContext};
-use rustok_events::DomainEvent;
+use rustok_core::{prepare_content_payload, SecurityActorKind, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
+use std::sync::Arc;
 
 use crate::dto::{
     CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, ModerateCommentInput,
@@ -30,16 +26,14 @@ const TARGET_TYPE_BLOG_POST: &str = "blog_post";
 
 pub struct CommentService {
     db: DatabaseConnection,
-    comments: CommentsService,
-    event_bus: TransactionalEventBus,
+    comments_thread_port: Arc<dyn CommentsThreadPort>,
 }
 
 impl CommentService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            comments: CommentsService::new(db.clone()),
+            comments_thread_port: in_process_comments_thread_port(db.clone(), event_bus),
             db,
-            event_bus,
         }
     }
 
@@ -67,17 +61,14 @@ impl CommentService {
         )
         .map_err(BlogError::validation)?;
 
-        let txn = self.db.begin().await.map_err(BlogError::from)?;
-        let comment_id = self
-            .comments
-            .create_comment_in_tx(
-                &txn,
-                tenant_id,
-                security.clone(),
+        let record = self
+            .comments_thread_port
+            .create_comment(
+                comments_write_port_context(tenant_id, &security, locale.as_str(), post_id)?,
                 DomainCreateCommentInput {
                     target_type: TARGET_TYPE_BLOG_POST.to_string(),
                     target_id: post_id,
-                    locale: locale.clone(),
+                    locale,
                     body: prepared.body,
                     body_format: prepared.format,
                     parent_comment_id: input.parent_comment_id,
@@ -85,19 +76,7 @@ impl CommentService {
                 },
             )
             .await
-            .map_err(BlogError::from)?;
-
-        self.adjust_post_reply_count_in_tx(&txn, tenant_id, post_id, 1)
-            .await?;
-        self.publish_post_updated_event_in_tx(&txn, tenant_id, security.user_id, post_id)
-            .await?;
-        txn.commit().await.map_err(BlogError::from)?;
-
-        let record = self
-            .comments
-            .get_comment(tenant_id, security, comment_id, &locale, None)
-            .await
-            .map_err(BlogError::from)?;
+            .map_err(comments_port_error_to_blog_error)?;
         Self::map_comment_record(record)
     }
 
@@ -121,16 +100,19 @@ impl CommentService {
         fallback_locale: Option<&str>,
     ) -> BlogResult<CommentResponse> {
         let record = self
-            .comments
+            .comments_thread_port
             .get_comment(
-                tenant_id,
-                SecurityContext::system(),
+                comments_read_port_context(
+                    tenant_id,
+                    &SecurityContext::system(),
+                    locale,
+                    comment_id,
+                )?,
                 comment_id,
-                locale,
-                fallback_locale,
+                fallback_locale.map(str::to_owned),
             )
             .await
-            .map_err(BlogError::from)?;
+            .map_err(comments_port_error_to_blog_error)?;
         Self::map_comment_record(record)
     }
 
@@ -170,10 +152,14 @@ impl CommentService {
         };
 
         let record = self
-            .comments
-            .update_comment(tenant_id, security, comment_id, domain_input)
+            .comments_thread_port
+            .update_comment(
+                comments_write_port_context(tenant_id, &security, locale.as_str(), comment_id)?,
+                comment_id,
+                domain_input,
+            )
             .await
-            .map_err(BlogError::from)?;
+            .map_err(comments_port_error_to_blog_error)?;
         Self::map_comment_record(record)
     }
 
@@ -196,30 +182,38 @@ impl CommentService {
             .unwrap_or(PLATFORM_FALLBACK_LOCALE);
 
         let existing = self
-            .comments
+            .comments_thread_port
             .get_comment(
-                tenant_id,
-                SecurityContext::system(),
+                comments_read_port_context(
+                    tenant_id,
+                    &SecurityContext::system(),
+                    locale,
+                    comment_id,
+                )?,
                 comment_id,
-                locale,
-                fallback_locale,
+                fallback_locale.map(str::to_owned),
             )
             .await
-            .map_err(BlogError::from)?;
+            .map_err(comments_port_error_to_blog_error)?;
         Self::ensure_blog_target(&existing)?;
 
         let record = self
-            .comments
+            .comments_thread_port
             .set_comment_status(
-                tenant_id,
-                SecurityContext::system(),
+                comments_write_port_context(
+                    tenant_id,
+                    &SecurityContext::system(),
+                    locale,
+                    comment_id,
+                )?,
                 comment_id,
-                input.status.into(),
-                locale,
-                fallback_locale,
+                SetCommentStatusRequest {
+                    status: input.status.into(),
+                    fallback_locale: fallback_locale.map(str::to_owned),
+                },
             )
             .await
-            .map_err(BlogError::from)?;
+            .map_err(comments_port_error_to_blog_error)?;
         Self::map_comment_record(record)
     }
 
@@ -231,28 +225,33 @@ impl CommentService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         let existing = self
-            .comments
+            .comments_thread_port
             .get_comment(
-                tenant_id,
-                SecurityContext::system(),
+                comments_read_port_context(
+                    tenant_id,
+                    &SecurityContext::system(),
+                    PLATFORM_FALLBACK_LOCALE,
+                    comment_id,
+                )?,
                 comment_id,
-                PLATFORM_FALLBACK_LOCALE,
                 None,
             )
             .await
-            .map_err(BlogError::from)?;
-        let post_id = Self::ensure_blog_target(&existing)?;
+            .map_err(comments_port_error_to_blog_error)?;
+        Self::ensure_blog_target(&existing)?;
 
-        let txn = self.db.begin().await.map_err(BlogError::from)?;
-        self.comments
-            .delete_comment_in_tx(&txn, tenant_id, security.clone(), comment_id)
+        self.comments_thread_port
+            .delete_comment(
+                comments_write_port_context(
+                    tenant_id,
+                    &security,
+                    PLATFORM_FALLBACK_LOCALE,
+                    comment_id,
+                )?,
+                comment_id,
+            )
             .await
-            .map_err(BlogError::from)?;
-        self.adjust_post_reply_count_in_tx(&txn, tenant_id, post_id, -1)
-            .await?;
-        self.publish_post_updated_event_in_tx(&txn, tenant_id, security.user_id, post_id)
-            .await?;
-        txn.commit().await.map_err(BlogError::from)?;
+            .map_err(comments_port_error_to_blog_error)?;
 
         Ok(())
     }
@@ -285,21 +284,20 @@ impl CommentService {
             .clone()
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
         let (items, total) = self
-            .comments
+            .comments_thread_port
             .list_comments_for_target(
-                tenant_id,
-                security,
-                TARGET_TYPE_BLOG_POST,
+                comments_read_port_context(tenant_id, &security, locale.as_str(), post_id)?,
+                TARGET_TYPE_BLOG_POST.to_string(),
                 post_id,
                 DomainListCommentsFilter {
                     locale: locale.clone(),
                     page: filter.page,
                     per_page: filter.per_page,
                 },
-                fallback_locale,
+                fallback_locale.map(str::to_owned),
             )
             .await
-            .map_err(BlogError::from)?;
+            .map_err(comments_port_error_to_blog_error)?;
 
         Ok((
             items
@@ -328,51 +326,6 @@ impl CommentService {
             return Err(BlogError::comment_not_found(record.id));
         }
         Ok(record.target_id)
-    }
-
-    async fn adjust_post_reply_count_in_tx(
-        &self,
-        txn: &sea_orm::DatabaseTransaction,
-        tenant_id: Uuid,
-        post_id: Uuid,
-        delta: i32,
-    ) -> BlogResult<()> {
-        let post = blog_post::Entity::find_by_id(post_id)
-            .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .one(txn)
-            .await
-            .map_err(BlogError::from)?
-            .ok_or_else(|| BlogError::post_not_found(post_id))?;
-
-        let mut active: blog_post::ActiveModel = post.clone().into();
-        active.comment_count = Set((post.comment_count + delta).max(0));
-        active.updated_at = Set(Utc::now().into());
-        active.version = Set(post.version + 1);
-        active.update(txn).await.map_err(BlogError::from)?;
-
-        Ok(())
-    }
-
-    async fn publish_post_updated_event_in_tx(
-        &self,
-        txn: &sea_orm::DatabaseTransaction,
-        tenant_id: Uuid,
-        actor_user_id: Option<Uuid>,
-        post_id: Uuid,
-    ) -> BlogResult<()> {
-        self.event_bus
-            .publish_in_tx(
-                txn,
-                tenant_id,
-                actor_user_id,
-                DomainEvent::BlogPostUpdated {
-                    post_id,
-                    locale: PLATFORM_FALLBACK_LOCALE.to_string(),
-                },
-            )
-            .await
-            .map_err(BlogError::from)?;
-        Ok(())
     }
 
     fn map_comment_record(record: DomainCommentRecord) -> BlogResult<CommentResponse> {
@@ -426,6 +379,80 @@ fn comment_status_label(status: DomainCommentStatus) -> &'static str {
         DomainCommentStatus::Spam => "spam",
         DomainCommentStatus::Trash => "trash",
     }
+}
+
+fn comments_write_port_context(
+    tenant_id: Uuid,
+    security: &SecurityContext,
+    locale: &str,
+    comment_id: Uuid,
+) -> BlogResult<PortContext> {
+    comments_port_context(tenant_id, security, locale, "update", comment_id, true)
+}
+
+fn comments_read_port_context(
+    tenant_id: Uuid,
+    security: &SecurityContext,
+    locale: &str,
+    comment_id: Uuid,
+) -> BlogResult<PortContext> {
+    comments_port_context(tenant_id, security, locale, "read", comment_id, false)
+}
+
+fn comments_port_context(
+    tenant_id: Uuid,
+    security: &SecurityContext,
+    locale: &str,
+    operation: &str,
+    comment_id: Uuid,
+    is_write: bool,
+) -> BlogResult<PortContext> {
+    let actor = match security.actor_kind {
+        SecurityActorKind::System => PortActor::system(),
+        SecurityActorKind::User => PortActor::user(
+            security
+                .user_id
+                .ok_or(BlogError::AuthorRequired)?
+                .to_string(),
+        ),
+        SecurityActorKind::Service | SecurityActorKind::Public => {
+            return Err(BlogError::forbidden(
+                "comment updates require an authenticated user or system actor",
+            ));
+        }
+    };
+
+    let correlation_id = format!("blog-comment:{operation}:{comment_id}");
+    let mut context =
+        PortContext::new(tenant_id.to_string(), actor, locale, correlation_id.clone())
+            .with_deadline(std::time::Duration::from_secs(2));
+    if is_write {
+        context = context.with_idempotency_key(correlation_id);
+    }
+
+    if security.actor_kind != SecurityActorKind::System {
+        context = context.with_role(security.role.to_string());
+        for permission in security.permissions() {
+            context = context.with_claim(permission.to_string());
+        }
+    }
+
+    Ok(context)
+}
+
+fn comments_port_error_to_blog_error(error: PortError) -> BlogError {
+    let kind = match error.kind {
+        PortErrorKind::Validation => rustok_core::error::ErrorKind::Validation,
+        PortErrorKind::NotFound => rustok_core::error::ErrorKind::NotFound,
+        PortErrorKind::Conflict => rustok_core::error::ErrorKind::Conflict,
+        PortErrorKind::Forbidden => rustok_core::error::ErrorKind::Forbidden,
+        PortErrorKind::Unavailable => rustok_core::error::ErrorKind::ExternalService,
+        PortErrorKind::Timeout => rustok_core::error::ErrorKind::Timeout,
+        PortErrorKind::InvariantViolation => rustok_core::error::ErrorKind::Internal,
+    };
+    BlogError::Rich(Box::new(
+        rustok_core::error::RichError::new(kind, error.message).with_error_code(error.code),
+    ))
 }
 
 #[cfg(test)]

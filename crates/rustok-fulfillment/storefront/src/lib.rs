@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 pub mod core;
 mod i18n;
 mod model;

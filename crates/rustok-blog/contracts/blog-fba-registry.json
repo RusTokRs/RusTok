@@ -15,6 +15,7 @@
         "get_comment",
         "list_comments_for_target",
         "update_comment",
+        "set_comment_status",
         "delete_comment"
       ],
       "required_profiles": [
@@ -41,6 +42,14 @@
     "consumer_runtime_order_smoke": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json",
     "consumer_runtime_order_smoke_runner": "scripts/verify/verify-consumer-fba-runtime-order.mjs"
   },
+  "event_projection": {
+    "provider": "comments",
+    "events": ["comment.created", "comment.deleted"],
+    "handler": "BlogCommentProjectionHandler",
+    "delivery_ledger": "blog_comment_projection_deliveries",
+    "publication": "BlogPostUpdated through rustok_outbox::TransactionalEventBus::publish_in_tx",
+    "status": "implemented_static_only"
+  },
   "contract_tests": {
     "status": "planned_cases_locked",
     "source": "crates/rustok-blog/contracts/blog-fba-registry.json",
@@ -50,6 +59,15 @@
       "remote_adapter_placeholder"
     ],
     "cases": [
+      {
+        "provider": "comments",
+        "operation": "set_comment_status",
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
+      },
       {
         "provider": "comments",
         "operation": "create_comment",

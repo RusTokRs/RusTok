@@ -76,7 +76,9 @@
       "title": "Title",
       "initialMessage": "Initial message",
       "categorySlug": "Category slug",
-      "imageUrlsCsv": "Image URLs (csv)"
+      "imageUrlsCsv": "Image URLs (csv)",
+      "agentDescriptor": "Agent descriptor",
+      "modelOverride": "Model override (optional)"
     },
     "action": {
       "createProvider": "Create provider",
@@ -94,7 +96,9 @@
       "send": "Send",
       "approve": "Approve",
       "reject": "Reject",
-      "generateProductAttributes": "Generate product attributes"
+      "generateProductAttributes": "Generate product attributes",
+      "createAgentPrincipal": "Create agent principal",
+      "createModelAssignment": "Create model assignment"
     },
     "common": {
       "active": "active",
@@ -105,7 +109,8 @@
       "connected": "connected",
       "disconnected": "disconnected",
       "noTextualDelta": "(no textual delta)",
-      "noTextualContent": "(no textual content)"
+      "noTextualContent": "(no textual content)",
+      "mcpTooling": "MCP tooling"
     },
     "diagnostics": {
       "routerResolutions": "Router resolutions",
@@ -152,7 +157,11 @@
       "imageCompleted": "Image job `{title}` completed.",
       "productCompleted": "Product copy job `{title}` completed.",
       "blogCompleted": "Blog draft job `{title}` completed.",
-      "productAttributesCompleted": "Product attributes job `{title}` completed."
+      "productAttributesCompleted": "Product attributes job `{title}` completed.",
+      "agentPrincipalCreated": "Agent principal `{slug}` created.",
+      "agentPrincipalUpdated": "Agent principal `{slug}` updated.",
+      "modelAssignmentCreated": "Model assignment created.",
+      "modelAssignmentUpdated": "Model assignment updated."
     },
     "error": {
       "selectProviderBeforeUpdate": "Select a provider before updating it.",
@@ -215,7 +224,18 @@
       "operations": "Operations",
       "capabilities": "Capabilities",
       "requiredPermissions": "Required permissions",
-      "noModelAssignment": "No configured model assignment"
+      "noModelAssignment": "No configured model assignment",
+      "principalEditor": "Agent principal",
+      "selectDescriptor": "Select an owner descriptor",
+      "assignRoles": "Assigned roles",
+      "updatePrincipal": "Update selected principal",
+      "noPrincipalSelected": "Select a principal above",
+      "assignmentEditor": "Model assignment",
+      "assignmentPrincipal": "Agent principal",
+      "assignmentProvider": "Provider profile",
+      "selectPrincipal": "Select an agent principal",
+      "selectProvider": "Select a provider profile",
+      "updateAssignment": "Update selected model assignment"
     }
   }
 }

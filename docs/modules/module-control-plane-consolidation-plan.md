@@ -621,12 +621,17 @@ rollback without relying on workspace source composition.
   library-specific types as the public API. The owner error returns a canonical
   `DEPENDENCY_CONFLICT` code, stable message, and sorted involved root slugs;
   PubGrub derivation diagnostics remain internal.
-- [ ] Resolve upgrades and rollbacks against a snapshot, then atomically switch
-  the full graph revision; never partially upgrade dependencies.
+- [x] Resolve upgrades and rollbacks against a snapshot, then atomically switch
+  the full graph revision; never partially upgrade dependencies. Every
+  immutable installation stores its complete lock graph and revision; rollback
+  selects the predecessor installation as one durable transaction rather than
+  editing individual dependency selections.
 - [x] Detect cycles and self-dependencies in the durable lock graph. The
   current graph validator also rejects duplicate and missing nodes.
-- [ ] Detect scope violations and attempts to replace Core/static-only
-  providers in the resolution/selection service.
+- [x] Detect scope violations and attempts to replace Core/static-only
+  providers in the resolution/selection service. Candidate scope must match
+  the immutable request snapshot; artifact lock graphs reject Core and
+  static-only providers rather than treating them as replaceable releases.
 
 ### 3.3 Platform Content-Addressed Artifact Store
 
@@ -644,25 +649,31 @@ of an admitted blob.
 - [x] Commit admission metadata, dependency lock, installation/composition
   revision, and the existing transactional-outbox envelope in one database
   transaction; do not introduce a module-specific second event journal.
-- [ ] During admission, stream the selected payload into a platform-controlled
+- [x] During admission, stream the selected payload into a platform-controlled
   CAS, verify digest/size while streaming, then atomically publish the blob and
-  installation record.
+  installation record. OCI preserves its bounded verified temporary file as an
+  explicit payload source; the installer stages it through the durable CAS
+  file path and removes it after admission.
 - [x] Execute from the admitted CAS blob; external OCI is a distribution source,
   not the per-request runtime store.
-- [ ] Bound descriptor/config/layer size before allocation and support streaming
-  reads rather than unbounded `Vec<u8>` downloads. The OCI adapter now rejects
-  oversized config and declared layer sizes before `pull_blob`, then streams
-  received bytes through temporary storage with size and digest checks;
-  replacing the post-verification `Vec<u8>` boundary with a streaming sink
-  remains required.
+- [x] Bound descriptor/config/layer size before allocation and support streaming
+  reads rather than unbounded `Vec<u8>` downloads. The OCI adapter rejects
+  oversized config and declared layer sizes before `pull_blob`, streams bytes
+  through temporary storage with size and digest checks, then stages that file
+  directly into platform CAS without a post-verification payload buffer.
 - [x] Store verification evidence and blob metadata separately from executable
   bytes; do not copy large payloads into PostgreSQL. The admission record now
   persists the signer, policy revisions, required-check outcomes, and redacted
   evidence references alongside the CAS identity.
-- [ ] Define local/node caches keyed by digest with verified reads, atomic fill,
-  corruption detection, and safe eviction.
-- [ ] Define reference counting/retention for active, rollback, quarantined,
-  audit-retained, and unreferenced blobs.
+- [x] Define local/node caches keyed by digest with verified reads, atomic fill,
+  corruption detection, and safe eviction. `VerifiedArtifactNodeCache` fills
+  only from durable CAS, rehashes every hit, discards corrupt entries, and uses
+  bounded LRU eviction; an oversized artifact is never cached.
+- [x] Define reference counting/retention for active, rollback, quarantined,
+  audit-retained, and unreferenced blobs. The reconciler first excludes every
+  currently referenced digest, then evaluates a durable retention snapshot;
+  legal hold, rollback protection, audit retention, or an unexpired deadline
+  deny deletion.
 - [x] Support execution during an external registry outage when the admitted
   blob is present; fail closed with `BlobNotFound` before sandbox execution
   when it is not. `ArtifactRuntime` has no registry client or fallback path.
@@ -685,7 +696,11 @@ of an admitted blob.
 - [x] Store capability grant revision separately from artifact declaration and
   policy revision. The owner supplies it explicitly when constructing the
   installer, and the admission transaction persists it with the installation.
-- [ ] Store migration/application checkpoint and irreversible migration flags.
+- [x] Store migration/application checkpoint and irreversible migration flags.
+  The owner records an object checkpoint through an expected-revision CAS in
+  the scoped installation transaction and emits a revisioned transactional-outbox
+  event without exposing checkpoint contents. An irreversible-migration fact is
+  monotonic and cannot be cleared by a later command.
 - [ ] Add optimistic revision and idempotency key.
 
 ### 3.5 Admission Sequence
@@ -784,9 +799,12 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
 - [x] Rollback selects a previously admitted immutable release; it never edits
   the failed release.
 - [x] Capability grants are re-evaluated for the target release.
-- [ ] Data migrations declare whether rollback is reversible, compensating, or
-  prohibited.
-- [ ] Runtime activation and tenant enablement rollback remain distinct.
+- [x] Data migrations declare whether rollback is reversible, compensating, or
+  prohibited. A recorded irreversible checkpoint accepts only an explicit
+  compensating rollback; prohibited rollback is rejected before state changes.
+- [x] Runtime activation and tenant enablement rollback remain distinct. The
+  artifact rollback command changes only durable selection/admission state;
+  tenant toggles and lifecycle hooks use the separate lifecycle owner path.
 - [x] Every rollback is a new audited operation with actor and reason.
 - [ ] Define disable, deactivate, uninstall, and purge as distinct operations:
   - disable preserves installation and data;
@@ -794,22 +812,32 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   - uninstall removes the scope's selection after dependent checks;
   - purge deletes retained module data only through an explicit destructive,
     authorized, audited operation.
+- [x] Artifact deactivation is an owner-owned, revision-guarded and idempotent
+  binding removal. It requires an active installation, rejects an active direct
+  dependent in the same scope, transitions the admission to `inactive`, and
+  writes its audit/outbox fact atomically without deleting CAS, data, or
+  rollback evidence.
+- [x] Artifact uninstall is an owner-owned, revision-guarded and idempotent
+  scope-selection removal. It requires an inactive installation, rejects an
+  active direct dependent in the same scope, writes audit/outbox atomically,
+  and only releases the CAS reference; it does not purge retained data or
+  evidence.
 - [ ] Uninstall never silently deletes tenant data, logs, evidence, or rollback
   artifacts.
-- [ ] Garbage collection runs only after reference, retention, legal-hold,
+- [x] Garbage collection runs only after reference, retention, legal-hold,
   rollback, and audit checks.
 
-#### Next Atomic Work Package: Owner-Owned Artifact Uninstall
+#### Implemented Atomic Work Package: Owner-Owned Artifact Uninstall
 
-`apps/server` currently has a static-manifest uninstall flow only. It is not
-an artifact uninstall path and must not be reused for marketplace artifacts.
-The owner command will require an inactive selection, a scope-bound expected
-revision, actor/reason/idempotency metadata, and an absence of active direct
-dependents. Its one transaction records the uninstall audit fact, removes the
-installation's CAS reference, and emits an outbox event. It does not delete
-CAS bytes, tenant data, evidence, logs, or rollback history; the existing
-reconciler may reclaim an unreferenced blob only after retention and legal-hold
-policy permits it. Purge remains a separate destructive command.
+`apps/server` still has a static-manifest uninstall flow only; it is not an
+artifact uninstall path and must not be reused for marketplace artifacts. The
+owner command requires an inactive selection, a scope-bound expected revision,
+actor/reason/idempotency metadata, and an absence of active direct dependents.
+Its transaction records the uninstall audit fact, removes the installation's
+CAS reference, and emits an outbox event. It does not delete CAS bytes, tenant
+data, evidence, logs, or rollback history; the reconciler may reclaim an
+unreferenced blob only after retention and legal-hold policy permits it. Purge
+remains a separate destructive command.
 
 ### Verification Gate
 

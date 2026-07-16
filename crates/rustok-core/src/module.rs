@@ -77,6 +77,19 @@ impl ModuleRuntimeExtensions {
         self.get_mut::<T>()
             .expect("runtime extension should be uniquely owned during registration")
     }
+
+    /// Transfers all module-published typed values into a neutral host runtime
+    /// context. The host does not inspect individual capability types.
+    pub fn apply_to_host_runtime(
+        &self,
+        host: rustok_api::HostRuntimeContext,
+    ) -> rustok_api::HostRuntimeContext {
+        host.with_extension_values(
+            self.entries
+                .iter()
+                .map(|(type_id, value)| (*type_id, value.clone())),
+        )
+    }
 }
 
 pub struct ModuleEventListenerContext<'a> {

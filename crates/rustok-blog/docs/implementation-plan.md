@@ -16,6 +16,15 @@ remain parallel transports; the owner packages have core/transport/UI splits.
 - The comments consumer contract is `CommentsThreadPort` /
   `comments.thread.v1`. Its declared degraded behavior remains source-locked,
   not live-runtime proven.
+- All Blog comment lifecycle operations invoke `CommentsThreadPort` with
+  authenticated actor claims, locale, deadline, idempotency where required,
+  and typed port-error mapping.
+  Blog has no direct `CommentsService` calls.
+- `BlogCommentProjectionHandler` consumes `comment.created` and
+  `comment.deleted`, records a durable event-id delivery ledger, updates the
+  Blog-owned reply count, and publishes `BlogPostUpdated` in one transaction.
+  The replacement is governed by
+  `DECISIONS/2026-07-16-comments-blog-event-projection.md`.
 - Evidence: `crates/rustok-blog/contracts/blog-fba-registry.json`,
   `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`,
   `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`,
@@ -35,10 +44,11 @@ remain parallel transports; the owner packages have core/transport/UI splits.
    unpublished, archived, and deleted post event maps to the intended
    `rustok-index` document lifecycle without moving index logic into blog. Done
    when an event-to-index integration test and recovery behavior are recorded.
-3. **Execute owner-boundary evidence end to end.** Run the comments consumer
-   contract against an available runtime and complete the next admin/storefront
-   host parity slice, preserving native `#[server]` plus GraphQL paths. Done
-   when comments fallback/error mapping and equivalent authenticated/public UI
+3. **Execute owner-boundary and event-projection evidence end to end.** Run the
+   comments consumer and Blog projection against an available runtime, including
+   duplicate delivery, missing-post behavior, outbox publication, retry, and the
+   next admin/storefront host parity slice. Preserve native `#[server]` plus
+   GraphQL paths. Done when comments fallback/error mapping and equivalent authenticated/public UI
    outcomes are observed outside source-only checks.
 
 ## Verification

@@ -31,7 +31,7 @@
     "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs"
   },
   "in_process_provider_impl": {
-    "service": "RbacModule",
+    "service": "RbacPermissionDecisionProvider",
     "source": "crates/rustok-rbac/src/ports.rs",
     "status": "implemented"
   },
@@ -44,7 +44,7 @@
       {
         "operation": "check_permissions",
         "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "claims_scope_preserved"]
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_user_scope_preserved"]
       }
     ],
     "fallback_smoke": {

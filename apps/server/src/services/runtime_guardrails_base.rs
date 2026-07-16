@@ -113,7 +113,7 @@ pub async fn collect_runtime_guardrail_snapshot(
     ctx: &ServerRuntimeContext,
 ) -> RuntimeGuardrailSnapshot {
     let settings = ctx.settings();
-    let policy = runtime_guardrail_policy_from_settings(&settings);
+    let policy = runtime_guardrail_policy_from_settings(settings);
     let mut reasons = Vec::new();
     let mut observed_status = RuntimeGuardrailStatus::Ok;
 
@@ -240,7 +240,7 @@ pub async fn collect_runtime_guardrail_snapshot(
             channel_capacity: 0,
         });
 
-    let remote_executor = collect_remote_executor_snapshot(ctx, &settings).await;
+    let remote_executor = collect_remote_executor_snapshot(ctx, settings).await;
     if remote_executor.state == RuntimeGuardrailStatus::Degraded {
         escalate(
             &mut observed_status,

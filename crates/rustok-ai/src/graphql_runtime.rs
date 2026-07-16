@@ -11,12 +11,17 @@ pub const AI_GRAPHQL_CONTRIBUTION: rustok_api::graphql::GraphqlContributionDescr
 #[derive(Clone)]
 pub struct AiGraphqlRuntimeData {
     runtime: crate::AiHostRuntime,
+    tenant_rbac_catalog: Option<rustok_api::SharedTenantRbacCatalog>,
 }
 
 #[cfg(feature = "server")]
 impl AiGraphqlRuntimeData {
     pub fn runtime(&self) -> &crate::AiHostRuntime {
         &self.runtime
+    }
+
+    pub fn tenant_rbac_catalog(&self) -> Option<&rustok_api::SharedTenantRbacCatalog> {
+        self.tenant_rbac_catalog.as_ref()
     }
 }
 
@@ -26,5 +31,10 @@ pub fn attach_schema_data(
     inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
 ) -> Result<AiGraphqlRuntimeData, String> {
     let runtime = crate::ai_host_runtime_from_context(inputs.host())?;
-    Ok(AiGraphqlRuntimeData { runtime })
+    Ok(AiGraphqlRuntimeData {
+        runtime,
+        tenant_rbac_catalog: inputs
+            .host()
+            .shared_get::<rustok_api::SharedTenantRbacCatalog>(),
+    })
 }

@@ -81,11 +81,37 @@ for (const smokeCase of runtimeSmoke.fallback_smoke.cases ?? []) {
   hasAll(service, smokeCase.source_markers ?? [], `runtime service smoke ${smokeCase.operation}`);
   hasAll(errorMapping, smokeCase.typed_error_markers ?? [], `runtime error smoke ${smokeCase.operation}`);
 }
+hasAll(service, ['in_process_comments_thread_port', 'CommentsThreadPort', 'comments_read_port_context', 'comments_write_port_context', 'comments_port_error_to_blog_error'], 'comments port consumer boundary');
+if (/\.comments\s*\.get_comment\s*\(/.test(service)) {
+  fail('blog comment reads must not bypass CommentsThreadPort through CommentsService');
+}
+if (/\.comments\s*\.list_comments_for_target\s*\(/.test(service)) {
+  fail('blog comment lists must not bypass CommentsThreadPort through CommentsService');
+}
+if (/\.comments\s*\.update_comment\s*\(/.test(service)) {
+  fail('blog comment update must not bypass CommentsThreadPort through CommentsService');
+}
+const directCommentsCalls = [...service.matchAll(/\.comments\s*\.\s*([a-z_]+)\s*\(/g)]
+  .map((match) => match[1])
+  .sort();
+if (directCommentsCalls.length !== 0) {
+  fail(`blog must not bypass CommentsThreadPort through CommentsService, got ${directCommentsCalls.join('|')}`);
+}
+hasAll(service, ['comments_thread_port', '.create_comment(', '.delete_comment('], 'comments port lifecycle migration');
+const projection = registry.event_projection;
+if (!projection || projection.provider !== 'comments' || projection.handler !== 'BlogCommentProjectionHandler' || projection.delivery_ledger !== 'blog_comment_projection_deliveries' || projection.status !== 'implemented_static_only') fail('event projection registry drift');
+sameSet(projection.events, ['comment.created', 'comment.deleted'], 'event projection event types');
+const projectionSource = read('crates/rustok-blog/src/services/comment_projection.rs');
+hasAll(projectionSource, ['impl EventHandler for BlogCommentProjectionHandler', 'DomainEvent::CommentCreated', 'DomainEvent::CommentDeleted', 'blog_comment_projection_delivery::Entity::find_by_id', 'DomainEvent::BlogPostUpdated', '.publish_in_tx('], 'blog comment projection');
+const migration = read('crates/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs');
+hasAll(migration, ['BlogCommentProjectionDeliveries', 'EventId', 'TenantId', 'PostId'], 'blog comment projection migration');
+const moduleSource = read('crates/rustok-blog/src/lib.rs');
+hasAll(moduleSource, ['fn register_event_listeners(', 'BlogCommentProjectionHandler::new(ctx.db.clone())'], 'blog event-listener registration');
 
 const plan = read('crates/rustok-blog/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `boundary_ready`', 'blog-fba-registry.json', 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `blog` |', 'crates/rustok-blog/contracts/blog-fba-registry.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, '`in_progress` | `in_progress`'], 'central registry');
+hasAll(central, ['| `blog` |', 'crates/rustok-blog/contracts/blog-fba-registry.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, '`in_progress` | `boundary_ready`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`blog`', 'CommentsThreadPort', 'blog-fba-registry.json'], 'unified plan');
 

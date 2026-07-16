@@ -230,6 +230,23 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   if (cartPromotionMutationSource.includes('CartService::new(')) {
     fail('GraphQL cart promotion adapter must not construct CartService outside CartPromotionPort');
   }
+  for (const [functionName, operation, request] of [
+    ['update_admin_pricing_variant_price', 'upsert_variant_price', 'UpsertVariantPriceRequest'],
+    ['apply_admin_pricing_variant_discount', 'apply_variant_discount', 'ApplyVariantDiscountRequest'],
+    ['update_admin_pricing_price_list_rule', 'set_price_list_percentage_rule', 'SetPriceListPercentageRuleRequest'],
+    ['update_admin_pricing_price_list_scope', 'set_price_list_scope', 'SetPriceListScopeRequest'],
+  ]) {
+    const body = functionBody(cartPromotionMutationSource, functionName);
+    if (!body) fail(`GraphQL pricing mutation implementation body missing: ${functionName}`);
+    for (const marker of ['in_process_pricing_write_port(', `.${operation}(`, request, 'pricing_write_port_context(']) {
+      if (!body.includes(marker)) {
+        fail(`GraphQL pricing mutation ${functionName} missing PricingWritePort marker: ${marker}`);
+      }
+    }
+    if (body.includes('PricingService::new(')) {
+      fail(`GraphQL pricing mutation ${functionName} must not construct PricingService outside PricingWritePort`);
+    }
+  }
   for (const marker of [
     'in_process_cart_promotion_port(',
     '.read_cart_promotion_preview(',

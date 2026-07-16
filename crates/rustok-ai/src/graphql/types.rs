@@ -14,7 +14,7 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
 pub enum AiAgentKindGql {
-    Domain,
+    Product,
     Code,
     Orchestrator,
     Review,
@@ -23,7 +23,7 @@ pub enum AiAgentKindGql {
 impl From<AgentKind> for AiAgentKindGql {
     fn from(value: AgentKind) -> Self {
         match value {
-            AgentKind::Domain => Self::Domain,
+            AgentKind::Product => Self::Product,
             AgentKind::Code => Self::Code,
             AgentKind::Orchestrator => Self::Orchestrator,
             AgentKind::Review => Self::Review,
@@ -71,6 +71,19 @@ pub struct AiAgentWorkflowStageGql {
     pub agent_slug: String,
     pub depends_on: Vec<String>,
     pub requires_approval: bool,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiTenantRbacRoleGql {
+    pub slug: String,
+    pub display_name: String,
+    pub permission_slugs: Vec<String>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiTenantRbacPermissionGql {
+    pub slug: String,
+    pub display_name: String,
 }
 
 #[derive(Debug, Clone, SimpleObject)]
@@ -1094,6 +1107,7 @@ pub struct CreateAiAgentPrincipalInputGql {
     pub slug: String,
     pub descriptor_owner: String,
     pub descriptor_slug: String,
+    pub role_slugs: Vec<String>,
     pub metadata: Option<String>,
 }
 
@@ -1108,6 +1122,7 @@ pub struct CreateAiAgentModelAssignmentInputGql {
 
 #[derive(Debug, Clone, InputObject)]
 pub struct UpdateAiAgentPrincipalInputGql {
+    pub role_slugs: Vec<String>,
     pub metadata: Option<String>,
     pub is_active: bool,
 }

@@ -549,14 +549,19 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+struct MarketplaceProjectionLocales<'a> {
+    preferred: Option<&'a str>,
+    fallback: Option<&'a str>,
+}
+
 async fn load_marketplace_catalog(
     db: &DatabaseConnection,
     runtime_ctx: &ServerRuntimeContext,
     manifest: &crate::modules::ModulesManifest,
     registry: &ModuleRegistry,
     query: &MarketplaceCatalogQuery,
-    preferred_locale: Option<&str>,
-    fallback_locale: Option<&str>,
+    locales: MarketplaceProjectionLocales<'_>,
 ) -> Result<Vec<crate::modules::CatalogManifestModule>> {
     let modules = marketplace_catalog_from_context(runtime_ctx)
         .list_modules(manifest, registry, query)
@@ -564,7 +569,7 @@ async fn load_marketplace_catalog(
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
     RegistryGovernanceService::new(db.clone())
-        .apply_catalog_projection(modules, preferred_locale, fallback_locale)
+        .apply_catalog_projection(modules, locales.preferred, locales.fallback)
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
 }
@@ -576,8 +581,7 @@ async fn load_marketplace_module(
     registry: &ModuleRegistry,
     query: &MarketplaceCatalogQuery,
     slug: &str,
-    preferred_locale: Option<&str>,
-    fallback_locale: Option<&str>,
+    locales: MarketplaceProjectionLocales<'_>,
 ) -> Result<Option<crate::modules::CatalogManifestModule>> {
     let module = marketplace_catalog_from_context(runtime_ctx)
         .get_module(manifest, registry, query, slug)
@@ -588,7 +592,7 @@ async fn load_marketplace_module(
     };
 
     let mut projected = RegistryGovernanceService::new(db.clone())
-        .apply_catalog_projection(vec![module], preferred_locale, fallback_locale)
+        .apply_catalog_projection(vec![module], locales.preferred, locales.fallback)
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
     Ok(projected.pop())
@@ -665,8 +669,10 @@ impl RootQuery {
                 &manifest,
                 registry,
                 &query,
-                Some(request_context.locale.as_str()),
-                Some(tenant.default_locale.as_str()),
+                MarketplaceProjectionLocales {
+                    preferred: Some(request_context.locale.as_str()),
+                    fallback: Some(tenant.default_locale.as_str()),
+                },
             )
             .await?
             .into_iter()
@@ -868,8 +874,10 @@ impl RootQuery {
                 &manifest,
                 registry,
                 &query,
-                Some(request_context.locale.as_str()),
-                Some(tenant.default_locale.as_str()),
+                MarketplaceProjectionLocales {
+                    preferred: Some(request_context.locale.as_str()),
+                    fallback: Some(tenant.default_locale.as_str()),
+                },
             )
             .await?,
             registry,
@@ -942,8 +950,10 @@ impl RootQuery {
             registry,
             &query,
             &slug,
-            Some(request_context.locale.as_str()),
-            Some(tenant.default_locale.as_str()),
+            MarketplaceProjectionLocales {
+                preferred: Some(request_context.locale.as_str()),
+                fallback: Some(tenant.default_locale.as_str()),
+            },
         )
         .await?;
         let Some(entry) = module else {

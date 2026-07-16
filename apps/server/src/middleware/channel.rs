@@ -112,7 +112,7 @@ struct ChannelCacheKey {
 
 #[derive(Clone)]
 enum CachedChannelResolution {
-    Found(ChannelContext),
+    Found(Box<ChannelContext>),
     Missing,
 }
 
@@ -125,7 +125,7 @@ impl CachedChannelResolution {
                     .iter()
                     .find(|target| target.is_primary)
                     .or_else(|| detail.targets.first());
-                Self::Found(ChannelContext {
+                Self::Found(Box::new(ChannelContext {
                     id: detail.channel.id,
                     tenant_id: detail.channel.tenant_id,
                     slug: detail.channel.slug,
@@ -137,7 +137,7 @@ impl CachedChannelResolution {
                     settings: detail.channel.settings,
                     resolution_source: source,
                     resolution_trace: trace,
-                })
+                }))
             })
             .unwrap_or(Self::Missing)
     }
@@ -302,7 +302,7 @@ pub async fn resolve(
 
     if let CachedChannelResolution::Found(context) = cached {
         req.extensions_mut()
-            .insert(ChannelContextExtension(context));
+            .insert(ChannelContextExtension(*context));
     }
 
     Ok(next.run(req).await)

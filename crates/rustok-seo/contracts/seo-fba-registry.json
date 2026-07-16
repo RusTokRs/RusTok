@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "seo",
   "role": "consumer",
-  "status": "boundary_ready",
+  "status": "in_progress",
   "consumer_profile": "seo_image_descriptor",
   "provider_dependencies": [
     {
@@ -30,6 +30,11 @@
       "error": "rustok_api::ports::PortError"
     }
   ],
+  "implementation_gap": {
+    "status": "product_consumer_composed_other_target_providers_pending",
+    "remaining_work": "Additional owner SEO target providers must populate SeoTargetImageRecord.media_asset_id where they own a media reference; live provider and degraded transport execution are still required.",
+    "evidence": "SEO composes MediaAssetReadPort through SeoMediaAssetReadProvider, and Product forwards ProductImageResponse.media_id. URL-only records retain their owner-provided descriptor when the provider is unavailable or absent."
+  },
   "evidence": {
     "local_plan": "crates/rustok-seo/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",

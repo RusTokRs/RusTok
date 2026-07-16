@@ -8,8 +8,8 @@ use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use crate::{
-    ArtifactAdmissionLimits, ArtifactRegistry, ModuleArtifactPackage, ModuleInstallationError,
-    OciArtifactReference,
+    ArtifactAdmissionLimits, ArtifactPayloadSource, ArtifactRegistry, ModuleArtifactPackage,
+    ModuleInstallationError, OciArtifactReference,
 };
 
 /// Resolves a module artifact from an OCI Distribution registry.
@@ -100,9 +100,9 @@ impl ArtifactRegistry for OciDistributionArtifactRegistry {
             reference: reference.clone(),
             media_type: layer.media_type.clone(),
             descriptor,
-            payload,
+            payload: ArtifactPayloadSource::TemporaryFile(payload),
         };
-        package.verify(limits)?;
+        package.verify(limits).await?;
         Ok(package)
     }
 }
@@ -117,7 +117,7 @@ impl OciDistributionArtifactRegistry {
         layer: &oci_distribution::manifest::OciDescriptor,
         expected_digest: &str,
         limits: ArtifactAdmissionLimits,
-    ) -> Result<Vec<u8>, ModuleInstallationError> {
+    ) -> Result<std::path::PathBuf, ModuleInstallationError> {
         let path = std::env::temp_dir().join(format!("rustok-artifact-stage-{}", Uuid::new_v4()));
         let result = async {
             let mut file = tokio::fs::OpenOptions::new()
@@ -160,12 +160,12 @@ impl OciDistributionArtifactRegistry {
                     actual: actual_digest,
                 });
             }
-            tokio::fs::read(&path)
-                .await
-                .map_err(|error| ModuleInstallationError::Registry(error.to_string()))
+            Ok(path.clone())
         }
         .await;
-        let _ = tokio::fs::remove_file(&path).await;
+        if result.is_err() {
+            let _ = tokio::fs::remove_file(&path).await;
+        }
         result
     }
 }

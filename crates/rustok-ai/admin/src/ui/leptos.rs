@@ -29,7 +29,10 @@ use wasm_bindgen::{closure::Closure, JsCast};
 #[cfg(target_arch = "wasm32")]
 use web_sys::{CloseEvent, ErrorEvent, Event, MessageEvent, WebSocket};
 
-use super::components::agent_panel::AiAgentPanel;
+use super::components::agent_panel::{
+    AiAgentModelAssignmentCreateForm, AiAgentModelAssignmentUpdateForm, AiAgentPanel,
+    AiAgentPrincipalCreateForm, AiAgentPrincipalUpdateForm,
+};
 use super::components::chat_session_panel::AiChatSessionPanel;
 use super::components::diagnostics_panel::AiDiagnosticsPanel;
 use super::components::jobs_panel::AiJobsPanel;
@@ -114,6 +117,18 @@ pub fn AiAdmin() -> impl IntoView {
     let task_preferred_providers = RwSignal::new(String::new());
     let task_execution_mode = RwSignal::new("auto".to_string());
     let task_active = RwSignal::new(true);
+
+    let principal_slug = RwSignal::new(String::new());
+    let selected_agent_descriptor = RwSignal::new(String::new());
+    let selected_agent_principal = RwSignal::new(String::new());
+    let selected_agent_roles = RwSignal::new(Vec::<String>::new());
+    let agent_principal_active = RwSignal::new(true);
+    let assignment_principal_id = RwSignal::new(String::new());
+    let assignment_provider_profile_id = RwSignal::new(String::new());
+    let assignment_model_override = RwSignal::new(String::new());
+    let assignment_execution_mode = RwSignal::new("auto".to_string());
+    let assignment_active = RwSignal::new(true);
+    let selected_assignment_id = RwSignal::new(String::new());
 
     let session_title = RwSignal::new(String::new());
     let session_message = RwSignal::new(String::new());
@@ -243,6 +258,26 @@ pub fn AiAdmin() -> impl IntoView {
         ui_locale.as_deref(),
         "ai.feedback.taskProfileUpdated",
         "Task profile `{slug}` updated.",
+    );
+    let agent_principal_created_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.agentPrincipalCreated",
+        "Agent principal `{slug}` created.",
+    );
+    let agent_principal_updated_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.agentPrincipalUpdated",
+        "Agent principal `{slug}` updated.",
+    );
+    let model_assignment_created_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.modelAssignmentCreated",
+        "Model assignment created.",
+    );
+    let model_assignment_updated_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.modelAssignmentUpdated",
+        "Model assignment updated.",
     );
     let session_started_template = t(
         ui_locale.as_deref(),
@@ -1048,6 +1083,115 @@ pub fn AiAdmin() -> impl IntoView {
         });
     };
 
+    let on_create_agent_principal = move |input: AiAgentPrincipalCreateForm| {
+        set_feedback.set(None);
+        set_error.set(None);
+        let agent_principal_created_template = agent_principal_created_template.clone();
+        spawn_local(async move {
+            match transport::create_agent_principal(
+                input.slug,
+                input.descriptor_owner,
+                input.descriptor_slug,
+                input.role_slugs,
+            )
+            .await
+            {
+                Ok(principal) => {
+                    selected_agent_principal.set(principal.id.clone());
+                    principal_slug.set(principal.slug.clone());
+                    selected_agent_descriptor.set(principal.descriptor_slug.clone());
+                    selected_agent_roles.set(principal.role_slugs.clone());
+                    agent_principal_active.set(principal.is_active);
+                    set_feedback.set(Some(
+                        agent_principal_created_template.replace("{slug}", principal.slug.as_str()),
+                    ));
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(error) => set_error.set(Some(error.to_string())),
+            }
+        });
+    };
+
+    let on_update_agent_principal = move |input: AiAgentPrincipalUpdateForm| {
+        set_feedback.set(None);
+        set_error.set(None);
+        let agent_principal_updated_template = agent_principal_updated_template.clone();
+        spawn_local(async move {
+            match transport::update_agent_principal(input.id, input.role_slugs, input.is_active)
+                .await
+            {
+                Ok(principal) => {
+                    selected_agent_principal.set(principal.id.clone());
+                    principal_slug.set(principal.slug.clone());
+                    selected_agent_descriptor.set(principal.descriptor_slug.clone());
+                    selected_agent_roles.set(principal.role_slugs.clone());
+                    agent_principal_active.set(principal.is_active);
+                    set_feedback.set(Some(
+                        agent_principal_updated_template.replace("{slug}", principal.slug.as_str()),
+                    ));
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(error) => set_error.set(Some(error.to_string())),
+            }
+        });
+    };
+
+    let on_create_model_assignment = move |input: AiAgentModelAssignmentCreateForm| {
+        set_feedback.set(None);
+        set_error.set(None);
+        let model_assignment_created_template = model_assignment_created_template.clone();
+        spawn_local(async move {
+            match transport::create_agent_model_assignment(
+                input.agent_principal_id,
+                input.provider_profile_id,
+                input.model_override,
+                input.execution_mode,
+            )
+            .await
+            {
+                Ok(assignment) => {
+                    selected_assignment_id.set(assignment.id.clone());
+                    assignment_principal_id.set(assignment.agent_principal_id.clone());
+                    assignment_provider_profile_id.set(assignment.provider_profile_id.clone());
+                    assignment_model_override
+                        .set(assignment.model_override.clone().unwrap_or_default());
+                    assignment_execution_mode.set(assignment.execution_mode.clone());
+                    assignment_active.set(assignment.is_active);
+                    set_feedback.set(Some(model_assignment_created_template.clone()));
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(error) => set_error.set(Some(error.to_string())),
+            }
+        });
+    };
+
+    let on_update_model_assignment = move |input: AiAgentModelAssignmentUpdateForm| {
+        set_feedback.set(None);
+        set_error.set(None);
+        let model_assignment_updated_template = model_assignment_updated_template.clone();
+        spawn_local(async move {
+            match transport::update_agent_model_assignment(
+                input.id,
+                input.model_override,
+                input.execution_mode,
+                input.is_active,
+            )
+            .await
+            {
+                Ok(assignment) => {
+                    selected_assignment_id.set(assignment.id.clone());
+                    assignment_model_override
+                        .set(assignment.model_override.clone().unwrap_or_default());
+                    assignment_execution_mode.set(assignment.execution_mode.clone());
+                    assignment_active.set(assignment.is_active);
+                    set_feedback.set(Some(model_assignment_updated_template.clone()));
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(error) => set_error.set(Some(error.to_string())),
+            }
+        });
+    };
+
     let on_start_session = move |ev: SubmitEvent| {
         ev.prevent_default();
         set_feedback.set(None);
@@ -1571,6 +1715,10 @@ pub fn AiAdmin() -> impl IntoView {
                     let reset_provider_form = reset_provider_form;
                     let on_create_tool_profile = on_create_tool_profile.clone();
                     let on_update_tool_profile = on_update_tool_profile.clone();
+                    let on_create_agent_principal = on_create_agent_principal.clone();
+                    let on_update_agent_principal = on_update_agent_principal.clone();
+                    let on_create_model_assignment = on_create_model_assignment.clone();
+                    let on_update_model_assignment = on_update_model_assignment.clone();
                     let reset_tool_form = reset_tool_form;
                     let on_create_task_profile = on_create_task_profile.clone();
                     let on_update_task_profile = on_update_task_profile.clone();
@@ -1635,6 +1783,24 @@ pub fn AiAdmin() -> impl IntoView {
                                             workflows=bootstrap_left.agent_workflows.clone()
                                             principals=bootstrap_left.agent_principals.clone()
                                             assignments=bootstrap_left.agent_model_assignments.clone()
+                                            providers=bootstrap_left.providers.clone()
+                                            tenant_rbac_roles=bootstrap_left.tenant_rbac_roles.clone()
+                                            tenant_rbac_permissions=bootstrap_left.tenant_rbac_permissions.clone()
+                                            principal_slug=principal_slug
+                                            selected_descriptor_slug=selected_agent_descriptor
+                                            selected_principal_id=selected_agent_principal
+                                            selected_role_slugs=selected_agent_roles
+                                            principal_active=agent_principal_active
+                                            on_create_principal=Callback::new(on_create_agent_principal.clone())
+                                            on_update_principal=Callback::new(on_update_agent_principal.clone())
+                                            assignment_principal_id
+                                            assignment_provider_profile_id
+                                            assignment_model_override
+                                            assignment_execution_mode
+                                            assignment_active
+                                            selected_assignment_id
+                                            on_create_assignment=Callback::new(on_create_model_assignment.clone())
+                                            on_update_assignment=Callback::new(on_update_model_assignment.clone())
                                         />
 
                                         <AiToolPanel

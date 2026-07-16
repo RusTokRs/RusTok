@@ -5,12 +5,15 @@ use std::time::Duration;
 
 use crate::error::{Error, Result};
 use async_trait::async_trait;
+use rustok_api::{PortActor, PortContext};
 use rustok_cache::CacheService;
 use rustok_core::events::{
     EventBus, EventEnvelope, EventTransport, MemoryTransport, ReliabilityLevel,
 };
 use rustok_iggy::{IggyConfig, IggyTransport};
-use rustok_outbox::{OutboxRelay, OutboxTransport, RelayConfig};
+use rustok_outbox::{
+    OutboxRelay, OutboxRelayPort, OutboxRelayRunOnceRequest, OutboxTransport, RelayConfig,
+};
 use tokio::task::JoinHandle;
 
 use crate::common::settings::{EventTransportKind, RelayTargetKind, RustokSettings};
@@ -95,7 +98,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
             // downcast to OutboxTransport and write into the caller's database transaction.
             let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
             let (relay_target, listener_bus, relay_fallback_active) =
-                resolve_relay_target(&settings, channel_capacity).await?;
+                resolve_relay_target(settings, channel_capacity).await?;
             // The relay target performs generation rotation synchronously. OutboxRelay therefore
             // cannot mark a tenant mutation dispatched until cache invalidation has been published
             // and the exact canonical local listener is ready when Redis is not configured.
@@ -129,7 +132,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         }
         EventTransportKind::Iggy => {
             let primary: Arc<dyn EventTransport> = Arc::new(
-                IggyTransport::new(resolve_iggy_config(&settings))
+                IggyTransport::new(resolve_iggy_config(settings))
                     .await
                     .map_err(|error| {
                         Error::BadRequest(format!("Failed to initialize iggy transport: {error}"))
@@ -189,7 +192,15 @@ pub fn spawn_outbox_relay_worker(
 
             let mut inner_handle = tokio::spawn(async move {
                 loop {
-                    if let Err(error) = relay.process_pending_once(None).await {
+                    if let Err(error) = OutboxRelayPort::process_pending_once(
+                        &relay,
+                        outbox_relay_worker_context(),
+                        OutboxRelayRunOnceRequest {
+                            max_batch_hint: None,
+                        },
+                    )
+                    .await
+                    {
                         tracing::error!("Relay processing error: {error}");
                     }
                     tokio::time::sleep(interval).await;
@@ -229,6 +240,17 @@ pub fn spawn_outbox_relay_worker(
             }
         }
     })
+}
+
+fn outbox_relay_worker_context() -> PortContext {
+    PortContext::new(
+        "platform",
+        PortActor::service("rustok-server.outbox-relay-worker"),
+        "und",
+        format!("outbox-relay-worker:{}", uuid::Uuid::new_v4()),
+    )
+    .with_idempotency_key(format!("outbox-relay-tick:{}", uuid::Uuid::new_v4()))
+    .with_deadline(Duration::from_secs(30))
 }
 
 fn resolve_iggy_config(settings: &RustokSettings) -> IggyConfig {
@@ -383,6 +405,6 @@ mod tests {
 
         transport.publish(envelope.clone()).await.unwrap();
         assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
-        assert!(event_local_delivery_metrics_snapshot().failure_total >= before + 1);
+        assert!(event_local_delivery_metrics_snapshot().failure_total > before);
     }
 }

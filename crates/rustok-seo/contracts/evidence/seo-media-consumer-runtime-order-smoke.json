@@ -20,28 +20,13 @@
   "runtime_order": [
     {
       "operation": "get_image_descriptor",
-      "path": "crates/rustok-media/src/ports.rs",
-      "function": "get_image_descriptor",
+      "function": "map_open_graph",
       "markers": [
-        "require_media_read_policy(&context)?",
-        "parse_tenant_id(&context)?",
-        ".get(tenant_id, media_id)",
-        "media_error_to_port_error",
-        "MediaImageDescriptor::from_media_item(&item, alt)"
-      ]
-    },
-    {
-      "operation": "populate_image_template_fields",
-      "path": "crates/rustok-seo-targets/src/lib.rs",
-      "function": "populate_image_template_fields",
-      "markers": [
-        "images.first()",
-        "image_url",
-        "image_alt",
-        "image_width",
-        "image_height",
-        "image_has_alt",
-        "image_has_size"
+        "image.media_asset_id",
+        ".get_image_descriptor(",
+        ".with_deadline(Duration::from_secs(2))",
+        ".await",
+        "unwrap_or(image.url)"
       ]
     }
   ],

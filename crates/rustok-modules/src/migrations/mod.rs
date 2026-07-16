@@ -4,6 +4,9 @@ mod m20260713_000003_artifact_installation_rollback_pointer;
 mod m20260713_000004_artifact_capability_grant_revision;
 mod m20260713_000005_module_artifact_rollback_operations;
 mod m20260715_000006_module_artifact_uninstall_operations;
+mod m20260716_000007_artifact_migration_checkpoints;
+mod m20260716_000008_module_artifact_deactivation_operations;
+mod m20260716_000009_artifact_tenant_lifecycle;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -15,5 +18,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000004_artifact_capability_grant_revision::Migration),
         Box::new(m20260713_000005_module_artifact_rollback_operations::Migration),
         Box::new(m20260715_000006_module_artifact_uninstall_operations::Migration),
+        Box::new(m20260716_000007_artifact_migration_checkpoints::Migration),
+        Box::new(m20260716_000008_module_artifact_deactivation_operations::Migration),
+        Box::new(m20260716_000009_artifact_tenant_lifecycle::Migration),
     ]
 }

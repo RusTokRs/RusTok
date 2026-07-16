@@ -18,6 +18,10 @@ pub mod model;
 pub mod policy;
 pub mod router;
 #[cfg(feature = "server")]
+mod runtime_extensions;
+#[cfg(feature = "server")]
+pub mod scheduler;
+#[cfg(feature = "server")]
 pub mod service;
 #[cfg(feature = "server")]
 pub mod streaming;
@@ -72,6 +76,8 @@ pub use model::{
 pub use policy::ToolExecutionPolicy;
 pub use router::{AiRouter, ResolvedExecutionPlan, RouterProviderProfile};
 #[cfg(feature = "server")]
+pub use scheduler::{AiAgentWorkflowWorkAdapter, AGENT_WORKFLOW_STAGE_WORKER};
+#[cfg(feature = "server")]
 pub use service::{
     ai_host_runtime_from_context, AiAgentModelAssignmentRecord, AiAgentPrincipalRecord,
     AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail,
@@ -80,10 +86,62 @@ pub use service::{
     AiToolProfileRecord, CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput,
     CreateAiAgentWorkflowRunInput, CreateAiProviderProfileInput, CreateAiTaskProfileInput,
     CreateAiToolProfileInput, ResolveAiAgentWorkflowStageApprovalInput, ResumeAiApprovalInput,
-    RunAiTaskJobInput, SendAiChatMessageInput, SharedAiEgressPolicy, SharedAiModuleRegistry,
-    SharedAiProviderTargetCatalog, SharedAiSecretResolverRegistry, StartAiChatSessionInput,
-    UpdateAiAgentModelAssignmentInput, UpdateAiAgentPrincipalInput, UpdateAiProviderProfileInput,
-    UpdateAiTaskProfileInput, UpdateAiToolProfileInput,
+    RunAiTaskJobInput, SendAiChatMessageInput, SharedAiEgressPolicy, SharedAiProviderTargetCatalog,
+    SharedAiSecretResolverRegistry, StartAiChatSessionInput, UpdateAiAgentModelAssignmentInput,
+    UpdateAiAgentPrincipalInput, UpdateAiProviderProfileInput, UpdateAiTaskProfileInput,
+    UpdateAiToolProfileInput,
 };
 #[cfg(feature = "server")]
 pub use streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub};
+
+#[cfg(feature = "server")]
+pub struct AiModule;
+
+#[cfg(feature = "server")]
+impl rustok_core::MigrationSource for AiModule {
+    fn migrations(&self) -> Vec<Box<dyn sea_orm_migration::MigrationTrait>> {
+        migrations::migrations()
+    }
+}
+
+#[cfg(feature = "server")]
+#[async_trait::async_trait]
+impl rustok_core::RusToKModule for AiModule {
+    fn slug(&self) -> &'static str {
+        "ai"
+    }
+
+    fn name(&self) -> &'static str {
+        "AI"
+    }
+
+    fn description(&self) -> &'static str {
+        "Rig-based AI orchestration capability"
+    }
+
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    /// AI is composed at deployment scope. Tenant profiles and principals are
+    /// still tenant-scoped, but a tenant-module toggle must never remove the
+    /// generic runtime handles or durable worker from a running deployment.
+    fn kind(&self) -> rustok_core::ModuleKind {
+        rustok_core::ModuleKind::Core
+    }
+
+    fn register_runtime_extensions(&self, extensions: &mut rustok_core::ModuleRuntimeExtensions) {
+        let deployment = runtime_extensions::AiDeploymentRuntime::from_environment()
+            .unwrap_or_else(|error| {
+                panic!("invalid deployment-owned AI runtime configuration: {error}")
+            });
+        extensions.insert(deployment.secret_registry);
+        extensions.insert(deployment.egress_policy);
+        extensions.insert(deployment.provider_targets);
+        extensions
+            .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default)
+            .register(std::sync::Arc::new(
+                scheduler::AiAgentWorkflowWorkRegistration,
+            ));
+    }
+}

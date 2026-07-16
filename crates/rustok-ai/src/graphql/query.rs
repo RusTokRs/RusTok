@@ -12,7 +12,8 @@ use super::{
         AiAgentDescriptorGql, AiAgentModelAssignmentGql, AiAgentPrincipalGql, AiAgentWorkflowGql,
         AiChatSessionDetailGql, AiChatSessionSummaryGql, AiProviderCatalogEntryGql,
         AiProviderProfileGql, AiProviderTargetGql, AiRecentRunGql, AiRunStreamEventGql,
-        AiRuntimeMetricsGql, AiTaskProfileGql, AiToolProfileGql, AiToolTraceGql,
+        AiRuntimeMetricsGql, AiTaskProfileGql, AiTenantRbacPermissionGql, AiTenantRbacRoleGql,
+        AiToolProfileGql, AiToolTraceGql,
     },
 };
 
@@ -88,6 +89,46 @@ impl AiQuery {
             .map_err(|error| async_graphql::Error::new(error.to_string()))?
             .into_iter()
             .map(Into::into)
+            .collect())
+    }
+
+    async fn ai_tenant_rbac_roles(&self, ctx: &Context<'_>) -> Result<Vec<AiTenantRbacRoleGql>> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_overview_read(auth)?;
+        let tenant_rbac_catalog = ctx
+            .data::<crate::AiGraphqlRuntimeData>()?
+            .tenant_rbac_catalog()
+            .ok_or_else(|| async_graphql::Error::new("tenant RBAC catalog is unavailable"))?;
+        Ok(tenant_rbac_catalog
+            .0
+            .roles(auth.tenant_id)
+            .into_iter()
+            .map(|role| AiTenantRbacRoleGql {
+                slug: role.slug,
+                display_name: role.display_name,
+                permission_slugs: role.permission_slugs,
+            })
+            .collect())
+    }
+
+    async fn ai_tenant_rbac_permissions(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Vec<AiTenantRbacPermissionGql>> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_overview_read(auth)?;
+        let tenant_rbac_catalog = ctx
+            .data::<crate::AiGraphqlRuntimeData>()?
+            .tenant_rbac_catalog()
+            .ok_or_else(|| async_graphql::Error::new("tenant RBAC catalog is unavailable"))?;
+        Ok(tenant_rbac_catalog
+            .0
+            .permissions(auth.tenant_id)
+            .into_iter()
+            .map(|permission| AiTenantRbacPermissionGql {
+                slug: permission.slug,
+                display_name: permission.display_name,
+            })
             .collect())
     }
 

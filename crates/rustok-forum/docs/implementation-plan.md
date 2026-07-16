@@ -51,6 +51,16 @@ Run `cargo xtask module validate forum` for the module contract and use the
 task-specific commands and evidence paths recorded in the program ledger for
 any changed Forum capability.
 
+Run `npm run verify:forum:admin-boundary`
+(`scripts/verify/verify-forum-admin-boundary.mjs`) after an admin-surface or
+transport-boundary change. This is the fast guardrail for the module-owned
+admin core/transport/UI split.
+
+Run `npm run verify:forum:storefront-boundary`
+(`scripts/verify/verify-forum-storefront-boundary.mjs`) after a storefront
+surface or transport-boundary change. This is the fast guardrail for the
+module-owned storefront core/transport/UI split and its GraphQL read adapter.
+
 ## Status vocabulary
 
 | Status | Meaning |

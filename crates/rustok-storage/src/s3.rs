@@ -177,6 +177,34 @@ impl StorageBackend for S3Storage {
         })
     }
 
+    async fn store_file(
+        &self,
+        path: &str,
+        source: &std::path::Path,
+        content_type: &str,
+    ) -> Result<UploadedObject> {
+        validate_content_type(content_type)?;
+        let key = self.object_key(path)?;
+        let size = tokio::fs::metadata(source).await?.len();
+        let body = ByteStream::from_path(source)
+            .await
+            .map_err(|error| StorageError::Backend(error.to_string()))?;
+        self.client
+            .put_object()
+            .bucket(&self.bucket)
+            .key(&key)
+            .body(body)
+            .content_type(content_type)
+            .send()
+            .await
+            .map_err(|error| StorageError::Backend(error.to_string()))?;
+        Ok(UploadedObject {
+            path: path.to_string(),
+            public_url: self.public_url(path),
+            size,
+        })
+    }
+
     async fn store_if_absent(
         &self,
         path: &str,

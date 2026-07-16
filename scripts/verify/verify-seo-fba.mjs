@@ -22,12 +22,26 @@ const providerFallbackSmoke = json(providerFallbackSmokePath);
 const consumerRuntimeOrderSmoke = json(consumerRuntimeOrderSmokePath);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
-if (registry.module !== 'seo' || registry.role !== 'consumer' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
+if (registry.module !== 'seo' || registry.role !== 'consumer' || registry.status !== 'in_progress') fail('registry identity/status drift');
 if (registry.consumer_profile !== 'seo_image_descriptor') fail('consumer profile drift');
 const dependency = registry.provider_dependencies?.[0];
 if (!dependency) fail('missing media provider dependency');
 if (dependency.module !== 'media' || dependency.registry !== providerPath) fail('provider dependency identity drift');
 if (dependency.contract_version !== provider.contract_version || dependency.port !== 'MediaAssetReadPort') fail('provider contract/port drift');
+const gap = registry.implementation_gap;
+if (!gap || gap.status !== 'product_consumer_composed_other_target_providers_pending' || !gap.remaining_work.includes('media_asset_id') || !gap.remaining_work.includes('live provider')) fail('SEO media consumer implementation gap drift');
+const seoCargo = read('crates/rustok-seo/Cargo.toml');
+if (!seoCargo.includes('rustok-media')) fail('SEO media consumer must depend on rustok-media');
+const seoTargets = read('crates/rustok-seo/src/services/targets.rs');
+const seoService = read('crates/rustok-seo/src/services/mod.rs');
+const serverComposition = read('apps/server/src/services/module_event_dispatcher.rs');
+hasAll(seoTargets, ['MediaAssetReadPort', '.get_image_descriptor(', '.with_deadline(Duration::from_secs(2))', 'unwrap_or(image.url)'], 'SEO media consumer');
+hasAll(seoService, ['SeoMediaAssetReadProvider', 'with_media_asset_read_port', 'get::<SeoMediaAssetReadProvider>()'], 'SEO media provider injection');
+hasAll(serverComposition, ['rustok_media::MediaService::new', 'rustok_seo::SeoMediaAssetReadProvider::new'], 'server media provider composition');
+const targets = read('crates/rustok-seo-targets/src/lib.rs');
+hasAll(targets, ['pub media_asset_id: Option<Uuid>', 'pub fn with_media_asset_id'], 'SEO target media reference contract');
+const productSeoTargets = read('crates/rustok-product/src/seo_targets.rs');
+hasAll(productSeoTargets, ['ProductImageResponse', '.with_media_asset_id(image.media_id)'], 'product SEO media reference handoff');
 if (provider.module !== 'media' || provider.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(provider.status)) fail('media provider status drift');
 const providerOperations = provider.ports?.[0]?.operations ?? [];
 for (const operation of dependency.operations) if (!providerOperations.includes(operation)) fail(`consumer operation ${operation} is absent from media provider`);
@@ -93,10 +107,10 @@ for (const row of evidence.consumer_runtime_drill_matrix) {
 }
 
 const plan = read('crates/rustok-seo/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `boundary_ready`', 'seo-fba-registry.json', 'MediaAssetReadPort', 'seo-media-consumer-static-matrix.json', consumerRuntimeOrderSmokePath, 'source_locked_pending_consumer_runtime'], 'local plan');
+hasAll(plan, ['- FBA status: `in_progress`', 'seo-fba-registry.json', 'MediaAssetReadPort', 'media asset UUID'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `seo` |', 'crates/rustok-seo/contracts/seo-fba-registry.json', consumerRuntimeOrderSmokePath, '`in_progress` | `in_progress`'], 'central registry');
+hasAll(central, ['| `seo` |', 'crates/rustok-seo/contracts/seo-fba-registry.json', '`in_progress` | `in_progress`', 'media asset UUIDs'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
-hasAll(unified, ['`seo`', 'MediaAssetReadPort', 'seo-fba-registry.json', 'source_locked_pending_consumer_runtime'], 'unified plan');
+hasAll(unified, ['`seo`', 'MediaAssetReadPort', 'seo-fba-registry.json', 'media asset UUIDs'], 'unified plan');
 
 console.log('[verify-seo-fba] seo FBA media consumer metadata and static evidence are consistent');

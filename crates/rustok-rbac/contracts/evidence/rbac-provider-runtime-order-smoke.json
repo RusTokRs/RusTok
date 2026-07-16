@@ -7,6 +7,6 @@
   "fallback_profiles": ["embedded_native"],
   "degraded_modes": ["hide_restricted_actions", "show_permission_refresh_prompt"],
   "cases": [
-    { "operation": "check_permissions", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "validate_permission_request(&request)?", "let claims = context.claims;", "Ok(RbacPermissionCheckResponse {"] }
+    { "operation": "check_permissions", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "validate_permission_request(&request)?", "parse_tenant_id(&context)?", "parse_user_actor(&context)?", ".resolve_permissions(&tenant_id, &user_id)", "Ok(RbacPermissionCheckResponse {"] }
   ]
 }

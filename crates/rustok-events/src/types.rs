@@ -327,6 +327,20 @@ pub enum DomainEvent {
         post_id: Uuid,
     },
 
+    // COMMENT EVENTS
+    CommentCreated {
+        comment_id: Uuid,
+        target_type: String,
+        target_id: Uuid,
+        author_id: Uuid,
+    },
+    CommentDeleted {
+        comment_id: Uuid,
+        target_type: String,
+        target_id: Uuid,
+        author_id: Uuid,
+    },
+
     // ════════════════════════════════════════════════════════════════
     // FORUM EVENTS
     // ════════════════════════════════════════════════════════════════
@@ -512,6 +526,20 @@ pub enum DomainEvent {
         installation_id: Uuid,
         revision: u64,
     },
+    ModuleArtifactMigrationCheckpointed {
+        installation_id: Uuid,
+        revision: u64,
+        has_irreversible_migration: bool,
+    },
+    ModuleArtifactDeactivated {
+        installation_id: Uuid,
+        revision: u64,
+    },
+    ModuleArtifactTenantDisabled {
+        installation_id: Uuid,
+        tenant_id: Uuid,
+        revision: u64,
+    },
     LocaleEnabled {
         tenant_id: Uuid,
         locale: String,
@@ -665,6 +693,9 @@ impl DomainEvent {
             Self::BlogPostArchived { .. } => "blog.post.archived",
             Self::BlogPostDeleted { .. } => "blog.post.deleted",
 
+            Self::CommentCreated { .. } => "comment.created",
+            Self::CommentDeleted { .. } => "comment.deleted",
+
             Self::ForumTopicCreated { .. } => "forum.topic.created",
             Self::ForumTopicReplied { .. } => "forum.topic.replied",
             Self::ForumTopicStatusChanged { .. } => "forum.topic.status_changed",
@@ -695,6 +726,11 @@ impl DomainEvent {
             Self::ModuleArtifactReverified { .. } => "module.artifact.reverified",
             Self::ModuleArtifactRolledBack { .. } => "module.artifact.rolled_back",
             Self::ModuleArtifactUninstalled { .. } => "module.artifact.uninstalled",
+            Self::ModuleArtifactMigrationCheckpointed { .. } => {
+                "module.artifact.migration_checkpointed"
+            }
+            Self::ModuleArtifactDeactivated { .. } => "module.artifact.deactivated",
+            Self::ModuleArtifactTenantDisabled { .. } => "module.artifact.tenant_disabled",
             Self::LocaleEnabled { .. } => "locale.enabled",
             Self::LocaleDisabled { .. } => "locale.disabled",
             Self::PlatformSettingsChanged { .. } => "platform_settings.changed",
@@ -800,6 +836,9 @@ impl DomainEvent {
             Self::BlogPostArchived { .. } => 1,
             Self::BlogPostDeleted { .. } => 1,
 
+            Self::CommentCreated { .. } => 1,
+            Self::CommentDeleted { .. } => 1,
+
             // Forum events (v1)
             Self::ForumTopicCreated { .. } => 1,
             Self::ForumTopicReplied { .. } => 1,
@@ -833,6 +872,9 @@ impl DomainEvent {
             Self::ModuleArtifactReverified { .. } => 1,
             Self::ModuleArtifactRolledBack { .. } => 1,
             Self::ModuleArtifactUninstalled { .. } => 1,
+            Self::ModuleArtifactMigrationCheckpointed { .. } => 1,
+            Self::ModuleArtifactDeactivated { .. } => 1,
+            Self::ModuleArtifactTenantDisabled { .. } => 1,
             Self::LocaleEnabled { .. } => 1,
             Self::LocaleDisabled { .. } => 1,
             Self::PlatformSettingsChanged { .. } => 1,
@@ -1315,8 +1357,29 @@ impl ValidateEvent for DomainEvent {
             }
 
             // ════════════════════════════════════════════════════════════════
-            // FORUM EVENTS
+            // COMMENT EVENTS
             // ════════════════════════════════════════════════════════════════
+            Self::CommentCreated {
+                comment_id,
+                target_type,
+                target_id,
+                author_id,
+            }
+            | Self::CommentDeleted {
+                comment_id,
+                target_type,
+                target_id,
+                author_id,
+            } => {
+                validators::validate_not_nil_uuid("comment_id", comment_id)?;
+                validators::validate_not_empty("target_type", target_type)?;
+                validators::validate_max_length("target_type", target_type, 64)?;
+                validators::validate_not_nil_uuid("target_id", target_id)?;
+                validators::validate_not_nil_uuid("author_id", author_id)?;
+                Ok(())
+            }
+
+            // FORUM EVENTS
             Self::ForumTopicCreated {
                 topic_id,
                 category_id,
@@ -1740,6 +1803,48 @@ impl ValidateEvent for DomainEvent {
                 revision,
             } => {
                 validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                if *revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactMigrationCheckpointed {
+                installation_id,
+                revision,
+                has_irreversible_migration: _,
+            } => {
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                if *revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactDeactivated {
+                installation_id,
+                revision,
+            } => {
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                if *revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactTenantDisabled {
+                installation_id,
+                tenant_id,
+                revision,
+            } => {
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
                 if *revision == 0 {
                     return Err(EventValidationError::InvalidValue(
                         "revision",

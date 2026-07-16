@@ -12,6 +12,8 @@ server = [
   "dep:chrono",
   "dep:rustok-content",
   "dep:rustok-core",
+  "dep:rustok-events",
+  "dep:rustok-outbox",
   "dep:rustok-api",
   "dep:rustok-telemetry",
   "dep:sea-orm",
@@ -25,6 +27,8 @@ async-trait = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
+rustok-events = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true }
 rustok-api = { workspace = true, optional = true }
 rustok-telemetry = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }

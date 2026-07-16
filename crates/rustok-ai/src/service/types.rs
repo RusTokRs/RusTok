@@ -28,9 +28,6 @@ static AI_RUN_CANCELLATIONS: Lazy<SharedAiRunCancellations> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 #[derive(Clone)]
-pub struct SharedAiModuleRegistry(pub ModuleRegistry);
-
-#[derive(Clone)]
 pub struct SharedAiSecretResolverRegistry(pub SecretResolverRegistry);
 
 #[derive(Clone)]
@@ -62,30 +59,46 @@ pub fn ai_host_runtime_from_context(
         .shared_get::<TransactionalEventBus>()
         .ok_or_else(|| "AI requires TransactionalEventBus in HostRuntimeContext".to_string())?;
     let module_registry = context
-        .shared_get::<SharedAiModuleRegistry>()
-        .ok_or_else(|| "AI requires SharedAiModuleRegistry in HostRuntimeContext".to_string())?
+        .shared_get::<ModuleRegistry>()
+        .ok_or_else(|| "AI requires ModuleRegistry in HostRuntimeContext".to_string())?;
+    let secret_registry = context
+        .shared_get::<SharedAiSecretResolverRegistry>()
+        .ok_or_else(|| {
+            "AI requires SharedAiSecretResolverRegistry in HostRuntimeContext".to_string()
+        })?
+        .0;
+    let egress_policy = context
+        .shared_get::<SharedAiEgressPolicy>()
+        .ok_or_else(|| "AI requires SharedAiEgressPolicy in HostRuntimeContext".to_string())?
+        .0;
+    let provider_targets = context
+        .shared_get::<SharedAiProviderTargetCatalog>()
+        .ok_or_else(|| {
+            "AI requires SharedAiProviderTargetCatalog in HostRuntimeContext".to_string()
+        })?
         .0;
 
-    let mut runtime = AiHostRuntime::new(context.db_clone(), event_bus, module_registry)
-        .with_storage(context.shared_get::<StorageService>())
-        .with_alloy_runtime(context.shared_get::<alloy::SharedAlloyRuntime>());
-    if let Some(registry) = context.shared_get::<SharedAiSecretResolverRegistry>() {
-        runtime = runtime.with_secret_registry(registry.0);
-    }
-    if let Some(policy) = context.shared_get::<SharedAiEgressPolicy>() {
-        runtime = runtime.with_egress_policy(policy.0);
-    }
-    if let Some(targets) = context.shared_get::<SharedAiProviderTargetCatalog>() {
-        runtime = runtime.with_provider_targets(targets.0);
-    }
+    let runtime = AiHostRuntime::new(
+        context.db_clone(),
+        event_bus,
+        module_registry,
+        secret_registry,
+        egress_policy,
+        provider_targets,
+    )
+    .with_storage(context.shared_get::<StorageService>())
+    .with_alloy_runtime(context.shared_get::<alloy::SharedAlloyRuntime>());
     Ok(runtime)
 }
 
 impl AiHostRuntime {
-    pub fn new(
+    pub(crate) fn new(
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
         module_registry: ModuleRegistry,
+        secret_registry: SecretResolverRegistry,
+        egress_policy: crate::ProviderEgressPolicy,
+        provider_targets: crate::AiProviderTargetCatalog,
     ) -> Self {
         Self {
             db,
@@ -93,26 +106,23 @@ impl AiHostRuntime {
             module_registry,
             storage: None,
             alloy_runtime: None,
-            secret_registry: SecretResolverRegistry::builder().build(),
-            egress_policy: crate::ProviderEgressPolicy::default(),
-            provider_targets: crate::AiProviderTargetCatalog::from_environment()
-                .expect("invalid deployment AI provider target configuration"),
+            secret_registry,
+            egress_policy,
+            provider_targets,
             cancellations: Arc::clone(&AI_RUN_CANCELLATIONS),
         }
     }
 
-    pub fn with_storage(mut self, storage: Option<StorageService>) -> Self {
+    pub(crate) fn with_storage(mut self, storage: Option<StorageService>) -> Self {
         self.storage = storage;
         self
     }
 
-    pub fn with_alloy_runtime(mut self, alloy_runtime: Option<alloy::SharedAlloyRuntime>) -> Self {
+    pub(crate) fn with_alloy_runtime(
+        mut self,
+        alloy_runtime: Option<alloy::SharedAlloyRuntime>,
+    ) -> Self {
         self.alloy_runtime = alloy_runtime;
-        self
-    }
-
-    pub fn with_secret_registry(mut self, secret_registry: SecretResolverRegistry) -> Self {
-        self.secret_registry = secret_registry;
         self
     }
 
@@ -120,21 +130,8 @@ impl AiHostRuntime {
         &self.secret_registry
     }
 
-    pub fn with_egress_policy(mut self, egress_policy: crate::ProviderEgressPolicy) -> Self {
-        self.egress_policy = egress_policy;
-        self
-    }
-
     pub fn egress_policy(&self) -> &crate::ProviderEgressPolicy {
         &self.egress_policy
-    }
-
-    pub fn with_provider_targets(
-        mut self,
-        provider_targets: crate::AiProviderTargetCatalog,
-    ) -> Self {
-        self.provider_targets = provider_targets;
-        self
     }
 
     pub fn provider_targets(&self) -> &crate::AiProviderTargetCatalog {
@@ -336,11 +333,16 @@ pub struct CreateAiAgentPrincipalInput {
     pub slug: String,
     pub descriptor_owner: String,
     pub descriptor_slug: String,
+    /// Values must be selected from the platform-owned tenant RBAC catalog.
+    /// Permissions are derived from these roles and never accepted directly.
+    pub role_slugs: Vec<String>,
     pub metadata: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateAiAgentPrincipalInput {
+    /// Replaces the complete catalogued role assignment.
+    pub role_slugs: Vec<String>,
     pub metadata: serde_json::Value,
     pub is_active: bool,
 }

@@ -189,10 +189,11 @@ fn collect_direct_tenant_value(
     match value {
         Value::String(raw) => add_tenant_id(raw, source, policy),
         Value::Null => {}
-        Value::Variable(name) => match resolve_variable(name, variables, defaults) {
-            Some(value) => collect_direct_tenant_const_value(value, source, policy),
-            None => {}
-        },
+        Value::Variable(name) => {
+            if let Some(value) = resolve_variable(name, variables, defaults) {
+                collect_direct_tenant_const_value(value, source, policy);
+            }
+        }
         _ => set_invalid_argument(
             policy,
             format!("{source} must be a UUID string, null, or UUID variable"),

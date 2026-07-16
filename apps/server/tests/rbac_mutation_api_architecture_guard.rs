@@ -129,12 +129,11 @@ fn operational_cli_applies_repair_and_generation_in_one_transaction() {
     let cli = source("crates/rustok-rbac/cli/src/lib.rs");
     let cargo = source("crates/rustok-rbac/cli/Cargo.toml");
 
-    for required in ["sea-orm.workspace = true"] {
-        assert!(
-            cargo.contains(required),
-            "RBAC CLI manifest must retain {required}"
-        );
-    }
+    let required = "sea-orm.workspace = true";
+    assert!(
+        cargo.contains(required),
+        "RBAC CLI manifest must retain {required}"
+    );
     for required in [
         "apply_system_role_repair_in_transaction",
         "plan_system_role_repair",

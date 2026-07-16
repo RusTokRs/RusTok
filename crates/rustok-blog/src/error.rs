@@ -124,6 +124,11 @@ impl From<BlogError> for RichError {
                         .with_user_message("Unable to access comment data")
                         .with_source(db_err)
                 }
+                rustok_comments::CommentsError::EventPublication(message) => {
+                    RichError::new(ErrorKind::ExternalService, message)
+                        .with_user_message("Unable to publish the comment lifecycle update")
+                        .with_error_code("COMMENT_EVENT_PUBLICATION_FAILED")
+                }
                 rustok_comments::CommentsError::CommentNotFound(id) => {
                     RichError::new(ErrorKind::NotFound, format!("Comment {} not found", id))
                         .with_user_message("The requested comment does not exist")

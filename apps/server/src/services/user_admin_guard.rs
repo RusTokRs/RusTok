@@ -133,12 +133,12 @@ impl UserAdminMutationPort for GuardedUserAdminMutationProvider {
             .as_deref()
             .is_some_and(|status| !status.trim().eq_ignore_ascii_case("active"));
 
-        if role != UserRole::Customer || creates_non_active_user {
-            if !has_effective_permission(&authority, &Permission::USERS_MANAGE) {
-                return Err(AuthAdminMutationError::Forbidden(
-                    "users:manage required to create privileged or disabled users".to_string(),
-                ));
-            }
+        if (role != UserRole::Customer || creates_non_active_user)
+            && !has_effective_permission(&authority, &Permission::USERS_MANAGE)
+        {
+            return Err(AuthAdminMutationError::Forbidden(
+                "users:manage required to create privileged or disabled users".to_string(),
+            ));
         }
         if role != UserRole::Customer {
             Self::validate_role_grant(context, &authority, &role)?;
@@ -163,12 +163,12 @@ impl UserAdminMutationPort for GuardedUserAdminMutationProvider {
             &[Permission::USERS_UPDATE, Permission::USERS_MANAGE],
             "users:update or users:manage required",
         )?;
-        if command.role.is_some() || command.status.is_some() {
-            if !has_effective_permission(&authority, &Permission::USERS_MANAGE) {
-                return Err(AuthAdminMutationError::Forbidden(
-                    "users:manage required to change user role or status".to_string(),
-                ));
-            }
+        if (command.role.is_some() || command.status.is_some())
+            && !has_effective_permission(&authority, &Permission::USERS_MANAGE)
+        {
+            return Err(AuthAdminMutationError::Forbidden(
+                "users:manage required to change user role or status".to_string(),
+            ));
         }
         if let Some(role) = command.role.as_deref() {
             let role = Self::parse_role(role)?;

@@ -24,6 +24,7 @@ use rustok_content::normalize_locale_code;
 use rustok_core::ModuleRuntimeExtensions;
 #[cfg(test)]
 use rustok_core::{MemoryTransport, RusToKModule};
+use rustok_media::MediaAssetReadPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo_targets::{
     seo_target_registry_from_extensions, SeoTargetCapabilityKind, SeoTargetRegistry,
@@ -74,6 +75,21 @@ pub struct SeoService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     registry: Arc<SeoTargetRegistry>,
+    media_asset_read_port: Option<Arc<dyn MediaAssetReadPort>>,
+}
+
+#[derive(Clone)]
+pub struct SeoMediaAssetReadProvider {
+    port: Arc<dyn MediaAssetReadPort>,
+}
+
+impl SeoMediaAssetReadProvider {
+    pub fn new(port: Arc<dyn MediaAssetReadPort>) -> Self {
+        Self { port }
+    }
+    fn port(&self) -> Arc<dyn MediaAssetReadPort> {
+        Arc::clone(&self.port)
+    }
 }
 
 #[derive(Clone)]
@@ -108,7 +124,13 @@ impl SeoService {
             db,
             event_bus,
             registry,
+            media_asset_read_port: None,
         }
+    }
+
+    pub fn with_media_asset_read_port(mut self, port: Arc<dyn MediaAssetReadPort>) -> Self {
+        self.media_asset_read_port = Some(port);
+        self
     }
 
     pub fn from_runtime_extensions(
@@ -118,7 +140,11 @@ impl SeoService {
     ) -> SeoResult<Self> {
         let registry = seo_target_registry_from_extensions(extensions)
             .ok_or_else(|| SeoError::configuration("SEO target registry is not initialized"))?;
-        Ok(Self::new(db, event_bus, registry))
+        let service = Self::new(db, event_bus, registry);
+        Ok(extensions
+            .get::<SeoMediaAssetReadProvider>()
+            .map(|provider| service.with_media_asset_read_port(provider.port()))
+            .unwrap_or(service))
     }
 
     #[cfg(test)]

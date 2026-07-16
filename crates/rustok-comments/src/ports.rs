@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_core::SecurityContext;
+use rustok_outbox::TransactionalEventBus;
+use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
@@ -40,8 +43,29 @@ pub trait CommentsThreadPort: Send + Sync {
         request: UpdateCommentInput,
     ) -> Result<CommentRecord, PortError>;
 
+    async fn set_comment_status(
+        &self,
+        context: PortContext,
+        comment_id: Uuid,
+        request: SetCommentStatusRequest,
+    ) -> Result<CommentRecord, PortError>;
+
     async fn delete_comment(&self, context: PortContext, comment_id: Uuid)
         -> Result<(), PortError>;
+}
+
+/// Builds the owner-managed in-process comments thread provider for consumers.
+pub fn in_process_comments_thread_port(
+    db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
+) -> Arc<dyn CommentsThreadPort> {
+    Arc::new(CommentsService::with_event_bus(db, event_bus))
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SetCommentStatusRequest {
+    pub status: crate::CommentStatus,
+    pub fallback_locale: Option<String>,
 }
 
 #[async_trait]
@@ -136,6 +160,26 @@ impl CommentsThreadPort for CommentsService {
         .await
         .map_err(comments_error_to_port_error)
     }
+
+    async fn set_comment_status(
+        &self,
+        context: PortContext,
+        comment_id: Uuid,
+        request: SetCommentStatusRequest,
+    ) -> Result<CommentRecord, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        let tenant_id = parse_tenant_id(&context)?;
+        self.set_comment_status(
+            tenant_id,
+            SecurityContext::try_from_port_context(&context)?,
+            comment_id,
+            request.status,
+            &context.locale,
+            request.fallback_locale.as_deref(),
+        )
+        .await
+        .map_err(comments_error_to_port_error)
+    }
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
@@ -151,6 +195,9 @@ fn comments_error_to_port_error(error: CommentsError) -> PortError {
     match error {
         CommentsError::Database(source) => {
             PortError::unavailable("comments.database", source.to_string())
+        }
+        CommentsError::EventPublication(message) => {
+            PortError::unavailable("comments.event_publication", message)
         }
         CommentsError::CommentNotFound(id) => PortError::new(
             PortErrorKind::NotFound,

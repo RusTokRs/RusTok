@@ -100,7 +100,9 @@ function verifySeo({ read, json }) {
   const smoke = json(smokePath);
   const dependency = registry.provider_dependencies?.[0];
 
-  if (registry.module !== 'seo' || registry.role !== 'consumer' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('seo registry identity/status drift');
+  if (registry.module !== 'seo' || registry.role !== 'consumer' || registry.status !== 'in_progress') fail('seo registry identity/status drift');
+  const implementationGap = registry.implementation_gap;
+  if (!implementationGap || implementationGap.status !== 'product_consumer_composed_other_target_providers_pending' || !implementationGap.remaining_work?.includes('media_asset_id')) fail('seo implementation gap drift');
   if (smoke.generated_from !== registryPath || smoke.status !== 'executable_no_compile') fail('seo smoke identity drift');
   if (registry.evidence.consumer_runtime_order_smoke !== smokePath || registry.evidence.consumer_runtime_order_smoke_runner !== smoke.runner) {
     fail('seo runtime-order evidence registry drift');
@@ -122,10 +124,10 @@ function verifySeo({ read, json }) {
     if (!providerOperations.includes(operation)) fail(`seo provider operation ${operation} missing`);
   }
 
-  for (const entry of smoke.runtime_order) {
-    const source = read(entry.path);
+  for (const entry of smoke.runtime_order ?? []) {
+    const source = read('crates/rustok-seo/src/services/targets.rs');
     const body = functionBody(source, entry.function);
-    if (!body) fail(`seo runtime order function missing: ${entry.function}`);
+    if (!body) fail(`seo runtime-order function missing: ${entry.function}`);
     assertOrdered(body, entry.markers, `seo ${entry.operation}`);
   }
   verifyAssertions({ read }, smoke.source_assertions, 'seo');

@@ -10,7 +10,7 @@
     {
       "operation": "check_permissions",
       "execution_status": "static_locked_runtime_pending",
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "claims_scope_preserved"]
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_user_scope_preserved"]
     }
   ],
   "fallback_smoke": {

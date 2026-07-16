@@ -41,7 +41,10 @@
 
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_core::{
+    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
+    ModuleRuntimeExtensions, RusToKModule,
+};
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
@@ -114,6 +117,14 @@ impl RusToKModule for BlogModule {
     fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
         register_seo_target_provider(extensions, seo_targets::BlogSeoTargetProvider)
             .expect("blog SEO target registration should remain unique");
+    }
+
+    fn register_event_listeners(
+        &self,
+        registry: &mut ModuleEventListenerRegistry,
+        ctx: &ModuleEventListenerContext<'_>,
+    ) {
+        registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));
     }
 }
 

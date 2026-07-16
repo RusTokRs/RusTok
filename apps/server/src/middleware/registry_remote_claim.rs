@@ -23,6 +23,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 const CLAIM_PATH: &str = "/v2/catalog/runner/claim";
 const PUBLISH_PATH: &str = "/v2/catalog/publish";
 const MAX_RUNNER_BODY_BYTES: usize = 64 * 1024;
+type RegistryClaimValidationResult<T> = Result<T, Box<Response>>;
 
 /// Replace legacy read-check-update runner routes with database CAS operations.
 /// Claim, heartbeat, complete and fail are all serialized by stage status,
@@ -112,7 +113,7 @@ async fn handle_claim(ctx: &ServerRuntimeContext, lease_ttl_ms: u64, bytes: &[u8
         }
     };
     if let Err(response) = validate_schema_version(input.schema_version) {
-        return response;
+        return *response;
     }
     if input.runner_id.trim().is_empty() {
         return response(
@@ -199,7 +200,7 @@ async fn handle_heartbeat(
         }
     };
     if let Err(response) = validate_schema_version(input.schema_version) {
-        return response;
+        return *response;
     }
 
     match heartbeat_remote_validation_stage_atomic(
@@ -232,7 +233,7 @@ async fn handle_terminal(
         }
     };
     if let Err(response) = validate_schema_version(input.schema_version) {
-        return response;
+        return *response;
     }
 
     match finish_remote_validation_stage_atomic(
@@ -256,15 +257,15 @@ async fn handle_terminal(
     }
 }
 
-fn validate_schema_version(schema_version: u32) -> Result<(), Response> {
+fn validate_schema_version(schema_version: u32) -> RegistryClaimValidationResult<()> {
     if schema_version == REGISTRY_MUTATION_SCHEMA_VERSION {
         Ok(())
     } else {
-        Err(response(
+        Err(Box::new(response(
             StatusCode::BAD_REQUEST,
             "invalid_schema_version",
             "Runner request schema_version is not supported",
-        ))
+        )))
     }
 }
 

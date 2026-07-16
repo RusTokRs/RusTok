@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::graphql::rbac_runtime::rbac_graphql_role_writer_from_context;
 use crate::graphql::search_rate_limit::search_graphql_rate_limiter_from_context;
-use crate::graphql::{build_schema, AppSchema, SharedGraphqlSchema};
+use crate::graphql::{build_schema, AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema};
 use crate::services::app_runtime::module_runtime_extensions_from_ctx;
 use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::commerce_provider_runtime::attach_commerce_provider_registries;
@@ -23,6 +23,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     let host_runtime = rustok_api::HostRuntimeContext::new(ctx.db_clone())
         .with_shared_value(transactional_event_bus.clone())
         .with_shared_value(registry);
+    let host_runtime = module_runtime_extensions_from_ctx(ctx).apply_to_host_runtime(host_runtime);
     let host_runtime = attach_commerce_provider_registries(host_runtime, ctx);
     #[cfg(feature = "mod-media")]
     let host_runtime = if let Some(storage) = ctx.shared_get::<rustok_storage::StorageService>() {
@@ -37,28 +38,28 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         host_runtime
     };
     let graphql_runtime_inputs = rustok_api::graphql::GraphqlRuntimeInputs::new(host_runtime);
-    let schema = Arc::new(build_schema(
-        ctx.db_clone(),
-        event_bus.clone(),
+    let schema = Arc::new(build_schema(GraphqlSchemaDependencies {
+        db: ctx.db_clone(),
+        event_bus: event_bus.clone(),
         transactional_event_bus,
         graphql_runtime_inputs,
-        build_event_hub_from_context(ctx),
-        field_definition_cache_from_context(ctx, event_bus),
-        module_runtime_extensions_from_ctx(ctx),
-        rbac_graphql_role_writer_from_context(ctx),
-        search_graphql_rate_limiter_from_context(ctx),
+        build_event_hub: build_event_hub_from_context(ctx),
+        field_definition_cache: field_definition_cache_from_context(ctx, event_bus),
+        runtime_extensions: module_runtime_extensions_from_ctx(ctx),
+        rbac_role_writer: rbac_graphql_role_writer_from_context(ctx),
+        search_rate_limiter: search_graphql_rate_limiter_from_context(ctx),
         #[cfg(feature = "mod-alloy")]
-        alloy_runtime_from_ctx(ctx),
+        alloy_runtime: alloy_runtime_from_ctx(ctx),
         #[cfg(all(
             feature = "mod-content",
             feature = "mod-blog",
             feature = "mod-forum",
             feature = "mod-comments"
         ))]
-        content_orchestration_from_ctx(ctx),
+        content_orchestration: content_orchestration_from_ctx(ctx),
         #[cfg(feature = "mod-media")]
-        storage_from_ctx(ctx),
-    ));
+        storage: storage_from_ctx(ctx),
+    }));
 
     ctx.shared_insert(SharedGraphqlSchema(schema.clone()));
 

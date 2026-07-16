@@ -76,7 +76,9 @@
       "title": "Заголовок",
       "initialMessage": "Первое сообщение",
       "categorySlug": "Slug категории",
-      "imageUrlsCsv": "URL изображений (csv)"
+      "imageUrlsCsv": "URL изображений (csv)",
+      "agentDescriptor": "Дескриптор агента",
+      "modelOverride": "Переопределение модели (необязательно)"
     },
     "action": {
       "createProvider": "Создать провайдера",
@@ -94,7 +96,9 @@
       "send": "Отправить",
       "approve": "Одобрить",
       "reject": "Отклонить",
-      "generateProductAttributes": "Сгенерировать атрибуты товара"
+      "generateProductAttributes": "Сгенерировать атрибуты товара",
+      "createAgentPrincipal": "Создать принципал агента",
+      "createModelAssignment": "Создать назначение модели"
     },
     "common": {
       "active": "активен",
@@ -105,7 +109,8 @@
       "connected": "подключено",
       "disconnected": "отключено",
       "noTextualDelta": "(нет текстового дельта-фрагмента)",
-      "noTextualContent": "(нет текстового содержимого)"
+      "noTextualContent": "(нет текстового содержимого)",
+      "mcpTooling": "Инструменты MCP"
     },
     "diagnostics": {
       "routerResolutions": "Решения роутера",
@@ -152,7 +157,11 @@
       "imageCompleted": "Image job `{title}` завершён.",
       "productCompleted": "Задача по текстам товара `{title}` завершена.",
       "blogCompleted": "Черновик блога `{title}` завершён.",
-      "productAttributesCompleted": "Задача по атрибутам товара `{title}` завершена."
+      "productAttributesCompleted": "Задача по атрибутам товара `{title}` завершена.",
+      "agentPrincipalCreated": "Принципал агента `{slug}` создан.",
+      "agentPrincipalUpdated": "Принципал агента `{slug}` обновлён.",
+      "modelAssignmentCreated": "Назначение модели создано.",
+      "modelAssignmentUpdated": "Назначение модели обновлено."
     },
     "error": {
       "selectProviderBeforeUpdate": "Сначала выберите провайдера для обновления.",
@@ -215,7 +224,18 @@
       "operations": "Операции",
       "capabilities": "Возможности",
       "requiredPermissions": "Обязательные разрешения",
-      "noModelAssignment": "Назначение модели не настроено"
+      "noModelAssignment": "Назначение модели не настроено",
+      "principalEditor": "Принципал агента",
+      "selectDescriptor": "Выберите дескриптор владельца",
+      "assignRoles": "Назначенные роли",
+      "updatePrincipal": "Обновить выбранный принципал",
+      "noPrincipalSelected": "Выберите принципал выше",
+      "assignmentEditor": "Назначение модели",
+      "assignmentPrincipal": "Принципал агента",
+      "assignmentProvider": "Профиль провайдера",
+      "selectPrincipal": "Выберите принципал агента",
+      "selectProvider": "Выберите профиль провайдера",
+      "updateAssignment": "Обновить выбранное назначение модели"
     }
   }
 }

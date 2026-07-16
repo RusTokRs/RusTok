@@ -165,7 +165,6 @@ fn user_mutation_runtime(ctx: &Context<'_>) -> Result<UserAdminMutationRuntime> 
             <FieldError as GraphQLError>::internal_error(
                 "UserAdminMutationRuntime is not registered; initialize shared host runtime providers",
             )
-            .into()
         })
 }
 

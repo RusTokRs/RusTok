@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use uuid::Uuid;
@@ -116,22 +117,38 @@ impl OciArtifactReference {
     }
 }
 
-/// Bytes resolved from an OCI artifact manifest after layer selection.
+/// Payload source resolved from an immutable OCI manifest. A temporary file
+/// has already passed bounded streaming digest verification and is owned by
+/// the package until admission consumes it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+pub enum ArtifactPayloadSource {
+    Bytes(Vec<u8>),
+    TemporaryFile(PathBuf),
+}
+
+/// Payload resolved from an OCI artifact manifest after layer selection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleArtifactPackage {
     pub reference: OciArtifactReference,
     pub descriptor: ModuleArtifactDescriptor,
     pub media_type: String,
-    pub payload: Vec<u8>,
+    pub payload: ArtifactPayloadSource,
 }
 
 impl ModuleArtifactPackage {
     /// Verifies artifact identity before it can enter a tenant or platform runtime.
-    pub fn verify(&self, limits: ArtifactAdmissionLimits) -> Result<(), ModuleInstallationError> {
+    pub async fn verify(
+        &self,
+        limits: ArtifactAdmissionLimits,
+    ) -> Result<(), ModuleInstallationError> {
         self.reference.validate()?;
         self.descriptor.validate()?;
-        limits.validate_payload_size(self.payload.len() as u64)?;
-        let actual_digest = sha256_digest(&self.payload);
+        let (size, actual_digest) = match &self.payload {
+            ArtifactPayloadSource::Bytes(bytes) => (bytes.len() as u64, sha256_digest(bytes)),
+            ArtifactPayloadSource::TemporaryFile(path) => sha256_file(path).await?,
+        };
+        limits.validate_payload_size(size)?;
         if actual_digest != self.descriptor.artifact_digest {
             return Err(ModuleInstallationError::PayloadDigestMismatch {
                 expected: self.descriptor.artifact_digest.clone(),
@@ -151,6 +168,28 @@ impl ModuleArtifactPackage {
     pub fn release_ref(&self) -> ArtifactReleaseRef {
         self.descriptor.release_ref()
     }
+}
+
+async fn sha256_file(path: &std::path::Path) -> Result<(u64, String), ModuleInstallationError> {
+    use tokio::io::AsyncReadExt;
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
+    let mut size = 0_u64;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .await
+            .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
+        if read == 0 {
+            break;
+        }
+        size += read as u64;
+        hasher.update(&buffer[..read]);
+    }
+    Ok((size, format!("sha256:{}", hex::encode(hasher.finalize()))))
 }
 
 /// The durable record owned by the module control plane after a package passed
@@ -353,6 +392,21 @@ pub trait DurableArtifactBlobStore: ArtifactBlobStore {
         expected_media_type: &str,
         bytes: &[u8],
     ) -> Result<StagedArtifactBlob, ModuleInstallationError>;
+    /// Stages a verified temporary file without requiring the caller to first
+    /// materialize it as a `Vec<u8>`. Drivers with native file/multipart
+    /// uploads override this; the default preserves older test adapters.
+    async fn stage_file(
+        &self,
+        expected_digest: &str,
+        expected_media_type: &str,
+        source: &std::path::Path,
+    ) -> Result<StagedArtifactBlob, ModuleInstallationError> {
+        let bytes = tokio::fs::read(source)
+            .await
+            .map_err(|error| ModuleInstallationError::Blob(error.to_string()))?;
+        self.stage(expected_digest, expected_media_type, &bytes)
+            .await
+    }
     async fn publish(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError>;
     async fn discard(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError>;
     /// Returns only digests that have crossed the durable publish boundary.
@@ -433,6 +487,15 @@ pub struct ArtifactRollbackRequest {
     pub reason: String,
     pub idempotency_key: Uuid,
     pub target_capability_grant_revision: u64,
+    pub migration_rollback_mode: ArtifactMigrationRollbackMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactMigrationRollbackMode {
+    Reversible,
+    Compensating,
+    Prohibited,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -441,6 +504,24 @@ pub struct ArtifactRollbackResult {
     pub target_installation_id: Uuid,
     pub source_revision: u64,
     pub target_revision: u64,
+}
+
+/// Removes runtime bindings for one active artifact selection while preserving
+/// the admitted release, immutable evidence, rollback predecessor, and data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDeactivationRequest {
+    pub installation_id: Uuid,
+    pub scope: ModuleInstallationScope,
+    pub expected_revision: u64,
+    pub actor_id: Uuid,
+    pub reason: String,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDeactivationResult {
+    pub operation_id: Uuid,
+    pub revision: u64,
 }
 
 /// Removes an inactive artifact selection from one scope without deleting its
@@ -460,6 +541,18 @@ pub struct ArtifactUninstallRequest {
 pub struct ArtifactUninstallResult {
     pub operation_id: Uuid,
     pub revision: u64,
+}
+
+/// Revision-guarded durable record of data migration progress for an admitted
+/// artifact. The checkpoint is owner metadata; untrusted payloads never write
+/// installation state directly.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactMigrationCheckpointRequest {
+    pub installation_id: Uuid,
+    pub scope: ModuleInstallationScope,
+    pub expected_revision: u64,
+    pub checkpoint: Value,
+    pub has_irreversible_migration: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -496,6 +589,46 @@ pub struct ArtifactAdmissionRecoveryRecord {
 #[async_trait]
 pub trait ArtifactBlobRetentionPolicy: Send + Sync {
     async fn may_delete(&self, digest: &str) -> Result<bool, ModuleInstallationError>;
+}
+
+/// Durable-policy input for one unreferenced CAS blob. References are checked
+/// separately by the reconciler; this rule protects records retained for audit,
+/// rollback, or legal hold even after their installation selection is removed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactBlobRetentionRule {
+    pub retain_until: DateTime<Utc>,
+    pub legal_hold: bool,
+    pub rollback_protected: bool,
+    pub audit_retained: bool,
+}
+
+/// Small deterministic policy implementation for a loaded durable retention
+/// snapshot. Production storage supplies the snapshot; CAS never infers a
+/// deletion decision from object age alone.
+pub struct SnapshotArtifactBlobRetentionPolicy {
+    now: DateTime<Utc>,
+    rules: HashMap<String, ArtifactBlobRetentionRule>,
+}
+
+impl SnapshotArtifactBlobRetentionPolicy {
+    pub fn new(now: DateTime<Utc>, rules: HashMap<String, ArtifactBlobRetentionRule>) -> Self {
+        Self { now, rules }
+    }
+}
+
+#[async_trait]
+impl ArtifactBlobRetentionPolicy for SnapshotArtifactBlobRetentionPolicy {
+    async fn may_delete(&self, digest: &str) -> Result<bool, ModuleInstallationError> {
+        Ok(match self.rules.get(digest) {
+            None => true,
+            Some(rule) => {
+                !rule.legal_hold
+                    && !rule.rollback_protected
+                    && !rule.audit_retained
+                    && rule.retain_until <= self.now
+            }
+        })
+    }
 }
 
 /// Reconciles temporary uploads and published CAS blobs. A published blob is
@@ -678,6 +811,354 @@ impl SeaOrmArtifactInstallationStore {
         Self { db }
     }
 
+    /// Persists a data-migration checkpoint with the admission revision CAS.
+    /// Once an installation records an irreversible migration, later commands
+    /// cannot clear that fact by submitting a false flag.
+    pub async fn record_migration_checkpoint(
+        &self,
+        request: ArtifactMigrationCheckpointRequest,
+    ) -> Result<u64, ModuleInstallationError> {
+        if request.expected_revision == 0 || !request.checkpoint.is_object() {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "migration checkpoint requires a positive revision and an object value".into(),
+            ));
+        }
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        configure_rls_scope(&transaction, &request.scope).await?;
+        let backend = transaction.get_database_backend();
+        let (scope_kind, tenant_id) = match request.scope {
+            ModuleInstallationScope::Platform => ("platform", None),
+            ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(tenant_id)),
+        };
+        let scope = match backend {
+            DbBackend::Postgres => {
+                "installation.scope_kind = $2 AND installation.tenant_id IS NOT DISTINCT FROM $3"
+            }
+            _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
+        };
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT admission.revision, admission.status, installation.has_irreversible_migration \
+                     FROM module_artifact_installations installation \
+                     JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id \
+                     WHERE installation.installation_id = {} AND {scope} \
+                     AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
+                     WHERE uninstall.installation_id = installation.installation_id)",
+                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                ),
+                vec![
+                    uuid_value(request.installation_id, backend),
+                    scope_kind.into(),
+                    optional_uuid_value(tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .ok_or_else(|| ModuleInstallationError::AdmissionRevisionConflict("installation is absent, uninstalled, or outside the requested scope".into()))?;
+        let revision: i64 = row
+            .try_get("", "revision")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let status: String = row
+            .try_get("", "status")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let has_irreversible_migration = match backend {
+            DbBackend::Postgres => row
+                .try_get::<bool>("", "has_irreversible_migration")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+            _ => {
+                row.try_get::<i64>("", "has_irreversible_migration")
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+                    != 0
+            }
+        };
+        if revision != request.expected_revision as i64
+            || !matches!(status.as_str(), "admitted" | "installed" | "inactive")
+        {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "migration checkpoint requires an eligible installation at the expected revision"
+                    .into(),
+            ));
+        }
+        let checkpoint = serde_json::to_value(&request.checkpoint)
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let update_installation = match backend {
+            DbBackend::Postgres => "UPDATE module_artifact_installations SET migration_checkpoint = $1, has_irreversible_migration = has_irreversible_migration OR $2 WHERE installation_id = $3",
+            _ => "UPDATE module_artifact_installations SET migration_checkpoint = ?1, has_irreversible_migration = MAX(has_irreversible_migration, ?2) WHERE installation_id = ?3",
+        };
+        transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                update_installation.to_string(),
+                vec![
+                    SqlValue::Json(Some(Box::new(checkpoint))),
+                    request.has_irreversible_migration.into(),
+                    uuid_value(request.installation_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let update_admission = format!("UPDATE module_artifact_admissions SET revision = revision + 1 WHERE installation_id = {} AND revision = {}", if backend == DbBackend::Postgres { "$1" } else { "?1" }, if backend == DbBackend::Postgres { "$2" } else { "?2" });
+        if transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                update_admission,
+                vec![
+                    uuid_value(request.installation_id, backend),
+                    revision.into(),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .rows_affected()
+            != 1
+        {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "installation became stale while recording a migration checkpoint".into(),
+            ));
+        }
+        let tenant_id = match &request.scope {
+            ModuleInstallationScope::Platform => None,
+            ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
+        };
+        OutboxTransport::new(self.db.clone())
+            .write_to_outbox(
+                &transaction,
+                EventEnvelope::new(
+                    Uuid::new_v4(),
+                    tenant_id,
+                    DomainEvent::ModuleArtifactMigrationCheckpointed {
+                        installation_id: request.installation_id,
+                        revision: request.expected_revision + 1,
+                        has_irreversible_migration: has_irreversible_migration
+                            || request.has_irreversible_migration,
+                    },
+                ),
+            )
+            .await
+            .map_err(|error| ModuleInstallationError::Outbox(error.to_string()))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        Ok(request.expected_revision + 1)
+    }
+
+    /// Deactivates runtime bindings for an active selection without deleting
+    /// the admitted release or its rollback/data evidence.
+    pub async fn deactivate_artifact(
+        &self,
+        request: ArtifactDeactivationRequest,
+    ) -> Result<ArtifactDeactivationResult, ModuleInstallationError> {
+        if request.expected_revision == 0 || request.reason.trim().is_empty() {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "deactivation requires a positive revision and non-empty reason".into(),
+            ));
+        }
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        configure_rls_scope(&transaction, &request.scope).await?;
+        let backend = transaction.get_database_backend();
+        let (scope_kind, tenant_id) = match request.scope {
+            ModuleInstallationScope::Platform => ("platform", None),
+            ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(tenant_id)),
+        };
+        let scope = match backend {
+            DbBackend::Postgres => {
+                "installation.scope_kind = $2 AND installation.tenant_id IS NOT DISTINCT FROM $3"
+            }
+            _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
+        };
+        let existing = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT operation.operation_id, operation.expected_revision \
+                     FROM module_artifact_deactivation_operations operation \
+                     JOIN module_artifact_installations installation ON installation.installation_id = operation.installation_id \
+                     WHERE operation.idempotency_key = {} AND {scope}",
+                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                ),
+                vec![
+                    uuid_value(request.idempotency_key, backend),
+                    scope_kind.into(),
+                    optional_uuid_value(tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if let Some(existing) = existing {
+            let expected: i64 = existing
+                .try_get("", "expected_revision")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            if expected != request.expected_revision as i64 {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                    "idempotency key was already used for another deactivation revision".into(),
+                ));
+            }
+            let operation_id = match backend {
+                DbBackend::Postgres => existing
+                    .try_get::<Uuid>("", "operation_id")
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+                _ => existing
+                    .try_get::<String>("", "operation_id")
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+                    .parse::<Uuid>()
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+            };
+            return Ok(ArtifactDeactivationResult {
+                operation_id,
+                revision: request.expected_revision + 1,
+            });
+        }
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT installation.slug, admission.status, admission.revision \
+                     FROM module_artifact_installations installation \
+                     JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id \
+                     WHERE installation.installation_id = {} AND {scope} \
+                     AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
+                     WHERE uninstall.installation_id = installation.installation_id)",
+                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                ),
+                vec![
+                    uuid_value(request.installation_id, backend),
+                    scope_kind.into(),
+                    optional_uuid_value(tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .ok_or_else(|| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "installation is absent, uninstalled, or outside the requested scope".into(),
+                )
+            })?;
+        let status: String = row
+            .try_get("", "status")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let revision: i64 = row
+            .try_get("", "revision")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if status != "active" || revision != request.expected_revision as i64 {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "installation must be active at the expected revision before deactivation".into(),
+            ));
+        }
+        let target_slug: String = row
+            .try_get("", "slug")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let dependents = transaction
+            .query_all(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT CAST(installation.descriptor AS TEXT) AS descriptor \
+                     FROM module_artifact_installations installation \
+                     JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id \
+                     WHERE installation.installation_id <> {} AND {scope} AND admission.status = 'active'",
+                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                ),
+                vec![
+                    uuid_value(request.installation_id, backend),
+                    scope_kind.into(),
+                    optional_uuid_value(tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        for dependent in dependents {
+            let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
+                &dependent
+                    .try_get::<String>("", "descriptor")
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+            )
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            if descriptor
+                .dependencies
+                .iter()
+                .any(|dependency| dependency.slug == target_slug)
+            {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                    "deactivation is blocked by an active dependent in the same scope".into(),
+                ));
+            }
+        }
+        let operation_id = Uuid::new_v4();
+        let placeholders = match backend {
+            DbBackend::Postgres => "$1,$2,$3,$4,$5,$6,NOW()",
+            _ => "?1,?2,?3,?4,?5,?6,datetime('now')",
+        };
+        transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO module_artifact_deactivation_operations \
+                     (operation_id, installation_id, expected_revision, actor_id, reason, idempotency_key, committed_at) \
+                     VALUES ({placeholders})"
+                ),
+                vec![
+                    uuid_value(operation_id, backend),
+                    uuid_value(request.installation_id, backend),
+                    revision.into(),
+                    uuid_value(request.actor_id, backend),
+                    request.reason.into(),
+                    uuid_value(request.idempotency_key, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let updated = transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE module_artifact_admissions SET status = 'inactive', revision = revision + 1 \
+                     WHERE installation_id = {} AND revision = {} AND status = 'active'",
+                    if backend == DbBackend::Postgres { "$1" } else { "?1" },
+                    if backend == DbBackend::Postgres { "$2" } else { "?2" },
+                ),
+                vec![uuid_value(request.installation_id, backend), revision.into()],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if updated.rows_affected() != 1 {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "installation became stale during deactivation".into(),
+            ));
+        }
+        OutboxTransport::new(self.db.clone())
+            .write_to_outbox(
+                &transaction,
+                EventEnvelope::new(
+                    Uuid::new_v4(),
+                    tenant_id,
+                    DomainEvent::ModuleArtifactDeactivated {
+                        installation_id: request.installation_id,
+                        revision: request.expected_revision + 1,
+                    },
+                ),
+            )
+            .await
+            .map_err(|error| ModuleInstallationError::Outbox(error.to_string()))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        Ok(ArtifactDeactivationResult {
+            operation_id,
+            revision: request.expected_revision + 1,
+        })
+    }
+
     /// Removes one inactive scope selection while retaining immutable evidence
     /// for rollback/audit and deferred CAS retention.
     pub async fn uninstall_artifact(
@@ -706,6 +1187,48 @@ impl SeaOrmArtifactInstallationStore {
             }
             _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
         };
+        let existing = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT uninstall.operation_id, uninstall.expected_revision \
+                     FROM module_artifact_uninstall_operations uninstall \
+                     JOIN module_artifact_installations installation ON installation.installation_id = uninstall.installation_id \
+                     WHERE uninstall.idempotency_key = {} AND {scope}",
+                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                ),
+                vec![
+                    uuid_value(request.idempotency_key, backend),
+                    scope_kind.into(),
+                    optional_uuid_value(tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        if let Some(existing) = existing {
+            let expected: i64 = existing
+                .try_get("", "expected_revision")
+                .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+            if expected != request.expected_revision as i64 {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                    "idempotency key was already used for another uninstall revision".into(),
+                ));
+            }
+            let operation_id = match backend {
+                DbBackend::Postgres => existing
+                    .try_get::<Uuid>("", "operation_id")
+                    .map_err(|e| ModuleInstallationError::Store(e.to_string()))?,
+                _ => existing
+                    .try_get::<String>("", "operation_id")
+                    .map_err(|e| ModuleInstallationError::Store(e.to_string()))?
+                    .parse::<Uuid>()
+                    .map_err(|e| ModuleInstallationError::Store(e.to_string()))?,
+            };
+            return Ok(ArtifactUninstallResult {
+                operation_id,
+                revision: request.expected_revision + 1,
+            });
+        }
         let row = transaction.query_one(Statement::from_sql_and_values(backend, format!(
             "SELECT installation.slug, admission.status, admission.revision FROM module_artifact_installations installation JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id WHERE installation.installation_id = {} AND {scope}", if backend == DbBackend::Postgres { "$1" } else { "?1" }), vec![uuid_value(request.installation_id, backend), scope_kind.into(), optional_uuid_value(tenant_id, backend)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?.ok_or_else(|| ModuleInstallationError::AdmissionRevisionConflict("installation is absent from the requested scope".into()))?;
         let status: String = row
@@ -821,7 +1344,7 @@ impl SeaOrmArtifactInstallationStore {
         };
         let row = transaction.query_one(Statement::from_sql_and_values(
             backend,
-            format!("SELECT previous_installation_id FROM module_artifact_installations WHERE installation_id = {}", placeholders.0),
+            format!("SELECT previous_installation_id, has_irreversible_migration FROM module_artifact_installations WHERE installation_id = {}", placeholders.0),
             vec![uuid_value(request.installation_id, backend)],
         )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?
             .ok_or_else(|| ModuleInstallationError::AdmissionRevisionConflict("rollback predecessor is unavailable".into()))?;
@@ -835,6 +1358,29 @@ impl SeaOrmArtifactInstallationStore {
                 .parse::<Uuid>()
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
         };
+        let has_irreversible_migration = match backend {
+            DbBackend::Postgres => row
+                .try_get::<bool>("", "has_irreversible_migration")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+            _ => {
+                row.try_get::<i64>("", "has_irreversible_migration")
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+                    != 0
+            }
+        };
+        if matches!(
+            request.migration_rollback_mode,
+            ArtifactMigrationRollbackMode::Prohibited
+        ) || (has_irreversible_migration
+            && !matches!(
+                request.migration_rollback_mode,
+                ArtifactMigrationRollbackMode::Compensating
+            ))
+        {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "rollback is prohibited by the recorded data-migration policy".into(),
+            ));
+        }
         let target_revision_row = transaction
             .query_one(Statement::from_sql_and_values(
                 backend,
@@ -1377,6 +1923,27 @@ where
             .commit_admission(artifact, &staged, evidence)
             .await
     }
+
+    pub async fn admit_file(
+        &self,
+        artifact: &InstalledModuleArtifact,
+        media_type: &str,
+        source: &std::path::Path,
+        evidence: &ArtifactVerificationEvidence,
+    ) -> Result<(), ModuleInstallationError> {
+        artifact.validate_dependency_lock()?;
+        let staged = self
+            .blobs
+            .stage_file(&artifact.descriptor.artifact_digest, media_type, source)
+            .await?;
+        if let Err(error) = self.blobs.publish(&staged).await {
+            let _ = self.blobs.discard(&staged).await;
+            return Err(error);
+        }
+        self.store
+            .commit_admission(artifact, &staged, evidence)
+            .await
+    }
 }
 
 impl<R, S, B> ModuleInstaller<R, S, B>
@@ -1421,7 +1988,7 @@ where
                 received: package.reference.canonical(),
             });
         }
-        package.verify(self.limits)?;
+        package.verify(self.limits).await?;
         if package.descriptor.payload_kind == ArtifactPayloadKind::StaticPromoted {
             return Err(ModuleInstallationError::StaticPromotionRequired);
         }
@@ -1462,9 +2029,21 @@ where
             decision,
             installed_at,
         );
-        self.admission
-            .admit(&artifact, &package.media_type, &package.payload, &evidence)
-            .await?;
+        match package.payload {
+            ArtifactPayloadSource::Bytes(payload) => {
+                self.admission
+                    .admit(&artifact, &package.media_type, &payload, &evidence)
+                    .await?
+            }
+            ArtifactPayloadSource::TemporaryFile(path) => {
+                let result = self
+                    .admission
+                    .admit_file(&artifact, &package.media_type, &path, &evidence)
+                    .await;
+                let _ = tokio::fs::remove_file(&path).await;
+                result?;
+            }
+        }
         Ok(artifact)
     }
 }
@@ -1696,7 +2275,7 @@ mod tests {
                 persistence_contract: None,
             },
             media_type: media_type_for(kind).to_string(),
-            payload,
+            payload: ArtifactPayloadSource::Bytes(payload),
         }
     }
 
@@ -1839,7 +2418,9 @@ mod tests {
     async fn installation_only_builds_requests_for_declared_capabilities() {
         let package = package(ArtifactPayloadKind::Rhai);
         let reference = package.reference.clone();
-        let payload = package.payload.clone();
+        let ArtifactPayloadSource::Bytes(payload) = package.payload.clone() else {
+            panic!("fixture uses an in-memory payload")
+        };
         let installer = ModuleInstaller::new(
             FixtureRegistry(package),
             CapturingStore::default(),
@@ -2034,6 +2615,113 @@ mod tests {
                 .expect("reverification outbox count"),
             1
         );
+        assert_eq!(
+            store
+                .record_migration_checkpoint(ArtifactMigrationCheckpointRequest {
+                    installation_id: installed.installation_id,
+                    scope: ModuleInstallationScope::Tenant { tenant_id },
+                    expected_revision: 2,
+                    checkpoint: json!({ "data_contract_revision": 2 }),
+                    has_irreversible_migration: true,
+                })
+                .await
+                .expect("migration checkpoint"),
+            3
+        );
+        let checkpoint_outbox_count = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM sys_events \
+                 WHERE event_type = 'module.artifact.migration_checkpointed'"
+                    .to_string(),
+            ))
+            .await
+            .expect("checkpoint outbox query")
+            .expect("checkpoint outbox count");
+        assert_eq!(
+            i64::try_get(&checkpoint_outbox_count, "", "count").expect("checkpoint outbox count"),
+            1
+        );
+        let checkpoint_row = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT migration_checkpoint, has_irreversible_migration \
+                 FROM module_artifact_installations"
+                    .to_string(),
+            ))
+            .await
+            .expect("checkpoint query")
+            .expect("checkpoint row");
+        assert_eq!(
+            String::try_get(&checkpoint_row, "", "migration_checkpoint")
+                .expect("migration checkpoint"),
+            r#"{"data_contract_revision":2}"#
+        );
+        assert_eq!(
+            i64::try_get(&checkpoint_row, "", "has_irreversible_migration")
+                .expect("irreversible migration"),
+            1
+        );
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_artifact_admissions SET status = 'active' WHERE installation_id = ?1"
+                    .to_string(),
+                vec![installed.installation_id.to_string().into()],
+            ))
+            .await
+            .expect("activate test installation");
+        let deactivation_request = ArtifactDeactivationRequest {
+            installation_id: installed.installation_id,
+            scope: ModuleInstallationScope::Tenant { tenant_id },
+            expected_revision: 3,
+            actor_id: Uuid::new_v4(),
+            reason: "retire runtime bindings".to_string(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        let deactivated = store
+            .deactivate_artifact(deactivation_request.clone())
+            .await
+            .expect("deactivate artifact");
+        assert_eq!(deactivated.revision, 4);
+        assert_eq!(
+            store
+                .deactivate_artifact(deactivation_request)
+                .await
+                .expect("idempotent deactivation"),
+            deactivated
+        );
+        let deactivation_outbox_count = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM sys_events \
+                 WHERE event_type = 'module.artifact.deactivated'"
+                    .to_string(),
+            ))
+            .await
+            .expect("deactivation outbox query")
+            .expect("deactivation outbox count");
+        assert_eq!(
+            i64::try_get(&deactivation_outbox_count, "", "count")
+                .expect("deactivation outbox count"),
+            1
+        );
+        let deactivation_row = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT status, revision FROM module_artifact_admissions".to_string(),
+            ))
+            .await
+            .expect("deactivation query")
+            .expect("deactivation row");
+        assert_eq!(
+            String::try_get(&deactivation_row, "", "status").expect("deactivation status"),
+            "inactive"
+        );
+        assert_eq!(
+            i64::try_get(&deactivation_row, "", "revision").expect("deactivation revision"),
+            4
+        );
         assert!(matches!(
             store
                 .reverify_admission(ArtifactAdmissionReverification {
@@ -2041,7 +2729,7 @@ mod tests {
                     scope: ModuleInstallationScope::Tenant {
                         tenant_id: Uuid::new_v4(),
                     },
-                    expected_revision: 2,
+                    expected_revision: 4,
                     evidence,
                 })
                 .await,

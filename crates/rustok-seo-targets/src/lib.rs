@@ -610,6 +610,9 @@ pub struct SeoTargetAlternateRoute {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Default)]
 pub struct SeoTargetImageRecord {
+    /// Optional owner-provided media asset reference for consumers that need the
+    /// canonical descriptor rather than a pre-rendered URL.
+    pub media_asset_id: Option<Uuid>,
     pub url: String,
     pub alt: Option<String>,
     pub width: Option<i32>,
@@ -632,12 +635,20 @@ impl SeoTargetImageRecord {
             normalize_optional_string(mime_type).or_else(|| infer_image_mime_type(url.as_str()));
 
         Some(Self {
+            media_asset_id: None,
             url,
             alt: normalize_optional_string(alt),
             width,
             height,
             mime_type,
         })
+    }
+
+    /// Attaches an owner-known media asset UUID without coupling this shared
+    /// target contract to the media module or its persistence types.
+    pub fn with_media_asset_id(mut self, media_asset_id: Uuid) -> Self {
+        self.media_asset_id = Some(media_asset_id);
+        self
     }
 
     pub fn has_alt(&self) -> bool {

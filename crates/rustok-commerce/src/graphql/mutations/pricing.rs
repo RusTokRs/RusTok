@@ -9,7 +9,8 @@ use rustok_cart::{
 };
 use rustok_pricing::{
     in_process_pricing_read_port, in_process_pricing_write_port, ApplyVariantDiscountRequest,
-    PreviewVariantDiscountRequest, PricingService, SetPriceListScopeRequest,
+    PreviewVariantDiscountRequest, SetPriceListPercentageRuleRequest, SetPriceListScopeRequest,
+    UpsertVariantPriceRequest,
 };
 
 use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
@@ -57,6 +58,7 @@ fn pricing_preview_port_context(
 fn pricing_write_port_context(
     tenant_id: Uuid,
     user_id: Uuid,
+    locale: &str,
     operation: &str,
     aggregate_id: Uuid,
 ) -> PortContext {
@@ -64,7 +66,7 @@ fn pricing_write_port_context(
     PortContext::new(
         tenant_id.to_string(),
         PortActor::user(user_id.to_string()),
-        "en",
+        locale,
         correlation_id.clone(),
     )
     .with_deadline(std::time::Duration::from_secs(2))
@@ -194,60 +196,36 @@ impl CommercePricingMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let service = PricingService::new(db.clone(), event_bus.clone());
         let currency_code = parse_pricing_currency_code(&input.currency_code)?;
         let amount = parse_decimal(&input.amount)?;
         let compare_at_amount = parse_optional_decimal(input.compare_at_amount.as_deref())?;
         let channel_slug = normalize_pricing_channel_slug(input.channel_slug.as_deref());
 
-        if let Some(price_list_id) = input.price_list_id {
-            service
-                .set_price_list_tier_with_channel(
+        let price = in_process_pricing_write_port(db.clone(), event_bus.clone())
+            .upsert_variant_price(
+                pricing_write_port_context(
                     tenant_id,
                     auth.user_id,
+                    "en",
+                    "upsert-variant-price",
                     variant_id,
-                    price_list_id,
-                    currency_code.as_str(),
+                ),
+                UpsertVariantPriceRequest {
+                    variant_id,
+                    price_list_id: input.price_list_id,
+                    currency_code,
                     amount,
                     compare_at_amount,
-                    input.channel_id,
-                    channel_slug.clone(),
-                    input.min_quantity,
-                    input.max_quantity,
-                )
-                .await
-                .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-        } else {
-            service
-                .set_price_tier_with_channel(
-                    tenant_id,
-                    auth.user_id,
-                    variant_id,
-                    currency_code.as_str(),
-                    amount,
-                    compare_at_amount,
-                    input.channel_id,
-                    channel_slug.clone(),
-                    input.min_quantity,
-                    input.max_quantity,
-                )
-                .await
-                .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-        }
+                    channel_id: input.channel_id,
+                    channel_slug,
+                    min_quantity: input.min_quantity,
+                    max_quantity: input.max_quantity,
+                },
+            )
+            .await
+            .map_err(|error| async_graphql::Error::new(error.message))?;
 
-        let price = load_pricing_price_row(
-            &service,
-            variant_id,
-            &currency_code,
-            input.price_list_id,
-            input.channel_id,
-            channel_slug.as_deref(),
-            input.min_quantity,
-            input.max_quantity,
-        )
-        .await?;
-
-        Ok(price)
+        Ok(price.into())
     }
 
     async fn preview_admin_pricing_variant_discount(
@@ -318,6 +296,7 @@ impl CommercePricingMutation {
                 pricing_write_port_context(
                     tenant_id,
                     auth.user_id,
+                    "en",
                     "apply-variant-discount",
                     variant_id,
                 ),
@@ -353,29 +332,27 @@ impl CommercePricingMutation {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
-        validate_active_price_list_for_rule_update(db, tenant_id, price_list_id).await?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let service = PricingService::new(db.clone(), event_bus.clone());
         let adjustment_percent = parse_optional_decimal(input.adjustment_percent.as_deref())?;
-
-        service
+        let option = in_process_pricing_write_port(db.clone(), event_bus.clone())
             .set_price_list_percentage_rule(
-                tenant_id,
-                auth.user_id,
-                price_list_id,
-                adjustment_percent,
+                pricing_write_port_context(
+                    tenant_id,
+                    auth.user_id,
+                    locale.as_str(),
+                    "set-price-list-percentage-rule",
+                    price_list_id,
+                ),
+                SetPriceListPercentageRuleRequest {
+                    price_list_id,
+                    adjustment_percent,
+                    fallback_locale: Some(tenant.default_locale.clone()),
+                },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| async_graphql::Error::new(error.message))?;
 
-        load_active_price_list_option(
-            &service,
-            tenant_id,
-            price_list_id,
-            locale.as_str(),
-            tenant.default_locale.as_str(),
-        )
-        .await
+        Ok(option.into())
     }
 
     async fn update_admin_pricing_price_list_scope(
@@ -399,6 +376,7 @@ impl CommercePricingMutation {
                 pricing_write_port_context(
                     tenant_id,
                     auth.user_id,
+                    "en",
                     "set-price-list-scope",
                     price_list_id,
                 ),

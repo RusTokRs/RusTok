@@ -19,4 +19,4 @@ pub mod system;
 pub mod tenant_security;
 pub mod types;
 
-pub use schema::{build_schema, AppSchema, SharedGraphqlSchema};
+pub use schema::{build_schema, AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema};

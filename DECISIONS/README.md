@@ -14,6 +14,7 @@ column identifies the current canonical decision.
 
 | ADR | Title | Status |
 | --- | --- | --- |
+| [2026-07-16](./2026-07-16-comments-blog-event-projection.md) | Comments-to-Blog reply count projection | Accepted |
 | [2026-07-13](./2026-07-13-agent-workflow-platform-contracts.md) | Platform contracts for agent workflow configuration and scheduling | Proposed |
 | [2026-07-13](./2026-07-13-module-artifact-rollback-boundary.md) | Module artifact rollback boundary | Accepted |
 | [2026-07-13](./2026-07-13-module-trust-verification-transport.md) | Module trust-verification transport | Accepted |

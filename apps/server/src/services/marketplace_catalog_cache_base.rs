@@ -44,7 +44,7 @@ impl CachedRegistryCatalog {
     }
 }
 
-fn cached_registry_catalog_weight(key: &String, value: &Arc<CachedRegistryCatalog>) -> u32 {
+fn cached_registry_catalog_weight(key: &str, value: &Arc<CachedRegistryCatalog>) -> u32 {
     key.len()
         .saturating_add(value.encoded_bytes)
         .saturating_add(std::mem::size_of::<CachedRegistryCatalog>())
@@ -113,8 +113,8 @@ impl HardenedRegistryMarketplaceProvider {
         max_response_bytes: usize,
         max_concurrent_fetches: usize,
     ) -> Self {
-        let catalog_cache = Cache::builder()
-            .weigher(cached_registry_catalog_weight)
+        let catalog_cache = Cache::<String, Arc<CachedRegistryCatalog>>::builder()
+            .weigher(|key, value| cached_registry_catalog_weight(key, value))
             .max_capacity(cache_max_weight_bytes.max(1))
             .time_to_live(cache_ttl.max(Duration::from_millis(1)))
             .build();
@@ -620,8 +620,8 @@ mod tests {
         let small = Arc::new(CachedRegistryCatalog::new(Vec::new(), 32));
         let large = Arc::new(CachedRegistryCatalog::new(Vec::new(), 4_096));
         assert!(
-            cached_registry_catalog_weight(&"key".to_string(), &large)
-                > cached_registry_catalog_weight(&"key".to_string(), &small)
+            cached_registry_catalog_weight("key", &large)
+                > cached_registry_catalog_weight("key", &small)
         );
     }
 

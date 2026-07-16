@@ -213,6 +213,29 @@ impl StorageBackend for LocalStorage {
         })
     }
 
+    async fn store_file(
+        &self,
+        path: &str,
+        source: &Path,
+        _content_type: &str,
+    ) -> Result<UploadedObject> {
+        let (_root, destination) = self.prepare_destination(path).await?;
+        let parent = destination
+            .parent()
+            .ok_or_else(|| StorageError::InvalidPath(path.to_string()))?;
+        let temporary = parent.join(format!(".upload-{}.tmp", uuid::Uuid::new_v4()));
+        let size = tokio::fs::copy(source, &temporary).await?;
+        if let Err(error) = tokio::fs::rename(&temporary, &destination).await {
+            let _ = tokio::fs::remove_file(&temporary).await;
+            return Err(StorageError::Io(error));
+        }
+        Ok(UploadedObject {
+            path: path.to_string(),
+            public_url: self.public_url(path),
+            size,
+        })
+    }
+
     async fn store_if_absent(
         &self,
         path: &str,

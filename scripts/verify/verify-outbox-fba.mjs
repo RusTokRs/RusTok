@@ -15,6 +15,7 @@ const central = read('docs/modules/registry.md');
 const pkg = json('package.json');
 const lib = read('crates/rustok-outbox/src/lib.rs');
 const ports = read('crates/rustok-outbox/src/ports.rs');
+const serverRelayWorker = read('apps/server/src/services/event_transport_factory.rs');
 if (pkg.scripts?.['verify:outbox:fba'] !== 'node scripts/verify/verify-outbox-fba.mjs && npm run verify:owner:fba-runtime-order') fail('package script verify:outbox:fba drift');
 if (registry.schema_version !== 1 || registry.module !== 'outbox' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'outbox.relay_control.v1') fail('contract version drift');
@@ -29,11 +30,18 @@ for (const marker of ['trait OutboxRelayPort', 'impl OutboxRelayPort for crate::
 }
 if (!JSON.stringify(registry).includes('relay_metrics_projection_preserved')) fail('registry missing relay metrics assertion');
 if (!ports.includes('Serialize, Deserialize')) fail('FBA DTOs must be serializable');
+const [consumer] = registry.consumers ?? [];
+if (!consumer || consumer.consumer_source !== 'apps/server/src/services/event_transport_factory.rs' || consumer.consumer_operation !== 'OutboxRelayPort::process_pending_once') fail('relay worker consumer metadata drift');
+for (const marker of ['OutboxRelayPort::process_pending_once(', 'outbox_relay_worker_context()', 'OutboxRelayRunOnceRequest {', '.with_idempotency_key(', '.with_deadline(Duration::from_secs(30))']) {
+  if (!serverRelayWorker.includes(marker)) fail(`relay worker typed consumer marker missing ${marker}`);
+}
+if (serverRelayWorker.includes('relay.process_pending_once(None).await')) fail('relay worker bypasses OutboxRelayPort');
 if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('OutboxRelayPort') || !plan.includes('outbox-contract-test-static-matrix.json') || !plan.includes(registry.evidence.runtime_order_smoke)) fail('local plan FBA evidence drift');
-if (!central.includes('| `outbox` |') || !central.includes(registryPath) || !central.includes(registry.evidence.runtime_order_smoke) || !central.includes('`in_progress` | `in_progress`')) fail('central readiness board drift');
+if (!central.includes('| `outbox` |') || !central.includes(registryPath) || !central.includes(registry.evidence.runtime_order_smoke) || !central.includes('`in_progress` | `boundary_ready`')) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'outbox' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-outbox-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');
+if (evidence.consumer_composition?.status !== 'static_port_invocation_checked' || evidence.consumer_composition.source !== consumer.consumer_source || evidence.consumer_composition.operation !== consumer.consumer_operation || !sameSet(evidence.consumer_composition.assertions, ['typed_port_invocation', 'deadline_preserved', 'idempotency_preserved'])) fail('consumer composition evidence drift');
 const rc = registry.contract_tests.cases.find((entry) => entry.operation === 'process_pending_once');
 const ec = evidence.cases.find((entry) => entry.operation === 'process_pending_once');
 if (!rc || !ec || ec.execution_status !== 'runtime_cases_planned_uncompiled' || !sameSet(ec.assertions, rc.assertions)) fail('process_pending_once evidence case drift');

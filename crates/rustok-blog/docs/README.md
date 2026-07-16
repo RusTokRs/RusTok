@@ -4,6 +4,12 @@
 surface. The module already works on blog-owned persistence and uses shared
 platform contracts only where justified by the responsibility boundary.
 
+All Blog comment lifecycle operations consume the public `CommentsThreadPort`
+with typed actor, locale, deadline, idempotency where required, and error semantics.
+Comments lifecycle events are consumed by Blog's durable idempotent reply-count
+projection, which publishes `BlogPostUpdated` in the same projection transaction.
+Live delivery, retry, and recovery evidence remain pending.
+
 **Contract stability status:** fully achieved. Channel-aware semantics and
 taxonomy sync are confirmed by integration and unit tests.
 

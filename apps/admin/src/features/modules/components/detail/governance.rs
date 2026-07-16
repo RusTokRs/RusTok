@@ -206,13 +206,7 @@ pub fn governance_action_label(action_key: &str, locale: Locale) -> &'static str
         "reject" => tr(locale, "Reject", "Reject"),
         "owner_transfer" => tr(locale, "Owner transfer", "Owner transfer"),
         "yank" => tr(locale, "Yank", "Yank"),
-        other => {
-            if other.is_empty() {
-                tr(locale, "governance action", "governance-действие")
-            } else {
-                tr(locale, "governance action", "governance-действие")
-            }
-        }
+        _ => tr(locale, "governance action", "governance-действие"),
     }
 }
 

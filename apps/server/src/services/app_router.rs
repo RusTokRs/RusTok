@@ -178,6 +178,13 @@ pub fn compose_application_router(
                 &middleware_runtime_ctx,
             ))
             .with_shared_value(HostSettingsSnapshot::new(settings_snapshot));
+        let runtime_ctx = if let Some(registry) =
+            middleware_runtime_ctx.shared_get::<rustok_core::ModuleRegistry>()
+        {
+            runtime_ctx.with_shared_value(registry)
+        } else {
+            runtime_ctx
+        };
         let runtime_ctx = if let Some(storage) =
             middleware_runtime_ctx.shared_get::<rustok_storage::StorageService>()
         {
@@ -188,7 +195,9 @@ pub fn compose_application_router(
         if let Some(extensions) =
             middleware_runtime_ctx.shared_get::<Arc<ModuleRuntimeExtensions>>()
         {
-            runtime_ctx.with_shared_value(extensions)
+            extensions
+                .apply_to_host_runtime(runtime_ctx)
+                .with_shared_value(extensions)
         } else {
             runtime_ctx
         }

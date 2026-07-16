@@ -55,6 +55,18 @@ impl StorageService {
         self.0.store(path, data, content_type).await
     }
 
+    /// Stores a local staging file through the driver without imposing a
+    /// `Vec<u8>` boundary on callers such as durable artifact CAS.
+    pub async fn store_file(
+        &self,
+        path: &str,
+        source: &std::path::Path,
+        content_type: &str,
+    ) -> Result<UploadedObject> {
+        validate_storage_path(path, false, false)?;
+        self.0.store_file(path, source, content_type).await
+    }
+
     pub async fn store_if_absent(
         &self,
         path: &str,

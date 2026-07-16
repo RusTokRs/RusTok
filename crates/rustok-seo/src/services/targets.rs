@@ -1,6 +1,9 @@
 use uuid::Uuid;
 
-use rustok_api::TenantContext;
+use std::time::Duration;
+
+use rustok_api::{PortActor, PortContext, TenantContext};
+use rustok_media::MediaAssetReadPort;
 use rustok_seo_targets::{
     SeoLoadedTargetRecord, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetOpenGraphRecord,
     SeoTargetRuntimeContext, SeoTargetSlug,
@@ -82,7 +85,18 @@ impl SeoService {
                 ))
             })?;
 
-        Ok(record.map(map_loaded_target_record))
+        Ok(match record {
+            Some(record) => Some(
+                map_loaded_target_record(
+                    record,
+                    tenant.id,
+                    locale,
+                    self.media_asset_read_port.as_deref(),
+                )
+                .await,
+            ),
+            None => None,
+        })
     }
 
     pub(super) fn target_runtime(&self) -> SeoTargetRuntimeContext {
@@ -93,7 +107,12 @@ impl SeoService {
     }
 }
 
-fn map_loaded_target_record(record: SeoLoadedTargetRecord) -> TargetState {
+async fn map_loaded_target_record(
+    record: SeoLoadedTargetRecord,
+    tenant_id: Uuid,
+    locale: &str,
+    media_port: Option<&dyn MediaAssetReadPort>,
+) -> TargetState {
     TargetState {
         target_kind: record.target_kind,
         target_id: record.target_id,
@@ -111,14 +130,19 @@ fn map_loaded_target_record(record: SeoLoadedTargetRecord) -> TargetState {
                 x_default: false,
             })
             .collect(),
-        open_graph: map_open_graph(record.open_graph),
+        open_graph: map_open_graph(record.open_graph, tenant_id, locale, media_port).await,
         structured_data: record.structured_data,
         fallback_source: record.fallback_source,
         template_fields: record.template_fields.values,
     }
 }
 
-fn map_open_graph(record: SeoTargetOpenGraphRecord) -> SeoOpenGraph {
+async fn map_open_graph(
+    record: SeoTargetOpenGraphRecord,
+    tenant_id: Uuid,
+    locale: &str,
+    media_port: Option<&dyn MediaAssetReadPort>,
+) -> SeoOpenGraph {
     SeoOpenGraph {
         title: record.title,
         description: record.description,
@@ -126,16 +150,50 @@ fn map_open_graph(record: SeoTargetOpenGraphRecord) -> SeoOpenGraph {
         site_name: record.site_name,
         url: record.url,
         locale: record.locale,
-        images: record
-            .images
-            .into_iter()
-            .map(|image| SeoImageAsset {
-                url: image.url,
-                alt: image.alt,
-                width: image.width,
-                height: image.height,
-                mime_type: image.mime_type,
-            })
-            .collect(),
+        images: {
+            let mut images = Vec::with_capacity(record.images.len());
+            for image in record.images {
+                let descriptor = match (media_port, image.media_asset_id) {
+                    (Some(port), Some(media_id)) => port
+                        .get_image_descriptor(
+                            PortContext::new(
+                                tenant_id.to_string(),
+                                PortActor::service("rustok-seo.image-descriptor"),
+                                locale,
+                                format!("seo-media-image:{media_id}"),
+                            )
+                            .with_deadline(Duration::from_secs(2)),
+                            media_id,
+                            image.alt.clone(),
+                        )
+                        .await
+                        .ok()
+                        .flatten(),
+                    _ => None,
+                };
+                images.push(SeoImageAsset {
+                    url: descriptor
+                        .as_ref()
+                        .map(|value| value.url.clone())
+                        .unwrap_or(image.url),
+                    alt: descriptor
+                        .as_ref()
+                        .and_then(|value| value.alt.clone())
+                        .or(image.alt),
+                    width: descriptor
+                        .as_ref()
+                        .and_then(|value| value.width)
+                        .or(image.width),
+                    height: descriptor
+                        .as_ref()
+                        .and_then(|value| value.height)
+                        .or(image.height),
+                    mime_type: descriptor
+                        .and_then(|value| value.mime_type)
+                        .or(image.mime_type),
+                });
+            }
+            images
+        },
     }
 }

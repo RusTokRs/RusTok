@@ -12,18 +12,22 @@ additive `v1` surfaces, while Rust and Next storefronts consume the canonical
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
-- FBA status: `boundary_ready` (`core_transport_ui`).
+- FBA status: `in_progress` (`core_transport_ui`).
 - Structural shape: `core_transport_ui`
 - The admin package has core/transport/UI ownership and a neutral
   `HostRuntimeContext` native path; GraphQL and REST remain parallel control
   surfaces. `scripts/verify/verify-seo-admin-boundary.mjs` protects that
   boundary.
-- SEO consumes `MediaAssetReadPort` / `media.asset_read.v1` through
-  `crates/rustok-seo/contracts/seo-fba-registry.json`. Static evidence is
-  `crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json`
-  (`source_locked_pending_consumer_runtime`) and runtime-order evidence is
+- The intended `MediaAssetReadPort` / `media.asset_read.v1` consumer contract
+  is implemented through `SeoMediaAssetReadProvider` and the host-composed
+  `MediaAssetReadPort`. The shared target image contract supports an optional
+  owner-provided media asset UUID, and Product forwards its canonical
+  `ProductImageResponse.media_id`. URL-only target records retain their
+  owner-provided descriptors. Other target providers and live consumer
+  execution remain required before `boundary_ready`.
+  The source-locked contract and evidence are
+  `crates/rustok-seo/contracts/seo-fba-registry.json` and
   `crates/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json`.
-  Neither substitutes for live consumer execution.
 
 ## Next results
 

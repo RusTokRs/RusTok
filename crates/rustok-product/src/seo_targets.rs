@@ -317,6 +317,7 @@ fn resolve_primary_product_image(
     let image = images.first()?;
     let alt = localized_product_image_alt(image, locale).or_else(|| image.alt_text.clone());
     SeoTargetImageRecord::from_parts(image.url.clone(), alt, None, None, None)
+        .map(|record| record.with_media_asset_id(image.media_id))
 }
 
 fn localized_product_image_alt(image: &ProductImageResponse, locale: &str) -> Option<String> {

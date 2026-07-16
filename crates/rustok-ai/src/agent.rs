@@ -10,7 +10,7 @@ use crate::{AiError, AiResult, ProviderCapability};
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentKind {
-    Domain,
+    Product,
     Code,
     Orchestrator,
     Review,
@@ -408,7 +408,7 @@ pub fn agent_catalog() -> AiResult<AgentCatalog> {
                 slug: agent.slug.to_string(),
                 display_name: agent.display_name.to_string(),
                 owner: "rustok-ai-product".to_string(),
-                kind: AgentKind::Domain,
+                kind: AgentKind::Product,
                 responsibility: agent.responsibility.to_string(),
                 required_permissions: agent
                     .required_permissions
@@ -498,7 +498,7 @@ mod tests {
             slug: "catalog_enricher".to_string(),
             display_name: "Catalog enricher".to_string(),
             owner: "rustok-ai-product".to_string(),
-            kind: AgentKind::Domain,
+            kind: AgentKind::Product,
             responsibility: "Enrich product data".to_string(),
             required_permissions: BTreeSet::from(["product.write".to_string()]),
             allowed_operations: BTreeSet::from(["product.update_generated".to_string()]),
@@ -622,6 +622,9 @@ mod tests {
         assert!(catalog
             .descriptor("alloy_code_reviewer")
             .is_some_and(|descriptor| descriptor.kind == AgentKind::Review));
+        assert!(catalog
+            .descriptor("product_copywriter")
+            .is_some_and(|descriptor| descriptor.kind == AgentKind::Product));
         assert!(catalog
             .validate_stage_execution(
                 "product_copywriter",

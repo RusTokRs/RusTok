@@ -29,13 +29,13 @@ if (port.deadline_required !== true || port.idempotency_required !== false) fail
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/rbac-fba-registry.json"') || !manifest.includes('contract_version = "rbac.permission_decision.v1"')) fail('manifest metadata drift');
 if (!cargo.includes('rustok-api.workspace = true')) fail('Cargo.toml must depend on rustok-api');
 if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
-for (const marker of ['trait RbacPermissionDecisionPort', 'impl RbacPermissionDecisionPort for crate::RbacModule', 'context.require_policy(PortCallPolicy::read())?', 'RbacPermissionCheckRequest', 'RbacPermissionCheckResponse', 'rbac.permissions_empty', 'PortErrorKind::Validation']) {
+for (const marker of ['trait RbacPermissionDecisionPort', 'struct RbacPermissionDecisionProvider', 'impl<R> RbacPermissionDecisionPort for RbacPermissionDecisionProvider<R>', 'context.require_policy(PortCallPolicy::read())?', 'parse_tenant_id(&context)?', 'parse_user_actor(&context)?', '.resolve_permissions(&tenant_id, &user_id)', 'RbacPermissionCheckRequest', 'RbacPermissionCheckResponse', 'rbac.permissions_empty', 'PortErrorKind::Validation']) {
   if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 }
 if (ports.includes('require_write_semantics()?')) fail('RBAC decision port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('RBAC FBA DTOs must be serializable');
 if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('RbacPermissionDecisionPort') || !plan.includes('rbac-contract-test-static-matrix.json') || !plan.includes(registry.evidence.runtime_order_smoke)) fail('local plan FBA evidence drift');
-if (!central.includes('| `rbac` |') || !central.includes(registryPath) || !central.includes(registry.evidence.runtime_order_smoke) || !central.includes('`in_progress` | `in_progress`')) fail('central readiness board drift');
+if (!central.includes('| `rbac` |') || !central.includes(registryPath) || !central.includes(registry.evidence.runtime_order_smoke) || !central.includes('`in_progress` | `boundary_ready`')) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'rbac' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-rbac-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');

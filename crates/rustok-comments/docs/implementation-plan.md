@@ -29,10 +29,20 @@ writes.
 - `scripts/verify/verify-comments-admin-boundary.mjs` and
   `npm run verify:comments:fba` lock the native-only admin boundary and comment
   provider policy order.
+- Public-port create/delete publish `comment.created` and `comment.deleted`
+  through `TransactionalEventBus::publish_in_tx` when the provider is runtime
+  composed with its owner event bus. Blog's idempotent reply-count projection is
+  implemented statically under `DECISIONS/2026-07-16-comments-blog-event-projection.md`;
+  runtime delivery, retry, and recovery evidence remain open.
 
 ## Open results
 
-1. **Execute CommentsThreadPort runtime and consumer evidence.** Cover read and
+1. **Implement and execute the Blog reply-count event projection.** Consume
+   `comment.created` and `comment.deleted` idempotently, publish the Blog-owned
+   update event in the projection transaction, and prove retry/degraded behavior.
+   **Depends on:** runtime event delivery and projection storage fixtures.
+
+2. **Execute CommentsThreadPort runtime and consumer evidence.** Cover read and
    write paths, canonical read/write policy, idempotency, typed errors,
    fallback/degraded profiles, and blog embedded/native compatibility before
    FBA promotion.
@@ -40,14 +50,14 @@ writes.
    **Done when:** evidence proves provider and consumer behavior without a
    direct comments-service bypass.
 
-2. **Extend moderation and opt-in integrations through comment ownership.**
+3. **Extend moderation and opt-in integrations through comment ownership.**
    Add a new commentable surface only with explicit target binding, moderation,
    rich-text, tenant, and observability contracts; do not reuse forum storage.
    **Depends on:** the consuming module's product requirement and public API.
    **Done when:** the new surface has owner-owned storage and transport tests,
    and its opt-in decision is documented.
 
-3. **Keep operational guidance synchronized with thread semantics.** Update
+4. **Keep operational guidance synchronized with thread semantics.** Update
    status alerts, moderation playbook, metrics, and local docs with a change to
    thread lifecycle or comment delivery.
    **Depends on:** the changed comments runtime contract.

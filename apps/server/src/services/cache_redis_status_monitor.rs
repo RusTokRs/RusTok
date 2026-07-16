@@ -19,7 +19,7 @@ struct CacheRedisStatusMonitorRuntime {
 
 impl CacheRedisStatusMonitorRuntime {
     fn is_running(&self) -> bool {
-        self.task.as_ref().map_or(true, |task| !task.is_finished())
+        self.task.as_ref().is_none_or(|task| !task.is_finished())
     }
 
     fn abort(&self) {

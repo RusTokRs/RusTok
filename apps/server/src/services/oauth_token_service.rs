@@ -637,7 +637,7 @@ mod tests {
             revoked_at: None,
             last_used_at: None,
             metadata: serde_json::json!({}),
-            created_at: now.clone(),
+            created_at: now,
             updated_at: now,
         }
     }

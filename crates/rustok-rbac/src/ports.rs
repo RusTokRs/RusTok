@@ -1,6 +1,10 @@
 use async_trait::async_trait;
-use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
+use uuid::Uuid;
+
+use crate::PermissionResolver;
 
 /// Transport-neutral request for checking effective permission claims.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,8 +40,24 @@ pub trait RbacPermissionDecisionPort: Send + Sync {
     ) -> Result<RbacPermissionCheckResponse, PortError>;
 }
 
+/// Owner-managed permission-decision provider backed by the authoritative
+/// tenant relation resolver. Consumers never receive RBAC entities or stores.
+pub struct RbacPermissionDecisionProvider<R> {
+    resolver: R,
+}
+
+impl<R> RbacPermissionDecisionProvider<R> {
+    pub fn new(resolver: R) -> Self {
+        Self { resolver }
+    }
+}
+
 #[async_trait]
-impl RbacPermissionDecisionPort for crate::RbacModule {
+impl<R> RbacPermissionDecisionPort for RbacPermissionDecisionProvider<R>
+where
+    R: PermissionResolver + Send + Sync,
+    R::Error: Display + Send + Sync,
+{
     async fn check_permissions(
         &self,
         context: PortContext,
@@ -45,12 +65,28 @@ impl RbacPermissionDecisionPort for crate::RbacModule {
     ) -> Result<RbacPermissionCheckResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         validate_permission_request(&request)?;
-
-        let claims = context.claims;
+        let tenant_id = parse_tenant_id(&context)?;
+        let user_id = parse_user_actor(&context)?;
+        let resolution = self
+            .resolver
+            .resolve_permissions(&tenant_id, &user_id)
+            .await
+            .map_err(|error| {
+                PortError::unavailable("rbac.permission_resolution", error.to_string())
+            })?;
+        let resolved_permissions = resolution
+            .permissions
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
         let matched_permissions = request
             .permissions
             .iter()
-            .filter(|permission| claims.iter().any(|claim| claim == *permission))
+            .filter(|permission| {
+                resolved_permissions
+                    .iter()
+                    .any(|resolved| resolved == *permission)
+            })
             .cloned()
             .collect::<Vec<_>>();
         let missing_permissions = request
@@ -75,6 +111,33 @@ impl RbacPermissionDecisionPort for crate::RbacModule {
             reason: (!allowed).then_some("permission_denied".to_string()),
         })
     }
+}
+
+fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        PortError::validation(
+            "rbac.invalid_tenant_id",
+            "RBAC permission decision context must carry a UUID tenant_id",
+        )
+    })
+}
+
+fn parse_user_actor(context: &PortContext) -> Result<Uuid, PortError> {
+    if context.actor.kind != PortActorKind::User {
+        return Err(PortError::new(
+            PortErrorKind::Forbidden,
+            "rbac.user_actor_required",
+            "RBAC permission decisions require an authenticated user actor",
+            false,
+        ));
+    }
+
+    Uuid::parse_str(&context.actor.id).map_err(|_| {
+        PortError::validation(
+            "rbac.invalid_actor_id",
+            "RBAC permission decision context must carry a UUID user actor",
+        )
+    })
 }
 
 fn validate_permission_request(request: &RbacPermissionCheckRequest) -> Result<(), PortError> {

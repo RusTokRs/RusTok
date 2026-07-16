@@ -89,6 +89,7 @@ rustok-api = { workspace = true, default-features = false }
   writeFixtureFile(root, "crates/rustok-comments/docs/implementation-plan.md", `
 native-only comments admin exception
 Host-neutral native admin transport
+HostRuntimeContext
 UiRouteQueryIntent
 verify-comments-admin-boundary.mjs
 `);

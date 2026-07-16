@@ -1,14 +1,18 @@
 #![allow(clippy::too_many_arguments)]
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "ssr")]
+use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 
 use crate::model::{
     AiAdminBootstrap, AiAgentDescriptorPayload, AiAgentModelAssignmentPayload,
-    AiAgentPrincipalPayload, AiAgentWorkflowPayload, AiAgentWorkflowStagePayload, AiChatRunPayload,
-    AiChatSessionDetailPayload, AiCredentialRefPayload, AiProviderProfilePayload,
-    AiProviderSettingPayload, AiProviderTargetPayload, AiProviderTestResultPayload,
-    AiSendMessageResultPayload, AiTaskProfilePayload, AiToolProfilePayload,
+    AiAgentPrincipalPayload, AiAgentWorkflowPayload, AiAgentWorkflowStageBindingInputPayload,
+    AiAgentWorkflowStagePayload, AiChatRunPayload, AiChatSessionDetailPayload,
+    AiCredentialRefPayload, AiProviderProfilePayload, AiProviderSettingPayload,
+    AiProviderTargetPayload, AiProviderTestResultPayload, AiSendMessageResultPayload,
+    AiTaskProfilePayload, AiTenantRbacPermissionPayload, AiTenantRbacRolePayload,
+    AiToolProfilePayload,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
@@ -113,6 +117,79 @@ pub async fn test_provider(id: String) -> Result<AiProviderTestResultPayload, Ap
 
 pub async fn deactivate_provider(id: String) -> Result<AiProviderProfilePayload, ApiError> {
     ai_deactivate_provider_native(id).await.map_err(Into::into)
+}
+
+/// Creates an agent principal using only roles published by the host tenant
+/// RBAC catalog. Effective permissions are derived server-side.
+pub async fn create_agent_principal(
+    slug: String,
+    descriptor_owner: String,
+    descriptor_slug: String,
+    role_slugs: Vec<String>,
+) -> Result<AiAgentPrincipalPayload, ApiError> {
+    ai_create_agent_principal_native(slug, descriptor_owner, descriptor_slug, role_slugs)
+        .await
+        .map_err(Into::into)
+}
+
+/// Replaces an agent principal's complete catalogued role assignment.
+pub async fn update_agent_principal(
+    id: String,
+    role_slugs: Vec<String>,
+    is_active: bool,
+) -> Result<AiAgentPrincipalPayload, ApiError> {
+    ai_update_agent_principal_native(id, role_slugs, is_active)
+        .await
+        .map_err(Into::into)
+}
+
+/// Creates a model assignment from selected tenant principal and provider
+/// profile identifiers. Capability compatibility is enforced by the service.
+pub async fn create_agent_model_assignment(
+    agent_principal_id: String,
+    provider_profile_id: String,
+    model_override: Option<String>,
+    execution_mode: String,
+) -> Result<AiAgentModelAssignmentPayload, ApiError> {
+    ai_create_agent_model_assignment_native(
+        agent_principal_id,
+        provider_profile_id,
+        model_override,
+        execution_mode,
+    )
+    .await
+    .map_err(Into::into)
+}
+
+/// Updates a selected model assignment without allowing reassignment of its
+/// principal or provider profile.
+pub async fn update_agent_model_assignment(
+    id: String,
+    model_override: Option<String>,
+    execution_mode: String,
+    is_active: bool,
+) -> Result<AiAgentModelAssignmentPayload, ApiError> {
+    ai_update_agent_model_assignment_native(id, model_override, execution_mode, is_active)
+        .await
+        .map_err(Into::into)
+}
+
+/// Starts an owner-owned multi-stage workflow after the service validates its
+/// exact stage binding set and owner-specific input payloads.
+pub async fn create_agent_workflow_run(
+    workflow_owner: String,
+    workflow_slug: String,
+    stage_bindings: Vec<AiAgentWorkflowStageBindingInputPayload>,
+    input_payload: String,
+) -> Result<String, ApiError> {
+    ai_create_agent_workflow_run_native(
+        workflow_owner,
+        workflow_slug,
+        stage_bindings,
+        input_payload,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 pub async fn create_tool_profile(
@@ -299,6 +376,9 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
         let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
         let db = runtime_ctx.db_clone();
         let runtime = ai_runtime_from_context(&runtime_ctx)?;
+        let tenant_rbac_catalog = runtime_ctx
+            .shared_get::<rustok_api::SharedTenantRbacCatalog>()
+            .ok_or_else(|| ServerFnError::new("tenant RBAC catalog is unavailable"))?;
         Ok(AiAdminBootstrap {
             metrics: map_runtime_metrics(rustok_ai::AiManagementService::metrics_snapshot()),
             provider_catalog: rustok_ai::provider_catalog()
@@ -339,6 +419,25 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
                 .map_err(server_error)?
                 .into_iter()
                 .map(map_agent_model_assignment)
+                .collect(),
+            tenant_rbac_roles: tenant_rbac_catalog
+                .0
+                .roles(auth.tenant_id)
+                .into_iter()
+                .map(|role| AiTenantRbacRolePayload {
+                    slug: role.slug,
+                    display_name: role.display_name,
+                    permission_slugs: role.permission_slugs,
+                })
+                .collect(),
+            tenant_rbac_permissions: tenant_rbac_catalog
+                .0
+                .permissions(auth.tenant_id)
+                .into_iter()
+                .map(|permission| AiTenantRbacPermissionPayload {
+                    slug: permission.slug,
+                    display_name: permission.display_name,
+                })
                 .collect(),
             providers: rustok_ai::AiManagementService::list_provider_profiles(&db, auth.tenant_id)
                 .await
@@ -619,6 +718,239 @@ async fn ai_deactivate_provider_native(
     #[cfg(not(feature = "ssr"))]
     {
         let _ = id;
+        Err(ServerFnError::new("SSR only"))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "ai/create-agent-principal")]
+async fn ai_create_agent_principal_native(
+    slug: String,
+    descriptor_owner: String,
+    descriptor_slug: String,
+    role_slugs: Vec<String>,
+) -> Result<AiAgentPrincipalPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        ensure_ai_provider_manage_permission(&auth.permissions)?;
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let tenant_rbac_catalog = runtime_ctx
+            .shared_get::<rustok_api::SharedTenantRbacCatalog>()
+            .ok_or_else(|| ServerFnError::new("tenant RBAC catalog is unavailable"))?;
+        let db = runtime_ctx.db_clone();
+        let item = rustok_ai::AiManagementService::create_agent_principal(
+            &db,
+            &operator(&auth, &db).await?,
+            tenant_rbac_catalog.0.as_ref(),
+            rustok_ai::CreateAiAgentPrincipalInput {
+                slug,
+                descriptor_owner,
+                descriptor_slug,
+                role_slugs,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .map_err(server_error)?;
+        Ok(map_agent_principal(item))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (slug, descriptor_owner, descriptor_slug, role_slugs);
+        Err(ServerFnError::new("SSR only"))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "ai/update-agent-principal")]
+async fn ai_update_agent_principal_native(
+    id: String,
+    role_slugs: Vec<String>,
+    is_active: bool,
+) -> Result<AiAgentPrincipalPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        ensure_ai_provider_manage_permission(&auth.permissions)?;
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let tenant_rbac_catalog = runtime_ctx
+            .shared_get::<rustok_api::SharedTenantRbacCatalog>()
+            .ok_or_else(|| ServerFnError::new("tenant RBAC catalog is unavailable"))?;
+        let db = runtime_ctx.db_clone();
+        let item = rustok_ai::AiManagementService::update_agent_principal(
+            &db,
+            &operator(&auth, &db).await?,
+            tenant_rbac_catalog.0.as_ref(),
+            parse_uuid(&id, "id")?,
+            rustok_ai::UpdateAiAgentPrincipalInput {
+                role_slugs,
+                metadata: serde_json::json!({}),
+                is_active,
+            },
+        )
+        .await
+        .map_err(server_error)?;
+        Ok(map_agent_principal(item))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (id, role_slugs, is_active);
+        Err(ServerFnError::new("SSR only"))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "ai/create-agent-model-assignment")]
+async fn ai_create_agent_model_assignment_native(
+    agent_principal_id: String,
+    provider_profile_id: String,
+    model_override: Option<String>,
+    execution_mode: String,
+) -> Result<AiAgentModelAssignmentPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        ensure_ai_provider_manage_permission(&auth.permissions)?;
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
+        let item = rustok_ai::AiManagementService::create_agent_model_assignment(
+            &db,
+            &operator(&auth, &db).await?,
+            rustok_ai::CreateAiAgentModelAssignmentInput {
+                agent_principal_id: parse_uuid(&agent_principal_id, "agent_principal_id")?,
+                provider_profile_id: parse_uuid(&provider_profile_id, "provider_profile_id")?,
+                model_override,
+                execution_mode: parse_execution_mode(&execution_mode)?,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .map_err(server_error)?;
+        Ok(map_agent_model_assignment(item))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (
+            agent_principal_id,
+            provider_profile_id,
+            model_override,
+            execution_mode,
+        );
+        Err(ServerFnError::new("SSR only"))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "ai/update-agent-model-assignment")]
+async fn ai_update_agent_model_assignment_native(
+    id: String,
+    model_override: Option<String>,
+    execution_mode: String,
+    is_active: bool,
+) -> Result<AiAgentModelAssignmentPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        ensure_ai_provider_manage_permission(&auth.permissions)?;
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
+        let item = rustok_ai::AiManagementService::update_agent_model_assignment(
+            &db,
+            &operator(&auth, &db).await?,
+            parse_uuid(&id, "id")?,
+            rustok_ai::UpdateAiAgentModelAssignmentInput {
+                model_override,
+                execution_mode: parse_execution_mode(&execution_mode)?,
+                metadata: serde_json::json!({}),
+                is_active,
+            },
+        )
+        .await
+        .map_err(server_error)?;
+        Ok(map_agent_model_assignment(item))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (id, model_override, execution_mode, is_active);
+        Err(ServerFnError::new("SSR only"))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "ai/create-agent-workflow-run")]
+async fn ai_create_agent_workflow_run_native(
+    workflow_owner: String,
+    workflow_slug: String,
+    stage_bindings: Vec<AiAgentWorkflowStageBindingInputPayload>,
+    input_payload: String,
+) -> Result<String, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        ensure_ai_session_run_permission(&auth.permissions)?;
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
+        let mut stage_principal_ids = BTreeMap::new();
+        let mut stage_model_assignment_ids = BTreeMap::new();
+        let mut stage_input_payloads = BTreeMap::new();
+        for binding in stage_bindings {
+            let stage_id = binding.stage_id.trim().to_string();
+            if stage_id.is_empty()
+                || stage_principal_ids
+                    .insert(
+                        stage_id.clone(),
+                        parse_uuid(&binding.agent_principal_id, "agent_principal_id")?,
+                    )
+                    .is_some()
+                || stage_model_assignment_ids
+                    .insert(
+                        stage_id.clone(),
+                        parse_uuid(&binding.model_assignment_id, "model_assignment_id")?,
+                    )
+                    .is_some()
+            {
+                return Err(ServerFnError::new(
+                    "agent workflow stage bindings must be unique and non-empty",
+                ));
+            }
+            let payload = serde_json::from_str(&binding.input_payload).map_err(|error| {
+                ServerFnError::new(format!("invalid stage input payload: {error}"))
+            })?;
+            if stage_input_payloads.insert(stage_id, payload).is_some() {
+                return Err(ServerFnError::new(
+                    "agent workflow stage bindings must be unique",
+                ));
+            }
+        }
+        let input_payload = serde_json::from_str(&input_payload).map_err(|error| {
+            ServerFnError::new(format!("invalid workflow input payload: {error}"))
+        })?;
+        let workflow_run_id = rustok_ai::AiManagementService::create_agent_workflow_run(
+            &db,
+            &operator(&auth, &db).await?,
+            rustok_ai::CreateAiAgentWorkflowRunInput {
+                workflow_owner,
+                workflow_slug,
+                stage_principal_ids,
+                stage_model_assignment_ids,
+                stage_input_payloads,
+                input_payload,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .map_err(server_error)?;
+        Ok(workflow_run_id.to_string())
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (workflow_owner, workflow_slug, stage_bindings, input_payload);
         Err(ServerFnError::new("SSR only"))
     }
 }

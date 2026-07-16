@@ -9,7 +9,7 @@
 - registry entry metadata (`display_name`, `owner_module_slug`) for shared operator/admin surfaces;
 - capability flags `authoring`, `routing`, `bulk`, `sitemaps`;
 - typed backend records for route match, loaded target, bulk summary and sitemap candidate;
-- an independent image boundary DTO `SeoTargetImageRecord` for OG/Twitter/schema fallback without a dependency on `rustok-media`;
+- an independent image boundary DTO `SeoTargetImageRecord` for OG/Twitter/schema fallback without a dependency on `rustok-media`; it carries an optional owner-provided `media_asset_id` for consumers that need the canonical media descriptor;
 - minimal JSON-LD builders for built-in rich-snippet shapes, so owner providers do not construct schema.org payloads as raw `json!` blobs;
 - helper `populate_image_template_fields` for image-aware SEO templates;
 - runtime wiring through `ModuleRuntimeExtensions`, not through manifest magic.

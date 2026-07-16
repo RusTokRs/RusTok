@@ -6,6 +6,9 @@ pub enum CommentsError {
     #[error("Database error: {0}")]
     Database(#[from] sea_orm::DbErr),
 
+    #[error("Event publication failed: {0}")]
+    EventPublication(String),
+
     #[error("Comment not found: {0}")]
     CommentNotFound(Uuid),
 
@@ -34,6 +37,7 @@ impl CommentsError {
     pub fn kind(&self) -> &'static str {
         match self {
             CommentsError::Database(_) => "database",
+            CommentsError::EventPublication(_) => "unavailable",
             CommentsError::CommentNotFound(_) => "not_found",
             CommentsError::CommentThreadNotFound { .. } => "not_found",
             CommentsError::CommentThreadClosed { .. } => "conflict",
@@ -45,6 +49,7 @@ impl CommentsError {
     pub fn severity(&self) -> &'static str {
         match self {
             CommentsError::Database(_) => "error",
+            CommentsError::EventPublication(_) => "error",
             CommentsError::CommentNotFound(_) => "warning",
             CommentsError::CommentThreadNotFound { .. } => "warning",
             CommentsError::CommentThreadClosed { .. } => "warning",

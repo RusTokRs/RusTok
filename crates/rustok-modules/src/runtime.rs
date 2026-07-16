@@ -1,6 +1,12 @@
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
+
 use async_trait::async_trait;
 use serde_json::Value;
 use thiserror::Error;
+use tokio::sync::Mutex;
 
 use rustok_sandbox::{
     ExecutionPhase, SandboxContext, SandboxOutcome, SandboxPolicy, SandboxRuntime,
@@ -10,6 +16,77 @@ use crate::{
     ArtifactBlobStore, ArtifactLifecycleDispatch, ArtifactLifecycleExecutor, ArtifactReleaseRef,
     InstalledModuleArtifact, ModuleInstallationError, ModuleRuntimeBinding,
 };
+
+/// Bounded node-local cache for already-admitted CAS blobs. It is not a source
+/// of truth: every hit is rehashed and any corrupt entry is discarded before a
+/// sandbox request can be constructed.
+pub struct VerifiedArtifactNodeCache<B> {
+    durable: Arc<B>,
+    max_bytes: usize,
+    state: Mutex<NodeCacheState>,
+}
+
+struct NodeCacheState {
+    bytes: usize,
+    entries: HashMap<String, Vec<u8>>,
+    lru: VecDeque<String>,
+}
+
+impl<B> VerifiedArtifactNodeCache<B>
+where
+    B: ArtifactBlobStore,
+{
+    pub fn new(durable: B, max_bytes: usize) -> Result<Self, ModuleInstallationError> {
+        if max_bytes == 0 {
+            return Err(ModuleInstallationError::Blob(
+                "artifact node-cache capacity must be positive".into(),
+            ));
+        }
+        Ok(Self {
+            durable: Arc::new(durable),
+            max_bytes,
+            state: Mutex::new(NodeCacheState {
+                bytes: 0,
+                entries: HashMap::new(),
+                lru: VecDeque::new(),
+            }),
+        })
+    }
+
+    pub async fn get_verified(&self, digest: &str) -> Result<Vec<u8>, ModuleInstallationError> {
+        let mut state = self.state.lock().await;
+        if let Some(bytes) = state.entries.get(digest).cloned() {
+            if crate::installation::sha256_digest(&bytes) == digest {
+                state.lru.retain(|key| key != digest);
+                state.lru.push_back(digest.to_string());
+                return Ok(bytes);
+            }
+            state.bytes = state.bytes.saturating_sub(bytes.len());
+            state.entries.remove(digest);
+            state.lru.retain(|key| key != digest);
+        }
+        drop(state);
+        let bytes = self.durable.get_verified(digest).await?;
+        if bytes.len() > self.max_bytes {
+            return Ok(bytes);
+        }
+        let mut state = self.state.lock().await;
+        while state.bytes + bytes.len() > self.max_bytes {
+            let Some(oldest) = state.lru.pop_front() else {
+                break;
+            };
+            if let Some(evicted) = state.entries.remove(&oldest) {
+                state.bytes = state.bytes.saturating_sub(evicted.len());
+            }
+        }
+        if !state.entries.contains_key(digest) {
+            state.bytes += bytes.len();
+            state.entries.insert(digest.to_string(), bytes.clone());
+            state.lru.push_back(digest.to_string());
+        }
+        Ok(bytes)
+    }
+}
 
 /// Executes an installed immutable artifact without involving the server's
 /// source tree, Cargo dependency graph, or an external registry. The payload
@@ -246,7 +323,7 @@ mod tests {
                 persistence_contract: None,
             },
             media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
-            payload,
+            payload: crate::ArtifactPayloadSource::Bytes(payload),
         }
     }
 
@@ -276,7 +353,15 @@ mod tests {
         let sandbox = SandboxRuntime::new(executors, Arc::new(DenyBroker));
         let blobs = InMemoryArtifactBlobStore::default();
         blobs
-            .put_verified(&installed.descriptor.artifact_digest, &package.payload)
+            .put_verified(
+                &installed.descriptor.artifact_digest,
+                match &package.payload {
+                    crate::ArtifactPayloadSource::Bytes(payload) => payload,
+                    crate::ArtifactPayloadSource::TemporaryFile(_) => {
+                        panic!("fixture uses an in-memory payload")
+                    }
+                },
+            )
             .await
             .expect("admit payload");
         let runtime = ArtifactRuntime::new(blobs, sandbox);

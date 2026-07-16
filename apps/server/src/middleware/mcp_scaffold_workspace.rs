@@ -25,6 +25,7 @@ use crate::services::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const MAX_MCP_MANAGEMENT_BODY_BYTES: usize = 64 * 1024;
+type MiddlewareResult<T> = Result<T, Box<Response>>;
 
 /// Enforce the host-owned MCP filesystem and management authority boundaries
 /// before a transport reaches a direct service handler.
@@ -49,7 +50,7 @@ pub async fn authorize_workspace(
 
     let body = match process_request(&ctx, &parts, mode, &bytes).await {
         Ok(body) => body,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
 
     next.run(Request::from_parts(parts, Body::from(body))).await
@@ -69,7 +70,7 @@ async fn process_request(
     parts: &Parts,
     mode: RequestMode,
     bytes: &[u8],
-) -> Result<Vec<u8>, Response> {
+) -> MiddlewareResult<Vec<u8>> {
     match mode {
         RequestMode::DirectApply => normalize_direct_apply(bytes),
         RequestMode::RemoteTool => normalize_remote_tool(bytes),
@@ -92,11 +93,11 @@ async fn validate_create_client(
     ctx: &ServerRuntimeContext,
     parts: &Parts,
     bytes: &[u8],
-) -> Result<(), Response> {
+) -> MiddlewareResult<()> {
     let input = serde_json::from_slice::<CreateMcpClientRequest>(bytes)
-        .map_err(|_| invalid_request("MCP create-client body must be valid JSON"))?;
+        .map_err(|_| Box::new(invalid_request("MCP create-client body must be valid JSON")))?;
     let actor_type = McpActorType::from_str(input.actor_type.trim())
-        .map_err(|message| invalid_request(&message))?;
+        .map_err(|message| Box::new(invalid_request(&message)))?;
     let authority = management_authority(parts)?;
 
     McpManagementAuthorityService::validate_create_client(
@@ -108,7 +109,7 @@ async fn validate_create_client(
         &input.granted_permissions,
     )
     .await
-    .map_err(authority_error_response)
+    .map_err(|error| Box::new(authority_error_response(error)))
 }
 
 async fn validate_update_policy(
@@ -116,9 +117,9 @@ async fn validate_update_policy(
     parts: &Parts,
     client_id: Uuid,
     bytes: &[u8],
-) -> Result<(), Response> {
+) -> MiddlewareResult<()> {
     let input = serde_json::from_slice::<UpdateMcpPolicyRequest>(bytes)
-        .map_err(|_| invalid_request("MCP policy body must be valid JSON"))?;
+        .map_err(|_| Box::new(invalid_request("MCP policy body must be valid JSON")))?;
     let authority = management_authority(parts)?;
 
     McpManagementAuthorityService::validate_policy_update(
@@ -129,14 +130,14 @@ async fn validate_update_policy(
         &input.granted_permissions,
     )
     .await
-    .map_err(authority_error_response)
+    .map_err(|error| Box::new(authority_error_response(error)))
 }
 
 async fn validate_rotate_token(
     ctx: &ServerRuntimeContext,
     parts: &Parts,
     client_id: Uuid,
-) -> Result<(), Response> {
+) -> MiddlewareResult<()> {
     let authority = management_authority(parts)?;
     McpManagementAuthorityService::validate_token_rotation(
         ctx.db(),
@@ -145,7 +146,7 @@ async fn validate_rotate_token(
         client_id,
     )
     .await
-    .map_err(authority_error_response)
+    .map_err(|error| Box::new(authority_error_response(error)))
 }
 
 struct ManagementAuthority<'a> {
@@ -153,25 +154,25 @@ struct ManagementAuthority<'a> {
     permissions: &'a [Permission],
 }
 
-fn management_authority(parts: &Parts) -> Result<ManagementAuthority<'_>, Response> {
+fn management_authority(parts: &Parts) -> MiddlewareResult<ManagementAuthority<'_>> {
     let auth = parts
         .extensions
         .get::<AuthContextExtension>()
         .map(|extension| &extension.0)
-        .ok_or_else(|| forbidden("MCP management requires authentication"))?;
+        .ok_or_else(|| Box::new(forbidden("MCP management requires authentication")))?;
     let tenant = parts
         .extensions
         .get::<TenantContextExtension>()
         .map(|extension| &extension.0)
-        .ok_or_else(|| internal_error("Tenant context is unavailable"))?;
+        .ok_or_else(|| Box::new(internal_error("Tenant context is unavailable")))?;
 
     if auth.tenant_id != tenant.id {
-        return Err(forbidden(
+        return Err(Box::new(forbidden(
             "Authenticated principal belongs to another tenant",
-        ));
+        )));
     }
     if !has_effective_permission(&auth.permissions, &Permission::MCP_MANAGE) {
-        return Err(forbidden("mcp:manage permission is required"));
+        return Err(Box::new(forbidden("mcp:manage permission is required")));
     }
 
     Ok(ManagementAuthority {
@@ -189,36 +190,46 @@ fn authority_error_response(error: McpManagementAuthorityError) -> Response {
     }
 }
 
-fn normalize_direct_apply(bytes: &[u8]) -> Result<Vec<u8>, Response> {
-    let mut input = serde_json::from_slice::<ApplyMcpModuleScaffoldDraftRequest>(bytes)
-        .map_err(|_| invalid_request("MCP scaffold apply body must be valid JSON"))?;
+fn normalize_direct_apply(bytes: &[u8]) -> MiddlewareResult<Vec<u8>> {
+    let mut input =
+        serde_json::from_slice::<ApplyMcpModuleScaffoldDraftRequest>(bytes).map_err(|_| {
+            Box::new(invalid_request(
+                "MCP scaffold apply body must be valid JSON",
+            ))
+        })?;
     input.workspace_root = authorize_mcp_scaffold_workspace(&input.workspace_root)
-        .map_err(|error| error.into_response())?;
+        .map_err(|error| Box::new(error.into_response()))?;
 
     serde_json::to_vec(&serde_json::json!({
         "workspace_root": input.workspace_root,
         "confirm": input.confirm,
     }))
-    .map_err(|_| invalid_request("Failed to normalize MCP scaffold apply request"))
+    .map_err(|_| {
+        Box::new(invalid_request(
+            "Failed to normalize MCP scaffold apply request",
+        ))
+    })
 }
 
-fn normalize_remote_tool(bytes: &[u8]) -> Result<Vec<u8>, Response> {
+fn normalize_remote_tool(bytes: &[u8]) -> MiddlewareResult<Vec<u8>> {
     let mut input = serde_json::from_slice::<McpRemoteToolCallRequest>(bytes)
-        .map_err(|_| invalid_request("MCP remote tool body must be valid JSON"))?;
+        .map_err(|_| Box::new(invalid_request("MCP remote tool body must be valid JSON")))?;
 
     if input.tool_name == TOOL_ALLOY_APPLY_MODULE_SCAFFOLD {
-        let arguments = input
-            .arguments
-            .take()
-            .ok_or_else(|| invalid_request("Scaffold apply tool arguments are required"))?;
+        let arguments = input.arguments.take().ok_or_else(|| {
+            Box::new(invalid_request(
+                "Scaffold apply tool arguments are required",
+            ))
+        })?;
         let mut apply = serde_json::from_value::<ApplyModuleScaffoldRequest>(arguments)
-            .map_err(|_| invalid_request("Scaffold apply tool arguments are invalid"))?;
+            .map_err(|_| Box::new(invalid_request("Scaffold apply tool arguments are invalid")))?;
         apply.workspace_root = authorize_mcp_scaffold_workspace(&apply.workspace_root)
-            .map_err(|error| error.into_response())?;
-        input.arguments = Some(
-            serde_json::to_value(apply)
-                .map_err(|_| invalid_request("Failed to normalize scaffold apply arguments"))?,
-        );
+            .map_err(|error| Box::new(error.into_response()))?;
+        input.arguments = Some(serde_json::to_value(apply).map_err(|_| {
+            Box::new(invalid_request(
+                "Failed to normalize scaffold apply arguments",
+            ))
+        })?);
     }
 
     serde_json::to_vec(&serde_json::json!({
@@ -228,7 +239,11 @@ fn normalize_remote_tool(bytes: &[u8]) -> Result<Vec<u8>, Response> {
         "correlation_id": input.correlation_id,
         "metadata": input.metadata,
     }))
-    .map_err(|_| invalid_request("Failed to normalize MCP remote tool request"))
+    .map_err(|_| {
+        Box::new(invalid_request(
+            "Failed to normalize MCP remote tool request",
+        ))
+    })
 }
 
 fn request_mode(method: &Method, path: &str) -> Option<RequestMode> {

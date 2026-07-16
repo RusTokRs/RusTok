@@ -263,6 +263,31 @@ impl PricingService {
     }
 
     #[instrument(skip(self))]
+    pub async fn set_price_list_percentage_rule_projection(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        price_list_id: Uuid,
+        adjustment_percent: Option<Decimal>,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> CommerceResult<ActivePriceListOption> {
+        resolve_active_price_list(&self.db, tenant_id, price_list_id).await?;
+        self.set_price_list_percentage_rule(tenant_id, actor_id, price_list_id, adjustment_percent)
+            .await?;
+
+        self.list_active_price_lists(tenant_id, Some(locale), fallback_locale.or(Some(locale)))
+            .await?
+            .into_iter()
+            .find(|price_list| price_list.id == price_list_id)
+            .ok_or_else(|| {
+                CommerceError::Validation(
+                    "price_list_id must reference an active price list".into(),
+                )
+            })
+    }
+
+    #[instrument(skip(self))]
     pub async fn set_price_list_scope(
         &self,
         tenant_id: Uuid,
@@ -651,6 +676,78 @@ impl PricingService {
             max_quantity,
         )
         .await
+    }
+
+    #[instrument(skip(self))]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_admin_variant_price_with_channel(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+        price_list_id: Option<Uuid>,
+        currency_code: &str,
+        amount: Decimal,
+        compare_at_amount: Option<Decimal>,
+        channel_id: Option<Uuid>,
+        channel_slug: Option<String>,
+        min_quantity: Option<i32>,
+        max_quantity: Option<i32>,
+    ) -> CommerceResult<AdminPricingPrice> {
+        let (effective_channel_id, effective_channel_slug) = match price_list_id {
+            Some(price_list_id) => {
+                let price_list =
+                    resolve_active_price_list(&self.db, tenant_id, price_list_id).await?;
+                validate_or_inherit_price_list_scope(&price_list, channel_id, channel_slug)?
+            }
+            None => (channel_id, normalize_channel_slug(channel_slug.as_deref())),
+        };
+
+        if let Some(price_list_id) = price_list_id {
+            self.set_price_list_tier_with_channel(
+                tenant_id,
+                actor_id,
+                variant_id,
+                price_list_id,
+                currency_code,
+                amount,
+                compare_at_amount,
+                effective_channel_id,
+                effective_channel_slug.clone(),
+                min_quantity,
+                max_quantity,
+            )
+            .await?;
+        } else {
+            self.set_price_tier_with_channel(
+                tenant_id,
+                actor_id,
+                variant_id,
+                currency_code,
+                amount,
+                compare_at_amount,
+                effective_channel_id,
+                effective_channel_slug.clone(),
+                min_quantity,
+                max_quantity,
+            )
+            .await?;
+        }
+
+        self.get_variant_prices(variant_id)
+            .await?
+            .into_iter()
+            .find(|price| {
+                price.currency_code.eq_ignore_ascii_case(currency_code)
+                    && price.price_list_id == price_list_id
+                    && price.channel_id == effective_channel_id
+                    && normalize_channel_slug(price.channel_slug.as_deref())
+                        == effective_channel_slug
+                    && price.min_quantity == min_quantity
+                    && price.max_quantity == max_quantity
+            })
+            .map(admin_pricing_price_from_model)
+            .ok_or_else(|| CommerceError::Validation("updated pricing row was not found".into()))
     }
 
     #[instrument(skip(self))]
@@ -2031,6 +2128,21 @@ fn map_admin_detail(
                     }),
             })
             .collect(),
+    }
+}
+
+fn admin_pricing_price_from_model(price: entities::price::Model) -> AdminPricingPrice {
+    AdminPricingPrice {
+        currency_code: price.currency_code,
+        amount: price.amount,
+        compare_at_amount: price.compare_at_amount,
+        discount_percent: calculate_discount_percent(price.amount, price.compare_at_amount),
+        on_sale: is_sale_price(price.amount, price.compare_at_amount),
+        price_list_id: price.price_list_id,
+        channel_id: price.channel_id,
+        channel_slug: price.channel_slug,
+        min_quantity: price.min_quantity,
+        max_quantity: price.max_quantity,
     }
 }
 

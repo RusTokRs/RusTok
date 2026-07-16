@@ -13,6 +13,7 @@
         "get_comment",
         "list_comments_for_target",
         "update_comment",
+        "set_comment_status",
         "delete_comment"
       ],
       "context": "rustok_api::ports::PortContext",
@@ -22,6 +23,7 @@
       "write_operations": [
         "create_comment",
         "update_comment",
+        "set_comment_status",
         "delete_comment"
       ],
       "read_operations": [
@@ -56,6 +58,22 @@
     "source": "crates/rustok-comments/src/ports.rs",
     "status": "implemented"
   },
+  "events": [
+    {
+      "type": "comment.created",
+      "owner": "comments",
+      "publication": "rustok_outbox::TransactionalEventBus::publish_in_tx",
+      "consumer": "blog",
+      "projection_status": "implemented_static_only"
+    },
+    {
+      "type": "comment.deleted",
+      "owner": "comments",
+      "publication": "rustok_outbox::TransactionalEventBus::publish_in_tx",
+      "consumer": "blog",
+      "projection_status": "implemented_static_only"
+    }
+  ],
   "contract_tests": {
     "status": "planned_cases_locked",
     "source": "crates/rustok-comments/contracts/comments-fba-registry.json",
@@ -82,6 +100,11 @@
       },
       {
         "operation": "update_comment",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+      },
+      {
+        "operation": "set_comment_status",
         "profiles": ["in_process", "remote_adapter_placeholder"],
         "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
       },

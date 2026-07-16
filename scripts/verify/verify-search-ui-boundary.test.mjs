@@ -44,7 +44,7 @@ fn route(route_filters: RouteFilters) {
     channel_id: route_filters.channel_id,
     category_ids: route_filters.category_ids,
     attribute_filters: route_filters.attribute_filters,
-    attribute_code: optional_text(attribute_code.unwrap_or_default()),
+    attribute_code: optional_text(query.attribute_code.as_deref().unwrap_or_default()),
     attribute_values: route_filters.attribute_values,
     values: route_filters.attribute_values,
     sort_attribute_code: route_filters.sort_attribute_code,
@@ -246,8 +246,8 @@ fn catalog_route_controls() {
   let _ = "search-storefront-category-options";
   let _ = "search-storefront-sort-attribute-options";
   let _ = navigate_to_catalog_search;
-  let _ = ("attribute_code", attribute_code);
-  let _ = ("sort_attribute_code", sort_attribute_code);
+  let _ = ("attribute_code", submission.attribute_code.as_str());
+  let _ = ("sort_attribute_code", submission.sort_attribute_code.as_str());
 }
 `);
   writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/mod.rs", "pub mod graphql_adapter;\npub mod native_server_adapter;\npub async fn fetch_search() { let _ = native_server_adapter::fetch_search; let _ = graphql_adapter::fetch_search; }\npub async fn fetch_suggestions() { let _ = native_server_adapter::fetch_suggestions; let _ = graphql_adapter::fetch_suggestions; }\n");

@@ -25,11 +25,11 @@ use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use artifact::{
-    ArtifactModuleKind, ArtifactOrigin, ArtifactPayloadKind, ArtifactPermissionDescriptor,
-    ArtifactPersistenceContract, ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef,
-    ArtifactSourceLineage, ArtifactUiContribution, ModuleArtifactDescriptor, ModuleArtifactError,
-    ModuleBindingIdempotency, ModuleDependencyConstraint, ModuleRuntimeBinding,
-    ModuleRuntimeBindingKind,
+    ArtifactModuleKind, ArtifactOrigin, ArtifactPayloadKind, ArtifactPayloadSource,
+    ArtifactPermissionDescriptor, ArtifactPersistenceContract, ArtifactRelease,
+    ArtifactReleaseDraft, ArtifactReleaseRef, ArtifactSourceLineage, ArtifactUiContribution,
+    ModuleArtifactDescriptor, ModuleArtifactError, ModuleBindingIdempotency,
+    ModuleDependencyConstraint, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
 };
 pub use artifact_cas::StorageArtifactBlobStore;
 pub use contracts::{
@@ -55,11 +55,13 @@ pub use installation::{
     ArtifactAdmissionLimits, ArtifactAdmissionReconciler, ArtifactAdmissionRecoveryRecord,
     ArtifactAdmissionReverification, ArtifactAdmissionService, ArtifactAdmissionStage,
     ArtifactAdmissionStatus, ArtifactAdmissionStore, ArtifactBlobRetentionPolicy,
-    ArtifactBlobStore, ArtifactRegistry, ArtifactRollbackRequest, ArtifactRollbackResult,
-    ArtifactUninstallRequest, ArtifactUninstallResult, ArtifactVerificationEvidence,
-    DurableArtifactBlobStore, InMemoryArtifactBlobStore, InstalledModuleArtifact,
-    ModuleArtifactPackage, ModuleInstallationError, ModuleInstallationScope, ModuleInstaller,
-    OciArtifactReference, SeaOrmArtifactInstallationStore, StagedArtifactBlob,
+    ArtifactBlobRetentionRule, ArtifactBlobStore, ArtifactDeactivationRequest,
+    ArtifactDeactivationResult, ArtifactMigrationCheckpointRequest, ArtifactMigrationRollbackMode,
+    ArtifactRegistry, ArtifactRollbackRequest, ArtifactRollbackResult, ArtifactUninstallRequest,
+    ArtifactUninstallResult, ArtifactVerificationEvidence, DurableArtifactBlobStore,
+    InMemoryArtifactBlobStore, InstalledModuleArtifact, ModuleArtifactPackage,
+    ModuleInstallationError, ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
+    SeaOrmArtifactInstallationStore, SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob,
 };
 pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
 pub use lifecycle_writer::{
@@ -83,12 +85,12 @@ pub use recovery::{
 };
 pub use resolution::{
     resolve_module_dependencies, ModuleResolutionCandidate, ModuleResolutionConflict,
-    ModuleResolutionError, ModuleResolutionProvider, ModuleResolutionRequest,
-    ModuleResolutionResult,
+    ModuleResolutionError, ModuleResolutionProvider, ModuleResolutionProviderKind,
+    ModuleResolutionRequest, ModuleResolutionResult, ModuleResolutionScope,
 };
 pub use runtime::{
     ArtifactInstallationResolver, ArtifactRuntime, ArtifactRuntimeError,
-    ArtifactRuntimeLifecycleExecutor, ArtifactSandboxPolicyResolver,
+    ArtifactRuntimeLifecycleExecutor, ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,
 };
 pub use trust::{
     TrustPolicyRevision, TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,

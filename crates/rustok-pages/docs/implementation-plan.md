@@ -35,7 +35,7 @@ attached and are not silently converted or removed.
 - FBA status: `boundary_ready` — Pages has the reference consumer metadata,
   optimistic revision protection and static fallback coverage, but no observed
   tenant control-plane evidence.
-- Structural shape: `core_transport_ui_with_builder_consumer`
+- Structural shape: `core_transport_ui`
 - Evidence: `scripts/verify/verify-pages-ui-boundary.mjs`,
   `scripts/verify/verify-fly-admin-browser-runtime.mjs`,
   `crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json`,

@@ -109,7 +109,7 @@ pub async fn claim_remote_validation_stage_atomic(
             )
             .col_expr(
                 registry_validation_stage::Column::StartedAt,
-                Expr::value(candidate.started_at.clone().or(Some(now))),
+                Expr::value(candidate.started_at.or(Some(now))),
             )
             .col_expr(
                 registry_validation_stage::Column::FinishedAt,

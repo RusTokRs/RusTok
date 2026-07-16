@@ -5,10 +5,11 @@ use uuid::Uuid;
 use rustok_core::ModuleRegistry;
 
 use crate::{
-    execute_module_toggle, resolve_effective_modules, ModuleDefinitionCatalog,
-    ModuleDefinitionError, ModuleExecutionDispatcher, ModuleLifecycleExecutionError,
-    ModuleLifecycleToggleRequest, ModuleOperationStoreError, TenantModuleOverride,
-    TenantModuleSettingsRecord, TenantModuleSettingsRequest, TenantModuleStateStore,
+    execute_module_toggle, resolve_effective_modules, ArtifactLifecycleExecutor,
+    ModuleDefinitionCatalog, ModuleDefinitionError, ModuleExecutionDispatcher,
+    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationStoreError,
+    TenantModuleOverride, TenantModuleSettingsRecord, TenantModuleSettingsRequest,
+    TenantModuleStateStore,
 };
 
 /// Persists validated module settings through the module-owned lifecycle state store.
@@ -25,7 +26,9 @@ pub async fn persist_module_settings(
 /// defaults; this adapter owns the durable override read and lifecycle write.
 pub struct ModuleLifecycleDbWriter<'a> {
     db: DatabaseConnection,
-    registry: &'a ModuleRegistry,
+    catalog: Option<ModuleDefinitionCatalog>,
+    static_registry: Option<&'a ModuleRegistry>,
+    artifact_executor: Option<&'a dyn ArtifactLifecycleExecutor>,
     default_enabled_modules: Vec<String>,
 }
 
@@ -37,7 +40,27 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
     ) -> Self {
         Self {
             db,
-            registry,
+            catalog: None,
+            static_registry: Some(registry),
+            artifact_executor: None,
+            default_enabled_modules,
+        }
+    }
+
+    /// Creates a lifecycle writer for an artifact-only composition. It has no
+    /// compiled registry fallback: hooks dispatch through the admitted runtime
+    /// executor supplied by the host composition.
+    pub fn artifact_only(
+        db: DatabaseConnection,
+        catalog: ModuleDefinitionCatalog,
+        artifact_executor: &'a dyn ArtifactLifecycleExecutor,
+        default_enabled_modules: Vec<String>,
+    ) -> Self {
+        Self {
+            db,
+            catalog: Some(catalog),
+            static_registry: None,
+            artifact_executor: Some(artifact_executor),
             default_enabled_modules,
         }
     }
@@ -50,15 +73,35 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         actor: &str,
     ) -> Result<(), ModuleLifecycleDbWriterError> {
         let overrides = self.overrides(tenant_id).await?;
-        let catalog = ModuleDefinitionCatalog::from_static_registry(self.registry)
-            .map_err(ModuleLifecycleDbWriterError::Definition)?;
+        let catalog = match &self.catalog {
+            Some(catalog) => catalog.clone(),
+            None => ModuleDefinitionCatalog::from_static_registry(
+                self.static_registry.ok_or_else(|| {
+                    ModuleLifecycleDbWriterError::Configuration(
+                        "static lifecycle writer has no module registry".into(),
+                    )
+                })?,
+            )
+            .map_err(ModuleLifecycleDbWriterError::Definition)?,
+        };
         let effective_enabled_modules = resolve_effective_modules(
             &catalog,
             self.default_enabled_modules.iter().cloned(),
             overrides,
         );
         let current_settings = self.settings(tenant_id, module_slug).await?;
-        let dispatcher = ModuleExecutionDispatcher::new(&catalog, self.registry);
+        let dispatcher = match (self.static_registry, self.artifact_executor) {
+            (Some(registry), Some(executor)) => {
+                ModuleExecutionDispatcher::new(&catalog, registry).with_artifact_executor(executor)
+            }
+            (Some(registry), None) => ModuleExecutionDispatcher::new(&catalog, registry),
+            (None, Some(executor)) => ModuleExecutionDispatcher::artifact_only(&catalog, executor),
+            (None, None) => {
+                return Err(ModuleLifecycleDbWriterError::Configuration(
+                    "artifact lifecycle writer has no runtime executor".into(),
+                ));
+            }
+        };
         execute_module_toggle(
             &self.db,
             &dispatcher,
@@ -137,6 +180,8 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
 pub enum ModuleLifecycleDbWriterError {
     #[error("module lifecycle persistence failed: {0}")]
     Database(String),
+    #[error("module lifecycle writer configuration is invalid: {0}")]
+    Configuration(String),
     #[error(transparent)]
     Lifecycle(#[from] ModuleLifecycleExecutionError),
     #[error(transparent)]

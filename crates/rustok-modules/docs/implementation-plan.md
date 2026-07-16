@@ -198,12 +198,31 @@ absence of a tenant identifier.
   prohibit arbitrary untrusted SQL/native migrations.
 - Implement upgrade, rollback, quarantine, revocation, and uninstall.
 
-The next owner operation is artifact uninstall. It will replace a scoped,
-inactive marketplace selection only after checking active direct dependents and
-will record actor, reason, revision, idempotency, and outbox evidence in one
-transaction. It will deliberately retain CAS bytes, tenant data, evidence, and
-rollback history for the retention/reconciler path; purge is a separately
-authorized destructive operation.
+Artifact migration checkpoints are committed through the scoped installation
+revision CAS and publish `module.artifact.migration_checkpointed` in the same
+transaction. The event contains only installation identity, revision, and the
+irreversibility fact; checkpoint contents remain owner metadata.
+
+Artifact uninstall replaces a scoped, inactive marketplace selection only after
+checking active direct dependents and records actor, reason, revision,
+idempotency, and outbox evidence in one transaction. It retains CAS bytes,
+tenant data, evidence, and rollback history for the retention/reconciler path.
+Artifact deactivation is a separate scoped lifecycle operation: it moves only
+an active admission to `inactive`, checks active direct dependents, and writes
+the audit/outbox fact while preserving the admitted release, data, CAS, and
+rollback evidence. Artifact disable remains a tenant-lifecycle concern and is
+intentionally deferred to the owner-service/dispatcher cutover: the current
+tenant toggle is still compiled-registry based and cannot be reused for an
+artifact-only module. The dispatcher now has an explicit artifact-only
+constructor, and `ModuleLifecycleDbWriter::artifact_only` persists tenant
+state through that catalog-driven path while requiring an admitted runtime
+executor and having no static registry fallback. The remaining disable work is
+the revision/idempotency/audit/outbox owner command boundary; destructive purge
+remains a separate authorized data-owner operation.
+
+The owned tenant lifecycle schema now separates `enabled` intent and its
+revision from the immutable installation/admission record. The next command
+uses this state with expected-revision CAS, idempotency/audit, and outbox.
 
 ### M5 - Build and Publication Orchestration
 

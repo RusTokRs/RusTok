@@ -24,6 +24,9 @@ documentation for this module must live inside the crate, not spread across
 - GraphQL role query/mutation/types live in `rustok-rbac`; `apps/server` only composes roots and passes adapter role records to runtime persistence;
 - `rustok-core` remains the owner of typed primitives (`Permission`, `Resource`, `Action`, `SecurityContext`);
 - live authorization goes only through tenant policy evaluation, without a relation-only/shadow parity path;
+- `RbacPermissionDecisionPort` resolves its tenant/user decision through the
+  authoritative `PermissionResolver`; request claims are not used as an
+  independent permission source;
 - the operator-facing admin overview lives in `rustok-rbac-admin` and is structured as FFA `core` + native-only `transport` + `ui/leptos` adapter;
 - new public RBAC surfaces and event contracts require synchronization of module docs, server docs and verification plan.
 

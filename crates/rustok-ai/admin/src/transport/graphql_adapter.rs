@@ -11,6 +11,11 @@ pub const AI_BOOTSTRAP_OPERATION: &str = "AiBootstrap";
 pub const AI_SESSION_OPERATION: &str = "AiSession";
 pub const AI_RECENT_STREAM_EVENTS_OPERATION: &str = "AiRecentRunStreamEvents";
 pub const AI_SESSION_EVENTS_SUBSCRIPTION_OPERATION: &str = "AiSessionEvents";
+pub const AI_CREATE_AGENT_PRINCIPAL_OPERATION: &str = "CreateAiAgentPrincipal";
+pub const AI_UPDATE_AGENT_PRINCIPAL_OPERATION: &str = "UpdateAiAgentPrincipal";
+pub const AI_CREATE_AGENT_MODEL_ASSIGNMENT_OPERATION: &str = "CreateAiAgentModelAssignment";
+pub const AI_UPDATE_AGENT_MODEL_ASSIGNMENT_OPERATION: &str = "UpdateAiAgentModelAssignment";
+pub const AI_CREATE_AGENT_WORKFLOW_RUN_OPERATION: &str = "CreateAiAgentWorkflowRun";
 
 pub const AI_BOOTSTRAP_QUERY: &str = r#"
 query AiBootstrap {
@@ -52,6 +57,8 @@ query AiBootstrap {
   aiAgentModelAssignments {
     id agentPrincipalId providerProfileId modelOverride executionMode isActive
   }
+  aiTenantRbacRoles { slug displayName permissionSlugs }
+  aiTenantRbacPermissions { slug displayName }
   aiProviderProfiles {
     id
     slug
@@ -107,6 +114,44 @@ query AiBootstrap {
 }
 "#;
 
+pub const AI_CREATE_AGENT_PRINCIPAL_MUTATION: &str = r#"
+mutation CreateAiAgentPrincipal($input: CreateAiAgentPrincipalInputGql!) {
+  createAiAgentPrincipal(input: $input) {
+    id slug descriptorOwner descriptorSlug roleSlugs permissionSlugs isActive
+  }
+}
+"#;
+
+pub const AI_UPDATE_AGENT_PRINCIPAL_MUTATION: &str = r#"
+mutation UpdateAiAgentPrincipal($id: UUID!, $input: UpdateAiAgentPrincipalInputGql!) {
+  updateAiAgentPrincipal(id: $id, input: $input) {
+    id slug descriptorOwner descriptorSlug roleSlugs permissionSlugs isActive
+  }
+}
+"#;
+
+pub const AI_CREATE_AGENT_MODEL_ASSIGNMENT_MUTATION: &str = r#"
+mutation CreateAiAgentModelAssignment($input: CreateAiAgentModelAssignmentInputGql!) {
+  createAiAgentModelAssignment(input: $input) {
+    id agentPrincipalId providerProfileId modelOverride executionMode isActive
+  }
+}
+"#;
+
+pub const AI_UPDATE_AGENT_MODEL_ASSIGNMENT_MUTATION: &str = r#"
+mutation UpdateAiAgentModelAssignment($id: UUID!, $input: UpdateAiAgentModelAssignmentInputGql!) {
+  updateAiAgentModelAssignment(id: $id, input: $input) {
+    id agentPrincipalId providerProfileId modelOverride executionMode isActive
+  }
+}
+"#;
+
+pub const AI_CREATE_AGENT_WORKFLOW_RUN_MUTATION: &str = r#"
+mutation CreateAiAgentWorkflowRun($input: CreateAiAgentWorkflowRunInputGql!) {
+  createAiAgentWorkflowRun(input: $input)
+}
+"#;
+
 pub const AI_SESSION_QUERY: &str = r#"
 query AiSession($id: UUID!) {
   aiChatSession(id: $id) {
@@ -157,7 +202,12 @@ subscription AiSessionEvents($sessionId: UUID!) {
 
 #[cfg(test)]
 mod contract_tests {
-    use super::{AI_BOOTSTRAP_QUERY, AI_SESSION_EVENTS_SUBSCRIPTION, AI_SESSION_QUERY};
+    use super::{
+        AI_BOOTSTRAP_QUERY, AI_CREATE_AGENT_MODEL_ASSIGNMENT_MUTATION,
+        AI_CREATE_AGENT_PRINCIPAL_MUTATION, AI_CREATE_AGENT_WORKFLOW_RUN_MUTATION,
+        AI_SESSION_EVENTS_SUBSCRIPTION, AI_SESSION_QUERY,
+        AI_UPDATE_AGENT_MODEL_ASSIGNMENT_MUTATION, AI_UPDATE_AGENT_PRINCIPAL_MUTATION,
+    };
 
     fn assert_safe_provider_selection(document: &str) {
         for field in [
@@ -195,6 +245,36 @@ mod contract_tests {
                 assert!(document.contains(field), "missing stream field `{field}`");
             }
         }
+    }
+
+    #[test]
+    fn agent_role_mutations_use_catalogued_role_inputs_and_return_derived_permissions() {
+        for document in [
+            AI_CREATE_AGENT_PRINCIPAL_MUTATION,
+            AI_UPDATE_AGENT_PRINCIPAL_MUTATION,
+        ] {
+            assert!(document.contains("roleSlugs"));
+            assert!(document.contains("permissionSlugs"));
+            assert!(!document.contains("permission_slugs"));
+        }
+    }
+
+    #[test]
+    fn model_assignment_mutations_preserve_principal_provider_and_mode_contracts() {
+        for document in [
+            AI_CREATE_AGENT_MODEL_ASSIGNMENT_MUTATION,
+            AI_UPDATE_AGENT_MODEL_ASSIGNMENT_MUTATION,
+        ] {
+            assert!(document.contains("modelOverride"));
+            assert!(document.contains("executionMode"));
+            assert!(document.contains("agentPrincipalId providerProfileId"));
+        }
+    }
+
+    #[test]
+    fn workflow_run_mutation_stays_owner_owned_and_uses_stage_bindings() {
+        assert!(AI_CREATE_AGENT_WORKFLOW_RUN_MUTATION.contains("CreateAiAgentWorkflowRunInputGql"));
+        assert!(!AI_CREATE_AGENT_WORKFLOW_RUN_MUTATION.contains("endpoint"));
     }
 }
 

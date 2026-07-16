@@ -69,7 +69,7 @@ impl Expiry<String, Arc<CachedRegistryModule>> for RegistryModuleExpiry {
     }
 }
 
-fn cached_registry_module_weight(key: &String, value: &Arc<CachedRegistryModule>) -> u32 {
+fn cached_registry_module_weight(key: &str, value: &Arc<CachedRegistryModule>) -> u32 {
     key.len()
         .saturating_add(value.estimated_bytes)
         .saturating_add(std::mem::size_of::<CachedRegistryModule>())
@@ -116,8 +116,8 @@ impl HardenedRegistryMarketplaceProvider {
     ) -> Self {
         let positive_ttl = positive_ttl.max(Duration::from_millis(1));
         let negative_ttl = negative_ttl.max(Duration::from_millis(1)).min(positive_ttl);
-        let module_cache = Cache::builder()
-            .weigher(cached_registry_module_weight)
+        let module_cache = Cache::<String, Arc<CachedRegistryModule>>::builder()
+            .weigher(|key, value| cached_registry_module_weight(key, value))
             .max_capacity(maximum_weight.max(1))
             .expire_after(RegistryModuleExpiry {
                 positive_ttl,
@@ -287,8 +287,8 @@ mod wrapper_tests {
         positive_ttl: Duration,
         negative_ttl: Duration,
     ) -> Cache<String, Arc<CachedRegistryModule>> {
-        Cache::builder()
-            .weigher(cached_registry_module_weight)
+        Cache::<String, Arc<CachedRegistryModule>>::builder()
+            .weigher(|key, value| cached_registry_module_weight(key, value))
             .max_capacity(1024 * 1024)
             .expire_after(RegistryModuleExpiry {
                 positive_ttl,

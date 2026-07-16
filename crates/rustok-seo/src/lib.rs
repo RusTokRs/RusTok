@@ -50,7 +50,7 @@ pub use rustok_seo_targets::{
     SeoTargetRegistryEntry, SeoTargetSlug,
 };
 #[cfg(feature = "server")]
-pub use services::SeoService;
+pub use services::{SeoMediaAssetReadProvider, SeoService};
 
 #[cfg(feature = "server")]
 pub struct SeoModule;

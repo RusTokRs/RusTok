@@ -243,7 +243,7 @@ pub async fn resolve_current_user_from_access_token(
     ))?;
     let db = ctx.runtime_ctx().db();
 
-    let claims = decode_access_token(&auth_config, access_token)
+    let claims = decode_access_token(auth_config, access_token)
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
 
     if claims.tenant_id != tenant_id {

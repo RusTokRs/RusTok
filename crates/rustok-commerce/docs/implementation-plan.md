@@ -107,6 +107,10 @@ already handed to payment-owned storefront transport.
 - The storefront pricing-product-by-handle GraphQL root also consumes the owner
   projection port with its public channel scope rather than constructing a
   pricing service.
+- GraphQL admin pricing writes consume `PricingWritePort` for variant-price upsert,
+  discount application, active price-list rule changes, and scope changes; the
+  commerce adapter does not construct `PricingService` or perform a post-write
+  owner lookup directly.
 - Targeted compiled provider-consumer execution is recorded by
   `cargo test -p rustok-commerce --test checkout_service_test
   validation::complete_checkout_rejects_line_item_without_channel_visible_inventory -- --exact`.

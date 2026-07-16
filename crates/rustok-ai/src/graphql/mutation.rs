@@ -59,13 +59,21 @@ impl AiMutation {
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
+        let tenant_rbac_catalog = ctx
+            .data::<crate::AiGraphqlRuntimeData>()?
+            .tenant_rbac_catalog()
+            .ok_or_else(|| async_graphql::Error::new("tenant RBAC catalog is unavailable"))?
+            .0
+            .clone();
         Ok(crate::AiManagementService::create_agent_principal(
             db,
             &operator,
+            tenant_rbac_catalog.as_ref(),
             crate::CreateAiAgentPrincipalInput {
                 slug: input.slug,
                 descriptor_owner: input.descriptor_owner,
                 descriptor_slug: input.descriptor_slug,
+                role_slugs: input.role_slugs,
                 metadata: parse_metadata(input.metadata)?,
             },
         )
@@ -109,11 +117,19 @@ impl AiMutation {
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
+        let tenant_rbac_catalog = ctx
+            .data::<crate::AiGraphqlRuntimeData>()?
+            .tenant_rbac_catalog()
+            .ok_or_else(|| async_graphql::Error::new("tenant RBAC catalog is unavailable"))?
+            .0
+            .clone();
         Ok(crate::AiManagementService::update_agent_principal(
             db,
             &operator,
+            tenant_rbac_catalog.as_ref(),
             id,
             crate::UpdateAiAgentPrincipalInput {
+                role_slugs: input.role_slugs,
                 metadata: parse_metadata(input.metadata)?,
                 is_active: input.is_active,
             },

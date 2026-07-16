@@ -25,9 +25,10 @@
         "operation": "create_comment",
         "profile": "embedded_native",
         "source_markers": [
-          "create_comment_in_tx",
           "ensure_post_exists",
-          "DomainCreateCommentInput"
+          "DomainCreateCommentInput",
+          "comments_thread_port",
+          "comments_write_port_context"
         ],
         "typed_error_markers": [
           "CommentsError::CommentThreadClosed",

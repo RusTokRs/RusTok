@@ -221,8 +221,8 @@ fn channel_cache_weight_accounts_for_cached_context_size() {
         &empty_extensions(),
     );
     let key = channel_cache_key_from_facts(&facts, 1);
-    let short = CachedChannelResolution::Found(sample_context(16));
-    let large = CachedChannelResolution::Found(sample_context(4_096));
+    let short = CachedChannelResolution::Found(Box::new(sample_context(16)));
+    let large = CachedChannelResolution::Found(Box::new(sample_context(4_096)));
 
     assert!(channel_cache_entry_weight(&key, &large) > channel_cache_entry_weight(&key, &short));
     assert!(

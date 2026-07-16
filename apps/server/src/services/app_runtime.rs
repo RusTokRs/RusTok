@@ -106,6 +106,10 @@ pub async fn bootstrap_app_runtime(
         cfg!(feature = "embed-storefront"),
     )?;
 
+    if !settings.runtime.is_registry_only() {
+        init_storage(&runtime_ctx).await?;
+    }
+
     let registry = modules::build_registry();
     let runtime_extensions = build_shared_runtime_extensions_with_host_providers(
         &registry,
@@ -141,8 +145,6 @@ pub async fn bootstrap_app_runtime(
             ),
         );
 
-        init_storage(&runtime_ctx).await?;
-
         #[cfg(feature = "mod-workflow")]
         if settings.runtime.background_workers.workflow_cron_enabled {
             init_workflow_runtime(&runtime_ctx);
@@ -169,6 +171,8 @@ pub async fn bootstrap_app_runtime(
         }
     }
 
+    initialize_module_work_runtime(&runtime_ctx, &registry, runtime_extensions.as_ref()).await?;
+
     let graphql_schema = init_graphql_schema(&runtime_ctx);
     let rate_limits =
         init_rate_limit_layers(&runtime_ctx, settings, &cache_service, Some(auth_config))?;
@@ -179,6 +183,54 @@ pub async fn bootstrap_app_runtime(
         graphql_schema,
         rate_limit_state: rate_limits.combined_state,
     })
+}
+
+async fn initialize_module_work_runtime(
+    ctx: &ServerRuntimeContext,
+    registry: &ModuleRegistry,
+    extensions: &ModuleRuntimeExtensions,
+) -> Result<()> {
+    let host = extensions.apply_to_host_runtime(
+        rustok_api::HostRuntimeContext::new(ctx.db_clone())
+            .with_shared_value(transactional_event_bus_from_context(ctx))
+            .with_shared_value(registry.clone()),
+    );
+    let host = if let Some(storage) = ctx.shared_get::<rustok_storage::StorageService>() {
+        host.with_shared_value(storage)
+    } else {
+        host
+    };
+    #[cfg(feature = "mod-alloy")]
+    let host = if let Some(alloy_runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
+        host.with_shared_value(alloy_runtime)
+    } else {
+        host
+    };
+    let Some(registrations) = extensions.get::<rustok_runtime::ModuleWorkRegistrations>() else {
+        return Ok(());
+    };
+    if registrations.is_empty() || !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+    let scheduler = rustok_runtime::ModuleWorkScheduler::new();
+    registrations
+        .register_all(&host, &scheduler)
+        .await
+        .map_err(|error| Error::Message(format!("module work registration failed: {error}")))?;
+    if !ctx.shared_contains::<crate::services::app_lifecycle::StopHandle>() {
+        let (stop_handle, _stop_rx) = crate::services::app_lifecycle::StopHandle::new();
+        ctx.shared_insert(stop_handle);
+    }
+    let stop = ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .expect("StopHandle must be registered before module work startup")
+        .subscribe();
+    tokio::spawn(async move {
+        scheduler
+            .run_until_stopped(stop, std::time::Duration::from_secs(1))
+            .await;
+    });
+    Ok(())
 }
 
 pub fn module_runtime_extensions_from_ctx(

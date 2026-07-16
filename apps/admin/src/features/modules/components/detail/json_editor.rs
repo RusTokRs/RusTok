@@ -9,6 +9,15 @@ pub enum JsonPathSegment {
     Index(usize),
 }
 
+#[derive(Clone)]
+pub struct NestedJsonRenderContext {
+    root_type: String,
+    root_value: Signal<String>,
+    locale: Locale,
+    disabled: Signal<bool>,
+    on_input: Callback<String>,
+}
+
 pub fn json_value_kind(value: &serde_json::Value) -> &'static str {
     match value {
         serde_json::Value::Null => "null",
@@ -770,15 +779,16 @@ pub fn render_scalar_value_editor(
 }
 
 pub fn render_nested_json_children(
-    root_type: String,
-    root_value: Signal<String>,
+    context: &NestedJsonRenderContext,
     path: Vec<JsonPathSegment>,
     current: serde_json::Value,
     current_shape: Option<serde_json::Value>,
-    locale: Locale,
-    disabled: Signal<bool>,
-    on_input: Callback<String>,
 ) -> AnyView {
+    let root_type = context.root_type.clone();
+    let root_value = context.root_value;
+    let locale = context.locale;
+    let disabled = context.disabled;
+    let on_input = context.on_input;
     match current {
         serde_json::Value::Object(object) => {
             let declared_properties = setting_shape_properties(current_shape.as_ref());
@@ -964,7 +974,7 @@ pub fn render_nested_json_children(
                                         }>{tr(locale, "Remove", "Удалить")}</button>
                                     </div>
                                     <p class="text-sm text-muted-foreground">{preview}</p>
-                                    {render_nested_json_children(root_type.clone(), root_value, item_path.clone(), item_value, property_shape.clone(), locale, disabled, on_input)}
+                                    {render_nested_json_children(context, item_path.clone(), item_value, property_shape.clone())}
                                 </div>
                             }.into_any()
                         }
@@ -1157,7 +1167,7 @@ pub fn render_nested_json_children(
                                         </div>
                                     </div>
                                     <p class="text-sm text-muted-foreground">{preview}</p>
-                                    {render_nested_json_children(root_type.clone(), root_value, item_path.clone(), item_value, item_shape.clone(), locale, disabled, on_input)}
+                                    {render_nested_json_children(context, item_path.clone(), item_value, item_shape.clone())}
                                 </div>
                             }.into_any()
                         }
@@ -1383,15 +1393,16 @@ pub fn StructuredObjectEditor(
                                                                 preview
                                                             )}
                                                         </p>
-                                                        {render_nested_json_children(
-                                                            "object".to_string(),
-                                                            value,
-                                                            nested_path,
-                                                            nested_value,
-                                                            nested_shape,
+                                                        {render_nested_json_children(&NestedJsonRenderContext {
+                                                            root_type: "object".to_string(),
+                                                            root_value: value,
                                                             locale,
                                                             disabled,
                                                             on_input,
+                                                        },
+                                                            nested_path,
+                                                            nested_value,
+                                                            nested_shape,
                                                         )}
                                                     </>
                                                 }.into_any()
@@ -1644,15 +1655,16 @@ pub fn StructuredArrayEditor(
                                                                 preview
                                                             )}
                                                         </p>
-                                                    {render_nested_json_children(
-                                                        "array".to_string(),
-                                                        value,
-                                                        nested_path,
-                                                        nested_value,
-                                                        nested_shape.or_else(|| array_item_shape_for_items.clone()),
+                                                    {render_nested_json_children(&NestedJsonRenderContext {
+                                                        root_type: "array".to_string(),
+                                                        root_value: value,
                                                         locale,
                                                         disabled,
                                                         on_input,
+                                                    },
+                                                        nested_path,
+                                                        nested_value,
+                                                        nested_shape.or_else(|| array_item_shape_for_items.clone()),
                                                     )}
                                                     </>
                                                 }.into_any()
@@ -1750,15 +1762,16 @@ pub fn ComplexSettingEditor(
                                     <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                                         {tr(locale, "Nested editor", "Вложенный редактор")}
                                     </p>
-                                    {render_nested_json_children(
-                                        field_type_for_nested.clone(),
-                                        value,
-                                        Vec::new(),
-                                        root,
-                                        schema_shape.clone(),
+                                    {render_nested_json_children(&NestedJsonRenderContext {
+                                        root_type: field_type_for_nested.clone(),
+                                        root_value: value,
                                         locale,
                                         disabled,
                                         on_input,
+                                    },
+                                        Vec::new(),
+                                        root,
+                                        schema_shape.clone(),
                                     )}
                                 </div>
                             }

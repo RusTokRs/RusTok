@@ -6,6 +6,12 @@
   "runner": "scripts/verify/verify-outbox-fba.mjs",
   "contract_version": "outbox.relay_control.v1",
   "profiles": ["in_process", "remote_adapter_placeholder"],
+  "consumer_composition": {
+    "status": "static_port_invocation_checked",
+    "source": "apps/server/src/services/event_transport_factory.rs",
+    "operation": "OutboxRelayPort::process_pending_once",
+    "assertions": ["typed_port_invocation", "deadline_preserved", "idempotency_preserved"]
+  },
   "cases": [
     {
       "operation": "process_pending_once",

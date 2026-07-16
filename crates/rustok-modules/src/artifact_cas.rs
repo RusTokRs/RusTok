@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 use rustok_storage::StorageService;
+use sha2::{Digest, Sha256};
+use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
 use crate::{
@@ -64,6 +66,37 @@ impl StorageArtifactBlobStore {
             });
         }
         Ok(())
+    }
+
+    async fn verify_file(
+        digest: &str,
+        source: &std::path::Path,
+    ) -> Result<u64, ModuleInstallationError> {
+        let mut file = tokio::fs::File::open(source)
+            .await
+            .map_err(|error| ModuleInstallationError::Blob(error.to_string()))?;
+        let mut hasher = Sha256::new();
+        let mut size = 0_u64;
+        let mut buffer = [0_u8; 64 * 1024];
+        loop {
+            let read = file
+                .read(&mut buffer)
+                .await
+                .map_err(|error| ModuleInstallationError::Blob(error.to_string()))?;
+            if read == 0 {
+                break;
+            }
+            size += read as u64;
+            hasher.update(&buffer[..read]);
+        }
+        let actual = format!("sha256:{}", hex::encode(hasher.finalize()));
+        if actual != digest {
+            return Err(ModuleInstallationError::PayloadDigestMismatch {
+                expected: digest.to_string(),
+                actual,
+            });
+        }
+        Ok(size)
     }
 
     async fn publish_verified(
@@ -138,6 +171,35 @@ impl DurableArtifactBlobStore for StorageArtifactBlobStore {
             .store(
                 &self.stage_path(stage.stage_id),
                 bytes::Bytes::copy_from_slice(bytes),
+                expected_media_type,
+            )
+            .await
+            .map_err(Self::storage_error)?;
+        Ok(stage)
+    }
+
+    async fn stage_file(
+        &self,
+        expected_digest: &str,
+        expected_media_type: &str,
+        source: &std::path::Path,
+    ) -> Result<StagedArtifactBlob, ModuleInstallationError> {
+        if expected_media_type.trim().is_empty() {
+            return Err(ModuleInstallationError::Blob(
+                "artifact media type is empty".into(),
+            ));
+        }
+        let size_bytes = Self::verify_file(expected_digest, source).await?;
+        let stage = StagedArtifactBlob {
+            stage_id: Uuid::new_v4(),
+            digest: expected_digest.to_string(),
+            media_type: expected_media_type.to_string(),
+            size_bytes,
+        };
+        self.storage
+            .store_file(
+                &self.stage_path(stage.stage_id),
+                source,
                 expected_media_type,
             )
             .await

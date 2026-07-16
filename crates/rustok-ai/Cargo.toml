@@ -27,6 +27,7 @@ server = [
   "dep:rustok-mcp",
   "dep:rustok-outbox",
   "dep:rustok-product",
+  "dep:rustok-runtime",
   "dep:rustok-storage",
   "dep:rustok-secrets",
   "dep:rustok-telemetry",
@@ -72,6 +73,7 @@ rustok-media = { workspace = true, optional = true }
 rustok-mcp = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-product = { workspace = true, optional = true }
+rustok-runtime = { workspace = true, optional = true }
 rustok-storage = { workspace = true, optional = true }
 rustok-secrets = { workspace = true, optional = true }
 rustok-telemetry = { workspace = true, optional = true }

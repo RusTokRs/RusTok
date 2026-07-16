@@ -144,6 +144,13 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     let mut extensions = base.as_ref().clone();
     let db = runtime_ctx.db_clone();
 
+    #[cfg(all(feature = "mod-seo", feature = "mod-media"))]
+    if let Some(storage) = runtime_ctx.shared_get::<rustok_storage::StorageService>() {
+        let provider: Arc<dyn rustok_media::MediaAssetReadPort> =
+            Arc::new(rustok_media::MediaService::new(db.clone(), storage));
+        extensions.insert(rustok_seo::SeoMediaAssetReadProvider::new(provider));
+    }
+
     #[cfg(feature = "mod-fulfillment")]
     {
         let fulfillment_registry = runtime_ctx

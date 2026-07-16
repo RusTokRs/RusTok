@@ -35,6 +35,20 @@ pub trait StorageBackend: Send + Sync {
         content_type: &str,
     ) -> Result<UploadedObject>;
 
+    /// Store a trusted local file without forcing callers to materialize it as
+    /// one in-memory byte buffer. Backends should override this with their
+    /// native streaming/multipart path; the default preserves compatibility.
+    async fn store_file(
+        &self,
+        path: &str,
+        source: &std::path::Path,
+        content_type: &str,
+    ) -> Result<UploadedObject> {
+        let bytes = tokio::fs::read(source).await?;
+        self.store(path, bytes::Bytes::from(bytes), content_type)
+            .await
+    }
+
     /// Create an object only when the relative path does not already exist.
     /// `true` means this call created it; `false` means an existing object was
     /// retained. Content-addressed callers must verify an existing object

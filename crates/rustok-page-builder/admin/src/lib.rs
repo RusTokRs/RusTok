@@ -1,5 +1,8 @@
+#![recursion_limit = "256"]
+
 #[cfg(test)]
 mod context_contract;
+
 pub mod editor;
 mod i18n;
 mod model;

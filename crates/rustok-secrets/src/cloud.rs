@@ -64,9 +64,15 @@ pub struct GcpSecretManagerResolver {
 }
 
 impl GcpSecretManagerResolver {
+    /// Validates a deployment-owned GCP project identifier without creating an
+    /// ADC client. Runtime composition uses this to fail closed at startup.
+    pub fn validate_project(project: &str) -> Result<(), SecretError> {
+        validate_gcp_project(project)
+    }
+
     pub async fn from_adc(project: impl Into<String>) -> Result<Self, SecretError> {
         let project = project.into();
-        validate_gcp_project(&project)?;
+        Self::validate_project(&project)?;
         let client = google_cloud_secretmanager_v1::client::SecretManagerService::builder()
             .build()
             .await
@@ -91,7 +97,7 @@ impl GcpSecretManagerResolver {
 #[async_trait]
 impl SecretResolver for GcpSecretManagerResolver {
     async fn resolve(&self, key: &str) -> Result<SecretString, SecretError> {
-        validate_gcp_project(&self.project)?;
+        Self::validate_project(&self.project)?;
         validate_gcp_secret_id(key)?;
         let name = format!("projects/{}/secrets/{key}/versions/latest", self.project);
         let response = self

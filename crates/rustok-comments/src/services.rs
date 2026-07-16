@@ -12,6 +12,8 @@ use rustok_content::{
     dto::validation::validate_body_format, normalize_locale_code, resolve_by_locale_with_fallback,
 };
 use rustok_core::{PermissionScope, SecurityContext};
+use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
 use rustok_telemetry::metrics;
 
 use crate::dto::{
@@ -23,6 +25,7 @@ use crate::error::{CommentsError, CommentsResult};
 
 pub struct CommentsService {
     db: DatabaseConnection,
+    event_bus: Option<TransactionalEventBus>,
 }
 
 const MODULE: &str = "comments";
@@ -107,7 +110,17 @@ use sea_orm::Database;
 
 impl CommentsService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            event_bus: None,
+        }
+    }
+
+    pub fn with_event_bus(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self {
+            db,
+            event_bus: Some(event_bus),
+        }
     }
 
     #[instrument(skip(self, security, input), fields(tenant_id = %tenant_id, target_type = %input.target_type, target_id = %input.target_id))]
@@ -121,10 +134,23 @@ impl CommentsService {
         let started = Instant::now();
         let result = async {
             let locale = input.locale.clone();
+            let target_type = input.target_type.clone();
+            let target_id = input.target_id;
+            let author_id = self.enforce_create_scope(&security)?;
             let txn = self.db.begin().await?;
             let comment_id = self
                 .create_comment_in_tx(&txn, tenant_id, security.clone(), input)
                 .await?;
+            self.publish_comment_created_in_tx(
+                &txn,
+                tenant_id,
+                security.user_id,
+                comment_id,
+                target_type,
+                target_id,
+                author_id,
+            )
+            .await?;
             txn.commit().await?;
             self.get_comment(tenant_id, security, comment_id, &locale, None)
                 .await
@@ -291,8 +317,32 @@ impl CommentsService {
         let started = Instant::now();
         let result = async {
             let txn = self.db.begin().await?;
-            self.delete_comment_in_tx(&txn, tenant_id, security, comment_id)
+            let existing = self
+                .find_comment_in_tx(&txn, tenant_id, comment_id, false)
                 .await?;
+            let thread = comment_thread::Entity::find_by_id(existing.thread_id)
+                .filter(comment_thread::Column::TenantId.eq(tenant_id))
+                .one(&txn)
+                .await?
+                .ok_or_else(|| CommentsError::CommentThreadNotFound {
+                    target_type: "unknown".to_string(),
+                    target_id: Uuid::nil(),
+                })?;
+            let target_type = thread.target_type;
+            let target_id = thread.target_id;
+            let author_id = existing.author_id;
+            self.delete_comment_in_tx(&txn, tenant_id, security.clone(), comment_id)
+                .await?;
+            self.publish_comment_deleted_in_tx(
+                &txn,
+                tenant_id,
+                security.user_id,
+                comment_id,
+                target_type,
+                target_id,
+                author_id,
+            )
+            .await?;
             txn.commit().await?;
             Ok(())
         }
@@ -329,6 +379,66 @@ impl CommentsService {
         self.update_thread_counters_in_tx(txn, &thread, -1, None)
             .await?;
         Ok(())
+    }
+
+    async fn publish_comment_created_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        comment_id: Uuid,
+        target_type: String,
+        target_id: Uuid,
+        author_id: Uuid,
+    ) -> CommentsResult<()> {
+        let Some(event_bus) = &self.event_bus else {
+            return Ok(());
+        };
+
+        event_bus
+            .publish_in_tx(
+                txn,
+                tenant_id,
+                actor_id,
+                DomainEvent::CommentCreated {
+                    comment_id,
+                    target_type,
+                    target_id,
+                    author_id,
+                },
+            )
+            .await
+            .map_err(|error| CommentsError::EventPublication(error.to_string()))
+    }
+
+    async fn publish_comment_deleted_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        comment_id: Uuid,
+        target_type: String,
+        target_id: Uuid,
+        author_id: Uuid,
+    ) -> CommentsResult<()> {
+        let Some(event_bus) = &self.event_bus else {
+            return Ok(());
+        };
+
+        event_bus
+            .publish_in_tx(
+                txn,
+                tenant_id,
+                actor_id,
+                DomainEvent::CommentDeleted {
+                    comment_id,
+                    target_type,
+                    target_id,
+                    author_id,
+                },
+            )
+            .await
+            .map_err(|error| CommentsError::EventPublication(error.to_string()))
     }
 
     #[instrument(skip(self, security))]

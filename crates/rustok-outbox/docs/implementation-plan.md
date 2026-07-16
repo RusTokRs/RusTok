@@ -28,6 +28,9 @@ bootstrap remains the only package transport and no GraphQL fallback is added.
   and `crates/rustok-outbox/contracts/evidence/outbox-provider-runtime-order-smoke.json`.
 - `npm run verify:outbox:admin-boundary` and `npm run verify:outbox:fba` lock
   the UI boundary, provider metadata, and owner-service invocation order.
+- The server relay worker consumes `OutboxRelayPort::process_pending_once` with
+  a service actor, deadline, and per-tick idempotency key; it does not invoke
+  the relay service method directly.
 
 ## Open results
 

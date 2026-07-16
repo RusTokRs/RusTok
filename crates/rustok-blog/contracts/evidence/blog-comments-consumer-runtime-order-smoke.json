@@ -27,10 +27,9 @@
       "markers": [
         "ensure_post_exists",
         "prepare_content_payload",
-        "create_comment_in_tx",
-        "adjust_post_reply_count_in_tx",
-        "publish_post_updated_event_in_tx",
-        "get_comment",
+        "comments_thread_port",
+        "create_comment",
+        "comments_write_port_context",
         "map_comment_record"
       ]
     },
@@ -39,7 +38,9 @@
       "function": "list_for_post_with_locale_fallback",
       "markers": [
         "ensure_post_exists",
+        "comments_thread_port",
         "list_comments_for_target",
+        "comments_read_port_context",
         "map_comment_list_item"
       ]
     },
@@ -48,7 +49,23 @@
       "function": "update_comment",
       "markers": [
         "prepare_content_payload",
+        "comments_thread_port",
         "update_comment",
+        "comments_write_port_context",
+        "map_comment_record"
+      ]
+    },
+    {
+      "operation": "set_comment_status",
+      "function": "moderate_comment",
+      "markers": [
+        "enforce_scope",
+        "comments_thread_port",
+        "get_comment",
+        "comments_read_port_context",
+        "ensure_blog_target",
+        "set_comment_status",
+        "comments_write_port_context",
         "map_comment_record"
       ]
     },
@@ -56,12 +73,13 @@
       "operation": "delete_comment",
       "function": "delete_comment",
       "markers": [
+        "comments_thread_port",
         "get_comment",
+        "comments_read_port_context",
         "ensure_blog_target",
-        "delete_comment_in_tx",
-        "adjust_post_reply_count_in_tx",
-        "publish_post_updated_event_in_tx",
-        "commit"
+        "comments_thread_port",
+        "delete_comment",
+        "comments_write_port_context"
       ]
     }
   ],

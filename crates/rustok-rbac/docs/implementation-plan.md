@@ -56,6 +56,10 @@ The ownership boundary is:
   and `crates/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json`.
 - `scripts/verify/verify-rbac-admin-boundary.mjs` and `npm run verify:rbac:fba`
   lock the native-only boundary, provider metadata and authorization order.
+- The in-process provider is `RbacPermissionDecisionProvider`: it resolves the
+  UUID tenant and authenticated user actor from `PortContext`, then delegates
+  to the authoritative `PermissionResolver`. Request claims are not a second
+  authorization source.
 - Do not promote FBA to `transport_verified` until composed live-host and
   degraded-path evidence is recorded.
 

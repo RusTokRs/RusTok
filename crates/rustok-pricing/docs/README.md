@@ -85,7 +85,8 @@
   wired in; the parallel GraphQL facade now also holds admin pricing write surface
   for variant price updates, typed percentage-discount preview/apply and selected
   active `price_list` rule/scope updates, not just pricing-authoritative
-  read roots;
+  read roots; those GraphQL write adapters now call the typed owner-managed
+  `PricingWritePort` rather than constructing `PricingService`;
 - shared DTOs, entities and error surface come from `rustok-commerce-foundation`.
 - `rustok-commerce` durable checkout pricing and REST/GraphQL storefront cart
   pricing consume the owner-managed `PricingReadPort` factory rather than

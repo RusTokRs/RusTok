@@ -2,9 +2,10 @@
 
 `rustok-ai` is the RusToK capability crate for the AI host/orchestrator layer on top of `rustok-mcp`.
 
-This crate is not a tenant-toggled module and is not part of the `Core` / `Optional` taxonomy.
-Its task is to hold the layer between model provider and MCP tool surface, without extending `rustok-mcp`
-to the role of model host.
+This crate is deployment-scoped rather than tenant-toggled. When compiled, it is registered as a
+globally active runtime capability so tenant module toggles cannot remove provider policies,
+secret handles, or durable agent workers. Its task is to hold the layer between model provider
+and MCP tool surface, without extending `rustok-mcp` to the role of model host.
 
 ## Purpose
 
@@ -53,9 +54,9 @@ to the role of model host.
 - server-side orchestration service `AiManagementService`;
 - `AiHostRuntime` is a host-neutral runtime contract; `rustok-ai` accepts
   explicit runtime values and has no host-framework dependency;
-- the target host integration is a generic manifest/runtime contribution contract. Removing
-  existing direct AI construction from `apps/server` is a platform-owned prerequisite and is
-  explicitly tracked as blocked in the implementation plan.
+- generic manifest/runtime extensions transfer deployment-owned handles into the neutral host
+  context and register durable workers. `apps/server` does not construct AI runtime, secrets,
+  provider policies, or GraphQL roots.
 - Runtime observability now operates in two layers:
   - persisted `decision_trace` and run/session metadata in the control plane;
   - in-process `AiManagementService::metrics_snapshot()` and Prometheus module/span telemetry for router resolution and run outcomes.

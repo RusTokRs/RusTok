@@ -71,6 +71,9 @@
 - Current verification baseline for this slice is a wide pricing sweep across
   `pricing_service_test`, the full `graphql_runtime_parity_test`, and SSR suites
   for `rustok-pricing-admin` / `rustok-pricing-storefront`.
+- `PricingWritePort` is the typed owner boundary for commerce GraphQL admin
+  variant-price upserts, discount application, price-list rules, and scope writes;
+  its no-compile evidence remains boundary-level rather than transport execution.
 
 ## Entry points
 

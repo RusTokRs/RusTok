@@ -8,6 +8,7 @@
     {"operation": "get_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]},
     {"operation": "list_comments_for_target", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]},
     {"operation": "update_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]},
+    {"operation": "set_comment_status", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]},
     {"operation": "delete_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]}
   ],
   "fallback_smoke": {

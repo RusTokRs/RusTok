@@ -300,8 +300,8 @@ async fn publish_release_to_container(
     let config_target = bundle.release_dir.join("config");
     let dockerfile_path = bundle.release_dir.join("Dockerfile.container");
 
-    copy_directory_recursive(&migration_source, &migration_target).await?;
-    copy_directory_recursive(&config_source, &config_target).await?;
+    copy_directory_recursive(migration_source, &migration_target).await?;
+    copy_directory_recursive(config_source, &config_target).await?;
 
     tokio::fs::write(
         &dockerfile_path,

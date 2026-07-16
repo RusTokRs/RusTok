@@ -19,6 +19,11 @@
 - Depends on `rustok-channel` for the second public channel-aware gating proof point on blog read paths.
 - Depends on `rustok-content` only for shared content helpers and cross-domain orchestration primitives.
 - Depends on `rustok-comments` for comment threads, comment bodies, and generic comment lifecycle.
+- Routes comment reads, update, and moderation through the public
+  `CommentsThreadPort`, including create/delete; no Blog code calls
+  `CommentsService` directly. Comments lifecycle events are consumed by Blog's
+  idempotent reply-count projection, which atomically publishes `BlogPostUpdated`.
+  Live delivery/retry evidence remains pending.
 - Depends on `rustok-taxonomy` for the shared tag dictionary while keeping `blog_post_tags` blog-owned.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.
 - Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter contracts.

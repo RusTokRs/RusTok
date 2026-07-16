@@ -9,12 +9,27 @@ pub struct AiAdminBootstrap {
     pub agent_workflows: Vec<AiAgentWorkflowPayload>,
     pub agent_principals: Vec<AiAgentPrincipalPayload>,
     pub agent_model_assignments: Vec<AiAgentModelAssignmentPayload>,
+    pub tenant_rbac_roles: Vec<AiTenantRbacRolePayload>,
+    pub tenant_rbac_permissions: Vec<AiTenantRbacPermissionPayload>,
     pub providers: Vec<AiProviderProfilePayload>,
     pub task_profiles: Vec<AiTaskProfilePayload>,
     pub tool_profiles: Vec<AiToolProfilePayload>,
     pub sessions: Vec<AiChatSessionSummaryPayload>,
     pub recent_runs: Vec<AiRecentRunPayload>,
     pub recent_stream_events: Vec<AiRunStreamEventPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiTenantRbacRolePayload {
+    pub slug: String,
+    pub display_name: String,
+    pub permission_slugs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiTenantRbacPermissionPayload {
+    pub slug: String,
+    pub display_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -65,6 +80,16 @@ pub struct AiAgentModelAssignmentPayload {
     pub model_override: Option<String>,
     pub execution_mode: String,
     pub is_active: bool,
+}
+
+/// Owner-owned input binding for one persisted workflow stage. The generic AI
+/// panel does not edit payloads; owner surfaces assemble the validated JSON.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiAgentWorkflowStageBindingInputPayload {
+    pub stage_id: String,
+    pub agent_principal_id: String,
+    pub model_assignment_id: String,
+    pub input_payload: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

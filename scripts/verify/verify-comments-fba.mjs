@@ -16,20 +16,42 @@ if (registry.module !== 'comments' || registry.role !== 'provider' || !['in_prog
 if (registry.contract_version !== 'comments.thread.v1') fail('contract_version drift');
 const port = registry.ports?.[0];
 if (!port || port.name !== 'CommentsThreadPort') fail('port name drift');
-hasAll(JSON.stringify(port), ['create_comment','get_comment','list_comments_for_target','update_comment','delete_comment'], 'port operations');
+hasAll(JSON.stringify(port), ['create_comment','get_comment','list_comments_for_target','update_comment','set_comment_status','delete_comment'], 'port operations');
 if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('port context/error drift');
 
 const manifest = read('crates/rustok-comments/rustok-module.toml');
 hasAll(manifest, ['[fba.provider]', 'registry = "contracts/comments-fba-registry.json"', 'contract_version = "comments.thread.v1"'], 'manifest');
 
 const cargo = read('crates/rustok-comments/Cargo.toml');
-hasAll(cargo, ['"dep:rustok-api"', 'rustok-api = { workspace = true, optional = true }'], 'Cargo.toml');
+hasAll(cargo, [
+  '"dep:rustok-api"',
+  'rustok-api = { workspace = true, optional = true }',
+  '"dep:rustok-events"',
+  'rustok-events = { workspace = true, optional = true }',
+  '"dep:rustok-outbox"',
+  'rustok-outbox = { workspace = true, optional = true }',
+], 'Cargo.toml');
 
 const lib = read('crates/rustok-comments/src/lib.rs');
 hasAll(lib, ['pub mod ports;', 'pub use ports::*;'], 'lib.rs');
 
 const ports = read('crates/rustok-comments/src/ports.rs');
-hasAll(ports, ['pub trait CommentsThreadPort', 'impl CommentsThreadPort for CommentsService', 'PortContext', 'PortError'], 'ports.rs');
+hasAll(ports, ['pub trait CommentsThreadPort', 'impl CommentsThreadPort for CommentsService', 'PortContext', 'PortError', 'TransactionalEventBus', 'CommentsService::with_event_bus'], 'ports.rs');
+const services = read('crates/rustok-comments/src/services.rs');
+hasAll(services, [
+  'event_bus: Option<TransactionalEventBus>',
+  'pub fn with_event_bus',
+  'publish_comment_created_in_tx',
+  'publish_comment_deleted_in_tx',
+  'DomainEvent::CommentCreated',
+  'DomainEvent::CommentDeleted',
+  '.publish_in_tx(',
+], 'comments owner event publication');
+const lifecycleEvents = registry.events ?? [];
+if (lifecycleEvents.map(event => event.type).sort().join('|') !== 'comment.created|comment.deleted') fail('comments lifecycle event registry drift');
+for (const event of lifecycleEvents) {
+  if (event.owner !== 'comments' || event.publication !== 'rustok_outbox::TransactionalEventBus::publish_in_tx' || event.consumer !== 'blog' || event.projection_status !== 'implemented_static_only') fail(`lifecycle event metadata drift for ${event.type}`);
+}
 const implStart = ports.indexOf('impl CommentsThreadPort for CommentsService');
 if (implStart === -1) fail('ports.rs missing CommentsService impl');
 const implPorts = ports.slice(implStart);

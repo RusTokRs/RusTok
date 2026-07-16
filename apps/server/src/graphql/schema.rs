@@ -98,26 +98,52 @@ pub type AppSchema = Schema<Query, Mutation, Subscription>;
 #[derive(Clone)]
 pub struct SharedGraphqlSchema(pub Arc<AppSchema>);
 
-pub fn build_schema(
-    db: DatabaseConnection,
-    event_bus: EventBus,
-    transactional_event_bus: TransactionalEventBus,
-    graphql_runtime_inputs: rustok_api::graphql::GraphqlRuntimeInputs,
-    build_event_hub: Arc<BuildEventHub>,
-    field_definition_cache: FieldDefinitionCache,
-    runtime_extensions: Arc<ModuleRuntimeExtensions>,
-    rbac_role_writer: RbacGraphqlRoleWriterHandle,
-    search_rate_limiter: Option<SearchGraphqlRateLimiterHandle>,
-    #[cfg(feature = "mod-alloy")] alloy_runtime: alloy::SharedAlloyRuntime,
+pub struct GraphqlSchemaDependencies {
+    pub db: DatabaseConnection,
+    pub event_bus: EventBus,
+    pub transactional_event_bus: TransactionalEventBus,
+    pub graphql_runtime_inputs: rustok_api::graphql::GraphqlRuntimeInputs,
+    pub build_event_hub: Arc<BuildEventHub>,
+    pub field_definition_cache: FieldDefinitionCache,
+    pub runtime_extensions: Arc<ModuleRuntimeExtensions>,
+    pub rbac_role_writer: RbacGraphqlRoleWriterHandle,
+    pub search_rate_limiter: Option<SearchGraphqlRateLimiterHandle>,
+    #[cfg(feature = "mod-alloy")]
+    pub alloy_runtime: alloy::SharedAlloyRuntime,
     #[cfg(all(
         feature = "mod-content",
         feature = "mod-blog",
         feature = "mod-forum",
         feature = "mod-comments"
     ))]
-    content_orchestration: rustok_content_orchestration::SharedContentOrchestrationService,
-    #[cfg(feature = "mod-media")] storage: StorageService,
-) -> AppSchema {
+    pub content_orchestration: rustok_content_orchestration::SharedContentOrchestrationService,
+    #[cfg(feature = "mod-media")]
+    pub storage: StorageService,
+}
+
+pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
+    let GraphqlSchemaDependencies {
+        db,
+        event_bus,
+        transactional_event_bus,
+        graphql_runtime_inputs,
+        build_event_hub,
+        field_definition_cache,
+        runtime_extensions,
+        rbac_role_writer,
+        search_rate_limiter,
+        #[cfg(feature = "mod-alloy")]
+        alloy_runtime,
+        #[cfg(all(
+            feature = "mod-content",
+            feature = "mod-blog",
+            feature = "mod-forum",
+            feature = "mod-comments"
+        ))]
+        content_orchestration,
+        #[cfg(feature = "mod-media")]
+        storage,
+    } = dependencies;
     let flex_runtime = FlexGraphqlRuntime::new(
         Arc::new(FlexStandaloneSeaOrmService::new(db.clone())),
         db.clone(),

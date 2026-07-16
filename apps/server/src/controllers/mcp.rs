@@ -295,10 +295,10 @@ fn execute_registry_tool(
                     request
                         .slug_prefix
                         .as_ref()
-                        .map_or(true, |prefix| module.slug().starts_with(prefix))
+                        .is_none_or(|prefix| module.slug().starts_with(prefix))
                 })
                 .filter(|module| {
-                    request.dependency.as_ref().map_or(true, |dependency| {
+                    request.dependency.as_ref().is_none_or(|dependency| {
                         module
                             .dependencies()
                             .iter()

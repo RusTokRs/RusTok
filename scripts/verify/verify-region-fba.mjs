@@ -36,7 +36,7 @@ if (!ports.includes('use rustok_api::{PortCallPolicy, PortContext, PortError};')
 if (ports.includes('require_write_semantics()?')) fail('region read port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('region FBA DTOs must be serializable');
 if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('RegionReadPort') || !plan.includes('region-contract-test-static-matrix.json') || !plan.includes(registry.evidence.runtime_order_smoke)) fail('local plan FBA evidence drift');
-if (!central.includes('| `region` |') || !central.includes(registryPath) || !central.includes(registry.evidence.runtime_order_smoke) || !central.includes('| `region` | admin + storefront | `in_progress` | `in_progress`')) fail('central readiness board drift');
+if (!central.includes('| `region` |') || !central.includes(registryPath) || !central.includes(registry.evidence.runtime_order_smoke) || !central.includes('| `region` | admin + storefront | `in_progress` | `boundary_ready`')) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'region' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-region-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');

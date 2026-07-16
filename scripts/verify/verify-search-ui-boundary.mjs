@@ -415,7 +415,7 @@ function assertSearchUiCatalogTransportContract() {
     "category_ids: route_filters.category_ids",
     "attribute_code: Option<String>",
     "attribute_values: Vec<String>",
-    "attribute_code: optional_text(attribute_code.unwrap_or_default())",
+    "attribute_code: optional_text(query.attribute_code.as_deref().unwrap_or_default())",
     "values: route_filters.attribute_values",
     "attribute_filters",
     "sort_attribute_code: route_filters.sort_attribute_code",
@@ -440,8 +440,8 @@ function assertSearchUiCatalogTransportContract() {
     "search-storefront-category-options",
     "search-storefront-sort-attribute-options",
     "navigate_to_catalog_search",
-    '("attribute_code", attribute_code)',
-    '("sort_attribute_code", sort_attribute_code)',
+    /\(\s*"attribute_code",\s*submission\.attribute_code\.as_str\(\)\s*,?\s*\)/,
+    /\(\s*"sort_attribute_code",\s*submission\.sort_attribute_code\.as_str\(\)\s*,?\s*\)/,
   ]) {
     assertContains(storefrontUi, marker, `${storefrontUiPath}: storefront Leptos catalog route/control marker missing ${marker}`);
   }

@@ -27,7 +27,7 @@ pub enum ModuleLifecycleHookPhase {
 /// admitted artifact sandbox adapter.
 pub struct ModuleExecutionDispatcher<'a> {
     catalog: &'a ModuleDefinitionCatalog,
-    static_registry: &'a ModuleRegistry,
+    static_registry: Option<&'a ModuleRegistry>,
     artifact_executor: Option<&'a dyn ArtifactLifecycleExecutor>,
 }
 
@@ -35,8 +35,21 @@ impl<'a> ModuleExecutionDispatcher<'a> {
     pub fn new(catalog: &'a ModuleDefinitionCatalog, static_registry: &'a ModuleRegistry) -> Self {
         Self {
             catalog,
-            static_registry,
+            static_registry: Some(static_registry),
             artifact_executor: None,
+        }
+    }
+
+    /// Creates a dispatcher for an artifact-only composition. Static
+    /// definitions remain unavailable because no compiled registry is present.
+    pub fn artifact_only(
+        catalog: &'a ModuleDefinitionCatalog,
+        artifact_executor: &'a dyn ArtifactLifecycleExecutor,
+    ) -> Self {
+        Self {
+            catalog,
+            static_registry: None,
+            artifact_executor: Some(artifact_executor),
         }
     }
 
@@ -63,7 +76,10 @@ impl<'a> ModuleExecutionDispatcher<'a> {
             .ok_or_else(|| ModuleDispatchError::UnknownDefinition(module_slug.to_string()))?;
         match &definition.source {
             ModuleDefinitionSource::Static { .. } => {
-                let module = self.static_registry.get(module_slug).ok_or_else(|| {
+                let static_registry = self.static_registry.ok_or_else(|| {
+                    ModuleDispatchError::MissingStaticImplementation(module_slug.to_string())
+                })?;
+                let module = static_registry.get(module_slug).ok_or_else(|| {
                     ModuleDispatchError::MissingStaticImplementation(module_slug.to_string())
                 })?;
                 let context = ModuleContext {
@@ -148,4 +164,94 @@ pub enum ModuleDispatchError {
     ArtifactHook(String),
     #[error("module lifecycle binding failed: {0}")]
     StaticHook(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use async_trait::async_trait;
+    use sea_orm::Database;
+
+    use super::*;
+    use crate::{
+        ArtifactReleaseRef, ModuleBindingIdempotency, ModuleDefinition, ModuleDefinitionKind,
+        ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+    };
+
+    struct RecordingArtifactExecutor(Mutex<Vec<(String, ModuleLifecycleHookPhase)>>);
+
+    #[async_trait]
+    impl ArtifactLifecycleExecutor for RecordingArtifactExecutor {
+        async fn dispatch_lifecycle(
+            &self,
+            dispatch: ArtifactLifecycleDispatch<'_>,
+        ) -> Result<(), String> {
+            self.0
+                .lock()
+                .expect("executor lock")
+                .push((dispatch.release.slug.clone(), dispatch.phase));
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn artifact_only_dispatcher_uses_admitted_executor_without_static_registry() {
+        let release = ArtifactReleaseRef {
+            slug: "artifact_module".to_string(),
+            version: "1.0.0".to_string(),
+            digest: format!("sha256:{}", "a".repeat(64)),
+        };
+        let mut catalog = ModuleDefinitionCatalog::default();
+        catalog
+            .insert(ModuleDefinition {
+                slug: release.slug.clone(),
+                version: release.version.clone(),
+                kind: ModuleDefinitionKind::Optional,
+                source: ModuleDefinitionSource::Artifact {
+                    release: release.clone(),
+                },
+                dependencies: Vec::new(),
+                permissions: Vec::new(),
+                settings_schema: None,
+                bindings: vec![ModuleRuntimeBinding {
+                    id: "pre_disable".to_string(),
+                    kind: ModuleRuntimeBindingKind::PreDisable,
+                    entrypoint: "lifecycle.pre_disable".to_string(),
+                    input_schema_digest: format!("sha256:{}", "b".repeat(64)),
+                    output_schema_digest: format!("sha256:{}", "c".repeat(64)),
+                    permission: "module.lifecycle.disable".to_string(),
+                    idempotency: ModuleBindingIdempotency::Required,
+                    limit_profile: "lifecycle".to_string(),
+                    capabilities: Vec::new(),
+                }],
+                ui: Vec::new(),
+                capabilities: Vec::new(),
+            })
+            .expect("artifact definition");
+        let executor = RecordingArtifactExecutor(Mutex::new(Vec::new()));
+        let dispatcher = ModuleExecutionDispatcher::artifact_only(&catalog, &executor);
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+
+        dispatcher
+            .dispatch_lifecycle(
+                &database,
+                uuid::Uuid::new_v4(),
+                "artifact_module",
+                &serde_json::json!({}),
+                ModuleLifecycleHookPhase::PreDisable,
+            )
+            .await
+            .expect("artifact dispatch");
+
+        assert_eq!(
+            *executor.0.lock().expect("executor lock"),
+            vec![(
+                "artifact_module".to_string(),
+                ModuleLifecycleHookPhase::PreDisable
+            )]
+        );
+    }
 }

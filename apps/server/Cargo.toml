@@ -115,6 +115,7 @@ rustok-tenant.workspace = true
 rustok-rbac = { workspace = true, features = ["graphql"] }
 rustok-mcp = { workspace = true, features = ["graphql"] }
 rustok-ai = { workspace = true, features = ["graphql"] }
+rustok-runtime.workspace = true
 rustok-telemetry.workspace = true
 rustok-iggy.workspace = true
 rustok-outbox.workspace = true

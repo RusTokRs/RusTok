@@ -40,6 +40,8 @@ const serverAuthControllerPath = "apps/server/src/controllers/auth.rs";
 const serverOauthControllerPath = "apps/server/src/controllers/oauth.rs";
 const serverUsersControllerPath = "apps/server/src/controllers/users.rs";
 const authProviderPath = "apps/server/src/services/auth_admin_mutation_provider.rs";
+const userAdminProviderPath =
+  "apps/server/src/services/auth_admin_mutation_provider/user_admin.rs";
 const lifecycleProviderPath = "apps/server/src/services/auth_lifecycle_provider.rs";
 const runtimeExtensionsPath = "apps/server/src/services/module_event_dispatcher.rs";
 const authGraphqlPath = "crates/rustok-auth/src/graphql/auth_mutation.rs";
@@ -63,7 +65,7 @@ const planPath = "crates/rustok-auth/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [corePath, mutationPortPath, restContractPath, serverAuthControllerPath, serverOauthControllerPath, serverUsersControllerPath, authProviderPath, lifecycleProviderPath, runtimeExtensionsPath, authGraphqlPath, oauthGraphqlPath, authGraphqlModPath, userGraphqlPath, transportPath, nativeTransportPath, uiPath, detailUiPath, oauthUiPath, loginUiPath, registerUiPath, resetUiPath, profileUiPath, securityUiPath, authAdminUiPath, modelPath, i18nPath, planPath, registryPath, packagePath]) {
+for (const filePath of [corePath, mutationPortPath, restContractPath, serverAuthControllerPath, serverOauthControllerPath, serverUsersControllerPath, authProviderPath, userAdminProviderPath, lifecycleProviderPath, runtimeExtensionsPath, authGraphqlPath, oauthGraphqlPath, authGraphqlModPath, userGraphqlPath, transportPath, nativeTransportPath, uiPath, detailUiPath, oauthUiPath, loginUiPath, registerUiPath, resetUiPath, profileUiPath, securityUiPath, authAdminUiPath, modelPath, i18nPath, planPath, registryPath, packagePath]) {
   assertExists(filePath);
 }
 
@@ -74,6 +76,12 @@ const serverAuthController = readRepo(serverAuthControllerPath);
 const serverOauthController = readRepo(serverOauthControllerPath);
 const serverUsersController = readRepo(serverUsersControllerPath);
 const authProvider = readRepo(authProviderPath);
+const userAdminProvider = readRepo(userAdminProviderPath);
+// The provider facade owns OAuth administration; user lifecycle mutations live
+// in its Rust submodule so transaction-scoped helpers stay cohesive. Inspect
+// the complete provider implementation rather than treating file layout as a
+// behavioral boundary.
+const authMutationProvider = `${authProvider}\n${userAdminProvider}`;
 const lifecycleProvider = readRepo(lifecycleProviderPath);
 const runtimeExtensions = readRepo(runtimeExtensionsPath);
 const authGraphql = readRepo(authGraphqlPath);
@@ -165,19 +173,19 @@ for (const marker of [
 assertContains(serverUsersController, "use rustok_auth::{UserItem, UsersListParams, UsersResponse};", `${serverUsersControllerPath}: users HTTP adapter must import owner REST DTOs`);
 assertNotContains(serverUsersController, "use serde::{Deserialize, Serialize}", `${serverUsersControllerPath}: users controller must not own serde DTO definitions`);
 assertNotContains(serverUsersController, "use utoipa::ToSchema", `${serverUsersControllerPath}: users controller must not own OpenAPI DTO derives`);
-for (const marker of ["impl OAuthAdminPort for ServerAuthAdminMutationProvider", "impl UserAdminMutationPort for ServerAuthAdminMutationProvider", "OAuthAppService::create_app", "OAuthAppService::update_app", "OAuthAppService::rotate_secret", "OAuthAppService::revoke_app", "AuthLifecycleService::create_user_in_tx", "RbacService::has_any_permission", "FlexAttachedValuesService::prepare_update"]) {
-  assertContains(authProvider, marker, `${authProviderPath}: missing shared server auth mutation provider marker ${marker}`);
+for (const marker of ["impl OAuthAdminPort for ServerAuthAdminMutationProvider", "impl UserAdminMutationPort for ServerAuthAdminMutationProvider", "OAuthAppService::create_app", "OAuthAppService::update_app", "OAuthAppService::rotate_secret", "OAuthAppService::revoke_app", "AuthLifecycleService::create_user_in_tx", "has_any_effective_permission", "FlexAttachedValuesService::prepare_update"]) {
+  assertContains(authMutationProvider, marker, `${authProviderPath}: missing shared server auth mutation provider marker ${marker}`);
 }
 for (const marker of ["impl AuthLifecyclePort for ServerAuthLifecycleProvider", "AuthLifecycleService::login", "AuthLifecycleService::register", "AuthLifecycleService::refresh", "AuthLifecycleService::list_sessions", "email_service_from_ctx", "encode_password_reset_token"]) {
   assertContains(lifecycleProvider, marker, `${lifecycleProviderPath}: missing auth lifecycle provider marker ${marker}`);
 }
 for (const marker of [".begin()", ".update(&tx)", "persist_localized_values(\n                &tx", "tx.commit()"]) {
-  assertContains(authProvider, marker, `${authProviderPath}: create user custom-field lifecycle must stay atomic with the shared provider transaction (${marker})`);
+  assertContains(authMutationProvider, marker, `${userAdminProviderPath}: create user custom-field lifecycle must stay atomic with the shared provider transaction (${marker})`);
 }
 for (const marker of ["fn parse_user_role", "value.trim().to_ascii_lowercase()", ".map(parse_user_role)", "parses_admin_user_enums_case_insensitively"]) {
-  assertContains(authProvider, marker, `${authProviderPath}: shared provider must normalize admin user role/status enums from native and GraphQL adapters (${marker})`);
+  assertContains(authMutationProvider, marker, `${userAdminProviderPath}: shared provider must normalize admin user role/status enums from native and GraphQL adapters (${marker})`);
 }
-assertNotContains(authProvider, "UserRole::from_str)\n            .transpose()\n            .map_err(map_custom_field_error)", `${authProviderPath}: user role parse errors must map to validation errors, not custom-field errors`);
+assertNotContains(authMutationProvider, "UserRole::from_str)\n            .transpose()\n            .map_err(map_custom_field_error)", `${userAdminProviderPath}: user role parse errors must map to validation errors, not custom-field errors`);
 for (const marker of ["build_shared_runtime_extensions_with_host_providers", "AuthLifecycleRuntime::new", "OAuthAdminRuntime::new", "UserAdminMutationRuntime::new", "ServerAuthAdminMutationProvider::new", "ServerAuthLifecycleProvider::new"]) {
   assertContains(runtimeExtensions, marker, `${runtimeExtensionsPath}: missing auth provider registration marker ${marker}`);
 }

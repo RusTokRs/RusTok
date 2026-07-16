@@ -32,6 +32,12 @@ an authenticated actor, locale, channel, correlation, and deadline context.
 The storefront product-pricing-by-handle GraphQL root uses the matching public
 projection operation and retains its channel-visibility input.
 The GraphQL discount preview uses the typed read port with an authenticated actor.
+`PricingWritePort` now owns the GraphQL admin mutations for variant-price upsert,
+percentage-discount application, active price-list percentage rules, and price-list
+channel scope. The provider enforces deadline and idempotency semantics before it
+invokes the pricing owner service, returns the saved owner projection, and preserves
+the effective locale plus fallback locale for rule updates. This is static boundary
+evidence only; no live provider-consumer transport execution has been recorded.
 
 ## FFA/FBA status
 

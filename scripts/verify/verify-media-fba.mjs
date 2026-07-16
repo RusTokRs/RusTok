@@ -88,7 +88,7 @@ if (!ports.includes('fn require_media_read_policy') || !ports.includes('context.
 const plan = read('crates/rustok-media/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `boundary_ready`', 'media-fba-registry.json', 'MediaAssetReadPort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json', 'media-port-error-matrix.json', 'public URL policy', 'MediaAssetSummary'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `media` |', 'crates/rustok-media/contracts/media-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `in_progress`'], 'central registry');
+hasAll(central, ['| `media` |', 'crates/rustok-media/contracts/media-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`media`', 'MediaAssetReadPort', 'media-fba-registry.json'], 'unified plan');
 

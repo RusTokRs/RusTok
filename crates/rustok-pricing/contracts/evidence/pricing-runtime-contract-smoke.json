@@ -13,6 +13,9 @@
     { "operation": "read_admin_product_pricing_projection", "source_order": ["context.require_policy(PortCallPolicy::read())?", ".get_admin_product_pricing_with_locale_fallback(", ".map_err(pricing_error_to_port_error)"] },
     { "operation": "read_storefront_product_pricing_projection", "source_order": ["context.require_policy(PortCallPolicy::read())?", ".get_published_product_pricing_by_handle_with_locale_fallback(", ".map_err(pricing_error_to_port_error)"] },
     { "operation": "preview_variant_discount", "source_order": ["context.require_policy(PortCallPolicy::read())?", "let tenant_id = parse_port_tenant_id(&context)?", ".map_err(pricing_error_to_port_error)"] },
-    { "operation": "set_price_list_scope", "source_order": ["context.require_policy(PortCallPolicy::write())?", "let tenant_id = parse_port_tenant_id(&context)?", ".set_price_list_scope(", ".map_err(pricing_error_to_port_error)"] }
+    { "operation": "upsert_variant_price", "source_order": ["context.require_write_semantics()?", "context.require_policy(PortCallPolicy::write())?", "let tenant_id = parse_port_tenant_id(&context)?", "self.upsert_admin_variant_price_with_channel(", ".map_err(pricing_error_to_port_error)"] },
+    { "operation": "set_price_list_scope", "source_order": ["context.require_write_semantics()?", "context.require_policy(PortCallPolicy::write())?", "let tenant_id = parse_port_tenant_id(&context)?", ".set_price_list_scope(", ".map_err(pricing_error_to_port_error)"] },
+    { "operation": "apply_variant_discount", "source_order": ["context.require_write_semantics()?", "context.require_policy(PortCallPolicy::write())?", "let tenant_id = parse_port_tenant_id(&context)?", "let result = if let Some(price_list_id)", ".map_err(pricing_error_to_port_error)"] },
+    { "operation": "set_price_list_percentage_rule", "source_order": ["context.require_write_semantics()?", "context.require_policy(PortCallPolicy::write())?", "let tenant_id = parse_port_tenant_id(&context)?", "self.set_price_list_percentage_rule_projection(", ".map_err(pricing_error_to_port_error)"] }
   ]
 }

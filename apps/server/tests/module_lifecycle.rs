@@ -1127,8 +1127,8 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
         ModuleOperationStatus::Committed.as_str()
     );
     assert_eq!(retry_operation.requested_by.as_deref(), Some("admin:retry"));
-    assert_eq!(retry_operation.requested_enabled, true);
-    assert_eq!(retry_operation.previous_effective_enabled, true);
+    assert!(retry_operation.requested_enabled);
+    assert!(retry_operation.previous_effective_enabled);
     assert!(retry_operation.error_message.is_none());
     assert_ne!(retry_operation.id, failed_operation.id);
     assert_ne!(

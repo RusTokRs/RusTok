@@ -63,6 +63,12 @@ pub fn in_process_pricing_write_port(
 
 #[async_trait]
 pub trait PricingWritePort: Send + Sync {
+    async fn upsert_variant_price(
+        &self,
+        context: PortContext,
+        request: UpsertVariantPriceRequest,
+    ) -> Result<crate::AdminPricingPrice, PortError>;
+
     async fn set_price_list_scope(
         &self,
         context: PortContext,
@@ -73,6 +79,25 @@ pub trait PricingWritePort: Send + Sync {
         context: PortContext,
         request: ApplyVariantDiscountRequest,
     ) -> Result<crate::PriceAdjustmentPreview, PortError>;
+
+    async fn set_price_list_percentage_rule(
+        &self,
+        context: PortContext,
+        request: SetPriceListPercentageRuleRequest,
+    ) -> Result<crate::ActivePriceListOption, PortError>;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UpsertVariantPriceRequest {
+    pub variant_id: Uuid,
+    pub price_list_id: Option<Uuid>,
+    pub currency_code: String,
+    pub amount: Decimal,
+    pub compare_at_amount: Option<Decimal>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+    pub min_quantity: Option<i32>,
+    pub max_quantity: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -89,6 +114,13 @@ pub struct ApplyVariantDiscountRequest {
     pub discount_percent: Decimal,
     pub channel_id: Option<Uuid>,
     pub channel_slug: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SetPriceListPercentageRuleRequest {
+    pub price_list_id: Uuid,
+    pub adjustment_percent: Option<Decimal>,
+    pub fallback_locale: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -410,6 +442,32 @@ impl PricingReadPort for crate::PricingService {
 
 #[async_trait]
 impl PricingWritePort for crate::PricingService {
+    async fn upsert_variant_price(
+        &self,
+        context: PortContext,
+        request: UpsertVariantPriceRequest,
+    ) -> Result<crate::AdminPricingPrice, PortError> {
+        context.require_write_semantics()?;
+        context.require_policy(PortCallPolicy::write())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        let actor_id = parse_port_actor_id(&context)?;
+        self.upsert_admin_variant_price_with_channel(
+            tenant_id,
+            actor_id,
+            request.variant_id,
+            request.price_list_id,
+            request.currency_code.as_str(),
+            request.amount,
+            request.compare_at_amount,
+            request.channel_id,
+            request.channel_slug,
+            request.min_quantity,
+            request.max_quantity,
+        )
+        .await
+        .map_err(pricing_error_to_port_error)
+    }
+
     async fn set_price_list_scope(
         &self,
         context: PortContext,
@@ -418,12 +476,7 @@ impl PricingWritePort for crate::PricingService {
         context.require_write_semantics()?;
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_port_tenant_id(&context)?;
-        let actor_id = Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
-            PortError::validation(
-                "pricing.actor_id_invalid",
-                "pricing write actor must be a UUID",
-            )
-        })?;
+        let actor_id = parse_port_actor_id(&context)?;
         self.set_price_list_scope(
             tenant_id,
             actor_id,
@@ -442,12 +495,7 @@ impl PricingWritePort for crate::PricingService {
         context.require_write_semantics()?;
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_port_tenant_id(&context)?;
-        let actor_id = Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
-            PortError::validation(
-                "pricing.actor_id_invalid",
-                "pricing write actor must be a UUID",
-            )
-        })?;
+        let actor_id = parse_port_actor_id(&context)?;
         let result = if let Some(price_list_id) = request.price_list_id {
             self.apply_price_list_percentage_discount_with_channel(
                 tenant_id,
@@ -474,6 +522,27 @@ impl PricingWritePort for crate::PricingService {
         };
         result.map_err(pricing_error_to_port_error)
     }
+
+    async fn set_price_list_percentage_rule(
+        &self,
+        context: PortContext,
+        request: SetPriceListPercentageRuleRequest,
+    ) -> Result<crate::ActivePriceListOption, PortError> {
+        context.require_write_semantics()?;
+        context.require_policy(PortCallPolicy::write())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        let actor_id = parse_port_actor_id(&context)?;
+        self.set_price_list_percentage_rule_projection(
+            tenant_id,
+            actor_id,
+            request.price_list_id,
+            request.adjustment_percent,
+            context.locale.as_str(),
+            request.fallback_locale.as_deref(),
+        )
+        .await
+        .map_err(pricing_error_to_port_error)
+    }
 }
 
 fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
@@ -481,6 +550,15 @@ fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
         PortError::validation(
             "pricing.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for pricing ports",
+        )
+    })
+}
+
+fn parse_port_actor_id(context: &PortContext) -> Result<Uuid, PortError> {
+    Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
+        PortError::validation(
+            "pricing.actor_id_invalid",
+            "pricing write actor must be a UUID",
         )
     })
 }

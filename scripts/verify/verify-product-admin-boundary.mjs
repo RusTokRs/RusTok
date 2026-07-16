@@ -223,20 +223,21 @@ for (const marker of [
   "ProductAdminAttributeSchemas($tenantId: UUID!, $locale: String!)",
   "ProductAdminEffectiveForm($tenantId: UUID!, $productId: UUID, $categoryId: UUID, $locale: String!)",
   "ProductAdminAttributeValues($tenantId: UUID!, $productId: UUID!, $locale: String!)",
-  "ProductAdminSaveAttributeValues($tenantId: UUID!, $userId: UUID!, $productId: UUID!, $locale: String!",
-  "ProductAdminClearDetachedAttributeValues($tenantId: UUID!, $userId: UUID!, $productId: UUID!, $locale: String!",
-  "ProductAdminCreateAttribute($tenantId: UUID!, $userId: UUID!, $locale: String!",
-  "ProductAdminCreateAttributeOption($tenantId: UUID!, $userId: UUID!, $locale: String!",
-  "ProductAdminCreateCatalogCategory($tenantId: UUID!, $userId: UUID!, $locale: String!",
-  "ProductAdminCreateAttributeSchema($tenantId: UUID!, $userId: UUID!, $locale: String!",
-  "ProductAdminCreateSchemaGroup($tenantId: UUID!, $userId: UUID!, $locale: String!",
-  "ProductAdminCreateCategoryGroup($tenantId: UUID!, $userId: UUID!, $locale: String!",
+  "ProductAdminSaveAttributeValues($productId: UUID!, $locale: String!",
+  "ProductAdminClearDetachedAttributeValues($productId: UUID!, $locale: String!",
+  "ProductAdminCreateAttribute($locale: String!",
+  "ProductAdminCreateAttributeOption($locale: String!",
+  "ProductAdminCreateCatalogCategory($locale: String!",
+  "ProductAdminCreateAttributeSchema($locale: String!",
+  "ProductAdminCreateSchemaGroup($locale: String!",
+  "ProductAdminCreateCategoryGroup($locale: String!",
   "options { id code label position } groupCode groupLabel",
   "struct LocaleVariables",
   "struct LocaleMutationVariables",
 ]) {
   assertContains(graphqlAdapter, marker, `${graphqlAdapterPath}: new catalog attribute contract must use explicit host-provided locale (${marker})`);
 }
+assertNotContains(graphqlAdapter, "$userId:", `${graphqlAdapterPath}: GraphQL mutations must derive the actor from authenticated server context, not client input`);
 for (const marker of [
   /fn fetch_product_attributes\([^)]*locale: Option<String>/,
   /fn fetch_catalog_categories\([^)]*locale: Option<String>/,

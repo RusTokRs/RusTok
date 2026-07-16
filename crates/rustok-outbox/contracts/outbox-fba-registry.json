@@ -21,6 +21,8 @@
     {
       "module": "server-hosts",
       "profile": "outbox_relay_worker_control",
+      "consumer_source": "apps/server/src/services/event_transport_factory.rs",
+      "consumer_operation": "OutboxRelayPort::process_pending_once",
       "degraded_modes": [
         "pause_relay_worker",
         "surface_dlq_retry_needed"

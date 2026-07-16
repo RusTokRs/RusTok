@@ -66,6 +66,14 @@ Evidence:
   `HostRuntimeContext`.
 - [x] Retain GraphQL as the selected fallback for collection creation, collection
   reads, and refund summaries.
+- [x] Keep `create_payment_collection`, `fetch_payment_collection`, and
+  `fetch_refund_summary` in the payment-owned storefront transport. Each
+  operation selects its host-native server function first and retains the
+  payment-owned public GraphQL operation as the fallback; commerce consumes the
+  owner facade rather than reimplementing payment transport.
+- [x] Use `execute_selected_transport` for every native/GraphQL decision so the
+  shared UI transport policy, typed path evidence, and fallback classification
+  remain consistent across payment surfaces.
 - [x] Lock the storefront core/transport/UI split with the payment storefront
   verifier.
 - [ ] Execute the checkout port contract through a real remote adapter.

@@ -505,3 +505,15 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_user_role, parse_user_status};
+    use rustok_core::{UserRole, UserStatus};
+
+    #[test]
+    fn parses_admin_user_enums_case_insensitively() {
+        assert_eq!(parse_user_role("  ADMIN ").unwrap(), UserRole::Admin);
+        assert_eq!(parse_user_status("  BANNED ").unwrap(), UserStatus::Banned);
+    }
+}

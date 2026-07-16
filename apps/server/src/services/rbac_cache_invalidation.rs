@@ -68,7 +68,7 @@ impl RbacCacheInvalidationRuntime {
     fn is_running(&self) -> bool {
         self.local.is_running()
             && self.reconcile.is_running()
-            && self.redis.as_ref().map_or(true, |redis| redis.is_running())
+            && self.redis.as_ref().is_none_or(|redis| redis.is_running())
     }
 
     fn abort(&self) {
@@ -181,7 +181,7 @@ impl RbacCacheInvalidationListener {
         let process_current = self.durable_state.current();
 
         if process_current.is_some_and(|current| current >= recovered_through) {
-            if !tracker_current.is_some_and(|current| current >= recovered_through) {
+            if tracker_current.is_none_or(|current| current < recovered_through) {
                 acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
             }
             return Ok(None);
