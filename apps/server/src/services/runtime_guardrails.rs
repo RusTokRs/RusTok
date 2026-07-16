@@ -1,4 +1,5 @@
 use crate::services::cache_redis_status_monitor::CacheRedisStatusMonitorHandle;
+use crate::services::event_bus::EventForwarderHandle;
 use crate::services::field_definition_cache::FieldDefinitionCacheInvalidationHandle;
 use crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle;
 use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle;
@@ -22,6 +23,13 @@ pub async fn collect_runtime_guardrail_snapshot(
         return snapshot;
     }
 
+    observe_worker(
+        &mut snapshot,
+        "event bus transport forwarder",
+        ctx.shared_get::<EventForwarderHandle>()
+            .map(|handle| handle.is_running()),
+        RuntimeGuardrailStatus::Critical,
+    );
     observe_worker(
         &mut snapshot,
         "RBAC cache invalidation runtime",
