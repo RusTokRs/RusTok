@@ -5,6 +5,7 @@ const ROOT_SELECTOR = "[data-fly-browser-root]";
 const IFRAME_SELECTOR = "iframe[data-fly-iframe-canvas]";
 const TOKEN_KEY = "rustok-admin-token";
 const TENANT_KEY = "rustok-admin-tenant";
+const DRAFT_PREFIX = "fly:ssr-draft:";
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -22,6 +23,37 @@ function storedString(key) {
     }
   } catch (_) {
     return null;
+  }
+}
+
+function draftStorageKey(pageId) {
+  return `${DRAFT_PREFIX}${pageId || "unbound"}`;
+}
+
+function readDraftSession(pageId) {
+  try {
+    const raw = globalThis.sessionStorage?.getItem(draftStorageKey(pageId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!isObject(parsed) || typeof parsed.token !== "string") return null;
+    return {
+      token: parsed.token,
+      generation: Number.isSafeInteger(parsed.generation) ? parsed.generation : null,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeDraftSession(pageId, token, generation) {
+  if (typeof token !== "string" || !token) return;
+  try {
+    globalThis.sessionStorage?.setItem(
+      draftStorageKey(pageId),
+      JSON.stringify({ token, generation }),
+    );
+  } catch (_) {
+    // Private browsing/storage denial must not break server-side authoring.
   }
 }
 
@@ -94,9 +126,13 @@ function normalizedIntent(adapter, input) {
     intent,
     payload,
     sequence: Number.isSafeInteger(input.sequence) ? input.sequence : null,
-    page_id: adapter.root.dataset.flyPageId || null,
+    page_id: adapter.pageId,
     revision: adapter.root.dataset.flyRevision || null,
     project_hash: adapter.root.dataset.flyProjectHash || null,
+    draft_token: adapter.draftSession?.token || null,
+    draft_generation: Number.isSafeInteger(adapter.draftSession?.generation)
+      ? adapter.draftSession.generation
+      : null,
   };
 }
 
@@ -144,11 +180,13 @@ export class FlyBrowserAdapter {
       throw new Error("Fly iframe canvas was not found inside the browser root");
     }
     this.instanceId = instanceIdFor(this.iframe);
+    this.pageId = root.dataset.flyPageId || null;
     this.expectedOrigin = options.expectedOrigin || root.dataset.flyExpectedOrigin || "null";
     this.intentEndpoint = options.intentEndpoint || root.dataset.flyIntentEndpoint || null;
     this.csrfToken = options.csrfToken || root.dataset.flyCsrfToken || null;
     this.accessToken = options.accessToken || storedString(TOKEN_KEY);
     this.tenantSlug = options.tenantSlug || storedString(TENANT_KEY);
+    this.draftSession = readDraftSession(this.pageId);
     this.drawOverlays = options.drawOverlays !== false;
     this.postIntents = options.postIntents !== false;
     this.lastSequence = null;
@@ -213,7 +251,7 @@ export class FlyBrowserAdapter {
       sequence: envelope.sequence,
       message: envelope.message,
       iframeId: this.iframe.id,
-      pageId: this.root.dataset.flyPageId || null,
+      pageId: this.pageId,
       revision: this.root.dataset.flyRevision || null,
       projectHash: this.root.dataset.flyProjectHash || null,
     };
@@ -466,6 +504,15 @@ export class FlyBrowserAdapter {
         const state = isObject(result.result) ? result.result : result;
         if (typeof state.revision_id === "string") this.root.dataset.flyRevision = state.revision_id;
         if (typeof state.project_hash === "string") this.root.dataset.flyProjectHash = state.project_hash;
+        if (typeof result.draft_token === "string") {
+          this.draftSession = {
+            token: result.draft_token,
+            generation: Number.isSafeInteger(result.draft_generation)
+              ? result.draft_generation
+              : null,
+          };
+          writeDraftSession(this.pageId, this.draftSession.token, this.draftSession.generation);
+        }
         if (result.reload === true) {
           globalThis.location.reload();
         } else if (typeof result.location === "string") {
