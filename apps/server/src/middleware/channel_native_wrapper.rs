@@ -41,6 +41,10 @@ pub(crate) async fn invalidate_tenant_channel_cache_local(
     base::invalidate_tenant_channel_cache(ctx, tenant_id).await;
 }
 
+pub(crate) async fn invalidate_all_channel_cache_local(ctx: &ServerRuntimeContext) {
+    base::invalidate_all_channel_cache(ctx).await;
+}
+
 pub async fn invalidate_tenant_channel_cache(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
     invalidate_tenant_channel_cache_local(ctx, tenant_id).await;
     publish_channel_resolution_invalidation(ctx, tenant_id).await;
