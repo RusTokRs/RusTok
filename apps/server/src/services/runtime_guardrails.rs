@@ -4,6 +4,8 @@ use crate::services::field_definition_cache::FieldDefinitionCacheInvalidationHan
 use crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle;
 use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+#[cfg(feature = "mod-seo")]
+use crate::services::seo_redirect_cache_reconciliation::SeoRedirectCacheReconciliationHandle;
 use crate::services::tenant_locale_generation::TenantLocaleGenerationListenerHandle;
 
 mod base {
@@ -35,6 +37,14 @@ pub async fn collect_runtime_guardrail_snapshot(
         &mut snapshot,
         "tenant locale durable generation runtime",
         ctx.shared_get::<TenantLocaleGenerationListenerHandle>()
+            .map(|handle| handle.is_running()),
+        RuntimeGuardrailStatus::Critical,
+    );
+    #[cfg(feature = "mod-seo")]
+    observe_worker(
+        &mut snapshot,
+        "SEO redirect durable cache reconciliation",
+        ctx.shared_get::<SeoRedirectCacheReconciliationHandle>()
             .map(|handle| handle.is_running()),
         RuntimeGuardrailStatus::Critical,
     );
