@@ -5,17 +5,18 @@
   "transport": {
     "method": "POST",
     "path": "/payment/webhooks/{provider_id}",
-    "required_identity_headers": {
+    "optional_identity_hint_headers": {
       "delivery_id": [
         "x-rustok-provider-delivery-id",
         "x-webhook-id",
         "idempotency-key"
       ],
-      "idempotency_key": [
+      "replay_key": [
         "idempotency-key",
         "x-rustok-provider-delivery-id"
       ]
     },
+    "identity_hint_policy": "untrusted-cross-check-only",
     "accepted_signature_headers": [
       "x-provider-signature",
       "stripe-signature",
@@ -30,15 +31,17 @@
     "requirements": [
       "Verify the provider signature before returning a normalized event.",
       "Parse the raw body without mutating payment lifecycle state.",
-      "Return provider_id, event_type, replay_key, optional external_reference, and a bounded metadata object.",
-      "Return replay_key equal to the request idempotency_key.",
-      "Reject malformed, unsigned, or unsupported provider payloads with PaymentError."
+      "Return provider_id, delivery_id, event_type, replay_key, optional external_reference, and a bounded metadata object.",
+      "Derive delivery_id and replay_key from signature-verified provider data.",
+      "Treat transport delivery/replay headers as optional cross-check hints only.",
+      "Reject malformed, unsigned, unsupported, or hint-conflicting provider payloads with PaymentError."
     ]
   },
   "inbox": {
     "table": "payment_provider_events",
     "raw_payload_persisted": false,
     "payload_digest": "sha256-lowercase-hex",
+    "identity_source": "signature-verified-provider-result",
     "deduplication_keys": [
       ["tenant_id", "provider_id", "delivery_id"],
       ["tenant_id", "provider_id", "idempotency_key"]
@@ -146,6 +149,8 @@
   },
   "security": {
     "signature_verification_before_inbox_insert": true,
+    "verified_identity_before_inbox_insert": true,
+    "transport_identity_headers_authoritative": false,
     "verified_normalized_facts_written_with_inbox_insert": true,
     "raw_provider_error_exposed_to_client": false,
     "raw_payload_logged_or_persisted": false,
