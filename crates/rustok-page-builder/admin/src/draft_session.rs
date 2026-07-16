@@ -1,4 +1,5 @@
 use crate::AdminCanvasController;
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -9,6 +10,7 @@ pub struct SsrDraftSessionSnapshot {
     pub token: String,
     pub generation: u64,
     pub controller: AdminCanvasController,
+    pub runtime_context: Value,
 }
 
 pub trait SsrDraftSessionStore: Send + Sync {
@@ -25,6 +27,17 @@ pub trait SsrDraftSessionStore: Send + Sync {
         controller: AdminCanvasController,
     ) -> Result<SsrDraftSessionSnapshot, SsrDraftSessionError>;
 
+    fn commit_with_context(
+        &self,
+        token: Option<&str>,
+        expected_generation: Option<u64>,
+        controller: AdminCanvasController,
+        runtime_context: Value,
+    ) -> Result<SsrDraftSessionSnapshot, SsrDraftSessionError> {
+        let _ = runtime_context;
+        self.commit(token, expected_generation, controller)
+    }
+
     fn remove(&self, token: &str) -> Result<(), SsrDraftSessionError>;
 
     fn prune(&self) -> Result<usize, SsrDraftSessionError>;
@@ -40,6 +53,7 @@ pub struct InMemorySsrDraftSessionStore {
 #[derive(Debug, Clone)]
 struct DraftEntry {
     controller: AdminCanvasController,
+    runtime_context: Value,
     generation: u64,
     expires_at: Instant,
 }
@@ -73,6 +87,10 @@ impl InMemorySsrDraftSessionStore {
         }
     }
 
+    fn empty_context() -> Value {
+        Value::Object(Map::new())
+    }
+
     fn prune_locked(entries: &mut HashMap<String, DraftEntry>, now: Instant) -> usize {
         let before = entries.len();
         entries.retain(|_, entry| entry.expires_at > now);
@@ -90,6 +108,70 @@ impl InMemorySsrDraftSessionStore {
             };
             entries.remove(&oldest);
         }
+    }
+
+    fn commit_internal(
+        &self,
+        token: Option<&str>,
+        expected_generation: Option<u64>,
+        controller: AdminCanvasController,
+        runtime_context: Option<Value>,
+    ) -> Result<SsrDraftSessionSnapshot, SsrDraftSessionError> {
+        let mut entries = self
+            .entries
+            .write()
+            .map_err(|_| SsrDraftSessionError::Poisoned)?;
+        let now = Instant::now();
+        Self::prune_locked(&mut entries, now);
+
+        if let Some(token) = token.map(str::trim).filter(|token| !token.is_empty()) {
+            if let Some(entry) = entries.get_mut(token) {
+                if entry.controller.page_id() != controller.page_id() {
+                    return Err(SsrDraftSessionError::PageMismatch {
+                        expected: entry.controller.page_id().to_string(),
+                        actual: controller.page_id().to_string(),
+                    });
+                }
+                if expected_generation.is_some_and(|generation| generation != entry.generation) {
+                    return Err(SsrDraftSessionError::GenerationConflict {
+                        expected: entry.generation,
+                        actual: expected_generation.unwrap_or_default(),
+                    });
+                }
+                entry.controller = controller;
+                if let Some(runtime_context) = runtime_context {
+                    entry.runtime_context = runtime_context;
+                }
+                entry.generation = entry.generation.saturating_add(1);
+                entry.expires_at = now + self.ttl;
+                return Ok(SsrDraftSessionSnapshot {
+                    token: token.to_string(),
+                    generation: entry.generation,
+                    controller: entry.controller.clone(),
+                    runtime_context: entry.runtime_context.clone(),
+                });
+            }
+        }
+
+        Self::evict_oldest(&mut entries, self.maximum_entries);
+        let token = Self::fresh_token(&entries);
+        let generation = 1;
+        let runtime_context = runtime_context.unwrap_or_else(Self::empty_context);
+        entries.insert(
+            token.clone(),
+            DraftEntry {
+                controller: controller.clone(),
+                runtime_context: runtime_context.clone(),
+                generation,
+                expires_at: now + self.ttl,
+            },
+        );
+        Ok(SsrDraftSessionSnapshot {
+            token,
+            generation,
+            controller,
+            runtime_context,
+        })
     }
 }
 
@@ -129,6 +211,7 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
             token: token.to_string(),
             generation: entry.generation,
             controller: entry.controller.clone(),
+            runtime_context: entry.runtime_context.clone(),
         }))
     }
 
@@ -138,54 +221,22 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
         expected_generation: Option<u64>,
         controller: AdminCanvasController,
     ) -> Result<SsrDraftSessionSnapshot, SsrDraftSessionError> {
-        let mut entries = self
-            .entries
-            .write()
-            .map_err(|_| SsrDraftSessionError::Poisoned)?;
-        let now = Instant::now();
-        Self::prune_locked(&mut entries, now);
+        self.commit_internal(token, expected_generation, controller, None)
+    }
 
-        if let Some(token) = token.map(str::trim).filter(|token| !token.is_empty()) {
-            if let Some(entry) = entries.get_mut(token) {
-                if entry.controller.page_id() != controller.page_id() {
-                    return Err(SsrDraftSessionError::PageMismatch {
-                        expected: entry.controller.page_id().to_string(),
-                        actual: controller.page_id().to_string(),
-                    });
-                }
-                if expected_generation.is_some_and(|generation| generation != entry.generation) {
-                    return Err(SsrDraftSessionError::GenerationConflict {
-                        expected: entry.generation,
-                        actual: expected_generation.unwrap_or_default(),
-                    });
-                }
-                entry.controller = controller;
-                entry.generation = entry.generation.saturating_add(1);
-                entry.expires_at = now + self.ttl;
-                return Ok(SsrDraftSessionSnapshot {
-                    token: token.to_string(),
-                    generation: entry.generation,
-                    controller: entry.controller.clone(),
-                });
-            }
-        }
-
-        Self::evict_oldest(&mut entries, self.maximum_entries);
-        let token = Self::fresh_token(&entries);
-        let generation = 1;
-        entries.insert(
-            token.clone(),
-            DraftEntry {
-                controller: controller.clone(),
-                generation,
-                expires_at: now + self.ttl,
-            },
-        );
-        Ok(SsrDraftSessionSnapshot {
+    fn commit_with_context(
+        &self,
+        token: Option<&str>,
+        expected_generation: Option<u64>,
+        controller: AdminCanvasController,
+        runtime_context: Value,
+    ) -> Result<SsrDraftSessionSnapshot, SsrDraftSessionError> {
+        self.commit_internal(
             token,
-            generation,
+            expected_generation,
             controller,
-        })
+            Some(runtime_context),
+        )
     }
 
     fn remove(&self, token: &str) -> Result<(), SsrDraftSessionError> {
@@ -240,14 +291,21 @@ mod tests {
     }
 
     #[test]
-    fn session_preserves_editor_history_and_clipboard_state() {
+    fn session_preserves_editor_history_clipboard_and_runtime_context() {
         let store = InMemorySsrDraftSessionStore::default();
         let mut controller = controller("home");
         controller
             .dispatch(UiIntent::Select(Some("hero".to_string())))
             .unwrap();
         controller.dispatch(UiIntent::CopySelection).unwrap();
-        let first = store.commit(None, None, controller).expect("create");
+        let first = store
+            .commit_with_context(
+                None,
+                None,
+                controller,
+                json!({ "customer": { "name": "Ada" } }),
+            )
+            .expect("create");
         assert!(first.controller.has_clipboard());
 
         let loaded = store
@@ -256,6 +314,23 @@ mod tests {
             .expect("session");
         assert_eq!(loaded.generation, 1);
         assert!(loaded.controller.has_clipboard());
+        assert_eq!(loaded.runtime_context["customer"]["name"], "Ada");
+    }
+
+    #[test]
+    fn ordinary_commit_preserves_existing_runtime_context() {
+        let store = InMemorySsrDraftSessionStore::default();
+        let first = store
+            .commit_with_context(None, None, controller("home"), json!({ "value": 42 }))
+            .expect("create");
+        let second = store
+            .commit(
+                Some(&first.token),
+                Some(first.generation),
+                first.controller,
+            )
+            .expect("update controller");
+        assert_eq!(second.runtime_context["value"], 42);
     }
 
     #[test]
