@@ -24,6 +24,28 @@
         "embedded_native",
         "remote_adapter_placeholder"
       ]
+    },
+    {
+      "provider": "marketplace_listing",
+      "port": "MarketplaceListingReadPort",
+      "profile": "marketplace_listing_directory",
+      "required_operations": [
+        "read_listing",
+        "list_listings",
+        "list_eligibility"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "deadline_required": true,
+      "idempotency_required": false,
+      "degraded_modes": [
+        "listing_directory_unavailable",
+        "listing_eligibility_unavailable"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "remote_adapter_placeholder"
+      ]
     }
   ],
   "ownership": {
@@ -32,6 +54,7 @@
       "marketplace_sellers",
       "marketplace_seller_members",
       "marketplace_listings",
+      "marketplace_listing_terms",
       "marketplace_commission_policies",
       "marketplace_ledger_entries",
       "marketplace_payouts"
@@ -41,7 +64,9 @@
     "local_plan": "crates/rustok-marketplace/docs/implementation-plan.md",
     "central_plan": "crates/rustok-commerce/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs"
+    "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs",
+    "seller_consumer": "crates/rustok-marketplace/src/seller_directory.rs",
+    "listing_consumer": "crates/rustok-marketplace/src/listing_directory.rs"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
@@ -64,6 +89,24 @@
           "typed_port_error_mapping",
           "bounded_pagination",
           "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "list_listings",
+        "assertions": [
+          "typed_port_error_mapping",
+          "bounded_pagination",
+          "context_deadline_preserved",
+          "listing_entities_not_imported"
+        ]
+      },
+      {
+        "operation": "list_eligibility",
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "reason_codes_preserved",
+          "buy_box_ranking_not_added"
         ]
       }
     ]
