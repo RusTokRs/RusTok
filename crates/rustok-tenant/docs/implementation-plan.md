@@ -14,12 +14,35 @@ duplicate tenant persistence semantics. The module keeps inactive tenants hidden
 unless explicitly requested and requires read deadlines. Cache invalidation after
 lifecycle changes remains a server-owned integration responsibility.
 
-Tenant resolution and the separate byte-weighted tenant-locale cache now share
-the durable tenant generation channel. In-order records invalidate the exact
-tenant locale entry, namespace-wide manual rotations carry `*`, and unverified,
-gapped, lagged or reconciled advancement clears every process-local locale entry
-before acknowledgement. The listener is context-owned, restartable and surfaced
-as a critical runtime guardrail when shared Redis delivery is required.
+Tenant resolution and the separate byte-weighted tenant-locale cache share the
+durable tenant generation channel. In-order records invalidate the exact tenant
+locale entry, namespace-wide manual rotations carry `*`, and unverified, gapped,
+lagged or reconciled advancement clears every process-local locale entry before
+acknowledgement. Every event is checked against the durable generation before
+cache mutation or tracker acknowledgement. Generation regression clears local
+locale values but remains fail-closed; it never lowers the trusted process epoch.
+The listener exposes recovery health, not only task liveness, to the critical
+runtime guardrail.
+
+Source evidence now covers:
+
+- two independent serving contexts whose real `content-language` values prove
+  exact UUID invalidation leaves another tenant cached until a later wildcard
+  clear;
+- deterministic overflow of the 256-message local queue with two serving
+  listeners and a probe, followed by durable recovery of both locale values;
+- a completely missed Redis publication recovered by the same periodic
+  reconciliation loop with a shortened test interval;
+- Redis stop/restart with lost generation state, stale-value clearing while
+  readiness remains failed, explicit restoration of the previous epoch, and
+  successful delivery of the next `N+1` event to the original replicas;
+- permanent workflow and source guards for path scope, compiled tests, ignored
+  Redis tests, durable-before-apply ordering and the prohibition on tracker
+  rebaselining after regression.
+
+This evidence is source-complete but is not compiled or live verified on the
+current revision until the cache workflow reports successful compiled and Redis
+jobs.
 
 ## FFA/FBA boundary
 
@@ -37,14 +60,13 @@ as a critical runtime guardrail when shared Redis delivery is required.
 
 ## Open results
 
-1. **Execute multi-replica tenant-locale recovery evidence.** Exercise exact UUID
-   invalidation, namespace-wide `*` rotation, local broadcast lag, Redis subscriber
-   reconnect, missed-generation reconciliation and configured-but-unavailable
-   Redis readiness behavior.
-   **Depends on:** a composed multi-replica server runtime and isolated Redis.
-   **Done when:** the same durable generation advancement removes stale locale and
-   default-locale data on every replica before recovery is acknowledged, and a
-   terminal required worker makes readiness non-OK.
+1. **Execute multi-replica tenant-locale recovery evidence.** Run exact UUID,
+   wildcard, deterministic lag, missed-publication reconciliation and Redis
+   state-loss/restoration scenarios on the same reconciled `main` revision.
+   **Depends on:** the permanent cache workflow or another Rust 1.96 environment
+   with isolated Redis 7 and `redis-server`.
+   **Done when:** compiled and live Redis jobs pass on one revision, every failure
+   is fixed, and the verified revision is recorded without copying raw logs.
 
 2. **Collect deployed parity evidence for the native tenant overview.** Confirm
    host locale, tenant-scoped RBAC, disabled/not-found behavior, and typed error
@@ -77,8 +99,8 @@ as a critical runtime guardrail when shared Redis delivery is required.
 - `cargo xtask module test tenant`
 - `cargo test -p rustok-tenant tenant_read_port --test integration`
 - `cargo test -p rustok-server --test tenant_locale_generation_guard`
-- Targeted server resolver, tenant-locale generation, Redis reconnect and
-  multi-replica invalidation tests.
+- `cargo test -p rustok-server tenant_locale_generation --lib`
+- `RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ RUSTOK_CACHE_REDIS_SERVER_BIN=/usr/bin/redis-server cargo test -p rustok-server tenant_locale_generation --lib -- --ignored --nocapture --test-threads=1`
 
 ## References
 
