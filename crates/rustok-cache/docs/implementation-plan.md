@@ -99,7 +99,8 @@ Last reconciled with `main`: 2026-07-16.
 - [x] Marketplace list/detail caches are byte-weighted, hashed, response-bounded and single-flight;
   detail negatives use a short independent TTL.
 - [x] Channel cache is byte-weighted with hashed request facts, bounded monotonic tenant versions,
-  full-clear rollover and fail-safe cache bypass on allocator exhaustion.
+  successful REST/native mutation invalidation, full-clear rollover and fail-safe cache bypass on
+  allocator exhaustion.
 - [x] RBAC permissions use weighted typed identity, bounded striped epochs and database-backed durable
   generation recovery.
 - [x] SEO redirects reconcile from transactionally persisted rows with a bounded `(created_at, id)`
