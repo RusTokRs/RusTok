@@ -1,7 +1,8 @@
 use crate::{
     extract_runtime_context_contract, materialize_bindings, materialize_context,
-    materialize_localized_page_metadata, materialize_project_translations, materialize_runtime,
-    materialize_runtime_locale_context, BindingMaterialization, ContextMaterialization,
+    materialize_localized_page_metadata, materialize_project_locale_context,
+    materialize_project_translations, materialize_runtime, materialize_runtime_locale_context,
+    BindingMaterialization, ContextMaterialization, LocalePolicyMaterialization,
     LocalizedPageMetadataMaterialization, ProjectDocument, RuntimeMaterialization,
     TranslationMaterialization, ValidationDiagnostic,
 };
@@ -30,11 +31,16 @@ pub fn materialize_project_with_runtime_context(
     document: &ProjectDocument,
     input_context: &Value,
 ) -> RuntimeProjectMaterialization {
+    let LocalePolicyMaterialization {
+        context: locale_policy_context,
+        diagnostics: locale_policy_diagnostics,
+        ..
+    } = materialize_project_locale_context(document, input_context);
     let TranslationMaterialization {
         context: translation_context,
         diagnostics: translation_diagnostics,
         ..
-    } = materialize_project_translations(document, input_context);
+    } = materialize_project_translations(document, &locale_policy_context);
     let locale_materialization = materialize_runtime_locale_context(&translation_context);
     let localized_input_context = locale_materialization.context;
     let LocalizedPageMetadataMaterialization {
@@ -44,7 +50,8 @@ pub fn materialize_project_with_runtime_context(
     } = materialize_localized_page_metadata(document, &localized_input_context);
     let contract = extract_runtime_context_contract(&localized_document);
     let contract_is_valid = contract.is_valid();
-    let mut diagnostics = translation_diagnostics;
+    let mut diagnostics = locale_policy_diagnostics;
+    diagnostics.extend(translation_diagnostics);
     diagnostics.extend(locale_materialization.diagnostics);
     diagnostics.extend(metadata_diagnostics);
     diagnostics.extend(contract.definition_diagnostics);
@@ -171,6 +178,61 @@ mod tests {
                 .and_then(|component| component.extensions.get("content"))
                 .and_then(Value::as_str),
             Some("Hello world")
+        );
+    }
+
+    #[test]
+    fn project_locale_policy_defaults_before_translation_materialization() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "flyLocales": {
+                "default_locale": "ru",
+                "supported_locales": ["ru", "en"],
+                "fallback_locales": ["en"]
+            },
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "title",
+                        "type": "text",
+                        "content": "Static"
+                    }]
+                }
+            }],
+            "flyTranslations": [{
+                "id": "hero_title",
+                "values": {
+                    "en": "Welcome",
+                    "ru": "Добро пожаловать"
+                }
+            }],
+            "flyRuntimeBindings": [{
+                "id": "hero-title-content",
+                "component_id": "title",
+                "path": "translations.hero_title",
+                "target": "field",
+                "name": "content"
+            }]
+        }))
+        .expect("document");
+        let materialized = materialize_project_with_runtime_context(&document, &json!({}));
+        assert_eq!(materialized.effective_context["$locale"], "ru");
+        assert_eq!(
+            materialized.effective_context["$fallback_locales"],
+            json!(["en"])
+        );
+        assert_eq!(
+            materialized.effective_context["translations"]["hero_title"],
+            "Добро пожаловать"
+        );
+        assert_eq!(
+            materialized
+                .document
+                .component("title")
+                .and_then(|component| component.extensions.get("content"))
+                .and_then(Value::as_str),
+            Some("Добро пожаловать")
         );
     }
 
