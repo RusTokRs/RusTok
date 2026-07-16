@@ -13,9 +13,7 @@ on:
       - "crates/rustok-commerce/Cargo.toml"
       - "crates/rustok-commerce/src/migrations/**"
       - "crates/rustok-forum/src/migrations/**"
-      - "crates/rustok-channel/Cargo.toml"
-      - "crates/rustok-channel/src/**"
-      - "crates/rustok-channel/admin/src/transport/native_server_adapter.rs"
+      - "crates/rustok-channel/**"
       - "crates/rustok-core/src/cache.rs"
       - "crates/rustok-core/src/cache_atomic.rs"
       - "crates/rustok-core/src/cache_tests.rs"
@@ -98,9 +96,7 @@ on:
       - "crates/rustok-commerce/Cargo.toml"
       - "crates/rustok-commerce/src/migrations/**"
       - "crates/rustok-forum/src/migrations/**"
-      - "crates/rustok-channel/Cargo.toml"
-      - "crates/rustok-channel/src/**"
-      - "crates/rustok-channel/admin/src/transport/native_server_adapter.rs"
+      - "crates/rustok-channel/**"
       - "crates/rustok-core/src/cache.rs"
       - "crates/rustok-core/src/cache_atomic.rs"
       - "crates/rustok-core/src/cache_tests.rs"
@@ -245,6 +241,37 @@ jobs:
         run: |
           cargo xtask module validate cache
           cargo xtask module test cache
+
+  postgres-channel:
+    name: PostgreSQL channel generation contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_channel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_channel"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      RUSTOK_CHANNEL_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/rustok_channel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-hardening
+      - name: PostgreSQL channel generation recovery
+        run: cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1
 
   live-redis:
     name: Live Redis cache contract
