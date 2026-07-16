@@ -24,7 +24,6 @@ impl MigrationTrait for Migration {
             USER_FIELD_DEFINITIONS_TABLE,
             USER_TRIGGER,
         )
-        .await?;
-        flex::cache_generation::drop_field_definition_cache_generation_table(manager).await
+        .await
     }
 }
