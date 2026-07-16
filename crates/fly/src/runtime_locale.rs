@@ -103,7 +103,9 @@ fn materialize_value(
                         ValidationSeverity::Info,
                         "runtime_localized_value_fallback",
                         path,
-                        format!("localized value resolved through fallback locale `{selected_locale}`"),
+                        format!(
+                            "localized value resolved through fallback locale `{selected_locale}`"
+                        ),
                     ));
                 }
                 return materialize_value(selected, selection, path, state);
@@ -114,7 +116,9 @@ fn materialize_value(
                 ValidationSeverity::Info,
                 "runtime_localized_value_unresolved",
                 path,
-                format!("localized value has no translation for locale `{requested}` or its fallbacks"),
+                format!(
+                    "localized value has no translation for locale `{requested}` or its fallbacks"
+                ),
             ));
             return value.clone();
         }
@@ -169,7 +173,11 @@ fn select_translation<'a>(
         .unwrap_or_default();
     for candidate in &requested_candidates {
         if let Some((key, value)) = translation_for(translations, candidate) {
-            return Some((value, candidate != selection.locale.as_deref().unwrap_or_default(), key));
+            let used_fallback = match selection.locale.as_deref() {
+                Some(requested) => candidate.as_str() != requested,
+                None => true,
+            };
+            return Some((value, used_fallback, key));
         }
     }
 
@@ -211,10 +219,12 @@ fn translation_for<'a>(
     candidate: &str,
 ) -> Option<(String, &'a Value)> {
     let normalized_candidate = normalize_locale_tag(candidate)?;
-    translations.iter().find_map(|(locale, value)| {
-        (normalize_locale_tag(locale).as_deref() == Some(normalized_candidate.as_str()))
-            .then(|| (locale.clone(), value))
-    })
+    for (locale, value) in translations {
+        if normalize_locale_tag(locale).as_deref() == Some(normalized_candidate.as_str()) {
+            return Some((locale.clone(), value));
+        }
+    }
+    None
 }
 
 fn locale_list(value: &Value) -> Vec<String> {
@@ -249,6 +259,7 @@ pub fn normalize_locale_tag(locale: &str) -> Option<String> {
     if locale.is_empty()
         || locale.starts_with('-')
         || locale.ends_with('-')
+        || locale.split('-').any(str::is_empty)
         || !locale
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || character == '-')
@@ -364,8 +375,9 @@ mod tests {
     }
 
     #[test]
-    fn locale_tags_are_case_and_separator_insensitive() {
+    fn locale_tags_are_case_separator_and_subtag_sensitive() {
         assert_eq!(normalize_locale_tag(" RU_ru ").as_deref(), Some("ru-ru"));
         assert_eq!(normalize_locale_tag("invalid locale"), None);
+        assert_eq!(normalize_locale_tag("ru--RU"), None);
     }
 }
