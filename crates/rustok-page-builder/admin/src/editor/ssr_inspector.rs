@@ -23,6 +23,10 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             (components, pages)
         });
         let default_component = components.first().map(|component| component.id.clone());
+        let runtime_context_json = serde_json::to_string_pretty(
+            &runtime.runtime_context.get_untracked(),
+        )
+        .unwrap_or_else(|_| "{}".to_string());
 
         view! {
             <section
@@ -35,6 +39,31 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         "These forms submit directly to the consumer-owned Fly intent endpoint. No hydration or WASM is required."
                     </p>
                 </div>
+
+                <details class="rounded border border-border p-2" open>
+                    <summary class="cursor-pointer text-xs font-semibold">"Runtime preview context"</summary>
+                    <form
+                        class="mt-3 grid gap-2"
+                        data-fly-intent-form="set_runtime_context"
+                    >
+                        <textarea
+                            name="context_json"
+                            required
+                            spellcheck="false"
+                            class="min-h-52 rounded border border-input bg-background px-2 py-1 font-mono text-xs"
+                            aria-label="Runtime preview context JSON"
+                        >{runtime_context_json}</textarea>
+                        <p class="text-xs text-muted-foreground">
+                            "The context is stored in the server draft only. It is not written into the canonical page project."
+                        </p>
+                        <button
+                            type="submit"
+                            class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary"
+                        >
+                            "Apply preview context"
+                        </button>
+                    </form>
+                </details>
 
                 <label class="grid gap-1 text-xs">
                     <span class="font-medium">"Canvas component"</span>
