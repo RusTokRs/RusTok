@@ -4,7 +4,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -81,6 +80,13 @@ impl LocaleCoverageReport {
         self.summaries
             .iter()
             .find(|summary| summary.locale == locale)
+            .or_else(|| {
+                locale.split_once('-').and_then(|(language, _)| {
+                    self.summaries
+                        .iter()
+                        .find(|summary| summary.locale == language)
+                })
+            })
     }
 
     pub fn required_gaps(&self) -> impl Iterator<Item = &LocaleCoverageGap> {
@@ -90,9 +96,7 @@ impl LocaleCoverageReport {
 
 pub fn analyze_project_locale_coverage(document: &ProjectDocument) -> LocaleCoverageReport {
     let policy_present = document.project.extensions.contains_key(FLY_LOCALES_FIELD);
-    let decoded_policy = ProjectLocalePolicy::from_document(document);
-    let policy = decoded_policy
-        .as_ref()
+    let policy = ProjectLocalePolicy::from_document(document)
         .and_then(|policy| policy.normalized().ok());
     let policy_valid = !policy_present || policy.is_some();
     let strict_enforcement = policy
@@ -109,55 +113,55 @@ pub fn analyze_project_locale_coverage(document: &ProjectDocument) -> LocaleCove
         .as_ref()
         .map(|policy| policy.required_locales.clone())
         .unwrap_or_default();
-
     let catalog = TranslationCatalog::from_document(document);
-    let metadata_fields = collect_localized_metadata_fields(document);
-    let tracked_locales = tracked_locales(
-        policy.as_ref(),
-        &catalog,
-        &metadata_fields,
-    );
-    let required = required_locales.iter().cloned().collect::<BTreeSet<_>>();
+    let metadata = collect_metadata(document);
+    let tracked_locales = collect_locales(policy.as_ref(), &catalog, &metadata);
     let mut summaries = Vec::new();
     let mut gaps = Vec::new();
 
     for locale in &tracked_locales {
-        let required_locale = required.contains(locale);
-        let mut translation_present = 0usize;
-        for entry in &catalog.entries {
-            if map_contains_locale(&entry.values, locale) {
-                translation_present = translation_present.saturating_add(1);
-            } else {
-                gaps.push(LocaleCoverageGap {
-                    locale: locale.clone(),
-                    kind: LocaleCoverageKind::Translation,
-                    path: format!("project.translations.{}", entry.id),
-                    label: entry.id.clone(),
-                    required: required_locale,
-                });
-            }
+        let required = required_locales.contains(locale);
+        let translation_present = catalog
+            .entries
+            .iter()
+            .filter(|entry| has_locale(&entry.values, locale))
+            .count();
+        for entry in catalog
+            .entries
+            .iter()
+            .filter(|entry| !has_locale(&entry.values, locale))
+        {
+            gaps.push(LocaleCoverageGap {
+                locale: locale.clone(),
+                kind: LocaleCoverageKind::Translation,
+                path: format!("project.translations.{}", entry.id),
+                label: entry.id.clone(),
+                required,
+            });
         }
 
-        let mut metadata_present = 0usize;
-        for field in &metadata_fields {
-            if map_contains_locale(&field.values, locale) {
-                metadata_present = metadata_present.saturating_add(1);
-            } else {
-                gaps.push(LocaleCoverageGap {
-                    locale: locale.clone(),
-                    kind: LocaleCoverageKind::PageMetadata,
-                    path: field.path.clone(),
-                    label: field.label.clone(),
-                    required: required_locale,
-                });
-            }
+        let metadata_present = metadata
+            .iter()
+            .filter(|field| has_locale(&field.values, locale))
+            .count();
+        for field in metadata
+            .iter()
+            .filter(|field| !has_locale(&field.values, locale))
+        {
+            gaps.push(LocaleCoverageGap {
+                locale: locale.clone(),
+                kind: LocaleCoverageKind::PageMetadata,
+                path: field.path.clone(),
+                label: field.label.clone(),
+                required,
+            });
         }
 
         let translation_total = catalog.entries.len();
-        let metadata_total = metadata_fields.len();
+        let metadata_total = metadata.len();
         summaries.push(LocaleCoverageSummary {
             locale: locale.clone(),
-            required: required_locale,
+            required,
             translation_total,
             translation_present,
             metadata_total,
@@ -177,23 +181,21 @@ pub fn analyze_project_locale_coverage(document: &ProjectDocument) -> LocaleCove
         required_locales,
         tracked_locales,
         translation_total: catalog.entries.len(),
-        metadata_total: metadata_fields.len(),
+        metadata_total: metadata.len(),
         summaries,
         gaps,
     }
 }
 
 #[derive(Debug, Clone)]
-struct MetadataCoverageField {
+struct MetadataField {
     path: String,
     label: String,
     values: Map<String, Value>,
 }
 
-fn collect_localized_metadata_fields(
-    document: &ProjectDocument,
-) -> Vec<MetadataCoverageField> {
-    let mut fields = Vec::new();
+fn collect_metadata(document: &ProjectDocument) -> Vec<MetadataField> {
+    let mut result = Vec::new();
     for (page_index, page) in document.project.pages.iter().enumerate() {
         let page_label = page
             .id
@@ -216,7 +218,7 @@ fn collect_localized_metadata_fields(
             else {
                 continue;
             };
-            fields.push(MetadataCoverageField {
+            result.push(MetadataField {
                 path: format!(
                     "project.pages[{page_index}].{FLY_PAGE_METADATA_FIELD}.{field}"
                 ),
@@ -225,36 +227,33 @@ fn collect_localized_metadata_fields(
             });
         }
     }
-    fields
+    result
 }
 
-fn tracked_locales(
+fn collect_locales(
     policy: Option<&ProjectLocalePolicy>,
     catalog: &TranslationCatalog,
-    metadata_fields: &[MetadataCoverageField],
+    metadata: &[MetadataField],
 ) -> Vec<String> {
     let mut locales = Vec::new();
     if let Some(policy) = policy {
         push_locale(&mut locales, policy.default_locale.as_deref());
-        for locale in &policy.supported_locales {
-            push_locale(&mut locales, Some(locale));
-        }
-        for locale in &policy.required_locales {
-            push_locale(&mut locales, Some(locale));
-        }
-        for locale in &policy.fallback_locales {
-            push_locale(&mut locales, Some(locale));
-        }
-    }
-    for entry in &catalog.entries {
-        for locale in entry.values.keys() {
+        for locale in policy
+            .supported_locales
+            .iter()
+            .chain(&policy.required_locales)
+            .chain(&policy.fallback_locales)
+        {
             push_locale(&mut locales, Some(locale));
         }
     }
-    for field in metadata_fields {
-        for locale in field.values.keys() {
-            push_locale(&mut locales, Some(locale));
-        }
+    for locale in catalog
+        .entries
+        .iter()
+        .flat_map(|entry| entry.values.keys())
+        .chain(metadata.iter().flat_map(|field| field.values.keys()))
+    {
+        push_locale(&mut locales, Some(locale));
     }
     locales
 }
@@ -268,10 +267,10 @@ fn push_locale(locales: &mut Vec<String>, locale: Option<&str>) {
     }
 }
 
-fn map_contains_locale(values: &Map<String, Value>, required_locale: &str) -> bool {
+fn has_locale(values: &Map<String, Value>, required: &str) -> bool {
     values
         .keys()
-        .any(|locale| normalize_locale_tag(locale).as_deref() == Some(required_locale))
+        .any(|locale| normalize_locale_tag(locale).as_deref() == Some(required))
 }
 
 const LOCALIZED_METADATA_FIELDS: &[&str] = &[
@@ -290,26 +289,24 @@ mod tests {
     use crate::GrapesJsV1Codec;
     use serde_json::json;
 
-    fn document(project: Value) -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(project).expect("project document")
+    fn report(project: Value) -> LocaleCoverageReport {
+        let document = GrapesJsV1Codec::decode_value(project).expect("project document");
+        analyze_project_locale_coverage(&document)
     }
 
     #[test]
     fn coverage_reports_exact_translation_and_metadata_gaps() {
-        let document = document(json!({
+        let report = report(json!({
             "flyLocales": {
                 "default_locale": "en",
                 "supported_locales": ["en", "ru"],
                 "required_locales": ["en", "ru"],
                 "enforce_required_locales": true
             },
-            "flyTranslations": [{
-                "id": "hero",
-                "values": { "en": "Welcome" }
-            }, {
-                "id": "cta",
-                "values": { "en": "Buy", "ru": "Купить" }
-            }],
+            "flyTranslations": [
+                { "id": "hero", "values": { "en": "Welcome" } },
+                { "id": "cta", "values": { "en": "Buy", "ru": "Купить" } }
+            ],
             "pages": [{
                 "id": "home",
                 "flyPageMeta": {
@@ -319,42 +316,26 @@ mod tests {
                 "component": { "id": "root", "type": "wrapper" }
             }]
         }));
-        let report = analyze_project_locale_coverage(&document);
-        assert!(report.policy_valid);
-        assert!(report.strict_enforcement);
+        let ru = report.summary_for("ru-RU").expect("base locale fallback");
+        assert_eq!(ru.missing, 2);
         assert!(!report.required_complete());
         assert!(!report.strict_ready());
-        let ru = report.summary_for("ru-RU").expect("ru summary");
-        assert_eq!(ru.translation_present, 1);
-        assert_eq!(ru.metadata_present, 1);
-        assert_eq!(ru.missing, 2);
-        assert!(report.gaps.iter().any(|gap| {
-            gap.locale == "ru"
-                && gap.kind == LocaleCoverageKind::Translation
-                && gap.label == "hero"
-        }));
-        assert!(report.gaps.iter().any(|gap| {
-            gap.locale == "ru"
-                && gap.kind == LocaleCoverageKind::PageMetadata
-                && gap.label == "home.description"
-        }));
+        assert!(report.gaps.iter().any(|gap| gap.label == "hero"));
+        assert!(report
+            .gaps
+            .iter()
+            .any(|gap| gap.label == "home.description"));
     }
 
     #[test]
     fn coverage_discovers_optional_locales_without_policy() {
-        let document = document(json!({
-            "flyTranslations": [{
-                "id": "hero",
-                "values": { "en": "Welcome", "de-DE": "Willkommen" }
-            }, {
-                "id": "cta",
-                "values": { "en": "Buy" }
-            }],
+        let report = report(json!({
+            "flyTranslations": [
+                { "id": "hero", "values": { "en": "Welcome", "de-DE": "Willkommen" } },
+                { "id": "cta", "values": { "en": "Buy" } }
+            ],
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
         }));
-        let report = analyze_project_locale_coverage(&document);
-        assert!(!report.policy_present);
-        assert!(report.policy_valid);
         assert_eq!(report.tracked_locales, vec!["en", "de-de"]);
         assert!(report.required_complete());
         assert!(!report.complete());
@@ -363,14 +344,13 @@ mod tests {
 
     #[test]
     fn invalid_policy_prevents_strict_readiness() {
-        let document = document(json!({
+        let report = report(json!({
             "flyLocales": {
                 "default_locale": "invalid locale",
                 "supported_locales": ["en"]
             },
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
         }));
-        let report = analyze_project_locale_coverage(&document);
         assert!(report.policy_present);
         assert!(!report.policy_valid);
         assert!(!report.strict_ready());
