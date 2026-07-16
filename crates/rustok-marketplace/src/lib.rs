@@ -2,8 +2,10 @@ use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::RusToKModule;
 
-mod seller_directory;
+pub mod listing_directory;
+pub mod seller_directory;
 
+pub use listing_directory::MarketplaceListingDirectoryService;
 pub use seller_directory::MarketplaceSellerDirectoryService;
 
 pub const MARKETPLACE_FAMILY_MODULES: &[&str] = &[
