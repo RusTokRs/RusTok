@@ -174,7 +174,7 @@ this section.
   mappings and `SecretResolverRegistry`; reject duplicate tenants, cross-tenant
   reference reuse, unknown resolver aliases, and raw secret configuration.
 - [x] Add and aggregate `verify-payment-stripe-runtime.mjs`.
-- [ ] Update the legacy GraphQL runtime parity refund mutation helper to pass
+- [x] Update the legacy GraphQL runtime parity refund mutation helper to pass
   `idempotencyKey`.
 - [ ] Execute deployment secret resolution and authorize, capture, cancel, refund,
   and webhook handling against a production-like Stripe endpoint.
@@ -228,6 +228,7 @@ Payment evidence:
 - `crates/rustok-migrations/tests/payment_provider_operation_uncertain_outcome.rs`
 - `apps/server/src/services/payment_provider_runtime.rs`
 - `apps/server/src/services/commerce_provider_runtime.rs`
+- `apps/server/tests/payment_refund_identity_guard.rs`
 - `scripts/verify/verify-payment-refund-identity.mjs`
 - `scripts/verify/verify-payment-provider-outcome-contract.mjs`
 - `scripts/verify/verify-payment-stripe-runtime.mjs`
@@ -301,7 +302,7 @@ Source inspection is not execution evidence.
 
 ## Immediate execution order
 
-1. [ ] Update the GraphQL runtime parity refund helper with `idempotencyKey`.
+1. [x] Update the GraphQL runtime parity refund helper with `idempotencyKey`.
 2. [ ] Run static ecommerce/payment verifiers and fix remaining drift.
 3. [ ] Run commerce, payment, Stripe-feature, and server compile checks.
 4. [ ] Run clean SQLite migrations and targeted regression tests.
