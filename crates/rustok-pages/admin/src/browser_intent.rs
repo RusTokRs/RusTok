@@ -1,6 +1,9 @@
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::core;
 use crate::transport;
+use fly::{
+    normalize_locale_tag, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD,
+};
 use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL_V1};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PublishPageBuilderResult,
@@ -20,6 +23,8 @@ use serde_json::{json, Map, Value};
 use std::sync::OnceLock;
 
 const MAX_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024;
+const MAX_RUNTIME_LOCALE_BYTES: usize = 64;
+const MAX_RUNTIME_FALLBACK_LOCALES: usize = 16;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PagesBrowserIntentResponse {
@@ -113,12 +118,20 @@ pub async fn dispatch_pages_browser_intent_with_store(
             ),
         };
 
-    let context_update = envelope.intent == "set_runtime_context";
-    let mut result = if context_update {
-        runtime_context = runtime_context_from_payload(&envelope.payload)?;
-        controller_snapshot(&controller)?
-    } else {
-        dispatch_browser_intent(&mut controller, envelope.clone())?
+    let context_update = matches!(
+        envelope.intent.as_str(),
+        "set_runtime_context" | "set_runtime_locale"
+    );
+    let mut result = match envelope.intent.as_str() {
+        "set_runtime_context" => {
+            runtime_context = runtime_context_from_payload(&envelope.payload)?;
+            controller_snapshot(&controller)?
+        }
+        "set_runtime_locale" => {
+            runtime_context = runtime_locale_from_payload(&runtime_context, &envelope.payload)?;
+            controller_snapshot(&controller)?
+        }
+        _ => dispatch_browser_intent(&mut controller, envelope.clone())?,
     };
     let mut requests = request_effects(&result);
 
@@ -187,13 +200,22 @@ fn generated_runtime_context(page: &crate::model::PageDetail, default_locale: &s
     let seed = core::edit_form_seed_from_page(page, default_locale);
     let project_data = serde_json::from_str::<Value>(&seed.project_data_text)
         .unwrap_or_else(|_| Value::Object(Map::new()));
-    generate_page_builder_runtime_example(PageBuilderRuntimeExampleRequest {
+    let mut context = generate_page_builder_runtime_example(PageBuilderRuntimeExampleRequest {
         project_data,
         policy: RuntimeContextExamplePolicy::default(),
     })
     .ok()
     .map(|response| response.example.input_context)
-    .unwrap_or_else(|| Value::Object(Map::new()))
+    .unwrap_or_else(|| Value::Object(Map::new()));
+    if let (Some(locale), Some(context)) = (
+        normalize_locale_tag(default_locale),
+        context.as_object_mut(),
+    ) {
+        context
+            .entry(RUNTIME_LOCALE_FIELD.to_string())
+            .or_insert(Value::String(locale));
+    }
+    context
 }
 
 fn runtime_context_from_payload(payload: &Value) -> Result<Value, PagesBrowserIntentError> {
@@ -204,7 +226,9 @@ fn runtime_context_from_payload(payload: &Value) -> Result<Value, PagesBrowserIn
             )));
         }
         serde_json::from_str::<Value>(source).map_err(|error| {
-            PagesBrowserIntentError::RuntimeContext(format!("runtime context JSON is invalid: {error}"))
+            PagesBrowserIntentError::RuntimeContext(format!(
+                "runtime context JSON is invalid: {error}"
+            ))
         })?
     } else if let Some(context) = payload.get("context") {
         context.clone()
@@ -217,6 +241,87 @@ fn runtime_context_from_payload(payload: &Value) -> Result<Value, PagesBrowserIn
         ));
     }
     Ok(context)
+}
+
+fn runtime_locale_from_payload(
+    runtime_context: &Value,
+    payload: &Value,
+) -> Result<Value, PagesBrowserIntentError> {
+    let mut context = runtime_context.as_object().cloned().unwrap_or_default();
+    let locale_source = payload
+        .get("locale")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim();
+    if locale_source.is_empty() {
+        context.remove(RUNTIME_LOCALE_FIELD);
+    } else {
+        if locale_source.len() > MAX_RUNTIME_LOCALE_BYTES {
+            return Err(PagesBrowserIntentError::RuntimeContext(format!(
+                "runtime locale exceeds {MAX_RUNTIME_LOCALE_BYTES} bytes"
+            )));
+        }
+        let locale = normalize_locale_tag(locale_source).ok_or_else(|| {
+            PagesBrowserIntentError::RuntimeContext(format!(
+                "runtime locale `{locale_source}` is invalid"
+            ))
+        })?;
+        context.insert(RUNTIME_LOCALE_FIELD.to_string(), Value::String(locale));
+    }
+
+    let fallback_sources = payload
+        .get("fallback_locales")
+        .map(locale_sources)
+        .unwrap_or_default();
+    if fallback_sources.len() > MAX_RUNTIME_FALLBACK_LOCALES {
+        return Err(PagesBrowserIntentError::RuntimeContext(format!(
+            "runtime locale fallback chain exceeds {MAX_RUNTIME_FALLBACK_LOCALES} entries"
+        )));
+    }
+    let mut fallback_locales = Vec::new();
+    for source in fallback_sources {
+        if source.len() > MAX_RUNTIME_LOCALE_BYTES {
+            return Err(PagesBrowserIntentError::RuntimeContext(format!(
+                "runtime fallback locale exceeds {MAX_RUNTIME_LOCALE_BYTES} bytes"
+            )));
+        }
+        let locale = normalize_locale_tag(&source).ok_or_else(|| {
+            PagesBrowserIntentError::RuntimeContext(format!(
+                "runtime fallback locale `{source}` is invalid"
+            ))
+        })?;
+        if !fallback_locales.contains(&locale) {
+            fallback_locales.push(locale);
+        }
+    }
+    if fallback_locales.is_empty() {
+        context.remove(RUNTIME_FALLBACK_LOCALES_FIELD);
+    } else {
+        context.insert(
+            RUNTIME_FALLBACK_LOCALES_FIELD.to_string(),
+            Value::Array(fallback_locales.into_iter().map(Value::String).collect()),
+        );
+    }
+    Ok(Value::Object(context))
+}
+
+fn locale_sources(value: &Value) -> Vec<String> {
+    match value {
+        Value::String(value) => value
+            .split([',', ';', '\n'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .collect(),
+        Value::Array(values) => values
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 fn controller_snapshot(
@@ -315,5 +420,37 @@ mod tests {
         );
         assert!(runtime_context_from_payload(&json!({ "context_json": "[]" })).is_err());
         assert!(runtime_context_from_payload(&json!({ "context_json": "{" })).is_err());
+    }
+
+    #[test]
+    fn runtime_locale_form_preserves_business_context_and_normalizes_tags() {
+        let context = runtime_locale_from_payload(
+            &json!({
+                "$locale": "en",
+                "customer": { "name": "Ada" }
+            }),
+            &json!({
+                "locale": " RU_ru ",
+                "fallback_locales": "en, DE-de; en"
+            }),
+        )
+        .expect("locale update");
+        assert_eq!(context["$locale"], "ru-ru");
+        assert_eq!(context["$fallback_locales"], json!(["en", "de-de"]));
+        assert_eq!(context["customer"]["name"], "Ada");
+    }
+
+    #[test]
+    fn runtime_locale_form_rejects_invalid_tags() {
+        assert!(runtime_locale_from_payload(
+            &json!({}),
+            &json!({ "locale": "invalid locale" }),
+        )
+        .is_err());
+        assert!(runtime_locale_from_payload(
+            &json!({}),
+            &json!({ "locale": "ru", "fallback_locales": "en, bad locale" }),
+        )
+        .is_err());
     }
 }
