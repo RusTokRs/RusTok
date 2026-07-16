@@ -1,4 +1,5 @@
 mod admin_shell;
+mod audit_panel;
 mod authoring;
 mod binding_panel;
 mod canvas_document;
@@ -35,6 +36,7 @@ mod toolbar;
 mod trait_panel;
 
 pub use admin_shell::AdminShell;
+pub(crate) use audit_panel::AuditPanel;
 pub use authoring::{
     CanvasComponentGeometry, LayerItemView, PaletteBlockView, SelectedComponentView,
 };
