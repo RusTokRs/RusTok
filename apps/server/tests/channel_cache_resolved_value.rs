@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{net::TcpListener, process::Stdio, time::Duration};
 
 use axum::{
     body::{to_bytes, Body},
@@ -18,12 +18,13 @@ use rustok_server::{
         cache_runtime::ensure_cache_service,
         channel_cache_invalidation::{
             publish_channel_resolution_invalidation, start_channel_cache_invalidation_listener,
-            ChannelCacheInvalidationListenerHandle,
+            ChannelCacheInvalidationListenerHandle, CHANNEL_RESOLUTION_INVALIDATION_CHANNEL,
         },
         server_runtime_context::ServerRuntimeContext,
     },
 };
 use sea_orm::{ActiveModelTrait, ConnectionTrait, EntityTrait, Set};
+use tokio::process::{Child, Command};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -174,6 +175,84 @@ async fn install_generation_state(db: &sea_orm::DatabaseConnection, generation: 
     ))
     .await
     .expect("generation state row should be restored");
+}
+
+fn reserve_loopback_port() -> u16 {
+    TcpListener::bind(("127.0.0.1", 0))
+        .expect("loopback port should be reservable")
+        .local_addr()
+        .expect("reserved loopback address")
+        .port()
+}
+
+async fn wait_for_redis(url: &str) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Ok(client) = redis::Client::open(url)
+                && let Ok(mut connection) = client.get_multiplexed_async_connection().await
+            {
+                let pong = redis::cmd("PING")
+                    .query_async::<String>(&mut connection)
+                    .await;
+                if pong.as_deref() == Ok("PONG") {
+                    return;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("spawned Redis did not become ready");
+}
+
+async fn spawn_redis(binary: &str, port: u16) -> Child {
+    let child = Command::new(binary)
+        .arg("--bind")
+        .arg("127.0.0.1")
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--save")
+        .arg("")
+        .arg("--appendonly")
+        .arg("no")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("redis-server should start");
+    wait_for_redis(&format!("redis://127.0.0.1:{port}/")).await;
+    child
+}
+
+async fn stop_redis(child: &mut Child) {
+    child.kill().await.expect("redis-server should stop");
+    child.wait().await.expect("redis-server should be reaped");
+}
+
+async fn wait_for_redis_subscribers(url: &str, expected: usize) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Ok(client) = redis::Client::open(url)
+                && let Ok(mut connection) = client.get_multiplexed_async_connection().await
+            {
+                let counts = redis::cmd("PUBSUB")
+                    .arg("NUMSUB")
+                    .arg(CHANNEL_RESOLUTION_INVALIDATION_CHANNEL)
+                    .query_async::<Vec<(String, usize)>>(&mut connection)
+                    .await;
+                if counts
+                    .ok()
+                    .and_then(|counts| counts.into_iter().next())
+                    .is_some_and(|(_, count)| count >= expected)
+                {
+                    return;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("Redis did not restore {expected} channel subscribers"));
 }
 
 #[tokio::test]
@@ -370,4 +449,94 @@ async fn redis_invalidation_refreshes_remote_resolved_channel_value_before_poll(
     })
     .await
     .expect("remote resolved channel value stayed stale until the periodic poll");
+}
+
+#[tokio::test]
+#[ignore = "requires redis-server via RUSTOK_CACHE_REDIS_SERVER_BIN"]
+async fn redis_restart_reconnects_existing_replicas_and_refreshes_value_before_poll() {
+    let binary = std::env::var("RUSTOK_CACHE_REDIS_SERVER_BIN")
+        .expect("RUSTOK_CACHE_REDIS_SERVER_BIN must point to redis-server");
+    let port = reserve_loopback_port();
+    let url = format!("redis://127.0.0.1:{port}/");
+    let mut redis_process = spawn_redis(binary.as_str(), port).await;
+
+    let db = rustok_test_utils::db::setup_test_db_with_migrations::<Migrator>().await;
+    let tenant = insert_tenant(&db).await;
+    let tenant_context = tenant_context(&tenant);
+    let channel = insert_default_channel(&db, tenant.id).await;
+
+    let ctx_a = ServerRuntimeContext::new(db.clone(), settings_with_redis(url.as_str()));
+    let ctx_b = ServerRuntimeContext::new(db.clone(), settings_with_redis(url.as_str()));
+    let cache_a = ensure_cache_service(&ctx_a);
+    let cache_b = ensure_cache_service(&ctx_b);
+    let app_b = channel_router(ctx_b.clone());
+
+    start_channel_cache_invalidation_listener(&ctx_a, cache_a)
+        .await
+        .expect("publisher listener should start");
+    start_channel_cache_invalidation_listener(&ctx_b, cache_b)
+        .await
+        .expect("remote listener should start");
+    wait_for_redis_subscribers(url.as_str(), 2).await;
+    assert_eq!(
+        request_channel_name(&app_b, &tenant_context)
+            .await
+            .as_deref(),
+        Some("Before invalidation")
+    );
+
+    stop_redis(&mut redis_process).await;
+    rename_channel(&db, channel.id, "During Redis outage").await;
+    assert_eq!(
+        request_channel_name(&app_b, &tenant_context)
+            .await
+            .as_deref(),
+        Some("Before invalidation")
+    );
+    wait_for_channel_name(
+        &app_b,
+        &tenant_context,
+        "During Redis outage",
+        Duration::from_secs(7),
+    )
+    .await;
+
+    redis_process = spawn_redis(binary.as_str(), port).await;
+    wait_for_redis_subscribers(url.as_str(), 2).await;
+
+    // Anchor immediately after a durable poll. The final three-second window
+    // is therefore shorter than the next five-second reconciliation tick.
+    rename_channel(&db, channel.id, "Reconnect baseline").await;
+    wait_for_channel_name(
+        &app_b,
+        &tenant_context,
+        "Reconnect baseline",
+        Duration::from_secs(7),
+    )
+    .await;
+    rename_channel(&db, channel.id, "After Redis reconnect").await;
+    assert_eq!(
+        request_channel_name(&app_b, &tenant_context)
+            .await
+            .as_deref(),
+        Some("Reconnect baseline")
+    );
+
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            publish_channel_resolution_invalidation(&ctx_a, tenant.id).await;
+            if request_channel_name(&app_b, &tenant_context)
+                .await
+                .as_deref()
+                == Some("After Redis reconnect")
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("existing remote replica did not consume invalidation after Redis restart");
+
+    stop_redis(&mut redis_process).await;
 }
