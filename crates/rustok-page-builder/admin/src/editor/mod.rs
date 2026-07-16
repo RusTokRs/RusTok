@@ -27,6 +27,7 @@ mod ssr_drop;
 mod ssr_forms;
 mod ssr_inspector;
 mod ssr_locale;
+mod ssr_localized_metadata;
 mod ssr_translations;
 mod toolbar;
 mod trait_panel;
@@ -67,6 +68,9 @@ pub(crate) use ssr_forms::{
 };
 pub(crate) use ssr_inspector::SsrInspectorPanel;
 pub(crate) use ssr_locale::SsrLocalePanel;
+pub(crate) use ssr_localized_metadata::{
+    SsrLocalizedMetadataPanel, SsrLocalizedPageMetadataRequest,
+};
 pub(crate) use ssr_translations::SsrTranslationsPanel;
 pub(crate) use toolbar::AuthoringToolbar;
 pub(crate) use trait_panel::TraitPanel;
