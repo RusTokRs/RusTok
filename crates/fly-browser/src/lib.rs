@@ -108,13 +108,18 @@ impl BrowserIntentEnvelope {
         matches!(
             self.intent.as_str(),
             "insert_block"
-                | "begin_palette_drag"
                 | "drop_requested"
                 | "remove_selected"
                 | "move_selected"
+                | "move_selected_up"
+                | "move_selected_down"
                 | "patch_selected"
                 | "undo"
                 | "redo"
+                | "cut"
+                | "paste"
+                | "duplicate"
+                | "key_stroke"
                 | "save"
         )
     }
@@ -226,17 +231,43 @@ mod tests {
     }
 
     #[test]
-    fn mutating_intents_are_explicit() {
-        let intent = BrowserIntentEnvelope {
+    fn command_producing_intents_are_mutating() {
+        for intent in [
+            "insert_block",
+            "drop_requested",
+            "remove_selected",
+            "move_selected_up",
+            "move_selected_down",
+            "undo",
+            "redo",
+            "cut",
+            "paste",
+            "duplicate",
+            "key_stroke",
+            "save",
+        ] {
+            let request = BrowserIntentEnvelope {
+                protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
+                instance_id: "canvas-a".to_string(),
+                intent: intent.to_string(),
+                payload: json!({}),
+                sequence: None,
+                page_id: Some("home".to_string()),
+                revision: Some("rev-1".to_string()),
+                project_hash: Some("abc".to_string()),
+            };
+            assert!(request.is_mutating(), "{intent}");
+        }
+        let selection = BrowserIntentEnvelope {
             protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
             instance_id: "canvas-a".to_string(),
-            intent: "save".to_string(),
+            intent: "select".to_string(),
             payload: json!({}),
             sequence: None,
-            page_id: Some("home".to_string()),
-            revision: Some("rev-1".to_string()),
-            project_hash: Some("abc".to_string()),
+            page_id: None,
+            revision: None,
+            project_hash: None,
         };
-        assert!(intent.is_mutating());
+        assert!(!selection.is_mutating());
     }
 }
