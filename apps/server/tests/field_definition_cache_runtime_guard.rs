@@ -16,7 +16,11 @@ fn source(relative: &str) -> String {
 
 #[test]
 fn field_definition_cache_runtime_is_atomic_owned_and_restartable() {
-    let cache = source("apps/server/src/services/field_definition_cache.rs");
+    let wrapper = source("apps/server/src/services/field_definition_cache.rs");
+    let cache = source("apps/server/src/services/field_definition_cache_base.rs");
+    assert!(wrapper.contains("#[path = \"field_definition_cache_base.rs\"]"));
+    assert!(wrapper.contains("#[path = \"field_definition_cache_reconciliation.rs\"]"));
+
     for required in [
         "FieldDefinitionCacheInvalidationRuntime",
         "self.task.abort();",
@@ -46,7 +50,7 @@ fn field_definition_cache_runtime_is_atomic_owned_and_restartable() {
 
 #[test]
 fn field_definition_cache_retains_weighted_lag_safe_behavior() {
-    let cache = source("apps/server/src/services/field_definition_cache.rs");
+    let cache = source("apps/server/src/services/field_definition_cache_base.rs");
     for required in [
         ".weigher(field_definition_entry_weight)",
         "FIELD_DEFINITION_CACHE_MAX_WEIGHT_BYTES",
