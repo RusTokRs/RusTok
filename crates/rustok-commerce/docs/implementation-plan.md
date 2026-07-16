@@ -59,6 +59,12 @@ Registries and evidence:
 - [x] Guard fulfillment transport ownership with
   `apps/server/tests/commerce_fulfillment_transport_guard.rs` and
   `verify-commerce-admin-boundary.mjs`.
+- [x] Keep order-change type dispatch and exchange/claim refund coordination in
+  `OrderChangeOrchestrationService` instead of the REST transport.
+- [x] Guard REST order-change orchestration ownership with
+  `apps/server/tests/commerce_order_change_transport_guard.rs` and
+  `verify-commerce-admin-boundary.mjs`.
+- [ ] Route GraphQL order-change application through the same orchestration service.
 - [ ] Execute the complete provider-consumer graph with retained runtime evidence.
 
 ## Checkout orchestration workstream
@@ -111,8 +117,10 @@ Checkout evidence:
 - `crates/rustok-commerce/src/services/checkout_compensation.rs`
 - `crates/rustok-commerce/src/services/recovering_staged_checkout.rs`
 - `crates/rustok-commerce/src/services/fulfillment_orchestration_facade.rs`
+- `crates/rustok-commerce/src/services/order_change_orchestration.rs`
 - `crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs`
 - `apps/server/tests/commerce_fulfillment_transport_guard.rs`
+- `apps/server/tests/commerce_order_change_transport_guard.rs`
 - `scripts/verify/verify-commerce-admin-boundary.mjs`
 - `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`
 
