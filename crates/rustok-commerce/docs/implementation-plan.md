@@ -27,6 +27,9 @@ seller/offer, commission, ledger, and payout remain owner bounded contexts.
 - Structural shape: `core_transport_ui`.
 - Payment FFA status: `in_progress`.
 - Payment FBA status: `boundary_ready`.
+- Marketplace foundation source gate: `open`.
+- Marketplace production promotion gate: `closed` until compile, migration,
+  contention, restart, and mounted transport evidence is retained.
 - Source-only work never promotes a boundary without compile, migration,
   transport, concurrency, and external-adapter evidence.
 
@@ -83,15 +86,24 @@ Registries and evidence:
   `return_completion_operation_id`, validate explicit refund/change references
   against the return order, and classify uncertain provider outcomes as
   `reconciliation_required`.
-- [x] Guard return-completion schema, replay, lease, adoption, and reconciliation
-  source invariants in `commerce_return_completion_transport_guard.rs`.
-- [ ] Apply migration `m20260716_000004_create_return_completion_operations` on
-  clean and upgraded SQLite/PostgreSQL graphs, including rollback/reapply.
-- [ ] Execute duplicate replay, conflicting payload, concurrent claim, expired
-  lease, process exit, and restart recovery after refund, order-change, and owner
-  return completion checkpoints.
-- [ ] Publish operator-safe return-completion journal reads, retry controls, and
-  reconciliation resolution commands.
+- [x] Persist one immutable canonical return-completion command snapshot with the
+  original actor and retry audit, and atomically create its pending operation in
+  the same database transaction before execution.
+- [x] Route REST and GraphQL through the durable recovery facade while keeping
+  provider/owner effects in the core return-completion orchestration.
+- [x] Publish tenant-scoped operator list/show/retry routes without exposing the
+  stored command payload; require `orders:manage` plus `payments:manage` for retry.
+- [x] Guard return-completion schema, command admission, replay, lease, adoption,
+  operator retry, payload secrecy, and reconciliation source invariants in
+  `commerce_return_completion_transport_guard.rs`.
+- [ ] Apply migrations `m20260716_000004_create_return_completion_operations`
+  through `m20260716_000006_create_return_completion_commands` on clean and
+  upgraded SQLite/PostgreSQL graphs, including rollback/reapply.
+- [ ] Execute duplicate replay, conflicting payload, concurrent admission/claim,
+  expired lease, process exit, and restart recovery after refund, order-change,
+  and owner return-completion checkpoints.
+- [ ] Publish explicit operator reconciliation-resolution commands; automatic
+  retry must remain forbidden for `reconciliation_required`.
 - [ ] Execute the complete provider-consumer graph with retained runtime evidence.
 
 ## Checkout orchestration workstream
@@ -146,15 +158,87 @@ Checkout and post-order evidence:
 - `crates/rustok-commerce/src/services/fulfillment_orchestration_facade.rs`
 - `crates/rustok-commerce/src/services/order_change_orchestration.rs`
 - `crates/rustok-commerce/src/entities/return_completion_operation.rs`
+- `crates/rustok-commerce/src/entities/return_completion_command.rs`
 - `crates/rustok-commerce/src/services/return_completion_operation.rs`
 - `crates/rustok-commerce/src/services/return_completion_orchestration.rs`
+- `crates/rustok-commerce/src/services/return_completion_recovery.rs`
 - `crates/rustok-commerce/src/migrations/m20260716_000004_create_return_completion_operations.rs`
+- `crates/rustok-commerce/src/migrations/m20260716_000005_enforce_return_completion_resolution_identity.rs`
+- `crates/rustok-commerce/src/migrations/m20260716_000006_create_return_completion_commands.rs`
+- `crates/rustok-commerce/src/controllers/return_completion_operations.rs`
 - `crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs`
 - `apps/server/tests/commerce_fulfillment_transport_guard.rs`
 - `apps/server/tests/commerce_order_change_transport_guard.rs`
 - `apps/server/tests/commerce_return_completion_transport_guard.rs`
 - `scripts/verify/verify-commerce-admin-boundary.mjs`
 - `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`
+
+## Marketplace foundation gate
+
+Marketplace owner-domain implementation may start now. It does not wait for all
+production evidence above, but it must not weaken checkout/payment/return
+boundaries or be promoted as production-ready before those evidence gates close.
+
+### Seller and membership
+
+- [ ] Create `rustok-seller` as the owner of seller identity, legal/display profile,
+  onboarding state, suspension state, and seller lifecycle transitions.
+- [ ] Add seller memberships with immutable seller scope, roles, invitation state,
+  and tenant isolation; integrate permissions without encoding seller policy in
+  `rustok-commerce`.
+- [ ] Publish seller admin/portal read and command ports with deadline,
+  authorization, and idempotency contracts.
+- [ ] Add seller onboarding review/audit events; keep KYC provider details behind a
+  provider SPI and store only normalized verification facts.
+
+### Master catalog and offers
+
+- [ ] Create `rustok-offer` as the owner of seller offers linked to product-owned
+  master products/variants; do not fork canonical product content into seller
+  tables.
+- [ ] Model offer status, seller SKU, price reference, inventory reference,
+  fulfillment profile, market/channel visibility, publication, and approval.
+- [ ] Enforce one active seller offer identity per seller/master variant/market
+  scope while allowing versioned commercial terms.
+- [ ] Publish deterministic offer eligibility and selection projections for cart,
+  pricing, inventory, search, and storefront consumers.
+- [ ] Add product matching/approval workflows before automatic EAN/GTIN matching,
+  deduplication, or buy-box ranking.
+
+### Marketplace order ownership
+
+- [ ] Introduce durable order groups and seller allocations without duplicating the
+  customer order aggregate.
+- [ ] Snapshot seller, offer, commission policy, fulfillment ownership, and monetary
+  allocation on order lines at checkout.
+- [ ] Route seller-specific fulfillment, cancellation, return, claim, and refund
+  decisions through commerce orchestration and owner commands.
+- [ ] Prevent one seller's lifecycle operation from mutating another seller's
+  allocation or financial state.
+
+### Commission, ledger, and payout
+
+- [ ] Create `rustok-commission` with versioned policies and deterministic
+  calculation explanations; snapshot the applied policy/result on order
+  allocations.
+- [ ] Create an immutable double-entry `rustok-ledger` before implementing balances
+  or payouts.
+- [ ] Derive pending, available, reserved, disputed, and paid seller balances only
+  from ledger entries.
+- [ ] Create `rustok-payout` with idempotent payout journals, provider SPI,
+  retries, reconciliation, reversals, and operator audit.
+- [ ] Keep split-payment provider capabilities optional; internal allocation and
+  ledger correctness must not depend on a specific PSP.
+
+### Marketplace surfaces and advanced capabilities
+
+- [ ] Build vendor portal and platform-admin transports over seller/offer/order/
+  ledger/payout owner APIs; UI must not own marketplace policy.
+- [ ] Add storefront multi-seller offer display and deterministic selection before
+  implementing buy-box ranking.
+- [ ] Add multi-channel stock sync, KYC adapters, automated catalog matching, and
+  PSP split payouts only after the corresponding owner contracts and recovery
+  journals are proven.
 
 ## Payment workstream
 
@@ -301,11 +385,9 @@ Payment evidence:
 - [ ] Complete promotion/coupon ownership and adjustment attribution.
 - [ ] Introduce explicit market/store configuration contracts.
 - [ ] Complete return, exchange, claim, cancellation, refund, and fulfillment
-  orchestration with durable identities.
-- [ ] Introduce seller, offer, commission, and settlement bounded contexts.
-- [ ] Build immutable double-entry ledger before payouts.
-- [ ] Derive balances and payout eligibility from ledger entries.
-- [ ] Implement payout journals, retries, reconciliation, and audit evidence.
+  runtime evidence with durable identities.
+- [ ] Execute the marketplace foundation gate in the order seller, membership,
+  offer, order allocation, commission, ledger, payout, and surfaces.
 
 ## Verification and promotion checklist
 
@@ -332,7 +414,7 @@ Source inspection is not execution evidence.
 - [ ] `cargo check -p rustok-server --features payment-stripe,mod-commerce`
 - [ ] `cargo xtask module test commerce`
 - [ ] `cargo xtask module test payment`
-- [ ] Targeted checkout, return-completion journal, refund identity,
+- [ ] Targeted checkout, return-completion journal/command inbox, refund identity,
   provider-operation, provider-event, replay, recovery, and lifecycle tests.
 - [ ] Stripe feature tests.
 
@@ -352,18 +434,29 @@ Source inspection is not execution evidence.
 
 ## Immediate execution order
 
-1. [x] Update the GraphQL runtime parity refund helper with `idempotencyKey`.
-2. [ ] Run static ecommerce/payment verifiers and fix remaining drift.
-3. [ ] Run commerce, payment, Stripe-feature, and server compile checks.
-4. [ ] Run clean SQLite migrations and targeted regression tests, including
-   return-completion replay and rollback/reapply.
-5. [ ] Run PostgreSQL contention, restart, and kill-point scenarios for checkout,
+The capability and evidence tracks now proceed in parallel. Marketplace source
+work must not wait for every external-adapter proof, and evidence work must not be
+abandoned while marketplace capabilities are added.
+
+1. [x] Add immutable return-completion command snapshots, atomic command/operation
+   admission, and tenant-scoped operator list/show/retry routes.
+2. [ ] Create `rustok-seller` with seller lifecycle and memberships.
+3. [ ] Create `rustok-offer` with master-product linkage, approval, visibility, and
+   deterministic eligibility projections.
+4. [ ] Run static ecommerce/payment verifiers and fix remaining drift.
+5. [ ] Run commerce, payment, Stripe-feature, and server compile checks.
+6. [ ] Run clean SQLite migrations and targeted regression tests, including
+   return-completion command replay and rollback/reapply.
+7. [ ] Run PostgreSQL contention, restart, and kill-point scenarios for checkout,
    return completion, payment operations, and webhook recovery.
-6. [ ] Execute deployment secret resolution and the Stripe adapter against a
-   production-like endpoint.
-7. [ ] Run mounted HTTP and background-worker recovery scenarios.
-8. [ ] Integrate and execute an approved carrier adapter.
-9. [ ] Reassess FFA/FBA promotion from retained evidence.
+8. [ ] Introduce seller order allocations and commission snapshots only after the
+   seller/offer contracts are source-guarded.
+9. [ ] Build the double-entry ledger before payout commands or balances.
+10. [ ] Execute deployment secret resolution and the Stripe adapter against a
+    production-like endpoint.
+11. [ ] Run mounted HTTP and background-worker recovery scenarios.
+12. [ ] Integrate and execute an approved carrier adapter.
+13. [ ] Reassess FFA/FBA promotion from retained evidence.
 
 ## Change rules
 
