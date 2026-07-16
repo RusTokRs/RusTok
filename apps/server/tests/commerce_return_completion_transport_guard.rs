@@ -97,6 +97,9 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
     let migration = include_str!(
         "../../../crates/rustok-commerce/src/migrations/m20260716_000004_create_return_completion_operations.rs"
     );
+    let resolution_identity_migration = include_str!(
+        "../../../crates/rustok-commerce/src/migrations/m20260716_000005_enforce_return_completion_resolution_identity.rs"
+    );
     let journal = include_str!(
         "../../../crates/rustok-commerce/src/services/return_completion_operation.rs"
     );
@@ -113,10 +116,21 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
         "reconciliation_required",
         "resolution_created",
         "return_completed",
+        "DROP FUNCTION IF EXISTS enforce_return_completion_operation_integrity() CASCADE",
     ] {
         assert!(
             migration.contains(marker),
             "return completion migration is missing invariant {marker}"
+        );
+    }
+    for marker in [
+        "ck_return_completion_operations_resolution_identity",
+        "stage <> 'resolution_created'",
+        "return completion resolution identity is required",
+    ] {
+        assert!(
+            resolution_identity_migration.contains(marker),
+            "return completion resolution identity migration is missing invariant {marker}"
         );
     }
     for marker in [
@@ -142,6 +156,10 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
         "operation.order_change_id",
         "FailureDisposition::Reconciliation",
         "mark_reconciliation_required(",
+        "validate_explicit_resolution_links(",
+        "is not attached to order",
+        "without a refund identity",
+        "without an order-change identity",
     ] {
         assert!(
             orchestration.contains(marker),
