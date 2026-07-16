@@ -90,12 +90,17 @@ impl TenantLocaleGenerationListener {
 
         match self.tracker.observe(&event) {
             CacheInvalidationObservation::InOrder { generation } => {
-                let tenant_id = Uuid::parse_str(event.key.trim()).map_err(|_| {
-                    Error::Validation(
-                        "tenant locale generation key must contain a tenant UUID".to_string(),
-                    )
-                })?;
-                invalidate_tenant_locale_cache(&self.ctx, tenant_id).await;
+                if event.key == "*" {
+                    invalidate_all_tenant_locale_cache(&self.ctx).await;
+                } else {
+                    let tenant_id = Uuid::parse_str(event.key.trim()).map_err(|_| {
+                        Error::Validation(
+                            "tenant locale generation key must contain a tenant UUID or *"
+                                .to_string(),
+                        )
+                    })?;
+                    invalidate_tenant_locale_cache(&self.ctx, tenant_id).await;
+                }
                 acknowledge_locale_applied(&self.tracker, generation)?;
             }
             CacheInvalidationObservation::Duplicate { .. }
