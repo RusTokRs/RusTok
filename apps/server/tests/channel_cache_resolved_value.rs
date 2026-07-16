@@ -7,9 +7,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use rustok_channel::{
-    entities::channel, ChannelService, CreateChannelInput,
-};
+use rustok_channel::{entities::channel, ChannelService, CreateChannelInput};
 use rustok_migrations::Migrator;
 use rustok_server::{
     common::settings::RustokSettings,
@@ -40,9 +38,7 @@ fn settings_with_redis(url: &str) -> RustokSettings {
     settings
 }
 
-async fn insert_tenant(
-    db: &sea_orm::DatabaseConnection,
-) -> tenants::Model {
+async fn insert_tenant(db: &sea_orm::DatabaseConnection) -> tenants::Model {
     let now = chrono::Utc::now();
     let slug = format!("channel-cache-{}", Uuid::new_v4());
     tenants::ActiveModel {
@@ -139,7 +135,9 @@ async fn redis_invalidation_refreshes_remote_resolved_channel_value_before_poll(
 
     let app_b = channel_router(ctx_b);
     assert_eq!(
-        request_channel_name(&app_b, &tenant_context).await.as_deref(),
+        request_channel_name(&app_b, &tenant_context)
+            .await
+            .as_deref(),
         Some("Before invalidation")
     );
 
@@ -158,7 +156,9 @@ async fn redis_invalidation_refreshes_remote_resolved_channel_value_before_poll(
     tokio::time::timeout(Duration::from_secs(3), async {
         loop {
             publish_channel_resolution_invalidation(&ctx_a, tenant.id).await;
-            if request_channel_name(&app_b, &tenant_context).await.as_deref()
+            if request_channel_name(&app_b, &tenant_context)
+                .await
+                .as_deref()
                 == Some("After invalidation")
             {
                 return;
