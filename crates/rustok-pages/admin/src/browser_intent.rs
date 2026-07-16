@@ -2,17 +2,18 @@ use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::core;
 use crate::transport;
 use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL_V1};
-use fly_ui::UiIntent;
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PublishPageBuilderResult,
 };
 use rustok_page_builder_admin::{
     dispatch_browser_intent, AdminCanvasController, BrowserIntentDispatchError,
-    BrowserIntentDispatchResult, BrowserIntentEffect, PageBuilderAdminFacade,
-    PageBuilderAdminFacadeError,
+    BrowserIntentDispatchResult, BrowserIntentEffect, InMemorySsrDraftSessionStore,
+    PageBuilderAdminFacade, PageBuilderAdminFacadeError, SsrDraftSessionError,
+    SsrDraftSessionStore,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PagesBrowserIntentResponse {
@@ -20,16 +21,35 @@ pub struct PagesBrowserIntentResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persistence: Option<PageBuilderCapabilityResponse>,
     pub reload: bool,
+    pub draft_token: String,
+    pub draft_generation: u64,
+}
+
+pub fn pages_browser_draft_store() -> &'static InMemorySsrDraftSessionStore {
+    static STORE: OnceLock<InMemorySsrDraftSessionStore> = OnceLock::new();
+    STORE.get_or_init(InMemorySsrDraftSessionStore::editor_default)
 }
 
 pub async fn dispatch_pages_browser_intent(
     snapshot: PagesBuilderSaveSnapshot,
     envelope: BrowserIntentEnvelope,
 ) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
+    dispatch_pages_browser_intent_with_store(snapshot, envelope, pages_browser_draft_store()).await
+}
+
+pub async fn dispatch_pages_browser_intent_with_store(
+    snapshot: PagesBuilderSaveSnapshot,
+    envelope: BrowserIntentEnvelope,
+    draft_store: &dyn SsrDraftSessionStore,
+) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
     let envelope = envelope
         .normalized()
         .map_err(BrowserIntentDispatchError::from)?;
-    if envelope.page_id.as_deref().is_some_and(|page_id| page_id != snapshot.page_id) {
+    if envelope
+        .page_id
+        .as_deref()
+        .is_some_and(|page_id| page_id != snapshot.page_id)
+    {
         return Err(PagesBrowserIntentError::PageMismatch {
             expected: snapshot.page_id,
             actual: envelope.page_id.unwrap_or_default(),
@@ -43,15 +63,44 @@ pub async fn dispatch_pages_browser_intent(
     )
     .await?
     .ok_or(PagesBrowserIntentError::PageNotFound)?;
-    let revision_id = builder::page_revision(&page);
-    let seed = core::edit_form_seed_from_page(&page, &snapshot.default_locale);
-    let mut controller = builder::controller_from_project(
-        &page.id,
-        &revision_id,
-        &seed.project_data_text,
-    )?;
+    let persisted_revision = builder::page_revision(&page);
 
-    apply_selection_hint(&mut controller, &envelope.payload)?;
+    let loaded_session = match envelope.draft_token.as_deref() {
+        Some(token) => draft_store.load(token, &snapshot.page_id)?,
+        None => None,
+    };
+    if let (Some(expected), Some(session)) = (envelope.draft_generation, loaded_session.as_ref()) {
+        if expected != session.generation {
+            return Err(PagesBrowserIntentError::Draft(
+                SsrDraftSessionError::GenerationConflict {
+                    expected: session.generation,
+                    actual: expected,
+                },
+            ));
+        }
+    }
+
+    let (mut controller, session_token, session_generation) = match loaded_session {
+        Some(session) if session.controller.revision_id() == persisted_revision => (
+            session.controller,
+            Some(session.token),
+            Some(session.generation),
+        ),
+        Some(session) => {
+            draft_store.remove(&session.token)?;
+            (
+                controller_from_page(&page, &persisted_revision, &snapshot.default_locale)?,
+                None,
+                None,
+            )
+        }
+        None => (
+            controller_from_page(&page, &persisted_revision, &snapshot.default_locale)?,
+            None,
+            None,
+        ),
+    };
+
     let mut result = dispatch_browser_intent(&mut controller, envelope.clone())?;
     let mut requests = request_effects(&result);
 
@@ -63,8 +112,10 @@ pub async fn dispatch_pages_browser_intent(
             payload: json!({}),
             sequence: envelope.sequence.map(|sequence| sequence.saturating_add(1)),
             page_id: Some(snapshot.page_id.clone()),
-            revision: Some(revision_id.clone()),
+            revision: Some(controller.revision_id().to_string()),
             project_hash: Some(controller.editor().revision().project_hash.hex()),
+            draft_token: session_token.clone(),
+            draft_generation: session_generation,
         };
         let save_result = dispatch_browser_intent(&mut controller, save)?;
         requests = request_effects(&save_result);
@@ -86,16 +137,35 @@ pub async fn dispatch_pages_browser_intent(
             result.dirty = false;
             result.project_hash = controller.editor().revision().project_hash.hex();
             result.command_sequence = controller.editor().revision().command_sequence;
-            result.project_data = fly::GrapesJsV1Codec::encode_value(controller.editor().document())?;
+            result.project_data =
+                fly::GrapesJsV1Codec::encode_value(controller.editor().document())?;
         }
         persistence = Some(response);
     }
+
+    let committed = draft_store.commit(
+        session_token.as_deref(),
+        session_generation,
+        controller,
+    )?;
 
     Ok(PagesBrowserIntentResponse {
         reload: envelope.is_mutating(),
         result,
         persistence,
+        draft_token: committed.token,
+        draft_generation: committed.generation,
     })
+}
+
+fn controller_from_page(
+    page: &crate::model::PageDetail,
+    revision_id: &str,
+    default_locale: &str,
+) -> Result<AdminCanvasController, PagesBrowserIntentError> {
+    let seed = core::edit_form_seed_from_page(page, default_locale);
+    builder::controller_from_project(&page.id, revision_id, &seed.project_data_text)
+        .map_err(PagesBrowserIntentError::from)
 }
 
 fn request_effects(result: &BrowserIntentDispatchResult) -> Vec<PageBuilderCapabilityRequest> {
@@ -109,22 +179,6 @@ fn request_effects(result: &BrowserIntentDispatchResult) -> Vec<PageBuilderCapab
         .collect()
 }
 
-fn apply_selection_hint(
-    controller: &mut AdminCanvasController,
-    payload: &Value,
-) -> Result<(), PagesBrowserIntentError> {
-    let Some(component_id) = payload
-        .get("selected_component_id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|component_id| !component_id.is_empty())
-    else {
-        return Ok(());
-    };
-    controller.dispatch(UiIntent::Select(Some(component_id.to_string())))?;
-    Ok(())
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum PagesBrowserIntentError {
     #[error("Pages document was not found")]
@@ -133,6 +187,8 @@ pub enum PagesBrowserIntentError {
     PageMismatch { expected: String, actual: String },
     #[error(transparent)]
     Dispatch(#[from] BrowserIntentDispatchError),
+    #[error(transparent)]
+    Draft(#[from] SsrDraftSessionError),
     #[error(transparent)]
     Facade(#[from] PageBuilderAdminFacadeError),
     #[error(transparent)]
