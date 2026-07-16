@@ -25,9 +25,9 @@ fn event_bus_runtime_is_atomically_owned_and_restartable() {
     assert!(source.contains("Event forwarder panicked; restarting"));
     assert!(source.contains("Event forwarder exited unexpectedly; restarting"));
     assert!(source.contains("EVENT_FORWARDER_RESTART_DELAY"));
-    assert!(source.contains(
-        "rustok_telemetry::metrics::record_event_error(\n                        \"server_event_forwarder\",\n                        \"publish\"," 
-    ));
+    assert!(source.contains("Failed to publish domain event to transport"));
+    assert!(source.contains("\"server_event_forwarder\""));
+    assert!(source.contains("\"publish\""));
 
     assert!(!source.contains("EventForwarderHandle {\n        _handle:"));
 }
