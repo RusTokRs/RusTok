@@ -19,8 +19,11 @@ async fn main() {
     };
     use leptos::logging::log;
     use leptos::prelude::*;
+    use leptos_auth::provide_server_auth_snapshot;
     use leptos_axum::{generate_route_list, LeptosRoutes};
-    use rustok_admin::app::{shell, App};
+    use rustok_admin::app::{
+        auth_ssr::auth_snapshot_from_headers, request_auth_snapshot, shell, App,
+    };
     use rustok_pages_admin::{
         dispatch_pages_browser_intent, BrowserIntentEnvelope, PagesBrowserIntentError,
         PagesBrowserIntentResponse, PagesBuilderSaveSnapshot,
@@ -32,8 +35,12 @@ async fn main() {
         headers: HeaderMap,
         Json(envelope): Json<BrowserIntentEnvelope>,
     ) -> Result<Json<PagesBrowserIntentResponse>, (StatusCode, Json<Value>)> {
-        let token = bearer_token(&headers).or_else(|| compatibility_token(&headers));
-        let tenant_slug = header_value(&headers, "x-tenant-slug");
+        let auth = auth_snapshot_from_headers(&headers);
+        let token = bearer_token(&headers)
+            .or_else(|| compatibility_token(&headers))
+            .or_else(|| auth.session.as_ref().map(|session| session.token.clone()));
+        let tenant_slug = header_value(&headers, "x-tenant-slug")
+            .or_else(|| auth.session.map(|session| session.tenant));
         let default_locale = header_value(&headers, "accept-language")
             .and_then(|language| language.split(',').next().map(str::to_string))
             .unwrap_or_else(|| "en".to_string());
@@ -110,10 +117,15 @@ async fn main() {
             "/api/admin/pages/{page_id}/builder/intents",
             post(page_builder_intent),
         )
-        .leptos_routes(&options, routes, {
-            let options = options.clone();
-            move || shell(options.clone())
-        })
+        .leptos_routes_with_context(
+            &options,
+            routes,
+            || provide_server_auth_snapshot(request_auth_snapshot()),
+            {
+                let options = options.clone();
+                move || shell(options.clone())
+            },
+        )
         .fallback(leptos_axum::file_and_error_handler(shell))
         .with_state(options);
 
