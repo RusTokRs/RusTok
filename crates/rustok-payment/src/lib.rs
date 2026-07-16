@@ -18,11 +18,15 @@ pub mod ports;
 pub mod provider_event_recovery_controller;
 pub mod providers;
 pub mod services;
+#[cfg(feature = "stripe")]
+pub mod stripe_provider;
 
 pub use dto::*;
 pub use entities::*;
 pub use ports::*;
 pub use providers::*;
+#[cfg(feature = "stripe")]
+pub use stripe_provider::*;
 
 pub use error::{PaymentError, PaymentResult};
 pub use services::{
