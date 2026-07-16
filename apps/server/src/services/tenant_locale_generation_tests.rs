@@ -82,8 +82,8 @@ async fn insert_locale(
         locale,
         locale,
         locale,
-        i32::from(is_default),
-        i32::from(is_enabled),
+        u8::from(is_default),
+        u8::from(is_enabled),
     ))
     .await
     .expect("tenant locale should insert");
@@ -290,21 +290,50 @@ async fn wait_for_redis_subscribers(url: &str, expected: usize) {
     .unwrap_or_else(|_| panic!("Redis did not restore {expected} tenant locale subscribers"));
 }
 
-async fn restore_shared_generation(url: &str, generation: u64) {
+fn shared_generation_key() -> String {
     let digest = Sha256::digest(TENANT_CACHE_BACKEND_PREFIX.as_bytes());
-    let key = format!("rustok:cache-generation:v1:{}", hex::encode(digest));
-    let client = redis::Client::open(url).expect("Redis URL should be valid");
-    let mut connection = client
+    format!("rustok:cache-generation:v1:{}", hex::encode(digest))
+}
+
+async fn redis_generation_connection(url: &str) -> redis::aio::MultiplexedConnection {
+    redis::Client::open(url)
+        .expect("Redis URL should be valid")
         .get_multiplexed_async_connection()
         .await
-        .expect("Redis generation restore connection should open");
+        .expect("Redis generation fixture connection should open")
+}
+
+async fn restore_shared_generation(url: &str, generation: u64) {
+    let mut connection = redis_generation_connection(url).await;
     let reply = redis::cmd("SET")
-        .arg(key)
+        .arg(shared_generation_key())
         .arg(generation)
         .query_async::<String>(&mut connection)
         .await
         .expect("tenant cache generation should be restored");
     assert_eq!(reply, "OK");
+}
+
+async fn align_shared_generation(url: &str) -> u64 {
+    let snapshot = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
+        .expect("process tenant generation snapshot should be readable");
+    let process_generation = snapshot.trusted.then_some(snapshot.generation).unwrap_or(0);
+    let mut connection = redis_generation_connection(url).await;
+    let shared_generation = redis::cmd("GET")
+        .arg(shared_generation_key())
+        .query_async::<Option<u64>>(&mut connection)
+        .await
+        .expect("shared tenant generation should be readable")
+        .unwrap_or(0);
+    let baseline = process_generation.max(shared_generation);
+    let reply = redis::cmd("SET")
+        .arg(shared_generation_key())
+        .arg(baseline)
+        .query_async::<String>(&mut connection)
+        .await
+        .expect("shared tenant generation should align");
+    assert_eq!(reply, "OK");
+    baseline
 }
 
 #[tokio::test]
@@ -426,6 +455,7 @@ async fn deterministic_local_lag_recovers_two_replica_locale_values() {
 async fn missed_redis_publication_recovers_remote_locale_via_periodic_generation() {
     let url = std::env::var("RUSTOK_CACHE_REAL_REDIS_URL")
         .expect("RUSTOK_CACHE_REAL_REDIS_URL must point to an isolated Redis instance");
+    let _baseline = align_shared_generation(url.as_str()).await;
     let db = rustok_test_utils::db::setup_test_db_with_migrations::<Migrator>().await;
     let tenant = insert_tenant(&db, "Tenant locale periodic").await;
     insert_locale(&db, tenant.id, "en", true, true).await;
@@ -469,6 +499,7 @@ async fn redis_restart_fails_closed_until_generation_is_restored() {
     let port = reserve_loopback_port();
     let url = format!("redis://127.0.0.1:{port}/");
     let mut redis_process = spawn_redis(binary.as_str(), port).await;
+    let _baseline = align_shared_generation(url.as_str()).await;
 
     let db = rustok_test_utils::db::setup_test_db_with_migrations::<Migrator>().await;
     let tenant = insert_tenant(&db, "Tenant locale reconnect").await;
