@@ -125,6 +125,8 @@ impl BrowserIntentEnvelope {
                 | "create_page"
                 | "rename_page"
                 | "remove_page"
+                | "upsert_translation"
+                | "remove_translation"
                 | "set_runtime_context"
                 | "set_runtime_locale"
                 | "undo"
@@ -279,6 +281,8 @@ mod tests {
             "create_page",
             "rename_page",
             "remove_page",
+            "upsert_translation",
+            "remove_translation",
             "set_runtime_context",
             "set_runtime_locale",
             "undo",
