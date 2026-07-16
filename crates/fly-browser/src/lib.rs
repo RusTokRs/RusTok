@@ -127,6 +127,8 @@ impl BrowserIntentEnvelope {
                 | "remove_page"
                 | "upsert_translation"
                 | "remove_translation"
+                | "set_locale_policy"
+                | "clear_locale_policy"
                 | "set_runtime_context"
                 | "set_runtime_locale"
                 | "undo"
@@ -283,6 +285,8 @@ mod tests {
             "remove_page",
             "upsert_translation",
             "remove_translation",
+            "set_locale_policy",
+            "clear_locale_policy",
             "set_runtime_context",
             "set_runtime_locale",
             "undo",
