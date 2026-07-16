@@ -42,7 +42,9 @@ fn channel_cache_generations_are_bounded_and_fail_safe() {
     }
 
     assert!(!channel.contains("wrapping_add"));
-    assert!(!channel.contains("tenant_versions: Arc<RwLock<HashMap<Uuid, u64>>>") );
+    assert!(!channel.contains(
+        "tenant_versions: Arc<RwLock<HashMap<Uuid, u64>>>"
+    ));
     let exhaustion = channel
         .find("self.exhausted = true;")
         .expect("version exhaustion must be explicit");
@@ -110,10 +112,14 @@ fn durable_channel_generation_is_database_owned_and_supervised() {
     let migration = source(
         "crates/rustok-channel/src/migrations/m20260716_000009_create_channel_resolution_invalidation_state.rs",
     );
+    let migration_registry = source("crates/rustok-channel/src/migrations/mod.rs");
     let runtime = source("apps/server/src/services/channel_cache_invalidation.rs");
     let bootstrap = source("apps/server/src/services/server_bootstrap.rs");
     let guardrails = source("apps/server/src/services/runtime_guardrails.rs");
 
+    assert!(migration_registry.contains(
+        "m20260716_000009_create_channel_resolution_invalidation_state"
+    ));
     for table in [
         "channels",
         "channel_targets",
