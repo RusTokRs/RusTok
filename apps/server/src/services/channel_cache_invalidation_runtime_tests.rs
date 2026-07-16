@@ -38,6 +38,12 @@ fn invalidation_message(generation: u64) -> CacheInvalidationMessage {
     .unwrap()
 }
 
+fn settings_with_redis(url: &str) -> RustokSettings {
+    let mut settings = RustokSettings::default();
+    settings.cache.redis_url = Some(url.to_string());
+    settings
+}
+
 async fn wait_for_readiness(handle: &ChannelCacheInvalidationListenerHandle, expected: bool) {
     tokio::time::timeout(Duration::from_secs(1), async {
         while handle.is_ready() != expected {
@@ -53,6 +59,28 @@ async fn publish_local(cache: &CacheService, generation: u64) {
         .publish_invalidation(invalidation_message(generation))
         .await;
     assert_eq!(outcome.local_subscribers, 1);
+}
+
+async fn publish_redis_until_readiness(
+    cache: &CacheService,
+    remote: &ChannelCacheInvalidationListenerHandle,
+    expected: bool,
+    generation: u64,
+) {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let outcome = cache
+                .publish_invalidation(invalidation_message(generation))
+                .await;
+            assert!(outcome.redis_published);
+            if remote.is_ready() == expected {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("remote replica did not consume the Redis invalidation before periodic reconciliation");
 }
 
 #[tokio::test]
@@ -96,4 +124,40 @@ async fn independent_replicas_fail_closed_and_recover_without_redis() {
     publish_local(&cache_b, 2).await;
     wait_for_readiness(&handle_a, true).await;
     wait_for_readiness(&handle_b, true).await;
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated Redis instance via RUSTOK_CACHE_REAL_REDIS_URL"]
+async fn redis_publication_drives_remote_replica_readiness_recovery() {
+    let url = std::env::var("RUSTOK_CACHE_REAL_REDIS_URL")
+        .expect("RUSTOK_CACHE_REAL_REDIS_URL must point to an isolated Redis instance");
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    install_generation_state(&db, 1).await;
+
+    let ctx_a = ServerRuntimeContext::new(db.clone(), settings_with_redis(url.as_str()));
+    let ctx_b = ServerRuntimeContext::new(db.clone(), settings_with_redis(url.as_str()));
+    let cache_a = ensure_cache_service(&ctx_a);
+    let cache_b = ensure_cache_service(&ctx_b);
+    assert!(cache_a.redis_client_initialized());
+    assert!(cache_b.redis_client_initialized());
+
+    start_channel_cache_invalidation_listener(&ctx_a, cache_a.clone())
+        .await
+        .unwrap();
+    start_channel_cache_invalidation_listener(&ctx_b, cache_b)
+        .await
+        .unwrap();
+
+    let remote = ctx_b
+        .shared_get::<ChannelCacheInvalidationListenerHandle>()
+        .expect("remote replica listener handle");
+    assert!(remote.is_ready());
+
+    db.execute_unprepared("DROP TABLE channel_resolution_invalidation_state")
+        .await
+        .unwrap();
+    publish_redis_until_readiness(&cache_a, &remote, false, 2).await;
+
+    install_generation_state(&db, 2).await;
+    publish_redis_until_readiness(&cache_a, &remote, true, 2).await;
 }
