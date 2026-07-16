@@ -41,6 +41,9 @@ Last reconciled with `main`: 2026-07-16.
 - [x] Reject legacy URL-owned Redis/fallback construction from production wiring.
 - [x] Retain Redis 7 `CLIENT PAUSE` evidence proving the shared two-second operation deadline,
   immediate circuit-open rejection and successful half-open recovery after the latency clears.
+- [x] Retain a self-hosted Redis fixture that drives one shared backend and connection manager through
+  two stop/start cycles, requires fast open-circuit rejection on each outage and verifies health plus
+  cache operations after each recovery.
 
 ### 2. Bounded degraded fallback
 
@@ -53,6 +56,8 @@ Last reconciled with `main`: 2026-07-16.
   older shared value.
 - [x] Fail closed for fallback CAS while the shared primary is unavailable.
 - [x] Keep Redis degradation visible to health/readiness while eligible reads use bounded fallback.
+- [x] Retain a unit scenario where shared health is degraded while an eligible bounded local write is
+  still served.
 
 ### 3. Stampede, refresh and leases
 
@@ -82,6 +87,8 @@ Last reconciled with `main`: 2026-07-16.
 - [x] Use binary-safe Lua compare-and-write for Redis.
 - [x] Delegate CAS through fallback, weighted and observability wrappers without weakening atomicity.
 - [x] Publish stale refresh results through CAS and treat mismatch as a newer authoritative value.
+- [x] Wire the permanent compiled gate to the full local CAS integration suite: exactly-one-winner
+  contention, expired-entry non-revival, capacity eviction non-revival and 128 invalidate/CAS races.
 
 ### 6. Durable invalidation primitives
 
@@ -135,8 +142,10 @@ The detailed active-cache contract is maintained in
 - [x] Guard the channel workflow path scope, Channel/Flex Clippy commands, PostgreSQL job, full
   non-ignored resolved-value suite, combined lag/value lib test, live Redis readiness/resolved-value
   commands, self-hosted Redis restart setup and durable recovery sources from accidental removal.
-- [x] Guard the live Redis latency/circuit scenario and the production timeout/open-circuit markers
-  from accidental removal.
+- [x] Guard live Redis latency/circuit and two-restart scenarios plus the production
+  timeout/open-circuit markers from accidental removal.
+- [x] Guard the full local CAS command and expiry, eviction, contention and invalidation-race test
+  names from accidental narrowing.
 - [x] Guard Redis, generation, PubSub, refresh and CAS Prometheus alert metric names in
   `tests/alert_rules_guard.rs`.
 - [x] Publish operational alerts for Redis degradation, generation bump failure, PubSub failure,
@@ -157,8 +166,8 @@ The detailed active-cache contract is maintained in
 ### P0. Live and failure-recovery evidence
 
 - [ ] Execute the source-complete channel SQLite reader, two-server-runtime, listener-lag/value,
-  resolved-value, PostgreSQL 17, live Redis, latency/circuit and self-hosted Redis restart jobs on
-  the same revision and record their results.
+  resolved-value, PostgreSQL 17, live Redis, latency/circuit and repeated self-hosted Redis restart
+  jobs on the same revision and record their results.
 - [ ] Run ignored `rustok-cache` and `rustok-core` suites against isolated Redis 7.
 - [ ] Prove exact/wildcard tenant-locale recovery, listener lag handling and periodic generation
   reconciliation across multiple replicas.
@@ -167,9 +176,9 @@ The detailed active-cache contract is maintained in
   generation regression and critical readiness across multiple replicas.
 - [ ] Prove SEO seed-before-clear startup, exact tenant invalidation, multi-page catch-up, database
   outage recovery and terminal-worker readiness across multiple replicas.
-- [ ] Prove binary-safe CAS applied/mismatch/failure behavior and fail-closed fallback.
-- [ ] Add deterministic repeated-restart evidence beyond the single channel Redis restart cycle.
-- [ ] Confirm readiness remains degraded while bounded local fallback serves eligible reads.
+- [ ] Prove binary-safe CAS applied/mismatch/failure behavior and fail-closed fallback against live
+  Redis.
+- [ ] Execute and record the source-complete degraded-health plus eligible-local-read scenario.
 
 ### P1. Load, chaos and tuning evidence
 
@@ -187,7 +196,9 @@ The detailed active-cache contract is maintained in
 ### P2. Atomic local CAS execution evidence
 
 - [x] Local CAS implementation and source guard use Moka key-level entry compute.
-- [ ] Execute expiry, eviction and concurrent CAS stress coverage in the permanent gate.
+- [x] Permanent gate is wired to execute expiry, eviction, exactly-one-winner contention and
+  concurrent invalidation/CAS stress coverage.
+- [ ] Record a successful execution of the full local CAS suite on the verified revision.
 
 ## Verification commands
 
@@ -206,6 +217,7 @@ cargo test -p rustok-core cache --lib --features redis-cache
 cargo test -p rustok-core --test cache_atomic_backend_guard
 cargo test -p rustok-cache --lib
 cargo test -p rustok-cache --test alert_rules_guard
+cargo test -p rustok-cache --test atomic_cas
 cargo test -p rustok-cache --test invalidation_failure_metrics
 cargo test -p rustok-channel invalidation_generation --lib
 cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib
