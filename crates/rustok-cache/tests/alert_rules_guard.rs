@@ -66,3 +66,40 @@ fn cache_alerts_reference_metrics_exported_by_the_capability() {
     assert_eq!(alerts.matches("- alert: VerySlowRequestLatency").count(), 1);
     assert_eq!(alerts.matches("- alert: VerySlowDatabaseQueries").count(), 1);
 }
+
+#[test]
+fn live_redis_hardening_retains_latency_and_circuit_recovery() {
+    let evidence = include_str!("real_redis_hardening.rs");
+    let shared_backend = include_str!("../src/shared_backend.rs");
+
+    for required in [
+        "shared_backend_times_out_opens_circuit_and_recovers_after_latency",
+        "CLIENT",
+        "PAUSE",
+        ".arg(\"ALL\")",
+        "failure_threshold: 1",
+        "success_threshold: 1",
+        "timeout: Duration::from_millis(200)",
+        "shared Redis cache operation timed out after 2000 ms",
+        "Redis unavailable (circuit breaker open)",
+        "rejected_at.elapsed() < Duration::from_millis(250)",
+        "half-open Redis probe should recover after CLIENT PAUSE expires",
+    ] {
+        assert!(
+            evidence.contains(required),
+            "live Redis latency/circuit evidence must retain {required}"
+        );
+    }
+
+    for required in [
+        "SHARED_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2)",
+        "self.circuit_breaker",
+        "shared_redis_timeout(timeout",
+        "Redis unavailable (circuit breaker open)",
+    ] {
+        assert!(
+            shared_backend.contains(required),
+            "shared Redis backend must retain {required}"
+        );
+    }
+}
