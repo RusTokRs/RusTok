@@ -151,12 +151,26 @@ pub fn materialize_project_locale_context(
     };
 
     let mut diagnostics = Vec::new();
-    let requested_locale = context
+    let requested_source = context
         .get(RUNTIME_LOCALE_FIELD)
         .or_else(|| context.get("locale"))
         .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let requested_locale = requested_source
+        .as_deref()
         .and_then(normalize_locale_tag);
-    let mut active_locale = requested_locale.clone();
+    if let Some(source) = requested_source.as_deref() {
+        if requested_locale.is_none() {
+            diagnostics.push(locale_policy_diagnostic(
+                ValidationSeverity::Warning,
+                "runtime_locale_invalid",
+                format!("runtime locale `{source}` is invalid and was replaced by project policy"),
+            ));
+        }
+    }
+    let mut active_locale = requested_locale;
     let mut default_locale_applied = false;
     let mut unsupported_locale_replaced = false;
 
@@ -178,6 +192,7 @@ pub fn materialize_project_locale_context(
         default_locale_applied = true;
     }
 
+    context.remove("locale");
     match active_locale.as_deref() {
         Some(locale) => {
             context.insert(
@@ -190,9 +205,12 @@ pub fn materialize_project_locale_context(
         }
     }
 
-    let mut fallback_locales = context
+    let fallback_source = context
         .get(RUNTIME_FALLBACK_LOCALES_FIELD)
         .or_else(|| context.get("fallback_locales"))
+        .cloned();
+    let mut fallback_locales = fallback_source
+        .as_ref()
         .map(runtime_locale_list)
         .unwrap_or_default();
     fallback_locales.extend(policy.fallback_locales.iter().cloned());
@@ -208,6 +226,7 @@ pub fn materialize_project_locale_context(
             && seen.insert(locale.clone())
     });
     let fallback_locales_applied = fallback_locales.len();
+    context.remove("fallback_locales");
     if fallback_locales.is_empty() {
         context.remove(RUNTIME_FALLBACK_LOCALES_FIELD);
     } else {
@@ -376,9 +395,9 @@ fn runtime_locale_list(value: &Value) -> Vec<String> {
 }
 
 fn map_contains_locale(values: &Map<String, Value>, required_locale: &str) -> bool {
-    values.keys().any(|locale| {
-        normalize_locale_tag(locale).as_deref() == Some(required_locale)
-    })
+    values
+        .keys()
+        .any(|locale| normalize_locale_tag(locale).as_deref() == Some(required_locale))
 }
 
 fn locale_policy_diagnostic(
@@ -471,6 +490,49 @@ mod tests {
     }
 
     #[test]
+    fn legacy_locale_aliases_are_canonicalized() {
+        let document = document(json!({
+            "flyLocales": {
+                "supported_locales": ["en", "ru"]
+            },
+            "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
+        }));
+        let result = materialize_project_locale_context(
+            &document,
+            &json!({ "locale": "de", "fallback_locales": ["ru"] }),
+        );
+        assert!(result.context.get("locale").is_none());
+        assert!(result.context.get(RUNTIME_LOCALE_FIELD).is_none());
+        assert!(result.context.get("fallback_locales").is_none());
+        assert_eq!(
+            result.context[RUNTIME_FALLBACK_LOCALES_FIELD],
+            json!(["ru"])
+        );
+        assert!(result.unsupported_locale_replaced);
+    }
+
+    #[test]
+    fn invalid_runtime_locale_is_diagnosed_before_defaulting() {
+        let document = document(json!({
+            "flyLocales": {
+                "default_locale": "en",
+                "supported_locales": ["en", "ru"]
+            },
+            "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
+        }));
+        let result = materialize_project_locale_context(
+            &document,
+            &json!({ "$locale": "invalid locale" }),
+        );
+        assert_eq!(result.context[RUNTIME_LOCALE_FIELD], "en");
+        assert!(result.default_locale_applied);
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_locale_invalid"));
+    }
+
+    #[test]
     fn required_locale_coverage_is_warning_until_enforcement_is_enabled() {
         let mut document = document(json!({
             "flyLocales": {
@@ -526,8 +588,9 @@ mod tests {
         );
         assert_eq!(result.context[RUNTIME_LOCALE_FIELD], "en");
         assert!(result.unsupported_locale_replaced);
-        assert!(result.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "runtime_locale_unsupported"
-        }));
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_locale_unsupported"));
     }
 }
