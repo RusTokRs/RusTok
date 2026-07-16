@@ -7,7 +7,8 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use sha2::Sha256;
-use std::{str::FromStr, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
+use uuid::Uuid;
 
 use crate::{
     PaymentError, PaymentProvider, PaymentProviderCapabilities, PaymentProviderDescriptor,
@@ -20,26 +21,23 @@ const DEFAULT_STRIPE_API_BASE: &str = "https://api.stripe.com";
 const DEFAULT_WEBHOOK_TOLERANCE_SECONDS: i64 = 300;
 const MAX_STRIPE_ID_LENGTH: usize = 191;
 
-pub struct StripePaymentProviderConfig {
+#[derive(Clone)]
+pub struct StripeCredentials {
     pub secret_key: SecretString,
     pub webhook_secret: SecretString,
-    pub api_base: String,
-    pub webhook_tolerance_seconds: i64,
-    pub default_for_new_collections: bool,
 }
 
-impl StripePaymentProviderConfig {
-    pub fn new(secret_key: SecretString, webhook_secret: SecretString) -> Self {
-        Self {
+impl StripeCredentials {
+    pub fn new(secret_key: SecretString, webhook_secret: SecretString) -> PaymentResult<Self> {
+        let credentials = Self {
             secret_key,
             webhook_secret,
-            api_base: DEFAULT_STRIPE_API_BASE.to_string(),
-            webhook_tolerance_seconds: DEFAULT_WEBHOOK_TOLERANCE_SECONDS,
-            default_for_new_collections: false,
-        }
+        };
+        credentials.validate()?;
+        Ok(credentials)
     }
 
-    pub fn validate(&self) -> PaymentResult<()> {
+    fn validate(&self) -> PaymentResult<()> {
         if self.secret_key.expose_secret().trim().is_empty() {
             return Err(PaymentError::Validation(
                 "stripe secret key must not be empty".to_string(),
@@ -50,6 +48,64 @@ impl StripePaymentProviderConfig {
                 "stripe webhook secret must not be empty".to_string(),
             ));
         }
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait StripeCredentialProvider: Send + Sync {
+    async fn credentials_for_tenant(&self, tenant_id: Uuid) -> PaymentResult<StripeCredentials>;
+}
+
+/// Explicit static credential map for tests and local single-process profiles.
+/// Production hosts should resolve tenant-owned secret references instead.
+#[derive(Clone, Default)]
+pub struct StaticStripeCredentialProvider {
+    credentials: Arc<HashMap<Uuid, StripeCredentials>>,
+}
+
+impl StaticStripeCredentialProvider {
+    pub fn new(credentials: HashMap<Uuid, StripeCredentials>) -> Self {
+        Self {
+            credentials: Arc::new(credentials),
+        }
+    }
+
+    pub fn for_tenant(tenant_id: Uuid, credentials: StripeCredentials) -> Self {
+        Self::new(HashMap::from([(tenant_id, credentials)]))
+    }
+}
+
+#[async_trait]
+impl StripeCredentialProvider for StaticStripeCredentialProvider {
+    async fn credentials_for_tenant(&self, tenant_id: Uuid) -> PaymentResult<StripeCredentials> {
+        self.credentials.get(&tenant_id).cloned().ok_or_else(|| {
+            PaymentError::Validation(
+                "stripe credentials are not configured for this tenant".to_string(),
+            )
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct StripePaymentProviderConfig {
+    pub api_base: String,
+    pub webhook_tolerance_seconds: i64,
+    pub default_for_new_collections: bool,
+}
+
+impl Default for StripePaymentProviderConfig {
+    fn default() -> Self {
+        Self {
+            api_base: DEFAULT_STRIPE_API_BASE.to_string(),
+            webhook_tolerance_seconds: DEFAULT_WEBHOOK_TOLERANCE_SECONDS,
+            default_for_new_collections: false,
+        }
+    }
+}
+
+impl StripePaymentProviderConfig {
+    pub fn validate(&self) -> PaymentResult<()> {
         if !(1..=3600).contains(&self.webhook_tolerance_seconds) {
             return Err(PaymentError::Validation(
                 "stripe webhook tolerance must be between 1 and 3600 seconds".to_string(),
@@ -68,26 +124,28 @@ impl StripePaymentProviderConfig {
 #[derive(Clone)]
 pub struct StripePaymentProvider {
     client: Client,
-    config: Arc<StripePaymentProviderConfig>,
+    config: StripePaymentProviderConfig,
+    credentials: Arc<dyn StripeCredentialProvider>,
 }
 
 impl StripePaymentProvider {
-    pub fn new(config: StripePaymentProviderConfig) -> PaymentResult<Self> {
-        config.validate()?;
-        Ok(Self {
-            client: Client::new(),
-            config: Arc::new(config),
-        })
+    pub fn new(
+        config: StripePaymentProviderConfig,
+        credentials: Arc<dyn StripeCredentialProvider>,
+    ) -> PaymentResult<Self> {
+        Self::with_client(config, credentials, Client::new())
     }
 
     pub fn with_client(
         config: StripePaymentProviderConfig,
+        credentials: Arc<dyn StripeCredentialProvider>,
         client: Client,
     ) -> PaymentResult<Self> {
         config.validate()?;
         Ok(Self {
             client,
-            config: Arc::new(config),
+            config,
+            credentials,
         })
     }
 
@@ -95,8 +153,15 @@ impl StripePaymentProvider {
         format!("{}{}", self.config.api_base.trim_end_matches('/'), path)
     }
 
+    async fn resolve_credentials(&self, tenant_id: Uuid) -> PaymentResult<StripeCredentials> {
+        let credentials = self.credentials.credentials_for_tenant(tenant_id).await?;
+        credentials.validate()?;
+        Ok(credentials)
+    }
+
     async fn post_form<T: for<'de> Deserialize<'de>>(
         &self,
+        credentials: &StripeCredentials,
         path: &str,
         idempotency_key: Option<&str>,
         form: &[(String, String)],
@@ -104,7 +169,7 @@ impl StripePaymentProvider {
         let mut request = self
             .client
             .post(self.endpoint(path))
-            .bearer_auth(self.config.secret_key.expose_secret())
+            .bearer_auth(credentials.secret_key.expose_secret())
             .form(form);
         if let Some(key) = idempotency_key.map(str::trim).filter(|key| !key.is_empty()) {
             request = request.header("Idempotency-Key", key);
@@ -125,16 +190,24 @@ impl StripePaymentProvider {
         required_metadata_string(&request.metadata, "provider_payment_id")
     }
 
-    fn operation_metadata(request: &PaymentProviderOperationRequest) -> Value {
+    fn operation_metadata(
+        request: &PaymentProviderOperationRequest,
+        provider_payment_id: Option<&str>,
+    ) -> Value {
         json!({
             "stripe": {
                 "collection_id": request.collection_id,
                 "currency_code": request.currency_code.to_ascii_uppercase(),
+                "provider_payment_id": provider_payment_id,
             }
         })
     }
 
-    fn verify_webhook_signature(&self, request: &PaymentProviderWebhookRequest) -> PaymentResult<()> {
+    fn verify_webhook_signature(
+        &self,
+        credentials: &StripeCredentials,
+        request: &PaymentProviderWebhookRequest,
+    ) -> PaymentResult<()> {
         let signature = request
             .signature
             .as_deref()
@@ -155,7 +228,7 @@ impl StripePaymentProvider {
         signed_payload.extend_from_slice(&request.raw_payload);
         let verified = parsed.v1_signatures.iter().any(|signature| {
             let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(
-                self.config.webhook_secret.expose_secret().as_bytes(),
+                credentials.webhook_secret.expose_secret().as_bytes(),
             ) else {
                 return false;
             };
@@ -172,9 +245,10 @@ impl StripePaymentProvider {
 
     fn normalize_webhook(
         &self,
+        credentials: &StripeCredentials,
         request: &PaymentProviderWebhookRequest,
     ) -> PaymentResult<PaymentProviderWebhookResult> {
-        self.verify_webhook_signature(request)?;
+        self.verify_webhook_signature(credentials, request)?;
         let event: StripeEvent = serde_json::from_slice(&request.raw_payload).map_err(|_| {
             PaymentError::Validation("stripe webhook payload is not valid JSON".to_string())
         })?;
@@ -221,7 +295,10 @@ impl StripePaymentProvider {
         };
         let mut metadata = Map::new();
         metadata.insert(owner_key.to_string(), Value::String(owner_id));
-        metadata.insert("amount".to_string(), Value::String(amount.normalize().to_string()));
+        metadata.insert(
+            "amount".to_string(),
+            Value::String(amount.normalize().to_string()),
+        );
         metadata.insert("currency_code".to_string(), Value::String(currency));
         metadata.insert(
             "metadata".to_string(),
@@ -263,11 +340,15 @@ impl PaymentProvider for StripePaymentProvider {
         &self,
         request: PaymentProviderOperationRequest,
     ) -> PaymentResult<PaymentProviderOperationResult> {
+        let credentials = self.resolve_credentials(request.tenant_id).await?;
         let amount = to_minor_units(request.amount, request.currency_code.as_str())?;
         let payment_method = required_metadata_string(&request.metadata, "payment_method_id")?;
         let form = vec![
             ("amount".to_string(), amount.to_string()),
-            ("currency".to_string(), request.currency_code.to_ascii_lowercase()),
+            (
+                "currency".to_string(),
+                request.currency_code.to_ascii_lowercase(),
+            ),
             ("payment_method".to_string(), payment_method),
             ("confirm".to_string(), "true".to_string()),
             ("capture_method".to_string(), "manual".to_string()),
@@ -278,6 +359,7 @@ impl PaymentProvider for StripePaymentProvider {
         ];
         let intent: StripePaymentIntent = self
             .post_form(
+                &credentials,
                 "/v1/payment_intents",
                 request.idempotency_key.as_deref(),
                 form.as_slice(),
@@ -290,12 +372,13 @@ impl PaymentProvider for StripePaymentProvider {
             )));
         }
         let authorized_minor = intent.amount_capturable.max(intent.amount);
+        let provider_payment_id = intent.id.clone();
         Ok(PaymentProviderOperationResult {
             provider_id: STRIPE_PAYMENT_PROVIDER_ID.to_string(),
             external_reference: Some(intent.id),
             authorized_amount: from_minor_units(authorized_minor, intent.currency.as_str())?,
             captured_amount: Decimal::ZERO,
-            metadata: Self::operation_metadata(&request),
+            metadata: Self::operation_metadata(&request, Some(provider_payment_id.as_str())),
         })
     }
 
@@ -303,13 +386,16 @@ impl PaymentProvider for StripePaymentProvider {
         &self,
         request: PaymentProviderOperationRequest,
     ) -> PaymentResult<PaymentProviderOperationResult> {
+        let credentials = self.resolve_credentials(request.tenant_id).await?;
         let intent_id = Self::payment_intent_id(&request)?;
         validate_stripe_id(&intent_id, "payment intent id")?;
         let amount = to_minor_units(request.amount, request.currency_code.as_str())?;
         let form = vec![("amount_to_capture".to_string(), amount.to_string())];
+        let path = format!("/v1/payment_intents/{intent_id}/capture");
         let intent: StripePaymentIntent = self
             .post_form(
-                format!("/v1/payment_intents/{intent_id}/capture").as_str(),
+                &credentials,
+                path.as_str(),
                 request.idempotency_key.as_deref(),
                 form.as_slice(),
             )
@@ -322,10 +408,10 @@ impl PaymentProvider for StripePaymentProvider {
         }
         Ok(PaymentProviderOperationResult {
             provider_id: STRIPE_PAYMENT_PROVIDER_ID.to_string(),
-            external_reference: Some(intent.id),
+            external_reference: Some(intent.id.clone()),
             authorized_amount: request.amount,
             captured_amount: from_minor_units(intent.amount_received, intent.currency.as_str())?,
-            metadata: Self::operation_metadata(&request),
+            metadata: Self::operation_metadata(&request, Some(intent.id.as_str())),
         })
     }
 
@@ -333,12 +419,15 @@ impl PaymentProvider for StripePaymentProvider {
         &self,
         request: PaymentProviderOperationRequest,
     ) -> PaymentResult<PaymentProviderOperationResult> {
+        let credentials = self.resolve_credentials(request.tenant_id).await?;
         let intent_id = Self::payment_intent_id(&request)?;
         validate_stripe_id(&intent_id, "payment intent id")?;
         let form: Vec<(String, String)> = Vec::new();
+        let path = format!("/v1/payment_intents/{intent_id}/cancel");
         let intent: StripePaymentIntent = self
             .post_form(
-                format!("/v1/payment_intents/{intent_id}/cancel").as_str(),
+                &credentials,
+                path.as_str(),
                 request.idempotency_key.as_deref(),
                 form.as_slice(),
             )
@@ -351,10 +440,10 @@ impl PaymentProvider for StripePaymentProvider {
         }
         Ok(PaymentProviderOperationResult {
             provider_id: STRIPE_PAYMENT_PROVIDER_ID.to_string(),
-            external_reference: Some(intent.id),
+            external_reference: Some(intent.id.clone()),
             authorized_amount: Decimal::ZERO,
             captured_amount: Decimal::ZERO,
-            metadata: Self::operation_metadata(&request),
+            metadata: Self::operation_metadata(&request, Some(intent.id.as_str())),
         })
     }
 
@@ -362,6 +451,7 @@ impl PaymentProvider for StripePaymentProvider {
         &self,
         request: PaymentProviderOperationRequest,
     ) -> PaymentResult<PaymentProviderOperationResult> {
+        let credentials = self.resolve_credentials(request.tenant_id).await?;
         let intent_id = Self::payment_intent_id(&request)?;
         validate_stripe_id(&intent_id, "payment intent id")?;
         let refund_id = required_metadata_string(&request.metadata, "refund_id")?;
@@ -373,6 +463,7 @@ impl PaymentProvider for StripePaymentProvider {
         ];
         let refund: StripeRefund = self
             .post_form(
+                &credentials,
                 "/v1/refunds",
                 request.idempotency_key.as_deref(),
                 form.as_slice(),
@@ -388,7 +479,7 @@ impl PaymentProvider for StripePaymentProvider {
             external_reference: Some(refund.id),
             authorized_amount: Decimal::ZERO,
             captured_amount: Decimal::ZERO,
-            metadata: Self::operation_metadata(&request),
+            metadata: Self::operation_metadata(&request, Some(intent_id.as_str())),
         })
     }
 
@@ -396,7 +487,8 @@ impl PaymentProvider for StripePaymentProvider {
         &self,
         request: PaymentProviderWebhookRequest,
     ) -> PaymentResult<PaymentProviderWebhookResult> {
-        self.normalize_webhook(&request)
+        let credentials = self.resolve_credentials(request.tenant_id).await?;
+        self.normalize_webhook(&credentials, &request)
     }
 }
 
