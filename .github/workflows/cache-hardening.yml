@@ -218,6 +218,7 @@ jobs:
           cargo test -p rustok-channel invalidation_generation --lib
           cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib
           cargo test -p rustok-server --test cache_architecture_guard --test cache_legacy_fallback_guard --test cache_redis_monitor_architecture_guard --test cache_redis_status_architecture_guard --test cache_worker_guardrail_architecture_guard --test channel_cache_architecture_guard --test field_definition_cache_generation_guard --test field_definition_cache_runtime_guard --test generation_store_architecture_guard --test locale_cache_architecture_guard --test marketplace_cache_architecture_guard --test rate_limit_cache_runtime_guard --test seo_redirect_cache_reconciliation_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard --test tenant_locale_generation_guard
+          cargo test -p rustok-server --test channel_cache_resolved_value missed_publication_refreshes_remote_resolved_value_via_durable_poll
           cargo test -p rustok-server tenant_cache --lib
           cargo test -p rustok-server tenant_cache_generation --lib
           cargo test -p rustok-server tenant_generation_delivery_gate --lib
