@@ -100,6 +100,40 @@ function normalizedIntent(adapter, input) {
   };
 }
 
+function containsPoint(rect, point) {
+  const left = Number(rect?.left || 0);
+  const top = Number(rect?.top || 0);
+  const width = Number(rect?.width || 0);
+  const height = Number(rect?.height || 0);
+  return width >= 0 && height >= 0
+    && point.x >= left
+    && point.y >= top
+    && point.x <= left + width
+    && point.y <= top + height;
+}
+
+function dropPosition(rect, point) {
+  const height = Math.max(Number(rect.height || 0), 1);
+  const ratio = (point.y - Number(rect.top || 0)) / height;
+  if (ratio <= 0.24) return "before";
+  if (ratio >= 0.76) return "after";
+  return "inside";
+}
+
+function dropOverlayRect(rect, position) {
+  if (!rect || position === "inside") return rect;
+  const line = 4;
+  const top = position === "before"
+    ? Number(rect.top || 0) - line / 2
+    : Number(rect.top || 0) + Number(rect.height || 0) - line / 2;
+  return {
+    left: Number(rect.left || 0),
+    top,
+    width: Number(rect.width || 0),
+    height: line,
+  };
+}
+
 export class FlyBrowserAdapter {
   constructor(root, options = {}) {
     if (!(root instanceof Element)) throw new TypeError("Fly browser root must be an Element");
@@ -121,6 +155,8 @@ export class FlyBrowserAdapter {
     this.geometry = new Map();
     this.selectedId = null;
     this.hoveredId = null;
+    this.activeDrag = null;
+    this.activeDrop = null;
     this.zoom = 1;
     this.abortController = new AbortController();
     this.frameHost = this.iframe.parentElement || root;
@@ -193,6 +229,7 @@ export class FlyBrowserAdapter {
       case "viewport_changed":
         this.zoom = Number.isFinite(message.zoom) && message.zoom > 0 ? message.zoom : this.zoom;
         this.drawSelection();
+        this.drawDrop();
         break;
       case "geometry_snapshot":
         this.geometry.clear();
@@ -202,6 +239,7 @@ export class FlyBrowserAdapter {
           }
         }
         this.drawSelection();
+        this.drawDrop();
         break;
       case "focus_requested":
         this.selectedId = message.component_id || null;
@@ -215,11 +253,21 @@ export class FlyBrowserAdapter {
         this.hoveredId = message.component_id || null;
         this.drawSelection();
         break;
+      case "drag_moved":
+        this.updateDropCandidate(message.position);
+        break;
+      case "drop_requested":
+        void this.commitDrop(message.position);
+        break;
+      case "cancel_drag_requested":
+        this.cancelDrag();
+        break;
       case "teardown":
         this.root.dataset.flyCanvasConnected = "false";
         this.geometry.clear();
         this.selectedId = null;
         this.hoveredId = null;
+        this.cancelDrag();
         this.drawSelection();
         break;
       default:
@@ -234,19 +282,34 @@ export class FlyBrowserAdapter {
         const blockId = element.dataset.flyBlockId;
         if (!blockId) return;
         event.dataTransfer?.setData("application/x-fly-block", blockId);
-        this.emitIntent("begin_palette_drag", { block_id: blockId });
+        event.dataTransfer?.setData("text/plain", blockId);
+        this.activeDrag = { kind: "block", block_id: blockId };
+        this.activeDrop = null;
+        this.root.dataset.flyDragging = "block";
       }, { signal });
+      element.addEventListener("dragend", () => this.cancelDrag(), { signal });
     }
     for (const element of this.root.querySelectorAll("[data-fly-component-id]")) {
+      const componentId = element.dataset.flyComponentId;
       element.addEventListener("click", () => {
-        const componentId = element.dataset.flyComponentId || null;
-        this.selectedId = componentId;
+        this.selectedId = componentId || null;
         this.drawSelection();
         this.root.dispatchEvent(new CustomEvent("fly:select", {
           bubbles: true,
-          detail: { componentId, source: "ssr-control" },
+          detail: { componentId: this.selectedId, source: "ssr-control" },
         }));
       }, { signal });
+      element.setAttribute("draggable", "true");
+      element.addEventListener("dragstart", (event) => {
+        if (!componentId) return;
+        event.dataTransfer?.setData("application/x-fly-component", componentId);
+        event.dataTransfer?.setData("text/plain", componentId);
+        this.selectedId = componentId;
+        this.activeDrag = { kind: "component", component_id: componentId };
+        this.activeDrop = null;
+        this.root.dataset.flyDragging = "component";
+      }, { signal });
+      element.addEventListener("dragend", () => this.cancelDrag(), { signal });
     }
     this.root.addEventListener("click", (event) => {
       const actionElement = event.target instanceof Element
@@ -265,19 +328,32 @@ export class FlyBrowserAdapter {
         case "begin-block-drag": {
           event.preventDefault();
           const blockId = actionElement.closest("[data-fly-block-id]")?.dataset.flyBlockId;
-          if (blockId) void this.emitIntent("begin_palette_drag", { block_id: blockId });
+          if (blockId) {
+            this.activeDrag = { kind: "block", block_id: blockId };
+            this.activeDrop = null;
+            this.root.dataset.flyDragging = "block";
+          }
           break;
         }
         case "select-component": {
-          const componentId = actionElement.dataset.flyComponentId || null;
-          this.selectedId = componentId;
+          this.selectedId = actionElement.dataset.flyComponentId || null;
           this.drawSelection();
           break;
         }
         default: {
-          if (action.startsWith("intent:")) {
-            event.preventDefault();
-            void this.emitIntent(action.slice(7), {});
+          if (!action.startsWith("intent:")) break;
+          event.preventDefault();
+          const intent = action.slice(7);
+          if (intent === "begin_selected_move") {
+            if (this.selectedId) {
+              this.activeDrag = { kind: "component", component_id: this.selectedId };
+              this.activeDrop = null;
+              this.root.dataset.flyDragging = "component";
+            }
+          } else if (intent === "cancel_drag") {
+            this.cancelDrag();
+          } else {
+            void this.emitIntent(intent, {});
           }
         }
       }
@@ -285,8 +361,63 @@ export class FlyBrowserAdapter {
     this.iframe.addEventListener("load", () => {
       this.lastSequence = null;
       this.geometry.clear();
+      this.activeDrop = null;
       this.drawSelection();
+      this.drawDrop();
     }, { signal });
+  }
+
+  updateDropCandidate(point) {
+    if (!this.activeDrag || !isObject(point)) {
+      this.activeDrop = null;
+      this.drawDrop();
+      return null;
+    }
+    const candidates = [];
+    for (const [componentId, rect] of this.geometry.entries()) {
+      if (this.activeDrag.kind === "component" && this.activeDrag.component_id === componentId) {
+        continue;
+      }
+      if (!containsPoint(rect, point)) continue;
+      candidates.push({
+        componentId,
+        rect,
+        area: Math.max(Number(rect.width || 0), 0) * Math.max(Number(rect.height || 0), 0),
+      });
+    }
+    candidates.sort((left, right) => left.area - right.area);
+    const target = candidates[0] || null;
+    this.activeDrop = target
+      ? {
+          target_component_id: target.componentId,
+          position: dropPosition(target.rect, point),
+          rect: target.rect,
+        }
+      : null;
+    this.drawDrop();
+    return this.activeDrop;
+  }
+
+  async commitDrop(point) {
+    const candidate = this.updateDropCandidate(point);
+    if (!candidate || !this.activeDrag) {
+      this.cancelDrag();
+      return null;
+    }
+    const payload = {
+      source: { ...this.activeDrag },
+      target_component_id: candidate.target_component_id,
+      position: candidate.position,
+    };
+    this.cancelDrag();
+    return this.emitIntent("drop", payload);
+  }
+
+  cancelDrag() {
+    this.activeDrag = null;
+    this.activeDrop = null;
+    delete this.root.dataset.flyDragging;
+    this.drawDrop();
   }
 
   emitIntent(intent, payload = {}) {
@@ -300,11 +431,7 @@ export class FlyBrowserAdapter {
   }
 
   shouldPost(type) {
-    return [
-      "drop_requested",
-      "key_stroke",
-      "cancel_drag_requested",
-    ].includes(type);
+    return ["key_stroke"].includes(type);
   }
 
   async postIntent(input) {
@@ -360,6 +487,14 @@ export class FlyBrowserAdapter {
     applyRect(this.overlays.selected, this.selectedId && this.geometry.get(this.selectedId), this.zoom);
     applyRect(this.overlays.hovered, this.hoveredId && this.geometry.get(this.hoveredId), this.zoom);
   }
+
+  drawDrop() {
+    if (!this.overlays) return;
+    const rect = this.activeDrop
+      ? dropOverlayRect(this.activeDrop.rect, this.activeDrop.position)
+      : null;
+    applyRect(this.overlays.insertion, rect, this.zoom);
+  }
 }
 
 export function mountFlyBrowser(root, options = {}) {
@@ -392,8 +527,9 @@ const api = {
 
 globalThis.FlyBrowser = Object.assign(globalThis.FlyBrowser || {}, api);
 
+const bootstrapConfig = globalThis.__FLY_BROWSER_CONFIG__ || {};
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => mountAllFlyBrowsers(), { once: true });
+  document.addEventListener("DOMContentLoaded", () => mountAllFlyBrowsers(bootstrapConfig), { once: true });
 } else {
-  mountAllFlyBrowsers();
+  mountAllFlyBrowsers(bootstrapConfig);
 }
