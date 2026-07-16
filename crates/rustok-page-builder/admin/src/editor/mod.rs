@@ -26,6 +26,7 @@ mod shortcut_dispatch;
 mod ssr_drop;
 mod ssr_forms;
 mod ssr_inspector;
+mod ssr_locale;
 mod toolbar;
 mod trait_panel;
 
@@ -63,5 +64,6 @@ pub(crate) use ssr_forms::{
     SsrPageMetadataRequest, SsrPageRenameRequest,
 };
 pub(crate) use ssr_inspector::SsrInspectorPanel;
+pub(crate) use ssr_locale::SsrLocalePanel;
 pub(crate) use toolbar::AuthoringToolbar;
 pub(crate) use trait_panel::TraitPanel;
