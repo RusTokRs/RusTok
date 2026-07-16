@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use rustok_api::{PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -102,10 +102,6 @@ impl PaymentCollectionPort for crate::PaymentService {
         match create_result {
             Ok(collection) => Ok(collection),
             Err(create_error) => {
-                // PostgreSQL/SQLite enforce one active collection per cart. A
-                // concurrent creator can therefore win between the initial read
-                // and insert. Re-read before surfacing the storage error so this
-                // port preserves its create-or-reuse contract under contention.
                 if let Some(cart_id) = cart_id {
                     if let Some(collection) = self
                         .find_reusable_collection_by_cart(tenant_id, cart_id)
@@ -149,33 +145,63 @@ fn payment_error_to_port_error(error: crate::PaymentError) -> PortError {
         crate::PaymentError::Validation(message) => {
             PortError::validation("payment.validation", message)
         }
-        crate::PaymentError::PaymentCollectionNotFound(id) => PortError::new(
-            rustok_api::PortErrorKind::NotFound,
+        crate::PaymentError::PaymentCollectionNotFound(id) => PortError::not_found(
             "payment.collection_not_found",
             format!("payment collection {id} not found"),
-            false,
         ),
-        crate::PaymentError::PaymentNotFound(id) => PortError::new(
-            rustok_api::PortErrorKind::NotFound,
+        crate::PaymentError::PaymentNotFound(id) => PortError::not_found(
             "payment.payment_not_found",
             format!("payment for collection {id} not found"),
-            false,
         ),
-        crate::PaymentError::RefundNotFound(id) => PortError::new(
-            rustok_api::PortErrorKind::NotFound,
+        crate::PaymentError::RefundNotFound(id) => PortError::not_found(
             "payment.refund_not_found",
             format!("refund {id} not found"),
-            false,
         ),
-        crate::PaymentError::InvalidTransition { from, to } => PortError::new(
-            rustok_api::PortErrorKind::Conflict,
+        crate::PaymentError::InvalidTransition { from, to } => PortError::conflict(
             "payment.invalid_transition",
             format!("invalid payment transition from `{from}` to `{to}`"),
+        ),
+        crate::PaymentError::ProviderUnavailable {
+            provider_id,
+            operation,
+        } => PortError::unavailable(
+            "payment.provider_unavailable",
+            format!("payment provider `{provider_id}` is unavailable for `{operation}`"),
+        ),
+        crate::PaymentError::ProviderRejected {
+            provider_id,
+            operation,
+        } => PortError::conflict(
+            "payment.provider_rejected",
+            format!("payment provider `{provider_id}` rejected `{operation}`"),
+        ),
+        crate::PaymentError::ProviderInvalidResponse {
+            provider_id,
+            operation,
+        } => PortError::new(
+            PortErrorKind::InvariantViolation,
+            "payment.provider_invalid_response",
+            format!("payment provider `{provider_id}` returned an invalid response for `{operation}`"),
             false,
         ),
-        crate::PaymentError::Database(error) => PortError::unavailable(
+        crate::PaymentError::ProviderOutcomeUnknown {
+            provider_id,
+            operation,
+        } => PortError::new(
+            PortErrorKind::Conflict,
+            "payment.provider_outcome_unknown",
+            format!("payment provider `{provider_id}` outcome is unknown for `{operation}`"),
+            false,
+        ),
+        crate::PaymentError::ProviderConfiguration { provider_id } => PortError::new(
+            PortErrorKind::InvariantViolation,
+            "payment.provider_not_configured",
+            format!("payment provider `{provider_id}` is not configured"),
+            false,
+        ),
+        crate::PaymentError::Database(_) => PortError::unavailable(
             "payment.database_unavailable",
-            format!("payment storage unavailable: {error}"),
+            "payment storage is unavailable",
         ),
     }
 }
