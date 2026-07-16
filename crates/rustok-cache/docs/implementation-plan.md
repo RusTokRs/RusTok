@@ -106,8 +106,10 @@ Last reconciled with `main`: 2026-07-16.
   generation recovery.
 - [x] SEO redirects reconcile from transactionally persisted rows with a bounded `(created_at, id)`
   cursor, indexed paging, seed-before-clear startup and critical worker readiness.
-- [x] Flex field-definition cache is byte-weighted and owns a restartable abort-on-drop local
-  invalidation consumer with full clear on lag/gap.
+- [x] Flex field-definition cache is byte-weighted, keeps exact local EventBus invalidation as a fast
+  path, advances one transaction-local singleton generation from user/product/order/topic table
+  triggers, full-clears before recording startup/advance, polls every five seconds and exposes the
+  fail-closed supervised reconciler as a critical readiness dependency.
 - [x] Rate-limit memory counters are entry-bounded; Redis identities are hashed and fail closed when
   the selected distributed backend is unavailable.
 - [x] Rate-limit maintenance exits when its task owns the final limiter reference, preventing orphan
@@ -120,8 +122,9 @@ The detailed active-cache contract is maintained in
 
 ### 8. Operations and regression guards
 
-- [x] Maintain one permanent path-scoped `Cache hardening` workflow covering format, core/cache/channel/server
-  compilation, regression/architecture tests, Clippy, module validation and isolated Redis 7 jobs.
+- [x] Maintain one permanent path-scoped `Cache hardening` workflow covering format,
+  core/cache/channel/Flex-owner/server compilation, regression/architecture tests, Clippy, module
+  validation and isolated Redis 7 jobs.
 - [x] Guard Redis, generation, PubSub, refresh and CAS Prometheus alert metric names in
   `tests/alert_rules_guard.rs`.
 - [x] Publish operational alerts for Redis degradation, generation bump failure, PubSub failure,
@@ -139,7 +142,7 @@ The detailed active-cache contract is maintained in
 - [ ] Fix every cache-specific format, compile, test or Clippy failure found by that run.
 - [ ] Record the verified revision and job results here without copying raw logs.
 
-### P0. Live Redis and failure-recovery evidence
+### P0. Live and failure-recovery evidence
 
 - [ ] Run ignored `rustok-cache` and `rustok-core` suites against isolated Redis 7.
 - [ ] Prove channel database-trigger generation advancement on PostgreSQL and SQLite, startup
@@ -149,18 +152,14 @@ The detailed active-cache contract is maintained in
   reconnect, database outage/recovery, generation regression and terminal-worker readiness.
 - [ ] Prove exact/wildcard tenant-locale recovery, listener lag handling and periodic generation
   reconciliation across multiple replicas.
+- [ ] Prove Flex singleton generation and all four owner triggers on PostgreSQL and SQLite, including
+  reorder/soft delete, concurrent mutation, startup seed-before-clear, database outage/recovery,
+  generation regression and critical readiness across multiple replicas.
 - [ ] Prove SEO seed-before-clear startup, exact tenant invalidation, multi-page catch-up, database
   outage recovery and terminal-worker readiness across multiple replicas.
 - [ ] Prove binary-safe CAS applied/mismatch/failure behavior and fail-closed fallback.
 - [ ] Exercise Redis latency, disconnect, restart, listener reconnect and circuit-breaker recovery.
 - [ ] Confirm readiness remains degraded while bounded local fallback serves eligible reads.
-
-### P1. Remaining owner consistency decisions
-
-- [ ] `flex`: connect field-definition full-clear recovery to a durable generation or persisted event
-  offset for multi-replica deployments.
-- [ ] For the flex migration, seed from persisted state before fast-path events and perform an
-  owner-defined clear/rotation/rebuild on `UnverifiedFirst` or `Gap`.
 
 ### P1. Load, chaos and tuning evidence
 
@@ -168,8 +167,8 @@ The detailed active-cache contract is maintained in
   lease expiry and invalidation listener lag.
 - [ ] Exercise generation snapshot capacity, generation read/bump failure and CAS contention or
   timeout behavior.
-- [ ] Measure marketplace hot-slug coalescing, channel token rollover and durable-generation clear
-  cost, and SEO cursor catch-up under concurrency.
+- [ ] Measure marketplace hot-slug coalescing, channel token rollover, Flex generation full-clear
+  cost and SEO cursor catch-up under concurrency.
 - [ ] Tune byte budgets, TTLs, jitter, negative TTLs and concurrency limits from observed workload
   distributions and latency objectives.
 - [ ] Validate the initial Prometheus thresholds against production baselines and document any
@@ -186,6 +185,11 @@ The detailed active-cache contract is maintained in
 cargo fmt --all -- --check
 cargo check -p rustok-core --lib --features redis-cache
 cargo check -p rustok-cache --lib
+cargo check -p flex --lib
+cargo check -p rustok-auth --lib
+cargo check -p rustok-product --lib
+cargo check -p rustok-commerce --lib
+cargo check -p rustok-forum --lib
 cargo check -p rustok-channel --lib
 cargo check -p rustok-server --lib
 cargo test -p rustok-core cache --lib --features redis-cache
@@ -196,6 +200,7 @@ cargo test -p rustok-cache --test invalidation_failure_metrics
 cargo test -p rustok-channel invalidation_generation --lib
 cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib
 cargo test -p rustok-server channel_cache_invalidation --lib
+cargo test -p rustok-server field_definition_cache_generation --lib
 cargo test -p rustok-server \
   --test cache_architecture_guard \
   --test tenant_cache_architecture_guard \
@@ -205,11 +210,13 @@ cargo test -p rustok-server \
   --test tenant_locale_generation_guard \
   --test seo_redirect_cache_reconciliation_guard \
   --test field_definition_cache_runtime_guard \
+  --test field_definition_cache_generation_guard \
   --test rate_limit_cache_runtime_guard \
   --test cache_redis_monitor_architecture_guard \
   --test cache_worker_guardrail_architecture_guard
 cargo clippy -p rustok-core --lib --features redis-cache -- -D warnings
 cargo clippy -p rustok-cache --lib -- -D warnings
+cargo clippy -p flex --lib -- -D warnings
 cargo clippy -p rustok-channel --lib -- -D warnings
 cargo clippy -p rustok-server --lib -- -D warnings
 cargo xtask module validate cache
