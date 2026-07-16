@@ -130,6 +130,11 @@ The ownership boundary is:
 - [x] Bound channel tenant-generation state and clear/rotate fail-safe before any token reuse.
 - [x] Disable the channel cache fail-safe if the monotonic generation allocator is exhausted.
 - [x] Register channel and locale cache instances atomically on concurrent first use.
+- [x] Reuse the durable tenant generation channel for locale cache recovery: exact UUID events
+  invalidate one tenant, `*` clears the namespace, and unverified/gapped/lagged advancement clears
+  every entry before acknowledgement.
+- [x] Own the tenant-locale local/Redis/reconcile workers in one restartable abort-on-drop runtime
+  and make terminal required delivery a critical readiness condition.
 - [x] Own the field-definition cache and invalidation consumer in one restartable runtime bundle.
 - [x] Supervise the Redis health/status monitor with serialized restartable startup and
   abort-on-drop ownership.
@@ -144,9 +149,9 @@ The ownership boundary is:
 - [x] Add unit and regression coverage for TTL, degraded writes, invalidation errors, generation
   gaps, key/envelope limits, negative caching, CAS, refresh, leases and live Redis behavior.
 - [x] Add server architecture guards for canonical cache ownership, tenant cache policy,
-  marketplace caching, channel generations, locale registration, field-definition runtime,
-  rate-limit cleanup ownership, atomic local CAS, Redis monitor supervision and worker-readiness
-  escalation.
+  marketplace caching, channel generations, locale registration and durable recovery,
+  field-definition runtime, rate-limit cleanup ownership, atomic local CAS, Redis monitor
+  supervision and worker-readiness escalation.
 - [x] Add path-scoped workflows for cache hardening and the new host architecture guards.
 - [x] Run deterministic rustfmt over the cache-hardening file set and commit the resulting style
   normalization.
@@ -172,6 +177,8 @@ The ownership boundary is:
 - [ ] Run the ignored `rustok-cache` and `rustok-core` suites against an isolated Redis 7 service.
 - [ ] Prove validated channel-scoped publish/subscription parity and local delivery during Redis
   publication failure.
+- [ ] Prove exact and wildcard tenant-locale invalidation, lag recovery and periodic generation
+  reconciliation across multiple replicas.
 - [ ] Prove binary-safe CAS applied/mismatch behavior and fail-closed fallback behavior.
 - [ ] Exercise Redis latency, disconnect, restart, listener reconnect and circuit-breaker recovery.
 - [ ] Confirm that readiness continues to expose shared-primary degradation while bounded local
@@ -188,16 +195,19 @@ The ownership boundary is:
   payload/schema incompatibility can change behavior; keep process-local Rust-value caches typed
   in memory and document their TTL/invalidation contract instead of adding a redundant wire envelope.
 - [ ] Add shared/durable generations only where a process-local invalidation miss can serve stale
-  correctness-sensitive data on another replica.
-- [x] Keep each domain-specific recovery action in its owner module plan; channel, tenant locale,
-  Flex field definitions and SEO redirects now own their remaining stale-bound or durable-recovery
-  decisions, while the events plan owns the missing inbound persisted-offset consumer contract.
+  correctness-sensitive data on another replica; tenant resolution, tenant locale and RBAC are
+  source-complete, while channel, Flex field definitions and SEO redirects remain owner decisions.
+- [x] Keep each domain-specific recovery action in its owner module plan; channel, Flex field
+  definitions and SEO redirects own their remaining stale-bound or durable-recovery decisions,
+  while the events plan owns the missing inbound persisted-offset consumer contract.
 
 ### P1. Durable recoverable invalidation adoption
 
 - [x] Provide reusable versioned invalidation, generation-gap and acknowledgement primitives.
 - [x] Provide field-definition full-clear recovery after consumer lag.
 - [x] Integrate a database-backed durable generation for RBAC in the RBAC owner path.
+- [x] Reuse the durable tenant generation for tenant-locale exact/wildcard invalidation and
+  full-clear recovery before acknowledgement.
 - [ ] Connect remaining eligible domain consumers to transactional outbox generations or persisted
   stream offsets.
 - [ ] Seed each such consumer from persisted state before accepting fast-path invalidations.
@@ -241,6 +251,7 @@ cargo test -p rustok-server \
   --test marketplace_cache_architecture_guard \
   --test channel_cache_architecture_guard \
   --test locale_cache_architecture_guard \
+  --test tenant_locale_generation_guard \
   --test field_definition_cache_runtime_guard \
   --test rate_limit_cache_runtime_guard \
   --test cache_redis_monitor_architecture_guard \
