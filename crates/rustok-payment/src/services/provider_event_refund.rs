@@ -243,9 +243,9 @@ fn owner_metadata(
 
 fn map_payment_error(error: PaymentError) -> PaymentProviderEventApplyError {
     match error {
-        PaymentError::Database(_) => retryable(
-            "payment.webhook_storage_unavailable",
-            "payment storage is temporarily unavailable",
+        PaymentError::Database(_) | PaymentError::ProviderUnavailable { .. } => retryable(
+            "payment.webhook_storage_or_provider_unavailable",
+            "payment owner or provider is temporarily unavailable",
         ),
         PaymentError::InvalidTransition { from, to } => retryable(
             "payment.webhook_transition_pending",
@@ -254,6 +254,22 @@ fn map_payment_error(error: PaymentError) -> PaymentProviderEventApplyError {
         PaymentError::Validation(message) => {
             non_retryable("payment.webhook_validation_failed", message)
         }
+        PaymentError::ProviderRejected { .. } => non_retryable(
+            "payment.webhook_provider_rejected",
+            "payment provider rejected the normalized event",
+        ),
+        PaymentError::ProviderInvalidResponse { .. } => non_retryable(
+            "payment.webhook_provider_invalid_response",
+            "payment provider returned invalid normalized facts",
+        ),
+        PaymentError::ProviderOutcomeUnknown { .. } => non_retryable(
+            "payment.webhook_provider_outcome_unknown",
+            "payment provider outcome requires operator reconciliation",
+        ),
+        PaymentError::ProviderConfiguration { .. } => non_retryable(
+            "payment.webhook_provider_not_configured",
+            "payment provider is not configured for this tenant",
+        ),
         PaymentError::PaymentCollectionNotFound(_)
         | PaymentError::PaymentNotFound(_)
         | PaymentError::RefundNotFound(_) => retryable(
