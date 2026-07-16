@@ -5,6 +5,10 @@ use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL_V1};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PublishPageBuilderResult,
 };
+use rustok_page_builder::runtime_context::{
+    generate_page_builder_runtime_example, PageBuilderRuntimeExampleRequest,
+};
+use rustok_page_builder::RuntimeContextExamplePolicy;
 use rustok_page_builder_admin::{
     dispatch_browser_intent, AdminCanvasController, BrowserIntentDispatchError,
     BrowserIntentDispatchResult, BrowserIntentEffect, InMemorySsrDraftSessionStore,
@@ -12,8 +16,10 @@ use rustok_page_builder_admin::{
     SsrDraftSessionStore,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::sync::OnceLock;
+
+const MAX_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PagesBrowserIntentResponse {
@@ -23,6 +29,7 @@ pub struct PagesBrowserIntentResponse {
     pub reload: bool,
     pub draft_token: String,
     pub draft_generation: u64,
+    pub runtime_context: Value,
 }
 
 pub fn pages_browser_draft_store() -> &'static InMemorySsrDraftSessionStore {
@@ -64,6 +71,7 @@ pub async fn dispatch_pages_browser_intent_with_store(
     .await?
     .ok_or(PagesBrowserIntentError::PageNotFound)?;
     let persisted_revision = builder::page_revision(&page);
+    let generated_context = generated_runtime_context(&page, &snapshot.default_locale);
 
     let loaded_session = match envelope.draft_token.as_deref() {
         Some(token) => draft_store.load(token, &snapshot.page_id)?,
@@ -80,31 +88,41 @@ pub async fn dispatch_pages_browser_intent_with_store(
         }
     }
 
-    let (mut controller, session_token, session_generation) = match loaded_session {
-        Some(session) if session.controller.revision_id() == persisted_revision => (
-            session.controller,
-            Some(session.token),
-            Some(session.generation),
-        ),
-        Some(session) => {
-            draft_store.remove(&session.token)?;
-            (
+    let (mut controller, mut runtime_context, session_token, session_generation) =
+        match loaded_session {
+            Some(session) if session.controller.revision_id() == persisted_revision => (
+                session.controller,
+                session.runtime_context,
+                Some(session.token),
+                Some(session.generation),
+            ),
+            Some(session) => {
+                draft_store.remove(&session.token)?;
+                (
+                    controller_from_page(&page, &persisted_revision, &snapshot.default_locale)?,
+                    generated_context,
+                    None,
+                    None,
+                )
+            }
+            None => (
                 controller_from_page(&page, &persisted_revision, &snapshot.default_locale)?,
+                generated_context,
                 None,
                 None,
-            )
-        }
-        None => (
-            controller_from_page(&page, &persisted_revision, &snapshot.default_locale)?,
-            None,
-            None,
-        ),
-    };
+            ),
+        };
 
-    let mut result = dispatch_browser_intent(&mut controller, envelope.clone())?;
+    let context_update = envelope.intent == "set_runtime_context";
+    let mut result = if context_update {
+        runtime_context = runtime_context_from_payload(&envelope.payload)?;
+        controller_snapshot(&controller)?
+    } else {
+        dispatch_browser_intent(&mut controller, envelope.clone())?
+    };
     let mut requests = request_effects(&result);
 
-    if envelope.is_mutating() && result.dirty && requests.is_empty() {
+    if !context_update && result.dirty && requests.is_empty() {
         let save = BrowserIntentEnvelope {
             protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
             instance_id: envelope.instance_id.clone(),
@@ -133,28 +151,25 @@ pub async fn dispatch_pages_browser_intent_with_store(
         }) = &response
         {
             controller.acknowledge_save(revision_id.clone())?;
-            result.revision_id = revision_id.clone();
-            result.dirty = false;
-            result.project_hash = controller.editor().revision().project_hash.hex();
-            result.command_sequence = controller.editor().revision().command_sequence;
-            result.project_data =
-                fly::GrapesJsV1Codec::encode_value(controller.editor().document())?;
+            result = controller_snapshot(&controller)?;
         }
         persistence = Some(response);
     }
 
-    let committed = draft_store.commit(
+    let committed = draft_store.commit_with_context(
         session_token.as_deref(),
         session_generation,
         controller,
+        runtime_context.clone(),
     )?;
 
     Ok(PagesBrowserIntentResponse {
-        reload: envelope.is_mutating(),
+        reload: context_update || envelope.is_mutating() || persistence.is_some(),
         result,
         persistence,
         draft_token: committed.token,
         draft_generation: committed.generation,
+        runtime_context,
     })
 }
 
@@ -166,6 +181,58 @@ fn controller_from_page(
     let seed = core::edit_form_seed_from_page(page, default_locale);
     builder::controller_from_project(&page.id, revision_id, &seed.project_data_text)
         .map_err(PagesBrowserIntentError::from)
+}
+
+fn generated_runtime_context(page: &crate::model::PageDetail, default_locale: &str) -> Value {
+    let seed = core::edit_form_seed_from_page(page, default_locale);
+    let project_data = serde_json::from_str::<Value>(&seed.project_data_text)
+        .unwrap_or_else(|_| Value::Object(Map::new()));
+    generate_page_builder_runtime_example(PageBuilderRuntimeExampleRequest {
+        project_data,
+        policy: RuntimeContextExamplePolicy::default(),
+    })
+    .ok()
+    .map(|response| response.example.input_context)
+    .unwrap_or_else(|| Value::Object(Map::new()))
+}
+
+fn runtime_context_from_payload(payload: &Value) -> Result<Value, PagesBrowserIntentError> {
+    let context = if let Some(source) = payload.get("context_json").and_then(Value::as_str) {
+        if source.len() > MAX_RUNTIME_CONTEXT_BYTES {
+            return Err(PagesBrowserIntentError::RuntimeContext(format!(
+                "runtime context exceeds {MAX_RUNTIME_CONTEXT_BYTES} bytes"
+            )));
+        }
+        serde_json::from_str::<Value>(source).map_err(|error| {
+            PagesBrowserIntentError::RuntimeContext(format!("runtime context JSON is invalid: {error}"))
+        })?
+    } else if let Some(context) = payload.get("context") {
+        context.clone()
+    } else {
+        payload.clone()
+    };
+    if !context.is_object() {
+        return Err(PagesBrowserIntentError::RuntimeContext(
+            "runtime context must be a JSON object".to_string(),
+        ));
+    }
+    Ok(context)
+}
+
+fn controller_snapshot(
+    controller: &AdminCanvasController,
+) -> Result<BrowserIntentDispatchResult, PagesBrowserIntentError> {
+    let revision = controller.editor().revision();
+    Ok(BrowserIntentDispatchResult {
+        page_id: controller.page_id().to_string(),
+        revision_id: controller.revision_id().to_string(),
+        project_hash: revision.project_hash.hex(),
+        command_sequence: revision.command_sequence,
+        dirty: revision.dirty,
+        selected_component_id: controller.ui().state.selection.component_id.clone(),
+        project_data: fly::GrapesJsV1Codec::encode_value(controller.editor().document())?,
+        effects: Vec::new(),
+    })
 }
 
 fn request_effects(result: &BrowserIntentDispatchResult) -> Vec<PageBuilderCapabilityRequest> {
@@ -185,6 +252,8 @@ pub enum PagesBrowserIntentError {
     PageNotFound,
     #[error("Page Builder browser request targets `{actual}`, but endpoint owns `{expected}`")]
     PageMismatch { expected: String, actual: String },
+    #[error("invalid runtime preview context: {0}")]
+    RuntimeContext(String),
     #[error(transparent)]
     Dispatch(#[from] BrowserIntentDispatchError),
     #[error(transparent)]
@@ -233,5 +302,18 @@ mod tests {
             ],
         };
         assert_eq!(request_effects(&result), vec![request]);
+    }
+
+    #[test]
+    fn runtime_context_form_requires_a_json_object() {
+        assert_eq!(
+            runtime_context_from_payload(&json!({
+                "context_json": "{\"customer\":{\"name\":\"Ada\"}}"
+            }))
+            .unwrap()["customer"]["name"],
+            "Ada"
+        );
+        assert!(runtime_context_from_payload(&json!({ "context_json": "[]" })).is_err());
+        assert!(runtime_context_from_payload(&json!({ "context_json": "{" })).is_err());
     }
 }
