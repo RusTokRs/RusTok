@@ -99,8 +99,9 @@ Last reconciled with `main`: 2026-07-16.
 - [x] Marketplace list/detail caches are byte-weighted, hashed, response-bounded and single-flight;
   detail negatives use a short independent TTL.
 - [x] Channel cache is byte-weighted with hashed request facts, bounded monotonic tenant versions,
-  successful REST/native mutation invalidation, full-clear rollover and fail-safe cache bypass on
-  allocator exhaustion.
+  trigger-backed database generation reserved with every channel-table mutation, local/Redis fast
+  publication, five-second database reconciliation, full-clear recovery, critical worker guardrails
+  and fail-safe cache bypass on allocator exhaustion.
 - [x] RBAC permissions use weighted typed identity, bounded striped epochs and database-backed durable
   generation recovery.
 - [x] SEO redirects reconcile from transactionally persisted rows with a bounded `(created_at, id)`
@@ -111,15 +112,15 @@ Last reconciled with `main`: 2026-07-16.
   the selected distributed backend is unavailable.
 - [x] Rate-limit maintenance exits when its task owns the final limiter reference, preventing orphan
   cache retention after runtime teardown.
-- [x] Redis status, field-definition, tenant-locale, RBAC and SEO workers expose terminal lifecycle
-  through runtime guardrails/readiness.
+- [x] Redis status, channel, field-definition, tenant-locale, RBAC and SEO workers expose terminal
+  lifecycle through runtime guardrails/readiness.
 
 The detailed active-cache contract is maintained in
 [`host-cache-inventory.md`](./host-cache-inventory.md).
 
 ### 8. Operations and regression guards
 
-- [x] Maintain one permanent path-scoped `Cache hardening` workflow covering format, core/cache/server
+- [x] Maintain one permanent path-scoped `Cache hardening` workflow covering format, core/cache/channel/server
   compilation, regression/architecture tests, Clippy, module validation and isolated Redis 7 jobs.
 - [x] Guard Redis, generation, PubSub, refresh and CAS Prometheus alert metric names in
   `tests/alert_rules_guard.rs`.
@@ -141,8 +142,11 @@ The detailed active-cache contract is maintained in
 ### P0. Live Redis and failure-recovery evidence
 
 - [ ] Run ignored `rustok-cache` and `rustok-core` suites against isolated Redis 7.
-- [ ] Prove validated channel-scoped publish/subscription parity and local delivery during Redis
-  publication failure.
+- [ ] Prove channel database-trigger generation advancement on PostgreSQL and SQLite, startup
+  baseline recovery, concurrent mutation handling, validated local/Redis publication and periodic
+  namespace recovery across multiple replicas.
+- [ ] Prove channel convergence during Redis publication failure, listener lag, Redis disconnect and
+  reconnect, database outage/recovery, generation regression and terminal-worker readiness.
 - [ ] Prove exact/wildcard tenant-locale recovery, listener lag handling and periodic generation
   reconciliation across multiple replicas.
 - [ ] Prove SEO seed-before-clear startup, exact tenant invalidation, multi-page catch-up, database
@@ -153,11 +157,9 @@ The detailed active-cache contract is maintained in
 
 ### P1. Remaining owner consistency decisions
 
-- [ ] `rustok-channel`: approve the documented 60-second cross-replica stale bound or reserve/consume
-  a durable channel-resolution generation and recover before acknowledgement.
 - [ ] `flex`: connect field-definition full-clear recovery to a durable generation or persisted event
   offset for multi-replica deployments.
-- [ ] For either migration, seed from persisted state before fast-path events and perform an
+- [ ] For the flex migration, seed from persisted state before fast-path events and perform an
   owner-defined clear/rotation/rebuild on `UnverifiedFirst` or `Gap`.
 
 ### P1. Load, chaos and tuning evidence
@@ -166,8 +168,8 @@ The detailed active-cache contract is maintained in
   lease expiry and invalidation listener lag.
 - [ ] Exercise generation snapshot capacity, generation read/bump failure and CAS contention or
   timeout behavior.
-- [ ] Measure marketplace hot-slug coalescing, channel generation rollover and SEO cursor catch-up
-  under concurrency.
+- [ ] Measure marketplace hot-slug coalescing, channel token rollover and durable-generation clear
+  cost, and SEO cursor catch-up under concurrency.
 - [ ] Tune byte budgets, TTLs, jitter, negative TTLs and concurrency limits from observed workload
   distributions and latency objectives.
 - [ ] Validate the initial Prometheus thresholds against production baselines and document any
@@ -184,12 +186,16 @@ The detailed active-cache contract is maintained in
 cargo fmt --all -- --check
 cargo check -p rustok-core --lib --features redis-cache
 cargo check -p rustok-cache --lib
+cargo check -p rustok-channel --lib
 cargo check -p rustok-server --lib
 cargo test -p rustok-core cache --lib --features redis-cache
 cargo test -p rustok-core --test cache_atomic_backend_guard
 cargo test -p rustok-cache --lib
 cargo test -p rustok-cache --test alert_rules_guard
 cargo test -p rustok-cache --test invalidation_failure_metrics
+cargo test -p rustok-channel invalidation_generation --lib
+cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib
+cargo test -p rustok-server channel_cache_invalidation --lib
 cargo test -p rustok-server \
   --test cache_architecture_guard \
   --test tenant_cache_architecture_guard \
@@ -204,6 +210,7 @@ cargo test -p rustok-server \
   --test cache_worker_guardrail_architecture_guard
 cargo clippy -p rustok-core --lib --features redis-cache -- -D warnings
 cargo clippy -p rustok-cache --lib -- -D warnings
+cargo clippy -p rustok-channel --lib -- -D warnings
 cargo clippy -p rustok-server --lib -- -D warnings
 cargo xtask module validate cache
 cargo xtask module test cache
