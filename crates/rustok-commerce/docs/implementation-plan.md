@@ -47,16 +47,13 @@ Registries and evidence:
 
 - [x] Keep checkout and cross-domain recovery in `rustok-commerce`.
 - [x] Keep owner persistence and lifecycle transitions in owner modules.
-- [x] Use typed ports or explicit owner runtime APIs rather than foreign entities.
+- [x] Use typed ports or explicit owner runtime APIs instead of foreign entities.
 - [x] Carry tenant, actor, locale, channel, correlation, deadline, and idempotency
   context across owner calls.
-- [x] Keep payment/refund persistence in `rustok-payment` and carrier policy in
-  `rustok-fulfillment`.
+- [x] Keep payment/refund lifecycle persistence in `rustok-payment`.
 - [x] Keep provider payload parsing and signature verification outside commerce.
-- [x] Keep this file as the only ecommerce checklist; owner plan files redirect or
-  contain behavior-only documentation.
-- [x] Enforce the payment redirect through
-  `verify-payment-storefront-boundary.mjs` and Rust contract tests.
+- [x] Keep this file as the only ecommerce checklist.
+- [x] Enforce the payment planning redirect through source guardrails.
 - [ ] Execute the complete provider-consumer graph with retained runtime evidence.
 
 ## Checkout orchestration workstream
@@ -66,24 +63,25 @@ Registries and evidence:
 - [x] Require and reuse a stable checkout idempotency key at REST, GraphQL, native,
   and UI boundaries.
 - [x] Route production checkout through `StagedCheckoutService`.
-- [x] Read/mutate cart through cart-owned ports.
+- [x] Read and mutate cart state through cart-owned ports.
 - [x] Resolve product and pricing through owner projections.
 - [x] Validate channel, locale, region, shipping, product, price, and inventory
-  before effects.
+  before external effects.
 - [x] Persist one immutable order/fulfillment plan.
 - [ ] Retain native/REST/GraphQL parity evidence for admission failures.
 
 ### Durable stages and replay
 
-- [x] Persist operation identity, hashes, lease, stage, errors, and owner ids.
+- [x] Persist operation identity, request/cart hashes, lease, stage, errors, and
+  owner ids.
 - [x] Resume `cart_locked`, `inventory_reserved`, `order_created`,
   `payment_ready`, `payment_authorized`, `payment_captured`,
   `fulfillment_created`, `cart_completed`, and `completed`.
 - [x] Adopt inventory reservation identities and prevent legacy double reserve.
 - [x] Accept already committed order, payment, fulfillment, and cart results.
-- [x] Prevent a second active checkout for the cart.
-- [x] Route REST, GraphQL, native, and legacy journal wrapper through one recovering
-  staged runtime.
+- [x] Prevent a second active checkout for the same cart.
+- [x] Route REST, GraphQL, native, and the compatibility journal wrapper through
+  one recovering staged runtime.
 - [ ] Add and execute kill points after every owner call and before every
   checkpoint.
 - [ ] Prove restart does not duplicate reservations, orders, collections, provider
@@ -98,7 +96,7 @@ Registries and evidence:
 - [x] Classify manual financial work as `reconciliation_required`.
 - [x] Block new checkout/provider execution while reconciliation is open.
 - [x] Publish safe admin reads, compensation commands, and bounded sweep routes.
-- [ ] Prove compensation contention/restart behavior on PostgreSQL.
+- [ ] Prove compensation contention and restart behavior on PostgreSQL.
 - [ ] Execute complete mounted operator workflows.
 
 Checkout evidence:
@@ -120,13 +118,12 @@ this section.
 
 - [x] Keep collections, payments, refunds, and lifecycle state in
   `rustok-payment`.
-- [x] Keep `PaymentService` as owner after provider operations/webhook
-  normalization.
+- [x] Keep `PaymentService` as the lifecycle owner after provider operations and
+  webhook normalization.
 - [x] Publish typed `PaymentCollectionPort` with write idempotency.
 - [x] Keep native storefront transport host-neutral through `HostRuntimeContext`.
-- [x] Retain GraphQL fallback for `create_payment_collection`,
-  `fetch_payment_collection`, and `fetch_refund_summary`.
-- [x] Use `execute_selected_transport` and lock the boundary with
+- [x] Retain GraphQL fallback for payment collection and refund summary reads.
+- [x] Lock storefront ownership with
   `verify-payment-storefront-boundary.mjs`.
 - [ ] Execute the checkout payment port through a real remote adapter.
 - [ ] Retain timeout, typed-error, fallback, cart-ownership, and transport-parity
@@ -141,18 +138,32 @@ this section.
   `PaymentProviderRegistry`.
 - [x] Persist provider-operation requests/results with CAS execution and explicit
   reconciliation outcomes.
-- [x] Recover external payment identity for capture/cancel from the durable
-  authorize provider journal before the next provider call.
-- [x] Route refund provider execution through the common journal executor and add
-  owner refund identity to the persisted provider request.
+- [x] Recover external payment identity for capture, cancel, and refund from the
+  durable authorize journal.
+- [x] Route refund provider execution through the common journal executor.
+- [x] Add refund `creation_key` and canonical `creation_request_hash` with
+  tenant/collection uniqueness and immutable database guards.
+- [x] Add `PaymentRefundCreationService::create_or_replay` with captured-state,
+  refundable-capacity, replay, request-conflict, and insert-race handling.
+- [x] Require REST `Idempotency-Key` and GraphQL `idempotencyKey` for direct refund
+  creation.
+- [x] Use deterministic return/change identities for post-order refund workflows.
+- [x] Require creation identity for every new refund row and backfill legacy rows
+  through migrations `000118` and `000119`.
+- [x] Remove the identity-less `PaymentService::create_refund` API.
+- [x] Migrate payment service, controller, and migrated-schema fixtures to the
+  owner idempotent refund service.
+- [x] Add replay, conflicting-payload, same-key contention, and database hard-stop
+  smoke tests.
+- [x] Add and aggregate `verify-payment-refund-identity.mjs`.
 - [x] Add opt-in feature `rustok-payment/stripe` with authorize, capture, cancel,
   refund, and webhook adapter source.
 - [x] Keep Stripe credentials tenant-scoped through `StripeCredentialProvider`;
   static credentials are test/local-only.
 - [x] Add source tests for Stripe HMAC verification, changed-body rejection, and
   minor-unit precision.
-- [ ] Add owner-level idempotent refund creation before provider journal creation;
-  repeated refund commands can currently reserve a second refund row.
+- [ ] Update the legacy GraphQL runtime parity refund mutation helper to pass
+  `idempotencyKey`.
 - [ ] Replace generic validation errors with typed provider unavailable/rejected/
   invalid-response classifications.
 - [ ] Register Stripe through a deployment-owned tenant secret resolver.
@@ -199,9 +210,12 @@ Payment evidence:
 - `crates/rustok-payment/docs/provider-webhooks.md`
 - `crates/rustok-payment/src/providers.rs`
 - `crates/rustok-payment/src/stripe_provider.rs`
-- `crates/rustok-payment/src/services/provider_operation.rs`
-- `crates/rustok-payment/src/services/provider_event_ingress.rs`
-- `crates/rustok-payment/src/services/provider_event_recovery.rs`
+- `crates/rustok-payment/src/services/refund_creation.rs`
+- `crates/rustok-payment/src/migrations/m20260714_000118_enforce_refund_creation_identity.rs`
+- `crates/rustok-payment/src/migrations/m20260714_000119_require_refund_creation_identity.rs`
+- `crates/rustok-migrations/tests/refund_creation_identity_smoke.rs`
+- `crates/rustok-migrations/tests/refund_creation_identity_required_smoke.rs`
+- `scripts/verify/verify-payment-refund-identity.mjs`
 - `apps/server/src/services/payment_provider_event_worker.rs`
 
 ## Cross-domain evidence
@@ -240,6 +254,7 @@ Source inspection is not execution evidence.
 - [ ] `npm run verify:commerce:admin-boundary`
 - [ ] `npm run verify:commerce:storefront-transport-handoff`
 - [ ] `npm run verify:payment:storefront-boundary`
+- [ ] `npm run verify:payment:refund-identity`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate payment`
 
@@ -250,14 +265,14 @@ Source inspection is not execution evidence.
 - [ ] `cargo check -p rustok-server --features mod-payment`
 - [ ] `cargo xtask module test commerce`
 - [ ] `cargo xtask module test payment`
-- [ ] Targeted checkout, inventory reservation, payment provider-operation,
-  provider-event, replay, recovery, and lifecycle tests.
+- [ ] Targeted checkout, refund identity, provider-operation, provider-event,
+  replay, recovery, and lifecycle tests.
 - [ ] Stripe feature tests.
 
 ### Database and runtime
 
-- [ ] Apply clean SQLite graph and supported rollback/reapply paths.
-- [ ] Apply clean/upgraded PostgreSQL graph.
+- [ ] Apply the clean SQLite graph and supported rollback/reapply paths.
+- [ ] Apply the clean and upgraded PostgreSQL graph.
 - [ ] Execute checkout/refund/provider-operation/provider-event contention.
 - [ ] Verify recovery/dead-letter query plans with production-like rows.
 - [ ] Prove all declared routers are mounted.
@@ -269,8 +284,7 @@ Source inspection is not execution evidence.
 
 ## Immediate execution order
 
-1. [ ] Implement owner-level idempotent refund creation and migrate all provider
-   entrypoints to mandatory creation keys.
+1. [ ] Update the GraphQL runtime parity refund helper with `idempotencyKey`.
 2. [ ] Run static ecommerce/payment verifiers and fix remaining drift.
 3. [ ] Run commerce, payment, Stripe-feature, and server compile checks.
 4. [ ] Run clean SQLite migrations and targeted regression tests.
@@ -288,7 +302,7 @@ Source inspection is not execution evidence.
    issues, or chat-only plans.
 3. Owner modules retain domain invariants, persistence, provider policy, and owner
    commands.
-4. Never persist/expose raw provider payloads, signatures, SQL messages, or SDK
+4. Never persist or expose raw provider payloads, signatures, SQL messages, or SDK
    errors.
 5. Keep manifests, registries, OpenAPI, runbooks, and this plan aligned.
 6. Update `docs/modules/registry.md` only when FFA/FBA status changes.
