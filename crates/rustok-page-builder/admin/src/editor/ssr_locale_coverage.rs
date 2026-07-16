@@ -1,9 +1,11 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
 use fly::{
-    analyze_project_locale_coverage, LocaleCoverageGap, LocaleCoverageKind, LocaleCoverageReport,
+    analyze_project_locale_coverage, LocaleCoverageGap, LocaleCoverageKind,
     LocaleCoverageSummary,
 };
+#[cfg(test)]
+use fly::LocaleCoverageReport;
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
@@ -96,9 +98,12 @@ pub fn SsrLocaleCoveragePanel(runtime: AdminEditorRuntime) -> impl IntoView {
         let report = runtime.controller.with(|controller| {
             analyze_project_locale_coverage(controller.editor().document())
         });
-        let status = if !report.policy_valid {
+        let policy_valid = report.policy_valid;
+        let required_complete = report.required_complete();
+        let strict_ready = report.strict_ready();
+        let status = if !policy_valid {
             policy_invalid
-        } else if report.required_complete() {
+        } else if required_complete {
             ready
         } else {
             incomplete
@@ -108,16 +113,17 @@ pub fn SsrLocaleCoveragePanel(runtime: AdminEditorRuntime) -> impl IntoView {
         } else {
             strict_off
         };
-        let summaries = report.summaries.clone();
-        let gaps = report.gaps.clone();
+        let summaries = report.summaries;
+        let gaps = report.gaps;
+        let has_gaps = !gaps.is_empty();
 
         view! {
             <section
                 class="space-y-3 rounded-xl border border-border bg-card p-3"
                 data-fly-ssr-locale-coverage="true"
-                data-policy-valid=report.policy_valid
-                data-required-complete=report.required_complete()
-                data-strict-ready=report.strict_ready()
+                data-policy-valid=policy_valid
+                data-required-complete=required_complete
+                data-strict-ready=strict_ready
             >
                 <div>
                     <h2 class="font-semibold">{title}</h2>
@@ -139,14 +145,10 @@ pub fn SsrLocaleCoveragePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         )
                     }).collect_view()}
                 </div>
-                <details class="rounded border border-border p-2" open=!gaps.is_empty()>
+                <details class="rounded border border-border p-2" open=has_gaps>
                     <summary class="cursor-pointer text-xs font-semibold">{gaps_title}</summary>
                     <div class="mt-2 space-y-1">
-                        {if gaps.is_empty() {
-                            view! {
-                                <p class="text-xs text-muted-foreground">{no_gaps}</p>
-                            }.into_any()
-                        } else {
+                        {if has_gaps {
                             gaps.into_iter().map(|gap| {
                                 locale_gap_view(
                                     gap,
@@ -156,6 +158,10 @@ pub fn SsrLocaleCoveragePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                     optional_badge.clone(),
                                 )
                             }).collect_view().into_any()
+                        } else {
+                            view! {
+                                <p class="text-xs text-muted-foreground">{no_gaps}</p>
+                            }.into_any()
                         }}
                     </div>
                 </details>
