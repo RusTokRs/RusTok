@@ -98,6 +98,8 @@
         ],
         "assertions": [
           "signature_verified_before_inbox_insert",
+          "provider_verified_delivery_and_replay_identity",
+          "transport_identity_headers_are_optional_hints",
           "raw_payload_not_persisted",
           "delivery_and_idempotency_deduplicated",
           "normalized_event_checkpointed_before_owner_apply",
@@ -147,6 +149,9 @@
       "idempotency_required": true,
       "replay_required": true,
       "adapter_operation": "handle_webhook",
+      "verified_identity_required": true,
+      "transport_identity_headers_required": false,
+      "transport_identity_headers_authoritative": false,
       "raw_payload_persisted": false,
       "payload_hash_audit_required": true,
       "normalized_checkpoint_required": true,
