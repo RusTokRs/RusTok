@@ -1,3 +1,4 @@
+use crate::locale::PageBuilderLocaleContext;
 use fly::{
     render_page, render_page_with_runtime_context, FlyResult, GrapesJsV1Codec, PageSelection,
     RenderPolicy, RenderedPage, RuntimeRenderResult,
@@ -32,6 +33,13 @@ pub struct PageBuilderRuntimeRenderRequest {
     pub policy: RenderPolicy,
     #[serde(default)]
     pub context: Value,
+}
+
+impl PageBuilderRuntimeRenderRequest {
+    pub fn with_locale(mut self, locale: &PageBuilderLocaleContext) -> Self {
+        self.context = locale.apply_to_context(&self.context);
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -103,6 +111,26 @@ impl PageBuilderRenderer {
             policy,
             context,
         })
+        .map(|response| response.document_html())
+    }
+
+    pub fn render_localized_runtime_document_html(
+        &self,
+        project_data: Value,
+        selection: PageSelection,
+        policy: RenderPolicy,
+        context: Value,
+        locale: &PageBuilderLocaleContext,
+    ) -> FlyResult<String> {
+        self.render_runtime(
+            PageBuilderRuntimeRenderRequest {
+                project_data,
+                selection,
+                policy,
+                context,
+            }
+            .with_locale(locale),
+        )
         .map(|response| response.document_html())
     }
 }
@@ -197,6 +225,50 @@ mod tests {
         assert!(!response.result.page.html.contains("Banner"));
         assert!(response.result.page.html.contains("One"));
         assert!(response.result.page.html.contains("Two"));
+    }
+
+    #[test]
+    fn localized_runtime_render_uses_project_translation_catalog() {
+        let html = PageBuilderRenderer
+            .render_localized_runtime_document_html(
+                json!({
+                    "pages": [{
+                        "id": "home",
+                        "component": {
+                            "id": "root",
+                            "type": "wrapper",
+                            "components": [{
+                                "id": "heading",
+                                "type": "heading",
+                                "tagName": "h1",
+                                "content": "Static"
+                            }]
+                        }
+                    }],
+                    "flyTranslations": [{
+                        "id": "hero_title",
+                        "values": {
+                            "en": "Welcome",
+                            "ru": "Добро пожаловать"
+                        },
+                        "fallback_locale": "en"
+                    }],
+                    "flyRuntimeBindings": [{
+                        "id": "heading-content",
+                        "component_id": "heading",
+                        "path": "translations.hero_title",
+                        "target": "field",
+                        "name": "content"
+                    }]
+                }),
+                PageSelection::First,
+                RenderPolicy::default(),
+                json!({ "customer": { "name": "Ada" } }),
+                &PageBuilderLocaleContext::new(Some("ru-RU"), ["en"]),
+            )
+            .expect("localized render");
+        assert!(html.contains("Добро пожаловать"));
+        assert!(!html.contains("Welcome"));
     }
 
     #[test]
