@@ -32,7 +32,6 @@ impl PaymentProviderEventRecoveryHttpRuntime {
 
 #[derive(Clone, Debug, Deserialize, IntoParams)]
 pub struct PaymentProviderEventRecoveryQuery {
-    /// Maximum number of received, failed, or expired-processing events to scan (1..100).
     pub limit: Option<u64>,
 }
 
@@ -129,17 +128,22 @@ pub async fn run_provider_event_recovery(
 
 fn map_recovery_error(error: PaymentError) -> (StatusCode, Json<Value>) {
     match error {
-        PaymentError::Database(_) => safe_error(
+        PaymentError::Database(_)
+        | PaymentError::ProviderUnavailable { .. }
+        | PaymentError::ProviderConfiguration { .. } => safe_error(
             StatusCode::SERVICE_UNAVAILABLE,
-            "payment_provider_event_storage_unavailable",
-            "Payment provider event recovery storage is unavailable",
+            "payment_provider_event_recovery_unavailable",
+            "Payment provider event recovery is unavailable",
         ),
-        PaymentError::InvalidTransition { .. } => safe_error(
+        PaymentError::InvalidTransition { .. }
+        | PaymentError::ProviderOutcomeUnknown { .. } => safe_error(
             StatusCode::CONFLICT,
             "payment_provider_event_state_conflict",
-            "Payment provider event state changed concurrently",
+            "Payment provider event requires reconciliation",
         ),
         PaymentError::Validation(_)
+        | PaymentError::ProviderRejected { .. }
+        | PaymentError::ProviderInvalidResponse { .. }
         | PaymentError::PaymentCollectionNotFound(_)
         | PaymentError::PaymentNotFound(_)
         | PaymentError::RefundNotFound(_) => safe_error(
