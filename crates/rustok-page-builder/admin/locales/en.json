@@ -111,6 +111,19 @@
       "newPageNamePlaceholder": "New page name",
       "pageFallback": "Page"
     },
+    "localePolicy": {
+      "title": "Project locale policy",
+      "description": "Define the canonical locale contract stored in the project. Preview locale remains draft-only.",
+      "defaultLabel": "Default locale",
+      "supportedLabel": "Supported locales",
+      "requiredLabel": "Required locales",
+      "fallbackLabel": "Fallback locales",
+      "listHelp": "Separate locale tags with commas. Tags are normalized before they are stored.",
+      "enforceLabel": "Block save and publish when required translations are missing",
+      "enforceHelp": "Keep this disabled while translations are being prepared; missing required locales remain warnings.",
+      "save": "Save locale policy",
+      "clear": "Clear locale policy"
+    },
     "translations": {
       "title": "Project translations",
       "description": "Translations are stored losslessly in the canonical project and exposed to bindings under translations.<id>.",
