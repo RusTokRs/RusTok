@@ -3,9 +3,26 @@ const ADAPTER_VERSION = "fly_browser_v1";
 const ADAPTER_KEY = Symbol.for("fly.browser.adapter");
 const ROOT_SELECTOR = "[data-fly-browser-root]";
 const IFRAME_SELECTOR = "iframe[data-fly-iframe-canvas]";
+const TOKEN_KEY = "rustok-admin-token";
+const TENANT_KEY = "rustok-admin-tenant";
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function storedString(key) {
+  try {
+    const raw = globalThis.localStorage?.getItem(key);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === "string" && parsed.trim() ? parsed.trim() : null;
+    } catch (_) {
+      return raw.trim() || null;
+    }
+  } catch (_) {
+    return null;
+  }
 }
 
 function parseEnvelope(raw) {
@@ -62,11 +79,20 @@ function applyRect(overlay, rect, zoom) {
 function normalizedIntent(adapter, input) {
   const message = isObject(input.message) ? input.message : null;
   const intent = String(input.intent || input.type || message?.type || "").trim().toLowerCase();
+  const payload = isObject(input.payload)
+    ? { ...input.payload }
+    : message
+      ? { ...message }
+      : {};
+  delete payload.type;
+  if (adapter.selectedId && !payload.selected_component_id) {
+    payload.selected_component_id = adapter.selectedId;
+  }
   return {
     protocol: FLY_PROTOCOL,
     instance_id: adapter.instanceId,
     intent,
-    payload: input.payload ?? message ?? {},
+    payload,
     sequence: Number.isSafeInteger(input.sequence) ? input.sequence : null,
     page_id: adapter.root.dataset.flyPageId || null,
     revision: adapter.root.dataset.flyRevision || null,
@@ -87,6 +113,8 @@ export class FlyBrowserAdapter {
     this.expectedOrigin = options.expectedOrigin || root.dataset.flyExpectedOrigin || "null";
     this.intentEndpoint = options.intentEndpoint || root.dataset.flyIntentEndpoint || null;
     this.csrfToken = options.csrfToken || root.dataset.flyCsrfToken || null;
+    this.accessToken = options.accessToken || storedString(TOKEN_KEY);
+    this.tenantSlug = options.tenantSlug || storedString(TENANT_KEY);
     this.drawOverlays = options.drawOverlays !== false;
     this.postIntents = options.postIntents !== false;
     this.lastSequence = null;
@@ -214,9 +242,46 @@ export class FlyBrowserAdapter {
         const componentId = element.dataset.flyComponentId || null;
         this.selectedId = componentId;
         this.drawSelection();
-        this.emitIntent("select", { component_id: componentId });
+        this.root.dispatchEvent(new CustomEvent("fly:select", {
+          bubbles: true,
+          detail: { componentId, source: "ssr-control" },
+        }));
       }, { signal });
     }
+    this.root.addEventListener("click", (event) => {
+      const actionElement = event.target instanceof Element
+        ? event.target.closest("[data-fly-action]")
+        : null;
+      if (!(actionElement instanceof Element)) return;
+      const action = actionElement.dataset.flyAction;
+      if (!action) return;
+      switch (action) {
+        case "insert-block": {
+          event.preventDefault();
+          const blockId = actionElement.closest("[data-fly-block-id]")?.dataset.flyBlockId;
+          if (blockId) void this.emitIntent("insert_block", { block_id: blockId });
+          break;
+        }
+        case "begin-block-drag": {
+          event.preventDefault();
+          const blockId = actionElement.closest("[data-fly-block-id]")?.dataset.flyBlockId;
+          if (blockId) void this.emitIntent("begin_palette_drag", { block_id: blockId });
+          break;
+        }
+        case "select-component": {
+          const componentId = actionElement.dataset.flyComponentId || null;
+          this.selectedId = componentId;
+          this.drawSelection();
+          break;
+        }
+        default: {
+          if (action.startsWith("intent:")) {
+            event.preventDefault();
+            void this.emitIntent(action.slice(7), {});
+          }
+        }
+      }
+    }, { signal });
     this.iframe.addEventListener("load", () => {
       this.lastSequence = null;
       this.geometry.clear();
@@ -230,7 +295,8 @@ export class FlyBrowserAdapter {
       bubbles: true,
       detail: request,
     }));
-    if (this.postIntents) void this.postIntent(request);
+    if (this.postIntents) return this.postIntent(request);
+    return Promise.resolve(null);
   }
 
   shouldPost(type) {
@@ -238,8 +304,6 @@ export class FlyBrowserAdapter {
       "drop_requested",
       "key_stroke",
       "cancel_drag_requested",
-      "focus_requested",
-      "hover_requested",
     ].includes(type);
   }
 
@@ -252,6 +316,11 @@ export class FlyBrowserAdapter {
       "x-fly-browser": ADAPTER_VERSION,
     };
     if (this.csrfToken) headers["x-csrf-token"] = this.csrfToken;
+    if (this.accessToken) {
+      headers.authorization = `Bearer ${this.accessToken}`;
+      headers["x-fly-access-token"] = this.accessToken;
+    }
+    if (this.tenantSlug) headers["x-tenant-slug"] = this.tenantSlug;
     try {
       const response = await fetch(this.intentEndpoint, {
         method: "POST",
@@ -266,6 +335,16 @@ export class FlyBrowserAdapter {
         bubbles: true,
         detail: { ok: response.ok, status: response.status, result, request },
       }));
+      if (response.ok && isObject(result)) {
+        const state = isObject(result.result) ? result.result : result;
+        if (typeof state.revision_id === "string") this.root.dataset.flyRevision = state.revision_id;
+        if (typeof state.project_hash === "string") this.root.dataset.flyProjectHash = state.project_hash;
+        if (result.reload === true) {
+          globalThis.location.reload();
+        } else if (typeof result.location === "string") {
+          globalThis.location.assign(result.location);
+        }
+      }
       return result;
     } catch (error) {
       this.root.dispatchEvent(new CustomEvent("fly:browser-error", {
