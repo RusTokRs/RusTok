@@ -30,6 +30,9 @@ fn tenant_locale_cache_uses_the_durable_tenant_generation_channel() {
         "listener.health.mark_failed();",
         "run_periodic_reconciliation_with_interval",
         "#[path = \"tenant_locale_generation_tests.rs\"]",
+        "let durable = self.current_generation().await?;",
+        "if durable < event.generation",
+        "self.handle_event(event, durable).await",
     ] {
         assert!(
             listener.contains(required),
@@ -45,6 +48,18 @@ fn tenant_locale_cache_uses_the_durable_tenant_generation_channel() {
         .find("listener.recover_if_advanced().await")
         .expect("locale listener must recover after subscribing");
     assert!(subscription < recovery);
+
+    let durable_check = listener
+        .find("let durable = self.current_generation().await?;")
+        .expect("message handling must read the durable generation");
+    let apply = listener
+        .find("self.handle_event(event, durable).await")
+        .expect("message handling must apply only after durable validation");
+    let acknowledgement = listener
+        .find("acknowledge_locale_applied(&self.tracker, generation)?;")
+        .expect("exact invalidation must acknowledge only after apply");
+    assert!(durable_check < apply);
+    assert!(apply < acknowledgement);
 
     assert!(listener.contains("TenantLocaleGenerationStartLock"));
     assert!(listener.contains("impl Drop for AbortOnDropTenantLocaleTask"));
