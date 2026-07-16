@@ -43,7 +43,7 @@ pub async fn collect_runtime_guardrail_snapshot(
         &mut snapshot,
         "tenant locale durable generation runtime",
         ctx.shared_get::<TenantLocaleGenerationListenerHandle>()
-            .map(|handle| handle.is_running()),
+            .map(|handle| handle.is_ready()),
         RuntimeGuardrailStatus::Critical,
     );
     observe_worker(
