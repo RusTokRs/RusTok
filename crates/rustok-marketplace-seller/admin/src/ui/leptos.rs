@@ -4,13 +4,16 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
-use crate::core::{build_marketplace_seller_admin_shell, selected_transport_profile};
+use crate::core::{
+    build_marketplace_seller_admin_shell, selected_transport_profile,
+    MarketplaceSellerAdminTransportProfile,
+};
 use crate::i18n::normalize_admin_locale;
 use crate::model::{
     MarketplaceSellerAdminCommand, MarketplaceSellerAdminDetail,
-    MarketplaceSellerAdminFilters, MarketplaceSellerCreateDraft,
-    MarketplaceSellerMemberCreateDraft, MarketplaceSellerMemberUpdateDraft,
-    MarketplaceSellerProfileDraft,
+    MarketplaceSellerAdminDirectory, MarketplaceSellerAdminFilters,
+    MarketplaceSellerCreateDraft, MarketplaceSellerMemberCreateDraft,
+    MarketplaceSellerMemberUpdateDraft, MarketplaceSellerProfileDraft,
 };
 use crate::transport::{
     execute_marketplace_seller_command, load_marketplace_seller_detail,
@@ -36,39 +39,29 @@ pub fn MarketplaceSellerAdmin() -> impl IntoView {
     let russian = locale == "ru";
     let profile = selected_transport_profile(option_env!("RUSTOK_UI_TRANSPORT_PROFILE"));
     let shell = build_marketplace_seller_admin_shell(Some(locale), profile);
-    let transport = match profile {
-        crate::core::MarketplaceSellerAdminTransportProfile::Native => {
-            MarketplaceSellerAdminTransportContext::native()
-        }
-        crate::core::MarketplaceSellerAdminTransportProfile::Graphql => {
-            MarketplaceSellerAdminTransportContext::graphql(
-                None,
-                option_env!("RUSTOK_TENANT_SLUG").map(str::to_string),
-            )
-        }
-    };
+    let transport = transport_context(profile);
 
-    let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
-    let (selected_id, set_selected_id) = signal(Option::<String>::None);
-    let (search, set_search) = signal(String::new());
-    let (status_filter, set_status_filter) = signal(String::new());
-    let (onboarding_filter, set_onboarding_filter) = signal(String::new());
-    let (busy, set_busy) = signal(false);
-    let (error, set_error) = signal(Option::<String>::None);
-    let (notice, set_notice) = signal(Option::<String>::None);
-    let (pending_command, set_pending_command) =
-        signal(Option::<(String, MarketplaceSellerAdminCommand)>::None);
+    let refresh_nonce = RwSignal::new(0_u64);
+    let selected_id = RwSignal::new(Option::<String>::None);
+    let search = RwSignal::new(String::new());
+    let status_filter = RwSignal::new(String::new());
+    let onboarding_filter = RwSignal::new(String::new());
+    let busy = RwSignal::new(false);
+    let error = RwSignal::new(Option::<String>::None);
+    let notice = RwSignal::new(Option::<String>::None);
+    let pending_command =
+        RwSignal::new(Option::<(String, MarketplaceSellerAdminCommand)>::None);
 
-    let (create_handle, set_create_handle) = signal(String::new());
-    let (create_display_name, set_create_display_name) = signal(String::new());
-    let (create_legal_name, set_create_legal_name) = signal(String::new());
-    let (create_owner_user_id, set_create_owner_user_id) = signal(String::new());
-    let (profile_display_name, set_profile_display_name) = signal(String::new());
-    let (profile_legal_name, set_profile_legal_name) = signal(String::new());
-    let (onboarding_note, set_onboarding_note) = signal(String::new());
-    let (suspension_reason, set_suspension_reason) = signal(String::new());
-    let (member_user_id, set_member_user_id) = signal(String::new());
-    let (member_role, set_member_role) = signal("member".to_string());
+    let create_handle = RwSignal::new(String::new());
+    let create_display_name = RwSignal::new(String::new());
+    let create_legal_name = RwSignal::new(String::new());
+    let create_owner_user_id = RwSignal::new(String::new());
+    let profile_display_name = RwSignal::new(String::new());
+    let profile_legal_name = RwSignal::new(String::new());
+    let onboarding_note = RwSignal::new(String::new());
+    let suspension_reason = RwSignal::new(String::new());
+    let member_user_id = RwSignal::new(String::new());
+    let member_role = RwSignal::new("member".to_string());
 
     let directory_transport = transport.clone();
     let directory = local_resource(
@@ -120,38 +113,36 @@ pub fn MarketplaceSellerAdmin() -> impl IntoView {
             if busy.get_untracked() {
                 return;
             }
-            let key = pending_command
+            let idempotency_key = pending_command
                 .get_untracked()
                 .as_ref()
                 .filter(|(_, pending)| pending == &command)
                 .map(|(key, _)| key.clone())
                 .unwrap_or_else(|| format!("marketplace-seller-admin-{}", uuid::Uuid::new_v4()));
-            set_pending_command.set(Some((key.clone(), command.clone())));
-            set_busy.set(true);
-            set_error.set(None);
-            set_notice.set(None);
+            pending_command.set(Some((idempotency_key.clone(), command.clone())));
+            busy.set(true);
+            error.set(None);
+            notice.set(None);
             let context = transport.clone();
             spawn_local(async move {
-                match execute_marketplace_seller_command(context, key, command).await {
+                match execute_marketplace_seller_command(context, idempotency_key, command).await {
                     Ok(result) => {
                         if let Some(seller) = result.seller {
-                            set_selected_id.set(Some(seller.id));
-                            set_profile_display_name.set(seller.display_name);
-                            set_profile_legal_name.set(seller.legal_name.unwrap_or_default());
+                            profile_display_name.set(seller.display_name.clone());
+                            profile_legal_name.set(seller.legal_name.clone().unwrap_or_default());
+                            selected_id.set(Some(seller.id));
                         }
-                        set_pending_command.set(None);
-                        set_notice.set(Some(text(
+                        pending_command.set(None);
+                        notice.set(Some(localized(
                             russian,
                             "Marketplace seller command completed.",
                             "Команда продавца выполнена.",
                         )));
-                        set_refresh_nonce.update(|value| *value = value.saturating_add(1));
+                        refresh_nonce.update(|value| *value = value.saturating_add(1));
                     }
-                    Err(transport_error) => {
-                        set_error.set(Some(transport_error.to_string()));
-                    }
+                    Err(transport_error) => error.set(Some(transport_error.to_string())),
                 }
-                set_busy.set(false);
+                busy.set(false);
             });
         }
     });
@@ -165,9 +156,7 @@ pub fn MarketplaceSellerAdmin() -> impl IntoView {
                 <p class="marketplace-seller-admin__family">"Marketplace Family"</p>
                 <h1>{shell.title}</h1>
                 <p>{shell.subtitle}</p>
-                <p class="marketplace-seller-admin__transport">
-                    {format!("{}: {}", text_ref(russian, "Transport", "Транспорт"), profile.as_str())}
-                </p>
+                <p>{format!("{}: {}", label(russian, "Transport", "Транспорт"), profile.as_str())}</p>
             </header>
 
             {move || error.get().map(|message| view! {
@@ -185,7 +174,7 @@ pub fn MarketplaceSellerAdmin() -> impl IntoView {
                             }
                         }
                     >
-                        {text_ref(russian, "Retry same command", "Повторить ту же команду")}
+                        {label(russian, "Retry same command", "Повторить ту же команду")}
                     </button>
                 </div>
             })}
@@ -195,136 +184,56 @@ pub fn MarketplaceSellerAdmin() -> impl IntoView {
 
             <div class="marketplace-seller-admin__layout">
                 <aside class="marketplace-seller-admin__directory">
-                    <div class="marketplace-seller-admin__filters">
-                        <input
-                            type="search"
-                            placeholder=text_ref(russian, "Search sellers", "Поиск продавцов")
-                            prop:value=move || search.get()
-                            on:input=move |event| set_search.set(event_target_value(&event))
-                        />
-                        <select
-                            prop:value=move || status_filter.get()
-                            on:change=move |event| set_status_filter.set(event_target_value(&event))
-                        >
-                            <option value="">{text_ref(russian, "All statuses", "Все статусы")}</option>
-                            <option value="draft">"draft"</option>
-                            <option value="active">"active"</option>
-                            <option value="suspended">"suspended"</option>
-                            <option value="closed">"closed"</option>
-                        </select>
-                        <select
-                            prop:value=move || onboarding_filter.get()
-                            on:change=move |event| set_onboarding_filter.set(event_target_value(&event))
-                        >
-                            <option value="">{text_ref(russian, "All onboarding states", "Все состояния онбординга")}</option>
-                            <option value="draft">"draft"</option>
-                            <option value="submitted">"submitted"</option>
-                            <option value="approved">"approved"</option>
-                            <option value="rejected">"rejected"</option>
-                        </select>
-                    </div>
-                    <Suspense fallback=move || view! { <p>{text_ref(russian, "Loading sellers...", "Загрузка продавцов...")}</p> }>
+                    {render_filters(russian, search, status_filter, onboarding_filter)}
+                    <Suspense fallback=move || view! { <p>{label(russian, "Loading sellers...", "Загрузка продавцов...")}</p> }>
                         {move || directory.get().map(|result| match result {
-                            Ok(directory) if directory.items.is_empty() => view! {
-                                <p class="marketplace-seller-admin__empty">{text_ref(russian, "No sellers match the filters.", "Продавцы по фильтрам не найдены.")}</p>
-                            }.into_any(),
-                            Ok(directory) => view! {
-                                <p>{format!("{}: {}", text_ref(russian, "Total", "Всего"), directory.total)}</p>
-                                <ul class="marketplace-seller-admin__seller-list">
-                                    {directory.items.into_iter().map(|seller| {
-                                        let seller_id = seller.id.clone();
-                                        view! {
-                                            <li>
-                                                <button
-                                                    type="button"
-                                                    class:active=move || selected_id.get().as_deref() == Some(seller_id.as_str())
-                                                    on:click=move |_| {
-                                                        set_selected_id.set(Some(seller_id.clone()));
-                                                        set_profile_display_name.set(seller.display_name.clone());
-                                                    }
-                                                >
-                                                    <strong>{seller.display_name}</strong>
-                                                    <span>{format!("@{} · {} · {}", seller.handle, seller.status, seller.onboarding_status)}</span>
-                                                </button>
-                                            </li>
-                                        }
-                                    }).collect_view()}
-                                </ul>
-                            }.into_any(),
-                            Err(error) => view! {
-                                <p class="marketplace-seller-admin__error">{error.to_string()}</p>
+                            Ok(directory) => render_directory(
+                                russian,
+                                directory,
+                                selected_id,
+                                profile_display_name,
+                                profile_legal_name,
+                            ).into_any(),
+                            Err(transport_error) => view! {
+                                <p class="marketplace-seller-admin__error">{transport_error.to_string()}</p>
                             }.into_any(),
                         })}
                     </Suspense>
-
-                    <section class="marketplace-seller-admin__create">
-                        <h2>{text_ref(russian, "Create seller", "Создать продавца")}</h2>
-                        <input
-                            placeholder="handle"
-                            prop:value=move || create_handle.get()
-                            on:input=move |event| set_create_handle.set(event_target_value(&event))
-                        />
-                        <input
-                            placeholder=text_ref(russian, "Display name", "Отображаемое имя")
-                            prop:value=move || create_display_name.get()
-                            on:input=move |event| set_create_display_name.set(event_target_value(&event))
-                        />
-                        <input
-                            placeholder=text_ref(russian, "Legal name", "Юридическое имя")
-                            prop:value=move || create_legal_name.get()
-                            on:input=move |event| set_create_legal_name.set(event_target_value(&event))
-                        />
-                        <input
-                            placeholder="owner user UUID"
-                            prop:value=move || create_owner_user_id.get()
-                            on:input=move |event| set_create_owner_user_id.set(event_target_value(&event))
-                        />
-                        <button
-                            type="button"
-                            disabled=move || busy.get()
-                            on:click=move |_| {
-                                create_command(MarketplaceSellerAdminCommand::Create {
-                                    draft: MarketplaceSellerCreateDraft {
-                                        handle: create_handle.get_untracked(),
-                                        display_name: create_display_name.get_untracked(),
-                                        legal_name: optional_text(create_legal_name.get_untracked()),
-                                        owner_user_id: create_owner_user_id.get_untracked(),
-                                        metadata: serde_json::json!({}),
-                                    },
-                                });
-                            }
-                        >
-                            {text_ref(russian, "Create", "Создать")}
-                        </button>
-                    </section>
+                    {render_create_form(
+                        russian,
+                        busy,
+                        create_handle,
+                        create_display_name,
+                        create_legal_name,
+                        create_owner_user_id,
+                        create_command,
+                    )}
                 </aside>
 
                 <main class="marketplace-seller-admin__detail">
-                    <Suspense fallback=move || view! { <p>{text_ref(russian, "Loading seller detail...", "Загрузка продавца...")}</p> }>
+                    <Suspense fallback=move || view! { <p>{label(russian, "Loading seller detail...", "Загрузка продавца...")}</p> }>
                         {move || detail.get().map(|result| match result {
                             Ok(None) => view! {
-                                <p>{text_ref(russian, "Select a seller to inspect lifecycle and members.", "Выберите продавца для просмотра жизненного цикла и участников.")}</p>
+                                <p>{label(
+                                    russian,
+                                    "Select a seller to inspect lifecycle and members.",
+                                    "Выберите продавца для просмотра жизненного цикла и участников.",
+                                )}</p>
                             }.into_any(),
                             Ok(Some(detail)) => render_detail(
                                 russian,
                                 detail,
                                 busy,
                                 profile_display_name,
-                                set_profile_display_name,
                                 profile_legal_name,
-                                set_profile_legal_name,
                                 onboarding_note,
-                                set_onboarding_note,
                                 suspension_reason,
-                                set_suspension_reason,
                                 member_user_id,
-                                set_member_user_id,
                                 member_role,
-                                set_member_role,
                                 run_command.clone(),
                             ).into_any(),
-                            Err(error) => view! {
-                                <p class="marketplace-seller-admin__error">{error.to_string()}</p>
+                            Err(transport_error) => view! {
+                                <p class="marketplace-seller-admin__error">{transport_error.to_string()}</p>
                             }.into_any(),
                         })}
                     </Suspense>
@@ -334,134 +243,274 @@ pub fn MarketplaceSellerAdmin() -> impl IntoView {
     }
 }
 
+fn render_filters(
+    russian: bool,
+    search: RwSignal<String>,
+    status: RwSignal<String>,
+    onboarding: RwSignal<String>,
+) -> impl IntoView {
+    view! {
+        <div class="marketplace-seller-admin__filters">
+            <input
+                type="search"
+                placeholder=label(russian, "Search sellers", "Поиск продавцов")
+                prop:value=move || search.get()
+                on:input=move |event| search.set(event_target_value(&event))
+            />
+            <select
+                prop:value=move || status.get()
+                on:change=move |event| status.set(event_target_value(&event))
+            >
+                <option value="">{label(russian, "All statuses", "Все статусы")}</option>
+                <option value="draft">"draft"</option>
+                <option value="active">"active"</option>
+                <option value="suspended">"suspended"</option>
+                <option value="closed">"closed"</option>
+            </select>
+            <select
+                prop:value=move || onboarding.get()
+                on:change=move |event| onboarding.set(event_target_value(&event))
+            >
+                <option value="">{label(russian, "All onboarding states", "Все состояния онбординга")}</option>
+                <option value="draft">"draft"</option>
+                <option value="submitted">"submitted"</option>
+                <option value="approved">"approved"</option>
+                <option value="rejected">"rejected"</option>
+            </select>
+        </div>
+    }
+}
+
+fn render_directory(
+    russian: bool,
+    directory: MarketplaceSellerAdminDirectory,
+    selected_id: RwSignal<Option<String>>,
+    profile_display_name: RwSignal<String>,
+    profile_legal_name: RwSignal<String>,
+) -> impl IntoView {
+    if directory.items.is_empty() {
+        return view! {
+            <p class="marketplace-seller-admin__empty">
+                {label(russian, "No sellers match the filters.", "Продавцы по фильтрам не найдены.")}
+            </p>
+        }
+        .into_any();
+    }
+
+    view! {
+        <p>{format!("{}: {}", label(russian, "Total", "Всего"), directory.total)}</p>
+        <ul class="marketplace-seller-admin__seller-list">
+            {directory.items.into_iter().map(|seller| {
+                let active_id = seller.id.clone();
+                let click_id = seller.id.clone();
+                let click_display_name = seller.display_name.clone();
+                let display_name = seller.display_name;
+                let handle = seller.handle;
+                let status = seller.status;
+                let onboarding_status = seller.onboarding_status;
+                view! {
+                    <li>
+                        <button
+                            type="button"
+                            class:active=move || selected_id.get().as_deref() == Some(active_id.as_str())
+                            on:click=move |_| {
+                                selected_id.set(Some(click_id.clone()));
+                                profile_display_name.set(click_display_name.clone());
+                                profile_legal_name.set(String::new());
+                            }
+                        >
+                            <strong>{display_name}</strong>
+                            <span>{format!("@{handle} · {status} · {onboarding_status}")}</span>
+                        </button>
+                    </li>
+                }
+            }).collect_view()}
+        </ul>
+    }
+    .into_any()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_create_form(
+    russian: bool,
+    busy: RwSignal<bool>,
+    handle: RwSignal<String>,
+    display_name: RwSignal<String>,
+    legal_name: RwSignal<String>,
+    owner_user_id: RwSignal<String>,
+    run_command: Rc<dyn Fn(MarketplaceSellerAdminCommand)>,
+) -> impl IntoView {
+    view! {
+        <section class="marketplace-seller-admin__create">
+            <h2>{label(russian, "Create seller", "Создать продавца")}</h2>
+            <input
+                placeholder="handle"
+                prop:value=move || handle.get()
+                on:input=move |event| handle.set(event_target_value(&event))
+            />
+            <input
+                placeholder=label(russian, "Display name", "Отображаемое имя")
+                prop:value=move || display_name.get()
+                on:input=move |event| display_name.set(event_target_value(&event))
+            />
+            <input
+                placeholder=label(russian, "Legal name", "Юридическое имя")
+                prop:value=move || legal_name.get()
+                on:input=move |event| legal_name.set(event_target_value(&event))
+            />
+            <input
+                placeholder="owner user UUID"
+                prop:value=move || owner_user_id.get()
+                on:input=move |event| owner_user_id.set(event_target_value(&event))
+            />
+            <button
+                type="button"
+                disabled=move || busy.get()
+                on:click=move |_| run_command(MarketplaceSellerAdminCommand::Create {
+                    draft: MarketplaceSellerCreateDraft {
+                        handle: handle.get_untracked(),
+                        display_name: display_name.get_untracked(),
+                        legal_name: optional_text(legal_name.get_untracked()),
+                        owner_user_id: owner_user_id.get_untracked(),
+                        metadata: serde_json::json!({}),
+                    },
+                })
+            >
+                {label(russian, "Create", "Создать")}
+            </button>
+        </section>
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_detail(
     russian: bool,
     detail: MarketplaceSellerAdminDetail,
-    busy: ReadSignal<bool>,
-    profile_display_name: ReadSignal<String>,
-    set_profile_display_name: WriteSignal<String>,
-    profile_legal_name: ReadSignal<String>,
-    set_profile_legal_name: WriteSignal<String>,
-    onboarding_note: ReadSignal<String>,
-    set_onboarding_note: WriteSignal<String>,
-    suspension_reason: ReadSignal<String>,
-    set_suspension_reason: WriteSignal<String>,
-    member_user_id: ReadSignal<String>,
-    set_member_user_id: WriteSignal<String>,
-    member_role: ReadSignal<String>,
-    set_member_role: WriteSignal<String>,
+    busy: RwSignal<bool>,
+    profile_display_name: RwSignal<String>,
+    profile_legal_name: RwSignal<String>,
+    onboarding_note: RwSignal<String>,
+    suspension_reason: RwSignal<String>,
+    member_user_id: RwSignal<String>,
+    member_role: RwSignal<String>,
     run_command: Rc<dyn Fn(MarketplaceSellerAdminCommand)>,
 ) -> impl IntoView {
     let seller = detail.seller;
     let seller_id = seller.id.clone();
-    let update_profile = run_command.clone();
-    let submit = run_command.clone();
-    let approve = run_command.clone();
-    let reject = run_command.clone();
-    let suspend = run_command.clone();
-    let reactivate = run_command.clone();
-    let add_member = run_command.clone();
+    let profile_command = run_command.clone();
+    let submit_command = run_command.clone();
+    let approve_command = run_command.clone();
+    let reject_command = run_command.clone();
+    let suspend_command = run_command.clone();
+    let reactivate_command = run_command.clone();
+    let add_member_command = run_command.clone();
+
+    if profile_display_name.get_untracked().is_empty() {
+        profile_display_name.set(seller.display_name.clone());
+    }
+    if profile_legal_name.get_untracked().is_empty() {
+        profile_legal_name.set(seller.legal_name.clone().unwrap_or_default());
+    }
+
+    let profile_seller_id = seller_id.clone();
+    let submit_seller_id = seller_id.clone();
+    let approve_seller_id = seller_id.clone();
+    let reject_seller_id = seller_id.clone();
+    let suspend_seller_id = seller_id.clone();
+    let reactivate_seller_id = seller_id.clone();
+    let add_member_seller_id = seller_id.clone();
 
     view! {
         <article class="marketplace-seller-admin__seller-detail">
             <header>
-                <h2>{seller.display_name.clone()}</h2>
+                <h2>{seller.display_name}</h2>
                 <p>{format!("@{} · {} · {}", seller.handle, seller.status, seller.onboarding_status)}</p>
-                {seller.suspension_reason.clone().map(|reason| view! { <p>{reason}</p> })}
+                {seller.suspension_reason.map(|reason| view! { <p>{reason}</p> })}
             </header>
 
             <section>
-                <h3>{text_ref(russian, "Profile", "Профиль")}</h3>
+                <h3>{label(russian, "Profile", "Профиль")}</h3>
                 <input
-                    placeholder=text_ref(russian, "Display name", "Отображаемое имя")
+                    placeholder=label(russian, "Display name", "Отображаемое имя")
                     prop:value=move || profile_display_name.get()
-                    on:input=move |event| set_profile_display_name.set(event_target_value(&event))
+                    on:input=move |event| profile_display_name.set(event_target_value(&event))
                 />
                 <input
-                    placeholder=text_ref(russian, "Legal name", "Юридическое имя")
+                    placeholder=label(russian, "Legal name", "Юридическое имя")
                     prop:value=move || profile_legal_name.get()
-                    on:input=move |event| set_profile_legal_name.set(event_target_value(&event))
+                    on:input=move |event| profile_legal_name.set(event_target_value(&event))
                 />
                 <button
                     type="button"
                     disabled=move || busy.get()
-                    on:click={
-                        let seller_id = seller_id.clone();
-                        move |_| update_profile(MarketplaceSellerAdminCommand::UpdateProfile {
-                            seller_id: seller_id.clone(),
-                            draft: MarketplaceSellerProfileDraft {
-                                display_name: optional_text(profile_display_name.get_untracked()),
-                                legal_name: optional_text(profile_legal_name.get_untracked()),
-                                metadata: None,
-                            },
-                        })
-                    }
+                    on:click=move |_| profile_command(MarketplaceSellerAdminCommand::UpdateProfile {
+                        seller_id: profile_seller_id.clone(),
+                        draft: MarketplaceSellerProfileDraft {
+                            display_name: optional_text(profile_display_name.get_untracked()),
+                            legal_name: optional_text(profile_legal_name.get_untracked()),
+                            metadata: None,
+                        },
+                    })
                 >
-                    {text_ref(russian, "Save profile", "Сохранить профиль")}
+                    {label(russian, "Save profile", "Сохранить профиль")}
                 </button>
             </section>
 
             <section>
-                <h3>{text_ref(russian, "Onboarding and lifecycle", "Онбординг и жизненный цикл")}</h3>
+                <h3>{label(russian, "Onboarding and lifecycle", "Онбординг и жизненный цикл")}</h3>
                 <textarea
-                    placeholder=text_ref(russian, "Review note", "Комментарий проверки")
+                    placeholder=label(russian, "Review note", "Комментарий проверки")
                     prop:value=move || onboarding_note.get()
-                    on:input=move |event| set_onboarding_note.set(event_target_value(&event))
+                    on:input=move |event| onboarding_note.set(event_target_value(&event))
                 />
                 <div class="marketplace-seller-admin__actions">
-                    <button type="button" disabled=move || busy.get() on:click={
-                        let seller_id = seller_id.clone();
-                        move |_| submit(MarketplaceSellerAdminCommand::SubmitOnboarding {
-                            seller_id: seller_id.clone(),
+                    <button type="button" disabled=move || busy.get() on:click=move |_| {
+                        submit_command(MarketplaceSellerAdminCommand::SubmitOnboarding {
+                            seller_id: submit_seller_id.clone(),
                             note: optional_text(onboarding_note.get_untracked()),
                         })
-                    }>{text_ref(russian, "Submit", "Отправить")}</button>
-                    <button type="button" disabled=move || busy.get() on:click={
-                        let seller_id = seller_id.clone();
-                        move |_| approve(MarketplaceSellerAdminCommand::ReviewOnboarding {
-                            seller_id: seller_id.clone(),
+                    }>{label(russian, "Submit", "Отправить")}</button>
+                    <button type="button" disabled=move || busy.get() on:click=move |_| {
+                        approve_command(MarketplaceSellerAdminCommand::ReviewOnboarding {
+                            seller_id: approve_seller_id.clone(),
                             approved: true,
                             note: optional_text(onboarding_note.get_untracked()),
                         })
-                    }>{text_ref(russian, "Approve", "Одобрить")}</button>
-                    <button type="button" disabled=move || busy.get() on:click={
-                        let seller_id = seller_id.clone();
-                        move |_| reject(MarketplaceSellerAdminCommand::ReviewOnboarding {
-                            seller_id: seller_id.clone(),
+                    }>{label(russian, "Approve", "Одобрить")}</button>
+                    <button type="button" disabled=move || busy.get() on:click=move |_| {
+                        reject_command(MarketplaceSellerAdminCommand::ReviewOnboarding {
+                            seller_id: reject_seller_id.clone(),
                             approved: false,
                             note: optional_text(onboarding_note.get_untracked()),
                         })
-                    }>{text_ref(russian, "Reject", "Отклонить")}</button>
+                    }>{label(russian, "Reject", "Отклонить")}</button>
                 </div>
                 <input
-                    placeholder=text_ref(russian, "Suspension reason", "Причина блокировки")
+                    placeholder=label(russian, "Suspension reason", "Причина блокировки")
                     prop:value=move || suspension_reason.get()
-                    on:input=move |event| set_suspension_reason.set(event_target_value(&event))
+                    on:input=move |event| suspension_reason.set(event_target_value(&event))
                 />
                 <div class="marketplace-seller-admin__actions">
-                    <button type="button" disabled=move || busy.get() on:click={
-                        let seller_id = seller_id.clone();
-                        move |_| suspend(MarketplaceSellerAdminCommand::Suspend {
-                            seller_id: seller_id.clone(),
+                    <button type="button" disabled=move || busy.get() on:click=move |_| {
+                        suspend_command(MarketplaceSellerAdminCommand::Suspend {
+                            seller_id: suspend_seller_id.clone(),
                             reason: suspension_reason.get_untracked(),
                         })
-                    }>{text_ref(russian, "Suspend", "Заблокировать")}</button>
-                    <button type="button" disabled=move || busy.get() on:click={
-                        let seller_id = seller_id.clone();
-                        move |_| reactivate(MarketplaceSellerAdminCommand::Reactivate {
-                            seller_id: seller_id.clone(),
+                    }>{label(russian, "Suspend", "Заблокировать")}</button>
+                    <button type="button" disabled=move || busy.get() on:click=move |_| {
+                        reactivate_command(MarketplaceSellerAdminCommand::Reactivate {
+                            seller_id: reactivate_seller_id.clone(),
                         })
-                    }>{text_ref(russian, "Reactivate", "Активировать снова")}</button>
+                    }>{label(russian, "Reactivate", "Активировать снова")}</button>
                 </div>
             </section>
 
             <section>
-                <h3>{text_ref(russian, "Seller members", "Участники продавца")}</h3>
+                <h3>{label(russian, "Seller members", "Участники продавца")}</h3>
                 <ul>
                     {detail.members.into_iter().map(|member| {
-                        let disable_member = run_command.clone();
-                        let activate_member = run_command.clone();
+                        let disable_command = run_command.clone();
+                        let activate_command = run_command.clone();
                         let disable_seller_id = seller_id.clone();
                         let activate_seller_id = seller_id.clone();
                         let disable_member_id = member.id.clone();
@@ -470,7 +519,7 @@ fn render_detail(
                             <li>
                                 <span>{format!("{} · {} · {}", member.user_id, member.role, member.status)}</span>
                                 <button type="button" disabled=move || busy.get() on:click=move |_| {
-                                    disable_member(MarketplaceSellerAdminCommand::UpdateMember {
+                                    disable_command(MarketplaceSellerAdminCommand::UpdateMember {
                                         seller_id: disable_seller_id.clone(),
                                         member_id: disable_member_id.clone(),
                                         draft: MarketplaceSellerMemberUpdateDraft {
@@ -479,9 +528,9 @@ fn render_detail(
                                             metadata: None,
                                         },
                                     })
-                                }>{text_ref(russian, "Disable", "Отключить")}</button>
+                                }>{label(russian, "Disable", "Отключить")}</button>
                                 <button type="button" disabled=move || busy.get() on:click=move |_| {
-                                    activate_member(MarketplaceSellerAdminCommand::UpdateMember {
+                                    activate_command(MarketplaceSellerAdminCommand::UpdateMember {
                                         seller_id: activate_seller_id.clone(),
                                         member_id: activate_member_id.clone(),
                                         draft: MarketplaceSellerMemberUpdateDraft {
@@ -490,7 +539,7 @@ fn render_detail(
                                             metadata: None,
                                         },
                                     })
-                                }>{text_ref(russian, "Activate", "Активировать")}</button>
+                                }>{label(russian, "Activate", "Активировать")}</button>
                             </li>
                         }
                     }).collect_view()}
@@ -498,30 +547,45 @@ fn render_detail(
                 <input
                     placeholder="user UUID"
                     prop:value=move || member_user_id.get()
-                    on:input=move |event| set_member_user_id.set(event_target_value(&event))
+                    on:input=move |event| member_user_id.set(event_target_value(&event))
                 />
                 <select
                     prop:value=move || member_role.get()
-                    on:change=move |event| set_member_role.set(event_target_value(&event))
+                    on:change=move |event| member_role.set(event_target_value(&event))
                 >
                     <option value="admin">"admin"</option>
                     <option value="operations">"operations"</option>
                     <option value="finance">"finance"</option>
                     <option value="member">"member"</option>
                 </select>
-                <button type="button" disabled=move || busy.get() on:click={
-                    let seller_id = seller_id.clone();
-                    move |_| add_member(MarketplaceSellerAdminCommand::AddMember {
-                        seller_id: seller_id.clone(),
+                <button type="button" disabled=move || busy.get() on:click=move |_| {
+                    add_member_command(MarketplaceSellerAdminCommand::AddMember {
+                        seller_id: add_member_seller_id.clone(),
                         draft: MarketplaceSellerMemberCreateDraft {
                             user_id: member_user_id.get_untracked(),
                             role: member_role.get_untracked(),
                             metadata: serde_json::json!({}),
                         },
                     })
-                }>{text_ref(russian, "Invite member", "Пригласить участника")}</button>
+                }>{label(russian, "Invite member", "Пригласить участника")}</button>
             </section>
         </article>
+    }
+}
+
+fn transport_context(
+    profile: MarketplaceSellerAdminTransportProfile,
+) -> MarketplaceSellerAdminTransportContext {
+    match profile {
+        MarketplaceSellerAdminTransportProfile::Native => {
+            MarketplaceSellerAdminTransportContext::native()
+        }
+        MarketplaceSellerAdminTransportProfile::Graphql => {
+            MarketplaceSellerAdminTransportContext::graphql(
+                None,
+                option_env!("RUSTOK_TENANT_SLUG").map(str::to_string),
+            )
+        }
     }
 }
 
@@ -530,15 +594,11 @@ fn optional_text(value: String) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
-fn text(russian: bool, english: &'static str, russian_text: &'static str) -> String {
-    text_ref(russian, english, russian_text).to_string()
+fn localized(russian: bool, english: &'static str, russian_text: &'static str) -> String {
+    label(russian, english, russian_text).to_string()
 }
 
-fn text_ref(
-    russian: bool,
-    english: &'static str,
-    russian_text: &'static str,
-) -> &'static str {
+fn label(russian: bool, english: &'static str, russian_text: &'static str) -> &'static str {
     if russian {
         russian_text
     } else {
