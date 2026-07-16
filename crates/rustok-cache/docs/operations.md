@@ -71,6 +71,32 @@ Never apply only the latest event and assume intermediate invalidations were har
 4. Resume fast-path events only after recovery completes.
 5. Acknowledge the recovered offset/generation last.
 
+## Channel resolution generation recovery
+
+The channel cache uses `channel_resolution_invalidation_state` as its durable source. Database
+triggers on all channel-owned resolution tables advance the global generation in the same
+transaction as the mutation. `channel.resolution.generation.v1` is only a low-latency notification.
+Every serving runtime checks the database generation at startup, after local/Redis notification, and
+at least every five seconds.
+
+During an incident:
+
+1. Read the `resolution` row from `channel_resolution_invalidation_state` and confirm generation is
+   non-negative and advancing when channel, target, binding or policy rows change.
+2. Check the runtime guardrail reason for `channel resolution durable invalidation runtime`; a
+   missing or terminal handle is critical because periodic convergence has stopped.
+3. If Redis publication fails, do not replay channel mutations. Confirm the committed database
+   generation advanced and wait for database reconciliation to clear process-local channel tokens.
+4. If the local listener lags, a replica starts without a trusted baseline, or database generation
+   regresses after restore, require a namespace-wide local clear before accepting the new baseline.
+5. If the database is unavailable, treat the replica as unable to prove convergence. Restore the
+   database source, verify reconciliation completes, and only then clear the readiness incident.
+6. Measure recovery from mutation commit to the last replica clear. The source contract currently
+   targets the five-second reconciliation interval; exceeding it is a correctness incident.
+
+Do not replace the trigger-backed generation with a post-commit process-local counter. A crash
+between the data commit and generation reservation would make missed-event recovery impossible.
+
 ## Worker restart triage
 
 A restart is a recovery attempt, not proof that the dependency or worker is healthy.
@@ -147,6 +173,7 @@ Minimum incident-drill evidence:
 - Redis unavailable at startup;
 - Redis disconnect and reconnect while serving bounded fallback reads;
 - PubSub publication failure with durable generation reconciliation;
+- channel mutation with publication loss followed by database-generation reconciliation on every replica;
 - listener lag/gap followed by full-clear recovery and delayed acknowledgement;
 - CAS applied, mismatch, timeout and backend failure;
 - synchronized stale refresh load with bounded saturation;
