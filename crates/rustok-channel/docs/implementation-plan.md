@@ -25,7 +25,7 @@ five-second database reconciliation performs a safe namespace-wide local clear
 when delivery was missed, the generation regressed, or a replica starts from an
 unverified baseline. The worker runtime is a critical host guardrail.
 
-The source now includes three durable-recovery evidence layers:
+The source now includes four durable-recovery evidence layers:
 
 - SQLite reader tests prove that independent replica handles observe committed
   generations without PubSub, rolled-back changes do not advance the epoch, and
@@ -37,10 +37,16 @@ The source now includes three durable-recovery evidence layers:
   workflow with ephemeral Postgres 17, covers statement triggers, an independent
   replica connection, commit/rollback, concurrent owner mutations and migration
   replay after state loss.
+- An ignored live Redis server test publishes only from replica A and proves
+  remote replicas consume validated invalidations before their five-second poll.
+  Replica B covers fail-closed degradation, while a fresh replica C covers
+  recovery so the result cannot be explained by the same worker's periodic tick.
 
-This durable cross-replica contract and its test scenarios are source-complete.
-They are not compiled or live verified on the current revision until the
-permanent cache workflow reports successful compiled, PostgreSQL and Redis jobs.
+This durable cross-replica contract and its readiness-oriented test scenarios
+are source-complete. They are not compiled or live verified on the current
+revision until the permanent cache workflow reports successful compiled,
+PostgreSQL and Redis jobs. Resolved channel-value convergence remains separate
+runtime evidence rather than being inferred from worker readiness.
 
 ## FFA/FBA boundary
 
@@ -64,25 +70,24 @@ contracts documented and source-locked.
 ## Open results
 
 1. **Execute the permanent durable cache gate.** Run the source-complete SQLite,
-   server two-replica and PostgreSQL scenarios on one reconciled `main` revision,
-   then fix every format, compile, test or Clippy failure before recording the
-   revision as verified.
+   server two-replica, PostgreSQL and live Redis readiness scenarios on one
+   reconciled `main` revision, then fix every format, compile, test or Clippy
+   failure before recording the revision as verified.
    **Depends on:** GitHub Actions visibility or another Rust 1.96 build
-   environment with ephemeral PostgreSQL.
-   **Done when:** `compiled-contract` and `postgres-channel` both pass on the
-   same revision and the result is recorded without copying raw logs.
+   environment with ephemeral PostgreSQL and Redis.
+   **Done when:** `compiled-contract`, `postgres-channel`, and `live-redis` pass
+   on the same revision and the result is recorded without copying raw logs.
 
-2. **Collect live delivery and stale-resolution evidence.** Exercise real Redis
-   publication/subscription, dropped publication, listener lag, disconnect and
-   reconnect while two serving replicas resolve channel requests. Prove database
-   reconciliation rotates the namespace before an obsolete resolution can be
-   served beyond the five-second recovery bound.
-   **Depends on:** isolated Redis 7, controllable transport failure, migrated
-   PostgreSQL/SQLite fixtures, and representative channel request data.
-   **Done when:** tests cover normal publication, concurrent mutations, dropped
-   publication, listener lag, Redis disconnect/reconnect, database
-   outage/recovery, generation regression and terminal-worker readiness while
-   checking the resolved channel result rather than only worker state.
+2. **Collect stale-resolution and transport-failure evidence.** Exercise dropped
+   publication, listener lag, Redis disconnect/reconnect and database
+   outage/recovery while two serving replicas resolve real channel requests.
+   Prove reconciliation rotates the namespace before an obsolete resolution can
+   be served beyond the five-second recovery bound.
+   **Depends on:** controllable Redis failure, migrated PostgreSQL/SQLite
+   fixtures, and representative channel request data.
+   **Done when:** tests cover dropped publication, listener lag, Redis
+   disconnect/reconnect, generation regression and terminal-worker readiness
+   while checking the resolved channel result rather than only worker state.
 
 3. **Collect full runtime evidence for channel resolution.** Exercise
    `ChannelReadPort` and server middleware with real locale/OAuth facts, policy
@@ -119,11 +124,12 @@ contracts documented and source-locked.
 - `cargo test -p rustok-server channel_cache_invalidation --lib`
 - `cargo test -p rustok-server --test channel_cache_architecture_guard`
 - `RUSTOK_CHANNEL_TEST_POSTGRES_URL=postgres://... cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1`
+- `RUSTOK_CACHE_REAL_REDIS_URL=redis://... cargo test -p rustok-server redis_publication_drives_remote_replica_readiness_recovery --lib -- --ignored --nocapture --test-threads=1`
 - `cargo clippy -p rustok-channel --lib -- -D warnings`
 - `cargo xtask module validate channel`
 - `cargo xtask module test channel`
-- Targeted server middleware, generation rollover, Redis multi-replica
-  convergence and policy-lifecycle tests.
+- Targeted server middleware, resolved-value convergence, Redis failure and
+  policy-lifecycle tests.
 
 ## References
 
