@@ -3,7 +3,7 @@
   "module": "payment",
   "role": "provider",
   "status": "boundary_ready",
-  "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1+refund_creation.v1",
+  "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1+refund_creation.v1+provider_outcome.v1",
   "ports": [
     {
       "name": "PaymentCollectionPort",
@@ -52,11 +52,15 @@
       "crates/rustok-payment/src/migrations/m20260714_000118_enforce_refund_creation_identity.rs",
       "crates/rustok-payment/src/migrations/m20260714_000119_require_refund_creation_identity.rs"
     ],
+    "provider_error_source": "crates/rustok-payment/src/error.rs",
+    "provider_outcome_journal_source": "crates/rustok-commerce/src/services/journaled_payment_provider.rs",
+    "uncertain_outcome_migration": "crates/rustok-payment/src/migrations/m20260714_000120_allow_uncertain_provider_outcomes.rs",
     "stripe_adapter_source": "crates/rustok-payment/src/stripe_provider.rs",
     "stripe_source_status": "implemented_not_compiled_or_executed",
     "central_board": "docs/modules/registry.md",
     "registry_verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
-    "refund_identity_verifier": "scripts/verify/verify-payment-refund-identity.mjs"
+    "refund_identity_verifier": "scripts/verify/verify-payment-refund-identity.mjs",
+    "provider_outcome_verifier": "scripts/verify/verify-payment-provider-outcome-contract.mjs"
   },
   "in_process_provider_impl": {
     "service": "PaymentService",
@@ -98,7 +102,8 @@
       "in_process",
       "remote_adapter_placeholder",
       "provider_webhook_inbox",
-      "refund_creation_owner"
+      "refund_creation_owner",
+      "provider_outcome_journal"
     ],
     "cases": [
       {
@@ -139,6 +144,21 @@
         ]
       },
       {
+        "operation": "classify_provider_outcome",
+        "profiles": [
+          "provider_outcome_journal"
+        ],
+        "assertions": [
+          "unavailable_is_retryable",
+          "rejected_is_non_retryable",
+          "configuration_is_non_retryable",
+          "invalid_success_response_requires_reconciliation",
+          "unknown_outcome_requires_reconciliation",
+          "executing_can_transition_to_reconciliation_required",
+          "reconciliation_without_result_never_reexecutes_provider"
+        ]
+      },
+      {
         "operation": "handle_webhook",
         "profiles": [
           "provider_webhook_inbox"
@@ -170,7 +190,7 @@
   },
   "provider_spi": {
     "status": "manual_baseline_plus_stripe_source",
-    "implementation_status": "stripe_and_webhook_source_implemented_not_runtime_verified",
+    "implementation_status": "stripe_and_outcome_policy_source_implemented_not_runtime_verified",
     "source": "crates/rustok-payment/src/providers.rs",
     "default_provider_id": "manual",
     "operations": [
@@ -188,6 +208,36 @@
       "webhook_ingress"
     ],
     "side_effect_boundary": "provider adapters execute external effects and verify or normalize webhook payloads; PaymentService owns persisted lifecycle transitions",
+    "error_taxonomy": {
+      "provider_unavailable": {
+        "retryable": true,
+        "reconciliation_required": false
+      },
+      "provider_rejected": {
+        "retryable": false,
+        "reconciliation_required": false
+      },
+      "provider_configuration": {
+        "retryable": false,
+        "reconciliation_required": false
+      },
+      "provider_invalid_response": {
+        "retryable": false,
+        "reconciliation_required": true
+      },
+      "provider_outcome_unknown": {
+        "retryable": false,
+        "reconciliation_required": true
+      }
+    },
+    "outcome_policy": {
+      "retryable_failure_status": "provider_error",
+      "uncertain_failure_status": "reconciliation_required",
+      "uncertain_transition": "executing_to_reconciliation_required",
+      "automatic_reexecution_from_reconciliation": false,
+      "provider_result_required_for_success_replay": true,
+      "migration": "m20260714_000120_allow_uncertain_provider_outcomes"
+    },
     "adapters": [
       {
         "provider_id": "manual",
@@ -199,6 +249,8 @@
         "source": "crates/rustok-payment/src/stripe_provider.rs",
         "credential_scope": "tenant",
         "credential_provider": "StripeCredentialProvider",
+        "request_timeout_required": true,
+        "typed_error_mapping": true,
         "status": "source_implemented_not_registered_compiled_or_executed"
       }
     ],
