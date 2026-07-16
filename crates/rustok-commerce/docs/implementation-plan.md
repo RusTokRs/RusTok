@@ -66,6 +66,16 @@ Registries and evidence:
 - [x] Guard REST and GraphQL order-change orchestration ownership with
   `apps/server/tests/commerce_order_change_transport_guard.rs` and
   `verify-commerce-admin-boundary.mjs`.
+- [x] Keep refund, exchange, and claim return-completion coordination in
+  `ReturnCompletionOrchestrationService` instead of REST or GraphQL transports.
+- [x] Validate the complete return command before provider or owner side effects,
+  including mutually exclusive helpers and explicit resolution references.
+- [x] Remove the legacy GraphQL provider-refund helper module and guard the shared
+  return-completion boundary with
+  `apps/server/tests/commerce_return_completion_transport_guard.rs` and
+  `verify-commerce-admin-boundary.mjs`.
+- [ ] Persist a durable return-completion operation journal so refund or order-change
+  success can recover when final owner return completion fails or the process exits.
 - [ ] Execute the complete provider-consumer graph with retained runtime evidence.
 
 ## Checkout orchestration workstream
@@ -119,9 +129,11 @@ Checkout evidence:
 - `crates/rustok-commerce/src/services/recovering_staged_checkout.rs`
 - `crates/rustok-commerce/src/services/fulfillment_orchestration_facade.rs`
 - `crates/rustok-commerce/src/services/order_change_orchestration.rs`
+- `crates/rustok-commerce/src/services/return_completion_orchestration.rs`
 - `crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs`
 - `apps/server/tests/commerce_fulfillment_transport_guard.rs`
 - `apps/server/tests/commerce_order_change_transport_guard.rs`
+- `apps/server/tests/commerce_return_completion_transport_guard.rs`
 - `scripts/verify/verify-commerce-admin-boundary.mjs`
 - `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`
 
