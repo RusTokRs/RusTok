@@ -177,6 +177,7 @@ fn cache_workflow_retains_channel_compiled_evidence() {
         "postgres-channel:",
         "RUSTOK_CHANNEL_TEST_POSTGRES_URL",
         "cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1",
+        "cargo test -p rustok-server redis_publication_drives_remote_replica_readiness_recovery --lib -- --ignored --nocapture --test-threads=1",
     ] {
         assert!(
             workflow.contains(required),
@@ -196,7 +197,19 @@ fn cache_workflow_retains_channel_compiled_evidence() {
     }
 
     let runtime = source("apps/server/src/services/channel_cache_invalidation_runtime_tests.rs");
-    assert!(runtime.contains("independent_replicas_fail_closed_and_recover_without_redis"));
+    for required in [
+        "independent_replicas_fail_closed_and_recover_without_redis",
+        "redis_publication_drives_remote_replica_readiness_recovery",
+        "tokio::time::timeout(Duration::from_secs(3)",
+        "let ctx_c = ServerRuntimeContext::new",
+        "assert!(!recovering_remote.is_ready());",
+        "publish_redis_until_readiness(&cache_a, &recovering_remote, true, 2).await;",
+    ] {
+        assert!(
+            runtime.contains(required),
+            "channel replica recovery evidence must retain {required}"
+        );
+    }
     assert!(runtime.contains("wait_for_readiness(&handle_a, false).await;"));
     assert!(runtime.contains("wait_for_readiness(&handle_b, true).await;"));
 
