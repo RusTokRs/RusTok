@@ -6,7 +6,8 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 ///
 /// A registry already installed in `ServerRuntimeContext` is always preserved so
 /// external adapters registered by the host remain visible to every transport.
-/// The built-in manual registry is created lazily only when no host registry exists.
+/// When no payment registry exists, the process-owned provider runtime composes
+/// the manual baseline and any deployment-configured external adapters once.
 pub fn attach_commerce_provider_registries(
     host: HostRuntimeContext,
     server: &ServerRuntimeContext,
@@ -16,8 +17,12 @@ pub fn attach_commerce_provider_registries(
         let registry = server
             .shared_get::<rustok_payment::providers::PaymentProviderRegistry>()
             .unwrap_or_else(|| {
-                let registry =
-                    rustok_payment::providers::PaymentProviderRegistry::with_manual_provider();
+                let registry = crate::services::payment_provider_runtime::build_payment_provider_registry(
+                    server,
+                )
+                .unwrap_or_else(|error| {
+                    panic!("payment provider runtime initialization failed: {error}")
+                });
                 server.shared_insert(registry.clone());
                 registry
             });
