@@ -1,6 +1,6 @@
 use axum::body::{to_bytes, Body};
 use axum::extract::State;
-use axum::http::{Request, StatusCode};
+use axum::http::{HeaderValue, Method, Request, StatusCode};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::Response;
 use axum::Router;
@@ -13,6 +13,7 @@ use rustok_test_utils::mock_transactional_event_bus;
 pub use sea_orm::ConnectionTrait;
 use serde_json::json;
 pub use std::str::FromStr;
+use std::ops::Deref;
 pub use tower::util::ServiceExt;
 use uuid::Uuid;
 
@@ -26,10 +27,100 @@ use crate::dto::{
 use crate::ShippingProfileService;
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
-use rustok_payment::PaymentService;
+use rustok_payment::{
+    PaymentRefundCreationService, PaymentService as DomainPaymentService,
+};
 
 mod support {
     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support.rs"));
+}
+
+/// Compatibility wrapper for older controller fixtures. It deliberately does not
+/// restore a production refund API: all refund creation is routed through the
+/// owner idempotent service with a fixture-owned creation identity.
+pub(crate) struct PaymentService {
+    inner: DomainPaymentService,
+    db: sea_orm::DatabaseConnection,
+}
+
+impl PaymentService {
+    pub(crate) fn new(db: sea_orm::DatabaseConnection) -> Self {
+        Self {
+            inner: DomainPaymentService::new(db.clone()),
+            db,
+        }
+    }
+
+    pub(crate) async fn create_refund(
+        &self,
+        tenant_id: Uuid,
+        collection_id: Uuid,
+        input: CreateRefundInput,
+    ) -> rustok_payment::PaymentResult<RefundResponse> {
+        let collection = self.inner.get_collection(tenant_id, collection_id).await?;
+        match collection.status.as_str() {
+            "pending" => {
+                self.inner
+                    .authorize_collection(
+                        tenant_id,
+                        collection_id,
+                        AuthorizePaymentInput {
+                            provider_id: Some("manual".to_string()),
+                            provider_payment_id: None,
+                            amount: Some(collection.amount),
+                            metadata: json!({"source": "controller-refund-fixture"}),
+                        },
+                    )
+                    .await?;
+                self.inner
+                    .capture_collection(
+                        tenant_id,
+                        collection_id,
+                        CapturePaymentInput {
+                            amount: Some(collection.amount),
+                            metadata: json!({"source": "controller-refund-fixture"}),
+                        },
+                    )
+                    .await?;
+            }
+            "authorized" => {
+                self.inner
+                    .capture_collection(
+                        tenant_id,
+                        collection_id,
+                        CapturePaymentInput {
+                            amount: Some(collection.authorized_amount),
+                            metadata: json!({"source": "controller-refund-fixture"}),
+                        },
+                    )
+                    .await?;
+            }
+            "captured" => {}
+            status => {
+                return Err(rustok_payment::PaymentError::InvalidTransition {
+                    from: status.to_string(),
+                    to: "pending".to_string(),
+                });
+            }
+        }
+
+        PaymentRefundCreationService::new(self.db.clone())
+            .create_or_replay(
+                tenant_id,
+                collection_id,
+                format!("controller-fixture:{collection_id}:{}", Uuid::new_v4()),
+                input,
+            )
+            .await
+    }
+}
+
+impl Deref for PaymentService {
+    type Target = DomainPaymentService;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
 }
 
 pub(crate) fn test_app_context(
@@ -94,6 +185,18 @@ pub(crate) async fn inject_transport_context(
         .insert(TenantContextExtension(context.tenant));
     req.extensions_mut()
         .insert(AuthContextExtension(context.auth));
+
+    let path = req.uri().path();
+    if req.method() == Method::POST
+        && path.starts_with("/admin/payment-collections/")
+        && path.ends_with("/refunds")
+        && !req.headers().contains_key("idempotency-key")
+    {
+        let value = HeaderValue::from_str(format!("controller-http-fixture:{}", Uuid::new_v4()).as_str())
+            .expect("fixture idempotency key must be a valid header");
+        req.headers_mut().insert("idempotency-key", value);
+    }
+
     next.run(req).await
 }
 
