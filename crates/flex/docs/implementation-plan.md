@@ -23,12 +23,29 @@ exact-invalidation path. Durable convergence is source-complete:
   triggers and reverse rollback removes triggers before the singleton table/function;
 - every serving runtime reads the durable generation, clears the complete cache before marking the
   generation applied, polls every five seconds and repeats the clear on advancement;
-- database failure or generation regression is fail-closed, the supervised worker restarts, and its
-  handle is a critical runtime guardrail/readiness dependency;
+- database read failure or generation regression clears the process cache, leaves readiness failed,
+  terminates the worker iteration and relies on the supervisor to retry without lowering the applied
+  generation;
+- task liveness and durable recovery readiness are separate: repeated initialization preserves a
+  live degraded supervisor while the critical runtime guardrail checks `is_ready()`;
 - the process-local consumer remains restartable/abort-on-drop and full-clears on local lag.
 
-Source completion is not compiled or multi-replica verified until the targeted migration/runtime
-suite passes on one revision.
+Source evidence now includes:
+
+- a SQLite owner matrix that installs the real helper triggers on all four donor tables and covers
+  inserts, reorder updates, soft deletes, transaction rollback, deletes and idempotent migration
+  replay;
+- an ignored PostgreSQL 17 integration test with an independent replica reader, all four statement
+  triggers, rollback, reorder, soft delete, two concurrent committed mutations, delete and state
+  loss/replay;
+- a two-replica server test with independent field-definition caches that proves startup
+  seed-before-clear, generation advancement, database-table outage/recovery, generation regression,
+  final monotonic recovery and critical readiness without relying on the 30-second cache TTL;
+- permanent workflow and source guards for the Flex test paths, compiled SQLite/server commands,
+  PostgreSQL command, cache-clear-before-ack ordering and critical `is_ready()` wiring.
+
+This evidence is source-complete but is not compiled or database verified until the permanent cache
+workflow passes its compiled and PostgreSQL jobs on one revision.
 
 ## FFA/FBA boundary
 
@@ -42,13 +59,12 @@ suite passes on one revision.
 
 ## Open results
 
-1. **Execute durable field-cache recovery evidence.** Verify PostgreSQL and SQLite generation
-   triggers for all four donor tables, seed-before-clear startup, generation advancement,
-   concurrent mutations, database outage/recovery, regression handling, worker restart/readiness
-   and multi-replica convergence without relying on the 30-second TTL.
-   **Depends on:** a compiled migration/server environment with at least two serving replicas.
-   **Done when:** every mutation class advances the singleton generation transactionally and all
-   replicas clear before recording the new applied generation.
+1. **Execute durable field-cache recovery evidence.** Run the source-complete SQLite owner matrix,
+   PostgreSQL transaction/concurrency/replay test and two-replica server outage/regression recovery
+   test on one reconciled `main` revision, then fix every format, compile, test or Clippy failure.
+   **Depends on:** the permanent cache workflow or another Rust 1.96 environment with PostgreSQL 17.
+   **Done when:** compiled and PostgreSQL jobs pass on the same revision and the result is recorded
+   without copying raw logs.
 
 2. **Finish the owner transport extraction with targeted runtime evidence.** Remove remaining
    server Flex artifacts beyond Axum handler extraction, SeaORM/bootstrap adapters and runtime
@@ -82,9 +98,10 @@ suite passes on one revision.
 - `cargo check -p rustok-commerce --lib`
 - `cargo check -p rustok-forum --lib`
 - `cargo check -p rustok-server --lib`
+- `cargo test -p flex cache_generation --lib`
+- `cargo test -p rustok-server field_definition_cache_generation --lib`
 - `cargo test -p rustok-server --test field_definition_cache_generation_guard`
-- Targeted PostgreSQL/SQLite migration, cache generation, database recovery, readiness and
-  multi-replica tests.
+- `RUSTOK_FLEX_TEST_POSTGRES_URL=postgres://... cargo test -p flex --test postgres_cache_generation -- --ignored --nocapture --test-threads=1`
 
 ## References
 
