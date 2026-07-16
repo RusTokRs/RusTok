@@ -31,6 +31,7 @@ const cargoPath = "apps/server/Cargo.toml";
 const moduleRegistryPath = "apps/server/src/services/mod.rs";
 const runtimePath = "apps/server/src/services/payment_provider_runtime.rs";
 const attachmentPath = "apps/server/src/services/commerce_provider_runtime.rs";
+const paymentRegistryPath = "crates/rustok-payment/contracts/payment-fba-registry.json";
 const planPath = "crates/rustok-commerce/docs/implementation-plan.md";
 const packagePath = "package.json";
 
@@ -38,6 +39,7 @@ const cargo = read(cargoPath);
 const moduleRegistry = read(moduleRegistryPath);
 const runtime = read(runtimePath);
 const attachment = read(attachmentPath);
+const paymentRegistry = read(paymentRegistryPath);
 const plan = read(planPath);
 const packageJson = read(packagePath);
 
@@ -62,21 +64,17 @@ for (const marker of [
   "reference_owners",
   "register_external",
   "PaymentProviderHealth::Ready",
-  "StaticStripeCredentialProvider",
 ]) {
-  if (marker === "StaticStripeCredentialProvider") {
-    forbidMarker(runtime, marker, `${runtimePath}: static Stripe credentials are forbidden in server composition`);
-  } else {
-    requireMarker(runtime, marker, `${runtimePath}: missing ${marker}`);
-  }
+  requireMarker(runtime, marker, `${runtimePath}: missing ${marker}`);
 }
 for (const marker of [
+  "StaticStripeCredentialProvider",
   "RUSTOK_STRIPE_SECRET_KEY",
   "RUSTOK_STRIPE_WEBHOOK_SECRET",
   "secret_key: String",
   "webhook_secret: String",
 ]) {
-  forbidMarker(runtime, marker, `${runtimePath}: raw credential configuration is forbidden (${marker})`);
+  forbidMarker(runtime, marker, `${runtimePath}: raw or static credential configuration is forbidden (${marker})`);
 }
 requireMarker(
   attachment,
@@ -88,6 +86,16 @@ requireMarker(
   "server.shared_insert(registry.clone())",
   `${attachmentPath}: composed registry must be shared across transports`,
 );
+for (const marker of [
+  '"contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1+refund_creation.v1+provider_outcome.v1+stripe_runtime.v1"',
+  '"runtime_source": "apps/server/src/services/payment_provider_runtime.rs"',
+  '"status": "source_registered_not_compiled_or_executed"',
+  '"secret_registry": "rustok_secrets::SecretResolverRegistry"',
+  '"registration_owner": "rustok-server"',
+  '"secret_reference_owner": "deployment"',
+]) {
+  requireMarker(paymentRegistry, marker, `${paymentRegistryPath}: missing ${marker}`);
+}
 requireMarker(
   plan,
   "verify-payment-stripe-runtime.mjs",
