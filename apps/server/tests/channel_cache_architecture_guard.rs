@@ -162,3 +162,31 @@ fn durable_channel_generation_is_database_owned_and_supervised() {
     assert!(guardrails.contains("channel resolution durable invalidation runtime"));
     assert!(guardrails.contains(".map(|handle| handle.is_ready())"));
 }
+
+#[test]
+fn cache_workflow_retains_channel_compiled_evidence() {
+    let workflow = source(".github/workflows/cache-hardening.yml");
+    for required in [
+        "cargo check -p rustok-channel --lib",
+        "cargo test -p rustok-channel invalidation_generation --lib",
+        "cargo test -p rustok-server channel_cache_invalidation --lib",
+        "cargo clippy -p flex --lib -- -D warnings",
+        "cargo clippy -p rustok-channel --lib -- -D warnings",
+    ] {
+        assert!(
+            workflow.contains(required),
+            "cache workflow must retain compiled evidence command: {required}"
+        );
+    }
+
+    let generation = source("crates/rustok-channel/src/invalidation_generation.rs");
+    for required in [
+        "durable_generation_converges_across_replica_readers_without_pubsub",
+        "missing_generation_state_fails_closed_and_recovers_after_restore",
+    ] {
+        assert!(
+            generation.contains(required),
+            "channel generation tests must retain {required}"
+        );
+    }
+}
