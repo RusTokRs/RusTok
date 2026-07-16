@@ -132,6 +132,8 @@ The ownership boundary is:
 - [x] Own the field-definition cache and invalidation consumer in one restartable runtime bundle.
 - [x] Supervise the Redis health/status monitor with serialized restartable startup and
   abort-on-drop ownership.
+- [x] Stop rate-limit Moka maintenance workers after all external limiter owners are dropped, so
+  runtime teardown cannot retain orphan limiter caches.
 - [x] Surface terminal RBAC/cache worker state through runtime guardrails and readiness.
 - [x] Preserve local invalidation delivery while recording exactly one Redis publish failure when
   Redis publication is unavailable.
@@ -142,7 +144,7 @@ The ownership boundary is:
   gaps, key/envelope limits, negative caching, CAS, refresh, leases and live Redis behavior.
 - [x] Add server architecture guards for canonical cache ownership, tenant cache policy,
   marketplace caching, channel generations, locale registration, field-definition runtime,
-  Redis monitor supervision and worker-readiness escalation.
+  rate-limit cleanup ownership, Redis monitor supervision and worker-readiness escalation.
 - [x] Add path-scoped workflows for cache hardening and the new host architecture guards.
 - [x] Run deterministic rustfmt over the cache-hardening file set and commit the resulting style
   normalization.
@@ -240,6 +242,7 @@ cargo test -p rustok-server \
   --test channel_cache_architecture_guard \
   --test locale_cache_architecture_guard \
   --test field_definition_cache_runtime_guard \
+  --test rate_limit_cache_runtime_guard \
   --test cache_redis_monitor_architecture_guard \
   --test cache_worker_guardrail_architecture_guard
 cargo clippy -p rustok-core --lib -- -D warnings
