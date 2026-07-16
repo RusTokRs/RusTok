@@ -1,0 +1,38 @@
+[module]
+slug = "marketplace_seller"
+name = "Marketplace Seller"
+version = "0.1.0"
+description = "Marketplace Family seller identity, lifecycle, onboarding, and membership owner"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[marketplace]
+category = "commerce"
+tags = ["marketplace", "seller", "membership", "onboarding"]
+
+[crate]
+entry_type = "MarketplaceSellerModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-marketplace-seller-admin"
+route_segment = "marketplace-sellers"
+nav_label = "Marketplace Sellers"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[fba.provider]
+status = "in_progress"
+role = "provider"
+contract_version = "marketplace.seller.v1"
+registry = "contracts/marketplace-seller-fba-registry.json"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+
+[fba.provider.rollout]
+fallback_profiles = ["embedded_native", "remote_adapter_placeholder"]
+degraded_modes = ["seller_directory_unavailable", "seller_write_retry_required"]
