@@ -5,9 +5,9 @@ on:
     branches: [main]
     paths:
       - "crates/rustok-cache/**"
-      - "crates/rustok-channel/src/invalidation_generation.rs"
-      - "crates/rustok-channel/src/lib.rs"
-      - "crates/rustok-channel/src/migrations/**"
+      - "crates/rustok-channel/Cargo.toml"
+      - "crates/rustok-channel/src/**"
+      - "crates/rustok-channel/admin/src/transport/native_server_adapter.rs"
       - "crates/rustok-core/src/cache.rs"
       - "crates/rustok-core/src/cache_atomic.rs"
       - "crates/rustok-core/src/cache_tests.rs"
@@ -17,6 +17,7 @@ on:
       - "crates/rustok-core/src/resilience/circuit_breaker.rs"
       - "crates/rustok-core/tests/**"
       - "crates/rustok-telemetry/src/lib.rs"
+      - "apps/server/src/controllers/channel.rs"
       - "apps/server/src/middleware/mod.rs"
       - "apps/server/src/middleware/tenant.rs"
       - "apps/server/src/middleware/tenant_tests.rs"
@@ -78,9 +79,9 @@ on:
   pull_request:
     paths:
       - "crates/rustok-cache/**"
-      - "crates/rustok-channel/src/invalidation_generation.rs"
-      - "crates/rustok-channel/src/lib.rs"
-      - "crates/rustok-channel/src/migrations/**"
+      - "crates/rustok-channel/Cargo.toml"
+      - "crates/rustok-channel/src/**"
+      - "crates/rustok-channel/admin/src/transport/native_server_adapter.rs"
       - "crates/rustok-core/src/cache.rs"
       - "crates/rustok-core/src/cache_atomic.rs"
       - "crates/rustok-core/src/cache_tests.rs"
@@ -90,6 +91,7 @@ on:
       - "crates/rustok-core/src/resilience/circuit_breaker.rs"
       - "crates/rustok-core/tests/**"
       - "crates/rustok-telemetry/src/lib.rs"
+      - "apps/server/src/controllers/channel.rs"
       - "apps/server/src/middleware/mod.rs"
       - "apps/server/src/middleware/tenant.rs"
       - "apps/server/src/middleware/tenant_tests.rs"
