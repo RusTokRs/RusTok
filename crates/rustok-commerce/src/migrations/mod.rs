@@ -19,6 +19,7 @@ mod m20260713_000014_create_checkout_order_plans;
 mod m20260713_000015_bind_checkout_payment_collections;
 mod m20260713_000016_block_provider_execution_during_checkout_compensation;
 mod m20260713_000017_classify_checkout_reconciliation;
+mod m20260716_000003_add_order_field_cache_generation_trigger;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -44,6 +45,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000015_bind_checkout_payment_collections::Migration),
         Box::new(m20260713_000016_block_provider_execution_during_checkout_compensation::Migration),
         Box::new(m20260713_000017_classify_checkout_reconciliation::Migration),
+        Box::new(m20260716_000003_add_order_field_cache_generation_trigger::Migration),
     ]
 }
 
@@ -132,7 +134,7 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             "m20260713_000016_block_provider_execution_during_checkout_compensation",
             vec![
                 "m20260713_000015_bind_checkout_payment_collections",
-                "m20260713_000111_create_provider_operation_journal",
+                "m20260325_000111_create_provider_operation_journal",
             ],
         ),
         MigrationDependencyDescriptor::new(
