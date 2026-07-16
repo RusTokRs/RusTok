@@ -106,9 +106,32 @@ impl TenantLocaleGenerationListener {
         let previous = self
             .tracker
             .last_generation(TENANT_CACHE_GENERATION_CHANNEL);
-        if previous.is_none_or(|previous| generation > previous) {
-            invalidate_all_tenant_locale_cache(&self.ctx).await;
+
+        match previous {
+            None => {
+                invalidate_all_tenant_locale_cache(&self.ctx).await;
+            }
+            Some(previous) if generation == previous => {}
+            Some(previous) if generation > previous => {
+                invalidate_all_tenant_locale_cache(&self.ctx).await;
+            }
+            Some(previous) => {
+                invalidate_all_tenant_locale_cache(&self.ctx).await;
+                self.tracker.reset(TENANT_CACHE_GENERATION_CHANNEL);
+                acknowledge_locale_recovery(&self.tracker, generation)?;
+                tracing::error!(
+                    previous,
+                    current = generation,
+                    "Tenant locale generation regressed; cache baseline was rebuilt"
+                );
+                rustok_telemetry::metrics::record_event_error(
+                    "tenant.locale.generation",
+                    "generation_regressed",
+                );
+                return Ok(generation);
+            }
         }
+
         acknowledge_locale_recovery(&self.tracker, generation)?;
         Ok(generation)
     }
@@ -146,8 +169,13 @@ impl TenantLocaleGenerationListener {
                 }
                 acknowledge_locale_applied(&self.tracker, generation)?;
             }
-            CacheInvalidationObservation::Duplicate { .. }
-            | CacheInvalidationObservation::Stale { .. } => {}
+            CacheInvalidationObservation::Duplicate { .. } => {}
+            CacheInvalidationObservation::Stale { last, .. } => {
+                let durable = self.current_generation().await?;
+                if durable < last {
+                    self.recover_if_advanced().await?;
+                }
+            }
             CacheInvalidationObservation::UnverifiedFirst { .. }
             | CacheInvalidationObservation::Gap { .. } => {
                 invalidate_all_tenant_locale_cache(&self.ctx).await;
@@ -461,8 +489,15 @@ async fn run_redis_listener(listener: TenantLocaleGenerationListener) -> Result<
 }
 
 async fn run_periodic_reconciliation(listener: TenantLocaleGenerationListener) {
-    let start = tokio::time::Instant::now() + TENANT_LOCALE_RECONCILE_INTERVAL;
-    let mut interval = tokio::time::interval_at(start, TENANT_LOCALE_RECONCILE_INTERVAL);
+    run_periodic_reconciliation_with_interval(listener, TENANT_LOCALE_RECONCILE_INTERVAL).await;
+}
+
+async fn run_periodic_reconciliation_with_interval(
+    listener: TenantLocaleGenerationListener,
+    reconcile_interval: Duration,
+) {
+    let start = tokio::time::Instant::now() + reconcile_interval;
+    let mut interval = tokio::time::interval_at(start, reconcile_interval);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         interval.tick().await;
@@ -475,3 +510,7 @@ async fn run_periodic_reconciliation(listener: TenantLocaleGenerationListener) {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tenant_locale_generation_tests.rs"]
+mod tests;
