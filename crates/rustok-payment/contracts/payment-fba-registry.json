@@ -42,6 +42,7 @@
     }
   ],
   "evidence": {
+    "local_plan": "crates/rustok-payment/docs/implementation-plan.md",
     "local_plan_redirect": "crates/rustok-payment/docs/implementation-plan.md",
     "status_source_of_truth": "crates/rustok-commerce/docs/implementation-plan.md#payment-workstream",
     "webhook_contract": "crates/rustok-payment/contracts/payment-provider-webhook-v1.json",
@@ -59,6 +60,7 @@
     "stripe_runtime_source": "apps/server/src/services/payment_provider_runtime.rs",
     "stripe_source_status": "registered_in_server_source_not_compiled_or_executed",
     "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "registry_verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "refund_identity_verifier": "scripts/verify/verify-payment-refund-identity.mjs",
     "provider_outcome_verifier": "scripts/verify/verify-payment-provider-outcome-contract.mjs",
@@ -207,7 +209,7 @@
     }
   },
   "provider_spi": {
-    "status": "manual_baseline_plus_stripe_source",
+    "status": "manual_baseline_locked",
     "implementation_status": "stripe_registered_in_server_source_not_compiled_or_runtime_verified",
     "source": "crates/rustok-payment/src/providers.rs",
     "default_provider_id": "manual",
@@ -276,7 +278,8 @@
       }
     ],
     "webhook_ingress": {
-      "status": "source_implemented_not_transport_verified",
+      "status": "planned",
+      "implementation_status": "source_implemented_not_transport_verified",
       "contract": "contracts/payment-provider-webhook-v1.json",
       "http_path": "/payment/webhooks/{provider_id}",
       "idempotency_required": true,
