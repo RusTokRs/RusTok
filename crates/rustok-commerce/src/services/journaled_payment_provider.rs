@@ -6,9 +6,12 @@ use rustok_payment::{
     PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_EXECUTING,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
+use serde_json::Value;
 use uuid::Uuid;
 
 use super::payment_orchestration::{PaymentOrchestrationError, PaymentOrchestrationResult};
+
+const MANUAL_PROVIDER_ID: &str = "manual";
 
 pub(crate) struct JournaledProviderResult {
     pub operation_id: Uuid,
@@ -23,6 +26,14 @@ pub(crate) async fn execute_journaled_provider_operation(
     provider_id: &str,
     request: PaymentProviderOperationRequest,
 ) -> PaymentOrchestrationResult<JournaledProviderResult> {
+    let request = enrich_provider_request(
+        journal,
+        operation,
+        refund_id,
+        provider_id,
+        request,
+    )
+    .await?;
     let idempotency_key = request
         .idempotency_key
         .as_deref()
@@ -137,6 +148,111 @@ pub(crate) async fn execute_journaled_provider_operation(
     })
 }
 
+async fn enrich_provider_request(
+    journal: &PaymentProviderOperationJournal,
+    operation: &str,
+    refund_id: Option<Uuid>,
+    provider_id: &str,
+    mut request: PaymentProviderOperationRequest,
+) -> Result<PaymentProviderOperationRequest, PaymentError> {
+    if let Some(refund_id) = refund_id {
+        insert_metadata_string(&mut request.metadata, "refund_id", refund_id.to_string())?;
+    }
+    if provider_id == MANUAL_PROVIDER_ID || operation == "authorize" {
+        return Ok(request);
+    }
+    if metadata_string(&request.metadata, "provider_payment_id").is_some() {
+        return Ok(request);
+    }
+
+    let authorize_key = format!("payment_collection:{}:authorize", request.collection_id);
+    let authorize = journal
+        .find_by_key(request.tenant_id, provider_id, authorize_key.as_str())
+        .await?
+        .ok_or_else(|| {
+            PaymentError::Validation(format!(
+                "provider `{provider_id}` {operation} requires a completed authorize operation for payment collection {}",
+                request.collection_id
+            ))
+        })?;
+    if !matches!(
+        authorize.status.as_str(),
+        PROVIDER_OPERATION_COMMITTED
+            | PROVIDER_OPERATION_SUCCEEDED
+            | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+    ) {
+        return Err(PaymentError::Validation(format!(
+            "provider `{provider_id}` {operation} cannot use authorize operation {} in status `{}`",
+            authorize.id, authorize.status
+        )));
+    }
+    let provider_payment_id = authorize
+        .provider_reference
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            authorize
+                .provider_result
+                .as_ref()
+                .and_then(|result| result.get("external_reference"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        })
+        .ok_or_else(|| {
+            PaymentError::Validation(format!(
+                "provider authorize operation {} has no external payment identity",
+                authorize.id
+            ))
+        })?;
+    insert_metadata_string(
+        &mut request.metadata,
+        "provider_payment_id",
+        provider_payment_id,
+    )?;
+    Ok(request)
+}
+
+fn insert_metadata_string(
+    metadata: &mut Value,
+    key: &str,
+    value: String,
+) -> Result<(), PaymentError> {
+    if !metadata.is_object() {
+        if metadata.is_null() {
+            *metadata = serde_json::json!({});
+        } else {
+            return Err(PaymentError::Validation(
+                "payment provider operation metadata must be an object".to_string(),
+            ));
+        }
+    }
+    let object = metadata.as_object_mut().ok_or_else(|| {
+        PaymentError::Validation("payment provider operation metadata must be an object".to_string())
+    })?;
+    if let Some(existing) = object.get(key).and_then(Value::as_str) {
+        if existing != value {
+            return Err(PaymentError::Validation(format!(
+                "payment provider operation metadata `{key}` conflicts with owner identity"
+            )));
+        }
+        return Ok(());
+    }
+    object.insert(key.to_string(), Value::String(value));
+    Ok(())
+}
+
+fn metadata_string<'a>(metadata: &'a Value, key: &str) -> Option<&'a str> {
+    metadata
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
 fn persisted_provider_result(
     journal_operation: &rustok_payment::entities::provider_operation::Model,
 ) -> Result<Option<PaymentProviderOperationResult>, PaymentError> {
@@ -218,4 +334,30 @@ fn reconciliation_error(operation_id: Uuid, stage: &str, source: PaymentError) -
     PaymentError::Validation(format!(
         "provider side effect succeeded, but failed to {stage} for operation {operation_id}: {source}"
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inserts_owner_provider_identity_without_overwriting_conflicts() {
+        let mut metadata = serde_json::json!({});
+        insert_metadata_string(
+            &mut metadata,
+            "provider_payment_id",
+            "pi_123".to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.get("provider_payment_id").and_then(Value::as_str),
+            Some("pi_123")
+        );
+        assert!(insert_metadata_string(
+            &mut metadata,
+            "provider_payment_id",
+            "pi_other".to_string(),
+        )
+        .is_err());
+    }
 }
