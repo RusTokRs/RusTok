@@ -39,6 +39,11 @@ pub mod tenant {
         cache_service: &CacheService,
     ) {
         super::tenant_legacy::init_tenant_cache_infrastructure(ctx, cache_service).await;
+        crate::services::tenant_locale_generation::start_tenant_locale_generation_listener(
+            ctx,
+            cache_service.clone(),
+        )
+        .await;
     }
 
     /// Invalidate the tenant resolver namespace through a durable generation rotation.
