@@ -152,4 +152,5 @@ should inject delayed Redis responses, disconnect listeners and force local broa
 - [Crate README](../README.md)
 - [Caching architecture](./CACHING_ARCHITECTURE.md)
 - [Implementation plan](./implementation-plan.md)
+- [Host cache contract inventory](./host-cache-inventory.md)
 - [Manifest layer contract](../../../docs/modules/manifest.md)
