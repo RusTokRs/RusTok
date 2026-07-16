@@ -1,4 +1,4 @@
-use rustok_payment::entities::{payment, payment_collection, refund};
+use rustok_payment::entities::{payment, payment_collection, refund_creation};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Schema};
 
 pub async fn ensure_payment_schema(db: &DatabaseConnection) {
@@ -24,7 +24,7 @@ pub async fn ensure_payment_schema(db: &DatabaseConnection) {
     create_entity_table(
         db,
         &builder,
-        schema.create_table_from_entity(refund::Entity),
+        schema.create_table_from_entity(refund_creation::Entity),
     )
     .await;
 
@@ -52,6 +52,35 @@ pub async fn ensure_payment_schema(db: &DatabaseConnection) {
     )
     .await
     .expect("payment collection order binding trigger should be created");
+    db.execute_unprepared(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_refunds_creation_identity
+        ON refunds (tenant_id, payment_collection_id, creation_key);
+
+        CREATE TRIGGER IF NOT EXISTS refunds_creation_identity_guard_insert
+        BEFORE INSERT ON refunds
+        FOR EACH ROW
+        BEGIN
+            SELECT CASE WHEN NEW.creation_key IS NULL
+                OR trim(NEW.creation_key) = ''
+                OR NEW.creation_request_hash IS NULL
+                OR length(NEW.creation_request_hash) <> 64
+                OR NEW.creation_request_hash GLOB '*[^0-9a-f]*'
+                THEN RAISE(ABORT, 'refund creation identity is required') END;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS refunds_creation_identity_guard_update
+        BEFORE UPDATE ON refunds
+        FOR EACH ROW
+        BEGIN
+            SELECT CASE WHEN NEW.creation_key IS NOT OLD.creation_key
+                OR NEW.creation_request_hash IS NOT OLD.creation_request_hash
+                THEN RAISE(ABORT, 'refund creation identity is immutable') END;
+        END;
+        "#,
+    )
+    .await
+    .expect("refund creation identity guards should be created");
 }
 
 pub(crate) async fn create_entity_table(
