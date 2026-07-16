@@ -1,3 +1,4 @@
+use crate::editor::SsrDropRequest;
 use crate::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
 use fly::{GrapesJsV1Codec, ProjectHash};
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentError};
@@ -49,6 +50,14 @@ pub fn dispatch_browser_intent(
             let block_id = required_string(&envelope.payload, "block_id")?;
             let intent = controller
                 .insert_palette_block_intent(block_id)
+                .map_err(BrowserIntentDispatchError::Authoring)?;
+            controller.dispatch(intent)?
+        }
+        "drop" => {
+            let request = serde_json::from_value::<SsrDropRequest>(envelope.payload.clone())
+                .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
+            let intent = controller
+                .ssr_drop_intent(request)
                 .map_err(BrowserIntentDispatchError::Authoring)?;
             controller.dispatch(intent)?
         }
@@ -272,9 +281,9 @@ pub enum BrowserIntentDispatchError {
     Fly(#[from] fly::FlyError),
     #[error("browser intent payload is invalid: {0}")]
     Payload(String),
-    #[error("browser intent is missing field `{0}")]
+    #[error("browser intent is missing field `{0}`")]
     MissingField(String),
-    #[error("unsupported browser intent `{0}")]
+    #[error("unsupported browser intent `{0}`")]
     Unsupported(String),
     #[error("browser intent `{0}` requires geometry-resolved hit-test state")]
     GeometryRequired(String),
@@ -346,6 +355,31 @@ mod tests {
     }
 
     #[test]
+    fn stateless_drop_dispatches_without_prior_drag_state() {
+        let mut controller = controller();
+        let result = dispatch_browser_intent(
+            &mut controller,
+            intent(
+                "drop",
+                json!({
+                    "source": { "kind": "block", "block_id": "text" },
+                    "target_component_id": "hero",
+                    "position": "inside"
+                }),
+            ),
+        )
+        .expect("drop");
+        assert!(result.dirty);
+        assert_eq!(
+            controller
+                .editor()
+                .document()
+                .component_child_count("hero"),
+            Some(1)
+        );
+    }
+
+    #[test]
     fn nested_iframe_key_stroke_payload_is_accepted() {
         let mut controller = controller();
         controller
@@ -355,15 +389,18 @@ mod tests {
             &mut controller,
             intent(
                 "key_stroke",
-                json!({
+                serde_json::json!({
                     "stroke": {
                         "key": "Delete",
                         "code": "Delete",
-                        "ctrl": false,
-                        "meta": false,
-                        "shift": false,
-                        "alt": false,
-                        "repeat": false
+                        "modifiers": {
+                            "shift": false,
+                            "alt": false,
+                            "control": false,
+                            "meta": false
+                        },
+                        "repeat": false,
+                        "editing_text": false
                     }
                 }),
             ),
