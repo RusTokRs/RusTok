@@ -133,7 +133,13 @@
       "bindName": "Имя цели",
       "bindNamePlaceholder": "content, aria-label, color...",
       "bind": "Сохранить и привязать перевод",
-      "remove": "Удалить перевод и bindings"
+      "remove": "Удалить перевод и bindings",
+      "localizedMetadataTitle": "Локализованные метаданные страницы",
+      "localizedMetadataHelp": "Задайте карты локалей для title, description, slug, canonical_url, open_graph_title, open_graph_description или open_graph_image. Неизвестные metadata-поля сохраняются.",
+      "localizedMetadataValuesLabel": "JSON локализованных метаданных",
+      "localizedMetadataValuesPlaceholder": "{\n  \"title\": {\"en\": \"Home\", \"ru\": \"Главная\"},\n  \"description\": {\"en\": \"Welcome\", \"ru\": \"Добро пожаловать\"}\n}",
+      "localizedMetadataFallbackLabel": "Резервная локаль метаданных",
+      "localizedMetadataSave": "Сохранить локализованные метаданные"
     },
     "traits": {
       "empty": "Выберите компонент, чтобы изменить его параметры."
