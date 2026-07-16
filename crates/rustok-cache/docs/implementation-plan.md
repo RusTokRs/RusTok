@@ -160,16 +160,10 @@ The ownership boundary is:
   diagnostic issue after their useful evidence is captured.
 - [x] Keep one permanent path-scoped `Cache hardening` workflow covering format, core/cache/server
   compilation, current host architecture guards, Clippy, module validation and module tests.
-- [ ] Run the permanent gate on one reconciled `main` revision after unrelated workspace compile
-  blockers are resolved.
+- [ ] Run the permanent gate on one reconciled `main` revision.
 - [ ] Fix every cache-specific compile, lint or test failure before marking source-complete phases
   compiled verified.
 - [ ] Record the exact verified revision and job results in this plan without copying raw logs.
-
-Current external blocker: server compilation stops before cache-host code in
-`crates/rustok-inventory/src/ports.rs`, where `col_expr` receives
-`Expr::current_timestamp()` instead of the required `SimpleExpr`. This is not a cache contract
-failure, but the server compile gate must be rerun after the workspace baseline is restored.
 
 ### P0. Live Redis and failure-recovery evidence
 
