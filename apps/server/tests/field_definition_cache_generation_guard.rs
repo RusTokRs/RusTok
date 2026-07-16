@@ -20,7 +20,8 @@ fn field_definition_cache_uses_one_transactional_generation_and_fail_closed_reco
         "sqlite_all_owner_mutations_are_transactional_and_replay_safe",
         "UPDATE {table} SET position = position + 1",
         "UPDATE {table} SET is_active = 0",
-        "transaction.rollback()",
+        "rolled-back owner mutation should execute",
+        ".rollback()",
         "assert_eq!(read_generation(&db).await, 16);",
     ] {
         assert!(
