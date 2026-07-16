@@ -9,12 +9,16 @@ modules; SEO admin is infrastructure control-plane only. REST and GraphQL are
 additive `v1` surfaces, while Rust and Next storefronts consume the canonical
 `SeoPageContext` contract.
 
-The redirect read cache is byte-weighted and tenant-scoped. Mutations invalidate
-the committing process immediately and emit transactional
-`SeoRedirectUpserted` / `SeoRedirectDisabled` events, but the current module
-listener bus is local delivery only. Other replicas can therefore retain the
-previous redirect set until the 30-second TTL expires. Durable cross-replica
-recovery is an explicit open owner result, not an implicit cache guarantee.
+The redirect read cache is byte-weighted and tenant-scoped. Redirect mutations
+write the `SeoRedirectUpserted` / `SeoRedirectDisabled` outbox event and a
+`source_kind=redirect` delivery row in the same transaction, then invalidate the
+committing process after commit. Every serving server runtime now owns a bounded
+5-second reconciliation worker over the persisted `(created_at, id)` cursor. On
+startup it reads the high-water mark before clearing all local redirect entries;
+rows after that cursor invalidate exact tenants in batches of 256. The cursor
+query is backed by `(source_kind, created_at, id)`, worker restart is supervised,
+and a missing or terminal worker is a critical runtime guardrail. This removes
+dependence on local-only module-event delivery for cross-replica freshness.
 
 ## FFA/FBA status
 
@@ -38,17 +42,16 @@ recovery is an explicit open owner result, not an implicit cache guarantee.
 
 ## Next results
 
-1. **Make redirect cache invalidation durable across replicas.** Consume the
-   already transactional redirect events through an approved inbound delivery
-   path on every replica, or reserve a monotonic SEO redirect generation in the
-   same database transaction. Seed the consumer from persisted state, invalidate
-   the tenant redirect cache before acknowledgement, and perform a full redirect
-   cache clear on an unverified first event, offset gap, or listener lag.
-   **Depends on:** an inbound transport consumer or persisted generation/offset;
-   the current local module-event fan-out alone is insufficient.
-   **Done when:** another replica cannot retain a committed redirect change
-   beyond the documented reconciliation bound, including Redis/transport
-   disconnect and missed-event scenarios.
+1. **Execute multi-replica redirect cache recovery evidence.** Prove startup
+   seed-before-clear ordering, exact tenant invalidation, more-than-one-batch
+   catch-up, process restart, database outage/recovery and terminal-worker
+   readiness behavior across two serving replicas.
+   **Depends on:** a composed multi-replica server runtime with the SEO cursor
+   index migration applied.
+   **Done when:** a committed redirect mutation is removed from every replica
+   within the documented 5-second polling bound, restart recovery cannot miss a
+   transaction around startup, and a stopped required worker makes readiness
+   non-OK.
 
 2. **Execute the D8 backend and host matrix.** Capture deployed GraphQL/REST
    parity, outbox/index before-after counters, Next robots/sitemap/metadata,
@@ -75,9 +78,10 @@ recovery is an explicit open owner result, not an implicit cache guarantee.
 - `npm --prefix apps/next-frontend run verify:seo-runtime-fixtures`
 - `npm run verify:seo:fba`
 - `node scripts/verify/verify-seo-admin-boundary.mjs`
+- `cargo test -p rustok-server --test seo_redirect_cache_reconciliation_guard`
 - Targeted backend, outbox/index, Next, Leptos, media fallback, redirect
-  multi-replica recovery, and incident runtime checks defined by the
-  live-evidence template.
+  multi-replica recovery, cursor-index, and incident runtime checks defined by
+  the live-evidence template.
 
 ## References
 
