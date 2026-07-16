@@ -177,8 +177,8 @@ pub fn PageBuilderAdminWithController(
     runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
     on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
-    browser_intent_endpoint: Option<String>,
-    browser_csrf_token: Option<String>,
+    #[prop(optional)] browser_intent_endpoint: Option<String>,
+    #[prop(optional)] browser_csrf_token: Option<String>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
