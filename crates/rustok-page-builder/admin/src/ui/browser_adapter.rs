@@ -22,8 +22,7 @@ pub fn PageBuilderBrowserAdapter(
             .to_json()
             .unwrap_or_else(|_| "{}".to_string());
         let source = format!(
-            "{}\nwindow.FlyBrowser?.mountAll({});",
-            FLY_BROWSER_ADAPTER_JS, config
+            "globalThis.__FLY_BROWSER_CONFIG__ = Object.freeze({config});\n{FLY_BROWSER_ADAPTER_JS}\nglobalThis.FlyBrowser?.mountAll(globalThis.__FLY_BROWSER_CONFIG__);"
         );
         view! {
             <script
