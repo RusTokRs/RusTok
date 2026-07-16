@@ -66,12 +66,15 @@ fn return_completion_uses_one_commerce_orchestration_boundary() {
     let validation = orchestration
         .find("validate_completion_shape(&input)")
         .expect("return completion must validate the complete command");
+    let admission = orchestration
+        .find(".begin(BeginReturnCompletionOperation")
+        .expect("return completion must durably admit the request");
     let first_effect = orchestration
-        .find("if let Some(refund_input) = refund")
+        .find(".create_refund_idempotent(")
         .expect("return completion refund path must exist");
     assert!(
-        validation < first_effect,
-        "return completion shape must be validated before provider or owner side effects"
+        validation < admission && admission < first_effect,
+        "return completion must validate and journal the command before side effects"
     );
     for marker in [
         "refund, exchange, and claim helpers are mutually exclusive",
@@ -84,4 +87,76 @@ fn return_completion_uses_one_commerce_orchestration_boundary() {
             "return completion orchestration is missing invariant {marker}"
         );
     }
+}
+
+#[test]
+fn return_completion_journal_preserves_replay_and_recovery_invariants() {
+    let entity = include_str!(
+        "../../../crates/rustok-commerce/src/entities/return_completion_operation.rs"
+    );
+    let migration = include_str!(
+        "../../../crates/rustok-commerce/src/migrations/m20260716_000004_create_return_completion_operations.rs"
+    );
+    let journal = include_str!(
+        "../../../crates/rustok-commerce/src/services/return_completion_operation.rs"
+    );
+    let orchestration = include_str!(
+        "../../../crates/rustok-commerce/src/services/return_completion_orchestration.rs"
+    );
+
+    assert!(entity.contains("table_name = \"return_completion_operations\""));
+    for marker in [
+        "ux_return_completion_operations_return",
+        "idx_return_completion_operations_recovery",
+        "return completion operation identity is immutable",
+        "return completion operation return tenant mismatch",
+        "reconciliation_required",
+        "resolution_created",
+        "return_completed",
+    ] {
+        assert!(
+            migration.contains(marker),
+            "return completion migration is missing invariant {marker}"
+        );
+    }
+    for marker in [
+        "pub async fn begin(",
+        "pub async fn claim_execution(",
+        "pub async fn checkpoint(",
+        "pub async fn mark_retryable(",
+        "pub async fn mark_reconciliation_required(",
+        "pub async fn mark_completed(",
+        "ensure_same_request",
+        "request_hash must be a 64-character hexadecimal SHA-256 digest",
+    ] {
+        assert!(
+            journal.contains(marker),
+            "return completion journal is missing invariant {marker}"
+        );
+    }
+    for marker in [
+        "completion_request_hash(&input)",
+        "return_completion_operation_id",
+        "find_resolution_order_change(",
+        "operation.refund_id",
+        "operation.order_change_id",
+        "FailureDisposition::Reconciliation",
+        "mark_reconciliation_required(",
+    ] {
+        assert!(
+            orchestration.contains(marker),
+            "return completion recovery is missing invariant {marker}"
+        );
+    }
+
+    let refund_effect = orchestration
+        .find(".create_refund_idempotent(")
+        .expect("refund side effect must exist");
+    let owner_completion = orchestration
+        .find(".complete_return(tenant_id, return_id, owner_input)")
+        .expect("owner completion must exist");
+    let journal_admission = orchestration
+        .find(".begin(BeginReturnCompletionOperation")
+        .expect("journal admission must exist");
+    assert!(journal_admission < refund_effect && refund_effect < owner_completion);
 }
