@@ -28,11 +28,14 @@ fn channel_cache_generations_are_bounded_and_fail_safe() {
         "self.next_version.checked_add(1)",
         "self.exhausted = true;",
         "self.tenant_versions.len() >= maximum_tenants.max(1)",
+        "fn invalidate_all(&mut self)",
+        "self.default_version = next_version;",
         "self.cache.invalidate_all();",
         "self.cache.run_pending_tasks().await;",
         "if let Some(version) = cache.tenant_version(facts.tenant_id)",
         "version_exhaustion_disables_cache_instead_of_reusing_a_token",
         "tenant_version_registry_rotates_without_reusing_stale_tokens",
+        "namespace_invalidation_rotates_default_and_tracked_tokens",
         "repeated_tenant_invalidation_does_not_grow_the_registry",
     ] {
         assert!(
@@ -79,6 +82,7 @@ fn native_and_rest_channel_mutations_publish_durable_invalidation() {
     assert!(wrapper.contains("response.status().is_success()"));
     assert!(wrapper.contains("invalidate_tenant_channel_cache_local(ctx, tenant_id).await;"));
     assert!(wrapper.contains("publish_channel_resolution_invalidation(ctx, tenant_id).await;"));
+    assert!(wrapper.contains("base::invalidate_all_channel_cache(ctx).await;"));
     assert!(controller.contains("invalidate_tenant_channel_cache(ctx, tenant_id).await;"));
 
     let endpoint_marker = "endpoint = \"channel/";
@@ -141,8 +145,7 @@ fn durable_channel_generation_is_database_owned_and_supervised() {
         "CHANNEL_RESOLUTION_RECONCILE_INTERVAL",
         "subscribe_local_channel(CHANNEL_RESOLUTION_INVALIDATION_CHANNEL)",
         "consume_subscription_with_ready",
-        "SELECT id FROM tenants",
-        "invalidate_tenant_channel_cache_local",
+        "invalidate_all_channel_cache_local(&self.ctx).await;",
         "spawn_supervised_worker",
         "struct ChannelCacheInvalidationHealth",
         "self.health.mark_failed()",
@@ -153,6 +156,7 @@ fn durable_channel_generation_is_database_owned_and_supervised() {
             "durable channel invalidation contract must retain {required}"
         );
     }
+    assert!(!runtime.contains("SELECT id FROM tenants"));
     assert!(bootstrap.contains("start_channel_cache_invalidation_listener"));
     assert!(guardrails.contains("ChannelCacheInvalidationListenerHandle"));
     assert!(guardrails.contains("channel resolution durable invalidation runtime"));
