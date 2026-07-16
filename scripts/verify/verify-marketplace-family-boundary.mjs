@@ -16,6 +16,10 @@ const files = {
   sellerService: "crates/rustok-marketplace-seller/src/service.rs",
   sellerPorts: "crates/rustok-marketplace-seller/src/ports.rs",
   sellerMigration: "crates/rustok-marketplace-seller/src/migrations/m20260716_000001_create_marketplace_sellers.rs",
+  sellerReceiptMigration: "crates/rustok-marketplace-seller/src/migrations/m20260716_000002_create_seller_command_receipts.rs",
+  sellerReceiptEntity: "crates/rustok-marketplace-seller/src/entities/seller_command_receipt.rs",
+  sellerReceiptExecutor: "crates/rustok-marketplace-seller/src/command_receipts.rs",
+  sellerReceiptedCommands: "crates/rustok-marketplace-seller/src/receipted_commands.rs",
   sellerAdminCore: "crates/rustok-marketplace-seller/admin/src/core.rs",
   sellerAdminTransport: "crates/rustok-marketplace-seller/admin/src/transport.rs",
   sellerAdminUi: "crates/rustok-marketplace-seller/admin/src/ui/leptos.rs",
@@ -49,6 +53,10 @@ const sellerRegistry = read(files.sellerRegistry);
 const sellerService = read(files.sellerService);
 const sellerPorts = read(files.sellerPorts);
 const sellerMigration = read(files.sellerMigration);
+const sellerReceiptMigration = read(files.sellerReceiptMigration);
+const sellerReceiptEntity = read(files.sellerReceiptEntity);
+const sellerReceiptExecutor = read(files.sellerReceiptExecutor);
+const sellerReceiptedCommands = read(files.sellerReceiptedCommands);
 const sellerAdminCore = read(files.sellerAdminCore);
 const sellerAdminTransport = read(files.sellerAdminTransport);
 const sellerAdminUi = read(files.sellerAdminUi);
@@ -102,7 +110,9 @@ assertContains(sellerManifest, 'leptos_crate = "rustok-marketplace-seller-admin"
 assertContains(sellerRegistry, '"MarketplaceSellerReadPort"', `${files.sellerRegistry}: read port missing`);
 assertContains(sellerRegistry, '"MarketplaceSellerCommandPort"', `${files.sellerRegistry}: command port missing`);
 assertContains(sellerRegistry, '"idempotency_required": true', `${files.sellerRegistry}: command idempotency admission missing`);
-assertContains(sellerRegistry, "durable command receipts are not yet implemented", `${files.sellerRegistry}: known idempotency gap must remain explicit`);
+assertContains(sellerRegistry, '"atomic_with_owner_write": true', `${files.sellerRegistry}: receipt atomicity missing`);
+assertContains(sellerRegistry, "lost_response_replay_returns_saved_result", `${files.sellerRegistry}: lost-response replay case missing`);
+assertNotContains(sellerRegistry, "durable command receipts are not yet implemented", `${files.sellerRegistry}: stale receipt gap remains`);
 
 for (const marker of [
   "marketplace_sellers",
@@ -112,6 +122,17 @@ for (const marker of [
   "fk_marketplace_seller_members_tenant_seller",
 ]) {
   assertContains(sellerMigration, marker, `${files.sellerMigration}: missing schema invariant ${marker}`);
+}
+for (const marker of [
+  "marketplace_seller_command_receipts",
+  "uq_marketplace_seller_command_receipt_key",
+  "RequestHash",
+  "ResponseJson",
+  "CompletedAt",
+]) {
+  if (!sellerReceiptMigration.includes(marker) && !sellerReceiptEntity.includes(marker)) {
+    failures.push(`${files.sellerReceiptMigration}: missing receipt invariant ${marker}`);
+  }
 }
 for (const marker of [
   "self.db.begin().await?",
@@ -128,11 +149,46 @@ for (const marker of [
   "pub trait MarketplaceSellerCommandPort",
   "PortCallPolicy::read()",
   "PortCallPolicy::write()",
+  "create_seller_with_receipt",
+  "update_profile_with_receipt",
+  "submit_onboarding_with_receipt",
+  "review_onboarding_with_receipt",
+  "suspend_seller_with_receipt",
+  "reactivate_seller_with_receipt",
+  "add_member_with_receipt",
+  "update_member_with_receipt",
   "marketplace seller storage is temporarily unavailable",
 ]) {
   assertContains(sellerPorts, marker, `${files.sellerPorts}: missing FBA invariant ${marker}`);
 }
 assertNotContains(sellerPorts, "storage unavailable: {error}", `${files.sellerPorts}: storage internals must not be exposed`);
+assertNotContains(sellerPorts, "self.create_seller(\n", `${files.sellerPorts}: create must use durable receipt path`);
+assertNotContains(sellerPorts, "self.update_profile(\n", `${files.sellerPorts}: update must use durable receipt path`);
+
+for (const marker of [
+  "command_request_hash",
+  "CommandReceiptAdmission",
+  "RECEIPT_STATUS_COMPLETED",
+  "response_json",
+  "transaction.commit().await?",
+  "IdempotencyConflict",
+]) {
+  assertContains(sellerReceiptExecutor, marker, `${files.sellerReceiptExecutor}: missing receipt executor invariant ${marker}`);
+}
+for (const marker of [
+  "create_seller_with_receipt",
+  "update_profile_with_receipt",
+  "submit_onboarding_with_receipt",
+  "review_onboarding_with_receipt",
+  "suspend_seller_with_receipt",
+  "reactivate_seller_with_receipt",
+  "add_member_with_receipt",
+  "update_member_with_receipt",
+  "complete_command(receipt",
+  "rollback_command(receipt",
+]) {
+  assertContains(sellerReceiptedCommands, marker, `${files.sellerReceiptedCommands}: missing receipted command invariant ${marker}`);
+}
 
 assertContains(sellerAdminCore, "MarketplaceSellerAdminTransportProfile", `${files.sellerAdminCore}: transport selection missing`);
 assertContains(sellerAdminCore, "Graphql", `${files.sellerAdminCore}: GraphQL profile missing`);
