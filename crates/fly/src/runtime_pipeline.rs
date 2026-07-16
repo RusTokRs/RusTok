@@ -1,10 +1,10 @@
 use crate::{
     extract_runtime_context_contract, materialize_bindings, materialize_context,
-    materialize_localized_page_metadata, materialize_project_locale_context,
-    materialize_project_translations, materialize_runtime, materialize_runtime_locale_context,
-    BindingMaterialization, ContextMaterialization, LocalePolicyMaterialization,
-    LocalizedPageMetadataMaterialization, ProjectDocument, RuntimeMaterialization,
-    TranslationMaterialization, ValidationDiagnostic,
+    materialize_internal_page_links, materialize_localized_page_metadata,
+    materialize_project_locale_context, materialize_project_translations, materialize_runtime,
+    materialize_runtime_locale_context, BindingMaterialization, ContextMaterialization,
+    InternalLinkMaterialization, LocalePolicyMaterialization, LocalizedPageMetadataMaterialization,
+    ProjectDocument, RuntimeMaterialization, TranslationMaterialization, ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -19,6 +19,9 @@ pub struct RuntimeProjectMaterialization {
     pub computed_fallbacks: usize,
     pub unresolved_computed: usize,
     pub context_type_mismatches: usize,
+    pub resolved_internal_links: usize,
+    pub fallback_internal_links: usize,
+    pub unresolved_internal_links: usize,
     pub applied_bindings: usize,
     pub fallback_bindings: usize,
     pub unresolved_bindings: usize,
@@ -43,16 +46,24 @@ pub fn materialize_project_with_runtime_context(
     } = materialize_project_translations(document, &locale_policy_context);
     let locale_materialization = materialize_runtime_locale_context(&translation_context);
     let localized_input_context = locale_materialization.context;
+    let InternalLinkMaterialization {
+        document: linked_document,
+        diagnostics: link_diagnostics,
+        resolved_links: resolved_internal_links,
+        fallback_links: fallback_internal_links,
+        unresolved_links: unresolved_internal_links,
+    } = materialize_internal_page_links(document, &localized_input_context);
     let LocalizedPageMetadataMaterialization {
         document: localized_document,
         diagnostics: metadata_diagnostics,
         ..
-    } = materialize_localized_page_metadata(document, &localized_input_context);
+    } = materialize_localized_page_metadata(&linked_document, &localized_input_context);
     let contract = extract_runtime_context_contract(&localized_document);
     let contract_is_valid = contract.is_valid();
     let mut diagnostics = locale_policy_diagnostics;
     diagnostics.extend(translation_diagnostics);
     diagnostics.extend(locale_materialization.diagnostics);
+    diagnostics.extend(link_diagnostics);
     diagnostics.extend(metadata_diagnostics);
     diagnostics.extend(contract.definition_diagnostics);
     let (
@@ -111,6 +122,9 @@ pub fn materialize_project_with_runtime_context(
         computed_fallbacks,
         unresolved_computed,
         context_type_mismatches,
+        resolved_internal_links,
+        fallback_internal_links,
+        unresolved_internal_links,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
@@ -234,6 +248,51 @@ mod tests {
                 .and_then(Value::as_str),
             Some("Добро пожаловать")
         );
+    }
+
+    #[test]
+    fn internal_page_links_materialize_after_locale_selection_and_before_bindings() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "flyLocales": {
+                "default_locale": "ru",
+                "supported_locales": ["ru", "en"]
+            },
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "slug": { "$localized": { "en": "home", "ru": "glavnaya" } } },
+                "component": {
+                    "id": "home-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "about-link",
+                        "type": "link",
+                        "tagName": "a",
+                        "flyPageLink": { "page_id": "about" }
+                    }]
+                }
+            }, {
+                "id": "about",
+                "flyPageMeta": { "slug": { "$localized": { "en": "about", "ru": "o-nas" } } },
+                "component": { "id": "about-root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let materialized = materialize_project_with_runtime_context(&document, &json!({}));
+        assert_eq!(materialized.resolved_internal_links, 1);
+        assert_eq!(
+            materialized
+                .document
+                .component("about-link")
+                .unwrap()
+                .attributes["href"],
+            "/o-nas"
+        );
+        assert!(document
+            .component("about-link")
+            .unwrap()
+            .attributes
+            .get("href")
+            .is_none());
     }
 
     #[test]
