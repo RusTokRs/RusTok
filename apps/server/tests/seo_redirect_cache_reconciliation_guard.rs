@@ -2,6 +2,11 @@
 fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
     let redirects = include_str!("../../../crates/rustok-seo/src/services/redirects.rs");
     let services = include_str!("../../../crates/rustok-seo/src/services/mod.rs");
+    let cursor_migration = include_str!(
+        "../../../crates/rustok-seo/src/migrations/m20260716_000007_add_redirect_cache_cursor_index.rs"
+    );
+    let migration_registry =
+        include_str!("../../../crates/rustok-seo/src/migrations/mod.rs");
     let worker = include_str!("../src/services/seo_redirect_cache_reconciliation.rs");
     let schema = include_str!("../src/services/graphql_schema.rs");
     let guardrails = include_str!("../src/services/runtime_guardrails.rs");
@@ -26,6 +31,22 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
     assert!(services.contains("Column::Id.gt(cursor.id)"));
     assert!(services.contains(".limit(limit.clamp(1, 1_000))"));
     assert!(services.contains("pub async fn invalidate_all_redirect_cache"));
+
+    assert!(cursor_migration.contains("idx_seo_event_deliveries_redirect_cursor"));
+    let source_kind = cursor_migration
+        .find(".col(SeoEventDeliveries::SourceKind)")
+        .expect("cursor index must start with source_kind");
+    let created_at = cursor_migration
+        .find(".col(SeoEventDeliveries::CreatedAt)")
+        .expect("cursor index must include created_at");
+    let id = cursor_migration
+        .find(".col(SeoEventDeliveries::Id)")
+        .expect("cursor index must end with UUID tie-breaker");
+    assert!(source_kind < created_at);
+    assert!(created_at < id);
+    assert!(migration_registry.contains(
+        "Box::new(m20260716_000007_add_redirect_cache_cursor_index::Migration)"
+    ));
 
     let latest = worker
         .find("latest_redirect_cache_cursor(&db).await?")
