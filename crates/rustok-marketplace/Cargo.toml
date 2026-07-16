@@ -9,5 +9,6 @@ description = "Marketplace family root and cross-marketplace orchestration bound
 async-trait.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
+rustok-marketplace-seller.workspace = true
 serde.workspace = true
 uuid.workspace = true
