@@ -120,6 +120,11 @@ impl BrowserIntentEnvelope {
                 | "move_selected_up"
                 | "move_selected_down"
                 | "patch_selected"
+                | "patch_component_property"
+                | "patch_page_metadata"
+                | "create_page"
+                | "rename_page"
+                | "remove_page"
                 | "undo"
                 | "redo"
                 | "cut"
@@ -267,6 +272,11 @@ mod tests {
             "remove_selected",
             "move_selected_up",
             "move_selected_down",
+            "patch_component_property",
+            "patch_page_metadata",
+            "create_page",
+            "rename_page",
+            "remove_page",
             "undo",
             "redo",
             "cut",
