@@ -138,6 +138,10 @@ async fn run_event_forwarder(
             Ok(envelope) => {
                 if let Err(error) = transport.publish(envelope).await {
                     tracing::error!("Failed to publish domain event to transport: {error}");
+                    rustok_telemetry::metrics::record_event_error(
+                        "server_event_forwarder",
+                        "publish",
+                    );
                 }
             }
             Err(broadcast::error::RecvError::Lagged(skipped)) => {
