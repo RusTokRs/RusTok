@@ -5,6 +5,14 @@ on:
     branches: [main]
     paths:
       - "crates/rustok-cache/**"
+      - "crates/flex/src/cache_generation.rs"
+      - "crates/flex/src/lib.rs"
+      - "crates/rustok-auth/Cargo.toml"
+      - "crates/rustok-auth/src/migrations/**"
+      - "crates/rustok-product/src/migrations/**"
+      - "crates/rustok-commerce/Cargo.toml"
+      - "crates/rustok-commerce/src/migrations/**"
+      - "crates/rustok-forum/src/migrations/**"
       - "crates/rustok-channel/Cargo.toml"
       - "crates/rustok-channel/src/**"
       - "crates/rustok-channel/admin/src/transport/native_server_adapter.rs"
@@ -34,6 +42,8 @@ on:
       - "apps/server/src/services/channel_cache_invalidation.rs"
       - "apps/server/src/services/event_transport_factory.rs"
       - "apps/server/src/services/field_definition_cache.rs"
+      - "apps/server/src/services/field_definition_cache_base.rs"
+      - "apps/server/src/services/field_definition_cache_reconciliation.rs"
       - "apps/server/src/services/graphql_schema.rs"
       - "apps/server/src/services/marketplace_catalog_cache.rs"
       - "apps/server/src/services/marketplace_catalog_cache_base.rs"
@@ -57,6 +67,7 @@ on:
       - "apps/server/tests/cache_redis_status_architecture_guard.rs"
       - "apps/server/tests/cache_worker_guardrail_architecture_guard.rs"
       - "apps/server/tests/channel_cache_architecture_guard.rs"
+      - "apps/server/tests/field_definition_cache_generation_guard.rs"
       - "apps/server/tests/field_definition_cache_runtime_guard.rs"
       - "apps/server/tests/generation_store_architecture_guard.rs"
       - "apps/server/tests/locale_cache_architecture_guard.rs"
@@ -79,6 +90,14 @@ on:
   pull_request:
     paths:
       - "crates/rustok-cache/**"
+      - "crates/flex/src/cache_generation.rs"
+      - "crates/flex/src/lib.rs"
+      - "crates/rustok-auth/Cargo.toml"
+      - "crates/rustok-auth/src/migrations/**"
+      - "crates/rustok-product/src/migrations/**"
+      - "crates/rustok-commerce/Cargo.toml"
+      - "crates/rustok-commerce/src/migrations/**"
+      - "crates/rustok-forum/src/migrations/**"
       - "crates/rustok-channel/Cargo.toml"
       - "crates/rustok-channel/src/**"
       - "crates/rustok-channel/admin/src/transport/native_server_adapter.rs"
@@ -108,6 +127,8 @@ on:
       - "apps/server/src/services/channel_cache_invalidation.rs"
       - "apps/server/src/services/event_transport_factory.rs"
       - "apps/server/src/services/field_definition_cache.rs"
+      - "apps/server/src/services/field_definition_cache_base.rs"
+      - "apps/server/src/services/field_definition_cache_reconciliation.rs"
       - "apps/server/src/services/graphql_schema.rs"
       - "apps/server/src/services/marketplace_catalog_cache.rs"
       - "apps/server/src/services/marketplace_catalog_cache_base.rs"
@@ -131,6 +152,7 @@ on:
       - "apps/server/tests/cache_redis_status_architecture_guard.rs"
       - "apps/server/tests/cache_worker_guardrail_architecture_guard.rs"
       - "apps/server/tests/channel_cache_architecture_guard.rs"
+      - "apps/server/tests/field_definition_cache_generation_guard.rs"
       - "apps/server/tests/field_definition_cache_runtime_guard.rs"
       - "apps/server/tests/generation_store_architecture_guard.rs"
       - "apps/server/tests/locale_cache_architecture_guard.rs"
@@ -179,6 +201,11 @@ jobs:
         run: |
           cargo check -p rustok-core --lib --features redis-cache
           cargo check -p rustok-cache --lib
+          cargo check -p flex --lib
+          cargo check -p rustok-auth --lib
+          cargo check -p rustok-product --lib
+          cargo check -p rustok-commerce --lib
+          cargo check -p rustok-forum --lib
           cargo check -p rustok-channel --lib
           cargo check -p rustok-server --lib
       - name: Cache unit and architecture tests
@@ -194,13 +221,14 @@ jobs:
           cargo test -p rustok-cache --test redis_health_regression
           cargo test -p rustok-channel invalidation_generation --lib
           cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib
-          cargo test -p rustok-server --test cache_architecture_guard --test cache_legacy_fallback_guard --test cache_redis_monitor_architecture_guard --test cache_redis_status_architecture_guard --test cache_worker_guardrail_architecture_guard --test channel_cache_architecture_guard --test field_definition_cache_runtime_guard --test generation_store_architecture_guard --test locale_cache_architecture_guard --test marketplace_cache_architecture_guard --test rate_limit_cache_runtime_guard --test seo_redirect_cache_reconciliation_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard --test tenant_locale_generation_guard
+          cargo test -p rustok-server --test cache_architecture_guard --test cache_legacy_fallback_guard --test cache_redis_monitor_architecture_guard --test cache_redis_status_architecture_guard --test cache_worker_guardrail_architecture_guard --test channel_cache_architecture_guard --test field_definition_cache_generation_guard --test field_definition_cache_runtime_guard --test generation_store_architecture_guard --test locale_cache_architecture_guard --test marketplace_cache_architecture_guard --test rate_limit_cache_runtime_guard --test seo_redirect_cache_reconciliation_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard --test tenant_locale_generation_guard
           cargo test -p rustok-server tenant_cache --lib
           cargo test -p rustok-server tenant_cache_generation --lib
           cargo test -p rustok-server tenant_generation_delivery_gate --lib
           cargo test -p rustok-server tenant_locale_generation --lib
           cargo test -p rustok-server channel_cache --lib
           cargo test -p rustok-server channel_cache_invalidation --lib
+          cargo test -p rustok-server field_definition_cache_generation --lib
           cargo test -p rustok-server rate_limit --lib
           cargo test -p rustok-server tenant_locale_cache --lib
           cargo test -p rustok-server seo_redirect_cache_reconciliation --lib
@@ -210,7 +238,7 @@ jobs:
         run: |
           cargo clippy -p rustok-core --lib --features redis-cache -- -D warnings
           cargo clippy -p rustok-cache --lib -- -D warnings
-          cargo clippy -p rustok-channel --lib -- -D warnings
+          cargo clippy -p flex --lib -- -D warnings
           cargo clippy -p rustok-server --lib -- -D warnings
       - name: Module contract
         run: |
