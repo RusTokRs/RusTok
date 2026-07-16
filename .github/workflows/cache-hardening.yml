@@ -6,6 +6,7 @@ on:
     paths:
       - "crates/rustok-cache/**"
       - "crates/rustok-core/src/cache.rs"
+      - "crates/rustok-core/src/cache_atomic.rs"
       - "crates/rustok-core/src/cache_tests.rs"
       - "crates/rustok-core/src/context.rs"
       - "crates/rustok-core/src/lib.rs"
@@ -63,6 +64,7 @@ on:
     paths:
       - "crates/rustok-cache/**"
       - "crates/rustok-core/src/cache.rs"
+      - "crates/rustok-core/src/cache_atomic.rs"
       - "crates/rustok-core/src/cache_tests.rs"
       - "crates/rustok-core/src/context.rs"
       - "crates/rustok-core/src/lib.rs"
@@ -149,6 +151,7 @@ jobs:
       - name: Cache unit and architecture tests
         run: |
           cargo test -p rustok-core cache --lib --features redis-cache
+          cargo test -p rustok-core --test cache_atomic_backend_guard
           cargo test -p rustok-core circuit_breaker --lib
           cargo test -p rustok-cache --lib
           cargo test -p rustok-cache --test atomic_cas concurrent_local_compare_and_set_has_exactly_one_winner
