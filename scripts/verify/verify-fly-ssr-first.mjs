@@ -11,6 +11,8 @@ const paths = {
   flyBrowserJs: 'crates/fly-browser/assets/fly-browser.js',
   flyLeptosCargo: 'crates/fly-leptos/Cargo.toml',
   flyLeptosRoot: 'crates/fly-leptos/src/root.rs',
+  runtimeLocale: 'crates/fly/src/runtime_locale.rs',
+  runtimePipeline: 'crates/fly/src/runtime_pipeline.rs',
   adminCargo: 'crates/rustok-page-builder/admin/Cargo.toml',
   adminAdapter: 'crates/rustok-page-builder/admin/src/ui/browser_adapter.rs',
   adminCanvas: 'crates/rustok-page-builder/admin/src/editor/modular_canvas.rs',
@@ -21,6 +23,7 @@ const paths = {
   ssrDrop: 'crates/rustok-page-builder/admin/src/editor/ssr_drop.rs',
   ssrForms: 'crates/rustok-page-builder/admin/src/editor/ssr_forms.rs',
   ssrInspector: 'crates/rustok-page-builder/admin/src/editor/ssr_inspector.rs',
+  ssrLocale: 'crates/rustok-page-builder/admin/src/editor/ssr_locale.rs',
   localeEn: 'crates/rustok-page-builder/admin/locales/en.json',
   localeRu: 'crates/rustok-page-builder/admin/locales/ru.json',
   palette: 'crates/rustok-page-builder/admin/src/editor/palette_layers.rs',
@@ -103,6 +106,8 @@ requireMarkers('flyBrowserLib', [
   '"patch_component_property"',
   '"patch_page_metadata"',
   '"create_page"',
+  '"set_runtime_context"',
+  '"set_runtime_locale"',
 ], 'fly-browser contract');
 for (const forbidden of ['wasm_bindgen', 'web_sys', 'wasm-bindgen', 'web-sys']) {
   forbidMarker('flyBrowserLib', forbidden, `fly-browser Rust contract must not depend on ${forbidden}`);
@@ -117,6 +122,25 @@ requireMarkers('flyBrowserJs', [
   'draft_token:',
   'globalThis.location.reload()',
 ], 'SSR browser bridge');
+requireMarkers('runtimeLocale', [
+  'pub const RUNTIME_LOCALE_FIELD',
+  'pub const RUNTIME_FALLBACK_LOCALES_FIELD',
+  'pub const LOCALIZED_VALUES_FIELD',
+  'pub fn materialize_runtime_locale_context',
+  'pub fn normalize_locale_tag',
+  'runtime_localized_value_fallback',
+  'runtime_localized_value_unresolved',
+  'regional_locale_falls_back_to_language',
+  'unresolved_localized_value_is_preserved_losslessly',
+], 'Fly runtime locale resolver');
+requireMarkers('runtimePipeline', [
+  'materialize_runtime_locale_context(input_context)',
+  'let localized_input_context = locale_materialization.context',
+  'materialize_context(document, &localized_input_context)',
+  'materialize_bindings(document, &effective_context)',
+  'materialize_runtime(&document, &effective_context)',
+  'locale_resolution_runs_before_computed_values_and_bindings',
+], 'locale-aware Fly runtime pipeline');
 
 requireMarkers('flyLeptosCargo', [
   'default = ["ssr"]',
@@ -158,12 +182,15 @@ requireMarkers('adminAdapter', [
 requireMarkers('adminEditorMod', [
   'mod ssr_forms;',
   'mod ssr_inspector;',
+  'mod ssr_locale;',
   'SsrInspectorPanel',
+  'SsrLocalePanel',
 ], 'SSR editor module wiring');
 requireMarkers('adminCanvas', [
   'data-fly-browser-root="true"',
   'data-fly-runtime="ssr"',
   'data-fly-intent-endpoint',
+  'SsrLocalePanel',
   'SsrInspectorPanel',
 ], 'Admin canvas SSR wiring');
 requireMarkers('browserIntent', [
@@ -206,6 +233,14 @@ requireMarkers('ssrInspector', [
   'page_builder.ssrInspector.runtimeContext',
   'page_builder.ssrInspector.pageLifecycle',
 ], 'localized classic SSR inspector');
+requireMarkers('ssrLocale', [
+  'data-fly-ssr-locale="true"',
+  'data-fly-intent-form="set_runtime_locale"',
+  'RUNTIME_LOCALE_FIELD',
+  'RUNTIME_FALLBACK_LOCALES_FIELD',
+  'page_builder.ssrInspector.localeTitle',
+  'page_builder.ssrInspector.fallbackLocalesLabel',
+], 'localized SSR preview locale controls');
 for (const forbidden of [
   '<h2 class="font-semibold">"Classic SSR inspector"</h2>',
   '<summary class="cursor-pointer text-xs font-semibold">"Runtime preview context"</summary>',
@@ -226,6 +261,13 @@ const requiredInspectorLocaleKeys = [
   'page_builder.ssrInspector.runtimeContextAria',
   'page_builder.ssrInspector.runtimeContextHelp',
   'page_builder.ssrInspector.applyRuntimeContext',
+  'page_builder.ssrInspector.localeTitle',
+  'page_builder.ssrInspector.localeHelp',
+  'page_builder.ssrInspector.localeLabel',
+  'page_builder.ssrInspector.localePlaceholder',
+  'page_builder.ssrInspector.fallbackLocalesLabel',
+  'page_builder.ssrInspector.fallbackLocalesPlaceholder',
+  'page_builder.ssrInspector.applyLocale',
   'page_builder.ssrInspector.canvasComponent',
   'page_builder.ssrInspector.componentProperty',
   'page_builder.ssrInspector.fieldKind',
@@ -275,7 +317,12 @@ requireMarkers('pagesIntent', [
   'dispatch_pages_browser_intent',
   'pages_browser_draft_store',
   'set_runtime_context',
+  'set_runtime_locale',
   'runtime_context_from_payload',
+  'runtime_locale_from_payload',
+  'normalize_locale_tag',
+  'RUNTIME_LOCALE_FIELD',
+  'RUNTIME_FALLBACK_LOCALES_FIELD',
   'commit_with_context',
   'persistence.is_some()',
 ], 'Pages SSR intent service');
