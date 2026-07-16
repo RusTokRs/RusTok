@@ -39,6 +39,8 @@ Last reconciled with `main`: 2026-07-16.
 - [x] Reuse the `CacheService` Redis client in all shared backend factories.
 - [x] Clamp Redis TTL arguments to the signed Redis range.
 - [x] Reject legacy URL-owned Redis/fallback construction from production wiring.
+- [x] Retain Redis 7 `CLIENT PAUSE` evidence proving the shared two-second operation deadline,
+  immediate circuit-open rejection and successful half-open recovery after the latency clears.
 
 ### 2. Bounded degraded fallback
 
@@ -133,6 +135,8 @@ The detailed active-cache contract is maintained in
 - [x] Guard the channel workflow path scope, Channel/Flex Clippy commands, PostgreSQL job, full
   non-ignored resolved-value suite, combined lag/value lib test, live Redis readiness/resolved-value
   commands, self-hosted Redis restart setup and durable recovery sources from accidental removal.
+- [x] Guard the live Redis latency/circuit scenario and the production timeout/open-circuit markers
+  from accidental removal.
 - [x] Guard Redis, generation, PubSub, refresh and CAS Prometheus alert metric names in
   `tests/alert_rules_guard.rs`.
 - [x] Publish operational alerts for Redis degradation, generation bump failure, PubSub failure,
@@ -153,8 +157,8 @@ The detailed active-cache contract is maintained in
 ### P0. Live and failure-recovery evidence
 
 - [ ] Execute the source-complete channel SQLite reader, two-server-runtime, listener-lag/value,
-  resolved-value, PostgreSQL 17, live Redis and self-hosted Redis restart jobs on the same revision
-  and record their results.
+  resolved-value, PostgreSQL 17, live Redis, latency/circuit and self-hosted Redis restart jobs on
+  the same revision and record their results.
 - [ ] Run ignored `rustok-cache` and `rustok-core` suites against isolated Redis 7.
 - [ ] Prove exact/wildcard tenant-locale recovery, listener lag handling and periodic generation
   reconciliation across multiple replicas.
@@ -164,7 +168,7 @@ The detailed active-cache contract is maintained in
 - [ ] Prove SEO seed-before-clear startup, exact tenant invalidation, multi-page catch-up, database
   outage recovery and terminal-worker readiness across multiple replicas.
 - [ ] Prove binary-safe CAS applied/mismatch/failure behavior and fail-closed fallback.
-- [ ] Exercise bounded Redis latency, repeated restart and circuit-breaker recovery.
+- [ ] Add deterministic repeated-restart evidence beyond the single channel Redis restart cycle.
 - [ ] Confirm readiness remains degraded while bounded local fallback serves eligible reads.
 
 ### P1. Load, chaos and tuning evidence
