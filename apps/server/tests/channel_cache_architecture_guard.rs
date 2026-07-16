@@ -167,11 +167,16 @@ fn durable_channel_generation_is_database_owned_and_supervised() {
 fn cache_workflow_retains_channel_compiled_evidence() {
     let workflow = source(".github/workflows/cache-hardening.yml");
     for required in [
+        "crates/rustok-channel/**",
+        "apps/server/src/services/channel_cache_invalidation*.rs",
         "cargo check -p rustok-channel --lib",
         "cargo test -p rustok-channel invalidation_generation --lib",
         "cargo test -p rustok-server channel_cache_invalidation --lib",
         "cargo clippy -p flex --lib -- -D warnings",
         "cargo clippy -p rustok-channel --lib -- -D warnings",
+        "postgres-channel:",
+        "RUSTOK_CHANNEL_TEST_POSTGRES_URL",
+        "cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1",
     ] {
         assert!(
             workflow.contains(required),
@@ -187,6 +192,25 @@ fn cache_workflow_retains_channel_compiled_evidence() {
         assert!(
             generation.contains(required),
             "channel generation tests must retain {required}"
+        );
+    }
+
+    let runtime = source("apps/server/src/services/channel_cache_invalidation_runtime_tests.rs");
+    assert!(runtime.contains("independent_replicas_fail_closed_and_recover_without_redis"));
+    assert!(runtime.contains("wait_for_readiness(&handle_a, false).await;"));
+    assert!(runtime.contains("wait_for_readiness(&handle_b, true).await;"));
+
+    let postgres = source("crates/rustok-channel/tests/postgres_invalidation_generation.rs");
+    for required in [
+        "postgres_generation_is_transactional_concurrent_and_recoverable",
+        "let replica = Database::connect(&url).await.unwrap();",
+        "let mutation_a = tokio::spawn",
+        "let mutation_b = tokio::spawn",
+        "migration.up(&manager).await.unwrap();",
+    ] {
+        assert!(
+            postgres.contains(required),
+            "PostgreSQL channel generation evidence must retain {required}"
         );
     }
 }
