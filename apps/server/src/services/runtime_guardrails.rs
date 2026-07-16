@@ -47,7 +47,7 @@ pub async fn collect_runtime_guardrail_snapshot(
         &mut snapshot,
         "channel resolution durable invalidation runtime",
         ctx.shared_get::<ChannelCacheInvalidationListenerHandle>()
-            .map(|handle| handle.is_running()),
+            .map(|handle| handle.is_ready()),
         RuntimeGuardrailStatus::Critical,
     );
     #[cfg(feature = "mod-seo")]
