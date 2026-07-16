@@ -62,6 +62,7 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
         <div class="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3" role="toolbar" aria-label="Page builder actions">
             <ToolbarButton
                 label=undo
+                ssr_intent="undo"
                 disabled=Signal::derive({
                     let runtime = runtime.clone();
                     move || !runtime.controller.with(|controller| controller.can_undo())
@@ -73,6 +74,7 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
             />
             <ToolbarButton
                 label=redo
+                ssr_intent="redo"
                 disabled=Signal::derive({
                     let runtime = runtime.clone();
                     move || !runtime.controller.with(|controller| controller.can_redo())
@@ -84,6 +86,7 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
             />
             <ToolbarButton
                 label=save
+                ssr_intent="save"
                 primary=true
                 disabled=Signal::derive({
                     let runtime = runtime.clone();
@@ -101,16 +104,19 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
             <span class="mx-1 h-6 w-px bg-border"></span>
             <ToolbarButton
                 label=copy
+                ssr_intent="copy"
                 disabled=selection_disabled(runtime.clone(), true)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::Copy)
             />
             <ToolbarButton
                 label=cut
+                ssr_intent="cut"
                 disabled=selection_disabled(runtime.clone(), true)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::Cut)
             />
             <ToolbarButton
                 label=paste
+                ssr_intent="paste"
                 disabled=Signal::derive({
                     let runtime = runtime.clone();
                     move || !runtime.controller.with(|controller| controller.has_clipboard())
@@ -119,11 +125,13 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
             />
             <ToolbarButton
                 label=duplicate
+                ssr_intent="duplicate"
                 disabled=selection_disabled(runtime.clone(), true)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::Duplicate)
             />
             <ToolbarButton
                 label=remove
+                ssr_intent="remove_selected"
                 destructive=true
                 disabled=selection_disabled(runtime.clone(), true)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::DeleteSelection)
@@ -131,16 +139,19 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
             <span class="mx-1 h-6 w-px bg-border"></span>
             <ToolbarButton
                 label=move_up
+                ssr_intent="move_selected_up"
                 disabled=selection_disabled(runtime.clone(), true)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::MoveSelectionUp)
             />
             <ToolbarButton
                 label=move_down
+                ssr_intent="move_selected_down"
                 disabled=selection_disabled(runtime.clone(), true)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::MoveSelectionDown)
             />
             <ToolbarButton
                 label=move_mode
+                ssr_intent="begin_selected_move"
                 disabled=selection_disabled(runtime.clone(), true)
                 on_click=Callback::new({
                     let runtime = runtime.clone();
@@ -154,6 +165,7 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
             />
             <ToolbarButton
                 label=cancel_drag
+                ssr_intent="cancel_drag"
                 disabled=Signal::derive({
                     let runtime = runtime.clone();
                     move || runtime.controller.with(|controller| controller.ui().state.drag.is_none())
@@ -165,6 +177,7 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
                 <span class="text-muted-foreground">{device}</span>
                 <select
                     class="rounded border border-input bg-background px-2 py-1"
+                    data-fly-action="set-viewport"
                     on:change={
                         let runtime = runtime.clone();
                         move |event| {
@@ -204,6 +217,7 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
 #[component]
 fn ToolbarButton(
     label: String,
+    ssr_intent: &'static str,
     disabled: Signal<bool>,
     on_click: Callback<()>,
     #[prop(optional)] primary: bool,
@@ -220,6 +234,7 @@ fn ToolbarButton(
         <button
             type="button"
             class=class
+            data-fly-action=format!("intent:{ssr_intent}")
             disabled=move || disabled.get()
             on:click=move |_| on_click.run(())
         >{label}</button>
@@ -241,7 +256,7 @@ fn shortcut_callback(runtime: AdminEditorRuntime, shortcut: EditorShortcut) -> C
 }
 
 fn install_keyboard_bindings(runtime: AdminEditorRuntime) {
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
     {
         use wasm_bindgen::JsCast;
         use web_sys::{EventTarget, KeyboardEvent};
@@ -268,7 +283,7 @@ fn install_keyboard_bindings(runtime: AdminEditorRuntime) {
             Err(error) => runtime.fail(error.to_string()),
         }
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
     {
         let _ = runtime;
     }
