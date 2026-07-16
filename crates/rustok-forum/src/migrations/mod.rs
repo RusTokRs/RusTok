@@ -20,6 +20,7 @@ mod m20260713_000010_harden_forum_wave_invariants;
 mod m20260713_000011_add_forum_domain_events;
 mod m20260713_000012_add_forum_read_model_indexes;
 mod m20260713_000013_add_forum_subscription_levels;
+mod m20260716_000004_add_topic_field_cache_generation_trigger;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -48,6 +49,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000011_add_forum_domain_events::Migration),
         Box::new(m20260713_000012_add_forum_read_model_indexes::Migration),
         Box::new(m20260713_000013_add_forum_subscription_levels::Migration),
+        Box::new(m20260716_000004_add_topic_field_cache_generation_trigger::Migration),
     ]
 }
 
