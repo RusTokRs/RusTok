@@ -4,7 +4,10 @@ on:
   push:
     branches: [main]
     paths:
+      - "apps/server/src/services/app_runtime.rs"
       - "apps/server/src/services/event_bus.rs"
+      - "apps/server/src/services/event_transport_factory.rs"
+      - "apps/server/src/services/module_event_dispatcher.rs"
       - "apps/server/src/services/runtime_guardrails.rs"
       - "apps/server/src/services/runtime_guardrails_base.rs"
       - "apps/server/src/services/server_runtime_context.rs"
@@ -12,7 +15,10 @@ on:
       - ".github/workflows/event-runtime-hardening.yml"
   pull_request:
     paths:
+      - "apps/server/src/services/app_runtime.rs"
       - "apps/server/src/services/event_bus.rs"
+      - "apps/server/src/services/event_transport_factory.rs"
+      - "apps/server/src/services/module_event_dispatcher.rs"
       - "apps/server/src/services/runtime_guardrails.rs"
       - "apps/server/src/services/runtime_guardrails_base.rs"
       - "apps/server/src/services/server_runtime_context.rs"
