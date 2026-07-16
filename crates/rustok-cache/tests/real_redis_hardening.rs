@@ -1,3 +1,5 @@
+use std::net::TcpListener;
+use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -6,6 +8,7 @@ use rustok_cache::{
     DurableCacheInvalidationRecord, VersionedCacheInvalidation,
 };
 use rustok_core::CircuitBreakerConfig;
+use tokio::process::{Child, Command};
 
 fn real_redis_url() -> String {
     std::env::var("RUSTOK_CACHE_REAL_REDIS_URL")
@@ -26,6 +29,82 @@ async fn pause_redis_all(url: &str, duration: Duration) {
         .await
         .expect("Redis CLIENT PAUSE should succeed");
     assert_eq!(reply, "OK");
+}
+
+fn reserve_loopback_port() -> u16 {
+    TcpListener::bind(("127.0.0.1", 0))
+        .expect("loopback port should be reservable")
+        .local_addr()
+        .expect("reserved loopback address")
+        .port()
+}
+
+async fn wait_for_redis(url: &str) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Ok(client) = redis::Client::open(url)
+                && let Ok(mut connection) = client.get_multiplexed_async_connection().await
+            {
+                let pong = redis::cmd("PING")
+                    .query_async::<String>(&mut connection)
+                    .await;
+                if pong.as_deref() == Ok("PONG") {
+                    return;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("spawned Redis did not become ready");
+}
+
+async fn spawn_redis(binary: &str, port: u16) -> Child {
+    let child = Command::new(binary)
+        .arg("--bind")
+        .arg("127.0.0.1")
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--save")
+        .arg("")
+        .arg("--appendonly")
+        .arg("no")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("redis-server should start");
+    wait_for_redis(&format!("redis://127.0.0.1:{port}/")).await;
+    child
+}
+
+async fn stop_redis(child: &mut Child) {
+    child.kill().await.expect("redis-server should stop");
+    child.wait().await.expect("redis-server should be reaped");
+}
+
+fn fast_recovery_options() -> CacheBackendOptions {
+    let mut options = CacheBackendOptions::default();
+    options.redis_circuit_breaker = CircuitBreakerConfig {
+        failure_threshold: 1,
+        success_threshold: 1,
+        timeout: Duration::from_millis(200),
+        half_open_max_requests: Some(1),
+    };
+    options
+}
+
+async fn wait_for_backend_health(backend: &dyn rustok_core::CacheBackend) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if backend.health().await.is_ok() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("shared Redis backend did not recover");
 }
 
 #[tokio::test]
@@ -207,19 +286,12 @@ async fn shared_client_weighted_backend_honors_subsecond_ttl_and_invalidation() 
 async fn shared_backend_times_out_opens_circuit_and_recovers_after_latency() {
     let url = real_redis_url();
     let service = CacheService::from_url(Some(&url));
-    let mut options = CacheBackendOptions::default();
-    options.redis_circuit_breaker = CircuitBreakerConfig {
-        failure_threshold: 1,
-        success_threshold: 1,
-        timeout: Duration::from_millis(200),
-        half_open_max_requests: Some(1),
-    };
     let backend = service
         .backend_shared_client_with_options(
             &format!("real-latency-{}", uuid::Uuid::new_v4()),
             Duration::from_secs(30),
             128,
-            options,
+            fast_recovery_options(),
         )
         .await;
     backend
@@ -264,4 +336,70 @@ async fn shared_backend_times_out_opens_circuit_and_recovers_after_latency() {
         .health()
         .await
         .expect("closed Redis circuit should remain healthy after recovery");
+}
+
+#[tokio::test]
+#[ignore = "requires redis-server via RUSTOK_CACHE_REDIS_SERVER_BIN"]
+async fn shared_backend_recovers_across_two_redis_restarts() {
+    let binary = std::env::var("RUSTOK_CACHE_REDIS_SERVER_BIN")
+        .expect("RUSTOK_CACHE_REDIS_SERVER_BIN must point to redis-server");
+    let port = reserve_loopback_port();
+    let url = format!("redis://127.0.0.1:{port}/");
+    let mut redis_process = spawn_redis(binary.as_str(), port).await;
+
+    let service = CacheService::from_url(Some(&url));
+    let backend = service
+        .backend_shared_client_with_options(
+            &format!("real-restart-{}", uuid::Uuid::new_v4()),
+            Duration::from_secs(30),
+            128,
+            fast_recovery_options(),
+        )
+        .await;
+    backend
+        .health()
+        .await
+        .expect("shared Redis backend should start healthy");
+
+    for cycle in 1_u8..=2 {
+        stop_redis(&mut redis_process).await;
+
+        let failed_at = Instant::now();
+        backend
+            .health()
+            .await
+            .expect_err("stopped Redis must fail shared backend health");
+        assert!(failed_at.elapsed() < Duration::from_millis(2_500));
+
+        let rejected_at = Instant::now();
+        let open_error = backend
+            .health()
+            .await
+            .expect_err("opened Redis circuit must reject while Redis is stopped");
+        assert!(
+            open_error
+                .to_string()
+                .contains("Redis unavailable (circuit breaker open)")
+        );
+        assert!(rejected_at.elapsed() < Duration::from_millis(250));
+
+        redis_process = spawn_redis(binary.as_str(), port).await;
+        wait_for_backend_health(backend.as_ref()).await;
+
+        let key = format!("cycle-{cycle}");
+        let value = vec![cycle];
+        backend
+            .set(key.clone(), value.clone())
+            .await
+            .expect("recovered backend should accept writes");
+        assert_eq!(
+            backend
+                .get(&key)
+                .await
+                .expect("recovered backend should accept reads"),
+            Some(value)
+        );
+    }
+
+    stop_redis(&mut redis_process).await;
 }
