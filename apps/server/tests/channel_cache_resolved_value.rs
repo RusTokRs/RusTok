@@ -126,20 +126,24 @@ async fn redis_invalidation_refreshes_remote_resolved_channel_value_before_poll(
     let cache_b = ensure_cache_service(&ctx_b);
     assert!(cache_a.redis_client_initialized());
     assert!(cache_b.redis_client_initialized());
-    start_channel_cache_invalidation_listener(&ctx_a, cache_a)
-        .await
-        .expect("publisher listener should start");
-    start_channel_cache_invalidation_listener(&ctx_b, cache_b)
-        .await
-        .expect("remote listener should start");
 
-    let app_b = channel_router(ctx_b);
+    let app_b = channel_router(ctx_b.clone());
     assert_eq!(
         request_channel_name(&app_b, &tenant_context)
             .await
             .as_deref(),
         Some("Before invalidation")
     );
+
+    // Start the five-second reconciliation clocks only after replica B has
+    // definitely cached the old value. A successful result inside the
+    // three-second bound must therefore come from Redis delivery.
+    start_channel_cache_invalidation_listener(&ctx_a, cache_a)
+        .await
+        .expect("publisher listener should start");
+    start_channel_cache_invalidation_listener(&ctx_b, cache_b)
+        .await
+        .expect("remote listener should start");
 
     let model = channel::Entity::find_by_id(channel.id)
         .one(&db)
