@@ -1,6 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+// The preserved implementation still contains the former public cleanup loop.
+// The wrapper below is the only runtime entrypoint; allow that compatibility
+// function to remain byte-for-byte in the private base module without creating
+// a workspace-level dead-code warning.
+#[allow(dead_code)]
 #[path = "rate_limit_base.rs"]
 mod base;
 
