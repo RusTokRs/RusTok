@@ -1,6 +1,7 @@
 pub mod adapters;
 pub mod dto;
 pub mod health;
+pub mod locale;
 pub mod render;
 pub mod rollout;
 pub mod runtime_context;
