@@ -9,11 +9,11 @@ use uuid::Uuid;
 
 use crate::graphql_runtime::{
     order_change_orchestration_from_context, post_order_orchestration_from_context,
+    return_completion_orchestration_from_context,
 };
 
 use super::super::{current_tenant_scope, require_commerce_permission, types::*, MODULE_SLUG};
 use super::helpers::*;
-use super::provider_return_helpers::build_provider_refund_resolution_return_completion;
 
 #[derive(Default)]
 pub struct CommerceFulfillmentMutation;
@@ -345,56 +345,61 @@ impl CommerceFulfillmentMutation {
             )?;
         }
 
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let order_service = OrderService::new(db.clone(), event_bus.clone());
-        let mut complete_input = crate::dto::CompleteOrderReturnInput {
+        let command = crate::CompleteReturnResolutionInput {
             resolution_type: input.resolution_type,
             refund_id: input.refund_id,
             order_change_id: input.order_change_id,
+            refund: input
+                .refund
+                .map(|refund| {
+                    Ok(crate::CompleteReturnRefundInput {
+                        payment_collection_id: refund.payment_collection_id,
+                        amount: parse_decimal(&refund.amount)?,
+                        reason: refund.reason,
+                        metadata: parse_optional_metadata(refund.metadata.as_deref())?,
+                        complete: refund.complete.unwrap_or(false),
+                    })
+                })
+                .transpose()?,
+            exchange: input
+                .exchange
+                .map(|exchange| {
+                    Ok(crate::CompleteReturnExchangeInput {
+                        description: exchange.description,
+                        preview: parse_json_payload(
+                            exchange.preview.as_str(),
+                            "Invalid JSON preview payload",
+                        )?,
+                        metadata: parse_optional_metadata(exchange.metadata.as_deref())?,
+                    })
+                })
+                .transpose()?,
+            claim: input
+                .claim
+                .map(|claim| {
+                    Ok(crate::CompleteReturnClaimInput {
+                        description: claim.description,
+                        preview: parse_json_payload(
+                            claim.preview.as_str(),
+                            "Invalid JSON preview payload",
+                        )?,
+                        metadata: parse_optional_metadata(claim.metadata.as_deref())?,
+                    })
+                })
+                .transpose()?,
             metadata: parse_optional_metadata(input.metadata.as_deref())?,
         };
 
-        if let Some(refund_input) = input.refund {
-            complete_input = build_provider_refund_resolution_return_completion(
-                ctx,
-                db,
-                &order_service,
-                tenant_id,
-                id,
-                complete_input,
-                refund_input,
-            )
-            .await?;
-        }
-
-        if let Some(exchange_input) = input.exchange {
-            complete_input = build_exchange_resolution_return_completion(
-                &order_service,
-                tenant_id,
-                auth.user_id,
-                id,
-                complete_input,
-                exchange_input,
-            )
-            .await?;
-        }
-
-        if let Some(claim_input) = input.claim {
-            complete_input = build_claim_resolution_return_completion(
-                &order_service,
-                tenant_id,
-                auth.user_id,
-                id,
-                complete_input,
-                claim_input,
-            )
-            .await?;
-        }
-
-        let item = order_service
-            .complete_return(tenant_id, id, complete_input)
-            .await?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let item = return_completion_orchestration_from_context(
+            ctx,
+            db.clone(),
+            event_bus.clone(),
+        )
+        .complete_return(tenant_id, auth.user_id, id, command)
+        .await
+        .map_err(|err| FieldError::new(err.to_string()))?;
 
         Ok(item.into())
     }
