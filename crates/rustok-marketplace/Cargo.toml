@@ -1,0 +1,13 @@
+[package]
+name = "rustok-marketplace"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Marketplace family root and cross-marketplace orchestration boundary"
+
+[dependencies]
+async-trait.workspace = true
+rustok-api.workspace = true
+rustok-core.workspace = true
+serde.workspace = true
+uuid.workspace = true
