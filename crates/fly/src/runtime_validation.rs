@@ -1,12 +1,13 @@
 use crate::{
     analyze_runtime_context_dependencies, extract_runtime_context_contract,
-    validate_binding_definitions, validate_dynamic_definitions, ProjectDocument,
-    ValidationDiagnostic, ValidationReport,
+    validate_binding_definitions, validate_dynamic_definitions, validate_translation_definitions,
+    ProjectDocument, ValidationDiagnostic, ValidationReport,
 };
 use std::collections::BTreeSet;
 
 pub fn validate_runtime_extensions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = extract_runtime_context_contract(document).definition_diagnostics;
+    diagnostics.extend(validate_translation_definitions(document));
     diagnostics.extend(validate_binding_definitions(document));
     diagnostics.extend(validate_dynamic_definitions(document));
     diagnostics.extend(analyze_runtime_context_dependencies(document).diagnostics);
@@ -56,6 +57,13 @@ mod tests {
             "pages": [{
                 "component": { "id": "root", "type": "wrapper" }
             }],
+            "flyTranslations": [{
+                "id": "hero",
+                "values": { "invalid locale": "Hello" }
+            }, {
+                "id": "hero",
+                "values": { "en": "Hello" }
+            }],
             "flyRuntimeContextSchema": [{
                 "id": "count",
                 "path": "count",
@@ -92,9 +100,15 @@ mod tests {
     }
 
     #[test]
-    fn runtime_validation_combines_contract_dependency_binding_and_dynamic_diagnostics() {
+    fn runtime_validation_combines_translation_contract_dependency_binding_and_dynamic_diagnostics() {
         let document = invalid_runtime_document();
         let diagnostics = validate_runtime_extensions(&document);
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "translation_locale_invalid"));
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "duplicate_translation_id"));
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_context_default_type_mismatch"));
