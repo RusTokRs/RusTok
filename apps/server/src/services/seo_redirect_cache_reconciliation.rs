@@ -1,5 +1,8 @@
 use std::panic::AssertUnwindSafe;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::time::Duration;
 
 use futures_util::FutureExt;
@@ -14,24 +17,27 @@ const SEO_REDIRECT_CACHE_BATCH_LIMIT: u64 = 256;
 
 struct AbortOnDropSeoRedirectCacheTask {
     task: JoinHandle<()>,
+    healthy: Arc<AtomicBool>,
 }
 
 impl AbortOnDropSeoRedirectCacheTask {
-    fn new(task: JoinHandle<()>) -> Self {
-        Self { task }
+    fn new(task: JoinHandle<()>, healthy: Arc<AtomicBool>) -> Self {
+        Self { task, healthy }
     }
 
     fn is_running(&self) -> bool {
-        !self.task.is_finished()
+        !self.task.is_finished() && self.healthy.load(Ordering::Acquire)
     }
 
     fn abort(&self) {
+        self.healthy.store(false, Ordering::Release);
         self.task.abort();
     }
 }
 
 impl Drop for AbortOnDropSeoRedirectCacheTask {
     fn drop(&mut self) {
+        self.healthy.store(false, Ordering::Release);
         self.task.abort();
     }
 }
@@ -40,8 +46,10 @@ impl Drop for AbortOnDropSeoRedirectCacheTask {
 pub struct SeoRedirectCacheReconciliationHandle(Arc<AbortOnDropSeoRedirectCacheTask>);
 
 impl SeoRedirectCacheReconciliationHandle {
-    fn new(task: JoinHandle<()>) -> Self {
-        Self(Arc::new(AbortOnDropSeoRedirectCacheTask::new(task)))
+    fn new(task: JoinHandle<()>, healthy: Arc<AtomicBool>) -> Self {
+        Self(Arc::new(AbortOnDropSeoRedirectCacheTask::new(
+            task, healthy,
+        )))
     }
 
     pub fn is_running(&self) -> bool {
@@ -80,15 +88,27 @@ pub fn start_seo_redirect_cache_reconciliation(ctx: &ServerRuntimeContext) {
         existing.abort();
     }
 
-    let task = tokio::spawn(supervise_seo_redirect_cache_reconciliation(ctx.db_clone()));
-    ctx.shared_insert(SeoRedirectCacheReconciliationHandle::new(task));
+    let healthy = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(supervise_seo_redirect_cache_reconciliation(
+        ctx.db_clone(),
+        Arc::clone(&healthy),
+    ));
+    ctx.shared_insert(SeoRedirectCacheReconciliationHandle::new(task, healthy));
 }
 
-async fn supervise_seo_redirect_cache_reconciliation(db: DatabaseConnection) {
+async fn supervise_seo_redirect_cache_reconciliation(
+    db: DatabaseConnection,
+    healthy: Arc<AtomicBool>,
+) {
     loop {
-        let outcome = AssertUnwindSafe(run_seo_redirect_cache_reconciliation(db.clone()))
-            .catch_unwind()
-            .await;
+        healthy.store(false, Ordering::Release);
+        let outcome = AssertUnwindSafe(run_seo_redirect_cache_reconciliation(
+            db.clone(),
+            Arc::clone(&healthy),
+        ))
+        .catch_unwind()
+        .await;
+        healthy.store(false, Ordering::Release);
         match outcome {
             Ok(Ok(())) => {
                 tracing::error!("SEO redirect cache reconciliation exited unexpectedly")
@@ -109,12 +129,14 @@ async fn supervise_seo_redirect_cache_reconciliation(db: DatabaseConnection) {
 
 async fn run_seo_redirect_cache_reconciliation(
     db: DatabaseConnection,
+    healthy: Arc<AtomicBool>,
 ) -> rustok_seo::SeoResult<()> {
     // Read the high-water mark before clearing. Transactions at or before this cursor are covered
     // by the full clear; transactions committed after it are consumed below. This ordering avoids
     // the startup race where a post-clear commit could otherwise be incorrectly treated as seeded.
     let mut cursor = rustok_seo::services::latest_redirect_cache_cursor(&db).await?;
     rustok_seo::services::invalidate_all_redirect_cache().await;
+    healthy.store(true, Ordering::Release);
 
     loop {
         let changes = rustok_seo::services::redirect_cache_changes_after(
