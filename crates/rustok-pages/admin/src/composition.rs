@@ -150,6 +150,7 @@ fn PagesFlyBuilder(
     match controller {
         Ok(controller) => {
             let page_id = page.id.clone();
+            let browser_endpoint = format!("/api/admin/pages/{page_id}/builder/intents");
             let snapshot_default_locale = default_locale.clone();
             let facade_token = token;
             let facade_tenant = tenant;
@@ -226,6 +227,7 @@ fn PagesFlyBuilder(
                 .with_facade(facade)
                 .with_runtime_context(generated_context)
                 .with_runtime_scenarios(scenarios)
+                .with_browser_intent_endpoint(browser_endpoint)
                 .on_runtime_scenario_baseline(on_baseline);
             if let Some(baseline) = baseline {
                 host = host.with_runtime_scenario_baseline(baseline);
