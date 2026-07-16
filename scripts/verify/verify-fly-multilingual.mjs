@@ -12,8 +12,10 @@ const paths = {
   pageBuilderLocale: 'crates/rustok-page-builder/src/locale.rs',
   pageBuilderRender: 'crates/rustok-page-builder/src/render.rs',
   pagesIntent: 'crates/rustok-pages/admin/src/browser_intent.rs',
+  browserIntent: 'crates/rustok-page-builder/admin/src/browser_intent.rs',
   ssrForms: 'crates/rustok-page-builder/admin/src/editor/ssr_forms.rs',
   ssrLocale: 'crates/rustok-page-builder/admin/src/editor/ssr_locale.rs',
+  ssrLocalePolicy: 'crates/rustok-page-builder/admin/src/editor/ssr_locale_policy.rs',
   ssrTranslations: 'crates/rustok-page-builder/admin/src/editor/ssr_translations.rs',
   ssrInspector: 'crates/rustok-page-builder/admin/src/editor/ssr_inspector.rs',
   adminCanvas: 'crates/rustok-page-builder/admin/src/editor/modular_canvas.rs',
@@ -63,8 +65,12 @@ requireMarkers('localePolicy', [
   'pub fn clear_project_locale_policy',
   'pub fn materialize_project_locale_context',
   'pub fn validate_project_locale_policy',
+  'runtime_locale_invalid',
+  'runtime_locale_unsupported',
   'translation_required_locale_missing',
   'localized_metadata_required_locale_missing',
+  'legacy_locale_aliases_are_canonicalized',
+  'invalid_runtime_locale_is_diagnosed_before_defaulting',
   'required_locale_coverage_is_warning_until_enforcement_is_enabled',
   'unsupported_runtime_locale_falls_back_to_project_default',
 ], 'Fly project locale policy');
@@ -119,8 +125,10 @@ requireMarkers('runtimeValidation', [
 requireMarkers('browserContract', [
   '"upsert_translation"',
   '"remove_translation"',
+  '"set_locale_policy"',
+  '"clear_locale_policy"',
   'command_producing_and_draft_intents_are_mutating',
-], 'translation mutation protection');
+], 'locale and translation mutation protection');
 requireMarkers('pageBuilderLocale', [
   'pub struct PageBuilderLocaleContext',
   'pub fn from_request',
@@ -141,6 +149,15 @@ requireMarkers('pagesIntent', [
   'RUNTIME_LOCALE_FIELD',
   'RUNTIME_FALLBACK_LOCALES_FIELD',
 ], 'Pages SSR locale draft intent');
+requireMarkers('browserIntent', [
+  'SsrLocalePolicyRequest',
+  '"set_locale_policy"',
+  '"clear_locale_policy"',
+  'ssr_locale_policy_intent',
+  'ssr_clear_locale_policy_intent',
+  'locale_policy_form_uses_revision_protected_translation_history',
+  'clearing_missing_locale_policy_is_a_clean_no_op',
+], 'SSR locale policy dispatcher');
 requireMarkers('ssrForms', [
   'SsrTranslationUpsertRequest',
   'SsrTranslationRemoveRequest',
@@ -158,6 +175,18 @@ requireMarkers('ssrLocale', [
   'page_builder.ssrInspector.localeTitle',
   'page_builder.ssrInspector.fallbackLocalesLabel',
 ], 'localized SSR locale panel');
+requireMarkers('ssrLocalePolicy', [
+  'pub struct SsrLocalePolicyRequest',
+  'data-fly-ssr-locale-policy="true"',
+  'data-fly-intent-form="set_locale_policy"',
+  'data-fly-intent-form="clear_locale_policy"',
+  'ProjectLocalePolicy::from_document',
+  'locale_policy_form_participates_in_editor_history',
+  'clearing_missing_policy_is_an_idempotent_no_op',
+  'strict_policy_rolls_back_when_required_translation_is_missing',
+  'page_builder.localePolicy.title',
+  'page_builder.localePolicy.enforceLabel',
+], 'localized SSR locale policy panel');
 requireMarkers('ssrTranslations', [
   'data-fly-ssr-translations="true"',
   'data-fly-intent-form="upsert_translation"',
@@ -175,6 +204,7 @@ requireMarkers('ssrInspector', [
 ], 'localized SSR inspector');
 requireMarkers('adminCanvas', [
   'SsrLocalePanel',
+  'SsrLocalePolicyPanel',
   'SsrTranslationsPanel',
   'SsrInspectorPanel',
 ], 'multilingual SSR editor composition');
@@ -202,6 +232,17 @@ const requiredKeys = [
   'page_builder.ssrInspector.componentProperty',
   'page_builder.ssrInspector.pageMetadata',
   'page_builder.ssrInspector.pageLifecycle',
+  'page_builder.localePolicy.title',
+  'page_builder.localePolicy.description',
+  'page_builder.localePolicy.defaultLabel',
+  'page_builder.localePolicy.supportedLabel',
+  'page_builder.localePolicy.requiredLabel',
+  'page_builder.localePolicy.fallbackLabel',
+  'page_builder.localePolicy.listHelp',
+  'page_builder.localePolicy.enforceLabel',
+  'page_builder.localePolicy.enforceHelp',
+  'page_builder.localePolicy.save',
+  'page_builder.localePolicy.clear',
   'page_builder.translations.title',
   'page_builder.translations.description',
   'page_builder.translations.empty',
