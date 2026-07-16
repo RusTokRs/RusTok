@@ -19,6 +19,7 @@ doc = false
 default = ["ssr"]
 csr = [
   "leptos/csr",
+  "leptos_router/csr",
   "leptos_i18n/csr",
   "dep:wasm-bindgen",
   "dep:web-sys",
@@ -32,6 +33,7 @@ csr = [
 ]
 hydrate = [
   "leptos/hydrate",
+  "leptos_router/hydrate",
   "leptos_i18n/hydrate",
   "dep:wasm-bindgen",
   "dep:web-sys",
@@ -64,6 +66,7 @@ hydrate = [
 ]
 ssr = [
   "leptos/ssr",
+  "leptos_router/ssr",
   "leptos_i18n/ssr",
   "dep:axum",
   "dep:tokio",
@@ -129,7 +132,6 @@ leptos-use = { workspace = true }
 leptos_i18n.workspace = true
 leptos_query = { workspace = true }
 leptos-chartistry = { workspace = true }
-gloo-storage = { workspace = true }
 serde_urlencoded = { workspace = true }
 chrono = { workspace = true }
 console_error_panic_hook = { version = "0.1", optional = true }
@@ -147,6 +149,9 @@ sha2 = { workspace = true }
 wasm-bindgen = { version = "0.2", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["Clipboard", "CloseEvent", "ErrorEvent", "Event", "MessageEvent", "Navigator", "Storage", "WebSocket", "Window"] }
 rustok-api = { path = "../../crates/rustok-api", default-features = false }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-storage = { workspace = true }
 
 rustok-installer = { path = "../../crates/rustok-installer" }
 rustok-cache = { workspace = true, optional = true }
@@ -190,6 +195,17 @@ rustok-auth-admin = { path = "../../crates/rustok-auth/admin", default-features 
 leptos_i18n_build = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true }
+
+[package.metadata.leptos]
+output-name = "rustok-admin"
+site-root = "target/admin-site"
+site-pkg-dir = "pkg"
+site-addr = "127.0.0.1:3001"
+reload-port = 3002
+bin-features = ["ssr"]
+bin-default-features = false
+lib-features = ["hydrate"]
+lib-default-features = false
 
 [package.metadata.cargo-udeps.ignore]
 normal = [
