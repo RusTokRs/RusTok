@@ -104,7 +104,8 @@ The ownership boundary is:
 
 - [x] Expose explicit `Applied` and `Mismatch` compare-and-set outcomes on `CacheBackend`.
 - [x] Fail closed for backends that cannot provide atomic CAS.
-- [x] Serialize in-memory writes and CAS through bounded striped locks.
+- [x] Serialize public in-memory writes through bounded striped locks and couple local CAS
+  comparison/mutation in one Moka key-level `and_compute_with` operation.
 - [x] Use binary-safe Lua compare-and-write for legacy and service-owned Redis backends.
 - [x] Prevent fallback CAS from acknowledging a process-local write while the shared primary is
   unavailable.
@@ -144,7 +145,8 @@ The ownership boundary is:
   gaps, key/envelope limits, negative caching, CAS, refresh, leases and live Redis behavior.
 - [x] Add server architecture guards for canonical cache ownership, tenant cache policy,
   marketplace caching, channel generations, locale registration, field-definition runtime,
-  rate-limit cleanup ownership, Redis monitor supervision and worker-readiness escalation.
+  rate-limit cleanup ownership, atomic local CAS, Redis monitor supervision and worker-readiness
+  escalation.
 - [x] Add path-scoped workflows for cache hardening and the new host architecture guards.
 - [x] Run deterministic rustfmt over the cache-hardening file set and commit the resulting style
   normalization.
@@ -214,12 +216,13 @@ The ownership boundary is:
 - [ ] Publish operator guidance and alert thresholds for Redis degradation, repeated worker
   restarts, invalidation gaps, refresh saturation and generation recovery.
 
-### P2. Local CAS expiry/eviction proof
+### P2. Local CAS expiry/eviction proof — source complete, execution pending
 
-- [ ] Stress Moka expiration and eviction while compare-and-set is in progress.
-- [ ] Prove that an expired or evicted value cannot be revived between comparison and replacement.
-- [ ] If the invariant cannot be proven, move local CAS to a backend primitive that couples value
-  comparison and entry mutation atomically.
+- [x] Route the root `rustok-core` in-memory/fallback API through an atomic Moka entry-compute
+  backend while retaining the historical module implementation as a compatibility path.
+- [x] Treat missing or expired entries as `Mismatch`; never insert or revive them during CAS.
+- [x] Protect the root export and `and_compute_with` contract with a source architecture guard.
+- [ ] Execute expiry, eviction and concurrent CAS stress coverage in the permanent cache gate.
 
 ## Verification commands
 
@@ -229,6 +232,7 @@ cargo check -p rustok-core --lib
 cargo check -p rustok-cache --lib
 cargo check -p rustok-server --lib
 cargo test -p rustok-core cache --lib
+cargo test -p rustok-core --test cache_atomic_backend_guard
 cargo test -p rustok-cache --lib
 cargo test -p rustok-cache --test invalidation_failure_metrics
 cargo test -p rustok-server \
