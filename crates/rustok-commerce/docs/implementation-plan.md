@@ -162,10 +162,14 @@ this section.
   static credentials are test/local-only.
 - [x] Add source tests for Stripe HMAC verification, changed-body rejection, and
   minor-unit precision.
+- [x] Classify provider configuration, unavailable, rejected, invalid-response,
+  and unknown-outcome failures with typed `PaymentError` variants.
+- [x] Route invalid/unknown external outcomes to
+  `executing -> reconciliation_required` and forbid automatic re-claim.
+- [x] Add migration `000120`, migrated-SQLite integration coverage, and
+  `verify-payment-provider-outcome-contract.mjs` for uncertain outcomes.
 - [ ] Update the legacy GraphQL runtime parity refund mutation helper to pass
   `idempotencyKey`.
-- [ ] Replace generic validation errors with typed provider unavailable/rejected/
-  invalid-response classifications.
 - [ ] Register Stripe through a deployment-owned tenant secret resolver.
 - [ ] Compile and execute authorize, capture, cancel, and refund against a
   production-like Stripe endpoint.
@@ -213,9 +217,12 @@ Payment evidence:
 - `crates/rustok-payment/src/services/refund_creation.rs`
 - `crates/rustok-payment/src/migrations/m20260714_000118_enforce_refund_creation_identity.rs`
 - `crates/rustok-payment/src/migrations/m20260714_000119_require_refund_creation_identity.rs`
+- `crates/rustok-payment/src/migrations/m20260714_000120_allow_uncertain_provider_outcomes.rs`
 - `crates/rustok-migrations/tests/refund_creation_identity_smoke.rs`
 - `crates/rustok-migrations/tests/refund_creation_identity_required_smoke.rs`
+- `crates/rustok-migrations/tests/payment_provider_operation_uncertain_outcome.rs`
 - `scripts/verify/verify-payment-refund-identity.mjs`
+- `scripts/verify/verify-payment-provider-outcome-contract.mjs`
 - `apps/server/src/services/payment_provider_event_worker.rs`
 
 ## Cross-domain evidence
@@ -255,6 +262,7 @@ Source inspection is not execution evidence.
 - [ ] `npm run verify:commerce:storefront-transport-handoff`
 - [ ] `npm run verify:payment:storefront-boundary`
 - [ ] `npm run verify:payment:refund-identity`
+- [ ] `npm run verify:payment:provider-outcomes`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate payment`
 
