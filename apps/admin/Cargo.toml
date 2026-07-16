@@ -149,10 +149,6 @@ sha2 = { workspace = true }
 wasm-bindgen = { version = "0.2", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["Clipboard", "CloseEvent", "ErrorEvent", "Event", "MessageEvent", "Navigator", "Storage", "WebSocket", "Window"] }
 rustok-api = { path = "../../crates/rustok-api", default-features = false }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-gloo-storage = { workspace = true }
-
 rustok-installer = { path = "../../crates/rustok-installer" }
 rustok-cache = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
@@ -190,6 +186,9 @@ rustok-seo-admin = { path = "../../crates/rustok-seo/admin", default-features = 
 rustok-tenant-admin = { path = "../../crates/rustok-tenant/admin", default-features = false }
 rustok-workflow-admin = { path = "../../crates/rustok-workflow/admin", default-features = false }
 rustok-auth-admin = { path = "../../crates/rustok-auth/admin", default-features = false }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-storage = { workspace = true }
 
 [build-dependencies]
 leptos_i18n_build = { workspace = true }
