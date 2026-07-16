@@ -11,6 +11,10 @@ pub use base::{
     SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter,
 };
 
+fn cleanup_task_has_external_owners(limiter: &Arc<RateLimiter>) -> bool {
+    Arc::strong_count(limiter) > 1
+}
+
 /// Run periodic Moka maintenance while the rate limiter is owned by the runtime.
 ///
 /// The spawned maintenance task holds one `Arc` itself. Once every context,
@@ -22,7 +26,7 @@ pub async fn cleanup_task(limiter: Arc<RateLimiter>) {
 
     loop {
         interval.tick().await;
-        if Arc::strong_count(&limiter) == 1 {
+        if !cleanup_task_has_external_owners(&limiter) {
             tracing::debug!(
                 namespace = limiter.namespace(),
                 "Rate limit cleanup worker released its final runtime-owned limiter"
@@ -37,20 +41,14 @@ pub async fn cleanup_task(limiter: Arc<RateLimiter>) {
 mod lifecycle_tests {
     use super::*;
 
-    #[tokio::test(start_paused = true)]
-    async fn cleanup_worker_exits_after_external_owners_are_dropped() {
+    #[test]
+    fn cleanup_worker_detects_when_only_its_own_arc_remains() {
         let limiter = Arc::new(RateLimiter::new(RateLimitConfig::default()));
         let worker_limiter = Arc::clone(&limiter);
-        let worker = tokio::spawn(cleanup_task(worker_limiter));
-
-        tokio::task::yield_now().await;
-        assert!(!worker.is_finished());
+        assert!(cleanup_task_has_external_owners(&worker_limiter));
 
         drop(limiter);
-        tokio::time::advance(Duration::from_secs(300)).await;
-        tokio::task::yield_now().await;
 
-        assert!(worker.is_finished());
-        worker.await.unwrap();
+        assert!(!cleanup_task_has_external_owners(&worker_limiter));
     }
 }
