@@ -4,6 +4,7 @@ const paths = {
   runtimeLocale: 'crates/fly/src/runtime_locale.rs',
   localePolicy: 'crates/fly/src/locale_policy.rs',
   localeCoverage: 'crates/fly/src/locale_coverage.rs',
+  localizedRoute: 'crates/fly/src/localized_route.rs',
   translations: 'crates/fly/src/translation.rs',
   command: 'crates/fly/src/command.rs',
   pageMetadataLocale: 'crates/fly/src/page_metadata_locale.rs',
@@ -12,6 +13,7 @@ const paths = {
   browserContract: 'crates/fly-browser/src/lib.rs',
   pageBuilderLocale: 'crates/rustok-page-builder/src/locale.rs',
   pageBuilderRender: 'crates/rustok-page-builder/src/render.rs',
+  storefrontLocalizedRoute: 'crates/rustok-page-builder-storefront/src/localized_route.rs',
   pagesIntent: 'crates/rustok-pages/admin/src/browser_intent.rs',
   browserIntent: 'crates/rustok-page-builder/admin/src/browser_intent.rs',
   ssrForms: 'crates/rustok-page-builder/admin/src/editor/ssr_forms.rs',
@@ -84,6 +86,16 @@ requireMarkers('localeCoverage', [
   'coverage_discovers_optional_locales_without_policy',
   'invalid_policy_prevents_strict_readiness',
 ], 'Fly locale coverage report');
+requireMarkers('localizedRoute', [
+  'pub struct LocalizedPageRouteEntry',
+  'pub struct LocalizedPageRouteResolution',
+  'pub fn localized_page_route_index',
+  'pub fn resolve_localized_page_route',
+  'pub fn validate_localized_page_routes',
+  'localized_slug_resolution_selects_page_and_render_locale',
+  'unique_localized_slug_can_infer_locale',
+  'duplicate_slug_for_same_locale_is_rejected_and_validated',
+], 'Fly localized page route resolver');
 requireMarkers('translations', [
   'pub const FLY_TRANSLATIONS_FIELD',
   'pub enum TranslationCommand',
@@ -120,8 +132,10 @@ requireMarkers('runtimePipeline', [
 requireMarkers('runtimeValidation', [
   'validate_project_locale_policy(document)',
   'validate_translation_definitions(document)',
+  'validate_localized_page_routes(document)',
   'strict_project_locale_policy_promotes_missing_coverage_to_errors',
-], 'locale and translation publish validation');
+  'duplicate_localized_slugs_block_publish_validation',
+], 'locale, translation, and route publish validation');
 requireMarkers('browserContract', [
   '"upsert_translation"',
   '"remove_translation"',
@@ -140,6 +154,17 @@ requireMarkers('pageBuilderRender', [
   'render_localized_runtime_document_html',
   'localized_runtime_render_uses_project_translation_catalog',
 ], 'localized runtime render API');
+requireMarkers('storefrontLocalizedRoute', [
+  'pub struct StorefrontLocalizedRouteOutput',
+  'pub fn render_storefront_localized_slug',
+  'pub fn render_storefront_localized_request',
+  'pub fn LocalizedPageBuilderStorefront',
+  'data-fly-localized-route="true"',
+  'data-canonical-slug',
+  'data-canonical-redirect',
+  'localized_slug_renders_body_and_head_with_matched_locale',
+  'request_locale_context_preserves_business_data',
+], 'localized storefront route rendering');
 requireMarkers('pagesIntent', [
   'set_runtime_locale',
   'runtime_locale_from_payload',
