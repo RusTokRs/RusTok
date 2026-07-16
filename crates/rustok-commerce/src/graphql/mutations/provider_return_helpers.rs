@@ -65,9 +65,10 @@ pub(crate) async fn build_provider_refund_resolution_return_completion(
     let should_complete = refund_input.complete.unwrap_or(false);
     let payment_orchestration = payment_orchestration_from_context(ctx, db.clone());
     let refund = payment_orchestration
-        .create_refund(
+        .create_refund_idempotent(
             tenant_id,
             collection_id,
+            format!("order_return:{return_id}:refund"),
             crate::dto::CreateRefundInput {
                 amount: parse_decimal(&refund_input.amount)?,
                 reason: refund_input.reason,
