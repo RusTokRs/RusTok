@@ -68,7 +68,7 @@ fn cache_alerts_reference_metrics_exported_by_the_capability() {
 }
 
 #[test]
-fn live_redis_hardening_retains_latency_and_circuit_recovery() {
+fn live_redis_hardening_retains_latency_circuit_and_restart_recovery() {
     let evidence = include_str!("real_redis_hardening.rs");
     let shared_backend = include_str!("../src/shared_backend.rs");
 
@@ -84,10 +84,18 @@ fn live_redis_hardening_retains_latency_and_circuit_recovery() {
         "Redis unavailable (circuit breaker open)",
         "rejected_at.elapsed() < Duration::from_millis(250)",
         "half-open Redis probe should recover after CLIENT PAUSE expires",
+        "shared_backend_recovers_across_two_redis_restarts",
+        "RUSTOK_CACHE_REDIS_SERVER_BIN",
+        "for cycle in 1_u8..=2",
+        "stop_redis(&mut redis_process).await;",
+        "redis_process = spawn_redis(binary.as_str(), port).await;",
+        "wait_for_backend_health(backend.as_ref()).await;",
+        "recovered backend should accept writes",
+        "recovered backend should accept reads",
     ] {
         assert!(
             evidence.contains(required),
-            "live Redis latency/circuit evidence must retain {required}"
+            "live Redis resilience evidence must retain {required}"
         );
     }
 
