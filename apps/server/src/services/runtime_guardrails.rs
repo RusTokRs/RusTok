@@ -59,7 +59,7 @@ pub async fn collect_runtime_guardrail_snapshot(
             &mut snapshot,
             "SEO redirect durable cache reconciliation",
             ctx.shared_get::<SeoRedirectCacheReconciliationHandle>()
-                .map(|handle| handle.is_running()),
+                .map(|handle| handle.is_ready()),
             RuntimeGuardrailStatus::Critical,
         );
     }
