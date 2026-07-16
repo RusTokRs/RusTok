@@ -73,7 +73,10 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
     assert!(worker.contains("healthy.store(false, Ordering::Release)"));
     assert!(worker.contains("impl Drop for AbortOnDropSeoRedirectCacheTask"));
     assert!(worker.contains("SeoRedirectCacheReconciliationStartLock"));
-    assert!(worker.contains("ctx.settings().runtime.is_registry_only()"));
+    assert!(worker.contains("pub fn seo_redirect_cache_reconciliation_required"));
+    assert!(worker.contains(
+        "RuntimeHostMode::RegistryOnly | RuntimeHostMode::Worker"
+    ));
     assert!(worker.contains("pub fn is_running(&self) -> bool"));
 
     let start = schema
@@ -84,6 +87,8 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
         .expect("schema reuse path must remain present");
     assert!(start < early_return);
 
+    assert!(guardrails.contains("seo_redirect_cache_reconciliation_required"));
+    assert!(guardrails.contains("if seo_redirect_cache_reconciliation_required(ctx)"));
     assert!(guardrails.contains("SeoRedirectCacheReconciliationHandle"));
     assert!(guardrails.contains("SEO redirect durable cache reconciliation"));
     assert!(guardrails.contains("RuntimeGuardrailStatus::Critical"));
