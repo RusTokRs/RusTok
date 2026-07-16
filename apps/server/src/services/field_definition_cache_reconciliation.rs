@@ -159,7 +159,7 @@ async fn run_field_definition_cache_generation_once(
         .map_err(|error| error.to_string())?;
 
     // Seed from durable state before trusting any process-local cache contents.
-    cache.invalidate_all().await;
+    cache.invalidate_all();
     state.applied_generation.store(applied, Ordering::Release);
     state.healthy.store(true, Ordering::Release);
 
@@ -184,7 +184,7 @@ async fn run_field_definition_cache_generation_once(
         }
 
         state.healthy.store(false, Ordering::Release);
-        cache.invalidate_all().await;
+        cache.invalidate_all();
         tracing::info!(
             previous_generation = applied,
             current_generation = current,
