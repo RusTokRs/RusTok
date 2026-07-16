@@ -1,7 +1,8 @@
 use crate::{
     extract_runtime_context_contract, materialize_bindings, materialize_context,
-    materialize_project_translations, materialize_runtime, materialize_runtime_locale_context,
-    BindingMaterialization, ContextMaterialization, ProjectDocument, RuntimeMaterialization,
+    materialize_localized_page_metadata, materialize_project_translations, materialize_runtime,
+    materialize_runtime_locale_context, BindingMaterialization, ContextMaterialization,
+    LocalizedPageMetadataMaterialization, ProjectDocument, RuntimeMaterialization,
     TranslationMaterialization, ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
@@ -36,10 +37,16 @@ pub fn materialize_project_with_runtime_context(
     } = materialize_project_translations(document, input_context);
     let locale_materialization = materialize_runtime_locale_context(&translation_context);
     let localized_input_context = locale_materialization.context;
-    let contract = extract_runtime_context_contract(document);
+    let LocalizedPageMetadataMaterialization {
+        document: localized_document,
+        diagnostics: metadata_diagnostics,
+        ..
+    } = materialize_localized_page_metadata(document, &localized_input_context);
+    let contract = extract_runtime_context_contract(&localized_document);
     let contract_is_valid = contract.is_valid();
     let mut diagnostics = translation_diagnostics;
     diagnostics.extend(locale_materialization.diagnostics);
+    diagnostics.extend(metadata_diagnostics);
     diagnostics.extend(contract.definition_diagnostics);
     let (
         effective_context,
@@ -57,7 +64,7 @@ pub fn materialize_project_with_runtime_context(
             computed_fallbacks,
             unresolved_computed,
             type_mismatches,
-        } = materialize_context(document, &localized_input_context);
+        } = materialize_context(&localized_document, &localized_input_context);
         diagnostics.extend(context_diagnostics);
         (
             context,
@@ -77,7 +84,7 @@ pub fn materialize_project_with_runtime_context(
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
-    } = materialize_bindings(document, &effective_context);
+    } = materialize_bindings(&localized_document, &effective_context);
     diagnostics.extend(binding_diagnostics);
     let RuntimeMaterialization {
         document,
@@ -109,7 +116,7 @@ pub fn materialize_project_with_runtime_context(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::{GrapesJsV1Codec, PageMetadata};
     use serde_json::json;
 
     #[test]
@@ -276,6 +283,38 @@ mod tests {
                 .and_then(Value::as_str),
             Some("Добро пожаловать")
         );
+    }
+
+    #[test]
+    fn localized_page_metadata_is_materialized_before_render_selection() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": {
+                    "title": {
+                        "$localized": {
+                            "en": "Home",
+                            "ru": "Главная"
+                        }
+                    },
+                    "description": {
+                        "$localized": {
+                            "en": "English description",
+                            "ru": "Русское описание"
+                        }
+                    }
+                },
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let materialized = materialize_project_with_runtime_context(
+            &document,
+            &json!({ "$locale": "ru-RU" }),
+        );
+        let metadata = PageMetadata::from_page(&materialized.document.project.pages[0]);
+        assert_eq!(metadata.title.as_deref(), Some("Главная"));
+        assert_eq!(metadata.description.as_deref(), Some("Русское описание"));
     }
 
     #[test]
