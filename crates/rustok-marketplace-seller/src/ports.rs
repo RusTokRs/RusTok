@@ -343,10 +343,10 @@ fn map_owner_error(error: MarketplaceSellerError) -> PortError {
         MarketplaceSellerError::Validation(message) => {
             PortError::validation("marketplace_seller.validation", message)
         }
-        MarketplaceSellerError::Database(error) => PortError::new(
+        MarketplaceSellerError::Database(_) => PortError::new(
             PortErrorKind::Unavailable,
             "marketplace_seller.storage_unavailable",
-            format!("marketplace seller storage unavailable: {error}"),
+            "marketplace seller storage is temporarily unavailable",
             true,
         ),
     }
