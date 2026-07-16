@@ -1,7 +1,6 @@
 use crate::{
-    localized_page_route_index, normalize_locale_tag, ComponentNode, FlyError, FlyResult,
-    LocalizedPageRouteEntry, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
-    ValidationSeverity,
+    localized_page_route_index, normalize_locale_tag, ComponentNode, LocalizedPageRouteEntry,
+    ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic, ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -393,7 +392,8 @@ fn normalize_base_path(value: Option<&str>) -> Result<Option<String>, String> {
         || value.contains("://")
         || value.contains('?')
         || value.contains('#')
-        || value.contains(['\r', '\n'])
+        || value.contains('\r')
+        || value.contains('\n')
     {
         return Err(format!(
             "internal page link base_path `{value}` must be a safe absolute path prefix"
@@ -415,7 +415,7 @@ fn normalize_suffix(
     let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(None);
     };
-    if value.contains(['\r', '\n']) {
+    if value.contains('\r') || value.contains('\n') {
         return Err(format!("internal page link {label} contains a line break"));
     }
     let value = value.trim_start_matches(prefix).trim();
