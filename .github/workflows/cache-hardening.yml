@@ -67,6 +67,7 @@ on:
       - "crates/rustok-seo/src/services/mod.rs"
       - "crates/rustok-seo/src/services/services_base.rs"
       - "crates/rustok-seo/src/services/redirects.rs"
+      - "ops/prometheus/alert_rules.yml"
       - ".github/workflows/cache-hardening.yml"
   pull_request:
     paths:
@@ -133,6 +134,7 @@ on:
       - "crates/rustok-seo/src/services/mod.rs"
       - "crates/rustok-seo/src/services/services_base.rs"
       - "crates/rustok-seo/src/services/redirects.rs"
+      - "ops/prometheus/alert_rules.yml"
       - ".github/workflows/cache-hardening.yml"
   workflow_dispatch:
 
@@ -170,6 +172,7 @@ jobs:
           cargo test -p rustok-core --test cache_atomic_backend_guard
           cargo test -p rustok-core circuit_breaker --lib
           cargo test -p rustok-cache --lib
+          cargo test -p rustok-cache --test alert_rules_guard
           cargo test -p rustok-cache --test atomic_cas concurrent_local_compare_and_set_has_exactly_one_winner
           cargo test -p rustok-cache --test generation_store_regression
           cargo test -p rustok-cache --test invalidation_failure_metrics
