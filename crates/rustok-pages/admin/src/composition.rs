@@ -1,3 +1,4 @@
+use crate::browser_intent::pages_browser_draft_store;
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::core;
 use crate::i18n::t;
@@ -15,16 +16,19 @@ use rustok_page_builder::runtime_scenario_release::{
 };
 use rustok_page_builder::{RuntimeContextExamplePolicy, RuntimeContextScenario};
 use rustok_page_builder_admin::{
-    PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext,
+    PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext, SsrDraftSessionStore,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
+const FLY_DRAFT_QUERY_KEY: &str = "fly_draft";
+
 #[component]
 pub fn PagesAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let selected_page_query = use_route_query_value(AdminQueryKey::PageId.as_str());
+    let draft_query = use_route_query_value(FLY_DRAFT_QUERY_KEY);
     let token = use_token();
     let tenant = use_tenant();
     let resource_token = token;
@@ -89,6 +93,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                     token=token
                                     tenant=tenant
                                     default_locale=default_locale.clone()
+                                    draft_token=draft_query.get()
                                 />
                             }.into_any(),
                             Ok(None) => view! {
@@ -119,6 +124,7 @@ fn PagesFlyBuilder(
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
     default_locale: String,
+    draft_token: Option<String>,
 ) -> impl IntoView {
     let seed = core::edit_form_seed_from_page(&page, &default_locale);
     let revision_id = builder::page_revision(&page);
@@ -144,8 +150,17 @@ fn PagesFlyBuilder(
         RuntimeContextScenario::new("empty", "Empty", json!({})),
         RuntimeContextScenario::new("generated", "Generated example", generated_context.clone()),
     ]);
-    let controller =
-        builder::controller_from_project(&page.id, &revision_id, &seed.project_data_text);
+    let restored_draft = draft_token
+        .as_deref()
+        .and_then(|token| pages_browser_draft_store().load(token, &page.id).ok().flatten())
+        .filter(|draft| draft.controller.revision_id() == revision_id);
+    let (controller, runtime_context) = match restored_draft {
+        Some(draft) => (Ok(draft.controller), draft.runtime_context),
+        None => (
+            builder::controller_from_project(&page.id, &revision_id, &seed.project_data_text),
+            generated_context,
+        ),
+    };
 
     match controller {
         Ok(controller) => {
@@ -225,7 +240,7 @@ fn PagesFlyBuilder(
 
             let mut host = PageBuilderAdminHostContext::new(controller)
                 .with_facade(facade)
-                .with_runtime_context(generated_context)
+                .with_runtime_context(runtime_context)
                 .with_runtime_scenarios(scenarios)
                 .with_browser_intent_endpoint(browser_endpoint)
                 .on_runtime_scenario_baseline(on_baseline);
