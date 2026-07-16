@@ -13,6 +13,10 @@ pub enum MarketplaceSellerError {
     DuplicateHandle(String),
     #[error("user {user_id} is already a member of seller {seller_id}")]
     DuplicateMembership { seller_id: Uuid, user_id: Uuid },
+    #[error("marketplace seller idempotency key `{0}` is already bound to another command")]
+    IdempotencyConflict(String),
+    #[error("marketplace seller command receipt `{0}` is incomplete or corrupt")]
+    CommandReceiptCorrupt(String),
     #[error("marketplace seller validation failed: {0}")]
     Validation(String),
     #[error("marketplace seller lifecycle transition from `{from}` to `{to}` is not allowed")]
