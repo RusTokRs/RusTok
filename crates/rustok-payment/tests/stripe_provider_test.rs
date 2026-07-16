@@ -11,10 +11,7 @@ use sha2::Sha256;
 use std::sync::Arc;
 use uuid::Uuid;
 
-fn provider(
-    tenant_id: Uuid,
-    webhook_secret: &str,
-) -> StripePaymentProvider {
+fn provider(tenant_id: Uuid, webhook_secret: &str) -> StripePaymentProvider {
     let credentials = StripeCredentials::new(
         SecretString::from("sk_test_local".to_string()),
         SecretString::from(webhook_secret.to_string()),
@@ -66,6 +63,7 @@ fn authorized_payload(collection_id: Uuid) -> Vec<u8> {
 async fn stripe_webhook_uses_signature_verified_event_identity() {
     let tenant_id = Uuid::new_v4();
     let collection_id = Uuid::new_v4();
+    let collection_id_text = collection_id.to_string();
     let secret = "whsec_rustok_test";
     let payload = authorized_payload(collection_id);
     let timestamp = Utc::now().timestamp();
@@ -89,7 +87,7 @@ async fn stripe_webhook_uses_signature_verified_event_identity() {
             .metadata
             .get("collection_id")
             .and_then(serde_json::Value::as_str),
-        Some(collection_id.to_string().as_str())
+        Some(collection_id_text.as_str())
     );
 }
 
