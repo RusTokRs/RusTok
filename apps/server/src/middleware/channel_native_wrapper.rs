@@ -3,14 +3,14 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use uuid::Uuid;
 
 use crate::context::TenantContextExt;
+use crate::services::channel_cache_invalidation::publish_channel_resolution_invalidation;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[path = "channel.rs"]
 mod base;
-
-pub use base::invalidate_tenant_channel_cache;
 
 const NATIVE_CHANNEL_MUTATION_PATHS: &[&str] = &[
     "/api/fn/channel/create-channel",
@@ -34,6 +34,18 @@ fn is_native_channel_mutation(path: &str) -> bool {
     NATIVE_CHANNEL_MUTATION_PATHS.contains(&path)
 }
 
+pub(crate) async fn invalidate_tenant_channel_cache_local(
+    ctx: &ServerRuntimeContext,
+    tenant_id: Uuid,
+) {
+    base::invalidate_tenant_channel_cache(ctx, tenant_id).await;
+}
+
+pub async fn invalidate_tenant_channel_cache(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
+    invalidate_tenant_channel_cache_local(ctx, tenant_id).await;
+    publish_channel_resolution_invalidation(ctx, tenant_id).await;
+}
+
 pub async fn resolve(
     State(ctx): State<ServerRuntimeContext>,
     req: Request,
@@ -45,7 +57,7 @@ pub async fn resolve(
     let response = base::resolve(State(ctx.clone()), req, next).await?;
     if should_invalidate && response.status().is_success() {
         if let Some(tenant_id) = tenant_id {
-            base::invalidate_tenant_channel_cache(&ctx, tenant_id).await;
+            invalidate_tenant_channel_cache(&ctx, tenant_id).await;
         }
     }
 
