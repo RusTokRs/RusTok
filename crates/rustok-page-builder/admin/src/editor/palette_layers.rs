@@ -35,6 +35,7 @@ pub fn PaletteLayersPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                         let insert_id = block.id.clone();
                                         let drag_id = block.id.clone();
                                         let html_drag_id = block.id.clone();
+                                        let browser_block_id = block.id.clone();
                                         let insert_runtime = palette_runtime.clone();
                                         let drag_runtime = palette_runtime.clone();
                                         let html_drag_runtime = palette_runtime.clone();
@@ -44,6 +45,7 @@ pub fn PaletteLayersPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                             <article
                                                 class="rounded-lg border border-border bg-background p-2"
                                                 draggable="true"
+                                                data-fly-block-id=browser_block_id
                                                 on:dragstart=move |_| {
                                                     let intent = html_drag_runtime.controller.with(|controller| {
                                                         controller.begin_palette_drag_intent(&html_drag_id)
@@ -56,6 +58,7 @@ pub fn PaletteLayersPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                                     <button
                                                         type="button"
                                                         class="rounded border border-border px-2 py-1 text-xs"
+                                                        data-fly-action="insert-block"
                                                         on:click=move |_| {
                                                             let intent = insert_runtime.controller.with(|controller| {
                                                                 controller.insert_palette_block_intent(&insert_id)
@@ -66,6 +69,7 @@ pub fn PaletteLayersPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                                     <button
                                                         type="button"
                                                         class="rounded border border-border px-2 py-1 text-xs"
+                                                        data-fly-action="begin-block-drag"
                                                         on:click=move |_| {
                                                             let intent = drag_runtime.controller.with(|controller| {
                                                                 controller.begin_palette_drag_intent(&drag_id)
@@ -93,11 +97,14 @@ pub fn PaletteLayersPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         });
                         layers_runtime.controller.with(|controller| controller.layer_items()).into_iter().map(|layer| {
                             let component_id = layer.id.clone();
+                            let browser_component_id = layer.id.clone();
                             let active = selected.as_deref() == Some(layer.id.as_str());
                             let select_runtime = layers_runtime.clone();
                             view! {
                                 <button
                                     type="button"
+                                    data-fly-component-id=browser_component_id
+                                    data-fly-action="select-component"
                                     class=if active {
                                         "block w-full rounded bg-primary/10 px-2 py-1 text-left text-sm text-primary"
                                     } else {
