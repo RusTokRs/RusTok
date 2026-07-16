@@ -130,8 +130,8 @@ impl PaymentProviderEventIngressService {
                 ReceiveProviderEvent {
                     tenant_id: request.tenant_id,
                     provider_id: request.provider_id.clone(),
-                    delivery_id: request.delivery_id.clone(),
-                    idempotency_key: request.idempotency_key.clone(),
+                    delivery_id: normalized.delivery_id.clone(),
+                    idempotency_key: normalized.replay_key.clone(),
                     raw_payload: request.raw_payload.clone(),
                     signature_verified: true,
                 },
@@ -304,6 +304,7 @@ fn normalized_from_inbox(
     })?;
     Ok(PaymentProviderWebhookResult {
         provider_id: event.provider_id.clone(),
+        delivery_id: event.delivery_id.clone(),
         external_reference: event.external_reference.clone(),
         event_type,
         replay_key: event.idempotency_key.clone(),
