@@ -74,8 +74,24 @@ Registries and evidence:
   return-completion boundary with
   `apps/server/tests/commerce_return_completion_transport_guard.rs` and
   `verify-commerce-admin-boundary.mjs`.
-- [ ] Persist a durable return-completion operation journal so refund or order-change
-  success can recover when final owner return completion fails or the process exits.
+- [x] Persist one `return_completion_operations` row per tenant/return with an
+  immutable canonical SHA-256 request hash, typed stages, lease/CAS execution,
+  owner resolution identities, safe errors, and terminal timestamps.
+- [x] Admit the journal before provider or owner effects, adopt existing refunds,
+  order changes, and completed returns, and reject conflicting replay payloads.
+- [x] Bind generated exchange/claim changes to
+  `return_completion_operation_id`, validate explicit refund/change references
+  against the return order, and classify uncertain provider outcomes as
+  `reconciliation_required`.
+- [x] Guard return-completion schema, replay, lease, adoption, and reconciliation
+  source invariants in `commerce_return_completion_transport_guard.rs`.
+- [ ] Apply migration `m20260716_000004_create_return_completion_operations` on
+  clean and upgraded SQLite/PostgreSQL graphs, including rollback/reapply.
+- [ ] Execute duplicate replay, conflicting payload, concurrent claim, expired
+  lease, process exit, and restart recovery after refund, order-change, and owner
+  return completion checkpoints.
+- [ ] Publish operator-safe return-completion journal reads, retry controls, and
+  reconciliation resolution commands.
 - [ ] Execute the complete provider-consumer graph with retained runtime evidence.
 
 ## Checkout orchestration workstream
@@ -121,7 +137,7 @@ Registries and evidence:
 - [ ] Prove compensation contention and restart behavior on PostgreSQL.
 - [ ] Execute complete mounted operator workflows.
 
-Checkout evidence:
+Checkout and post-order evidence:
 
 - `crates/rustok-commerce/src/services/staged_checkout.rs`
 - `crates/rustok-commerce/src/services/checkout_stage_pipeline.rs`
@@ -129,7 +145,10 @@ Checkout evidence:
 - `crates/rustok-commerce/src/services/recovering_staged_checkout.rs`
 - `crates/rustok-commerce/src/services/fulfillment_orchestration_facade.rs`
 - `crates/rustok-commerce/src/services/order_change_orchestration.rs`
+- `crates/rustok-commerce/src/entities/return_completion_operation.rs`
+- `crates/rustok-commerce/src/services/return_completion_operation.rs`
 - `crates/rustok-commerce/src/services/return_completion_orchestration.rs`
+- `crates/rustok-commerce/src/migrations/m20260716_000004_create_return_completion_operations.rs`
 - `crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs`
 - `apps/server/tests/commerce_fulfillment_transport_guard.rs`
 - `apps/server/tests/commerce_order_change_transport_guard.rs`
@@ -313,19 +332,20 @@ Source inspection is not execution evidence.
 - [ ] `cargo check -p rustok-server --features payment-stripe,mod-commerce`
 - [ ] `cargo xtask module test commerce`
 - [ ] `cargo xtask module test payment`
-- [ ] Targeted checkout, refund identity, provider-operation, provider-event,
-  replay, recovery, and lifecycle tests.
+- [ ] Targeted checkout, return-completion journal, refund identity,
+  provider-operation, provider-event, replay, recovery, and lifecycle tests.
 - [ ] Stripe feature tests.
 
 ### Database and runtime
 
 - [ ] Apply the clean SQLite graph and supported rollback/reapply paths.
 - [ ] Apply the clean and upgraded PostgreSQL graph.
-- [ ] Execute checkout/refund/provider-operation/provider-event contention.
+- [ ] Execute checkout/return-completion/refund/provider-operation/provider-event
+  contention.
 - [ ] Verify recovery/dead-letter query plans with production-like rows.
 - [ ] Prove all declared routers are mounted.
-- [ ] Exercise authenticated checkout, compensation, reconciliation, recovery, and
-  replay.
+- [ ] Exercise authenticated checkout, return-completion recovery, compensation,
+  reconciliation, recovery, and replay.
 - [ ] Prove workers obey runtime profile/shutdown and replicas cannot double-apply.
 - [ ] Retain real payment signature, redelivery, degraded, reconciliation, and
   operator evidence.
@@ -335,8 +355,10 @@ Source inspection is not execution evidence.
 1. [x] Update the GraphQL runtime parity refund helper with `idempotencyKey`.
 2. [ ] Run static ecommerce/payment verifiers and fix remaining drift.
 3. [ ] Run commerce, payment, Stripe-feature, and server compile checks.
-4. [ ] Run clean SQLite migrations and targeted regression tests.
-5. [ ] Run PostgreSQL contention, restart, and kill-point scenarios.
+4. [ ] Run clean SQLite migrations and targeted regression tests, including
+   return-completion replay and rollback/reapply.
+5. [ ] Run PostgreSQL contention, restart, and kill-point scenarios for checkout,
+   return completion, payment operations, and webhook recovery.
 6. [ ] Execute deployment secret resolution and the Stripe adapter against a
    production-like endpoint.
 7. [ ] Run mounted HTTP and background-worker recovery scenarios.
