@@ -308,3 +308,5 @@ jobs:
         run: cargo test -p rustok-cache --test atomic_cas -- --ignored --nocapture --test-threads=1
       - name: Cache hardening live Redis tests
         run: cargo test -p rustok-cache --test real_redis_hardening -- --ignored --nocapture --test-threads=1
+      - name: Channel replica Redis recovery
+        run: cargo test -p rustok-server redis_publication_drives_remote_replica_readiness_recovery --lib -- --ignored --nocapture --test-threads=1
