@@ -67,7 +67,7 @@ pub async fn collect_runtime_guardrail_snapshot(
         &mut snapshot,
         "Flex field-definition durable cache reconciliation",
         ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>()
-            .map(|handle| handle.is_running()),
+            .map(|handle| handle.is_ready()),
         RuntimeGuardrailStatus::Critical,
     );
     observe_worker(
