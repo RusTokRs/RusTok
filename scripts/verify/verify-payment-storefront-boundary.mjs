@@ -49,7 +49,7 @@ const i18nPath = "crates/rustok-payment/storefront/src/i18n.rs";
 const manifestPath = "crates/rustok-payment/rustok-module.toml";
 const commerceUiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
 const commerceRequestsPath = "crates/rustok-commerce/storefront/src/core/requests.rs";
-const planPath = "crates/rustok-payment/docs/implementation-plan.md";
+const planPath = "crates/rustok-commerce/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
@@ -153,7 +153,8 @@ assertNotContains(commerceUi, "build_payment_collection_command_request", `${com
 assertContains(commerceRequests, "pub type PaymentCollectionCommandRequest = PaymentCollectionCreateRequest", `${commerceRequestsPath}: commerce transport must keep the owner request alias for aggregate checkout composition`);
 assertNotContains(commerceRequests, "build_payment_collection_create_request", `${commerceRequestsPath}: commerce core must not wrap payment-owned request construction`);
 assertNotContains(commerceRequests, "build_payment_collection_command_request", `${commerceRequestsPath}: commerce core must not expose a payment request builder after owner UI handoff`);
-assertContains(plan, "verify-payment-storefront-boundary.mjs", `${planPath}: local plan must mention payment storefront boundary guardrail`);
+assertContains(plan, "## Payment workstream", `${planPath}: main ecommerce plan must own the payment workstream`);
+assertContains(plan, "verify-payment-storefront-boundary.mjs", `${planPath}: main ecommerce plan must mention payment storefront boundary guardrail`);
 assertContains(registry, "verify-payment-storefront-boundary.mjs", `${registryPath}: central registry must mention payment storefront boundary guardrail`);
 assertContains(packageJson, "verify:payment:storefront-boundary", `${packagePath}: expected payment storefront boundary script`);
 assertContains(packageJson, "npm run verify:payment:storefront-boundary", `${packagePath}: aggregate FFA migration verification must include storefront payment boundary`);
