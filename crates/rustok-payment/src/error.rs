@@ -77,11 +77,13 @@ impl PaymentError {
         }
     }
 
-    /// Unknown provider outcomes must not be retried automatically even when the
-    /// request used an idempotency key. The journal is moved to reconciliation so
-    /// an operator or provider-specific reconciler confirms the external state.
+    /// An unknown outcome or a malformed successful response must not be retried
+    /// automatically: the provider may already have committed the external effect.
     pub fn requires_provider_reconciliation(&self) -> bool {
-        matches!(self, Self::ProviderOutcomeUnknown { .. })
+        matches!(
+            self,
+            Self::ProviderOutcomeUnknown { .. } | Self::ProviderInvalidResponse { .. }
+        )
     }
 
     pub fn is_provider_retryable(&self) -> bool {
