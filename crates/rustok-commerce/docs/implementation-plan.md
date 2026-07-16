@@ -31,9 +31,11 @@ payout persistence must never be folded into `rustok-commerce`.
 - Payment FBA status: `boundary_ready`.
 - Marketplace family source gate: `open`.
 - Marketplace root FFA status: `not_started`.
-- Marketplace root FBA status: `not_started`.
-- Marketplace seller FFA status: `not_started`.
-- Marketplace seller FBA status: `not_started`.
+- Marketplace root FBA status: `in_progress`.
+- Marketplace root structural shape: `no_ui_boundary`.
+- Marketplace seller FFA status: `in_progress`.
+- Marketplace seller FBA status: `in_progress`.
+- Marketplace seller structural shape: `core_transport_ui`.
 - Marketplace production promotion gate: `closed` until compile, migration,
   contention, restart, mounted transport, and owner/provider-consumer evidence is
   retained.
@@ -52,8 +54,10 @@ Registries and evidence:
 - `crates/rustok-product/contracts/product-fba-registry.json`
 - `crates/rustok-customer/contracts/customer-fba-registry.json`
 - `crates/rustok-cart/contracts/cart-fba-registry.json`
-- [ ] `crates/rustok-marketplace/contracts/marketplace-fba-registry.json`
-- [ ] `crates/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json`
+- [x] `crates/rustok-marketplace/contracts/marketplace-fba-registry.json`
+- [x] `crates/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json`
+- [x] `apps/server/tests/marketplace_family_boundary_guard.rs`
+- [x] `scripts/verify/verify-marketplace-family-boundary.mjs`
 
 ## Architecture invariants
 
@@ -190,54 +194,82 @@ not be promoted as production-ready before the marketplace promotion gates close
 
 ### Family naming and ownership
 
-- [ ] Create `rustok-marketplace` as the family root and cross-marketplace
-  orchestration/composition boundary. It must not own seller, listing, commission,
+- [x] Create `rustok-marketplace` as the family root and cross-marketplace
+  orchestration/composition boundary. It owns no seller, listing, commission,
   ledger, or payout tables.
-- [ ] Create owner modules using the mandatory family prefix:
-  `rustok-marketplace-seller`, `rustok-marketplace-listing`,
-  `rustok-marketplace-commission`, `rustok-marketplace-ledger`, and
-  `rustok-marketplace-payout`.
-- [ ] Keep master catalog in `rustok-product`, price/rules in `rustok-pricing`, stock
+- [ ] Create the remaining owner modules using the mandatory family prefix:
+  `rustok-marketplace-listing`, `rustok-marketplace-commission`,
+  `rustok-marketplace-ledger`, and `rustok-marketplace-payout`.
+- [x] Create `rustok-marketplace-seller` as the first family owner module.
+- [x] Keep master catalog in `rustok-product`, price/rules in `rustok-pricing`, stock
   in `rustok-inventory`, customer order lifecycle in `rustok-order`, provider
   payment/refund state in `rustok-payment`, and general ecommerce orchestration in
   `rustok-commerce`.
-- [ ] Forbid generic crate/module names such as `rustok-seller`, `rustok-offer`,
+- [x] Forbid generic crate/module names such as `rustok-seller`, `rustok-offer`,
   `rustok-listing`, `rustok-commission`, `rustok-ledger`, or `rustok-payout` for
   marketplace-owned capabilities.
+- [x] Register `marketplace_seller` and `marketplace` in `modules.toml` without
+  enabling them by default before compile/migration evidence exists.
 
 ### FFA/FBA family contract
 
-- [ ] Give every marketplace owner module a local `docs/implementation-plan.md`
-  with FFA status, FBA status, structural shape, ownership, ports, and promotion
-  evidence.
-- [ ] Declare every backend boundary in `rustok-module.toml` and a module-local FBA
-  registry using `PortContext`, `PortError`, deadlines, typed retryability, and
-  idempotency for commands.
-- [ ] Keep in-process providers behind the same typed port contracts expected by
-  remote adapters; no consumer may import foreign owner entities.
-- [ ] Publish module-owned FFA packages under the owning family module, starting
-  with `rustok-marketplace-seller/admin`; host applications only compose routes,
-  locale context, and selected transport profiles.
-- [ ] Use the structural sequence `core_only → core_transport → core_transport_ui`;
+- [x] Give the implemented marketplace root and seller owner modules local
+  `docs/implementation-plan.md` files with FFA/FBA status, structural shape,
+  ownership, ports, and promotion evidence.
+- [x] Declare root consumer and seller provider boundaries in
+  `rustok-module.toml` plus module-local FBA registries using `PortContext`,
+  `PortError`, deadlines, typed retryability, and idempotency admission.
+- [x] Keep the in-process seller provider behind the same typed read/command port
+  contracts expected by future remote adapters; the root consumer imports no
+  seller entities or database connection.
+- [x] Publish module-owned FFA package structure under
+  `rustok-marketplace-seller/admin`; host applications are not yet allowed to own
+  seller policy or fabricate seller data when transport is unmounted.
+- [x] Use the structural sequence `core_only → core_transport → core_transport_ui`;
   do not raise FFA to `phase_b_ready` or FBA to `transport_verified` without
   retained compile and mounted runtime evidence.
-- [ ] Add source guards and aggregate verification for family naming, manifests,
-  FBA registries, transport selection, and host non-ownership.
+- [x] Add source guards for family naming, root non-ownership, seller schema,
+  manifests, FBA registries, explicit FFA transport selection, and host
+  non-ownership.
+- [ ] Aggregate the marketplace verifier into package scripts and execute it.
+- [ ] Synchronize the central FFA/FBA readiness board after a safe full-file update;
+  local plans remain authoritative meanwhile.
 
 ### Seller and membership
 
-- [ ] Create `rustok-marketplace-seller` as the owner of seller identity,
+- [x] Create `rustok-marketplace-seller` as the owner of seller identity,
   legal/display profile, onboarding state, suspension state, and seller lifecycle
   transitions.
-- [ ] Add seller memberships with immutable seller scope, roles, invitation state,
-  and tenant isolation; platform RBAC controls access to seller administration,
-  while membership policy remains seller-owned.
-- [ ] Publish `MarketplaceSellerReadPort` and `MarketplaceSellerCommandPort` with
-  deadline, authorization context, tenant scope, and command idempotency.
+- [x] Add seller memberships with immutable seller scope, typed roles/status,
+  tenant isolation, and atomic initial owner membership; platform RBAC controls
+  seller administration access while membership policy remains seller-owned.
+- [x] Publish `MarketplaceSellerReadPort` and `MarketplaceSellerCommandPort` with
+  deadline, actor/tenant context, safe typed errors, and required command
+  idempotency keys.
+- [ ] Persist durable seller command receipts and conflicting-payload detection so
+  idempotency survives a successful owner write followed by a lost response.
 - [ ] Add seller onboarding review/audit events; keep KYC provider details behind a
   provider SPI and persist only normalized verification facts.
-- [ ] Publish the first FFA slice in `rustok-marketplace-seller/admin` over a
-  module-owned core/view-model and selected native/GraphQL transport facade.
+- [x] Publish the first FFA source slice in `rustok-marketplace-seller/admin` with
+  framework-neutral core/model, explicit native/GraphQL profile selection,
+  transport facade, i18n catalogs, and a thin Leptos adapter.
+- [ ] Mount authenticated native and GraphQL seller transports and implement full
+  list/detail/onboarding/suspension/member workflows.
+
+Seller evidence:
+
+- `crates/rustok-marketplace-seller/src/entities/seller.rs`
+- `crates/rustok-marketplace-seller/src/entities/seller_member.rs`
+- `crates/rustok-marketplace-seller/src/service.rs`
+- `crates/rustok-marketplace-seller/src/ports.rs`
+- `crates/rustok-marketplace-seller/src/migrations/m20260716_000001_create_marketplace_sellers.rs`
+- `crates/rustok-marketplace-seller/rustok-module.toml`
+- `crates/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json`
+- `crates/rustok-marketplace-seller/admin/src/core.rs`
+- `crates/rustok-marketplace-seller/admin/src/transport.rs`
+- `crates/rustok-marketplace-seller/admin/src/ui/leptos.rs`
+- `apps/server/tests/marketplace_family_boundary_guard.rs`
+- `scripts/verify/verify-marketplace-family-boundary.mjs`
 
 ### Master catalog and listings
 
@@ -292,8 +324,8 @@ not be promoted as production-ready before the marketplace promotion gates close
 ### Marketplace promotion gates
 
 - [ ] FBA `boundary_ready`: typed provider/consumer ports, manifest declarations,
-  in-process provider, registry, contract cases, error/deadline/idempotency rules,
-  and source guards exist.
+  in-process provider, registry, contract cases, durable command identity/error/
+  deadline rules, and source guards exist.
 - [ ] FBA `transport_verified`: compiled in-process and remote-profile contract
   evidence, timeout/degraded/fallback behavior, and mounted consumer execution are
   retained.
@@ -451,8 +483,9 @@ Payment evidence:
 - [ ] Introduce explicit market/store configuration contracts.
 - [ ] Complete return, exchange, claim, cancellation, refund, and fulfillment
   runtime evidence with durable identities.
-- [ ] Execute the Marketplace Family in the order root, seller/membership, listing,
-  order allocation, commission, ledger, payout, and surfaces.
+- [ ] Execute the Marketplace Family in the order listing, order allocation,
+  commission, ledger, payout, and full surfaces after seller command identity and
+  real transports are closed.
 
 ## Verification and promotion checklist
 
@@ -469,7 +502,7 @@ Source inspection is not execution evidence.
 - [ ] `npm run verify:payment:refund-identity`
 - [ ] `npm run verify:payment:provider-outcomes`
 - [ ] `npm run verify:payment:stripe-runtime`
-- [ ] Marketplace family naming/manifest/FBA/FFA source guard.
+- [ ] `node scripts/verify/verify-marketplace-family-boundary.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate payment`
 - [ ] `cargo xtask module validate marketplace`
@@ -514,28 +547,31 @@ abandoned while marketplace capabilities are added.
 
 1. [x] Add immutable return-completion command snapshots, atomic command/operation
    admission, and tenant-scoped operator list/show/retry routes.
-2. [ ] Create `rustok-marketplace` family root with module manifest and FBA consumer
-   registry.
-3. [ ] Create `rustok-marketplace-seller` with seller lifecycle, memberships,
-   typed FBA provider ports, migrations, and source guards.
-4. [ ] Create `rustok-marketplace-seller/admin` with module-owned FFA core,
-   transport facade, Leptos adapter, and i18n contract.
-5. [ ] Create `rustok-marketplace-listing` with master-product linkage, approval,
+2. [x] Create `rustok-marketplace` family root with module manifest, FBA consumer
+   registry, and typed seller directory consumer.
+3. [x] Create `rustok-marketplace-seller` with seller lifecycle, memberships,
+   typed FBA provider ports, migrations, workspace/module registration, and source
+   guards.
+4. [x] Create `rustok-marketplace-seller/admin` with module-owned FFA core/model,
+   explicit transport facade, Leptos adapter, and i18n catalogs.
+5. [ ] Add durable seller command receipts and conflicting-payload replay guards.
+6. [ ] Mount native/GraphQL seller transports and finish seller admin workflows.
+7. [ ] Create `rustok-marketplace-listing` with master-product linkage, approval,
    visibility, and deterministic eligibility projections.
-6. [ ] Run static ecommerce/payment/marketplace verifiers and fix remaining drift.
-7. [ ] Run commerce, payment, marketplace, Stripe-feature, and server compile checks.
-8. [ ] Run clean SQLite migrations and targeted regression tests, including
-   return-completion command replay and marketplace seller tenant isolation.
-9. [ ] Run PostgreSQL contention, restart, and kill-point scenarios for checkout,
-   return completion, payment operations, webhook recovery, and marketplace writes.
-10. [ ] Introduce seller order allocations and commission snapshots only after the
+8. [ ] Run static ecommerce/payment/marketplace verifiers and fix remaining drift.
+9. [ ] Run commerce, payment, marketplace, Stripe-feature, and server compile checks.
+10. [ ] Run clean SQLite migrations and targeted regression tests, including
+    return-completion command replay and marketplace seller tenant isolation.
+11. [ ] Run PostgreSQL contention, restart, and kill-point scenarios for checkout,
+    return completion, payment operations, webhook recovery, and marketplace writes.
+12. [ ] Introduce seller order allocations and commission snapshots only after the
     seller/listing contracts are source-guarded.
-11. [ ] Build the double-entry marketplace ledger before payout commands or balances.
-12. [ ] Execute deployment secret resolution and the Stripe adapter against a
+13. [ ] Build the double-entry marketplace ledger before payout commands or balances.
+14. [ ] Execute deployment secret resolution and the Stripe adapter against a
     production-like endpoint.
-13. [ ] Run mounted HTTP and background-worker recovery scenarios.
-14. [ ] Integrate and execute an approved carrier adapter.
-15. [ ] Reassess FFA/FBA promotion from retained evidence.
+15. [ ] Run mounted HTTP and background-worker recovery scenarios.
+16. [ ] Integrate and execute an approved carrier adapter.
+17. [ ] Reassess FFA/FBA promotion from retained evidence.
 
 ## Change rules
 
@@ -558,3 +594,5 @@ abandoned while marketplace capabilities are added.
 - [Commerce FBA registry](../contracts/commerce-fba-registry.json)
 - [Payment webhook runbook](../../rustok-payment/docs/provider-webhooks.md)
 - [Payment FBA registry](../../rustok-payment/contracts/payment-fba-registry.json)
+- [Marketplace root plan](../../rustok-marketplace/docs/implementation-plan.md)
+- [Marketplace seller plan](../../rustok-marketplace-seller/docs/implementation-plan.md)
