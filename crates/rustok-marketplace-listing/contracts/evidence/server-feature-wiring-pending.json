@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "module": "marketplace_listing",
+  "server_feature": "mod-marketplace_listing",
+  "status": "pending",
+  "default_enabled": false,
+  "note": "The backend owner and distribution module are registered. Server feature wiring remains separate from source owner readiness and must not imply mounted GraphQL or FFA evidence."
+}
