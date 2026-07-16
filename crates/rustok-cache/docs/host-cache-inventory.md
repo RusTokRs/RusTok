@@ -37,7 +37,7 @@ capacity. Fixed-size counters may use entry-count capacity.
 | Marketplace module-detail cache | Registry detail endpoint with catalog fallback | Separate byte-weighted Moka; default 4 MiB; bounded SHA-256 slug key | Positive TTL follows catalog TTL; missing detail uses independently configurable 5 s default negative TTL | Process-local discovery cache; single-flight detail fetch and bounded fallback to catalog list | Hardened |
 | RBAC permission snapshot cache | RBAC relation tables and resolver | Byte-weighted Moka; 16 MiB; typed `(tenant_id, user_id)` key; 64 bounded epoch stripes plus global epoch | 60 s TTL; conditional publication retries a superseded DB read and fails closed after bounded attempts | Database-backed durable generation is reserved in the mutation transaction; local/Redis PubSub is a fast path; watchdog and reconciliation clear missed generations across replicas | Hardened; owned by `rustok-rbac` plan |
 | Flex field-definition cache | Flex field-definition database state | Byte-weighted Moka; 16 MiB; `(tenant_id, entity_type)` key; variable JSON fields included in weight | 30 s TTL | Event consumer invalidates exact entries; lag triggers full clear. Cache and consumer share one restartable abort-on-drop runtime. Transport is process-local unless the event owner supplies a durable source | Source hardened; durable cross-replica recovery remains owner work |
-| SEO redirect cache | `seo_redirect` database rows | Byte-weighted Moka; 8 MiB; UUID tenant key; redirect string payloads included in weight | 30 s TTL | Mutating replica invalidates after transaction commit. Transactional domain events are emitted, but no cache-generation consumer currently invalidates other replicas; stale redirects are therefore bounded only by TTL | Source hardened; durable owner invalidation candidate |
+| SEO redirect cache | `seo_redirect` database rows | Byte-weighted Moka; 8 MiB; UUID tenant key; redirect string payloads included in weight. Persisted cursor query is indexed by `(source_kind, created_at, id)` and consumed in batches of 256 | 30 s TTL; reconciliation polls every 5 s | Redirect transition and delivery row are written in the same transaction. The mutating replica invalidates after commit; every serving runtime seeds the persisted high-water cursor before a startup full clear and then invalidates exact tenants for later rows. The context-owned supervised worker is a critical readiness dependency | Source hardened; multi-replica execution evidence pending |
 
 ## Compatibility paths that are not production cache owners
 
@@ -57,14 +57,13 @@ capacity. Fixed-size counters may use entry-count capacity.
   owner generation/outbox consumer and clear the affected tenant generation on missed events.
 - Field definitions: connect the existing full-clear recovery to a durable event offset or shared
   generation when multiple replicas consume independent local buses.
-- SEO redirects: consume the already transactional redirect event on every replica or reserve a
-  durable SEO redirect generation in the same transaction, then invalidate the tenant cache before
-  acknowledging recovery.
 
 ### Verification and tuning
 
 - Exercise exact/wildcard tenant-locale invalidation, local lag, Redis reconnect and periodic
   generation reconciliation across multiple replicas.
+- Exercise SEO cursor startup races, more-than-one-batch catch-up, database outage/recovery and
+  terminal-worker readiness across multiple serving replicas.
 - Measure observed encoded/estimated entry sizes before changing byte budgets.
 - Exercise marketplace hot-key contention, channel generation rollover and RBAC epoch rotation.
 - Run isolated Redis outage/reconnect/CAS/invalidations before promoting cache hardening to live
