@@ -1,7 +1,8 @@
 use crate::{
     extract_runtime_context_contract, materialize_bindings, materialize_context,
-    materialize_runtime, materialize_runtime_locale_context, BindingMaterialization,
-    ContextMaterialization, ProjectDocument, RuntimeMaterialization, ValidationDiagnostic,
+    materialize_project_translations, materialize_runtime, materialize_runtime_locale_context,
+    BindingMaterialization, ContextMaterialization, ProjectDocument, RuntimeMaterialization,
+    TranslationMaterialization, ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -28,11 +29,17 @@ pub fn materialize_project_with_runtime_context(
     document: &ProjectDocument,
     input_context: &Value,
 ) -> RuntimeProjectMaterialization {
-    let locale_materialization = materialize_runtime_locale_context(input_context);
+    let TranslationMaterialization {
+        context: translation_context,
+        diagnostics: translation_diagnostics,
+        ..
+    } = materialize_project_translations(document, input_context);
+    let locale_materialization = materialize_runtime_locale_context(&translation_context);
     let localized_input_context = locale_materialization.context;
     let contract = extract_runtime_context_contract(document);
     let contract_is_valid = contract.is_valid();
-    let mut diagnostics = locale_materialization.diagnostics;
+    let mut diagnostics = translation_diagnostics;
+    diagnostics.extend(locale_materialization.diagnostics);
     diagnostics.extend(contract.definition_diagnostics);
     let (
         effective_context,
@@ -219,6 +226,56 @@ mod tests {
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_localized_value_fallback"));
+    }
+
+    #[test]
+    fn project_translation_catalog_materializes_before_bindings() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "title",
+                        "type": "text",
+                        "content": "Static"
+                    }]
+                }
+            }],
+            "flyTranslations": [{
+                "id": "hero_title",
+                "values": {
+                    "en": "Welcome",
+                    "ru": "Добро пожаловать"
+                },
+                "fallback_locale": "en"
+            }],
+            "flyRuntimeBindings": [{
+                "id": "hero-title-content",
+                "component_id": "title",
+                "path": "translations.hero_title",
+                "target": "field",
+                "name": "content"
+            }]
+        }))
+        .expect("document");
+        let materialized = materialize_project_with_runtime_context(
+            &document,
+            &json!({ "$locale": "ru-RU" }),
+        );
+        assert_eq!(
+            materialized.effective_context["translations"]["hero_title"],
+            "Добро пожаловать"
+        );
+        assert_eq!(materialized.applied_bindings, 1);
+        assert_eq!(
+            materialized
+                .document
+                .component("title")
+                .and_then(|component| component.extensions.get("content"))
+                .and_then(Value::as_str),
+            Some("Добро пожаловать")
+        );
     }
 
     #[test]
