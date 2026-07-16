@@ -26,6 +26,8 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
 
     assert!(services.contains("include!(\"services_base.rs\")"));
     assert!(services.contains("pub struct SeoRedirectCacheCursor"));
+    assert!(services.contains("pub async fn redirect_cache_change_count"));
+    assert!(services.contains(".count(db)"));
     assert!(services.contains("Column::CreatedAt.gt(created_at.clone())"));
     assert!(services.contains("Column::CreatedAt.eq(created_at)"));
     assert!(services.contains("Column::Id.gt(cursor.id)"));
@@ -48,8 +50,11 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
         "Box::new(m20260716_000007_add_redirect_cache_cursor_index::Migration)"
     ));
 
+    let count = worker
+        .find("redirect_cache_change_count(db).await?")
+        .expect("startup must seed the independent delivery-row count");
     let latest = worker
-        .find("latest_redirect_cache_cursor(&db).await?")
+        .find("latest_redirect_cache_cursor(db).await?")
         .expect("startup must read the durable high-water mark");
     let clear = worker
         .find("invalidate_all_redirect_cache().await")
@@ -60,12 +65,19 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
     let changes = worker
         .find("redirect_cache_changes_after(")
         .expect("worker must consume rows after the seed cursor");
+    assert!(count < latest);
     assert!(latest < clear);
     assert!(clear < healthy);
     assert!(healthy < changes);
 
     assert!(worker.contains("SEO_REDIRECT_CACHE_BATCH_LIMIT: u64 = 256"));
-    assert!(worker.contains("if full_batch"));
+    assert!(worker.contains("SEO_REDIRECT_CACHE_MAX_PAGES_PER_POLL: usize = 16"));
+    assert!(worker.contains("for _ in 0..SEO_REDIRECT_CACHE_MAX_PAGES_PER_POLL"));
+    assert!(worker.contains("if page_len < SEO_REDIRECT_CACHE_BATCH_LIMIT"));
+    assert!(worker.contains("let expected_count = observed_count.saturating_add(processed)"));
+    assert!(worker.contains("if current_count != expected_count"));
+    assert!(worker.contains("cursor_gap_recovery"));
+    assert!(worker.contains("(cursor, observed_count) = seed_redirect_cache_state(&db).await?"));
     assert!(worker.contains("healthy: Arc<AtomicBool>"));
     assert!(worker.contains(
         "!self.task.is_finished() && self.healthy.load(Ordering::Acquire)"
