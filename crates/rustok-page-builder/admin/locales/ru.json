@@ -111,6 +111,30 @@
       "newPageNamePlaceholder": "Новое название страницы",
       "pageFallback": "Страница"
     },
+    "translations": {
+      "title": "Переводы проекта",
+      "description": "Переводы без потерь хранятся в каноническом проекте и доступны bindings по пути translations.<id>.",
+      "empty": "Переводы проекта ещё не определены.",
+      "createTitle": "Создать или обновить перевод",
+      "idLabel": "ID перевода",
+      "idPlaceholder": "hero-title",
+      "valuesLabel": "JSON значений по локалям",
+      "valuesHelp": "Используйте JSON-объект с ключами локалей, например en, ru или de-DE.",
+      "valuesPlaceholder": "{\n  \"en\": \"Welcome\",\n  \"ru\": \"Добро пожаловать\"\n}",
+      "fallbackLabel": "Резервная локаль записи",
+      "fallbackPlaceholder": "ru",
+      "save": "Сохранить перевод",
+      "existing": "Существующие переводы",
+      "locales": "Локали",
+      "fallback": "Резерв",
+      "bindTitle": "Привязать выбранный компонент",
+      "bindHelp": "Выберите компонент на холсте, затем привяжите перевод к одному полю, атрибуту или свойству стиля.",
+      "bindKind": "Цель binding",
+      "bindName": "Имя цели",
+      "bindNamePlaceholder": "content, aria-label, color...",
+      "bind": "Сохранить и привязать перевод",
+      "remove": "Удалить перевод и bindings"
+    },
     "traits": {
       "empty": "Выберите компонент, чтобы изменить его параметры."
     },
