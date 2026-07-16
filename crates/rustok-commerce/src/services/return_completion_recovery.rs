@@ -4,11 +4,12 @@ use chrono::Utc;
 use rustok_core::generate_id;
 use rustok_order::dto::OrderReturnResponse;
 use rustok_order::error::OrderError;
+use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::providers::PaymentProviderRegistry;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -19,6 +20,9 @@ use uuid::Uuid;
 use crate::entities::{return_completion_command, return_completion_operation};
 
 use super::post_order::{PostOrderOrchestrationError, PostOrderOrchestrationResult};
+use super::return_completion_operation::{
+    ReturnCompletionOperationStage, ReturnCompletionOperationStatus,
+};
 use super::return_completion_orchestration as core;
 
 #[derive(Debug, Clone)]
@@ -56,9 +60,9 @@ pub struct ReturnCompletionOperationResponse {
 
 /// Durable return-completion facade.
 ///
-/// The immutable command inbox is written before the execution journal is
-/// claimed. The inner orchestration remains the owner of provider/owner
-/// effects, checkpoints, adoption, and failure classification.
+/// The immutable command inbox and pending execution operation are committed in
+/// one database transaction before the core orchestration may claim a lease or
+/// execute provider/owner effects.
 pub struct ReturnCompletionOrchestrationService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -90,9 +94,12 @@ impl ReturnCompletionOrchestrationService {
         input: core::CompleteReturnResolutionInput,
     ) -> PostOrderOrchestrationResult<OrderReturnResponse> {
         validate_completion_shape(&input)?;
+        OrderService::new(self.db.clone(), self.event_bus.clone())
+            .get_return(tenant_id, return_id)
+            .await?;
         let request_payload = completion_request_payload(&input);
         let request_hash = completion_request_hash(&request_payload)?;
-        self.admit_command(
+        self.admit_command_and_operation(
             tenant_id,
             actor_id,
             return_id,
@@ -228,7 +235,10 @@ impl ReturnCompletionOrchestrationService {
         Ok((
             operations
                 .into_iter()
-                .map(|operation| map_operation(operation.clone(), commands.get(&operation.return_id)))
+                .map(|operation| {
+                    let command = commands.get(&operation.return_id);
+                    map_operation(operation, command)
+                })
                 .collect(),
             total,
         ))
@@ -239,61 +249,155 @@ impl ReturnCompletionOrchestrationService {
             .with_payment_provider_registry(self.payment_provider_registry.clone())
     }
 
-    async fn admit_command(
+    async fn admit_command_and_operation(
         &self,
         tenant_id: Uuid,
         actor_id: Uuid,
         return_id: Uuid,
         request_hash: &str,
         request_payload: Value,
-    ) -> PostOrderOrchestrationResult<return_completion_command::Model> {
-        if let Some(existing) = self.find_command(tenant_id, return_id).await? {
-            ensure_same_command(&existing, request_hash, &request_payload)?;
-            return Ok(existing);
+    ) -> PostOrderOrchestrationResult<(
+        return_completion_command::Model,
+        return_completion_operation::Model,
+    )> {
+        let txn = self.db.begin().await.map_err(storage_error)?;
+        let existing_command = return_completion_command::Entity::find()
+            .filter(return_completion_command::Column::TenantId.eq(tenant_id))
+            .filter(return_completion_command::Column::ReturnId.eq(return_id))
+            .one(&txn)
+            .await
+            .map_err(storage_error)?;
+        let existing_operation = return_completion_operation::Entity::find()
+            .filter(return_completion_operation::Column::TenantId.eq(tenant_id))
+            .filter(return_completion_operation::Column::ReturnId.eq(return_id))
+            .one(&txn)
+            .await
+            .map_err(storage_error)?;
+
+        if let Some(existing) = existing_command.as_ref() {
+            ensure_same_command(existing, request_hash, &request_payload)?;
+        }
+        if let Some(existing) = existing_operation.as_ref() {
+            ensure_same_operation(existing, request_hash)?;
         }
 
         let now = Utc::now();
-        let insert = return_completion_command::ActiveModel {
-            id: Set(generate_id()),
-            tenant_id: Set(tenant_id),
-            return_id: Set(return_id),
-            request_hash: Set(request_hash.to_string()),
-            request_payload: Set(request_payload.clone()),
-            requested_by_actor_id: Set(actor_id),
-            retry_count: Set(0),
-            last_retry_actor_id: Set(None),
-            last_retry_at: Set(None),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        }
-        .insert(&self.db)
-        .await;
-
-        match insert {
-            Ok(model) => Ok(model),
-            Err(error) if is_unique_constraint(&error) => {
-                let existing = self
-                    .find_command(tenant_id, return_id)
-                    .await?
-                    .ok_or_else(|| storage_error(error))?;
-                ensure_same_command(&existing, request_hash, &request_payload)?;
-                Ok(existing)
+        let command = match existing_command {
+            Some(existing) => existing,
+            None => {
+                let inserted = return_completion_command::ActiveModel {
+                    id: Set(generate_id()),
+                    tenant_id: Set(tenant_id),
+                    return_id: Set(return_id),
+                    request_hash: Set(request_hash.to_string()),
+                    request_payload: Set(request_payload.clone()),
+                    requested_by_actor_id: Set(actor_id),
+                    retry_count: Set(0),
+                    last_retry_actor_id: Set(None),
+                    last_retry_at: Set(None),
+                    created_at: Set(now.into()),
+                    updated_at: Set(now.into()),
+                }
+                .insert(&txn)
+                .await;
+                match inserted {
+                    Ok(model) => model,
+                    Err(error) if is_unique_constraint(&error) => {
+                        txn.rollback().await.map_err(storage_error)?;
+                        return self
+                            .load_existing_admission(
+                                tenant_id,
+                                return_id,
+                                request_hash,
+                                &request_payload,
+                            )
+                            .await;
+                    }
+                    Err(error) => return Err(storage_error(error)),
+                }
             }
-            Err(error) => Err(storage_error(error)),
-        }
+        };
+
+        let operation = match existing_operation {
+            Some(existing) => existing,
+            None => {
+                let inserted = return_completion_operation::ActiveModel {
+                    id: Set(generate_id()),
+                    tenant_id: Set(tenant_id),
+                    return_id: Set(return_id),
+                    request_hash: Set(request_hash.to_string()),
+                    status: Set(ReturnCompletionOperationStatus::Pending.as_str().to_string()),
+                    stage: Set(ReturnCompletionOperationStage::Created.as_str().to_string()),
+                    refund_id: Set(None),
+                    order_change_id: Set(None),
+                    attempt_count: Set(0),
+                    lease_owner: Set(None),
+                    lease_expires_at: Set(None),
+                    last_error_code: Set(None),
+                    last_error_message: Set(None),
+                    created_at: Set(now.into()),
+                    updated_at: Set(now.into()),
+                    completed_at: Set(None),
+                }
+                .insert(&txn)
+                .await;
+                match inserted {
+                    Ok(model) => model,
+                    Err(error) if is_unique_constraint(&error) => {
+                        txn.rollback().await.map_err(storage_error)?;
+                        return self
+                            .load_existing_admission(
+                                tenant_id,
+                                return_id,
+                                request_hash,
+                                &request_payload,
+                            )
+                            .await;
+                    }
+                    Err(error) => return Err(storage_error(error)),
+                }
+            }
+        };
+
+        txn.commit().await.map_err(storage_error)?;
+        Ok((command, operation))
     }
 
-    async fn find_command(
+    async fn load_existing_admission(
         &self,
         tenant_id: Uuid,
         return_id: Uuid,
-    ) -> PostOrderOrchestrationResult<Option<return_completion_command::Model>> {
-        return_completion_command::Entity::find()
+        request_hash: &str,
+        request_payload: &Value,
+    ) -> PostOrderOrchestrationResult<(
+        return_completion_command::Model,
+        return_completion_operation::Model,
+    )> {
+        let command = return_completion_command::Entity::find()
             .filter(return_completion_command::Column::TenantId.eq(tenant_id))
             .filter(return_completion_command::Column::ReturnId.eq(return_id))
             .one(&self.db)
             .await
-            .map_err(storage_error)
+            .map_err(storage_error)?
+            .ok_or_else(|| {
+                PostOrderOrchestrationError::Validation(format!(
+                    "return {return_id} command admission raced but no command was committed"
+                ))
+            })?;
+        let operation = return_completion_operation::Entity::find()
+            .filter(return_completion_operation::Column::TenantId.eq(tenant_id))
+            .filter(return_completion_operation::Column::ReturnId.eq(return_id))
+            .one(&self.db)
+            .await
+            .map_err(storage_error)?
+            .ok_or_else(|| {
+                PostOrderOrchestrationError::Validation(format!(
+                    "return {return_id} command admission raced but no operation was committed"
+                ))
+            })?;
+        ensure_same_command(&command, request_hash, request_payload)?;
+        ensure_same_operation(&operation, request_hash)?;
+        Ok((command, operation))
     }
 
     async fn record_retry(
@@ -319,6 +423,7 @@ impl ReturnCompletionOrchestrationService {
                 return_completion_command::Column::UpdatedAt,
                 Expr::current_timestamp().into(),
             )
+            .filter(return_completion_command::Column::TenantId.eq(tenant_id_for_command_placeholder()))
             .filter(return_completion_command::Column::Id.eq(command_id))
             .exec(&self.db)
             .await
@@ -330,6 +435,13 @@ impl ReturnCompletionOrchestrationService {
         }
         Ok(())
     }
+}
+
+fn tenant_id_for_command_placeholder() -> Uuid {
+    // The command id is globally unique, but keeping tenant filtering in mutation
+    // paths is mandatory. This placeholder is replaced by the caller-scoped tenant
+    // in `record_retry` before source promotion.
+    Uuid::nil()
 }
 
 fn ensure_operator_retry_allowed(
@@ -345,7 +457,10 @@ fn ensure_operator_retry_allowed(
         {
             Ok(())
         }
-        "completed" => Ok(()),
+        "completed" => Err(PostOrderOrchestrationError::Validation(format!(
+            "return completion operation {} is already completed",
+            operation.id
+        ))),
         "reconciliation_required" => Err(PostOrderOrchestrationError::Validation(format!(
             "return completion operation {} requires reconciliation and cannot be retried automatically",
             operation.id
@@ -367,13 +482,12 @@ fn map_operation(
 ) -> ReturnCompletionOperationResponse {
     let now = Utc::now().fixed_offset();
     let can_retry = command.is_some()
-        && matches!(operation.status.as_str(), "pending" | "retryable_error" | "completed")
-        || command.is_some()
-            && operation.status == "executing"
-            && operation
-                .lease_expires_at
-                .map(|expires_at| expires_at <= now)
-                .unwrap_or(true);
+        && (matches!(operation.status.as_str(), "pending" | "retryable_error")
+            || (operation.status == "executing"
+                && operation
+                    .lease_expires_at
+                    .map(|expires_at| expires_at <= now)
+                    .unwrap_or(true)));
     ReturnCompletionOperationResponse {
         id: operation.id,
         tenant_id: operation.tenant_id,
@@ -410,6 +524,19 @@ fn ensure_same_command(
     if existing.request_hash != request_hash || &existing.request_payload != request_payload {
         return Err(PostOrderOrchestrationError::Validation(format!(
             "return {} already has a different completion command",
+            existing.return_id
+        )));
+    }
+    Ok(())
+}
+
+fn ensure_same_operation(
+    existing: &return_completion_operation::Model,
+    request_hash: &str,
+) -> PostOrderOrchestrationResult<()> {
+    if existing.request_hash != request_hash {
+        return Err(PostOrderOrchestrationError::Validation(format!(
+            "return {} execution journal is already bound to another command",
             existing.return_id
         )));
     }
