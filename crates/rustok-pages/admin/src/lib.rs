@@ -10,7 +10,8 @@ mod transport;
 pub mod ui;
 
 pub use browser_intent::{
-    dispatch_pages_browser_intent, PagesBrowserIntentError, PagesBrowserIntentResponse,
+    dispatch_pages_browser_intent, dispatch_pages_browser_intent_with_store,
+    pages_browser_draft_store, PagesBrowserIntentError, PagesBrowserIntentResponse,
 };
 pub use builder::PagesBuilderSaveSnapshot;
 pub use composition::PagesAdmin;
