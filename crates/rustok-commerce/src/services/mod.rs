@@ -30,6 +30,7 @@ mod payment_orchestration;
 mod post_order;
 mod recovering_staged_checkout;
 mod refund_reconciliation;
+mod return_completion_orchestration;
 mod shipping_profile;
 mod staged_checkout;
 #[path = "../storefront_staged_checkout_runtime.rs"]
@@ -119,5 +120,9 @@ pub use recovering_staged_checkout::{
     RecoveringStagedCheckoutError, RecoveringStagedCheckoutResult, RecoveringStagedCheckoutService,
 };
 pub use refund_reconciliation::RefundReconciliationService;
+pub use return_completion_orchestration::{
+    CompleteReturnClaimInput, CompleteReturnExchangeInput, CompleteReturnRefundInput,
+    CompleteReturnResolutionInput, ReturnCompletionOrchestrationService,
+};
 pub use shipping_profile::ShippingProfileService;
 pub use staged_checkout::{StagedCheckoutError, StagedCheckoutResult, StagedCheckoutService};
