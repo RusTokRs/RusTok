@@ -8,11 +8,9 @@ use uuid::Uuid;
 
 use crate::{PaymentError, PaymentResult};
 
-/// Stable identifier of the built-in manual payment provider.
 pub const MANUAL_PAYMENT_PROVIDER_ID: &str = "manual";
 const MAX_WEBHOOK_IDENTITY_LENGTH: usize = 191;
 
-/// Provider capabilities advertised to checkout orchestration and admin tooling.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PaymentProviderCapabilities {
     pub authorize: bool,
@@ -34,7 +32,6 @@ impl PaymentProviderCapabilities {
     }
 }
 
-/// Registry entry for a payment provider implementation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PaymentProviderDescriptor {
     pub provider_id: String,
@@ -54,8 +51,6 @@ impl PaymentProviderDescriptor {
     }
 }
 
-/// Health state reported by external adapter registration. Runtime orchestration
-/// maps non-ready states to degraded checkout modes before invoking providers.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PaymentProviderHealth {
     Ready,
@@ -63,14 +58,12 @@ pub enum PaymentProviderHealth {
     Unavailable,
 }
 
-/// Registration-time degraded mode used by hosts to keep checkout policy explicit.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PaymentProviderDegradedMode {
     pub reason: String,
     pub fallback_profile: String,
 }
 
-/// Runtime decision for checkout/payment orchestration before a provider side effect is invoked.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PaymentProviderRuntimeMode {
     pub provider_id: String,
@@ -79,8 +72,6 @@ pub struct PaymentProviderRuntimeMode {
     pub degraded_mode: Option<PaymentProviderDegradedMode>,
 }
 
-/// External provider registration contract. The adapter remains side-effect-only:
-/// lifecycle persistence and replay/idempotency decisions stay in `PaymentService`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExternalPaymentProviderRegistration {
     pub descriptor: PaymentProviderDescriptor,
@@ -130,7 +121,6 @@ impl ExternalPaymentProviderRegistration {
     }
 }
 
-/// In-memory provider registry assembled by host composition before checkout runtime.
 #[derive(Clone, Default)]
 pub struct PaymentProviderRegistry {
     providers: HashMap<String, Arc<dyn PaymentProvider>>,
@@ -221,11 +211,10 @@ impl PaymentProviderRegistry {
         provider_id: &str,
         operation: &str,
     ) -> PaymentResult<PaymentProviderRuntimeMode> {
-        let registration = self.registrations.get(provider_id).ok_or_else(|| {
-            PaymentError::Validation(format!(
-                "payment provider `{provider_id}` is not registered"
-            ))
-        })?;
+        let registration = self
+            .registrations
+            .get(provider_id)
+            .ok_or_else(|| PaymentError::provider_configuration(provider_id))?;
         let supported = match operation {
             "authorize" => registration.descriptor.capabilities.authorize,
             "capture" => registration.descriptor.capabilities.capture,
@@ -239,9 +228,7 @@ impl PaymentProviderRegistry {
             }
         };
         if !supported {
-            return Err(PaymentError::Validation(format!(
-                "payment provider `{provider_id}` does not support `{operation}`"
-            )));
+            return Err(PaymentError::provider_configuration(provider_id));
         }
         Ok(PaymentProviderRuntimeMode {
             provider_id: provider_id.to_string(),
@@ -258,15 +245,10 @@ impl PaymentProviderRegistry {
     ) -> PaymentResult<Arc<dyn PaymentProvider>> {
         let mode = self.runtime_mode(provider_id, operation)?;
         if !mode.can_execute {
-            return Err(PaymentError::Validation(format!(
-                "payment provider `{provider_id}` is unavailable for `{operation}`"
-            )));
+            return Err(PaymentError::provider_unavailable(provider_id, operation));
         }
-        self.provider(provider_id).ok_or_else(|| {
-            PaymentError::Validation(format!(
-                "payment provider `{provider_id}` is not registered"
-            ))
-        })
+        self.provider(provider_id)
+            .ok_or_else(|| PaymentError::provider_configuration(provider_id))
     }
 
     fn validate_operation_request(
@@ -313,41 +295,20 @@ impl PaymentProviderRegistry {
         requested_amount: Decimal,
         result: &PaymentProviderOperationResult,
     ) -> PaymentResult<()> {
-        if result.provider_id != provider_id {
-            return Err(PaymentError::Validation(format!(
-                "payment provider `{provider_id}` returned result for `{}`",
-                result.provider_id
-            )));
-        }
-        if result.authorized_amount < Decimal::ZERO || result.captured_amount < Decimal::ZERO {
-            return Err(PaymentError::Validation(format!(
-                "payment provider `{provider_id}` {operation} returned a negative amount"
-            )));
-        }
-        if result.authorized_amount > requested_amount || result.captured_amount > requested_amount {
-            return Err(PaymentError::Validation(format!(
-                "payment provider `{provider_id}` {operation} returned an amount above the request"
-            )));
-        }
-        if result.authorized_amount > Decimal::ZERO
-            && result.captured_amount > result.authorized_amount
-        {
-            return Err(PaymentError::Validation(format!(
-                "payment provider `{provider_id}` {operation} captured more than it authorized"
-            )));
-        }
-        match operation {
-            "authorize" if result.authorized_amount <= Decimal::ZERO => {
-                return Err(PaymentError::Validation(format!(
-                    "payment provider `{provider_id}` authorize returned no authorized amount"
-                )))
-            }
-            "capture" if result.captured_amount <= Decimal::ZERO => {
-                return Err(PaymentError::Validation(format!(
-                    "payment provider `{provider_id}` capture returned no captured amount"
-                )))
-            }
-            _ => {}
+        let invalid = result.provider_id != provider_id
+            || result.authorized_amount < Decimal::ZERO
+            || result.captured_amount < Decimal::ZERO
+            || result.authorized_amount > requested_amount
+            || result.captured_amount > requested_amount
+            || (result.authorized_amount > Decimal::ZERO
+                && result.captured_amount > result.authorized_amount)
+            || (operation == "authorize" && result.authorized_amount <= Decimal::ZERO)
+            || (operation == "capture" && result.captured_amount <= Decimal::ZERO);
+        if invalid {
+            return Err(PaymentError::provider_invalid_response(
+                provider_id,
+                operation,
+            ));
         }
         Ok(())
     }
@@ -412,8 +373,6 @@ impl PaymentProviderRegistry {
         Ok(result)
     }
 
-    /// Verify and normalize a webhook before durable inbox insertion. Transport
-    /// identity values are untrusted hints; the provider result is authoritative.
     pub async fn execute_webhook(
         &self,
         provider_id: &str,
@@ -492,33 +451,23 @@ fn validate_verified_webhook_result(
     provider_id: &str,
     result: &PaymentProviderWebhookResult,
 ) -> PaymentResult<()> {
-    if result.provider_id != provider_id {
-        return Err(PaymentError::Validation(format!(
-            "payment provider `{provider_id}` returned webhook result for `{}`",
-            result.provider_id
-        )));
-    }
-    for (label, value) in [
-        ("delivery_id", result.delivery_id.as_str()),
-        ("replay_key", result.replay_key.as_str()),
-        ("event_type", result.event_type.as_str()),
-    ] {
-        let value = value.trim();
-        if value.is_empty() || value.len() > MAX_WEBHOOK_IDENTITY_LENGTH {
-            return Err(PaymentError::Validation(format!(
-                "payment provider `{provider_id}` returned invalid webhook {label}"
-            )));
-        }
-    }
-    if !result.metadata.is_object() {
-        return Err(PaymentError::Validation(format!(
-            "payment provider `{provider_id}` returned non-object webhook metadata"
-        )));
+    let invalid_identity = result.provider_id != provider_id
+        || result.delivery_id.trim().is_empty()
+        || result.delivery_id.len() > MAX_WEBHOOK_IDENTITY_LENGTH
+        || result.replay_key.trim().is_empty()
+        || result.replay_key.len() > MAX_WEBHOOK_IDENTITY_LENGTH
+        || result.event_type.trim().is_empty()
+        || result.event_type.len() > MAX_WEBHOOK_IDENTITY_LENGTH
+        || !result.metadata.is_object();
+    if invalid_identity {
+        return Err(PaymentError::provider_invalid_response(
+            provider_id,
+            "webhook_ingress",
+        ));
     }
     Ok(())
 }
 
-/// Transport-neutral request passed to provider adapters for payment operations.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PaymentProviderOperationRequest {
     pub tenant_id: Uuid,
@@ -529,7 +478,6 @@ pub struct PaymentProviderOperationRequest {
     pub metadata: Value,
 }
 
-/// Provider operation result normalized before it is persisted by `PaymentService`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PaymentProviderOperationResult {
     pub provider_id: String,
@@ -539,8 +487,6 @@ pub struct PaymentProviderOperationResult {
     pub metadata: Value,
 }
 
-/// Raw webhook delivery passed to a provider adapter. Delivery and replay values
-/// from transport headers are optional, untrusted cross-check hints only.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PaymentProviderWebhookRequest {
     pub tenant_id: Uuid,
@@ -551,8 +497,6 @@ pub struct PaymentProviderWebhookRequest {
     pub raw_payload: Vec<u8>,
 }
 
-/// Signature-verified webhook facts. The adapter, not the HTTP transport, owns the
-/// authoritative delivery and replay identities.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PaymentProviderWebhookResult {
     pub provider_id: String,
@@ -563,8 +507,6 @@ pub struct PaymentProviderWebhookResult {
     pub metadata: Value,
 }
 
-/// SPI for concrete payment providers. Domain state transitions stay in `PaymentService`;
-/// adapters only execute provider-side effects and return normalized facts.
 #[async_trait]
 pub trait PaymentProvider: Send + Sync {
     fn descriptor(&self) -> PaymentProviderDescriptor;
@@ -595,7 +537,6 @@ pub trait PaymentProvider: Send + Sync {
     ) -> PaymentResult<PaymentProviderWebhookResult>;
 }
 
-/// Built-in manual provider used while external gateways are not connected.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ManualPaymentProvider;
 
@@ -662,8 +603,9 @@ impl PaymentProvider for ManualPaymentProvider {
         &self,
         _request: PaymentProviderWebhookRequest,
     ) -> PaymentResult<PaymentProviderWebhookResult> {
-        Err(PaymentError::Validation(
-            "manual payment provider does not accept webhook ingress".to_string(),
+        Err(PaymentError::provider_rejected(
+            MANUAL_PAYMENT_PROVIDER_ID,
+            "webhook_ingress",
         ))
     }
 }
@@ -686,23 +628,27 @@ mod boundary_tests {
     fn rejects_provider_identity_and_amount_corruption() {
         let mut result = valid_result();
         result.provider_id = "other".to_string();
-        assert!(PaymentProviderRegistry::validate_operation_result(
-            "gateway",
-            "authorize",
-            Decimal::new(100, 0),
-            &result,
-        )
-        .is_err());
+        assert!(matches!(
+            PaymentProviderRegistry::validate_operation_result(
+                "gateway",
+                "authorize",
+                Decimal::new(100, 0),
+                &result,
+            ),
+            Err(PaymentError::ProviderInvalidResponse { .. })
+        ));
 
         let mut result = valid_result();
         result.authorized_amount = Decimal::new(101, 0);
-        assert!(PaymentProviderRegistry::validate_operation_result(
-            "gateway",
-            "authorize",
-            Decimal::new(100, 0),
-            &result,
-        )
-        .is_err());
+        assert!(matches!(
+            PaymentProviderRegistry::validate_operation_result(
+                "gateway",
+                "authorize",
+                Decimal::new(100, 0),
+                &result,
+            ),
+            Err(PaymentError::ProviderInvalidResponse { .. })
+        ));
     }
 
     #[test]
