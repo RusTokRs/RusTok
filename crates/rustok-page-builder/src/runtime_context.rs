@@ -164,7 +164,7 @@ pub fn evaluate_page_builder_runtime_publish_gate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::{CurrentContextGateMode, ScenarioGateMode};
+    use fly::{CurrentContextGateMode, LandingReadinessPolicy, ScenarioGateMode};
     use serde_json::json;
 
     fn project_data() -> Value {
@@ -258,6 +258,27 @@ mod tests {
     }
 
     #[test]
+    fn consumer_can_enable_publish_only_landing_readiness() {
+        let response =
+            evaluate_page_builder_runtime_publish_gate(PageBuilderRuntimePublishGateRequest {
+                project_data: project_data(),
+                context: None,
+                scenarios: Vec::new(),
+                policy: RuntimePublishGatePolicy {
+                    readiness: Some(LandingReadinessPolicy::default()),
+                    ..RuntimePublishGatePolicy::default()
+                },
+            })
+            .expect("publish gate response");
+        assert!(!response.evaluation.allowed);
+        assert!(response
+            .evaluation
+            .readiness
+            .as_ref()
+            .is_some_and(|report| !report.ready));
+    }
+
+    #[test]
     fn consumer_publish_gate_matches_admin_runtime_policy() {
         let response =
             evaluate_page_builder_runtime_publish_gate(PageBuilderRuntimePublishGateRequest {
@@ -272,6 +293,7 @@ mod tests {
                     current_context: CurrentContextGateMode::RequireValid,
                     scenarios: ScenarioGateMode::All,
                     preflight: RuntimeContextPreflightPolicy::default(),
+                    readiness: None,
                 },
             })
             .expect("publish gate response");
