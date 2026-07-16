@@ -20,6 +20,7 @@ mod m20260713_000015_bind_checkout_payment_collections;
 mod m20260713_000016_block_provider_execution_during_checkout_compensation;
 mod m20260713_000017_classify_checkout_reconciliation;
 mod m20260716_000003_add_order_field_cache_generation_trigger;
+mod m20260716_000004_create_return_completion_operations;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -46,6 +47,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000016_block_provider_execution_during_checkout_compensation::Migration),
         Box::new(m20260713_000017_classify_checkout_reconciliation::Migration),
         Box::new(m20260716_000003_add_order_field_cache_generation_trigger::Migration),
+        Box::new(m20260716_000004_create_return_completion_operations::Migration),
     ]
 }
 
@@ -140,6 +142,14 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260713_000017_classify_checkout_reconciliation",
             vec!["m20260713_000016_block_provider_execution_during_checkout_compensation"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260716_000004_create_return_completion_operations",
+            vec![
+                "m20260530_000113_add_order_return_resolution_columns",
+                "m20260529_000112_create_order_changes_table",
+                "m20260714_000119_require_refund_creation_identity",
+            ],
         ),
     ]
 }
