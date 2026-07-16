@@ -47,6 +47,9 @@ const files = {
   orderChange: "crates/rustok-commerce/admin/src/transport/order_change.rs",
   nativeAdapter: "crates/rustok-commerce/admin/src/transport/native_server_adapter.rs",
   commerceRoot: "crates/rustok-commerce/src/lib.rs",
+  providerOperations: "crates/rustok-commerce/src/graphql/mutations/provider_operations.rs",
+  fulfillmentFacade: "crates/rustok-commerce/src/services/fulfillment_orchestration_facade.rs",
+  fulfillmentGuard: "apps/server/tests/commerce_fulfillment_transport_guard.rs",
   legacyApi: "crates/rustok-commerce/admin/src/api.rs",
   implementationPlan: "crates/rustok-commerce/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
@@ -70,6 +73,9 @@ const promotion = readRepo(files.promotion);
 const orderChange = readRepo(files.orderChange);
 const nativeAdapter = readRepo(files.nativeAdapter);
 const commerceRoot = readRepo(files.commerceRoot);
+const providerOperations = readRepo(files.providerOperations);
+const fulfillmentFacade = readRepo(files.fulfillmentFacade);
+const fulfillmentGuard = readRepo(files.fulfillmentGuard);
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
 const packageJson = readRepo(files.packageJson);
@@ -107,6 +113,46 @@ for (const marker of [
 }
 assertContains(commerceRoot, "pub mod graphql;", `${files.commerceRoot}: GraphQL module path must remain explicit`);
 assertContains(commerceRoot, "pub mod state_machine;", `${files.commerceRoot}: state-machine module path must remain explicit`);
+
+assertNotContains(
+  providerOperations,
+  "use rustok_fulfillment::FulfillmentService;",
+  `${files.providerOperations}: GraphQL transport must not import the fulfillment owner service`,
+);
+assertNotContains(
+  providerOperations,
+  "FulfillmentService::new(",
+  `${files.providerOperations}: GraphQL fulfillment mutations must use commerce orchestration`,
+);
+for (const operation of [
+  ".create_manual_fulfillment(",
+  ".ship_fulfillment(",
+  ".deliver_fulfillment(",
+  ".reopen_fulfillment(",
+  ".reship_fulfillment(",
+  ".cancel_fulfillment(",
+]) {
+  assertContains(
+    providerOperations,
+    operation,
+    `${files.providerOperations}: missing fulfillment orchestration call ${operation}`,
+  );
+}
+for (const method of [
+  "pub async fn deliver_fulfillment(",
+  "pub async fn reopen_fulfillment(",
+]) {
+  assertContains(
+    fulfillmentFacade,
+    method,
+    `${files.fulfillmentFacade}: missing transport-safe fulfillment facade method ${method}`,
+  );
+}
+assertContains(
+  fulfillmentGuard,
+  "graphql_fulfillment_mutations_use_commerce_orchestration",
+  `${files.fulfillmentGuard}: fulfillment transport source guard is missing`,
+);
 
 assertContains(implementationPlan, "verify-commerce-admin-boundary.mjs", `${files.implementationPlan}: local plan must mention commerce admin guardrail`);
 assertContains(implementationPlan, "admin/src/transport/native_server_adapter.rs", `${files.implementationPlan}: local plan must document commerce admin native adapter location`);
