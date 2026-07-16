@@ -1,5 +1,6 @@
 use crate::{
-    materialize_runtime_locale_context, normalize_locale_tag, FlyError, FlyResult, ProjectDocument,
+    clear_project_locale_policy, materialize_runtime_locale_context, normalize_locale_tag,
+    set_project_locale_policy, FlyError, FlyResult, ProjectDocument, ProjectLocalePolicy,
     ValidationDiagnostic, ValidationSeverity, LOCALIZED_FALLBACK_FIELD, LOCALIZED_VALUES_FIELD,
     RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD,
 };
@@ -26,6 +27,8 @@ pub struct TranslationEntry {
 pub enum TranslationCommand {
     Upsert { entry: Box<TranslationEntry> },
     Remove { translation_id: String },
+    SetLocalePolicy { policy: Box<ProjectLocalePolicy> },
+    ClearLocalePolicy,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -70,10 +73,10 @@ pub fn apply_translation_command(
     document: &mut ProjectDocument,
     command: &TranslationCommand,
 ) -> FlyResult<()> {
-    let mut catalog = TranslationCatalog::from_document(document);
     match command {
         TranslationCommand::Upsert { entry } => {
             validate_translation_identity(entry)?;
+            let mut catalog = TranslationCatalog::from_document(document);
             if let Some(index) = catalog
                 .entries
                 .iter()
@@ -83,8 +86,10 @@ pub fn apply_translation_command(
             } else {
                 catalog.entries.push(entry.as_ref().clone());
             }
+            write_catalog(document, catalog)
         }
         TranslationCommand::Remove { translation_id } => {
+            let mut catalog = TranslationCatalog::from_document(document);
             let before = catalog.entries.len();
             catalog
                 .entries
@@ -94,9 +99,16 @@ pub fn apply_translation_command(
                     "translation `{translation_id}` was not found"
                 )));
             }
+            write_catalog(document, catalog)
+        }
+        TranslationCommand::SetLocalePolicy { policy } => {
+            set_project_locale_policy(document, policy)
+        }
+        TranslationCommand::ClearLocalePolicy => {
+            clear_project_locale_policy(document);
+            Ok(())
         }
     }
-    write_catalog(document, catalog)
 }
 
 pub fn materialize_project_translations(
@@ -379,7 +391,7 @@ fn translation_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::{GrapesJsV1Codec, FLY_LOCALES_FIELD};
     use serde_json::json;
 
     fn document() -> ProjectDocument {
@@ -426,6 +438,36 @@ mod tests {
         )
         .expect("remove");
         assert!(TranslationCatalog::from_document(&document).entries.is_empty());
+    }
+
+    #[test]
+    fn locale_policy_commands_share_translation_transaction_surface() {
+        let mut document = document();
+        apply_translation_command(
+            &mut document,
+            &TranslationCommand::SetLocalePolicy {
+                policy: Box::new(ProjectLocalePolicy {
+                    default_locale: Some("RU_ru".to_string()),
+                    supported_locales: vec!["ru-RU".to_string(), "en".to_string()],
+                    required_locales: vec!["ru".to_string()],
+                    fallback_locales: vec!["en".to_string()],
+                    enforce_required_locales: false,
+                    extensions: Map::from_iter([("future".to_string(), json!(true))]),
+                }),
+            },
+        )
+        .expect("set locale policy");
+        assert_eq!(
+            document.project.extensions[FLY_LOCALES_FIELD]["default_locale"],
+            "ru-ru"
+        );
+        assert_eq!(
+            document.project.extensions[FLY_LOCALES_FIELD]["future"],
+            true
+        );
+        apply_translation_command(&mut document, &TranslationCommand::ClearLocalePolicy)
+            .expect("clear locale policy");
+        assert!(!document.project.extensions.contains_key(FLY_LOCALES_FIELD));
     }
 
     #[test]
