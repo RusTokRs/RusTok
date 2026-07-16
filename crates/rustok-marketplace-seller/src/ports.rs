@@ -183,9 +183,10 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: CreateMarketplaceSellerInput,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
-        self.create_seller(
+        self.create_seller_with_receipt(
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
+            parse_idempotency_key(&context)?,
             request,
         )
         .await
@@ -198,8 +199,10 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: UpdateMarketplaceSellerProfileRequest,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
-        self.update_profile(
+        self.update_profile_with_receipt(
             parse_tenant_id(&context)?,
+            parse_actor_id(&context)?,
+            parse_idempotency_key(&context)?,
             request.seller_id,
             request.input,
         )
@@ -213,8 +216,10 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: SubmitMarketplaceSellerOnboardingRequest,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
-        self.submit_onboarding(
+        self.submit_onboarding_with_receipt(
             parse_tenant_id(&context)?,
+            parse_actor_id(&context)?,
+            parse_idempotency_key(&context)?,
             request.seller_id,
             request.input,
         )
@@ -228,8 +233,10 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: ReviewMarketplaceSellerOnboardingRequest,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
-        self.review_onboarding(
+        self.review_onboarding_with_receipt(
             parse_tenant_id(&context)?,
+            parse_actor_id(&context)?,
+            parse_idempotency_key(&context)?,
             request.seller_id,
             request.input,
         )
@@ -243,8 +250,10 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: SuspendMarketplaceSellerRequest,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
-        self.suspend_seller(
+        self.suspend_seller_with_receipt(
             parse_tenant_id(&context)?,
+            parse_actor_id(&context)?,
+            parse_idempotency_key(&context)?,
             request.seller_id,
             request.input,
         )
@@ -258,9 +267,14 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: ReactivateMarketplaceSellerRequest,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
-        self.reactivate_seller(parse_tenant_id(&context)?, request.seller_id)
-            .await
-            .map_err(map_owner_error)
+        self.reactivate_seller_with_receipt(
+            parse_tenant_id(&context)?,
+            parse_actor_id(&context)?,
+            parse_idempotency_key(&context)?,
+            request.seller_id,
+        )
+        .await
+        .map_err(map_owner_error)
     }
 
     async fn add_seller_member(
@@ -269,9 +283,10 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: AddMarketplaceSellerMemberRequest,
     ) -> Result<MarketplaceSellerMemberResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
-        self.add_member(
+        self.add_member_with_receipt(
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
+            parse_idempotency_key(&context)?,
             request.seller_id,
             request.input,
         )
@@ -285,8 +300,10 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: UpdateMarketplaceSellerMemberRequest,
     ) -> Result<MarketplaceSellerMemberResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
-        self.update_member(
+        self.update_member_with_receipt(
             parse_tenant_id(&context)?,
+            parse_actor_id(&context)?,
+            parse_idempotency_key(&context)?,
             request.seller_id,
             request.member_id,
             request.input,
@@ -314,6 +331,21 @@ fn parse_actor_id(context: &PortContext) -> Result<Uuid, PortError> {
     })
 }
 
+fn parse_idempotency_key(context: &PortContext) -> Result<String, PortError> {
+    context
+        .idempotency_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            PortError::validation(
+                "marketplace_seller.idempotency_key_required",
+                "write marketplace seller ports require an idempotency key",
+            )
+        })
+}
+
 fn map_owner_error(error: MarketplaceSellerError) -> PortError {
     match error {
         MarketplaceSellerError::SellerNotFound(id) => PortError::not_found(
@@ -335,6 +367,14 @@ fn map_owner_error(error: MarketplaceSellerError) -> PortError {
         MarketplaceSellerError::DuplicateMembership { seller_id, user_id } => PortError::conflict(
             "marketplace_seller.membership_conflict",
             format!("user {user_id} is already a member of seller {seller_id}"),
+        ),
+        MarketplaceSellerError::IdempotencyConflict(_) => PortError::conflict(
+            "marketplace_seller.idempotency_conflict",
+            "marketplace seller idempotency key is already bound to another command",
+        ),
+        MarketplaceSellerError::CommandReceiptCorrupt(_) => PortError::invariant_violation(
+            "marketplace_seller.command_receipt_corrupt",
+            "marketplace seller command receipt requires operator review",
         ),
         MarketplaceSellerError::InvalidTransition { from, to } => PortError::conflict(
             "marketplace_seller.lifecycle_conflict",
