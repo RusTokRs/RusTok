@@ -202,7 +202,11 @@ fn cache_workflow_retains_channel_compiled_evidence() {
     let runtime = source("apps/server/src/services/channel_cache_invalidation_runtime_tests.rs");
     for required in [
         "independent_replicas_fail_closed_and_recover_without_redis",
+        "local_listener_lag_fails_closed_and_recovers_from_durable_state",
         "redis_publication_drives_remote_replica_readiness_recovery",
+        "for _ in 0..300",
+        "RecvError::Lagged",
+        "assert_eq!(outcome.local_subscribers, 2);",
         "tokio::time::timeout(Duration::from_secs(3)",
         "let ctx_c = ServerRuntimeContext::new",
         "assert!(!recovering_remote.is_ready());",
