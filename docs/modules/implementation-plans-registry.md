@@ -77,7 +77,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 | `tax` | [plan](../../crates/rustok-tax/docs/implementation-plan.md) | `not_started` | Replace static contract evidence with runtime contract execution and fallback smoke before any boundaryready promotion. |
 | `taxonomy` | [plan](../../crates/rustok-taxonomy/docs/implementation-plan.md) | `not_started` | Keep dictionary scope and owner-module attachment contracts synchronized. |
 | `telemetry` | [plan](../../crates/rustok-telemetry/docs/implementation-plan.md) | `in_progress` | Prove bootstrap/shutdown modes, harden shared metric safety, and align module instrumentation with operations. |
-| `tenant` | [plan](../../crates/rustok-tenant/docs/implementation-plan.md) | `in_progress` | Approve the tenant-locale 60-second cross-replica stale bound or adopt durable generation recovery, then collect composed parity evidence. |
+| `tenant` | [plan](../../crates/rustok-tenant/docs/implementation-plan.md) | `in_progress` | Execute multi-replica tenant-locale generation recovery evidence, then collect composed native-overview parity evidence. |
 | `test-utils` | [plan](../../crates/rustok-test-utils/docs/implementation-plan.md) | `in_progress` | Finish neutral server-test migration, lock mock/fixture contracts, and publish consumer-backed testing recipes. |
 | `ui-i18n` | [plan](../../crates/rustok-ui-i18n/docs/implementation-plan.md) | `in_progress` | Lock shared Leptos catalog adoption; add further adapters or parity APIs only for concrete consumers. |
 | `web` | [plan](../../crates/rustok-web/docs/implementation-plan.md) | `not_started` | Consolidate repeated controller helpers through the shared Axum boundary. |
