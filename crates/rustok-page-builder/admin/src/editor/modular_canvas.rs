@@ -4,7 +4,7 @@ use crate::editor::{
     IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
     ResponsiveStylePanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
     RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, SsrInspectorPanel, SsrLocalePanel,
-    TraitPanel,
+    SsrTranslationsPanel, TraitPanel,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
@@ -98,6 +98,7 @@ pub fn AdminCanvas(
     let properties_runtime = runtime.clone();
     let responsive_runtime = runtime.clone();
     let ssr_locale_runtime = runtime.clone();
+    let ssr_translations_runtime = runtime.clone();
     let ssr_inspector_runtime = runtime.clone();
     let announcement_runtime = runtime.clone();
     let error_runtime = runtime;
@@ -129,6 +130,7 @@ pub fn AdminCanvas(
                 <IsolatedAuthoringCanvas runtime=canvas_runtime />
                 <div class="space-y-3 overflow-auto">
                     <SsrLocalePanel runtime=ssr_locale_runtime />
+                    <SsrTranslationsPanel runtime=ssr_translations_runtime />
                     <SsrInspectorPanel runtime=ssr_inspector_runtime />
                     <RuntimePublishGatePanel runtime=gate_runtime />
                     <RuntimeScenarioPanel runtime=scenario_runtime />
