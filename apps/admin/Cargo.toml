@@ -17,12 +17,26 @@ doc = false
 
 [features]
 default = ["ssr"]
-csr = ["leptos/csr", "leptos_i18n/csr", "dep:wasm-bindgen", "dep:web-sys", "rustok-mcp-admin/csr", "rustok-workflow-admin/csr", "rustok-auth-admin/csr", "rustok-page-builder-admin/csr"]
+csr = [
+  "leptos/csr",
+  "leptos_i18n/csr",
+  "dep:wasm-bindgen",
+  "dep:web-sys",
+  "dep:console_error_panic_hook",
+  "dep:console_log",
+  "rustok-mcp-admin/csr",
+  "rustok-pages-admin/csr",
+  "rustok-workflow-admin/csr",
+  "rustok-auth-admin/csr",
+  "rustok-page-builder-admin/csr",
+]
 hydrate = [
   "leptos/hydrate",
   "leptos_i18n/hydrate",
   "dep:wasm-bindgen",
   "dep:web-sys",
+  "dep:console_error_panic_hook",
+  "dep:console_log",
   "leptos-auth/hydrate",
   "rustok-ai-admin/hydrate",
   "rustok-channel-admin/hydrate",
@@ -35,6 +49,7 @@ hydrate = [
   "rustok-mcp-admin/hydrate",
   "rustok-outbox-admin/hydrate",
   "rustok-page-builder-admin/hydrate",
+  "rustok-pages-admin/hydrate",
   "rustok-seo-admin/hydrate",
   "rustok-fulfillment-admin/hydrate",
   "rustok-inventory-admin/hydrate",
@@ -50,6 +65,8 @@ hydrate = [
 ssr = [
   "leptos/ssr",
   "leptos_i18n/ssr",
+  "dep:axum",
+  "dep:tokio",
   "dep:leptos_axum",
   "dep:sea-orm",
   "dep:rustok-cache",
@@ -76,6 +93,7 @@ ssr = [
   "rustok-mcp-admin/ssr",
   "rustok-outbox-admin/ssr",
   "rustok-page-builder-admin/ssr",
+  "rustok-pages-admin/ssr",
   "rustok-seo-admin/ssr",
   "rustok-fulfillment-admin/ssr",
   "rustok-inventory-admin/ssr",
@@ -90,6 +108,8 @@ ssr = [
 ]
 
 [dependencies]
+axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
 rustok-ui-core.workspace = true
 rustok-ui-transport.workspace = true
 leptos.workspace = true
@@ -112,8 +132,8 @@ leptos-chartistry = { workspace = true }
 gloo-storage = { workspace = true }
 serde_urlencoded = { workspace = true }
 chrono = { workspace = true }
-console_error_panic_hook = "0.1"
-console_log = "1"
+console_error_panic_hook = { version = "0.1", optional = true }
+console_log = { version = "1", optional = true }
 log = "0.4"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -203,6 +223,7 @@ normal = [
   "rustok-media-admin",
   "rustok-mcp-admin",
   "rustok-page-builder-admin",
+  "rustok-pages-admin",
   "rustok-seo",
   "rustok-seo-admin",
   "rustok-order-admin",
@@ -220,7 +241,6 @@ normal = [
   "rustok-index-admin",
   "rustok-inventory-admin",
   "rustok-outbox-admin",
-  "rustok-pages-admin",
   "rustok-pricing-admin",
   "rustok-rbac",
   "rustok-rbac-admin",
