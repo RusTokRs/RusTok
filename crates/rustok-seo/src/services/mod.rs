@@ -51,10 +51,12 @@ pub async fn redirect_cache_changes_after(
         .filter(crate::entities::seo_event_delivery::Column::SourceKind.eq("redirect"));
 
     if let Some(cursor) = cursor {
-        let created_at = cursor.created_at;
+        let created_at = cursor.created_at.clone();
         query = query.filter(
             Condition::any()
-                .add(crate::entities::seo_event_delivery::Column::CreatedAt.gt(created_at))
+                .add(
+                    crate::entities::seo_event_delivery::Column::CreatedAt.gt(created_at.clone()),
+                )
                 .add(
                     Condition::all()
                         .add(crate::entities::seo_event_delivery::Column::CreatedAt.eq(created_at))
@@ -107,7 +109,7 @@ mod redirect_cache_cursor_tests {
             .single()
             .unwrap();
         let first = SeoRedirectCacheCursor {
-            created_at: at,
+            created_at: at.clone(),
             id: Uuid::from_u128(1),
         };
         let second = SeoRedirectCacheCursor {
