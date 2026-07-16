@@ -1,9 +1,10 @@
 use crate::{
     apply_binding_command, apply_context_command, apply_dynamic_command, apply_page_command,
-    apply_style_rule_command, extend_with_runtime_validation, validate_project, AssetDescriptor,
-    BindingCommand, ComponentNode, ComponentObject, ContextCommand, DynamicCommand, FlyError,
-    FlyResult, GrapesJsV1Codec, PageCommand, ProjectDocument, RegistrySet, SequentialIdGenerator,
-    StyleRuleCommand, ValidationLimits, ValidationReport,
+    apply_style_rule_command, apply_translation_command, extend_with_runtime_validation,
+    validate_project, AssetDescriptor, BindingCommand, ComponentNode, ComponentObject,
+    ContextCommand, DynamicCommand, FlyError, FlyResult, GrapesJsV1Codec, PageCommand,
+    ProjectDocument, RegistrySet, SequentialIdGenerator, StyleRuleCommand, TranslationCommand,
+    ValidationLimits, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -134,6 +135,9 @@ pub enum EditorCommand {
     },
     Context {
         command: ContextCommand,
+    },
+    Translation {
+        command: TranslationCommand,
     },
     Batch {
         commands: Vec<EditorCommand>,
@@ -488,6 +492,9 @@ impl FlyEditor {
             EditorCommand::Dynamic { command } => apply_dynamic_command(document, command),
             EditorCommand::Binding { command } => apply_binding_command(document, command),
             EditorCommand::Context { command } => apply_context_command(document, command),
+            EditorCommand::Translation { command } => {
+                apply_translation_command(document, command)
+            }
             EditorCommand::Batch { commands } => {
                 for command in commands {
                     self.apply_to_document(document, command)?;
@@ -534,9 +541,10 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
 mod tests {
     use super::*;
     use crate::{
-        BindingCatalog, BindingTarget, BindingTransform, ConditionOperator, ContextFieldDefinition,
-        ContextSchemaCatalog, ContextValueKind, DynamicCatalog, GrapesJsV1Codec, RegistrySet,
-        RuntimeBinding, RuntimeCondition, FLY_RUNTIME_CONDITIONS_FIELD,
+        BindingCatalog, BindingTarget, BindingTransform, ConditionOperator,
+        ContextFieldDefinition, ContextSchemaCatalog, ContextValueKind, DynamicCatalog,
+        GrapesJsV1Codec, RegistrySet, RuntimeBinding, RuntimeCondition, TranslationCatalog,
+        TranslationEntry, FLY_RUNTIME_CONDITIONS_FIELD,
     };
     use serde_json::json;
 
@@ -679,6 +687,44 @@ mod tests {
         assert!(ContextSchemaCatalog::from_document(editor.document())
             .fields
             .is_empty());
+    }
+
+    #[test]
+    fn translation_commands_participate_in_history() {
+        let mut editor = editor();
+        editor
+            .apply(EditorCommand::Translation {
+                command: TranslationCommand::Upsert {
+                    entry: Box::new(TranslationEntry {
+                        id: "hero_title".to_string(),
+                        values: serde_json::from_value(json!({
+                            "en": "Welcome",
+                            "ru": "Добро пожаловать"
+                        }))
+                        .expect("translation values"),
+                        fallback_locale: Some("en".to_string()),
+                        extensions: Map::new(),
+                    }),
+                },
+            })
+            .expect("translation command");
+        assert_eq!(
+            TranslationCatalog::from_document(editor.document())
+                .entries
+                .len(),
+            1
+        );
+        editor.undo().expect("undo translation command");
+        assert!(TranslationCatalog::from_document(editor.document())
+            .entries
+            .is_empty());
+        editor.redo().expect("redo translation command");
+        assert_eq!(
+            TranslationCatalog::from_document(editor.document())
+                .entries
+                .len(),
+            1
+        );
     }
 
     #[test]
