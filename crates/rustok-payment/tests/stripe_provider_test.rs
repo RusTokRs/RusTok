@@ -3,7 +3,7 @@
 use chrono::Utc;
 use hmac::{Hmac, Mac};
 use rustok_payment::{
-    PaymentProvider, PaymentProviderWebhookRequest, StaticStripeCredentialProvider,
+    PaymentError, PaymentProvider, PaymentProviderWebhookRequest, StaticStripeCredentialProvider,
     StripeCredentials, StripePaymentProvider, StripePaymentProviderConfig,
 };
 use secrecy::SecretString;
@@ -112,5 +112,37 @@ async fn stripe_webhook_rejects_body_changed_after_signature() {
         .await
         .unwrap_err();
 
-    assert!(error.to_string().contains("signature verification failed"));
+    assert!(matches!(
+        error,
+        PaymentError::ProviderRejected {
+            ref provider_id,
+            ref operation,
+        } if provider_id == "stripe" && operation == "webhook"
+    ));
+}
+
+#[tokio::test]
+async fn stripe_missing_tenant_credentials_are_configuration_error() {
+    let tenant_id = Uuid::new_v4();
+    let provider = StripePaymentProvider::new(
+        StripePaymentProviderConfig::default(),
+        Arc::new(StaticStripeCredentialProvider::default()),
+    )
+    .unwrap();
+    let payload = authorized_payload(Uuid::new_v4());
+    let error = provider
+        .handle_webhook(PaymentProviderWebhookRequest {
+            tenant_id,
+            provider_id: "stripe".to_string(),
+            delivery_id: None,
+            idempotency_key: None,
+            signature: Some("t=1,v1=00".to_string()),
+            raw_payload: payload,
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        PaymentError::ProviderConfiguration { ref provider_id } if provider_id == "stripe"
+    ));
 }
