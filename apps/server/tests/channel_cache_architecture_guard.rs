@@ -144,6 +144,9 @@ fn durable_channel_generation_is_database_owned_and_supervised() {
         "SELECT id FROM tenants",
         "invalidate_tenant_channel_cache_local",
         "spawn_supervised_worker",
+        "struct ChannelCacheInvalidationHealth",
+        "self.health.mark_failed()",
+        "self.health.mark_ready()",
     ] {
         assert!(
             migration.contains(required) || runtime.contains(required),
@@ -153,4 +156,5 @@ fn durable_channel_generation_is_database_owned_and_supervised() {
     assert!(bootstrap.contains("start_channel_cache_invalidation_listener"));
     assert!(guardrails.contains("ChannelCacheInvalidationListenerHandle"));
     assert!(guardrails.contains("channel resolution durable invalidation runtime"));
+    assert!(guardrails.contains(".map(|handle| handle.is_ready())"));
 }
