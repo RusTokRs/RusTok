@@ -181,8 +181,9 @@ failure, but the server compile gate must be rerun after the workspace baseline 
 
 ### P1. Complete correctness-sensitive host adoption
 
-- [ ] Inventory every active host/domain cache and classify its payload size, source of truth,
-  invalidation scope, negative-result stability and cross-replica consistency requirement.
+- [x] Inventory every active host/domain cache and classify its payload size, source of truth,
+  invalidation scope, negative-result stability and cross-replica consistency requirement in
+  [`host-cache-inventory.md`](./host-cache-inventory.md).
 - [ ] Migrate remaining variable-size caches to byte-weighted factories and remaining dynamic
   identities to canonical bounded keys.
 - [ ] Use typed envelopes and explicit load/negative policy where incompatible payloads or stale
