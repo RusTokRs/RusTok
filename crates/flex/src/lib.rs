@@ -12,6 +12,7 @@ pub mod cache_generation;
 pub mod errors;
 pub mod events;
 pub mod graphql;
+mod migrations;
 pub mod orchestration;
 pub mod parsing;
 pub mod registry;
@@ -69,7 +70,7 @@ pub use events::{
 
 impl MigrationSource for FlexModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
+        migrations::migrations()
     }
 }
 
