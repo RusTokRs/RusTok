@@ -112,6 +112,7 @@ impl CommerceProviderMutation {
         ctx: &Context<'_>,
         tenant_id: Uuid,
         payment_collection_id: Uuid,
+        idempotency_key: String,
         input: CreateRefundInputObject,
     ) -> Result<GqlRefund> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -126,6 +127,7 @@ impl CommerceProviderMutation {
             .create_refund(
                 tenant_id,
                 payment_collection_id,
+                idempotency_key,
                 crate::dto::CreateRefundInput {
                     amount: parse_decimal(&input.amount)?,
                     reason: input.reason,
