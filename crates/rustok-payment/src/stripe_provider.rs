@@ -21,6 +21,7 @@ const DEFAULT_STRIPE_API_BASE: &str = "https://api.stripe.com";
 const DEFAULT_WEBHOOK_TOLERANCE_SECONDS: i64 = 300;
 const DEFAULT_REQUEST_TIMEOUT_SECONDS: u64 = 30;
 const MAX_STRIPE_ID_LENGTH: usize = 191;
+const WEBHOOK_OPERATION: &str = "webhook";
 
 #[derive(Clone)]
 pub struct StripeCredentials {
@@ -39,14 +40,11 @@ impl StripeCredentials {
     }
 
     fn validate(&self) -> PaymentResult<()> {
-        if self.secret_key.expose_secret().trim().is_empty() {
-            return Err(PaymentError::Validation(
-                "stripe secret key must not be empty".to_string(),
-            ));
-        }
-        if self.webhook_secret.expose_secret().trim().is_empty() {
-            return Err(PaymentError::Validation(
-                "stripe webhook secret must not be empty".to_string(),
+        if self.secret_key.expose_secret().trim().is_empty()
+            || self.webhook_secret.expose_secret().trim().is_empty()
+        {
+            return Err(PaymentError::provider_configuration(
+                STRIPE_PAYMENT_PROVIDER_ID,
             ));
         }
         Ok(())
@@ -80,11 +78,10 @@ impl StaticStripeCredentialProvider {
 #[async_trait]
 impl StripeCredentialProvider for StaticStripeCredentialProvider {
     async fn credentials_for_tenant(&self, tenant_id: Uuid) -> PaymentResult<StripeCredentials> {
-        self.credentials.get(&tenant_id).cloned().ok_or_else(|| {
-            PaymentError::Validation(
-                "stripe credentials are not configured for this tenant".to_string(),
-            )
-        })
+        self.credentials
+            .get(&tenant_id)
+            .cloned()
+            .ok_or_else(|| PaymentError::provider_configuration(STRIPE_PAYMENT_PROVIDER_ID))
     }
 }
 
@@ -109,18 +106,14 @@ impl Default for StripePaymentProviderConfig {
 
 impl StripePaymentProviderConfig {
     pub fn validate(&self) -> PaymentResult<()> {
-        if !(1..=3600).contains(&self.webhook_tolerance_seconds) {
-            return Err(PaymentError::Validation(
-                "stripe webhook tolerance must be between 1 and 3600 seconds".to_string(),
+        if !(1..=3600).contains(&self.webhook_tolerance_seconds)
+            || !(1..=120).contains(&self.request_timeout_seconds)
+        {
+            return Err(PaymentError::provider_configuration(
+                STRIPE_PAYMENT_PROVIDER_ID,
             ));
         }
-        if !(1..=120).contains(&self.request_timeout_seconds) {
-            return Err(PaymentError::Validation(
-                "stripe request timeout must be between 1 and 120 seconds".to_string(),
-            ));
-        }
-        validate_api_base(self.api_base.as_str())?;
-        Ok(())
+        validate_api_base(self.api_base.as_str())
     }
 }
 
@@ -140,9 +133,7 @@ impl StripePaymentProvider {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.request_timeout_seconds))
             .build()
-            .map_err(|_| {
-                PaymentError::Validation("stripe HTTP client configuration failed".to_string())
-            })?;
+            .map_err(|_| PaymentError::provider_configuration(STRIPE_PAYMENT_PROVIDER_ID))?;
         Ok(Self {
             client,
             config,
@@ -178,6 +169,7 @@ impl StripePaymentProvider {
     async fn post_form<T: for<'de> Deserialize<'de>>(
         &self,
         credentials: &StripeCredentials,
+        operation: &str,
         path: &str,
         idempotency_key: Option<&str>,
         form: &[(String, String)],
@@ -190,15 +182,19 @@ impl StripePaymentProvider {
         if let Some(key) = idempotency_key.map(str::trim).filter(|key| !key.is_empty()) {
             request = request.header("Idempotency-Key", key);
         }
-        let response = request.send().await.map_err(|_| {
-            PaymentError::Validation("stripe provider request is unavailable".to_string())
+        let response = request.send().await.map_err(|error| {
+            if error.is_connect() {
+                PaymentError::provider_unavailable(STRIPE_PAYMENT_PROVIDER_ID, operation)
+            } else {
+                PaymentError::provider_outcome_unknown(STRIPE_PAYMENT_PROVIDER_ID, operation)
+            }
         })?;
         let status = response.status();
         if !status.is_success() {
-            return Err(map_stripe_status(status));
+            return Err(map_stripe_status(status, operation));
         }
         response.json::<T>().await.map_err(|_| {
-            PaymentError::Validation("stripe provider returned an invalid response".to_string())
+            PaymentError::provider_outcome_unknown(STRIPE_PAYMENT_PROVIDER_ID, operation)
         })
     }
 
@@ -229,15 +225,11 @@ impl StripePaymentProvider {
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| {
-                PaymentError::Validation("stripe signature header is required".to_string())
-            })?;
+            .ok_or_else(webhook_rejected)?;
         let parsed = parse_stripe_signature(signature)?;
         let age = Utc::now().timestamp().abs_diff(parsed.timestamp);
         if age > self.config.webhook_tolerance_seconds as u64 {
-            return Err(PaymentError::Validation(
-                "stripe webhook timestamp is outside the allowed tolerance".to_string(),
-            ));
+            return Err(webhook_rejected());
         }
         let mut signed_payload = parsed.timestamp.to_string().into_bytes();
         signed_payload.push(b'.');
@@ -252,9 +244,7 @@ impl StripePaymentProvider {
             mac.verify_slice(signature).is_ok()
         });
         if !verified {
-            return Err(PaymentError::Validation(
-                "stripe webhook signature verification failed".to_string(),
-            ));
+            return Err(webhook_rejected());
         }
         Ok(())
     }
@@ -265,16 +255,16 @@ impl StripePaymentProvider {
         request: &PaymentProviderWebhookRequest,
     ) -> PaymentResult<PaymentProviderWebhookResult> {
         self.verify_webhook_signature(credentials, request)?;
-        let event: StripeEvent = serde_json::from_slice(&request.raw_payload).map_err(|_| {
-            PaymentError::Validation("stripe webhook payload is not valid JSON".to_string())
-        })?;
-        validate_stripe_id(&event.id, "event id")?;
+        let event: StripeEvent = serde_json::from_slice(&request.raw_payload)
+            .map_err(|_| webhook_invalid_response())?;
+        validate_webhook_id(&event.id)?;
         let object = event.data.object;
-        let object_id = required_value_string(&object, "id")?;
-        validate_stripe_id(&object_id, "object id")?;
-        let currency = required_value_string(&object, "currency")?.to_ascii_uppercase();
+        let object_id = required_webhook_value(&object, "id")?;
+        validate_webhook_id(&object_id)?;
+        let currency = required_webhook_value(&object, "currency")?.to_ascii_uppercase();
         let amount_minor = stripe_event_amount_minor(&event.event_type, &object)?;
-        let amount = from_minor_units(amount_minor, currency.as_str())?;
+        let amount = from_minor_units(amount_minor, currency.as_str())
+            .map_err(|_| webhook_invalid_response())?;
         let object_metadata = object
             .get("metadata")
             .and_then(Value::as_object)
@@ -285,29 +275,25 @@ impl StripePaymentProvider {
             "payment_intent.amount_capturable_updated" => (
                 "payment.authorized",
                 "collection_id",
-                required_map_string(&object_metadata, "rustok_collection_id")?,
+                required_webhook_metadata(&object_metadata, "rustok_collection_id")?,
             ),
             "payment_intent.succeeded" => (
                 "payment.captured",
                 "collection_id",
-                required_map_string(&object_metadata, "rustok_collection_id")?,
+                required_webhook_metadata(&object_metadata, "rustok_collection_id")?,
             ),
             "payment_intent.canceled" => (
                 "payment.cancelled",
                 "collection_id",
-                required_map_string(&object_metadata, "rustok_collection_id")?,
+                required_webhook_metadata(&object_metadata, "rustok_collection_id")?,
             ),
             "refund.updated" | "refund.created"
                 if object.get("status").and_then(Value::as_str) == Some("succeeded") => (
                     "refund.completed",
                     "refund_id",
-                    required_map_string(&object_metadata, "rustok_refund_id")?,
+                    required_webhook_metadata(&object_metadata, "rustok_refund_id")?,
                 ),
-            other => {
-                return Err(PaymentError::Validation(format!(
-                    "stripe webhook event `{other}` is unsupported"
-                )))
-            }
+            _ => return Err(webhook_rejected()),
         };
         let mut metadata = Map::new();
         metadata.insert(owner_key.to_string(), Value::String(owner_id));
@@ -376,27 +362,35 @@ impl PaymentProvider for StripePaymentProvider {
         let intent: StripePaymentIntent = self
             .post_form(
                 &credentials,
+                "authorize",
                 "/v1/payment_intents",
                 request.idempotency_key.as_deref(),
                 form.as_slice(),
             )
             .await?;
         if intent.status != "requires_capture" {
-            return Err(PaymentError::Validation(format!(
-                "stripe payment intent authorization returned status `{}`",
-                intent.status
-            )));
+            return Err(PaymentError::provider_outcome_unknown(
+                STRIPE_PAYMENT_PROVIDER_ID,
+                "authorize",
+            ));
         }
         let authorized_minor = if intent.amount_capturable > 0 {
             intent.amount_capturable
         } else {
             intent.amount
         };
+        let authorized_amount = from_minor_units(authorized_minor, intent.currency.as_str())
+            .map_err(|_| {
+                PaymentError::provider_outcome_unknown(
+                    STRIPE_PAYMENT_PROVIDER_ID,
+                    "authorize",
+                )
+            })?;
         let provider_payment_id = intent.id.clone();
         Ok(PaymentProviderOperationResult {
             provider_id: STRIPE_PAYMENT_PROVIDER_ID.to_string(),
             external_reference: Some(intent.id),
-            authorized_amount: from_minor_units(authorized_minor, intent.currency.as_str())?,
+            authorized_amount,
             captured_amount: Decimal::ZERO,
             metadata: Self::operation_metadata(&request, Some(provider_payment_id.as_str())),
         })
@@ -408,29 +402,37 @@ impl PaymentProvider for StripePaymentProvider {
     ) -> PaymentResult<PaymentProviderOperationResult> {
         let credentials = self.resolve_credentials(request.tenant_id).await?;
         let intent_id = Self::payment_intent_id(&request)?;
-        validate_stripe_id(&intent_id, "payment intent id")?;
+        validate_stripe_id(&intent_id)?;
         let amount = to_minor_units(request.amount, request.currency_code.as_str())?;
         let form = vec![("amount_to_capture".to_string(), amount.to_string())];
         let path = format!("/v1/payment_intents/{intent_id}/capture");
         let intent: StripePaymentIntent = self
             .post_form(
                 &credentials,
+                "capture",
                 path.as_str(),
                 request.idempotency_key.as_deref(),
                 form.as_slice(),
             )
             .await?;
         if intent.status != "succeeded" {
-            return Err(PaymentError::Validation(format!(
-                "stripe payment intent capture returned status `{}`",
-                intent.status
-            )));
+            return Err(PaymentError::provider_outcome_unknown(
+                STRIPE_PAYMENT_PROVIDER_ID,
+                "capture",
+            ));
         }
+        let captured_amount = from_minor_units(intent.amount_received, intent.currency.as_str())
+            .map_err(|_| {
+                PaymentError::provider_outcome_unknown(
+                    STRIPE_PAYMENT_PROVIDER_ID,
+                    "capture",
+                )
+            })?;
         Ok(PaymentProviderOperationResult {
             provider_id: STRIPE_PAYMENT_PROVIDER_ID.to_string(),
             external_reference: Some(intent.id.clone()),
             authorized_amount: request.amount,
-            captured_amount: from_minor_units(intent.amount_received, intent.currency.as_str())?,
+            captured_amount,
             metadata: Self::operation_metadata(&request, Some(intent.id.as_str())),
         })
     }
@@ -441,22 +443,23 @@ impl PaymentProvider for StripePaymentProvider {
     ) -> PaymentResult<PaymentProviderOperationResult> {
         let credentials = self.resolve_credentials(request.tenant_id).await?;
         let intent_id = Self::payment_intent_id(&request)?;
-        validate_stripe_id(&intent_id, "payment intent id")?;
+        validate_stripe_id(&intent_id)?;
         let form: Vec<(String, String)> = Vec::new();
         let path = format!("/v1/payment_intents/{intent_id}/cancel");
         let intent: StripePaymentIntent = self
             .post_form(
                 &credentials,
+                "cancel",
                 path.as_str(),
                 request.idempotency_key.as_deref(),
                 form.as_slice(),
             )
             .await?;
         if intent.status != "canceled" {
-            return Err(PaymentError::Validation(format!(
-                "stripe payment intent cancel returned status `{}`",
-                intent.status
-            )));
+            return Err(PaymentError::provider_outcome_unknown(
+                STRIPE_PAYMENT_PROVIDER_ID,
+                "cancel",
+            ));
         }
         Ok(PaymentProviderOperationResult {
             provider_id: STRIPE_PAYMENT_PROVIDER_ID.to_string(),
@@ -473,7 +476,7 @@ impl PaymentProvider for StripePaymentProvider {
     ) -> PaymentResult<PaymentProviderOperationResult> {
         let credentials = self.resolve_credentials(request.tenant_id).await?;
         let intent_id = Self::payment_intent_id(&request)?;
-        validate_stripe_id(&intent_id, "payment intent id")?;
+        validate_stripe_id(&intent_id)?;
         let refund_id = required_metadata_string(&request.metadata, "refund_id")?;
         let amount = to_minor_units(request.amount, request.currency_code.as_str())?;
         let form = vec![
@@ -484,14 +487,16 @@ impl PaymentProvider for StripePaymentProvider {
         let refund: StripeRefund = self
             .post_form(
                 &credentials,
+                "refund",
                 "/v1/refunds",
                 request.idempotency_key.as_deref(),
                 form.as_slice(),
             )
             .await?;
         if refund.status.as_deref() != Some("succeeded") {
-            return Err(PaymentError::Validation(
-                "stripe refund is not completed".to_string(),
+            return Err(PaymentError::provider_outcome_unknown(
+                STRIPE_PAYMENT_PROVIDER_ID,
+                "refund",
             ));
         }
         Ok(PaymentProviderOperationResult {
@@ -556,24 +561,14 @@ fn parse_stripe_signature(value: &str) -> PaymentResult<ParsedStripeSignature> {
             continue;
         };
         match name {
-            "t" => {
-                timestamp = Some(value.parse::<i64>().map_err(|_| {
-                    PaymentError::Validation(
-                        "stripe signature timestamp is invalid".to_string(),
-                    )
-                })?);
-            }
+            "t" => timestamp = Some(value.parse::<i64>().map_err(|_| webhook_rejected())?),
             "v1" => signatures.push(decode_hex(value)?),
             _ => {}
         }
     }
-    let timestamp = timestamp.ok_or_else(|| {
-        PaymentError::Validation("stripe signature timestamp is missing".to_string())
-    })?;
+    let timestamp = timestamp.ok_or_else(webhook_rejected)?;
     if signatures.is_empty() {
-        return Err(PaymentError::Validation(
-            "stripe signature v1 digest is missing".to_string(),
-        ));
+        return Err(webhook_rejected());
     }
     Ok(ParsedStripeSignature {
         timestamp,
@@ -583,46 +578,48 @@ fn parse_stripe_signature(value: &str) -> PaymentResult<ParsedStripeSignature> {
 
 fn decode_hex(value: &str) -> PaymentResult<Vec<u8>> {
     if value.is_empty() || !value.is_ascii() || value.len() % 2 != 0 {
-        return Err(PaymentError::Validation(
-            "stripe signature digest is invalid".to_string(),
-        ));
+        return Err(webhook_rejected());
     }
     (0..value.len())
         .step_by(2)
         .map(|index| {
-            u8::from_str_radix(&value[index..index + 2], 16).map_err(|_| {
-                PaymentError::Validation("stripe signature digest is invalid".to_string())
-            })
+            u8::from_str_radix(&value[index..index + 2], 16).map_err(|_| webhook_rejected())
         })
         .collect()
 }
 
 fn validate_api_base(value: &str) -> PaymentResult<()> {
-    let url = Url::parse(value.trim()).map_err(|_| {
-        PaymentError::Validation("stripe api base must be a valid URL".to_string())
-    })?;
+    let url = Url::parse(value.trim())
+        .map_err(|_| PaymentError::provider_configuration(STRIPE_PAYMENT_PROVIDER_ID))?;
     if url.query().is_some() || url.fragment().is_some() {
-        return Err(PaymentError::Validation(
-            "stripe api base must not contain a query or fragment".to_string(),
+        return Err(PaymentError::provider_configuration(
+            STRIPE_PAYMENT_PROVIDER_ID,
         ));
     }
     let local_http = url.scheme() == "http"
         && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
     if url.scheme() != "https" && !local_http {
-        return Err(PaymentError::Validation(
-            "stripe api base must use https or an exact loopback host".to_string(),
+        return Err(PaymentError::provider_configuration(
+            STRIPE_PAYMENT_PROVIDER_ID,
         ));
     }
     Ok(())
 }
 
-fn map_stripe_status(status: StatusCode) -> PaymentError {
-    let message = if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
-        "stripe provider is temporarily unavailable"
+fn map_stripe_status(status: StatusCode, operation: &str) -> PaymentError {
+    if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+        PaymentError::provider_unavailable(STRIPE_PAYMENT_PROVIDER_ID, operation)
     } else {
-        "stripe provider rejected the operation"
-    };
-    PaymentError::Validation(message.to_string())
+        PaymentError::provider_rejected(STRIPE_PAYMENT_PROVIDER_ID, operation)
+    }
+}
+
+fn webhook_rejected() -> PaymentError {
+    PaymentError::provider_rejected(STRIPE_PAYMENT_PROVIDER_ID, WEBHOOK_OPERATION)
+}
+
+fn webhook_invalid_response() -> PaymentError {
+    PaymentError::provider_invalid_response(STRIPE_PAYMENT_PROVIDER_ID, WEBHOOK_OPERATION)
 }
 
 fn required_metadata_string(metadata: &Value, key: &str) -> PaymentResult<String> {
@@ -639,46 +636,48 @@ fn required_metadata_string(metadata: &Value, key: &str) -> PaymentResult<String
         })
 }
 
-fn required_value_string(value: &Value, key: &str) -> PaymentResult<String> {
+fn required_webhook_value(value: &Value, key: &str) -> PaymentResult<String> {
     value
         .get(key)
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
-        .ok_or_else(|| {
-            PaymentError::Validation(format!(
-                "stripe webhook object requires `{key}`"
-            ))
-        })
+        .ok_or_else(webhook_invalid_response)
 }
 
-fn required_map_string(values: &Map<String, Value>, key: &str) -> PaymentResult<String> {
+fn required_webhook_metadata(values: &Map<String, Value>, key: &str) -> PaymentResult<String> {
     values
         .get(key)
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
-        .ok_or_else(|| {
-            PaymentError::Validation(format!(
-                "stripe webhook metadata requires `{key}`"
-            ))
-        })
+        .ok_or_else(webhook_invalid_response)
 }
 
-fn validate_stripe_id(value: &str, label: &str) -> PaymentResult<()> {
-    if value.is_empty()
-        || value.len() > MAX_STRIPE_ID_LENGTH
-        || !value
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_')
-    {
-        return Err(PaymentError::Validation(format!(
-            "stripe {label} is invalid"
-        )));
+fn validate_stripe_id(value: &str) -> PaymentResult<()> {
+    if !valid_stripe_id(value) {
+        return Err(PaymentError::Validation(
+            "stripe provider payment identity is invalid".to_string(),
+        ));
     }
     Ok(())
+}
+
+fn validate_webhook_id(value: &str) -> PaymentResult<()> {
+    if !valid_stripe_id(value) {
+        return Err(webhook_invalid_response());
+    }
+    Ok(())
+}
+
+fn valid_stripe_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_STRIPE_ID_LENGTH
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 fn stripe_event_amount_minor(event_type: &str, object: &Value) -> PaymentResult<i64> {
@@ -692,11 +691,7 @@ fn stripe_event_amount_minor(event_type: &str, object: &Value) -> PaymentResult<
     keys.iter()
         .filter_map(|key| object.get(*key).and_then(Value::as_i64))
         .find(|amount| *amount > 0)
-        .ok_or_else(|| {
-            PaymentError::Validation(
-                "stripe webhook object has no positive amount".to_string(),
-            )
-        })
+        .ok_or_else(webhook_invalid_response)
 }
 
 fn currency_exponent(currency: &str) -> u32 {
