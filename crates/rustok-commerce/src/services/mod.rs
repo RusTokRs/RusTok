@@ -30,6 +30,7 @@ mod payment_orchestration;
 mod post_order;
 mod recovering_staged_checkout;
 mod refund_reconciliation;
+mod return_completion_operation;
 mod return_completion_orchestration;
 mod shipping_profile;
 mod staged_checkout;
@@ -120,6 +121,13 @@ pub use recovering_staged_checkout::{
     RecoveringStagedCheckoutError, RecoveringStagedCheckoutResult, RecoveringStagedCheckoutService,
 };
 pub use refund_reconciliation::RefundReconciliationService;
+pub use return_completion_operation::{
+    BeginReturnCompletionOperation, ReturnCompletionOperationCheckpoint,
+    ReturnCompletionOperationError, ReturnCompletionOperationJournal,
+    ReturnCompletionOperationResult, ReturnCompletionOperationStage,
+    ReturnCompletionOperationStatus, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
+    MAX_RETURN_COMPLETION_LEASE_SECONDS,
+};
 pub use return_completion_orchestration::{
     CompleteReturnClaimInput, CompleteReturnExchangeInput, CompleteReturnRefundInput,
     CompleteReturnResolutionInput, ReturnCompletionOrchestrationService,
