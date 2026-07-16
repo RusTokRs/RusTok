@@ -24,6 +24,29 @@ pub fn AuditPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         "page_builder.audit.select",
         "Select component",
     );
+    let errors_label = t(locale.as_deref(), "page_builder.audit.errors", "errors");
+    let warnings_label = t(
+        locale.as_deref(),
+        "page_builder.audit.warnings",
+        "warnings",
+    );
+    let info_label = t(locale.as_deref(), "page_builder.audit.info", "info");
+    let components_label = t(
+        locale.as_deref(),
+        "page_builder.audit.components",
+        "components",
+    );
+    let error_label = t(locale.as_deref(), "page_builder.audit.error", "Error");
+    let warning_label = t(
+        locale.as_deref(),
+        "page_builder.audit.warning",
+        "Warning",
+    );
+    let informational_label = t(
+        locale.as_deref(),
+        "page_builder.audit.informational",
+        "Info",
+    );
     let panel_runtime = runtime;
 
     view! {
@@ -37,7 +60,7 @@ pub fn AuditPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     )
                 });
                 let summary = format!(
-                    "{} errors · {} warnings · {} info · {} components",
+                    "{} {errors_label} · {} {warnings_label} · {} {info_label} · {} {components_label}",
                     report.error_count,
                     report.warning_count,
                     report.info_count,
@@ -59,10 +82,19 @@ pub fn AuditPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     <div class="space-y-2">
                         <p class="text-xs text-muted-foreground">{summary}</p>
                         {report.diagnostics.into_iter().map(|diagnostic| {
-                            let severity_class = match diagnostic.severity {
-                                AuditSeverity::Error => "border-destructive/40 bg-destructive/10",
-                                AuditSeverity::Warning => "border-amber-500/40 bg-amber-500/10",
-                                AuditSeverity::Info => "border-border bg-muted/50",
+                            let (severity_class, severity_label) = match diagnostic.severity {
+                                AuditSeverity::Error => (
+                                    "border-destructive/40 bg-destructive/10",
+                                    error_label.clone(),
+                                ),
+                                AuditSeverity::Warning => (
+                                    "border-amber-500/40 bg-amber-500/10",
+                                    warning_label.clone(),
+                                ),
+                                AuditSeverity::Info => (
+                                    "border-border bg-muted/50",
+                                    informational_label.clone(),
+                                ),
                             };
                             let runtime = panel_runtime.clone();
                             let component_id = diagnostic.component_id.clone();
@@ -71,7 +103,7 @@ pub fn AuditPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                 <article class=format!("space-y-1 rounded border p-2 text-xs {severity_class}")>
                                     <div class="flex items-start justify-between gap-2">
                                         <strong>{diagnostic.code}</strong>
-                                        <span class="uppercase text-muted-foreground">{format!("{:?}", diagnostic.severity)}</span>
+                                        <span class="uppercase text-muted-foreground">{severity_label}</span>
                                     </div>
                                     <p>{diagnostic.message}</p>
                                     <code class="block break-all text-muted-foreground">{diagnostic.path}</code>
