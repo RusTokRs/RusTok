@@ -8,6 +8,8 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
     let migration_registry =
         include_str!("../../../crates/rustok-seo/src/migrations/mod.rs");
     let worker = include_str!("../src/services/seo_redirect_cache_reconciliation.rs");
+    let evidence = include_str!("../src/services/seo_redirect_cache_reconciliation_tests.rs");
+    let workflow = include_str!("../../../.github/workflows/cache-hardening.yml");
     let schema = include_str!("../src/services/graphql_schema.rs");
     let guardrails = include_str!("../src/services/runtime_guardrails.rs");
 
@@ -50,46 +52,109 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
         "Box::new(m20260716_000007_add_redirect_cache_cursor_index::Migration)"
     ));
 
-    let count = worker
+    for required in [
+        "trait SeoRedirectCacheInvalidator: Send + Sync",
+        "struct GlobalSeoRedirectCacheInvalidator",
+        "rustok_seo::services::invalidate_redirect_cache(tenant_id).await",
+        "rustok_seo::services::invalidate_all_redirect_cache().await",
+        "struct SeoRedirectCacheReconciliationState",
+        "healthy: AtomicBool",
+        "observed_count: AtomicU64",
+        "pub fn is_running(&self) -> bool",
+        "pub fn is_ready(&self) -> bool",
+        "self.is_running() && self.state.healthy.load(Ordering::Acquire)",
+        "pub fn observed_count(&self) -> u64",
+        "start_seo_redirect_cache_reconciliation_with_options",
+        "SEO_REDIRECT_CACHE_BATCH_LIMIT: u64 = 256",
+        "SEO_REDIRECT_CACHE_MAX_PAGES_PER_POLL: usize = 16",
+        "for _ in 0..max_pages_per_poll",
+        "if page_len < batch_limit",
+        "let expected_count = observed_count.saturating_add(processed)",
+        "if current_count != expected_count",
+        "cursor_gap_recovery",
+        "state.healthy.store(false, Ordering::Release)",
+        "invalidator.invalidate_all().await",
+        "impl Drop for AbortOnDropSeoRedirectCacheTask",
+        "SeoRedirectCacheReconciliationStartLock",
+        "pub fn seo_redirect_cache_reconciliation_required",
+        "RuntimeHostMode::RegistryOnly | RuntimeHostMode::Worker",
+        "#[path = \"seo_redirect_cache_reconciliation_tests.rs\"]",
+    ] {
+        assert!(
+            worker.contains(required),
+            "SEO redirect reconciliation must retain {required}"
+        );
+    }
+
+    let seed = worker
+        .find("async fn seed_redirect_cache_state")
+        .expect("worker must have startup seed logic");
+    let count = worker[seed..]
         .find("redirect_cache_change_count(db).await?")
-        .expect("startup must seed the independent delivery-row count");
-    let latest = worker
+        .map(|offset| seed + offset)
+        .expect("startup must read the independent delivery-row count");
+    let latest = worker[seed..]
         .find("latest_redirect_cache_cursor(db).await?")
+        .map(|offset| seed + offset)
         .expect("startup must read the durable high-water mark");
-    let clear = worker
-        .find("invalidate_all_redirect_cache().await")
+    let clear = worker[seed..]
+        .find("invalidator.invalidate_all().await;")
+        .map(|offset| seed + offset)
         .expect("startup must clear entries covered by the seed cursor");
-    let healthy = worker
-        .find("healthy.store(true, Ordering::Release)")
+    let run = worker
+        .find("async fn run_seo_redirect_cache_reconciliation")
+        .expect("worker must run a supervised reconciliation loop");
+    let healthy = worker[run..]
+        .find("state.healthy.store(true, Ordering::Release)")
+        .map(|offset| run + offset)
         .expect("readiness must become healthy only after startup recovery");
-    let changes = worker
-        .find("redirect_cache_changes_after(")
-        .expect("worker must consume rows after the seed cursor");
     assert!(count < latest);
     assert!(latest < clear);
     assert!(clear < healthy);
-    assert!(healthy < changes);
 
-    assert!(worker.contains("SEO_REDIRECT_CACHE_BATCH_LIMIT: u64 = 256"));
-    assert!(worker.contains("SEO_REDIRECT_CACHE_MAX_PAGES_PER_POLL: usize = 16"));
-    assert!(worker.contains("for _ in 0..SEO_REDIRECT_CACHE_MAX_PAGES_PER_POLL"));
-    assert!(worker.contains("if page_len < SEO_REDIRECT_CACHE_BATCH_LIMIT"));
-    assert!(worker.contains("let expected_count = observed_count.saturating_add(processed)"));
-    assert!(worker.contains("if current_count != expected_count"));
-    assert!(worker.contains("cursor_gap_recovery"));
-    assert!(worker.contains("(cursor, observed_count) = seed_redirect_cache_state(&db).await?"));
-    assert!(worker.contains("healthy: Arc<AtomicBool>"));
-    assert!(worker.contains(
-        "!self.task.is_finished() && self.healthy.load(Ordering::Acquire)"
-    ));
-    assert!(worker.contains("healthy.store(false, Ordering::Release)"));
-    assert!(worker.contains("impl Drop for AbortOnDropSeoRedirectCacheTask"));
-    assert!(worker.contains("SeoRedirectCacheReconciliationStartLock"));
-    assert!(worker.contains("pub fn seo_redirect_cache_reconciliation_required"));
-    assert!(worker.contains(
-        "RuntimeHostMode::RegistryOnly | RuntimeHostMode::Worker"
-    ));
-    assert!(worker.contains("pub fn is_running(&self) -> bool"));
+    let poll_error = worker
+        .find("if let Err(error) = poll_result")
+        .expect("poll errors must fail closed");
+    let poll_unhealthy = worker[poll_error..]
+        .find("state.healthy.store(false, Ordering::Release)")
+        .map(|offset| poll_error + offset)
+        .expect("poll errors must clear readiness");
+    let poll_clear = worker[poll_unhealthy..]
+        .find("invalidator.invalidate_all().await;")
+        .map(|offset| poll_unhealthy + offset)
+        .expect("poll errors must clear cached redirects");
+    assert!(poll_unhealthy < poll_clear);
+
+    for required in [
+        "seo_redirect_cache_reconciliation_recovers_two_replicas_across_cursor_faults",
+        "RecordingInvalidator",
+        "start_seo_redirect_cache_reconciliation_with_options",
+        "Duration::from_millis(20)",
+        "batch_limit",
+        "insert_redirect_change(&db, exact_tenant, 30).await;",
+        "for sequence in 40..50",
+        "insert_redirect_change(&db, Uuid::new_v4(), -10_000).await;",
+        "ALTER TABLE seo_event_deliveries RENAME TO seo_event_deliveries_unavailable",
+        "wait_for_replica(&handle_a, false, Some(14)).await;",
+        "wait_for_replica(&handle_b, true, Some(14)).await;",
+        "assert!(!handle_a.is_running());",
+        "assert!(handle_b.is_ready());",
+    ] {
+        assert!(
+            evidence.contains(required),
+            "SEO two-replica evidence must retain {required}"
+        );
+    }
+
+    for required in [
+        "apps/server/src/services/seo_redirect_cache_reconciliation*.rs",
+        "cargo test -p rustok-server seo_redirect_cache_reconciliation --lib",
+    ] {
+        assert!(
+            workflow.contains(required),
+            "cache workflow must retain SEO evidence command: {required}"
+        );
+    }
 
     let start = schema
         .find("start_seo_redirect_cache_reconciliation(ctx)")
@@ -103,5 +168,6 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
     assert!(guardrails.contains("if seo_redirect_cache_reconciliation_required(ctx)"));
     assert!(guardrails.contains("SeoRedirectCacheReconciliationHandle"));
     assert!(guardrails.contains("SEO redirect durable cache reconciliation"));
+    assert!(guardrails.contains(".map(|handle| handle.is_ready())"));
     assert!(guardrails.contains("RuntimeGuardrailStatus::Critical"));
 }
