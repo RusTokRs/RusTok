@@ -5,6 +5,7 @@
 //! validation, persistence, and HTML rendering in Rust.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 pub const FLY_BROWSER_PROTOCOL_V1: &str = "fly_iframe_v1";
 pub const FLY_BROWSER_ADAPTER_VERSION: &str = "fly_browser_v1";
@@ -60,6 +61,87 @@ impl BrowserAdapterConfig {
     }
 }
 
+/// Normalized request posted by the standalone JavaScript bridge to a consumer-owned SSR endpoint.
+///
+/// The endpoint is intentionally transport-neutral. A host may expose it through Axum, Actix,
+/// a Leptos server function, or its existing REST facade, then load the consumer-owned draft and
+/// apply the intent through the Fly engine.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BrowserIntentEnvelope {
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+    pub instance_id: String,
+    pub intent: String,
+    #[serde(default)]
+    pub payload: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_hash: Option<String>,
+}
+
+impl BrowserIntentEnvelope {
+    pub fn normalized(mut self) -> Result<Self, BrowserIntentError> {
+        self.protocol = self.protocol.trim().to_string();
+        self.instance_id = self.instance_id.trim().to_string();
+        self.intent = self.intent.trim().to_ascii_lowercase();
+        self.page_id = normalize_optional(self.page_id);
+        self.revision = normalize_optional(self.revision);
+        self.project_hash = normalize_optional(self.project_hash);
+        if self.protocol != FLY_BROWSER_PROTOCOL_V1 {
+            return Err(BrowserIntentError::Protocol(self.protocol));
+        }
+        if self.instance_id.is_empty() {
+            return Err(BrowserIntentError::MissingInstanceId);
+        }
+        if self.intent.is_empty() {
+            return Err(BrowserIntentError::MissingIntent);
+        }
+        Ok(self)
+    }
+
+    pub fn is_mutating(&self) -> bool {
+        matches!(
+            self.intent.as_str(),
+            "insert_block"
+                | "begin_palette_drag"
+                | "drop_requested"
+                | "remove_selected"
+                | "move_selected"
+                | "patch_selected"
+                | "undo"
+                | "redo"
+                | "save"
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BrowserIntentError {
+    Protocol(String),
+    MissingInstanceId,
+    MissingIntent,
+}
+
+impl std::fmt::Display for BrowserIntentError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Protocol(protocol) => write!(
+                formatter,
+                "unsupported Fly browser protocol `{protocol}`; expected `{FLY_BROWSER_PROTOCOL_V1}`"
+            ),
+            Self::MissingInstanceId => formatter.write_str("Fly browser instance id is required"),
+            Self::MissingIntent => formatter.write_str("Fly browser intent is required"),
+        }
+    }
+}
+
+impl std::error::Error for BrowserIntentError {}
+
 fn non_empty(value: String, fallback: String) -> String {
     let value = value.trim();
     if value.is_empty() {
@@ -87,6 +169,10 @@ fn default_expected_origin() -> String {
     "null".to_string()
 }
 
+fn default_protocol() -> String {
+    FLY_BROWSER_PROTOCOL_V1.to_string()
+}
+
 fn default_true() -> bool {
     true
 }
@@ -94,6 +180,7 @@ fn default_true() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn defaults_are_ssr_host_friendly() {
@@ -119,5 +206,37 @@ mod tests {
         assert_eq!(config.iframe_selector, "iframe");
         assert_eq!(config.intent_endpoint.as_deref(), Some("/admin/fly/intents"));
         assert_eq!(config.csrf_token, None);
+    }
+
+    #[test]
+    fn browser_intent_rejects_cross_protocol_requests() {
+        let error = BrowserIntentEnvelope {
+            protocol: "future".to_string(),
+            instance_id: "canvas-a".to_string(),
+            intent: "select".to_string(),
+            payload: json!({}),
+            sequence: Some(1),
+            page_id: None,
+            revision: None,
+            project_hash: None,
+        }
+        .normalized()
+        .expect_err("protocol mismatch");
+        assert!(matches!(error, BrowserIntentError::Protocol(_)));
+    }
+
+    #[test]
+    fn mutating_intents_are_explicit() {
+        let intent = BrowserIntentEnvelope {
+            protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
+            instance_id: "canvas-a".to_string(),
+            intent: "save".to_string(),
+            payload: json!({}),
+            sequence: None,
+            page_id: Some("home".to_string()),
+            revision: Some("rev-1".to_string()),
+            project_hash: Some("abc".to_string()),
+        };
+        assert!(intent.is_mutating());
     }
 }
