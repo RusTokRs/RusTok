@@ -20,6 +20,7 @@ on:
       - "apps/server/src/middleware/channel.rs"
       - "apps/server/src/middleware/channel_tests.rs"
       - "apps/server/src/middleware/locale.rs"
+      - "apps/server/src/middleware/locale_base.rs"
       - "apps/server/src/middleware/rate_limit.rs"
       - "apps/server/src/middleware/rate_limit_base.rs"
       - "apps/server/src/middleware/rate_limit_tests.rs"
@@ -39,6 +40,7 @@ on:
       - "apps/server/src/services/tenant_cache_generation.rs"
       - "apps/server/src/services/tenant_cache_generation_status.rs"
       - "apps/server/src/services/tenant_generation_delivery_gate.rs"
+      - "apps/server/src/services/tenant_locale_generation.rs"
       - "apps/server/src/services/mod.rs"
       - "apps/server/tests/cache_architecture_guard.rs"
       - "apps/server/tests/cache_legacy_fallback_guard.rs"
@@ -57,6 +59,7 @@ on:
       - "apps/server/tests/tenant_generation_preflight_guard.rs"
       - "apps/server/tests/tenant_generation_readiness_guard.rs"
       - "apps/server/tests/tenant_listener_handle_guard.rs"
+      - "apps/server/tests/tenant_locale_generation_guard.rs"
       - "crates/rustok-seo/src/services/mod.rs"
       - "crates/rustok-seo/src/services/redirects.rs"
       - ".github/workflows/cache-hardening.yml"
@@ -78,6 +81,7 @@ on:
       - "apps/server/src/middleware/channel.rs"
       - "apps/server/src/middleware/channel_tests.rs"
       - "apps/server/src/middleware/locale.rs"
+      - "apps/server/src/middleware/locale_base.rs"
       - "apps/server/src/middleware/rate_limit.rs"
       - "apps/server/src/middleware/rate_limit_base.rs"
       - "apps/server/src/middleware/rate_limit_tests.rs"
@@ -97,6 +101,7 @@ on:
       - "apps/server/src/services/tenant_cache_generation.rs"
       - "apps/server/src/services/tenant_cache_generation_status.rs"
       - "apps/server/src/services/tenant_generation_delivery_gate.rs"
+      - "apps/server/src/services/tenant_locale_generation.rs"
       - "apps/server/src/services/mod.rs"
       - "apps/server/tests/cache_architecture_guard.rs"
       - "apps/server/tests/cache_legacy_fallback_guard.rs"
@@ -115,6 +120,7 @@ on:
       - "apps/server/tests/tenant_generation_preflight_guard.rs"
       - "apps/server/tests/tenant_generation_readiness_guard.rs"
       - "apps/server/tests/tenant_listener_handle_guard.rs"
+      - "apps/server/tests/tenant_locale_generation_guard.rs"
       - "crates/rustok-seo/src/services/mod.rs"
       - "crates/rustok-seo/src/services/redirects.rs"
       - ".github/workflows/cache-hardening.yml"
@@ -158,10 +164,11 @@ jobs:
           cargo test -p rustok-cache --test generation_store_regression
           cargo test -p rustok-cache --test invalidation_failure_metrics
           cargo test -p rustok-cache --test redis_health_regression
-          cargo test -p rustok-server --test cache_architecture_guard --test cache_legacy_fallback_guard --test cache_redis_monitor_architecture_guard --test cache_redis_status_architecture_guard --test cache_worker_guardrail_architecture_guard --test channel_cache_architecture_guard --test field_definition_cache_runtime_guard --test generation_store_architecture_guard --test locale_cache_architecture_guard --test marketplace_cache_architecture_guard --test rate_limit_cache_runtime_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard
+          cargo test -p rustok-server --test cache_architecture_guard --test cache_legacy_fallback_guard --test cache_redis_monitor_architecture_guard --test cache_redis_status_architecture_guard --test cache_worker_guardrail_architecture_guard --test channel_cache_architecture_guard --test field_definition_cache_runtime_guard --test generation_store_architecture_guard --test locale_cache_architecture_guard --test marketplace_cache_architecture_guard --test rate_limit_cache_runtime_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard --test tenant_locale_generation_guard
           cargo test -p rustok-server tenant_cache --lib
           cargo test -p rustok-server tenant_cache_generation --lib
           cargo test -p rustok-server tenant_generation_delivery_gate --lib
+          cargo test -p rustok-server tenant_locale_generation --lib
           cargo test -p rustok-server channel_cache --lib
           cargo test -p rustok-server rate_limit --lib
           cargo test -p rustok-server tenant_locale_cache --lib
