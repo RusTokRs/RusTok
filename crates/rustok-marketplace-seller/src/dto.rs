@@ -233,3 +233,8 @@ pub struct ReadMarketplaceSellerMembershipRequest {
     pub seller_id: Uuid,
     pub user_id: Uuid,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListMarketplaceSellerMembersRequest {
+    pub seller_id: Uuid,
+}
