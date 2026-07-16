@@ -1,5 +1,6 @@
 pub mod auth_context;
 pub mod block_rest_auth;
+#[path = "channel_native_wrapper.rs"]
 pub mod channel;
 pub mod guest_cart_access;
 pub mod invite_accept;
