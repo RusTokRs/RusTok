@@ -95,11 +95,14 @@ pub mod tenant {
             .unwrap_or_default()
             .as_millis()
             .min(u128::from(u64::MAX)) as u64;
+        let invalidation_key = tenant_id
+            .map(|tenant_id| tenant_id.to_string())
+            .unwrap_or_else(|| "*".to_string());
         let record = match DurableCacheInvalidationRecord::new(
             Uuid::new_v4(),
             tenant_id,
             TENANT_CACHE_GENERATION_CHANNEL,
-            "tenant-manual-invalidation",
+            invalidation_key,
             generation.generation,
             emitted_at_unix_ms,
             cause,
