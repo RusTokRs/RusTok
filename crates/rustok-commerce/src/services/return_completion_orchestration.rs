@@ -110,7 +110,12 @@ impl ReturnCompletionOrchestrationService {
         let order_service = OrderService::new(self.db.clone(), self.event_bus.clone());
 
         match operation.status.as_str() {
-            "completed" => return order_service.get_return(tenant_id, return_id).await.map_err(Into::into),
+            "completed" => {
+                return order_service
+                    .get_return(tenant_id, return_id)
+                    .await
+                    .map_err(Into::into)
+            }
             "reconciliation_required" => {
                 return Err(PostOrderOrchestrationError::Validation(format!(
                     "return completion operation {} requires reconciliation",
@@ -142,7 +147,10 @@ impl ReturnCompletionOrchestrationService {
                 .await
                 .map_err(map_journal_error)?;
             if current.status == "completed" {
-                return order_service.get_return(tenant_id, return_id).await.map_err(Into::into);
+                return order_service
+                    .get_return(tenant_id, return_id)
+                    .await
+                    .map_err(Into::into);
             }
             return Err(PostOrderOrchestrationError::Validation(format!(
                 "return completion operation {} is already executing or requires operator action",
@@ -213,6 +221,14 @@ impl ReturnCompletionOrchestrationService {
         } = input;
         let mut stage = ReturnCompletionOperationStage::from_str(operation.stage.as_str())
             .map_err(map_journal_error)?;
+        self.validate_explicit_resolution_links(
+            order_service,
+            tenant_id,
+            &current_return,
+            refund_id,
+            order_change_id,
+        )
+        .await?;
         let mut owner_input = CompleteOrderReturnInput {
             resolution_type,
             refund_id,
@@ -233,7 +249,8 @@ impl ReturnCompletionOrchestrationService {
                     refund_input,
                 )
                 .await?;
-            stage = ReturnCompletionOperationStage::ResolutionCreated;
+            stage = ReturnCompletionOperationStage::from_str(operation.stage.as_str())
+                .map_err(map_journal_error)?;
             owner_input.resolution_type = Some("refund".to_string());
             owner_input.refund_id = Some(refund.id);
             owner_input.order_change_id = None;
@@ -255,7 +272,8 @@ impl ReturnCompletionOrchestrationService {
                     exchange_input.metadata,
                 )
                 .await?;
-            stage = ReturnCompletionOperationStage::ResolutionCreated;
+            stage = ReturnCompletionOperationStage::from_str(operation.stage.as_str())
+                .map_err(map_journal_error)?;
             owner_input.resolution_type = Some("exchange".to_string());
             owner_input.refund_id = None;
             owner_input.order_change_id = Some(order_change.id);
@@ -277,7 +295,8 @@ impl ReturnCompletionOrchestrationService {
                     claim_input.metadata,
                 )
                 .await?;
-            stage = ReturnCompletionOperationStage::ResolutionCreated;
+            stage = ReturnCompletionOperationStage::from_str(operation.stage.as_str())
+                .map_err(map_journal_error)?;
             owner_input.resolution_type = Some("claim".to_string());
             owner_input.refund_id = None;
             owner_input.order_change_id = Some(order_change.id);
@@ -327,6 +346,41 @@ impl ReturnCompletionOrchestrationService {
         Ok(completed)
     }
 
+    async fn validate_explicit_resolution_links(
+        &self,
+        order_service: &OrderService,
+        tenant_id: Uuid,
+        order_return: &OrderReturnResponse,
+        refund_id: Option<Uuid>,
+        order_change_id: Option<Uuid>,
+    ) -> PostOrderOrchestrationResult<()> {
+        if let Some(refund_id) = refund_id {
+            let payment_service = PaymentService::new(self.db.clone());
+            let refund = payment_service.get_refund(tenant_id, refund_id).await?;
+            let collection = payment_service
+                .get_collection(tenant_id, refund.payment_collection_id)
+                .await?;
+            if collection.order_id != Some(order_return.order_id) {
+                return Err(PostOrderOrchestrationError::Validation(format!(
+                    "refund {refund_id} is not attached to order {}",
+                    order_return.order_id
+                )));
+            }
+        }
+        if let Some(order_change_id) = order_change_id {
+            let order_change = order_service
+                .get_order_change(tenant_id, order_change_id)
+                .await?;
+            if order_change.order_id != order_return.order_id {
+                return Err(PostOrderOrchestrationError::Validation(format!(
+                    "order change {order_change_id} is not attached to order {}",
+                    order_return.order_id
+                )));
+            }
+        }
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn resolve_refund(
         &self,
@@ -346,6 +400,12 @@ impl ReturnCompletionOrchestrationService {
         let mut refund = if let Some(refund_id) = operation.refund_id {
             payment_service.get_refund(tenant_id, refund_id).await?
         } else {
+            if stage != ReturnCompletionOperationStage::Created {
+                return Err(PostOrderOrchestrationError::Validation(format!(
+                    "return completion operation {} reached `{}` without a refund identity",
+                    operation.id, operation.stage
+                )));
+            }
             let collection_id = self
                 .resolve_payment_collection(
                     tenant_id,
@@ -365,21 +425,19 @@ impl ReturnCompletionOrchestrationService {
                     },
                 )
                 .await?;
-            if stage == ReturnCompletionOperationStage::Created {
-                *operation = journal
-                    .checkpoint(ReturnCompletionOperationCheckpoint {
-                        tenant_id,
-                        operation_id: operation.id,
-                        lease_owner: lease_owner.to_string(),
-                        expected_stage: ReturnCompletionOperationStage::Created,
-                        next_stage: ReturnCompletionOperationStage::ResolutionCreated,
-                        refund_id: Some(created.id),
-                        order_change_id: None,
-                        lease_seconds: DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
-                    })
-                    .await
-                    .map_err(map_journal_error)?;
-            }
+            *operation = journal
+                .checkpoint(ReturnCompletionOperationCheckpoint {
+                    tenant_id,
+                    operation_id: operation.id,
+                    lease_owner: lease_owner.to_string(),
+                    expected_stage: ReturnCompletionOperationStage::Created,
+                    next_stage: ReturnCompletionOperationStage::ResolutionCreated,
+                    refund_id: Some(created.id),
+                    order_change_id: None,
+                    lease_seconds: DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
+                })
+                .await
+                .map_err(map_journal_error)?;
             created
         };
 
@@ -422,33 +480,41 @@ impl ReturnCompletionOrchestrationService {
             order_service
                 .get_order_change(tenant_id, order_change_id)
                 .await?
-        } else if let Some(existing) = self
-            .find_resolution_order_change(
-                order_service,
-                tenant_id,
-                order_return.order_id,
-                operation.id,
-                change_type,
-            )
-            .await?
-        {
-            existing
         } else {
-            order_service
-                .create_order_change(
+            if stage != ReturnCompletionOperationStage::Created {
+                return Err(PostOrderOrchestrationError::Validation(format!(
+                    "return completion operation {} reached `{}` without an order-change identity",
+                    operation.id, operation.stage
+                )));
+            }
+            if let Some(existing) = self
+                .find_resolution_order_change(
+                    order_service,
                     tenant_id,
-                    actor_id,
                     order_return.order_id,
-                    build_resolution_order_change(
-                        change_type,
-                        description,
-                        preview,
-                        metadata,
-                        return_id,
-                        operation.id,
-                    )?,
+                    operation.id,
+                    change_type,
                 )
                 .await?
+            {
+                existing
+            } else {
+                order_service
+                    .create_order_change(
+                        tenant_id,
+                        actor_id,
+                        order_return.order_id,
+                        build_resolution_order_change(
+                            change_type,
+                            description,
+                            preview,
+                            metadata,
+                            return_id,
+                            operation.id,
+                        )?,
+                    )
+                    .await?
+            }
         };
 
         if stage == ReturnCompletionOperationStage::Created {
@@ -592,8 +658,9 @@ fn failure_disposition(error: &PostOrderOrchestrationError) -> FailureDispositio
         PostOrderOrchestrationError::Order(OrderError::Database(_) | OrderError::Core(_)) => {
             FailureDisposition::Retryable
         }
-        PostOrderOrchestrationError::Order(_)
-        | PostOrderOrchestrationError::Validation(_) => FailureDisposition::Failed,
+        PostOrderOrchestrationError::Order(_) | PostOrderOrchestrationError::Validation(_) => {
+            FailureDisposition::Failed
+        }
     }
 }
 
@@ -768,7 +835,9 @@ fn normalize_object_or_empty(
     }
 }
 
-fn map_journal_error(error: super::return_completion_operation::ReturnCompletionOperationError) -> PostOrderOrchestrationError {
+fn map_journal_error(
+    error: super::return_completion_operation::ReturnCompletionOperationError,
+) -> PostOrderOrchestrationError {
     PostOrderOrchestrationError::Validation(error.to_string())
 }
 
