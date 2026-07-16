@@ -10,9 +10,9 @@ crate-type = ["rlib"]
 
 [features]
 default = ["ssr"]
-csr = ["leptos/csr", "rustok-page-builder-admin/csr"]
-hydrate = ["leptos/hydrate", "rustok-page-builder-admin/hydrate"]
-ssr = ["leptos/ssr", "rustok-page-builder-admin/ssr"]
+csr = ["leptos/csr", "leptos-auth/csr", "rustok-page-builder-admin/csr"]
+hydrate = ["leptos/hydrate", "leptos-auth/hydrate", "rustok-page-builder-admin/hydrate"]
+ssr = ["leptos/ssr", "leptos-auth/ssr", "rustok-page-builder-admin/ssr"]
 
 [dependencies]
 fly = { path = "../../fly" }
