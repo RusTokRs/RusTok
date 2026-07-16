@@ -63,6 +63,39 @@ pub struct SsrPageRenameRequest {
 }
 
 impl AdminCanvasController {
+    pub fn ssr_form_intent(
+        &self,
+        intent: &str,
+        payload: &Value,
+    ) -> Result<Option<UiIntent>, String> {
+        let intent = match intent {
+            "patch_component_property" => self.ssr_component_property_intent(
+                serde_json::from_value(payload.clone())
+                    .map_err(|error| format!("invalid component property form: {error}"))?,
+            )?,
+            "patch_page_metadata" => self.ssr_page_metadata_intent(
+                serde_json::from_value(payload.clone())
+                    .map_err(|error| format!("invalid page metadata form: {error}"))?,
+            )?,
+            "create_page" => self.ssr_create_page_intent(
+                serde_json::from_value(payload.clone())
+                    .map_err(|error| format!("invalid create page form: {error}"))?,
+            )?,
+            "rename_page" => self.ssr_rename_page_intent(
+                serde_json::from_value(payload.clone())
+                    .map_err(|error| format!("invalid rename page form: {error}"))?,
+            )?,
+            "remove_page" => self.ssr_remove_page_intent(
+                payload
+                    .get("page_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "remove page form requires `page_id`".to_string())?,
+            )?,
+            _ => return Ok(None),
+        };
+        Ok(Some(intent))
+    }
+
     pub fn ssr_component_property_intent(
         &self,
         request: SsrComponentPropertyRequest,
@@ -73,7 +106,9 @@ impl AdminCanvasController {
             return Err(format!("component `{component_id}` does not exist"));
         }
         if name == "id" || name == "components" {
-            return Err(format!("property `{name}` cannot be edited through the SSR inspector"));
+            return Err(format!(
+                "property `{name}` cannot be edited through the SSR inspector"
+            ));
         }
 
         let mut patch = ComponentPatch::default();
@@ -268,6 +303,7 @@ mod tests {
             json!({
                 "pages": [{
                     "id": "home",
+                    "flyPageMeta": { "future": 42 },
                     "component": {
                         "id": "root",
                         "type": "wrapper",
@@ -306,16 +342,6 @@ mod tests {
     #[test]
     fn metadata_request_preserves_unknown_metadata_extensions() {
         let mut controller = controller();
-        controller
-            .editor_mut()
-            .document_mut()
-            .project
-            .pages[0]
-            .extensions
-            .insert(
-                FLY_PAGE_META_FIELD.to_string(),
-                serde_json::json!({ "future": 42 }),
-            );
         let intent = controller
             .ssr_page_metadata_intent(SsrPageMetadataRequest {
                 page_id: "home".to_string(),
@@ -335,5 +361,14 @@ mod tests {
                 ["future"],
             42
         );
+    }
+
+    #[test]
+    fn form_dispatch_rejects_unknown_intents() {
+        let controller = controller();
+        assert!(controller
+            .ssr_form_intent("unknown", &json!({}))
+            .unwrap()
+            .is_none());
     }
 }
