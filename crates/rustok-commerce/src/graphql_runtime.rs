@@ -98,3 +98,17 @@ pub(crate) fn order_change_orchestration_from_context(
         None => service,
     }
 }
+
+pub(crate) fn return_completion_orchestration_from_context(
+    ctx: &Context<'_>,
+    db: DatabaseConnection,
+    event_bus: rustok_outbox::TransactionalEventBus,
+) -> crate::ReturnCompletionOrchestrationService {
+    let service = crate::ReturnCompletionOrchestrationService::new(db, event_bus);
+    match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
+        Some(runtime) => {
+            service.with_payment_provider_registry(runtime.payment_provider_registry())
+        }
+        None => service,
+    }
+}
