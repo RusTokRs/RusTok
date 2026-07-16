@@ -60,11 +60,12 @@ Registries and evidence:
   `apps/server/tests/commerce_fulfillment_transport_guard.rs` and
   `verify-commerce-admin-boundary.mjs`.
 - [x] Keep order-change type dispatch and exchange/claim refund coordination in
-  `OrderChangeOrchestrationService` instead of the REST transport.
-- [x] Guard REST order-change orchestration ownership with
+  `OrderChangeOrchestrationService` instead of transport code.
+- [x] Route REST and GraphQL order-change application through the same
+  `OrderChangeOrchestrationService`.
+- [x] Guard REST and GraphQL order-change orchestration ownership with
   `apps/server/tests/commerce_order_change_transport_guard.rs` and
   `verify-commerce-admin-boundary.mjs`.
-- [ ] Route GraphQL order-change application through the same orchestration service.
 - [ ] Execute the complete provider-consumer graph with retained runtime evidence.
 
 ## Checkout orchestration workstream
