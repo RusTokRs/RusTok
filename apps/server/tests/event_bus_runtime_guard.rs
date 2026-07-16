@@ -28,3 +28,19 @@ fn event_bus_runtime_is_atomically_owned_and_restartable() {
 
     assert!(!source.contains("EventForwarderHandle {\n        _handle:"));
 }
+
+#[test]
+fn terminal_event_forwarder_is_critical_in_runtime_guardrails() {
+    let source = include_str!("../src/services/runtime_guardrails.rs");
+    let forwarder = source
+        .find("ctx.shared_get::<EventForwarderHandle>()")
+        .expect("runtime guardrails must observe the event forwarder handle");
+    let rbac = source
+        .find("ctx.shared_get::<RbacCacheInvalidationListenerHandle>()")
+        .expect("existing critical worker guard must remain present");
+
+    assert!(forwarder < rbac);
+    assert!(source.contains("event bus transport forwarder"));
+    assert!(source.contains("ctx.shared_get::<EventForwarderHandle>()\n            .map(|handle| handle.is_running())"));
+    assert!(source.contains("RuntimeGuardrailStatus::Critical"));
+}
