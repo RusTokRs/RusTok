@@ -89,7 +89,7 @@ contracts documented and source-locked.
 
 ## References
 
-- [Host cache contract inventory](../rustok-cache/docs/host-cache-inventory.md)
+- [Host cache contract inventory](../../rustok-cache/docs/host-cache-inventory.md)
 
 ## Change rules
 
