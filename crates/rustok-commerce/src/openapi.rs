@@ -64,6 +64,9 @@ use utoipa::OpenApi;
         crate::controllers::checkout_operations::show_checkout_operation,
         crate::controllers::checkout_operations::compensate_checkout_operation,
         crate::controllers::checkout_operations::sweep_checkout_compensations,
+        crate::controllers::return_completion_operations::list_return_completion_operations,
+        crate::controllers::return_completion_operations::show_return_completion_operation,
+        crate::controllers::return_completion_operations::retry_return_completion_operation,
     ),
     components(
         schemas(
@@ -78,7 +81,6 @@ use utoipa::OpenApi;
             rustok_product::dto::PriceResponse,
             rustok_product::entities::product::ProductStatus,
             crate::controllers::products::ListProductsParams,
-            crate::controllers::products::ProductListItem,
             crate::controllers::store::StoreListProductsParams,
             crate::controllers::store::StoreContextQuery,
             crate::controllers::store::StoreCreateCartInput,
@@ -136,6 +138,8 @@ use utoipa::OpenApi;
             crate::controllers::checkout_operations::AdminCheckoutCompensationSweepInput,
             crate::controllers::checkout_operations::AdminCheckoutCompensationSweepFailure,
             crate::controllers::checkout_operations::AdminCheckoutCompensationSweepResponse,
+            crate::controllers::return_completion_operations::AdminListReturnCompletionOperationsParams,
+            crate::services::ReturnCompletionOperationResponse,
         )
     ),
     modifiers(&CommerceOpenApiAddon),
