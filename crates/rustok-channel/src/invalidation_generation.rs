@@ -3,6 +3,8 @@ use sea_orm::{ConnectionTrait, DbErr, Statement};
 use crate::{ChannelError, ChannelResult};
 
 pub const CHANNEL_RESOLUTION_INVALIDATION_SCOPE: &str = "resolution";
+const READ_CHANNEL_RESOLUTION_GENERATION_SQL: &str =
+    "SELECT generation FROM channel_resolution_invalidation_state WHERE scope = 'resolution'";
 
 pub async fn read_resolution_invalidation_generation<C>(db: &C) -> ChannelResult<u64>
 where
@@ -11,10 +13,7 @@ where
     let row = db
         .query_one(Statement::from_string(
             db.get_database_backend(),
-            format!(
-                "SELECT generation FROM channel_resolution_invalidation_state WHERE scope = '{}'",
-                CHANNEL_RESOLUTION_INVALIDATION_SCOPE
-            ),
+            READ_CHANNEL_RESOLUTION_GENERATION_SQL.to_string(),
         ))
         .await?
         .ok_or_else(|| {
