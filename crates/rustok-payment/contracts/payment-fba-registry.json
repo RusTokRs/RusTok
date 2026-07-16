@@ -3,7 +3,7 @@
   "module": "payment",
   "role": "provider",
   "status": "boundary_ready",
-  "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1+refund_creation.v1+provider_outcome.v1",
+  "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1+refund_creation.v1+provider_outcome.v1+stripe_runtime.v1",
   "ports": [
     {
       "name": "PaymentCollectionPort",
@@ -56,11 +56,13 @@
     "provider_outcome_journal_source": "crates/rustok-commerce/src/services/journaled_payment_provider.rs",
     "uncertain_outcome_migration": "crates/rustok-payment/src/migrations/m20260714_000120_allow_uncertain_provider_outcomes.rs",
     "stripe_adapter_source": "crates/rustok-payment/src/stripe_provider.rs",
-    "stripe_source_status": "implemented_not_compiled_or_executed",
+    "stripe_runtime_source": "apps/server/src/services/payment_provider_runtime.rs",
+    "stripe_source_status": "registered_in_server_source_not_compiled_or_executed",
     "central_board": "docs/modules/registry.md",
     "registry_verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "refund_identity_verifier": "scripts/verify/verify-payment-refund-identity.mjs",
-    "provider_outcome_verifier": "scripts/verify/verify-payment-provider-outcome-contract.mjs"
+    "provider_outcome_verifier": "scripts/verify/verify-payment-provider-outcome-contract.mjs",
+    "stripe_runtime_verifier": "scripts/verify/verify-payment-stripe-runtime.mjs"
   },
   "in_process_provider_impl": {
     "service": "PaymentService",
@@ -103,7 +105,8 @@
       "remote_adapter_placeholder",
       "provider_webhook_inbox",
       "refund_creation_owner",
-      "provider_outcome_journal"
+      "provider_outcome_journal",
+      "deployment_stripe_runtime"
     ],
     "cases": [
       {
@@ -159,6 +162,21 @@
         ]
       },
       {
+        "operation": "compose_external_provider",
+        "profiles": [
+          "deployment_stripe_runtime"
+        ],
+        "assertions": [
+          "server_feature_is_opt_in",
+          "tenant_secret_refs_are_deployment_owned",
+          "raw_secrets_are_not_configured_or_persisted",
+          "duplicate_tenant_mapping_is_rejected",
+          "cross_tenant_secret_reference_reuse_is_rejected",
+          "resolver_aliases_are_process_owned",
+          "one_shared_registry_serves_all_transports"
+        ]
+      },
+      {
         "operation": "handle_webhook",
         "profiles": [
           "provider_webhook_inbox"
@@ -190,7 +208,7 @@
   },
   "provider_spi": {
     "status": "manual_baseline_plus_stripe_source",
-    "implementation_status": "stripe_and_outcome_policy_source_implemented_not_runtime_verified",
+    "implementation_status": "stripe_registered_in_server_source_not_compiled_or_runtime_verified",
     "source": "crates/rustok-payment/src/providers.rs",
     "default_provider_id": "manual",
     "operations": [
@@ -245,13 +263,16 @@
       },
       {
         "provider_id": "stripe",
-        "feature": "stripe",
+        "feature": "payment-stripe",
+        "adapter_feature": "rustok-payment/stripe",
         "source": "crates/rustok-payment/src/stripe_provider.rs",
+        "runtime_source": "apps/server/src/services/payment_provider_runtime.rs",
         "credential_scope": "tenant",
         "credential_provider": "StripeCredentialProvider",
+        "secret_registry": "rustok_secrets::SecretResolverRegistry",
         "request_timeout_required": true,
         "typed_error_mapping": true,
-        "status": "source_implemented_not_registered_compiled_or_executed"
+        "status": "source_registered_not_compiled_or_executed"
       }
     ],
     "webhook_ingress": {
@@ -276,12 +297,14 @@
     },
     "lifecycle_owner_service": "PaymentService",
     "external_adapter_registration": {
-      "status": "planned_contract_locked",
-      "registration_owner": "rustok-payment",
+      "status": "source_implemented_not_compiled_or_executed",
+      "registration_owner": "rustok-server",
+      "registry_owner": "rustok-payment",
       "requires_descriptor_capability_match": true,
       "requires_health_status_mapping": true,
       "requires_degraded_mode_mapping": true,
       "requires_tenant_secret_resolution": true,
+      "secret_reference_owner": "deployment",
       "disallows_persisted_lifecycle_state_in_adapter": true
     }
   }
