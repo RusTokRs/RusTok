@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::dto::{
-    AddMarketplaceSellerMemberInput, CreateMarketplaceSellerInput, ListMarketplaceSellersInput,
+    AddMarketplaceSellerMemberInput, CreateMarketplaceSellerInput,
+    ListMarketplaceSellerMembersRequest, ListMarketplaceSellersInput,
     MarketplaceSellerMemberResponse, MarketplaceSellerResponse,
     ReadMarketplaceSellerMembershipRequest, ReadMarketplaceSellerRequest,
     ReviewMarketplaceSellerOnboardingInput, SubmitMarketplaceSellerOnboardingInput,
@@ -80,6 +81,12 @@ pub trait MarketplaceSellerReadPort: Send + Sync {
         context: PortContext,
         request: ReadMarketplaceSellerMembershipRequest,
     ) -> Result<MarketplaceSellerMemberResponse, PortError>;
+
+    async fn list_members(
+        &self,
+        context: PortContext,
+        request: ListMarketplaceSellerMembersRequest,
+    ) -> Result<Vec<MarketplaceSellerMemberResponse>, PortError>;
 }
 
 #[async_trait]
@@ -172,6 +179,17 @@ impl MarketplaceSellerReadPort for crate::MarketplaceSellerService {
         )
         .await
         .map_err(map_owner_error)
+    }
+
+    async fn list_members(
+        &self,
+        context: PortContext,
+        request: ListMarketplaceSellerMembersRequest,
+    ) -> Result<Vec<MarketplaceSellerMemberResponse>, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        self.list_members(parse_tenant_id(&context)?, request.seller_id)
+            .await
+            .map_err(map_owner_error)
     }
 }
 
