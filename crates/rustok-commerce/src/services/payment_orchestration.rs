@@ -6,8 +6,8 @@ use rustok_payment::dto::{
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
 use rustok_payment::{
-    PaymentProviderOperationJournal, PaymentService, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-    PROVIDER_OPERATION_SUCCEEDED,
+    PaymentProviderOperationJournal, PaymentRefundCreationService, PaymentService,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
@@ -38,11 +38,9 @@ pub enum PaymentOrchestrationError {
 
 pub type PaymentOrchestrationResult<T> = Result<T, PaymentOrchestrationError>;
 
-/// Commerce-owned payment orchestration for checkout and post-order paths.
-/// Provider effects are journaled by the payment owner before invocation; only
-/// `PaymentService` persists payment/refund lifecycle state.
 pub struct PaymentOrchestrationService {
     payment_service: PaymentService,
+    refund_creation_service: PaymentRefundCreationService,
     provider_operation_journal: PaymentProviderOperationJournal,
     payment_provider_registry: PaymentProviderRegistry,
 }
@@ -51,6 +49,7 @@ impl PaymentOrchestrationService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
             payment_service: PaymentService::new(db.clone()),
+            refund_creation_service: PaymentRefundCreationService::new(db.clone()),
             provider_operation_journal: PaymentProviderOperationJournal::new(db),
             payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
         }
@@ -394,6 +393,7 @@ impl PaymentOrchestrationService {
         &self,
         tenant_id: Uuid,
         collection_id: Uuid,
+        creation_key: impl Into<String>,
         input: CreateRefundInput,
     ) -> PaymentOrchestrationResult<RefundResponse> {
         let collection = self
@@ -401,13 +401,9 @@ impl PaymentOrchestrationService {
             .get_collection(tenant_id, collection_id)
             .await?;
         let provider_id = provider_id_for_collection(&collection);
-
-        // Reserve refundable capacity before the external side effect. The same
-        // journaled executor then supplies owner refund/payment identities and
-        // records uncertain outcomes for reconciliation.
         let refund = self
-            .payment_service
-            .create_refund(tenant_id, collection_id, input.clone())
+            .refund_creation_service
+            .create_or_replay(tenant_id, collection_id, creation_key, input.clone())
             .await?;
         let provider_request = PaymentProviderOperationRequest {
             tenant_id,
@@ -435,13 +431,22 @@ impl PaymentOrchestrationService {
             provider_request,
         )
         .await?;
-        mark_journal_committed(
+        match mark_journal_committed(
             &self.provider_operation_journal,
             journaled.operation_id,
             "refund",
         )
-        .await?;
-        Ok(refund)
+        .await
+        {
+            Ok(()) => Ok(refund),
+            Err(PaymentOrchestrationError::Provider(source)) => {
+                Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
+                    refund_id: refund.id,
+                    source,
+                })
+            }
+            Err(error) => Err(error),
+        }
     }
 
     pub async fn complete_refund(
