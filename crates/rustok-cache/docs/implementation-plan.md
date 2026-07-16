@@ -100,8 +100,10 @@ Last reconciled with `main`: 2026-07-16.
   detail negatives use a short independent TTL.
 - [x] Channel cache is byte-weighted with hashed request facts, bounded monotonic tenant versions,
   trigger-backed database generation reserved with every channel-table mutation, local/Redis fast
-  publication, five-second database reconciliation, full-clear recovery, critical worker guardrails
-  and fail-safe cache bypass on allocator exhaustion.
+  publication, five-second database reconciliation, atomic namespace rollover, critical worker
+  guardrails and fail-safe cache bypass on allocator exhaustion. Source tests cover SQLite replica
+  readers, two independent server runtimes without Redis, database state loss/recovery and a wired
+  PostgreSQL commit/rollback/concurrency/replay scenario.
 - [x] RBAC permissions use weighted typed identity, bounded striped epochs and database-backed durable
   generation recovery.
 - [x] SEO redirects reconcile from transactionally persisted rows with a bounded `(created_at, id)`
@@ -124,7 +126,9 @@ The detailed active-cache contract is maintained in
 
 - [x] Maintain one permanent path-scoped `Cache hardening` workflow covering format,
   core/cache/channel/Flex-owner/server compilation, regression/architecture tests, Clippy, module
-  validation and isolated Redis 7 jobs.
+  validation, ephemeral PostgreSQL 17 channel-generation evidence and isolated Redis 7 jobs.
+- [x] Guard the channel workflow path scope, Channel/Flex Clippy commands, PostgreSQL job and durable
+  replica-recovery test sources from accidental removal.
 - [x] Guard Redis, generation, PubSub, refresh and CAS Prometheus alert metric names in
   `tests/alert_rules_guard.rs`.
 - [x] Publish operational alerts for Redis degradation, generation bump failure, PubSub failure,
@@ -144,12 +148,14 @@ The detailed active-cache contract is maintained in
 
 ### P0. Live and failure-recovery evidence
 
+- [ ] Execute the source-complete channel SQLite reader, two-server-runtime and PostgreSQL 17 jobs on
+  the same revision and record their results.
 - [ ] Run ignored `rustok-cache` and `rustok-core` suites against isolated Redis 7.
-- [ ] Prove channel database-trigger generation advancement on PostgreSQL and SQLite, startup
-  baseline recovery, concurrent mutation handling, validated local/Redis publication and periodic
-  namespace recovery across multiple replicas.
-- [ ] Prove channel convergence during Redis publication failure, listener lag, Redis disconnect and
-  reconnect, database outage/recovery, generation regression and terminal-worker readiness.
+- [ ] Add and execute channel stale-resolution assertions for validated local/Redis publication,
+  dropped publication, listener lag, Redis disconnect/reconnect and periodic namespace recovery
+  across multiple replicas.
+- [ ] Prove channel convergence during database outage/recovery and generation regression while
+  checking the resolved channel value in addition to critical worker readiness.
 - [ ] Prove exact/wildcard tenant-locale recovery, listener lag handling and periodic generation
   reconciliation across multiple replicas.
 - [ ] Prove Flex singleton generation and all four owner triggers on PostgreSQL and SQLite, including
@@ -214,6 +220,8 @@ cargo test -p rustok-server \
   --test rate_limit_cache_runtime_guard \
   --test cache_redis_monitor_architecture_guard \
   --test cache_worker_guardrail_architecture_guard
+RUSTOK_CHANNEL_TEST_POSTGRES_URL=postgres://postgres:postgres@127.0.0.1:5432/rustok_channel \
+  cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1
 cargo clippy -p rustok-core --lib --features redis-cache -- -D warnings
 cargo clippy -p rustok-cache --lib -- -D warnings
 cargo clippy -p flex --lib -- -D warnings
