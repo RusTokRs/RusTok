@@ -11,6 +11,8 @@ pub mod build_executor;
 pub mod cache_redis_status_monitor;
 pub mod cache_runtime;
 pub mod channel_cache_invalidation;
+#[cfg(test)]
+mod channel_cache_invalidation_runtime_tests;
 pub mod commerce_provider_runtime;
 pub mod dashboard_user_activity;
 pub mod effective_module_policy;
