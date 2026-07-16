@@ -20,6 +20,7 @@ on:
       - "apps/server/src/middleware/channel_tests.rs"
       - "apps/server/src/middleware/locale.rs"
       - "apps/server/src/middleware/rate_limit.rs"
+      - "apps/server/src/middleware/rate_limit_base.rs"
       - "apps/server/src/middleware/rate_limit_tests.rs"
       - "apps/server/src/services/app_runtime.rs"
       - "apps/server/src/services/cache_redis_status_monitor.rs"
@@ -48,6 +49,7 @@ on:
       - "apps/server/tests/generation_store_architecture_guard.rs"
       - "apps/server/tests/locale_cache_architecture_guard.rs"
       - "apps/server/tests/marketplace_cache_architecture_guard.rs"
+      - "apps/server/tests/rate_limit_cache_runtime_guard.rs"
       - "apps/server/tests/tenant_cache_architecture_guard.rs"
       - "apps/server/tests/tenant_generation_concurrency_guard.rs"
       - "apps/server/tests/tenant_generation_delivery_gate_guard.rs"
@@ -75,6 +77,7 @@ on:
       - "apps/server/src/middleware/channel_tests.rs"
       - "apps/server/src/middleware/locale.rs"
       - "apps/server/src/middleware/rate_limit.rs"
+      - "apps/server/src/middleware/rate_limit_base.rs"
       - "apps/server/src/middleware/rate_limit_tests.rs"
       - "apps/server/src/services/app_runtime.rs"
       - "apps/server/src/services/cache_redis_status_monitor.rs"
@@ -103,6 +106,7 @@ on:
       - "apps/server/tests/generation_store_architecture_guard.rs"
       - "apps/server/tests/locale_cache_architecture_guard.rs"
       - "apps/server/tests/marketplace_cache_architecture_guard.rs"
+      - "apps/server/tests/rate_limit_cache_runtime_guard.rs"
       - "apps/server/tests/tenant_cache_architecture_guard.rs"
       - "apps/server/tests/tenant_generation_concurrency_guard.rs"
       - "apps/server/tests/tenant_generation_delivery_gate_guard.rs"
@@ -151,7 +155,7 @@ jobs:
           cargo test -p rustok-cache --test generation_store_regression
           cargo test -p rustok-cache --test invalidation_failure_metrics
           cargo test -p rustok-cache --test redis_health_regression
-          cargo test -p rustok-server --test cache_architecture_guard --test cache_legacy_fallback_guard --test cache_redis_monitor_architecture_guard --test cache_redis_status_architecture_guard --test cache_worker_guardrail_architecture_guard --test channel_cache_architecture_guard --test field_definition_cache_runtime_guard --test generation_store_architecture_guard --test locale_cache_architecture_guard --test marketplace_cache_architecture_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard
+          cargo test -p rustok-server --test cache_architecture_guard --test cache_legacy_fallback_guard --test cache_redis_monitor_architecture_guard --test cache_redis_status_architecture_guard --test cache_worker_guardrail_architecture_guard --test channel_cache_architecture_guard --test field_definition_cache_runtime_guard --test generation_store_architecture_guard --test locale_cache_architecture_guard --test marketplace_cache_architecture_guard --test rate_limit_cache_runtime_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard
           cargo test -p rustok-server tenant_cache --lib
           cargo test -p rustok-server tenant_cache_generation --lib
           cargo test -p rustok-server tenant_generation_delivery_gate --lib
