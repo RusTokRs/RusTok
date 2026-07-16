@@ -30,8 +30,8 @@ pub fn AdminCanvas(
     runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
     on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
-    browser_intent_endpoint: Option<String>,
-    browser_csrf_token: Option<String>,
+    #[prop(optional)] browser_intent_endpoint: Option<String>,
+    #[prop(optional)] browser_csrf_token: Option<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
