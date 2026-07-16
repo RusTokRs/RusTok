@@ -8,6 +8,7 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod attached;
+pub mod cache_generation;
 pub mod errors;
 pub mod events;
 pub mod graphql;
