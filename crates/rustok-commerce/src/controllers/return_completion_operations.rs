@@ -12,10 +12,11 @@ use super::{
     common::{ensure_permissions, PaginatedResponse, PaginationMeta, PaginationParams},
     CommerceHttpRuntime,
 };
+use crate::dto::OrderReturnResponse;
 use crate::services::{
     ListReturnCompletionOperationsInput, ReturnCompletionOperationResponse,
 };
-use crate::{OrderReturnResponse, ReturnCompletionOrchestrationService};
+use crate::ReturnCompletionOrchestrationService;
 
 #[derive(Clone, Debug, Default, Deserialize, ToSchema, IntoParams)]
 pub struct AdminListReturnCompletionOperationsParams {
