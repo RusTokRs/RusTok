@@ -1,4 +1,5 @@
 use std::panic::AssertUnwindSafe;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -24,19 +25,44 @@ use crate::services::tenant_cache_generation::{
 const TENANT_LOCALE_LISTENER_RESTART_DELAY: Duration = Duration::from_secs(1);
 const TENANT_LOCALE_RECONCILE_INTERVAL: Duration = Duration::from_secs(30);
 
+#[derive(Default)]
+struct TenantLocaleGenerationHealth {
+    ready: AtomicBool,
+}
+
+impl TenantLocaleGenerationHealth {
+    fn mark_ready(&self) {
+        self.ready.store(true, Ordering::Release);
+    }
+
+    fn mark_failed(&self) {
+        self.ready.store(false, Ordering::Release);
+    }
+
+    fn is_ready(&self) -> bool {
+        self.ready.load(Ordering::Acquire)
+    }
+}
+
 #[derive(Clone)]
 struct TenantLocaleGenerationListener {
     ctx: ServerRuntimeContext,
     cache: CacheService,
     tracker: BoundedCacheInvalidationGapTracker,
+    health: Arc<TenantLocaleGenerationHealth>,
 }
 
 impl TenantLocaleGenerationListener {
-    fn new(ctx: ServerRuntimeContext, cache: CacheService) -> Self {
+    fn new(
+        ctx: ServerRuntimeContext,
+        cache: CacheService,
+        health: Arc<TenantLocaleGenerationHealth>,
+    ) -> Self {
         Self {
             ctx,
             cache,
             tracker: BoundedCacheInvalidationGapTracker::default(),
+            health,
         }
     }
 
@@ -67,6 +93,15 @@ impl TenantLocaleGenerationListener {
     }
 
     async fn recover_if_advanced(&self) -> Result<u64> {
+        let result = self.recover_if_advanced_inner().await;
+        match &result {
+            Ok(_) => self.health.mark_ready(),
+            Err(_) => self.health.mark_failed(),
+        }
+        result
+    }
+
+    async fn recover_if_advanced_inner(&self) -> Result<u64> {
         let generation = self.current_generation().await?;
         let previous = self
             .tracker
@@ -79,6 +114,14 @@ impl TenantLocaleGenerationListener {
     }
 
     async fn handle_message(&self, message: CacheInvalidationMessage) -> Result<()> {
+        let result = self.handle_message_inner(message).await;
+        if result.is_err() {
+            self.health.mark_failed();
+        }
+        result
+    }
+
+    async fn handle_message_inner(&self, message: CacheInvalidationMessage) -> Result<()> {
         let event = VersionedCacheInvalidation::from_message(&message)
             .map_err(|error| Error::Cache(error.to_string()))?;
         if event.channel != TENANT_CACHE_GENERATION_CHANNEL {
@@ -177,6 +220,7 @@ struct TenantLocaleGenerationRuntime {
     redis: Option<AbortOnDropTenantLocaleTask>,
     reconcile: Option<AbortOnDropTenantLocaleTask>,
     redis_required: bool,
+    health: Arc<TenantLocaleGenerationHealth>,
 }
 
 impl TenantLocaleGenerationRuntime {
@@ -191,6 +235,10 @@ impl TenantLocaleGenerationRuntime {
                     .is_some_and(|task| task.is_running()))
     }
 
+    fn is_ready(&self) -> bool {
+        self.is_running() && self.health.is_ready()
+    }
+
     fn abort(&self) {
         self.local.abort();
         if let Some(redis) = &self.redis {
@@ -199,6 +247,7 @@ impl TenantLocaleGenerationRuntime {
         if let Some(reconcile) = &self.reconcile {
             reconcile.abort();
         }
+        self.health.mark_failed();
     }
 }
 
@@ -211,17 +260,23 @@ impl TenantLocaleGenerationListenerHandle {
         redis: Option<JoinHandle<()>>,
         reconcile: Option<JoinHandle<()>>,
         redis_required: bool,
+        health: Arc<TenantLocaleGenerationHealth>,
     ) -> Self {
         Self(Arc::new(TenantLocaleGenerationRuntime {
             local: AbortOnDropTenantLocaleTask::new(local),
             redis: redis.map(AbortOnDropTenantLocaleTask::new),
             reconcile: reconcile.map(AbortOnDropTenantLocaleTask::new),
             redis_required,
+            health,
         }))
     }
 
     pub fn is_running(&self) -> bool {
         self.0.is_running()
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.0.is_ready()
     }
 
     fn abort(&self) {
@@ -250,7 +305,9 @@ pub async fn start_tenant_locale_generation_listener(
         existing.abort();
     }
 
-    let listener = TenantLocaleGenerationListener::new(ctx.clone(), cache.clone());
+    let health = Arc::new(TenantLocaleGenerationHealth::default());
+    let listener =
+        TenantLocaleGenerationListener::new(ctx.clone(), cache.clone(), Arc::clone(&health));
     let initial_local = cache
         .invalidations()
         .subscribe_local_channel(TENANT_CACHE_GENERATION_CHANNEL);
@@ -278,6 +335,7 @@ pub async fn start_tenant_locale_generation_listener(
         redis_task,
         reconcile_task,
         redis_required,
+        health,
     ));
 }
 
@@ -296,6 +354,7 @@ async fn supervise_local_listener(
         let outcome = AssertUnwindSafe(run_local_listener(listener.clone(), subscription))
             .catch_unwind()
             .await;
+        listener.health.mark_failed();
         if outcome.is_err() {
             tracing::error!("Tenant locale generation local listener panicked; restarting");
         } else {
@@ -325,6 +384,7 @@ async fn run_local_listener(
                 }
             }
             Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                listener.health.mark_failed();
                 tracing::warn!(skipped, "Tenant locale generation local listener lagged");
                 if let Err(error) = listener.recover_if_advanced().await {
                     tracing::error!(%error, "Tenant locale generation lag recovery failed");
@@ -334,7 +394,10 @@ async fn run_local_listener(
                     );
                 }
             }
-            Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                listener.health.mark_failed();
+                return;
+            }
         }
     }
 }
@@ -344,6 +407,7 @@ async fn supervise_redis_listener(listener: TenantLocaleGenerationListener) {
         let outcome = AssertUnwindSafe(run_redis_listener(listener.clone()))
             .catch_unwind()
             .await;
+        listener.health.mark_failed();
         match outcome {
             Ok(Ok(())) => {
                 tracing::warn!("Tenant locale generation Redis listener exited; reconnecting")
