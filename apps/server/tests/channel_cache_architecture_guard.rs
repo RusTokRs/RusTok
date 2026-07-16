@@ -42,7 +42,7 @@ fn channel_cache_generations_are_bounded_and_fail_safe() {
     }
 
     assert!(!channel.contains("wrapping_add"));
-    assert!(!channel.contains("tenant_versions: Arc<RwLock<HashMap<Uuid, u64>>>"));
+    assert!(!channel.contains("tenant_versions: Arc<RwLock<HashMap<Uuid, u64>>>") );
     let exhaustion = channel
         .find("self.exhausted = true;")
         .expect("version exhaustion must be explicit");
@@ -63,18 +63,21 @@ fn channel_cache_is_registered_atomically() {
 }
 
 #[test]
-fn native_channel_mutations_invalidate_resolution_cache() {
+fn native_and_rest_channel_mutations_publish_durable_invalidation() {
     let middleware_mod = source("apps/server/src/middleware/mod.rs");
     let wrapper = source("apps/server/src/middleware/channel_native_wrapper.rs");
     let adapter = source(
         "crates/rustok-channel/admin/src/transport/native_server_adapter.rs",
     );
+    let controller = source("apps/server/src/controllers/channel.rs");
 
     assert!(middleware_mod.contains(
         "#[path = \"channel_native_wrapper.rs\"]\npub mod channel;"
     ));
     assert!(wrapper.contains("response.status().is_success()"));
-    assert!(wrapper.contains("base::invalidate_tenant_channel_cache(&ctx, tenant_id).await;"));
+    assert!(wrapper.contains("invalidate_tenant_channel_cache_local(ctx, tenant_id).await;"));
+    assert!(wrapper.contains("publish_channel_resolution_invalidation(ctx, tenant_id).await;"));
+    assert!(controller.contains("invalidate_tenant_channel_cache(ctx, tenant_id).await;"));
 
     let endpoint_marker = "endpoint = \"channel/";
     let endpoints = adapter
@@ -100,4 +103,48 @@ fn native_channel_mutations_invalidate_resolution_cache() {
     }
 
     assert!(!wrapper.contains("\"/api/fn/channel/bootstrap\""));
+}
+
+#[test]
+fn durable_channel_generation_is_database_owned_and_supervised() {
+    let migration = source(
+        "crates/rustok-channel/src/migrations/m20260716_000009_create_channel_resolution_invalidation_state.rs",
+    );
+    let runtime = source("apps/server/src/services/channel_cache_invalidation.rs");
+    let bootstrap = source("apps/server/src/services/server_bootstrap.rs");
+    let guardrails = source("apps/server/src/services/runtime_guardrails.rs");
+
+    for table in [
+        "channels",
+        "channel_targets",
+        "channel_module_bindings",
+        "channel_oauth_apps",
+        "channel_resolution_policy_sets",
+        "channel_resolution_policy_rules",
+    ] {
+        assert!(
+            migration.contains(&format!("\"{table}\"")),
+            "durable generation must cover {table}"
+        );
+    }
+    for required in [
+        "generation = generation + 1",
+        "AFTER INSERT OR UPDATE OR DELETE",
+        "AFTER {event_sql} ON {table}",
+        "read_resolution_invalidation_generation",
+        "CHANNEL_RESOLUTION_RECONCILE_INTERVAL",
+        "subscribe_local_channel(CHANNEL_RESOLUTION_INVALIDATION_CHANNEL)",
+        "consume_subscription_with_ready",
+        "SELECT id FROM tenants",
+        "invalidate_tenant_channel_cache_local",
+        "spawn_supervised_worker",
+    ] {
+        assert!(
+            migration.contains(required) || runtime.contains(required),
+            "durable channel invalidation contract must retain {required}"
+        );
+    }
+    assert!(bootstrap.contains("start_channel_cache_invalidation_listener"));
+    assert!(guardrails.contains("ChannelCacheInvalidationListenerHandle"));
+    assert!(guardrails.contains("channel resolution durable invalidation runtime"));
 }
