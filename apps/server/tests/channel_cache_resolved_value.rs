@@ -101,6 +101,83 @@ async fn request_channel_name(app: &Router, tenant: &TenantContext) -> Option<St
     payload["name"].as_str().map(ToString::to_string)
 }
 
+async fn insert_default_channel(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+) -> rustok_channel::ChannelResponse {
+    ChannelService::new(db.clone())
+        .create_channel(CreateChannelInput {
+            tenant_id,
+            slug: "default".to_string(),
+            name: "Before invalidation".to_string(),
+            settings: None,
+        })
+        .await
+        .expect("default channel should insert")
+}
+
+async fn rename_channel(db: &sea_orm::DatabaseConnection, channel_id: Uuid) {
+    let model = channel::Entity::find_by_id(channel_id)
+        .one(db)
+        .await
+        .expect("channel lookup should succeed")
+        .expect("channel should exist");
+    let mut active: channel::ActiveModel = model.into();
+    active.name = Set("After invalidation".to_string());
+    active
+        .update(db)
+        .await
+        .expect("channel update should commit");
+}
+
+#[tokio::test]
+async fn missed_publication_refreshes_remote_resolved_value_via_durable_poll() {
+    let db = rustok_test_utils::db::setup_test_db_with_migrations::<Migrator>().await;
+    let tenant = insert_tenant(&db).await;
+    let tenant_context = tenant_context(&tenant);
+    let channel = insert_default_channel(&db, tenant.id).await;
+
+    let ctx_b = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+    let cache_b = ensure_cache_service(&ctx_b);
+    assert!(!cache_b.redis_configuration_present());
+    start_channel_cache_invalidation_listener(&ctx_b, cache_b)
+        .await
+        .expect("remote listener should start");
+    let app_b = channel_router(ctx_b);
+
+    assert_eq!(
+        request_channel_name(&app_b, &tenant_context)
+            .await
+            .as_deref(),
+        Some("Before invalidation")
+    );
+    rename_channel(&db, channel.id).await;
+
+    // No publication occurs. The stale value must remain visible until the
+    // durable generation worker reaches its next database reconciliation.
+    assert_eq!(
+        request_channel_name(&app_b, &tenant_context)
+            .await
+            .as_deref(),
+        Some("Before invalidation")
+    );
+
+    tokio::time::timeout(Duration::from_secs(7), async {
+        loop {
+            if request_channel_name(&app_b, &tenant_context)
+                .await
+                .as_deref()
+                == Some("After invalidation")
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("durable polling did not recover the missed channel invalidation");
+}
+
 #[tokio::test]
 #[ignore = "requires an isolated Redis instance via RUSTOK_CACHE_REAL_REDIS_URL"]
 async fn redis_invalidation_refreshes_remote_resolved_channel_value_before_poll() {
@@ -109,16 +186,7 @@ async fn redis_invalidation_refreshes_remote_resolved_channel_value_before_poll(
     let db = rustok_test_utils::db::setup_test_db_with_migrations::<Migrator>().await;
     let tenant = insert_tenant(&db).await;
     let tenant_context = tenant_context(&tenant);
-    let service = ChannelService::new(db.clone());
-    let channel = service
-        .create_channel(CreateChannelInput {
-            tenant_id: tenant.id,
-            slug: "default".to_string(),
-            name: "Before invalidation".to_string(),
-            settings: None,
-        })
-        .await
-        .expect("default channel should insert");
+    let channel = insert_default_channel(&db, tenant.id).await;
 
     let ctx_a = ServerRuntimeContext::new(db.clone(), settings_with_redis(url.as_str()));
     let ctx_b = ServerRuntimeContext::new(db.clone(), settings_with_redis(url.as_str()));
@@ -145,17 +213,7 @@ async fn redis_invalidation_refreshes_remote_resolved_channel_value_before_poll(
         .await
         .expect("remote listener should start");
 
-    let model = channel::Entity::find_by_id(channel.id)
-        .one(&db)
-        .await
-        .expect("channel lookup should succeed")
-        .expect("channel should exist");
-    let mut active: channel::ActiveModel = model.into();
-    active.name = Set("After invalidation".to_string());
-    active
-        .update(&db)
-        .await
-        .expect("channel update should commit");
+    rename_channel(&db, channel.id).await;
 
     tokio::time::timeout(Duration::from_secs(3), async {
         loop {
