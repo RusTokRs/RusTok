@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// RusTok payment storefront FFA boundary guardrails.
-// Fast source-level checks for payment-owned checkout action/card UI and request ownership.
+// RusTok payment storefront and webhook boundary guardrails.
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -18,6 +17,10 @@ function repoPath(relativePath) {
 
 function readRepo(relativePath) {
   return readFileSync(repoPath(relativePath), "utf8");
+}
+
+function readJson(relativePath) {
+  return JSON.parse(readRepo(relativePath));
 }
 
 function fail(message) {
@@ -51,6 +54,11 @@ const commerceUiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
 const commerceRequestsPath = "crates/rustok-commerce/storefront/src/core/requests.rs";
 const planPath = "crates/rustok-commerce/docs/implementation-plan.md";
 const paymentPlanRedirectPath = "crates/rustok-payment/docs/implementation-plan.md";
+const providerSourcePath = "crates/rustok-payment/src/providers.rs";
+const webhookControllerPath = "crates/rustok-payment/src/controllers.rs";
+const webhookIngressPath = "crates/rustok-payment/src/services/provider_event_ingress.rs";
+const webhookContractPath = "crates/rustok-payment/contracts/payment-provider-webhook-v1.json";
+const paymentFbaRegistryPath = "crates/rustok-payment/contracts/payment-fba-registry.json";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
@@ -68,10 +76,15 @@ for (const filePath of [
   commerceRequestsPath,
   planPath,
   paymentPlanRedirectPath,
+  providerSourcePath,
+  webhookControllerPath,
+  webhookIngressPath,
+  webhookContractPath,
+  paymentFbaRegistryPath,
   registryPath,
   packagePath,
 ]) {
-  assertExists(filePath, `${filePath}: expected payment storefront FFA file`);
+  assertExists(filePath, `${filePath}: expected payment boundary file`);
 }
 
 const lib = readRepo(libPath);
@@ -87,6 +100,11 @@ const commerceUi = readRepo(commerceUiPath);
 const commerceRequests = readRepo(commerceRequestsPath);
 const plan = readRepo(planPath);
 const paymentPlanRedirect = readRepo(paymentPlanRedirectPath);
+const providerSource = readRepo(providerSourcePath);
+const webhookController = readRepo(webhookControllerPath);
+const webhookIngress = readRepo(webhookIngressPath);
+const webhookContract = readJson(webhookContractPath);
+const paymentFbaRegistry = readJson(paymentFbaRegistryPath);
 const registry = readRepo(registryPath);
 const packageJson = readRepo(packagePath);
 
@@ -171,8 +189,42 @@ assertNotContains(commerceUi, "build_payment_collection_command_request", `${com
 assertContains(commerceRequests, "pub type PaymentCollectionCommandRequest = PaymentCollectionCreateRequest", `${commerceRequestsPath}: commerce transport must keep the owner request alias for aggregate checkout composition`);
 assertNotContains(commerceRequests, "build_payment_collection_create_request", `${commerceRequestsPath}: commerce core must not wrap payment-owned request construction`);
 assertNotContains(commerceRequests, "build_payment_collection_command_request", `${commerceRequestsPath}: commerce core must not expose a payment request builder after owner UI handoff`);
+
+for (const marker of [
+  "pub delivery_id: Option<String>",
+  "pub idempotency_key: Option<String>",
+  "pub delivery_id: String",
+  "Transport identity values are untrusted hints",
+  "validate_verified_webhook_result",
+  "conflicts with the transport hint",
+]) {
+  assertContains(providerSource, marker, `${providerSourcePath}: missing verified webhook identity marker ${marker}`);
+}
+assertContains(webhookController, "optional_normalized_header", `${webhookControllerPath}: identity headers must be optional hints`);
+assertNotContains(webhookController, "fn required_header(", `${webhookControllerPath}: custom delivery/replay headers must not be required`);
+assertContains(webhookIngress, "delivery_id: normalized.delivery_id.clone()", `${webhookIngressPath}: inbox delivery identity must come from verified provider result`);
+assertContains(webhookIngress, "idempotency_key: normalized.replay_key.clone()", `${webhookIngressPath}: inbox replay identity must come from verified provider result`);
+if (webhookContract.transport?.identity_hint_policy !== "untrusted-cross-check-only") {
+  fail(`${webhookContractPath}: identity hints must be untrusted cross-checks only`);
+}
+if (webhookContract.inbox?.identity_source !== "signature-verified-provider-result") {
+  fail(`${webhookContractPath}: durable identity must come from the verified provider result`);
+}
+if (webhookContract.security?.transport_identity_headers_authoritative !== false) {
+  fail(`${webhookContractPath}: transport identity headers must not be authoritative`);
+}
+const webhookIngressContract = paymentFbaRegistry.provider_spi?.webhook_ingress;
+if (
+  webhookIngressContract?.verified_identity_required !== true ||
+  webhookIngressContract?.transport_identity_headers_required !== false ||
+  webhookIngressContract?.transport_identity_headers_authoritative !== false
+) {
+  fail(`${paymentFbaRegistryPath}: verified webhook identity policy drift`);
+}
+
 assertContains(plan, "## Payment workstream", `${planPath}: main ecommerce plan must own the payment workstream`);
 assertContains(plan, "verify-payment-storefront-boundary.mjs", `${planPath}: main ecommerce plan must mention payment storefront boundary guardrail`);
+assertContains(plan, "signature-verified provider result", `${planPath}: main ecommerce plan must record authoritative webhook identity`);
 assertContains(paymentPlanRedirect, "crates/rustok-commerce/docs/implementation-plan.md#payment-workstream", `${paymentPlanRedirectPath}: payment planning must redirect to the main ecommerce workstream`);
 for (const forbiddenMarker of ["- [x]", "- [ ]", "## Immediate execution order", "## Verification and promotion checklist"]) {
   assertNotContains(paymentPlanRedirect, forbiddenMarker, `${paymentPlanRedirectPath}: payment redirect must not maintain a second roadmap (${forbiddenMarker})`);
@@ -182,9 +234,9 @@ assertContains(packageJson, "verify:payment:storefront-boundary", `${packagePath
 assertContains(packageJson, "npm run verify:payment:storefront-boundary", `${packagePath}: aggregate FFA migration verification must include storefront payment boundary`);
 
 if (failures.length > 0) {
-  console.error("payment storefront boundary verification failed:");
+  console.error("payment boundary verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log("payment storefront boundary verification passed");
+console.log("payment boundary verification passed");
