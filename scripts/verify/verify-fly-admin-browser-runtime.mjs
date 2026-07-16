@@ -1,4 +1,5 @@
 import './verify-fly-ssr-first.mjs';
+import './verify-fly-multilingual.mjs';
 import { readFile } from 'node:fs/promises';
 
 const files = {
