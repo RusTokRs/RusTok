@@ -61,3 +61,43 @@ fn channel_cache_is_registered_atomically() {
     ));
     assert!(!channel.contains("ctx.shared_insert(cache.clone());"));
 }
+
+#[test]
+fn native_channel_mutations_invalidate_resolution_cache() {
+    let middleware_mod = source("apps/server/src/middleware/mod.rs");
+    let wrapper = source("apps/server/src/middleware/channel_native_wrapper.rs");
+    let adapter = source(
+        "crates/rustok-channel/admin/src/transport/native_server_adapter.rs",
+    );
+
+    assert!(middleware_mod.contains(
+        "#[path = \"channel_native_wrapper.rs\"]\npub mod channel;"
+    ));
+    assert!(wrapper.contains("response.status().is_success()"));
+    assert!(wrapper.contains("base::invalidate_tenant_channel_cache(&ctx, tenant_id).await;"));
+
+    let endpoint_marker = "endpoint = \"channel/";
+    let endpoints = adapter
+        .match_indices(endpoint_marker)
+        .filter_map(|(start, _)| {
+            let value = &adapter[start + "endpoint = \"".len()..];
+            value.find('"').map(|end| &value[..end])
+        })
+        .collect::<Vec<_>>();
+
+    assert!(endpoints.contains(&"channel/bootstrap"));
+    assert!(endpoints.len() > 1, "expected channel mutation endpoints");
+
+    for endpoint in endpoints
+        .into_iter()
+        .filter(|endpoint| *endpoint != "channel/bootstrap")
+    {
+        let path = format!("\"/api/fn/{endpoint}\"");
+        assert!(
+            wrapper.contains(&path),
+            "native channel mutation {endpoint} must invalidate the resolution cache"
+        );
+    }
+
+    assert!(!wrapper.contains("\"/api/fn/channel/bootstrap\""));
+}
