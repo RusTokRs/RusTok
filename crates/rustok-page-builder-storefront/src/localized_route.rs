@@ -2,9 +2,10 @@ use fly::{
     render_page_with_runtime_context, resolve_localized_page_route, GrapesJsV1Codec,
     LocalizedPageRouteResolution, RenderPolicy, RuntimeRenderResult,
 };
+use leptos::prelude::*;
 use rustok_page_builder::locale::PageBuilderLocaleContext;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StorefrontLocalizedRouteOutput {
@@ -53,6 +54,65 @@ pub fn render_storefront_localized_request(
         policy,
         locale.apply_to_context(&business_context),
     )
+}
+
+/// Renders a locale-aware slug through the same Fly runtime used by the public storefront.
+///
+/// The component exposes route resolution metadata as data attributes so an SSR host can issue a
+/// canonical redirect before sending the final response. The body HTML remains sanitizer-owned.
+#[component]
+pub fn LocalizedPageBuilderStorefront(
+    project_data: Value,
+    requested_slug: String,
+    #[prop(optional)] policy: Option<RenderPolicy>,
+    #[prop(optional)] context: Option<Value>,
+    #[prop(optional)] class: Option<String>,
+) -> impl IntoView {
+    let policy = policy.unwrap_or_default();
+    let context = context.unwrap_or_else(|| Value::Object(Map::new()));
+    let class = class.unwrap_or_else(|| "rustok-page-builder-storefront".to_string());
+    match render_storefront_localized_slug(project_data, &requested_slug, policy, context) {
+        Ok(output) => {
+            let diagnostic_count = output.result.diagnostics.len();
+            let repeated_nodes = output.result.repeated_nodes;
+            let page = output.result.page;
+            let page_id = page.page_id.unwrap_or_default();
+            let matched_locale = output.route.matched_locale.unwrap_or_default();
+            let canonical_slug = output.route.canonical_slug;
+            let canonical_redirect = output.route.canonical_redirect_needed();
+            let css = page.css;
+            let html = page.html;
+            view! {
+                <section
+                    class=class
+                    data-rustok-page-builder-storefront="true"
+                    data-fly-localized-route="true"
+                    data-page-id=page_id
+                    data-matched-locale=matched_locale
+                    data-canonical-slug=canonical_slug
+                    data-canonical-redirect=canonical_redirect
+                    data-runtime-diagnostics=diagnostic_count
+                    data-repeated-nodes=repeated_nodes
+                >
+                    <style data-fly-project-styles="true">{css}</style>
+                    <div data-fly-page-body="true" inner_html=html></div>
+                </section>
+            }
+            .into_any()
+        }
+        Err(error) => view! {
+            <section
+                class=class
+                data-rustok-page-builder-storefront="true"
+                data-fly-localized-route="true"
+                data-render-error="true"
+                role="alert"
+            >
+                <p>{error.to_string()}</p>
+            </section>
+        }
+        .into_any(),
+    }
 }
 
 #[cfg(test)]
