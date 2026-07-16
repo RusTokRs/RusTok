@@ -124,6 +124,24 @@
       "save": "Save locale policy",
       "clear": "Clear locale policy"
     },
+    "localeCoverage": {
+      "title": "Locale coverage",
+      "description": "Coverage is calculated from project translations and localized page metadata.",
+      "policyInvalid": "The project locale policy is invalid.",
+      "ready": "Required locale coverage is complete.",
+      "incomplete": "Required locale coverage is incomplete.",
+      "strictOn": "Strict publish enforcement is enabled.",
+      "strictOff": "Strict publish enforcement is disabled.",
+      "requiredBadge": "Required",
+      "optionalBadge": "Optional",
+      "translations": "Translations",
+      "metadata": "Metadata",
+      "missing": "Missing",
+      "gapsTitle": "Coverage gaps",
+      "noGaps": "No locale coverage gaps were found.",
+      "translationGap": "Translation",
+      "metadataGap": "Page metadata"
+    },
     "translations": {
       "title": "Project translations",
       "description": "Translations are stored losslessly in the canonical project and exposed to bindings under translations.<id>.",
