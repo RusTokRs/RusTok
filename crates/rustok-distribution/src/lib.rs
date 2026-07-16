@@ -103,6 +103,14 @@ pub fn build_registry() -> ModuleRegistry {
     {
         registry = registry.register(rustok_commerce::CommerceModule);
     }
+    #[cfg(feature = "mod-marketplace_seller")]
+    {
+        registry = registry.register(rustok_marketplace_seller::MarketplaceSellerModule);
+    }
+    #[cfg(feature = "mod-marketplace")]
+    {
+        registry = registry.register(rustok_marketplace::MarketplaceModule);
+    }
     #[cfg(feature = "mod-content")]
     {
         registry = registry.register(rustok_content::ContentModule);
