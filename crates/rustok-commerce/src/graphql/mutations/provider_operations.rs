@@ -1,6 +1,5 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::{graphql::require_module_enabled, Permission};
-use rustok_fulfillment::FulfillmentService;
 use uuid::Uuid;
 
 use crate::graphql_runtime::{
@@ -237,7 +236,7 @@ impl CommerceProviderMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(ctx, &[Permission::FULFILLMENTS_UPDATE], "Permission denied: fulfillments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let fulfillment = FulfillmentService::new(db.clone())
+        let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
             .deliver_fulfillment(
                 tenant_id,
                 id,
@@ -250,7 +249,8 @@ impl CommerceProviderMutation {
                     metadata: parse_optional_metadata(input.metadata.as_deref())?,
                 },
             )
-            .await?;
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         Ok(fulfillment.into())
     }
 
@@ -264,7 +264,7 @@ impl CommerceProviderMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(ctx, &[Permission::FULFILLMENTS_UPDATE], "Permission denied: fulfillments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let fulfillment = FulfillmentService::new(db.clone())
+        let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
             .reopen_fulfillment(
                 tenant_id,
                 id,
@@ -276,7 +276,8 @@ impl CommerceProviderMutation {
                     metadata: parse_optional_metadata(input.metadata.as_deref())?,
                 },
             )
-            .await?;
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         Ok(fulfillment.into())
     }
 
