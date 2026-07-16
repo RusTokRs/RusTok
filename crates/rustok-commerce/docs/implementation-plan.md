@@ -75,6 +75,8 @@ orchestration.
   `rustok-fulfillment`.
 - [x] Maintain this file as the only ecommerce task checklist; owner plan files may
   only redirect or document module-local behavior without completion marks.
+- [x] Enforce the payment planning redirect through
+  `verify-payment-storefront-boundary.mjs` and source contract tests.
 - [x] Remove the duplicated legacy commerce status block and obsolete statements
   that contradicted the staged production runtime.
 - [ ] Execute the complete provider-consumer graph with retained runtime evidence.
@@ -198,13 +200,18 @@ compatibility redirect to this plan.
 ### Payment webhook ingress and durable inbox
 
 - [x] Mount `POST /payment/webhooks/{provider_id}` through module codegen.
-- [x] Enforce tenant scope, delivery identity, idempotency identity, supported
-  signature headers, non-empty body, and a 1 MiB body limit.
+- [x] Enforce tenant scope, supported signature headers, non-empty body, a 1 MiB
+  body limit, and bounded optional identity hints.
 - [x] Invoke provider-owned cryptographic verification and normalization before
   inbox insertion.
+- [x] Derive authoritative `delivery_id` and `replay_key` from the
+  signature-verified provider result.
+- [x] Treat transport delivery and idempotency headers only as optional
+  cross-check hints; reject conflicts before inbox insertion.
 - [x] Persist only a SHA-256 payload digest; never persist or log the raw body or
   signature.
-- [x] Persist verified normalized facts atomically with the first inbox receipt.
+- [x] Persist provider-verified identity and normalized facts atomically with the
+  first inbox receipt.
 - [x] Enforce delivery and idempotency uniqueness per tenant/provider.
 - [x] Reject identity reuse with another payload digest or normalized event.
 - [x] Bound normalized metadata to 64 KiB and depth 16.
@@ -215,9 +222,11 @@ compatibility redirect to this plan.
 - [x] Mark an inbox event `processed` only after the owner transition succeeds.
 - [x] Use hash-only terminology in payment registry, evidence packets, verifier,
   and verifier fixtures.
+- [x] Author provider SPI tests for no-hint delivery and conflicting identity
+  hints.
 - [ ] Execute signature verification with a concrete external provider.
 - [ ] Retain malformed signature, duplicate delivery, unsupported event,
-  out-of-order capture, and owner-conflict HTTP evidence.
+  out-of-order capture, identity-hint conflict, and owner-conflict HTTP evidence.
 
 ### Payment recovery and dead-letter operations
 
@@ -225,6 +234,8 @@ compatibility redirect to this plan.
   recovery.
 - [x] Resume from durable normalized facts without provider reparsing or raw body
   access.
+- [x] Restore authoritative delivery/replay identity from the inbox during replay
+  and recovery.
 - [x] Isolate recovery errors per event so one row cannot abort a batch.
 - [x] Move legacy rows without normalized facts to `dead_letter`.
 - [x] Exclude `dead_letter` from automatic retry.
