@@ -4,8 +4,8 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::dto::{
-    CancelFulfillmentInput, CreateFulfillmentInput, FulfillmentResponse, ReshipFulfillmentInput,
-    ShipFulfillmentInput,
+    CancelFulfillmentInput, CreateFulfillmentInput, DeliverFulfillmentInput, FulfillmentResponse,
+    ReopenFulfillmentInput, ReshipFulfillmentInput, ShipFulfillmentInput,
 };
 
 use super::fulfillment_orchestration::{
@@ -16,7 +16,7 @@ use super::journaled_create_label_provider::wrap_create_label_providers;
 use super::journaled_fulfillment_orchestration::JournaledFulfillmentOrchestrationService;
 
 /// Compatibility facade that preserves the existing transport API while routing
-/// provider side effects through the durable fulfillment operation journal.
+/// fulfillment commands through one commerce-owned orchestration boundary.
 pub struct FulfillmentOrchestrationService {
     db: DatabaseConnection,
     legacy: LegacyFulfillmentOrchestrationService,
@@ -75,6 +75,30 @@ impl FulfillmentOrchestrationService {
         self.journaled
             .ship_fulfillment(tenant_id, fulfillment_id, input)
             .await
+    }
+
+    pub async fn deliver_fulfillment(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: DeliverFulfillmentInput,
+    ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        FulfillmentService::new(self.db.clone())
+            .deliver_fulfillment(tenant_id, fulfillment_id, input)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn reopen_fulfillment(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: ReopenFulfillmentInput,
+    ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        FulfillmentService::new(self.db.clone())
+            .reopen_fulfillment(tenant_id, fulfillment_id, input)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn reship_fulfillment(
