@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "module": "marketplace",
+  "role": "consumer",
+  "status": "in_progress",
+  "contract_version": "marketplace.family.v1",
+  "dependencies": [
+    {
+      "provider": "marketplace_seller",
+      "port": "MarketplaceSellerReadPort",
+      "profile": "marketplace_seller_directory",
+      "required_operations": [
+        "read_seller",
+        "list_sellers"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "deadline_required": true,
+      "idempotency_required": false,
+      "degraded_modes": [
+        "seller_directory_unavailable"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "remote_adapter_placeholder"
+      ]
+    }
+  ],
+  "ownership": {
+    "owns_tables": false,
+    "forbidden_owner_tables": [
+      "marketplace_sellers",
+      "marketplace_seller_members",
+      "marketplace_listings",
+      "marketplace_commission_policies",
+      "marketplace_ledger_entries",
+      "marketplace_payouts"
+    ]
+  },
+  "evidence": {
+    "local_plan": "crates/rustok-marketplace/docs/implementation-plan.md",
+    "central_plan": "crates/rustok-commerce/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "read_seller",
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "tenant_scope_preserved"
+        ]
+      },
+      {
+        "operation": "list_sellers",
+        "assertions": [
+          "typed_port_error_mapping",
+          "bounded_pagination",
+          "context_deadline_preserved"
+        ]
+      }
+    ]
+  }
+}
