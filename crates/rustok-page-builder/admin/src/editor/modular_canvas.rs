@@ -6,6 +6,7 @@ use crate::editor::{
     RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, TraitPanel,
 };
 use crate::i18n::t;
+use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
 use crate::{AdminCanvasController, PageBuilderAdminFacade};
 use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
@@ -29,6 +30,8 @@ pub fn AdminCanvas(
     runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
     on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
+    browser_intent_endpoint: Option<String>,
+    browser_csrf_token: Option<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
@@ -65,6 +68,17 @@ pub fn AdminCanvas(
         Some(policy) => runtime.with_runtime_publish_gate_policy(policy),
         None => runtime,
     };
+    let browser_page_id = runtime
+        .controller
+        .with(|controller| controller.page_id().to_string());
+    let browser_revision = runtime
+        .controller
+        .with(|controller| controller.revision_id().to_string());
+    let browser_project_hash = runtime
+        .controller
+        .with(|controller| controller.editor().revision().project_hash.hex());
+    let root_intent_endpoint = browser_intent_endpoint.clone();
+    let root_csrf_token = browser_csrf_token.clone();
     let toolbar_runtime = runtime.clone();
     let page_runtime = runtime.clone();
     let palette_runtime = runtime.clone();
@@ -86,7 +100,20 @@ pub fn AdminCanvas(
     let error_runtime = runtime;
 
     view! {
-        <div class="rustok-page-builder-admin__workspace space-y-3">
+        <div
+            class="rustok-page-builder-admin__workspace space-y-3"
+            data-fly-browser-root="true"
+            data-fly-runtime="ssr"
+            data-fly-page-id=browser_page_id
+            data-fly-revision=browser_revision
+            data-fly-project-hash=browser_project_hash
+            data-fly-intent-endpoint=root_intent_endpoint
+            data-fly-csrf-token=root_csrf_token
+        >
+            <PageBuilderBrowserAdapter
+                intent_endpoint=browser_intent_endpoint
+                csrf_token=browser_csrf_token
+            />
             <AuthoringToolbar runtime=toolbar_runtime />
             <div
                 class="grid min-h-[680px] gap-3"
