@@ -80,6 +80,10 @@ async fn main() {
                 rustok_page_builder_admin::BrowserIntentDispatchError::RevisionConflict { .. }
                 | rustok_page_builder_admin::BrowserIntentDispatchError::ProjectHashConflict { .. },
             ) => StatusCode::CONFLICT,
+            PagesBrowserIntentError::Draft(
+                rustok_page_builder_admin::SsrDraftSessionError::GenerationConflict { .. }
+                | rustok_page_builder_admin::SsrDraftSessionError::PageMismatch { .. },
+            ) => StatusCode::CONFLICT,
             PagesBrowserIntentError::Facade(error)
                 if error.stable_code.as_deref() == Some("REVISION_CONFLICT") =>
             {
