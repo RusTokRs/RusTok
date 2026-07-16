@@ -222,6 +222,7 @@ fn normalized_from_inbox(
     })?;
     Ok(PaymentProviderWebhookResult {
         provider_id: event.provider_id.clone(),
+        delivery_id: event.delivery_id.clone(),
         external_reference: event.external_reference.clone(),
         event_type,
         replay_key: event.idempotency_key.clone(),
