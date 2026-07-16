@@ -26,7 +26,8 @@
       "cancelDrag": "Cancel drag",
       "apply": "Apply",
       "clear": "Clear",
-      "previewBreakpoint": "Preview breakpoint"
+      "previewBreakpoint": "Preview breakpoint",
+      "checkRuntimeGate": "Check gate"
     },
     "status": {
       "saving": "Saving",
@@ -45,7 +46,9 @@
       "styles": "Styles",
       "responsiveStyles": "Responsive styles",
       "assets": "Assets",
-      "diagnostics": "Diagnostics"
+      "diagnostics": "Diagnostics",
+      "runtimePublishGate": "Runtime publish gate",
+      "audit": "Accessibility and SEO audit"
     },
     "field": {
       "page": "Page",
@@ -119,8 +122,8 @@
       "requiredLabel": "Required locales",
       "fallbackLabel": "Fallback locales",
       "listHelp": "Separate locale tags with commas. Tags are normalized before they are stored.",
-      "enforceLabel": "Block save and publish when required translations are missing",
-      "enforceHelp": "Keep this disabled while translations are being prepared; missing required locales remain warnings.",
+      "enforceLabel": "Block publish when required translations are missing",
+      "enforceHelp": "Keep this disabled while translations are being prepared; missing required locales remain warnings and drafts can still be saved.",
       "save": "Save locale policy",
       "clear": "Clear locale policy"
     },
@@ -141,6 +144,38 @@
       "noGaps": "No locale coverage gaps were found.",
       "translationGap": "Translation",
       "metadataGap": "Page metadata"
+    },
+    "runtimePublishGate": {
+      "policyMissing": "Runtime publish policy is not configured.",
+      "passed": "Publish runtime gate passed",
+      "blocked": "Publish blocked",
+      "blockingIssues": "Runtime publish gate has blocking issues",
+      "readiness": "Landing readiness",
+      "ready": "ready",
+      "readinessBlocked": "blocked",
+      "errors": "errors",
+      "warnings": "warnings",
+      "scenarios": "Scenarios",
+      "accepted": "accepted",
+      "rejected": "rejected"
+    },
+    "readinessCategory": {
+      "seo": "SEO",
+      "content": "Content",
+      "routes": "Routes",
+      "locales": "Locales",
+      "runtimeContracts": "Runtime contracts"
+    },
+    "audit": {
+      "clean": "No accessibility or SEO issues found for this page.",
+      "select": "Select component",
+      "errors": "errors",
+      "warnings": "warnings",
+      "info": "info",
+      "components": "components",
+      "error": "Error",
+      "warning": "Warning",
+      "informational": "Info"
     },
     "translations": {
       "title": "Project translations",
