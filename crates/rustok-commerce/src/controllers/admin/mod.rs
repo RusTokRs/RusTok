@@ -18,7 +18,7 @@ pub use shipping::*;
 mod tests;
 
 use rust_decimal::Decimal;
-use rustok_payment::PaymentService;
+use rustok_payment::{PaymentError, PaymentService};
 use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -328,27 +328,74 @@ pub(crate) fn map_payment_orchestration_error(
     error: crate::PaymentOrchestrationError,
 ) -> HttpError {
     match error {
-        crate::PaymentOrchestrationError::Payment(error) => map_payment_error(error),
-        crate::PaymentOrchestrationError::Provider(error) => {
-            HttpError::bad_request("commerce_admin_invalid", error.to_string())
-        }
+        crate::PaymentOrchestrationError::Payment(error)
+        | crate::PaymentOrchestrationError::Provider(error) => map_payment_error(error),
         crate::PaymentOrchestrationError::ProviderAfterRefundReservation { source, .. } => {
-            HttpError::new(
-                axum::http::StatusCode::BAD_GATEWAY,
-                "commerce_admin_provider_unavailable",
-                source.to_string(),
-            )
+            map_reserved_refund_provider_error(source)
         }
     }
 }
 
-pub(crate) fn map_payment_error(error: rustok_payment::error::PaymentError) -> HttpError {
+pub(crate) fn map_payment_error(error: PaymentError) -> HttpError {
     match error {
-        rustok_payment::error::PaymentError::PaymentCollectionNotFound(_)
-        | rustok_payment::error::PaymentError::RefundNotFound(_) => {
+        PaymentError::PaymentCollectionNotFound(_)
+        | PaymentError::PaymentNotFound(_)
+        | PaymentError::RefundNotFound(_) => {
             HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
         }
-        other => HttpError::bad_request("commerce_admin_invalid", other.to_string()),
+        PaymentError::Validation(_) => HttpError::bad_request(
+            "commerce_admin_payment_invalid",
+            "Payment request is invalid",
+        ),
+        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => {
+            HttpError::new(
+                axum::http::StatusCode::CONFLICT,
+                "commerce_admin_payment_state_conflict",
+                "Payment operation conflicts with the current state",
+            )
+        }
+        PaymentError::ProviderUnavailable { .. } => HttpError::new(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_payment_provider_unavailable",
+            "Payment provider is temporarily unavailable",
+        ),
+        PaymentError::ProviderInvalidResponse { .. } => HttpError::new(
+            axum::http::StatusCode::BAD_GATEWAY,
+            "commerce_admin_payment_provider_invalid_response",
+            "Payment provider returned an invalid response; reconciliation may be required",
+        ),
+        PaymentError::ProviderOutcomeUnknown { .. } => HttpError::new(
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_payment_reconciliation_required",
+            "Payment provider outcome is unknown and requires reconciliation",
+        ),
+        PaymentError::ProviderConfiguration { .. } => HttpError::new(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_payment_provider_not_configured",
+            "Payment provider is not configured for this tenant",
+        ),
+        PaymentError::Database(_) => HttpError::new(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_payment_storage_unavailable",
+            "Payment storage is temporarily unavailable",
+        ),
+    }
+}
+
+fn map_reserved_refund_provider_error(error: PaymentError) -> HttpError {
+    match error {
+        PaymentError::ProviderOutcomeUnknown { .. }
+        | PaymentError::ProviderInvalidResponse { .. } => HttpError::new(
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_refund_reconciliation_required",
+            "Refund remains reserved while the provider outcome is reconciled",
+        ),
+        PaymentError::ProviderUnavailable { .. } => HttpError::new(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_refund_provider_unavailable",
+            "Refund remains reserved and the provider operation may be retried safely",
+        ),
+        other => map_payment_error(other),
     }
 }
 
@@ -393,21 +440,21 @@ pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationEr
             | rustok_order::error::OrderError::OrderChangeNotFound(_),
         )
         | PostOrderOrchestrationError::Payment(
-            rustok_payment::error::PaymentError::PaymentCollectionNotFound(_)
-            | rustok_payment::error::PaymentError::RefundNotFound(_),
+            PaymentError::PaymentCollectionNotFound(_)
+            | PaymentError::PaymentNotFound(_)
+            | PaymentError::RefundNotFound(_),
         ) => HttpError::not_found("commerce_admin_not_found", "Commerce resource not found"),
         PostOrderOrchestrationError::Order(other) => {
             HttpError::bad_request("commerce_admin_invalid", other.to_string())
         }
-        PostOrderOrchestrationError::Payment(other) => {
-            HttpError::bad_request("commerce_admin_invalid", other.to_string())
-        }
+        PostOrderOrchestrationError::Payment(error) => map_payment_error(error),
         PostOrderOrchestrationError::PaymentOrchestration(error) => {
             map_payment_orchestration_error(error)
         }
-        PostOrderOrchestrationError::Validation(message) => {
-            HttpError::bad_request("commerce_admin_invalid", message)
-        }
+        PostOrderOrchestrationError::Validation(_) => HttpError::bad_request(
+            "commerce_admin_invalid",
+            "Post-order request is invalid",
+        ),
     }
 }
 
@@ -476,7 +523,7 @@ pub(crate) async fn resolve_return_refund_collection_id(
         if collection.order_id != Some(order_id) {
             return Err(HttpError::bad_request(
                 "commerce_admin_invalid",
-                format!("payment collection {collection_id} is not attached to order {order_id}"),
+                "Payment collection is not attached to the requested order",
             ));
         }
         return Ok(collection_id);
@@ -490,7 +537,7 @@ pub(crate) async fn resolve_return_refund_collection_id(
         .ok_or_else(|| {
             HttpError::bad_request(
                 "commerce_admin_invalid",
-                format!("order {order_id} has no payment collection for return refund"),
+                "Order has no payment collection for return refund",
             )
         })
 }
