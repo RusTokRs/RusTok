@@ -36,7 +36,7 @@ capacity. Fixed-size counters may use entry-count capacity.
 | Marketplace catalog-list cache | Registry HTTP API plus local manifest provider | Byte-weighted Moka; default 16 MiB; SHA-256 length-delimited key; response stream limited before JSON allocation; global fetch semaphore | 60 s configurable TTL | Process-local cache is acceptable for marketplace discovery. Misses are single-flight and registry failure falls back to the local catalog | Hardened |
 | Marketplace module-detail cache | Registry detail endpoint with catalog fallback | Separate byte-weighted Moka; default 4 MiB; bounded SHA-256 slug key | Positive TTL follows catalog TTL; missing detail uses independently configurable 5 s default negative TTL | Process-local discovery cache; single-flight detail fetch and bounded fallback to catalog list | Hardened |
 | RBAC permission snapshot cache | RBAC relation tables and resolver | Byte-weighted Moka; 16 MiB; typed `(tenant_id, user_id)` key; 64 bounded epoch stripes plus global epoch | 60 s TTL; conditional publication retries a superseded DB read and fails closed after bounded attempts | Database-backed durable generation is reserved in the mutation transaction; local/Redis PubSub is a fast path; watchdog and reconciliation clear missed generations across replicas | Hardened; owned by `rustok-rbac` plan |
-| Flex field-definition cache | Flex field-definition database state | Byte-weighted Moka; 16 MiB; `(tenant_id, entity_type)` key; variable JSON fields included in weight | 30 s TTL | Event consumer invalidates exact entries; lag triggers full clear. Cache and consumer share one restartable abort-on-drop runtime. Transport is process-local unless the event owner supplies a durable source | Source hardened; durable cross-replica recovery remains owner work |
+| Flex field-definition cache | User/product/order/topic field-definition tables; durable source is `flex_field_definition_cache_generation` | Byte-weighted Moka; 16 MiB; `(tenant_id, entity_type)` key; variable JSON fields included in weight | 30 s TTL | Local EventBus invalidates exact entries and full-clears on lag. Transaction-local database triggers on all four owner tables advance one singleton generation for every insert/update/delete, including reorder and soft delete. Every serving runtime reads the generation, full-clears before recording startup/advance, polls every 5 s, fails closed on database error/regression and exposes the supervised reconciler as a critical readiness dependency | Source hardened; compiled, cross-database and multi-replica recovery evidence pending |
 | SEO redirect cache | `seo_redirect` database rows | Byte-weighted Moka; 8 MiB; UUID tenant key; redirect string payloads included in weight. Persisted cursor query is indexed by `(source_kind, created_at, id)` and consumed in batches of 256 | 30 s TTL; reconciliation polls every 5 s | Redirect transition and delivery row are written in the same transaction. The mutating replica invalidates after commit; every serving runtime seeds the persisted high-water cursor before a startup full clear and then invalidates exact tenants for later rows. The context-owned supervised worker is a critical readiness dependency | Source hardened; multi-replica execution evidence pending |
 
 ## Compatibility paths that are not production cache owners
@@ -49,12 +49,7 @@ capacity. Fixed-size counters may use entry-count capacity.
   atomic Moka entry-compute backend, and architecture guards reject restoring the historical root
   export or legacy fallback factory in production wiring.
 
-## Remaining migrations
-
-### Owner decisions required
-
-- Field definitions: connect the existing full-clear recovery to a durable event offset or shared
-  generation when multiple replicas consume independent local buses.
+## Remaining work
 
 ### Verification and tuning
 
@@ -63,6 +58,9 @@ capacity. Fixed-size counters may use entry-count capacity.
   across multiple replicas.
 - Exercise exact/wildcard tenant-locale invalidation, local lag, Redis reconnect and periodic
   generation reconciliation across multiple replicas.
+- Exercise Flex generation triggers on PostgreSQL and SQLite for all four owner tables, startup
+  seed-before-clear, concurrent mutations, database outage/recovery, regression and critical
+  readiness across multiple replicas.
 - Exercise SEO cursor startup races, more-than-one-batch catch-up, database outage/recovery and
   terminal-worker readiness across multiple serving replicas.
 - Measure observed encoded/estimated entry sizes before changing byte budgets.
