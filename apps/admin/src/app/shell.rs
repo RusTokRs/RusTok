@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::app::{App, AuthCookieBootstrap};
 use leptos::prelude::*;
 
 /// Classic server-rendered admin document shell.
@@ -16,6 +16,7 @@ pub fn shell(_options: LeptosOptions) -> impl IntoView {
                 <meta name="color-scheme" content="light dark"/>
                 <title>"RusTok Admin"</title>
                 <link rel="stylesheet" href="/pkg/rustok-admin.css"/>
+                <AuthCookieBootstrap/>
             </head>
             <body>
                 <App/>
