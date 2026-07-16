@@ -59,69 +59,14 @@ const REGISTRY_ARTIFACT_BUNDLE_TYPE: &str = "rustok-module-publish-bundle";
 const REGISTRY_VALIDATION_FOLLOW_UP_GATES: &[&str] =
     &["compile_smoke", "targeted_tests", "security_policy_review"];
 const REGISTRY_VALIDATION_LOAD_RETRY_DELAYS_SECONDS: &[u64] = &[1, 3, 5];
-pub const REGISTRY_YANK_REASON_CODES: &[&str] = &[
-    "security",
-    "legal",
-    "malware",
-    "critical_regression",
-    "rollback",
-    "other",
-];
-pub const REGISTRY_REJECT_REASON_CODES: &[&str] = &[
-    "policy_mismatch",
-    "quality_gate_failed",
-    "ownership_mismatch",
-    "security_risk",
-    "legal",
-    "other",
-];
-pub const REGISTRY_OWNER_TRANSFER_REASON_CODES: &[&str] = &[
-    "maintenance_handoff",
-    "team_restructure",
-    "publisher_rotation",
-    "security_emergency",
-    "governance_override",
-    "other",
-];
-pub const REGISTRY_APPROVE_OVERRIDE_REASON_CODES: &[&str] = &[
-    "manual_review_complete",
-    "trusted_first_party",
-    "expedited_release",
-    "governance_override",
-    "other",
-];
-pub const REGISTRY_REQUEST_CHANGES_REASON_CODES: &[&str] = &[
-    "artifact_mismatch",
-    "quality_gap",
-    "policy_gap",
-    "docs_gap",
-    "other",
-];
-pub const REGISTRY_HOLD_REASON_CODES: &[&str] = &[
-    "release_window",
-    "incident",
-    "legal_hold",
-    "security_review",
-    "other",
-];
-pub const REGISTRY_RESUME_REASON_CODES: &[&str] = &[
-    "review_complete",
-    "incident_closed",
-    "legal_cleared",
-    "other",
-];
-pub const REGISTRY_VALIDATION_STAGE_REASON_CODES: &[&str] = &[
-    "local_runner_passed",
-    "manual_review_complete",
-    "build_failure",
-    "test_failure",
-    "policy_preflight_failed",
-    "security_findings",
-    "policy_exception",
-    "license_issue",
-    "manual_override",
-    "other",
-];
+pub use rustok_modules::REGISTRY_APPROVE_OVERRIDE_REASON_CODES;
+pub use rustok_modules::REGISTRY_HOLD_REASON_CODES;
+pub use rustok_modules::REGISTRY_OWNER_TRANSFER_REASON_CODES;
+pub use rustok_modules::REGISTRY_REJECT_REASON_CODES;
+pub use rustok_modules::REGISTRY_REQUEST_CHANGES_REASON_CODES;
+pub use rustok_modules::REGISTRY_RESUME_REASON_CODES;
+pub use rustok_modules::REGISTRY_VALIDATION_STAGE_REASON_CODES;
+pub use rustok_modules::REGISTRY_YANK_REASON_CODES;
 
 #[derive(Debug, Error)]
 pub enum RegistryGovernanceError {
@@ -172,13 +117,6 @@ pub struct RegistryValidationQueueResult {
     pub request: registry_publish_request::Model,
     pub queued: bool,
     pub validation_job_id: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-struct RegistryValidationJobClaim {
-    job: registry_validation_job::Model,
-    request: registry_publish_request::Model,
-    should_run: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -499,30 +437,6 @@ impl RegistryGovernanceService {
             artifact_size: uploaded.size as i64,
         })
     }
-
-    async fn record_governance_event(
-        &self,
-        slug: &str,
-        request_id: Option<&str>,
-        release_id: Option<&str>,
-        event_type: &str,
-        actor: &str,
-        publisher: Option<&str>,
-        details: serde_json::Value,
-    ) -> anyhow::Result<registry_governance_event::Model> {
-        let active = RegistryGovernanceEventActiveModel {
-            id: Set(format!("rge_{}", uuid::Uuid::new_v4().simple())),
-            slug: Set(slug.to_string()),
-            request_id: Set(request_id.map(ToString::to_string)),
-            release_id: Set(release_id.map(ToString::to_string)),
-            event_type: Set(event_type.to_string()),
-            actor: Set(actor_principal(actor).to_json_value()),
-            publisher: Set(optional_actor_principal(publisher).map(|value| value.to_json_value())),
-            details: Set(details),
-            created_at: Set(Utc::now()),
-        };
-        Ok(active.insert(&self.db).await?)
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -736,43 +650,6 @@ where
     } else {
         RegistryPublishRequestTranslationActiveModel {
             request_id: Set(request_id.to_string()),
-            locale: Set(locale),
-            name: Set(name.trim().to_string()),
-            description: Set(description.trim().to_string()),
-            created_at: Set(Utc::now()),
-            updated_at: Set(Utc::now()),
-        }
-        .insert(db)
-        .await?;
-    }
-
-    Ok(())
-}
-
-async fn upsert_release_translation_record<C>(
-    db: &C,
-    release_id: &str,
-    locale: &str,
-    name: &str,
-    description: &str,
-) -> anyhow::Result<()>
-where
-    C: ConnectionTrait,
-{
-    let locale = normalize_registry_locale(locale);
-    if let Some(existing) =
-        RegistryModuleReleaseTranslationEntity::find_by_id((release_id.to_string(), locale.clone()))
-            .one(db)
-            .await?
-    {
-        let mut active: RegistryModuleReleaseTranslationActiveModel = existing.into();
-        active.name = Set(name.trim().to_string());
-        active.description = Set(description.trim().to_string());
-        active.updated_at = Set(Utc::now());
-        active.update(db).await?;
-    } else {
-        RegistryModuleReleaseTranslationActiveModel {
-            release_id: Set(release_id.to_string()),
             locale: Set(locale),
             name: Set(name.trim().to_string()),
             description: Set(description.trim().to_string()),

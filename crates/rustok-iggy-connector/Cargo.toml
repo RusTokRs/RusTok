@@ -10,6 +10,7 @@ async-trait.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+futures-util.workspace = true
 
 # Serialization
 serde.workspace = true

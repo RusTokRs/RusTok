@@ -21,17 +21,19 @@ README, while the provider contract is in the FBA registry.
   `crates/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json`,
   and `scripts/verify/verify-ai-media-fba.mjs`.
 
+## Completed direct-execution evidence
+
+The `image_asset` direct path is covered through `rustok-ai`: the runtime uses
+adapter-owned size validation and normalized provider input, then persists the
+provider image and its localized metadata through the Media owner service.
+
 ## Next results
 
 1. **Execute the media consumer contract.** Add a composed test for
    `get_image_descriptor` and `get_asset` that proves typed port-error mapping,
    deadline propagation, and each declared degraded behavior. Done when the
    static matrix no longer records runtime evidence as pending.
-2. **Exercise the image vertical through `rustok-ai`.** Verify registered
-   descriptor consumption, image-size validation, provider request formation,
-   and fallback behavior in the direct execution path. Done when the test
-   covers the adapter-to-runtime boundary rather than only the pure helper.
-3. **Specify a remote media adapter only on selection.** Before promoting the
+2. **Specify a remote media adapter only on selection.** Before promoting the
    `remote_adapter_placeholder` profile, define its transport owner, security
    model, error mapping, and compatibility evidence. Done when no hidden
    alternate transport is implied.

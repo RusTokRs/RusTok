@@ -323,6 +323,18 @@ pub enum ProviderFieldKind {
     SecretRef,
 }
 
+impl ProviderFieldKind {
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Url => "url",
+            Self::Integer => "integer",
+            Self::Boolean => "boolean",
+            Self::SecretRef => "secret_ref",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderConfigField {
     pub key: &'static str,
@@ -851,6 +863,15 @@ mod tests {
             assert_eq!(ProviderSlug::new(entry.slug).unwrap().as_str(), entry.slug);
             assert!(seen.insert(entry.slug));
         }
+    }
+
+    #[test]
+    fn provider_field_kinds_have_transport_stable_slugs() {
+        assert_eq!(ProviderFieldKind::Text.slug(), "text");
+        assert_eq!(ProviderFieldKind::Url.slug(), "url");
+        assert_eq!(ProviderFieldKind::Integer.slug(), "integer");
+        assert_eq!(ProviderFieldKind::Boolean.slug(), "boolean");
+        assert_eq!(ProviderFieldKind::SecretRef.slug(), "secret_ref");
     }
 
     #[cfg(feature = "server")]

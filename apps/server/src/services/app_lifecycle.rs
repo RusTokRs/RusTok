@@ -6,20 +6,17 @@ use tokio::task::JoinHandle;
 
 #[cfg(feature = "mod-seo")]
 use crate::services::app_runtime::module_runtime_extensions_from_ctx;
-use crate::services::build_executor::build_execution_service;
 #[cfg(feature = "mod-seo")]
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
     spawn_outbox_relay_worker, EventRuntime, RelayRuntimeConfig,
 };
 use crate::services::registry_governance::RegistryGovernanceService;
-use crate::services::release_backend::ReleaseDeploymentService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use rustok_build::ReleasePublisherPort;
 #[cfg(feature = "mod-seo")]
 use rustok_seo::SeoService;
 
-// ── Graceful-shutdown handle ──────────────────────────────────────────────────
+// в”Ђв”Ђ Graceful-shutdown handle в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 /// Stored in `ServerRuntimeContext`; `on_shutdown` calls `stop()` to abort workers.
 #[derive(Clone)]
@@ -54,7 +51,6 @@ impl StopHandle {
 }
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
-static BUILD_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static REMOTE_EXECUTOR_REAPER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 #[cfg(feature = "mod-seo")]
 static SEO_BULK_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
@@ -163,21 +159,6 @@ impl OutboxRelayWorkerHandle {
     }
 }
 
-pub struct BuildWorkerHandle {
-    instance_id: u64,
-    _handle: JoinHandle<()>,
-}
-
-impl BuildWorkerHandle {
-    pub fn instance_id(&self) -> u64 {
-        self.instance_id
-    }
-
-    pub fn is_finished(&self) -> bool {
-        self._handle.is_finished()
-    }
-}
-
 pub struct RemoteExecutorReaperHandle {
     instance_id: u64,
     _handle: JoinHandle<()>,
@@ -238,15 +219,13 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
 
     // Obtain a stop receiver from the stored handle so workers can observe
     // the shutdown signal.  `subscribe()` creates a new independent receiver
-    // from the existing sender — safe to call multiple times.
+    // from the existing sender вЂ” safe to call multiple times.
     let stop_handle = runtime_ctx
         .shared_get::<StopHandle>()
         .expect("StopHandle must be registered before spawning workers");
     let stop_rx = stop_handle.subscribe();
 
-    if runtime_ctx.shared_contains::<OutboxRelayWorkerHandle>() {
-        // Keep going: build worker may still need to be attached.
-    } else {
+    if !runtime_ctx.shared_contains::<OutboxRelayWorkerHandle>() {
         let event_runtime = runtime_ctx
             .shared_get::<std::sync::Arc<EventRuntime>>()
             .ok_or_else(|| Error::Message("EventRuntime not initialized".to_string()))?;
@@ -254,14 +233,6 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
         if let Some(relay_config) = event_runtime.relay_config.clone() {
             runtime_ctx.shared_insert(spawn_relay_worker_handle(relay_config, stop_rx.clone()));
         }
-    }
-
-    if settings.build.enabled && !runtime_ctx.shared_contains::<BuildWorkerHandle>() {
-        runtime_ctx.shared_insert(spawn_build_worker_handle(
-            runtime_ctx.clone(),
-            settings.build,
-            stop_rx.clone(),
-        ));
     }
 
     if settings.registry.remote_executor.enabled
@@ -311,23 +282,6 @@ fn spawn_relay_worker_handle(
     }
 }
 
-fn spawn_build_worker_handle(
-    runtime_ctx: ServerRuntimeContext,
-    config: crate::common::settings::BuildRuntimeSettings,
-    stop_rx: tokio::sync::watch::Receiver<bool>,
-) -> BuildWorkerHandle {
-    let instance_id = BUILD_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
-    tracing::info!(
-        worker = "build_executor",
-        instance_id,
-        "Starting runtime worker"
-    );
-    BuildWorkerHandle {
-        instance_id,
-        _handle: tokio::spawn(build_worker_loop(runtime_ctx, config, stop_rx)),
-    }
-}
-
 fn spawn_remote_executor_reaper_handle(
     runtime_ctx: ServerRuntimeContext,
     scan_interval_ms: u64,
@@ -362,93 +316,12 @@ fn spawn_seo_bulk_worker_handle(
     }
 }
 
-async fn build_worker_loop(
-    runtime_ctx: ServerRuntimeContext,
-    config: crate::common::settings::BuildRuntimeSettings,
-    mut stop_rx: tokio::sync::watch::Receiver<bool>,
-) {
-    let executor = build_execution_service(&runtime_ctx);
-    let release_backend = ReleaseDeploymentService::new(&runtime_ctx, config.deployment.clone());
-    let poll_interval = Duration::from_millis(config.poll_interval_ms);
-
-    loop {
-        // Check for shutdown before doing any work so a stop signal received
-        // before the first iteration is honoured immediately.
-        if *stop_rx.borrow() {
-            tracing::info!("Build worker received shutdown signal, exiting");
-            return;
-        }
-
-        match executor.execute_next_queued_build(false).await {
-            Ok(Some(report)) => {
-                tracing::info!(
-                    build_id = %report.build_id,
-                    cargo_command = %report.cargo_command,
-                    "Executed queued build plan"
-                );
-
-                if report.status == "success" {
-                    if let Some(environment) = config.auto_release_environment.as_deref() {
-                        match executor
-                            .ensure_release_for_build(report.build_id, environment, false)
-                            .await
-                        {
-                            Ok(release) => match ReleasePublisherPort::publish_release(
-                                &release_backend,
-                                rustok_build::ReleasePublishRequest {
-                                    release_id: release.id.clone(),
-                                    activate: config.auto_activate_release,
-                                },
-                            )
-                            .await
-                            {
-                                Ok(published_release) => tracing::info!(
-                                    build_id = %report.build_id,
-                                    release_id = %published_release.id,
-                                    release_status = ?published_release.status,
-                                    "Published release from successful build"
-                                ),
-                                Err(error) => tracing::error!(
-                                    build_id = %report.build_id,
-                                    release_id = %release.id,
-                                    error = %error,
-                                    "Failed to publish release from successful build"
-                                ),
-                            },
-                            Err(error) => tracing::error!(
-                                build_id = %report.build_id,
-                                error = %error,
-                                "Failed to create release record from successful build"
-                            ),
-                        }
-                    }
-                }
-            }
-            Ok(None) => {}
-            Err(error) => {
-                tracing::error!(error = %error, "Background build worker failed to execute queued build");
-            }
-        }
-
-        // Wait for the next poll interval or a shutdown signal — whichever
-        // comes first.  This replaces the unconditional sleep so the worker
-        // exits promptly rather than waiting a full poll interval.
-        tokio::select! {
-            _ = tokio::time::sleep(poll_interval) => {}
-            _ = stop_rx.changed() => {
-                tracing::info!("Build worker received shutdown signal, exiting");
-                return;
-            }
-        }
-    }
-}
-
 async fn remote_executor_reaper_loop(
     runtime_ctx: ServerRuntimeContext,
     scan_interval_ms: u64,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
-    let governance = RegistryGovernanceService::new(runtime_ctx.db_clone());
+    let governance = rustok_modules::SeaOrmModuleGovernanceService::new(runtime_ctx.db_clone());
     let poll_interval = Duration::from_millis(scan_interval_ms.max(1));
 
     loop {
@@ -540,9 +413,9 @@ fn should_use_local_sqlite_fallback(database_url_present: bool, current_uri: &st
 mod tests {
     use super::{
         connect_runtime_workers_with_runtime, resolve_boot_database_uri,
-        should_use_local_sqlite_fallback, BuildWorkerHandle, OutboxRelayWorkerHandle,
+        should_use_local_sqlite_fallback, OutboxRelayWorkerHandle,
     };
-    use crate::common::settings::{BuildRuntimeSettings, RustokSettings};
+    use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
     use rustok_core::events::{EventBus, MemoryTransport};
     use rustok_outbox::{OutboxRelay, OutboxTransport};
@@ -636,51 +509,6 @@ mod tests {
         let second_instance_id = runtime_ctx
             .shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::instance_id)
             .expect("relay handle should still be stored");
-
-        assert_eq!(first_instance_id, second_instance_id);
-
-        // Gracefully shut down background workers to avoid hanging tests
-        if let Some(stop_handle) = runtime_ctx.shared_get::<super::StopHandle>() {
-            stop_handle.stop().await;
-        };
-    }
-
-    #[tokio::test]
-    async fn connect_runtime_workers_is_idempotent_for_build_worker_handle() {
-        let db = setup_test_db().await;
-        let runtime = Arc::new(EventRuntime {
-            transport: Arc::new(OutboxTransport::new(db.clone())),
-            listener_bus: EventBus::new(),
-            relay_config: None,
-            channel_capacity: 128,
-            relay_fallback_active: false,
-        });
-        let runtime_ctx = ServerRuntimeContext::new(
-            db,
-            RustokSettings {
-                build: BuildRuntimeSettings {
-                    enabled: true,
-                    poll_interval_ms: 1_000,
-                    ..BuildRuntimeSettings::default()
-                },
-                ..RustokSettings::default()
-            },
-        );
-        runtime_ctx.shared_insert(runtime);
-
-        connect_runtime_workers_with_runtime(runtime_ctx.clone())
-            .await
-            .expect("first worker connect should succeed");
-        let first_instance_id = runtime_ctx
-            .shared_map::<BuildWorkerHandle, _>(BuildWorkerHandle::instance_id)
-            .expect("build worker handle should be stored");
-
-        connect_runtime_workers_with_runtime(runtime_ctx.clone())
-            .await
-            .expect("second worker connect should be idempotent");
-        let second_instance_id = runtime_ctx
-            .shared_map::<BuildWorkerHandle, _>(BuildWorkerHandle::instance_id)
-            .expect("build worker handle should still be stored");
 
         assert_eq!(first_instance_id, second_instance_id);
 

@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use rustok_core::Result;
 use rustok_events::EventEnvelope;
-use rustok_iggy_connector::{IggyConnector, SubscriberMessageMetadata};
-use tokio::sync::RwLock;
+use rustok_iggy_connector::{ConsumerCursor, IggyConnector, SubscriberMessageMetadata};
+use tokio::sync::{Mutex, RwLock};
 use tracing::info;
 
 use crate::serialization::EventSerializer;
@@ -29,6 +29,85 @@ pub struct ConsumedEvent {
     pub partition: u32,
     pub envelope: EventEnvelope,
     pub connector_metadata: SubscriberMessageMetadata,
+}
+
+/// One persistent external consumer-group cursor.
+///
+/// The broker cursor is retained across receive and acknowledgement. This is
+/// the only transport API suitable for result-first processing: an event is
+/// not acknowledged until its owner has durably persisted the terminal result.
+pub struct PersistentConsumerGroup {
+    stream: String,
+    topic: String,
+    serializer: Arc<dyn EventSerializer>,
+    cursor: Mutex<Box<dyn ConsumerCursor>>,
+}
+
+impl PersistentConsumerGroup {
+    pub(crate) fn new(
+        stream: String,
+        topic: String,
+        serializer: Arc<dyn EventSerializer>,
+        cursor: Box<dyn ConsumerCursor>,
+    ) -> Self {
+        Self {
+            stream,
+            topic,
+            serializer,
+            cursor: Mutex::new(cursor),
+        }
+    }
+
+    /// Receives one event without committing the broker offset.
+    pub async fn receive(&self) -> Result<Option<ConsumedEvent>> {
+        let message = self
+            .cursor
+            .lock()
+            .await
+            .receive()
+            .await
+            .map_err(|error| rustok_core::Error::External(error.to_string()))?;
+        let Some(message) = message else {
+            return Ok(None);
+        };
+        let envelope = self.serializer.deserialize(&message.payload)?;
+        if message.metadata.stream != self.stream || message.metadata.topic != self.topic {
+            return Err(rustok_core::Error::External(format!(
+                "Persistent consumer cursor returned metadata for {}/{} instead of {}/{}",
+                message.metadata.stream, message.metadata.topic, self.stream, self.topic
+            )));
+        }
+
+        Ok(Some(ConsumedEvent {
+            stream: self.stream.clone(),
+            topic: self.topic.clone(),
+            partition: message.metadata.partition,
+            envelope,
+            connector_metadata: message.metadata,
+        }))
+    }
+
+    /// Commits the offset for the exact event returned by [`Self::receive`].
+    pub async fn acknowledge(&self, consumed: &ConsumedEvent) -> Result<()> {
+        consumed.validate_connector_metadata()?;
+        if consumed.stream != self.stream || consumed.topic != self.topic {
+            return Err(rustok_core::Error::External(
+                "Consumed event does not belong to this persistent consumer group".to_string(),
+            ));
+        }
+        let ack_token = consumed.ack_token().ok_or_else(|| {
+            rustok_core::Error::External(format!(
+                "Consumed event {} has no connector ack token",
+                consumed.envelope.id
+            ))
+        })?;
+        self.cursor
+            .lock()
+            .await
+            .acknowledge(ack_token)
+            .await
+            .map_err(|error| rustok_core::Error::External(error.to_string()))
+    }
 }
 
 impl ConsumedEvent {

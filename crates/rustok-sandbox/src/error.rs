@@ -34,6 +34,8 @@ pub enum SandboxError {
         capability: CapabilityName,
         message: String,
     },
+    #[error("sandbox execution audit is unavailable: {0}")]
+    AuditUnavailable(String),
     #[error("sandbox execution was cancelled")]
     Cancelled,
     #[error("sandbox internal error: {0}")]
@@ -55,6 +57,7 @@ impl SandboxError {
             Self::Timeout { .. } => "EXECUTION_TIMEOUT",
             Self::LimitExceeded { .. } => "RESOURCE_LIMIT_EXCEEDED",
             Self::HostCapability { .. } => "HOST_CAPABILITY_FAILED",
+            Self::AuditUnavailable(_) => "AUDIT_UNAVAILABLE",
             Self::Cancelled => "EXECUTION_CANCELLED",
             Self::Internal(_) => "INTERNAL_ERROR",
         }

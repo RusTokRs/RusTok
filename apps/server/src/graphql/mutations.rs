@@ -40,6 +40,7 @@ use rustok_build::release::{Column as ReleaseColumn, Entity as ReleaseEntity, Re
 use rustok_build::BuildService;
 use rustok_build::EventBusBuildEventPublisher;
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
+use rustok_modules::ModuleCompositionError;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -416,11 +417,13 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
 
 fn map_platform_composition_error(error: PlatformCompositionError) -> FieldError {
     match error {
-        PlatformCompositionError::RevisionConflict { expected, current } => {
-            FieldError::new(format!(
-                "Platform composition revision conflict: expected {expected}, current {current}"
-            ))
-        }
+        PlatformCompositionError::RevisionConflict { expected, current }
+        | PlatformCompositionError::Owner(ModuleCompositionError::RevisionConflict {
+            expected,
+            current,
+        }) => FieldError::new(format!(
+            "Platform composition revision conflict: expected {expected}, current {current}"
+        )),
         PlatformCompositionError::Manifest(error) => map_manifest_error(error),
         other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
     }

@@ -3,6 +3,18 @@
   "module": "media",
   "role": "provider",
   "status": "boundary_ready",
+  "deployment_topology": {
+    "current_class": "modular_monolith",
+    "extraction_class": "whole_module_service",
+    "remote_transport": "grpc",
+    "database_ownership": "exclusive",
+    "pilot_phase": "media_isolated_pilot",
+    "remote_status": "planned",
+    "split_blockers": [
+      "grpc_conformance",
+      "isolated_database_storage_evidence"
+    ]
+  },
   "contract_version": "media.asset_read.v1",
   "ports": [
     {
@@ -24,6 +36,32 @@
         "list_assets",
         "get_image_descriptor",
         "get_translations"
+      ]
+    },
+    {
+      "name": "MediaAssetWritePort",
+      "owner": "media",
+      "contract_version": "media.asset_write.v1",
+      "operations": [
+        "prepare_upload",
+        "delete_asset",
+        "upsert_translation",
+        "cleanup_storage_orphans"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
+      "deadline_required": true,
+      "write_operations": [
+        "prepare_upload",
+        "delete_asset",
+        "upsert_translation",
+        "cleanup_storage_orphans"
+      ],
+      "read_operations": [],
+      "upload_body_transport": [
+        "media_owned_streaming_rest",
+        "future_presigned_upload"
       ]
     }
   ],

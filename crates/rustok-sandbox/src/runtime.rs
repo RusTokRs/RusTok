@@ -12,14 +12,16 @@ use crate::{
 
 #[async_trait]
 pub trait ExecutionObserver: Send + Sync {
-    async fn observe(&self, record: &ExecutionRecord);
+    async fn observe(&self, record: &ExecutionRecord) -> SandboxResult<()>;
 }
 
 pub struct NoopExecutionObserver;
 
 #[async_trait]
 impl ExecutionObserver for NoopExecutionObserver {
-    async fn observe(&self, _record: &ExecutionRecord) {}
+    async fn observe(&self, _record: &ExecutionRecord) -> SandboxResult<()> {
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -74,9 +76,11 @@ impl SandboxRuntime {
         let executor = self.executors.get(request.payload.executor)?;
         let _permit = self.admission.admit(&request)?;
         let started_at = Utc::now();
+        let context = request.context.clone();
         self.observe(ExecutionRecord {
-            execution_id: request.context.execution_id,
+            execution_id: context.execution_id,
             subject: request.subject.clone(),
+            context: context.clone(),
             executor: request.payload.executor,
             status: ExecutionStatus::Started,
             started_at,
@@ -84,7 +88,7 @@ impl SandboxRuntime {
             metrics: None,
             error_code: None,
         })
-        .await;
+        .await?;
 
         let timer = Instant::now();
         let host = SandboxHost::new(
@@ -99,12 +103,13 @@ impl SandboxRuntime {
 
         match result {
             Ok(mut outcome) => {
-                outcome.execution_id = request.context.execution_id;
+                outcome.execution_id = context.execution_id;
                 outcome.metrics.duration_ms =
                     timer.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
                 self.observe(ExecutionRecord {
-                    execution_id: request.context.execution_id,
+                    execution_id: context.execution_id,
                     subject: request.subject,
+                    context: context.clone(),
                     executor: request.payload.executor,
                     status: ExecutionStatus::Succeeded,
                     started_at,
@@ -112,13 +117,14 @@ impl SandboxRuntime {
                     metrics: Some(outcome.metrics.clone()),
                     error_code: None,
                 })
-                .await;
+                .await?;
                 Ok(outcome)
             }
             Err(error) => {
                 self.observe(ExecutionRecord {
-                    execution_id: request.context.execution_id,
+                    execution_id: context.execution_id,
                     subject: request.subject,
+                    context,
                     executor: request.payload.executor,
                     status: ExecutionStatus::Failed,
                     started_at,
@@ -126,15 +132,16 @@ impl SandboxRuntime {
                     metrics: None,
                     error_code: Some(error.code().to_string()),
                 })
-                .await;
+                .await?;
                 Err(error)
             }
         }
     }
 
-    async fn observe(&self, record: ExecutionRecord) {
+    async fn observe(&self, record: ExecutionRecord) -> SandboxResult<()> {
         for observer in &self.observers {
-            observer.observe(&record).await;
+            observer.observe(&record).await?;
         }
+        Ok(())
     }
 }

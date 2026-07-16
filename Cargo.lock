@@ -7794,7 +7794,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11260,6 +11260,7 @@ name = "rustok-iggy-connector"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures-util",
  "iggy",
  "serde",
  "serde_json",
@@ -11541,6 +11542,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-module-build-dispatcher"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-events",
+ "rustok-iggy",
+ "rustok-module-build-transport",
+ "rustok-modules",
+ "rustok-worker-transport",
+ "sea-orm",
+ "tokio",
+ "tonic",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-module-build-transport"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "prost",
+ "protoc-bin-vendored",
+ "rustok-modules",
+ "serde_json",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+]
+
+[[package]]
+name = "rustok-module-build-worker"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "oci-distribution",
+ "rustok-module-build-transport",
+ "rustok-modules",
+ "rustok-worker-transport",
+ "serde_json",
+ "sha2 0.11.0",
+ "tokio",
+ "toml 1.1.2+spec-1.1.0",
+ "tonic",
+ "uuid",
+ "wasmparser 0.253.0",
+ "wit-parser",
+]
+
+[[package]]
 name = "rustok-modules"
 version = "0.1.0"
 dependencies = [
@@ -11549,12 +11601,15 @@ dependencies = [
  "chrono",
  "futures-util",
  "hex",
+ "http 1.4.2",
  "oci-distribution",
  "pubgrub",
+ "rustok-api",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
  "rustok-sandbox",
+ "rustok-secrets",
  "rustok-storage",
  "sea-orm",
  "sea-orm-migration",
@@ -12141,6 +12196,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -12419,6 +12475,7 @@ dependencies = [
  "rustok-profiles",
  "rustok-rbac",
  "rustok-region",
+ "rustok-runtime",
  "rustok-search",
  "rustok-seo",
  "rustok-storage",
@@ -12686,6 +12743,7 @@ dependencies = [
  "base64 0.22.1",
  "rustok-modules",
  "rustok-verification-transport",
+ "rustok-worker-transport",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -12701,6 +12759,13 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "rustok-worker-transport"
+version = "0.1.0"
+dependencies = [
+ "tonic",
 ]
 
 [[package]]
@@ -14223,7 +14288,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
@@ -15941,8 +16006,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19db11f87d2486580e1e8b6f494c54df7e0566b87d0b599db843c24019667339"
 dependencies = [
  "bitflags 2.13.0",
+ "hashbrown 0.17.1",
  "indexmap 2.14.0",
  "semver",
+ "serde",
 ]
 
 [[package]]
@@ -16302,7 +16369,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

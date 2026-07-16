@@ -4,8 +4,9 @@ use axum::{
 };
 use std::marker::PhantomData;
 
+use rustok_core::ModuleRegistry;
+
 use crate::context::TenantContextExt;
-use crate::modules::build_registry;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -28,8 +29,10 @@ where
             .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "Tenant context missing"))?
             .id;
         let ctx = ServerRuntimeContext::from_ref(state);
-
-        let registry = build_registry();
+        let registry = ctx.shared_get::<ModuleRegistry>().ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Static module registry unavailable",
+        ))?;
         let is_enabled =
             EffectiveModulePolicyService::is_enabled(ctx.db(), &registry, tenant_id, M::SLUG)
                 .await

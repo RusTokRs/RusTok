@@ -29,6 +29,10 @@
   only composes those roots and provides host runtime data such as the rate-limit adapter.
 - Publishes module-owned admin and storefront UI packages for host composition.
 - Keeps external engine integrations behind dedicated connector crates, rather than forcing domain modules to talk to provider SDKs directly.
+- Search is a whole-module remote extraction pilot. PostgreSQL and future
+  Meilisearch/Typesense/Algolia connectors remain internal `SearchEngine`
+  implementations inside the search deployment; consumers use only
+  `SearchQueryPort` and `SearchSuggestionPort`.
 
 ## Entry points
 

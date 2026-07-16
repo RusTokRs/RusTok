@@ -73,7 +73,7 @@ mod-workflow  = ["dep:rustok-workflow", "rustok-distribution/mod-workflow"]
 mod-ai        = []
 
 [dependencies]
-rustok-core = { workspace = true, features = ["redis-cache"] }
+rustok-core = { workspace = true, features = ["redis-cache", "server"] }
 rustok-modules.workspace = true
 rustok-distribution = { workspace = true, default-features = false }
 rustok-api = { workspace = true, features = ["server"] }

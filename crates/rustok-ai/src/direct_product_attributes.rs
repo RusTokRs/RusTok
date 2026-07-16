@@ -75,7 +75,15 @@ impl DirectTaskHandler for ProductAttributesHandler {
             execution_target: DirectExecutionTarget::Commerce,
             appended_messages: vec![explanation],
             traces: vec![trace],
-            metadata: json!({"direct_task": request.task_slug,"requested_locale": request.requested_locale,"resolved_locale": request.resolved_locale,"product_id": input.product_id,"suggested_attributes": operation_payload,}),
+            metadata: json!({
+                "direct_task": request.task_slug,
+                "requested_locale": request.requested_locale,
+                "resolved_locale": request.resolved_locale,
+                "product_id": input.product_id,
+                "suggested_attributes": operation_payload,
+                "review_required": true,
+                "persistence": "none",
+            }),
         })
     }
 }

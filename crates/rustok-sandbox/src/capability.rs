@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -180,6 +180,557 @@ impl HttpCapabilityConstraints {
     }
 }
 
+/// Typed policy for the `platform.secrets` capability.
+///
+/// Guests may name only an admitted logical reference and operation. Resolver
+/// aliases, resolver keys, and secret values never appear in the guest input
+/// contract. The owner-provided handle broker returns only the logical reference
+/// and revision; a value-consuming broker remains separate work.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SecretReferenceCapabilityConstraints {
+    pub references: Vec<String>,
+    pub operations: Vec<String>,
+}
+
+impl SecretReferenceCapabilityConstraints {
+    fn from_grant(grant: &CapabilityGrant) -> SandboxResult<Self> {
+        let constraints =
+            serde_json::from_value::<Self>(grant.constraints.clone()).map_err(|error| {
+                SandboxError::CapabilityConstraintDenied {
+                    capability: grant.name.clone(),
+                    reason: format!("invalid secret-reference constraints: {error}"),
+                }
+            })?;
+        if constraints.references.is_empty() || constraints.operations.is_empty() {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "secret-reference constraints require non-empty references and operations"
+                    .to_string(),
+            });
+        }
+        let mut references = std::collections::BTreeSet::new();
+        if constraints.references.iter().any(|reference| {
+            !valid_secret_reference_name(reference) || !references.insert(reference)
+        }) {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "secret-reference names must be unique lowercase logical identifiers"
+                    .to_string(),
+            });
+        }
+        let mut operations = std::collections::BTreeSet::new();
+        if constraints.operations.iter().any(|operation| {
+            !valid_capability_operation(operation) || !operations.insert(operation)
+        }) {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "secret-reference operations must be unique lowercase logical identifiers"
+                    .to_string(),
+            });
+        }
+        Ok(constraints)
+    }
+
+    fn validate(&self, call: &CapabilityCall) -> SandboxResult<()> {
+        let input =
+            call.input
+                .as_object()
+                .ok_or_else(|| SandboxError::CapabilityConstraintDenied {
+                    capability: call.capability.clone(),
+                    reason: "secret-reference input must be an object".to_string(),
+                })?;
+        if input.len() != 1 {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: "secret-reference input may contain only `reference`".to_string(),
+            });
+        }
+        let reference = input
+            .get("reference")
+            .and_then(Value::as_str)
+            .ok_or_else(|| SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: "secret-reference input must contain a string reference".to_string(),
+            })?;
+        if !self.references.iter().any(|allowed| allowed == reference) {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: format!("secret reference `{reference}` is not allowed"),
+            });
+        }
+        if !self
+            .operations
+            .iter()
+            .any(|allowed| allowed == &call.operation)
+        {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: format!("secret operation `{}` is not allowed", call.operation),
+            });
+        }
+        Ok(())
+    }
+}
+
+fn valid_secret_reference_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 96
+        && !value.starts_with('_')
+        && !value.ends_with('_')
+        && value.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '_' | '-')
+        })
+}
+
+/// Typed policy for the `platform.events` capability.
+///
+/// A grant names the exact event operations and event topics an artifact can
+/// publish. Topics may use only a terminal `.*` wildcard, matching the admitted
+/// artifact event-binding contract; a global wildcard is never valid.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventCapabilityConstraints {
+    pub topics: Vec<String>,
+    pub operations: Vec<String>,
+}
+
+impl EventCapabilityConstraints {
+    fn from_grant(grant: &CapabilityGrant) -> SandboxResult<Self> {
+        let constraints =
+            serde_json::from_value::<Self>(grant.constraints.clone()).map_err(|error| {
+                SandboxError::CapabilityConstraintDenied {
+                    capability: grant.name.clone(),
+                    reason: format!("invalid event constraints: {error}"),
+                }
+            })?;
+        if constraints.topics.is_empty() || constraints.operations.is_empty() {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "event constraints require non-empty topics and operations".to_string(),
+            });
+        }
+        let mut topics = std::collections::BTreeSet::new();
+        if constraints
+            .topics
+            .iter()
+            .any(|topic| !valid_event_topic(topic) || !topics.insert(topic))
+        {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "event topics must be unique exact or terminal-wildcard identifiers"
+                    .to_string(),
+            });
+        }
+        let mut operations = std::collections::BTreeSet::new();
+        if constraints.operations.iter().any(|operation| {
+            !valid_capability_operation(operation) || !operations.insert(operation)
+        }) {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "event operations must be unique lowercase logical identifiers".to_string(),
+            });
+        }
+        Ok(constraints)
+    }
+
+    fn validate(&self, call: &CapabilityCall) -> SandboxResult<()> {
+        let input =
+            call.input
+                .as_object()
+                .ok_or_else(|| SandboxError::CapabilityConstraintDenied {
+                    capability: call.capability.clone(),
+                    reason: "event input must be an object".to_string(),
+                })?;
+        if input.keys().any(|key| key != "topic" && key != "payload") {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: "event input may contain only topic and payload".to_string(),
+            });
+        }
+        let topic = input.get("topic").and_then(Value::as_str).ok_or_else(|| {
+            SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: "event input must contain a string topic".to_string(),
+            }
+        })?;
+        if !valid_event_topic(topic)
+            || !self
+                .topics
+                .iter()
+                .any(|allowed| event_topic_matches(allowed, topic))
+        {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: "event topic is not allowed".to_string(),
+            });
+        }
+        if !self
+            .operations
+            .iter()
+            .any(|allowed| allowed == &call.operation)
+        {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: call.capability.clone(),
+                reason: "event operation is not allowed".to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
+fn valid_capability_operation(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '_' | '.')
+        })
+}
+
+fn valid_event_topic(value: &str) -> bool {
+    if value.is_empty() || value.len() > 128 || value == "*" {
+        return false;
+    }
+    let segments = value.split('.').collect::<Vec<_>>();
+    segments.iter().enumerate().all(|(index, segment)| {
+        if *segment == "*" {
+            return index + 1 == segments.len();
+        }
+        !segment.is_empty()
+            && segment.len() <= 63
+            && segment.chars().all(|character| {
+                character.is_ascii_lowercase()
+                    || character.is_ascii_digit()
+                    || matches!(character, '_' | '-')
+            })
+    })
+}
+
+fn event_topic_matches(subscription: &str, topic: &str) -> bool {
+    subscription == topic
+        || subscription
+            .strip_suffix(".*")
+            .is_some_and(|prefix| topic.starts_with(&format!("{prefix}.")))
+}
+
+/// Typed policy for the `platform.data` capability.
+///
+/// The tenant/module/data-contract namespace is injected by the host, never
+/// named by a guest. Grants narrow that injected namespace to logical key
+/// prefixes and the structured operations implemented by the owner data broker.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DataCapabilityConstraints {
+    pub key_prefixes: Vec<String>,
+    pub operations: Vec<String>,
+}
+
+impl DataCapabilityConstraints {
+    fn from_grant(grant: &CapabilityGrant) -> SandboxResult<Self> {
+        let constraints =
+            serde_json::from_value::<Self>(grant.constraints.clone()).map_err(|error| {
+                SandboxError::CapabilityConstraintDenied {
+                    capability: grant.name.clone(),
+                    reason: format!("invalid data constraints: {error}"),
+                }
+            })?;
+        if constraints.key_prefixes.is_empty() || constraints.operations.is_empty() {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "data constraints require non-empty key_prefixes and operations"
+                    .to_string(),
+            });
+        }
+        let mut prefixes = std::collections::BTreeSet::new();
+        if constraints
+            .key_prefixes
+            .iter()
+            .any(|prefix| !valid_data_prefix(prefix) || !prefixes.insert(prefix))
+        {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "data key prefixes must be unique logical paths ending in `/`".to_string(),
+            });
+        }
+        let mut operations = std::collections::BTreeSet::new();
+        if constraints.operations.iter().any(|operation| {
+            !matches!(operation.as_str(), "get" | "put" | "list") || !operations.insert(operation)
+        }) {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "data operations must be unique and limited to get, put, or list"
+                    .to_string(),
+            });
+        }
+        Ok(constraints)
+    }
+
+    fn validate(&self, call: &CapabilityCall) -> SandboxResult<()> {
+        if !self
+            .operations
+            .iter()
+            .any(|allowed| allowed == &call.operation)
+        {
+            return Err(data_constraint_error(call, "data operation is not allowed"));
+        }
+        let input = call
+            .input
+            .as_object()
+            .ok_or_else(|| data_constraint_error(call, "data input must be an object"))?;
+        match call.operation.as_str() {
+            "get" => {
+                reject_unexpected_data_fields(call, input, &["key"])?;
+                self.validate_key(call, required_data_string(call, input, "key")?)
+            }
+            "put" => {
+                reject_unexpected_data_fields(
+                    call,
+                    input,
+                    &["key", "value", "expected_revision", "idempotency_key"],
+                )?;
+                if !input.contains_key("value") {
+                    return Err(data_constraint_error(call, "data put input requires value"));
+                }
+                let key = required_data_string(call, input, "key")?;
+                self.validate_key(call, key)?;
+                let idempotency_key = required_data_string(call, input, "idempotency_key")?;
+                if Uuid::parse_str(idempotency_key).is_err() {
+                    return Err(data_constraint_error(
+                        call,
+                        "data idempotency_key must be a UUID",
+                    ));
+                }
+                if let Some(revision) = input.get("expected_revision") {
+                    if revision.as_u64().filter(|revision| *revision > 0).is_none() {
+                        return Err(data_constraint_error(
+                            call,
+                            "data expected_revision must be a positive integer",
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            "list" => {
+                reject_unexpected_data_fields(call, input, &["prefix", "after_key", "limit"])?;
+                let prefix = required_data_string(call, input, "prefix")?;
+                if !self.key_prefixes.iter().any(|allowed| allowed == prefix) {
+                    return Err(data_constraint_error(call, "data prefix is not allowed"));
+                }
+                if let Some(after_key) = input.get("after_key") {
+                    let after_key = after_key.as_str().ok_or_else(|| {
+                        data_constraint_error(call, "data after_key must be a string")
+                    })?;
+                    if !valid_data_key(after_key) || !after_key.starts_with(prefix) {
+                        return Err(data_constraint_error(
+                            call,
+                            "data after_key is outside the allowed prefix",
+                        ));
+                    }
+                }
+                let limit = input.get("limit").and_then(Value::as_u64);
+                if limit.filter(|limit| (1..=100).contains(limit)).is_none() {
+                    return Err(data_constraint_error(
+                        call,
+                        "data list limit must be between 1 and 100",
+                    ));
+                }
+                Ok(())
+            }
+            _ => Err(data_constraint_error(call, "data operation is unsupported")),
+        }
+    }
+
+    fn validate_key(&self, call: &CapabilityCall, key: &str) -> SandboxResult<()> {
+        if !valid_data_key(key)
+            || !self
+                .key_prefixes
+                .iter()
+                .any(|prefix| key.starts_with(prefix))
+        {
+            return Err(data_constraint_error(call, "data key is not allowed"));
+        }
+        Ok(())
+    }
+}
+
+fn data_constraint_error(call: &CapabilityCall, reason: &str) -> SandboxError {
+    SandboxError::CapabilityConstraintDenied {
+        capability: call.capability.clone(),
+        reason: reason.to_string(),
+    }
+}
+
+fn required_data_string<'a>(
+    call: &CapabilityCall,
+    input: &'a serde_json::Map<String, Value>,
+    field: &str,
+) -> SandboxResult<&'a str> {
+    input
+        .get(field)
+        .and_then(Value::as_str)
+        .ok_or_else(|| data_constraint_error(call, &format!("data {field} must be a string")))
+}
+
+fn reject_unexpected_data_fields(
+    call: &CapabilityCall,
+    input: &serde_json::Map<String, Value>,
+    allowed: &[&str],
+) -> SandboxResult<()> {
+    if input.keys().any(|field| !allowed.contains(&field.as_str())) {
+        return Err(data_constraint_error(
+            call,
+            "data input contains an unsupported field",
+        ));
+    }
+    Ok(())
+}
+
+fn valid_data_prefix(value: &str) -> bool {
+    value
+        .strip_suffix('/')
+        .is_some_and(|key| !key.ends_with('/') && valid_data_key(key))
+}
+
+fn valid_data_key(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && !value.starts_with('/')
+        && value.split('/').all(|segment| {
+            !segment.is_empty() && segment != "." && segment != ".." && !segment.contains('\\')
+        })
+}
+
+/// One admitted MCP server/tool target. The transport endpoint, credentials,
+/// and tool implementation remain deployment-owned and never appear here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpToolGrant {
+    pub server: String,
+    pub tool: String,
+}
+
+/// Typed policy for the `platform.mcp` capability.
+///
+/// Sandbox calls use a preconfigured server alias and an exact tool name. A
+/// guest never chooses an MCP endpoint, transport, credential, or arbitrary
+/// tool discovery target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpCapabilityConstraints {
+    pub tools: Vec<McpToolGrant>,
+    pub operations: Vec<String>,
+}
+
+impl McpCapabilityConstraints {
+    fn from_grant(grant: &CapabilityGrant) -> SandboxResult<Self> {
+        let constraints =
+            serde_json::from_value::<Self>(grant.constraints.clone()).map_err(|error| {
+                SandboxError::CapabilityConstraintDenied {
+                    capability: grant.name.clone(),
+                    reason: format!("invalid MCP constraints: {error}"),
+                }
+            })?;
+        if constraints.tools.is_empty() || constraints.operations.is_empty() {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "MCP constraints require non-empty tools and operations".to_string(),
+            });
+        }
+        if constraints.tools.iter().enumerate().any(|(index, target)| {
+            !valid_mcp_name(&target.server)
+                || !valid_mcp_name(&target.tool)
+                || constraints.tools[..index]
+                    .iter()
+                    .any(|previous| previous == target)
+        }) {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "MCP server/tool targets must be unique logical identifiers".to_string(),
+            });
+        }
+        let mut operations = std::collections::BTreeSet::new();
+        if constraints
+            .operations
+            .iter()
+            .any(|operation| operation != "call" || !operations.insert(operation))
+        {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "MCP operations must contain only the unique call operation".to_string(),
+            });
+        }
+        Ok(constraints)
+    }
+
+    fn validate(&self, call: &CapabilityCall) -> SandboxResult<()> {
+        if call.operation != "call" || !self.operations.iter().any(|operation| operation == "call")
+        {
+            return Err(mcp_constraint_error(call, "MCP operation is not allowed"));
+        }
+        let input = call
+            .input
+            .as_object()
+            .ok_or_else(|| mcp_constraint_error(call, "MCP input must be an object"))?;
+        if input
+            .keys()
+            .any(|field| field != "server" && field != "tool" && field != "arguments")
+        {
+            return Err(mcp_constraint_error(
+                call,
+                "MCP input may contain only server, tool, and arguments",
+            ));
+        }
+        let server = required_mcp_string(call, input, "server")?;
+        let tool = required_mcp_string(call, input, "tool")?;
+        if !self
+            .tools
+            .iter()
+            .any(|target| target.server == server && target.tool == tool)
+        {
+            return Err(mcp_constraint_error(
+                call,
+                "MCP server/tool target is not allowed",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn mcp_constraint_error(call: &CapabilityCall, reason: &str) -> SandboxError {
+    SandboxError::CapabilityConstraintDenied {
+        capability: call.capability.clone(),
+        reason: reason.to_string(),
+    }
+}
+
+fn required_mcp_string<'a>(
+    call: &CapabilityCall,
+    input: &'a serde_json::Map<String, Value>,
+    field: &str,
+) -> SandboxResult<&'a str> {
+    input
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| valid_mcp_name(value))
+        .ok_or_else(|| mcp_constraint_error(call, &format!("MCP {field} is invalid")))
+}
+
+fn valid_mcp_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 96
+        && !matches!(value.chars().next(), Some('.' | '-' | '_'))
+        && !matches!(value.chars().next_back(), Some('.' | '-' | '_'))
+        && value.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '_' | '-' | '.')
+        })
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CapabilityCall {
     pub execution_id: Uuid,
@@ -228,6 +779,58 @@ pub trait CapabilityBroker: Send + Sync {
         call: &CapabilityCall,
         grant: &CapabilityGrant,
     ) -> SandboxResult<CapabilityResponse>;
+}
+
+/// Composes owner-provided capability adapters without giving any adapter a
+/// platform-global fallback. A call is routed by its exact capability name;
+/// an unregistered capability remains denied even when another adapter is
+/// registered for the same execution.
+#[derive(Clone, Default)]
+pub struct CapabilityBrokerRouter {
+    routes: Arc<HashMap<CapabilityName, Arc<dyn CapabilityBroker>>>,
+}
+
+impl CapabilityBrokerRouter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Registers exactly one owner adapter for a capability name.
+    ///
+    /// Duplicate registration is rejected instead of silently replacing the
+    /// first owner. This keeps capability ownership explicit in host
+    /// composition.
+    pub fn route(
+        mut self,
+        capability: CapabilityName,
+        broker: Arc<dyn CapabilityBroker>,
+    ) -> SandboxResult<Self> {
+        let routes = Arc::make_mut(&mut self.routes);
+        if routes.insert(capability.clone(), broker).is_some() {
+            return Err(SandboxError::InvalidRequest(format!(
+                "capability broker route `{capability}` is already registered"
+            )));
+        }
+        Ok(self)
+    }
+}
+
+#[async_trait]
+impl CapabilityBroker for CapabilityBrokerRouter {
+    async fn invoke(
+        &self,
+        call: &CapabilityCall,
+        grant: &CapabilityGrant,
+    ) -> SandboxResult<CapabilityResponse> {
+        if grant.name != call.capability {
+            return Err(SandboxError::CapabilityDenied(call.capability.clone()));
+        }
+        let broker = self
+            .routes
+            .get(&call.capability)
+            .ok_or_else(|| SandboxError::CapabilityDenied(call.capability.clone()))?;
+        broker.invoke(call, grant).await
+    }
 }
 
 /// Redacted evidence for one capability attempt.
@@ -436,6 +1039,18 @@ impl SandboxHost {
         if call.capability.as_str() == "platform.http" {
             HttpCapabilityConstraints::from_grant(grant)?.validate(call)?;
         }
+        if call.capability.as_str() == "platform.secrets" {
+            SecretReferenceCapabilityConstraints::from_grant(grant)?.validate(call)?;
+        }
+        if call.capability.as_str() == "platform.events" {
+            EventCapabilityConstraints::from_grant(grant)?.validate(call)?;
+        }
+        if call.capability.as_str() == "platform.data" {
+            DataCapabilityConstraints::from_grant(grant)?.validate(call)?;
+        }
+        if call.capability.as_str() == "platform.mcp" {
+            McpCapabilityConstraints::from_grant(grant)?.validate(call)?;
+        }
         Ok(())
     }
 
@@ -482,4 +1097,221 @@ fn is_denied(error: &SandboxError) -> bool {
             | SandboxError::CapabilityConstraintDenied { .. }
             | SandboxError::CapabilityContextMismatch { .. }
     ) || matches!(error, SandboxError::LimitExceeded { resource, .. } if resource.starts_with("capability_"))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::{
+        CapabilityBroker, CapabilityBrokerRouter, CapabilityCall, CapabilityCallContext,
+        CapabilityGrant, CapabilityName, CapabilityResponse, DataCapabilityConstraints,
+        EventCapabilityConstraints, McpCapabilityConstraints, SecretReferenceCapabilityConstraints,
+    };
+    use crate::{ExecutionPhase, SandboxError, SandboxResult, SandboxSubject};
+
+    fn call(operation: &str, input: serde_json::Value) -> CapabilityCall {
+        CapabilityCall {
+            execution_id: Uuid::nil(),
+            subject: SandboxSubject::ModuleArtifact {
+                slug: "sample_module".to_string(),
+                version: "1.0.0".to_string(),
+                digest: "sha256:sample".to_string(),
+            },
+            context: CapabilityCallContext {
+                phase: ExecutionPhase::Lifecycle,
+                tenant_id: None,
+                actor_id: None,
+                trace_id: None,
+            },
+            capability: CapabilityName::new("platform.secrets").expect("capability name"),
+            operation: operation.to_string(),
+            input,
+        }
+    }
+
+    #[test]
+    fn secret_reference_constraints_allow_only_declared_logical_handle_calls() {
+        let grant = CapabilityGrant {
+            name: CapabilityName::new("platform.secrets").expect("capability name"),
+            constraints: json!({
+                "references": ["payment_api"],
+                "operations": ["acquire_handle"]
+            }),
+        };
+        let constraints =
+            SecretReferenceCapabilityConstraints::from_grant(&grant).expect("valid constraints");
+
+        assert!(constraints
+            .validate(&call(
+                "acquire_handle",
+                json!({ "reference": "payment_api" })
+            ))
+            .is_ok());
+        assert!(constraints
+            .validate(&call("read", json!({ "reference": "payment_api" })))
+            .is_err());
+        assert!(constraints
+            .validate(&call("acquire_handle", json!({ "reference": "other" })))
+            .is_err());
+        assert!(constraints
+            .validate(&call(
+                "acquire_handle",
+                json!({ "reference": "payment_api", "resolver": "env" }),
+            ))
+            .is_err());
+    }
+
+    #[test]
+    fn event_constraints_allow_only_declared_publish_topics() {
+        let grant = CapabilityGrant {
+            name: CapabilityName::new("platform.events").expect("capability name"),
+            constraints: json!({
+                "topics": ["order.*"],
+                "operations": ["publish"]
+            }),
+        };
+        let constraints =
+            EventCapabilityConstraints::from_grant(&grant).expect("valid event constraints");
+        let mut event_call = call(
+            "publish",
+            json!({ "topic": "order.completed", "payload": {} }),
+        );
+        event_call.capability = CapabilityName::new("platform.events").expect("capability name");
+        assert!(constraints.validate(&event_call).is_ok());
+
+        event_call.input = json!({ "topic": "orders.completed" });
+        assert!(constraints.validate(&event_call).is_err());
+        event_call.input = json!({ "topic": "order.completed", "resolver": "vault" });
+        assert!(constraints.validate(&event_call).is_err());
+    }
+
+    #[test]
+    fn data_constraints_keep_calls_inside_declared_logical_prefixes() {
+        let grant = CapabilityGrant {
+            name: CapabilityName::new("platform.data").expect("capability name"),
+            constraints: json!({
+                "key_prefixes": ["state/"],
+                "operations": ["get", "put", "list"]
+            }),
+        };
+        let constraints =
+            DataCapabilityConstraints::from_grant(&grant).expect("valid data constraints");
+        let mut data_call = call(
+            "put",
+            json!({
+                "key": "state/answer",
+                "value": 42,
+                "idempotency_key": Uuid::new_v4().to_string()
+            }),
+        );
+        data_call.capability = CapabilityName::new("platform.data").expect("capability name");
+        assert!(constraints.validate(&data_call).is_ok());
+
+        data_call.input = json!({ "key": "other/answer" });
+        data_call.operation = "get".to_string();
+        assert!(constraints.validate(&data_call).is_err());
+        data_call.input = json!({ "prefix": "state/", "table": "module_artifact_data" });
+        data_call.operation = "list".to_string();
+        assert!(constraints.validate(&data_call).is_err());
+    }
+
+    #[test]
+    fn mcp_constraints_allow_only_declared_server_tool_pairs() {
+        let grant = CapabilityGrant {
+            name: CapabilityName::new("platform.mcp").expect("capability name"),
+            constraints: json!({
+                "tools": [{ "server": "rustok", "tool": "module_details" }],
+                "operations": ["call"]
+            }),
+        };
+        let constraints =
+            McpCapabilityConstraints::from_grant(&grant).expect("valid MCP constraints");
+        let mut mcp_call = call(
+            "call",
+            json!({
+                "server": "rustok",
+                "tool": "module_details",
+                "arguments": { "slug": "content" }
+            }),
+        );
+        mcp_call.capability = CapabilityName::new("platform.mcp").expect("capability name");
+        assert!(constraints.validate(&mcp_call).is_ok());
+
+        mcp_call.input = json!({ "server": "rustok", "tool": "list_modules" });
+        assert!(constraints.validate(&mcp_call).is_err());
+        mcp_call.input = json!({
+            "server": "rustok",
+            "tool": "module_details",
+            "endpoint": "https://attacker.invalid"
+        });
+        assert!(constraints.validate(&mcp_call).is_err());
+    }
+
+    struct StaticBroker(&'static str);
+
+    #[async_trait]
+    impl CapabilityBroker for StaticBroker {
+        async fn invoke(
+            &self,
+            _call: &CapabilityCall,
+            _grant: &CapabilityGrant,
+        ) -> SandboxResult<CapabilityResponse> {
+            Ok(CapabilityResponse {
+                output: json!({ "owner": self.0 }),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn router_uses_only_the_exact_capability_owner() {
+        let secrets = CapabilityName::new("platform.secrets").expect("capability name");
+        let data = CapabilityName::new("platform.data").expect("capability name");
+        let router = CapabilityBrokerRouter::new()
+            .route(secrets.clone(), Arc::new(StaticBroker("secrets")))
+            .expect("first route")
+            .route(data.clone(), Arc::new(StaticBroker("data")))
+            .expect("second route");
+
+        let mut secret_call = call("acquire_handle", json!({ "reference": "payment_api" }));
+        secret_call.capability = secrets.clone();
+        let response = router
+            .invoke(
+                &secret_call,
+                &CapabilityGrant {
+                    name: secrets,
+                    constraints: json!({}),
+                },
+            )
+            .await
+            .expect("secret owner response");
+        assert_eq!(response.output, json!({ "owner": "secrets" }));
+
+        secret_call.capability = CapabilityName::new("platform.events").expect("capability name");
+        let error = router
+            .invoke(
+                &secret_call,
+                &CapabilityGrant {
+                    name: secret_call.capability.clone(),
+                    constraints: json!({}),
+                },
+            )
+            .await
+            .expect_err("unregistered capability must remain denied");
+        assert!(matches!(error, SandboxError::CapabilityDenied(_)));
+    }
+
+    #[test]
+    fn router_rejects_duplicate_capability_owners() {
+        let capability = CapabilityName::new("platform.data").expect("capability name");
+        let result = CapabilityBrokerRouter::new()
+            .route(capability.clone(), Arc::new(StaticBroker("first")))
+            .expect("first route")
+            .route(capability, Arc::new(StaticBroker("second")));
+        assert!(matches!(result, Err(SandboxError::InvalidRequest(_))));
+    }
 }

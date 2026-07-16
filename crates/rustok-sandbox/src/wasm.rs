@@ -344,7 +344,10 @@ mod tests {
                 Arc::new(SandboxPolicy {
                     grants: vec![crate::CapabilityGrant {
                         name: capability.clone(),
-                        constraints: json!({}),
+                        constraints: json!({
+                            "topics": ["module.installed"],
+                            "operations": ["publish"]
+                        }),
                     }],
                     ..Default::default()
                 }),

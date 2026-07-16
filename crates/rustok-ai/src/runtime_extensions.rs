@@ -277,7 +277,7 @@ struct LazyAwsResolver(Arc<OnceCell<AwsSecretsManagerResolver>>);
 impl SecretResolver for LazyAwsResolver {
     async fn resolve(&self, key: &str) -> Result<SecretString, SecretError> {
         self.0
-            .get_or_init(|| async { AwsSecretsManagerResolver::from_default_chain() })
+            .get_or_init(AwsSecretsManagerResolver::from_default_chain)
             .await
             .resolve(key)
             .await
@@ -339,8 +339,8 @@ fn environment_bool(name: &str) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        environment_bool, policy, secret_prefixes, validate_config_aliases, vault_auth,
-        DeploymentSecretResolverConfig,
+        environment_bool, policy, register_deployment_resolver, secret_prefixes,
+        validate_config_aliases, vault_auth, DeploymentSecretResolverConfig,
     };
 
     #[test]
@@ -416,5 +416,98 @@ mod tests {
         .expect("deployment resolver JSON must deserialize");
         assert_eq!(configs.len(), 7);
         assert!(validate_config_aliases(&configs).is_ok());
+    }
+
+    #[test]
+    fn offline_and_lazy_resolver_configs_register_without_network_calls() {
+        let configs = vec![
+            DeploymentSecretResolverConfig::Env {
+                alias: "env".to_string(),
+                key_prefixes: vec!["RUSTOK_AI_".to_string()],
+            },
+            DeploymentSecretResolverConfig::MountedFile {
+                alias: "file".to_string(),
+                root: std::path::PathBuf::from("/var/run/secrets/rustok"),
+                key_prefixes: vec!["ai/".to_string()],
+            },
+            DeploymentSecretResolverConfig::Vault {
+                alias: "vault".to_string(),
+                endpoint: "https://vault.example.test".to_string(),
+                namespace: None,
+                kv_mount: "secret".to_string(),
+                key_prefixes: vec!["ai/".to_string()],
+                token_env: None,
+                token_file: None,
+                kubernetes_role: Some("rustok-ai".to_string()),
+                kubernetes_auth_mount: Some("kubernetes".to_string()),
+                kubernetes_token_path: Some(std::path::PathBuf::from("/token")),
+            },
+            DeploymentSecretResolverConfig::AwsSecretsManager {
+                alias: "aws".to_string(),
+                key_prefixes: vec!["ai/".to_string()],
+            },
+            DeploymentSecretResolverConfig::GcpSecretManager {
+                alias: "gcp".to_string(),
+                project: "rustok-prod1".to_string(),
+                key_prefixes: vec!["ai/".to_string()],
+            },
+        ];
+
+        let builder = configs.into_iter().try_fold(
+            rustok_secrets::SecretResolverRegistry::builder(),
+            register_deployment_resolver,
+        );
+        let registry = builder
+            .expect("offline and lazy resolver setup must be deployable")
+            .build();
+
+        for alias in ["env", "file", "vault", "aws", "gcp"] {
+            assert!(registry.contains(alias), "missing resolver alias {alias}");
+        }
+    }
+
+    #[test]
+    fn cloud_and_kubernetes_resolver_configs_fail_closed_when_invalid() {
+        let invalid_kubernetes = DeploymentSecretResolverConfig::Kubernetes {
+            alias: "kubernetes".to_string(),
+            namespace: "invalid namespace".to_string(),
+            key_prefixes: vec!["ai/".to_string()],
+        };
+        assert!(
+            register_deployment_resolver(
+                rustok_secrets::SecretResolverRegistry::builder(),
+                invalid_kubernetes,
+            )
+            .is_err(),
+            "Kubernetes resolver registration must fail without valid in-cluster configuration"
+        );
+
+        let invalid_gcp = DeploymentSecretResolverConfig::GcpSecretManager {
+            alias: "gcp".to_string(),
+            project: "INVALID".to_string(),
+            key_prefixes: vec!["ai/".to_string()],
+        };
+        assert!(
+            register_deployment_resolver(
+                rustok_secrets::SecretResolverRegistry::builder(),
+                invalid_gcp,
+            )
+            .is_err(),
+            "GCP resolver registration must validate the deployment-owned project"
+        );
+
+        let invalid_azure = DeploymentSecretResolverConfig::AzureKeyVault {
+            alias: "azure".to_string(),
+            endpoint: "http://vault.example.test".to_string(),
+            key_prefixes: vec!["ai/".to_string()],
+        };
+        assert!(
+            register_deployment_resolver(
+                rustok_secrets::SecretResolverRegistry::builder(),
+                invalid_azure,
+            )
+            .is_err(),
+            "Azure Key Vault resolver registration must reject non-HTTPS endpoints"
+        );
     }
 }

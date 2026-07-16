@@ -114,8 +114,24 @@ for (const inputName of ['CreateAiAgentPrincipalInputGql', 'UpdateAiAgentPrincip
   const end = agentInputs.indexOf('\n}', start);
   if (start < 0 || end < 0) fail(`agent principal input ${inputName} is missing`);
   const body = agentInputs.slice(start, end);
-  if (body.includes('role_slugs') || body.includes('permission_slugs')) fail(`agent principal input ${inputName} must not accept raw RBAC vocabulary`);
+  // Principals select role slugs that were returned by the platform-owned
+  // TenantRbacCatalog. They must never accept caller-provided permissions.
+  if (!body.includes('role_slugs')) fail(`agent principal input ${inputName} must accept catalog-selected roles`);
+  if (body.includes('permission_slugs')) fail(`agent principal input ${inputName} must derive permissions from catalog-selected roles`);
 }
+
+const agentMutation = read('crates/rustok-ai/src/graphql/mutation.rs');
+hasAll(agentMutation, [
+  'tenant_rbac_catalog.as_ref()',
+  'role_slugs: input.role_slugs',
+], 'agent principal GraphQL mutation');
+
+const agentService = read('crates/rustok-ai/src/service.rs');
+hasAll(agentService, [
+  'fn resolve_agent_principal_rbac(',
+  '.validate_assignment(tenant_id, &role_slugs, &[])',
+  'selected agent roles do not grant every permission required by descriptor',
+], 'agent principal RBAC derivation');
 
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');

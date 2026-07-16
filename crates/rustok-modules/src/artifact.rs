@@ -4,7 +4,28 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
+use rustok_api::manifest_hash::hash_manifest_snapshot;
 use rustok_sandbox::{CapabilityName, SandboxExecutorKind};
+
+/// The current immutable descriptor contract. Schema documents are bundled in
+/// v2 so no admission or execution path needs to resolve schemas from a
+/// network, filesystem, registry tag, or mutable service.
+pub const MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION: u32 = 2;
+
+const MAX_SCHEMA_DOCUMENTS: usize = 32;
+const MAX_SCHEMA_DOCUMENT_BYTES: usize = 64 * 1024;
+const JSON_SCHEMA_DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
+
+/// Stable OCI layer media type for immutable Rhai source artifacts.
+pub const MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
+/// Stable OCI layer media type for immutable WebAssembly Component artifacts.
+pub const MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE: &str =
+    "application/vnd.rustok.wasm.component.v1+wasm";
+/// Stable OCI layer media type for immutable sidecar metadata artifacts.
+pub const MODULE_ARTIFACT_SIDECAR_MEDIA_TYPE: &str = "application/vnd.rustok.sidecar.v1";
+/// Stable OCI layer media type for immutable static-promotion source references.
+pub const MODULE_ARTIFACT_STATIC_PROMOTION_MEDIA_TYPE: &str =
+    "application/vnd.rustok.static-promotion.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -29,6 +50,16 @@ impl ArtifactPayloadKind {
             Self::WasmComponent => "wasm_component",
             Self::StaticPromoted => "static_promoted",
             Self::Sidecar => "sidecar",
+        }
+    }
+
+    /// OCI layer media type fixed by this immutable payload kind.
+    pub const fn oci_layer_media_type(self) -> &'static str {
+        match self {
+            Self::Rhai => MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE,
+            Self::WasmComponent => MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
+            Self::StaticPromoted => MODULE_ARTIFACT_STATIC_PROMOTION_MEDIA_TYPE,
+            Self::Sidecar => MODULE_ARTIFACT_SIDECAR_MEDIA_TYPE,
         }
     }
 
@@ -87,9 +118,11 @@ pub struct ModuleArtifactDescriptor {
     #[serde(default)]
     pub permissions: Vec<ArtifactPermissionDescriptor>,
     #[serde(default)]
-    pub settings_schema: Option<Value>,
+    pub schema_documents: Vec<ArtifactSchemaDocument>,
     #[serde(default)]
-    pub data_schema: Option<Value>,
+    pub settings_schema_digest: Option<String>,
+    #[serde(default)]
+    pub data_schema_digest: Option<String>,
     #[serde(default)]
     pub ui_contributions: Vec<ArtifactUiContribution>,
     #[serde(default)]
@@ -106,6 +139,15 @@ pub struct ModuleDependencyConstraint {
 pub struct ArtifactPermissionDescriptor {
     pub key: String,
     pub label: String,
+}
+
+/// One immutable Draft 2020-12 JSON Schema document bundled with the artifact
+/// descriptor. The digest is over canonical JSON, not transport bytes, so it
+/// is stable across object-key ordering.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactSchemaDocument {
+    pub digest: String,
+    pub document: Value,
 }
 
 /// Host-rendered declarative contribution. It is metadata only: marketplace
@@ -142,6 +184,19 @@ pub struct ModuleRuntimeBinding {
     pub limit_profile: String,
     #[serde(default)]
     pub capabilities: Vec<CapabilityName>,
+    /// Exact or terminal-wildcard event topics. This is populated only for an
+    /// Event binding; it is not a generic routing expression.
+    #[serde(default)]
+    pub event_topics: Vec<String>,
+    /// Platform scheduler contract. This is populated only for a Schedule
+    /// binding and never contains a host-selected queue or timer identifier.
+    #[serde(default)]
+    pub schedule: Option<ModuleScheduleBinding>,
+    /// Platform-owned HTTP contract. This is populated only for an HTTP
+    /// binding; artifacts cannot provide routers, listener ports, headers, or
+    /// streaming transports.
+    #[serde(default)]
+    pub http: Option<ModuleHttpBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,6 +211,73 @@ pub enum ModuleRuntimeBindingKind {
     Event,
     Schedule,
     Health,
+    Readiness,
+    ActivationSmoke,
+    BeforeCommit,
+    AfterCommit,
+    OnCommit,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleScheduleBinding {
+    pub cron: String,
+    pub timezone: String,
+    pub misfire: ModuleScheduleMisfirePolicy,
+    pub overlap: ModuleScheduleOverlapPolicy,
+    pub deduplication: ModuleScheduleDeduplication,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleScheduleMisfirePolicy {
+    Skip,
+    RunOnce,
+    CatchUp,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleScheduleOverlapPolicy {
+    Forbid,
+    Queue,
+    Allow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleScheduleDeduplication {
+    None,
+    PerSlot,
+}
+
+/// A host-owned HTTP route. `path` is relative to the platform's module route
+/// namespace and consists solely of literal path segments in v1.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleHttpBinding {
+    pub method: ModuleHttpMethod,
+    pub path: String,
+    pub request_media_type: String,
+    pub response_media_type: String,
+    pub max_body_bytes: u64,
+    pub max_output_bytes: u64,
+    pub timeout_ms: u64,
+    pub streaming: ModuleHttpStreamingPolicy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleHttpMethod {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleHttpStreamingPolicy {
+    Forbidden,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,7 +295,7 @@ impl ModuleArtifactDescriptor {
         }
         Version::parse(&self.version)
             .map_err(|error| ModuleArtifactError::InvalidVersion(error.to_string()))?;
-        if self.schema_version != 1 {
+        if self.schema_version != MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION {
             return Err(ModuleArtifactError::UnsupportedSchemaVersion(
                 self.schema_version,
             ));
@@ -207,6 +329,7 @@ impl ModuleArtifactDescriptor {
                 ));
             }
         }
+        let schema_digests = self.validate_schema_bundle()?;
         for (index, binding) in self.bindings.iter().enumerate() {
             if binding.id.trim().is_empty()
                 || binding.entrypoint.trim().is_empty()
@@ -238,6 +361,60 @@ impl ModuleArtifactDescriptor {
                 return Err(ModuleArtifactError::UndeclaredBindingCapability(
                     binding.id.clone(),
                 ));
+            }
+            if !schema_digests.contains(&binding.input_schema_digest)
+                || !schema_digests.contains(&binding.output_schema_digest)
+            {
+                return Err(ModuleArtifactError::MissingSchemaDocument(
+                    binding.id.clone(),
+                ));
+            }
+            if (binding.kind == ModuleRuntimeBindingKind::Event
+                && (binding.event_topics.is_empty()
+                    || binding.event_topics.len() > 32
+                    || binding
+                        .event_topics
+                        .iter()
+                        .any(|topic| !valid_event_topic(topic))))
+                || (binding.kind != ModuleRuntimeBindingKind::Event
+                    && !binding.event_topics.is_empty())
+            {
+                return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
+            }
+            if binding
+                .event_topics
+                .iter()
+                .enumerate()
+                .any(|(topic_index, topic)| {
+                    binding.event_topics[..topic_index]
+                        .iter()
+                        .any(|previous| previous == topic)
+                })
+            {
+                return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
+            }
+            match (binding.kind.clone(), &binding.schedule) {
+                (ModuleRuntimeBindingKind::Schedule, Some(schedule)) if schedule.validate() => {}
+                (ModuleRuntimeBindingKind::Schedule, _) | (_, Some(_)) => {
+                    return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
+                }
+                (_, None) => {}
+            }
+            match (binding.kind.clone(), &binding.http) {
+                (ModuleRuntimeBindingKind::Http, Some(http)) if http.validate() => {}
+                (ModuleRuntimeBindingKind::Http, _) | (_, Some(_)) => {
+                    return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
+                }
+                (_, None) => {}
+            }
+            if let Some(http) = &binding.http {
+                if self.bindings[..index].iter().any(|previous| {
+                    previous.http.as_ref().is_some_and(|previous_http| {
+                        previous_http.method == http.method && previous_http.path == http.path
+                    })
+                }) {
+                    return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
+                }
             }
         }
         for (index, dependency) in self.dependencies.iter().enumerate() {
@@ -278,11 +455,13 @@ impl ModuleArtifactDescriptor {
                 ));
             }
         }
-        for schema in [&self.settings_schema, &self.data_schema]
+        for selector in [&self.settings_schema_digest, &self.data_schema_digest]
             .into_iter()
             .flatten()
         {
-            validate_local_schema_references(schema)?;
+            if !valid_digest(selector) || !schema_digests.contains(selector) {
+                return Err(ModuleArtifactError::MissingSchemaDocument(selector.clone()));
+            }
         }
         for (index, contribution) in self.ui_contributions.iter().enumerate() {
             if contribution.id.trim().is_empty()
@@ -308,7 +487,10 @@ impl ModuleArtifactDescriptor {
             }
         }
         if let Some(contract) = &self.persistence_contract {
-            if !valid_digest(&contract.schema_digest) {
+            if contract.revision == 0
+                || !valid_digest(&contract.schema_digest)
+                || !schema_digests.contains(&contract.schema_digest)
+            {
                 return Err(ModuleArtifactError::InvalidPersistenceContract);
             }
         }
@@ -321,6 +503,74 @@ impl ModuleArtifactDescriptor {
             version: self.version.clone(),
             digest: self.artifact_digest.clone(),
         }
+    }
+
+    /// Looks up a schema document by its immutable canonical digest.
+    pub fn schema_document(&self, digest: &str) -> Option<&Value> {
+        self.schema_documents
+            .iter()
+            .find(|schema| schema.digest == digest)
+            .map(|schema| &schema.document)
+    }
+
+    pub fn settings_schema(&self) -> Option<&Value> {
+        self.settings_schema_digest
+            .as_deref()
+            .and_then(|digest| self.schema_document(digest))
+    }
+
+    pub fn data_schema(&self) -> Option<&Value> {
+        self.data_schema_digest
+            .as_deref()
+            .and_then(|digest| self.schema_document(digest))
+    }
+
+    fn validate_schema_bundle(
+        &self,
+    ) -> Result<std::collections::BTreeSet<String>, ModuleArtifactError> {
+        if self.schema_documents.len() > MAX_SCHEMA_DOCUMENTS {
+            return Err(ModuleArtifactError::TooManySchemaDocuments);
+        }
+        let mut digests = std::collections::BTreeSet::new();
+        for schema in &self.schema_documents {
+            if !valid_digest(&schema.digest) || !schema.document.is_object() {
+                return Err(ModuleArtifactError::InvalidSchemaDocument(
+                    schema.digest.clone(),
+                ));
+            }
+            let encoded = serde_json::to_vec(&schema.document)
+                .map_err(|_| ModuleArtifactError::InvalidSchemaDocument(schema.digest.clone()))?;
+            if encoded.len() > MAX_SCHEMA_DOCUMENT_BYTES {
+                return Err(ModuleArtifactError::SchemaDocumentTooLarge(
+                    schema.digest.clone(),
+                ));
+            }
+            if schema
+                .document
+                .as_object()
+                .and_then(|document| document.get("$schema"))
+                .and_then(Value::as_str)
+                != Some(JSON_SCHEMA_DRAFT_2020_12)
+            {
+                return Err(ModuleArtifactError::InvalidSchemaDocument(
+                    schema.digest.clone(),
+                ));
+            }
+            validate_local_schema_references(&schema.document)?;
+            let actual = canonical_schema_digest(&schema.document);
+            if schema.digest != actual {
+                return Err(ModuleArtifactError::SchemaDigestMismatch {
+                    declared: schema.digest.clone(),
+                    actual,
+                });
+            }
+            if !digests.insert(schema.digest.clone()) {
+                return Err(ModuleArtifactError::DuplicateSchemaDocument(
+                    schema.digest.clone(),
+                ));
+            }
+        }
+        Ok(digests)
     }
 }
 
@@ -422,6 +672,8 @@ pub enum ModuleArtifactError {
     InvalidBinding(String),
     #[error("artifact binding `{0}` must declare sha256 input/output schemas")]
     InvalidBindingSchemaDigest(String),
+    #[error("artifact binding or selector `{0}` references a schema document absent from the descriptor")]
+    MissingSchemaDocument(String),
     #[error("artifact binding `{0}` is declared more than once")]
     DuplicateBinding(String),
     #[error("artifact binding `{0}` declares a capability absent from the descriptor")]
@@ -440,6 +692,16 @@ pub enum ModuleArtifactError {
     DuplicatePermission(String),
     #[error("artifact schema contains a non-local `$ref` `{0}")]
     NonLocalSchemaReference(String),
+    #[error("artifact schema document `{0}` is invalid")]
+    InvalidSchemaDocument(String),
+    #[error("artifact schema document `{0}` exceeds the descriptor size limit")]
+    SchemaDocumentTooLarge(String),
+    #[error("artifact schema document `{0}` is declared more than once")]
+    DuplicateSchemaDocument(String),
+    #[error("artifact descriptor exceeds the schema-document limit")]
+    TooManySchemaDocuments,
+    #[error("artifact schema digest mismatch: declared `{declared}`, actual `{actual}")]
+    SchemaDigestMismatch { declared: String, actual: String },
     #[error("artifact UI contribution `{0}` is invalid")]
     InvalidUiContribution(String),
     #[error("artifact UI contribution `{0}` is declared more than once")]
@@ -470,6 +732,85 @@ fn valid_digest(value: &str) -> bool {
             .all(|character| character.is_ascii_hexdigit())
 }
 
+fn valid_event_topic(value: &str) -> bool {
+    if value.is_empty() || value.len() > 128 || value == "*" {
+        return false;
+    }
+    let segments = value.split('.').collect::<Vec<_>>();
+    segments.iter().enumerate().all(|(index, segment)| {
+        if *segment == "*" {
+            return index + 1 == segments.len();
+        }
+        !segment.is_empty()
+            && segment.chars().all(|character| {
+                character.is_ascii_lowercase()
+                    || character.is_ascii_digit()
+                    || character == '_'
+                    || character == '-'
+            })
+    })
+}
+
+impl ModuleScheduleBinding {
+    fn validate(&self) -> bool {
+        let cron_fields = self.cron.split_whitespace().collect::<Vec<_>>();
+        matches!(cron_fields.len(), 5 | 6)
+            && cron_fields.iter().all(|field| {
+                !field.is_empty()
+                    && field.chars().all(|character| {
+                        character.is_ascii_alphanumeric()
+                            || matches!(character, '*' | '/' | ',' | '-' | '?' | '#')
+                    })
+            })
+            && valid_timezone(&self.timezone)
+    }
+}
+
+impl ModuleHttpBinding {
+    fn validate(&self) -> bool {
+        self.request_media_type == "application/json"
+            && self.response_media_type == "application/json"
+            && self.max_body_bytes > 0
+            && self.max_body_bytes <= 1_048_576
+            && self.max_output_bytes > 0
+            && self.max_output_bytes <= 1_048_576
+            && self.timeout_ms > 0
+            && self.timeout_ms <= 60_000
+            && matches!(self.streaming, ModuleHttpStreamingPolicy::Forbidden)
+            && valid_http_relative_path(&self.path)
+    }
+}
+
+fn valid_http_relative_path(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && !value.starts_with('/')
+        && value.split('/').all(|segment| {
+            !segment.is_empty()
+                && segment != "."
+                && segment != ".."
+                && segment.chars().all(|character| {
+                    character.is_ascii_lowercase()
+                        || character.is_ascii_digit()
+                        || matches!(character, '_' | '-')
+                })
+        })
+}
+
+fn valid_timezone(value: &str) -> bool {
+    value == "UTC"
+        || (!value.is_empty()
+            && value.len() <= 64
+            && value.split('/').all(|segment| {
+                !segment.is_empty()
+                    && segment.chars().all(|character| {
+                        character.is_ascii_alphabetic()
+                            || character.is_ascii_digit()
+                            || matches!(character, '_' | '-' | '+')
+                    })
+            }))
+}
+
 fn validate_local_schema_references(schema: &Value) -> Result<(), ModuleArtifactError> {
     match schema {
         Value::Object(object) => {
@@ -494,6 +835,11 @@ fn validate_local_schema_references(schema: &Value) -> Result<(), ModuleArtifact
     Ok(())
 }
 
+/// Canonical digest used by descriptor schema selectors and binding contracts.
+pub fn canonical_schema_digest(schema: &Value) -> String {
+    format!("sha256:{}", hash_manifest_snapshot(schema))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,13 +848,25 @@ mod tests {
         format!("sha256:{}", character.to_string().repeat(64))
     }
 
+    fn schema_document(title: &str) -> ArtifactSchemaDocument {
+        let document = serde_json::json!({
+            "$schema": JSON_SCHEMA_DRAFT_2020_12,
+            "title": title,
+            "type": "object"
+        });
+        ArtifactSchemaDocument {
+            digest: canonical_schema_digest(&document),
+            document,
+        }
+    }
+
     fn descriptor(
         kind: ArtifactPayloadKind,
         version: &str,
         marker: char,
     ) -> ModuleArtifactDescriptor {
         ModuleArtifactDescriptor {
-            schema_version: 1,
+            schema_version: MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
             slug: "sample_module".to_string(),
             version: version.to_string(),
             payload_kind: kind,
@@ -522,8 +880,9 @@ mod tests {
             bindings: Vec::new(),
             dependencies: Vec::new(),
             permissions: Vec::new(),
-            settings_schema: None,
-            data_schema: None,
+            schema_documents: Vec::new(),
+            settings_schema_digest: None,
+            data_schema_digest: None,
             ui_contributions: Vec::new(),
             persistence_contract: None,
         }
@@ -610,6 +969,9 @@ mod tests {
             idempotency: ModuleBindingIdempotency::Required,
             limit_profile: "lifecycle".to_string(),
             capabilities: vec![CapabilityName::new("platform.http").expect("capability")],
+            event_topics: Vec::new(),
+            schedule: None,
+            http: None,
         });
 
         assert!(matches!(
@@ -643,13 +1005,13 @@ mod tests {
     #[test]
     fn descriptor_requires_supported_schema_and_platform_compatibility() {
         let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
-        descriptor.schema_version = 2;
+        descriptor.schema_version = 1;
         assert!(matches!(
             descriptor.validate(),
-            Err(ModuleArtifactError::UnsupportedSchemaVersion(2))
+            Err(ModuleArtifactError::UnsupportedSchemaVersion(1))
         ));
 
-        descriptor.schema_version = 1;
+        descriptor.schema_version = MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION;
         descriptor.platform_compatibility = "invalid".to_string();
         assert!(matches!(
             descriptor.validate(),
@@ -673,12 +1035,89 @@ mod tests {
     #[test]
     fn schemas_reject_network_and_file_references() {
         let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
-        descriptor.settings_schema = Some(serde_json::json!({
+        let document = serde_json::json!({
+            "$schema": JSON_SCHEMA_DRAFT_2020_12,
             "$ref": "https://schemas.example/settings.json"
-        }));
+        });
+        descriptor.schema_documents = vec![ArtifactSchemaDocument {
+            digest: canonical_schema_digest(&document),
+            document,
+        }];
         assert!(matches!(
             descriptor.validate(),
             Err(ModuleArtifactError::NonLocalSchemaReference(_))
+        ));
+    }
+
+    #[test]
+    fn schema_bundle_requires_canonical_digests_and_declared_binding_documents() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.permissions = vec![ArtifactPermissionDescriptor {
+            key: "sample_module.command.execute".to_string(),
+            label: "Execute command".to_string(),
+        }];
+        descriptor.bindings = vec![ModuleRuntimeBinding {
+            id: "command".to_string(),
+            kind: ModuleRuntimeBindingKind::Command,
+            entrypoint: "command".to_string(),
+            input_schema_digest: digest('b'),
+            output_schema_digest: digest('c'),
+            permission: "sample_module.command.execute".to_string(),
+            idempotency: ModuleBindingIdempotency::Required,
+            limit_profile: "command".to_string(),
+            capabilities: Vec::new(),
+            event_topics: Vec::new(),
+            schedule: None,
+            http: None,
+        }];
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::MissingSchemaDocument(_))
+        ));
+
+        let input = schema_document("command_input");
+        let output = schema_document("command_output");
+        descriptor.bindings[0].input_schema_digest = input.digest.clone();
+        descriptor.bindings[0].output_schema_digest = output.digest.clone();
+        descriptor.schema_documents = vec![input.clone(), output];
+        assert!(descriptor.validate().is_ok());
+
+        descriptor.schema_documents[0].document["title"] = Value::String("changed".to_string());
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::SchemaDigestMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn schema_digest_is_stable_across_object_key_order() {
+        let left = serde_json::json!({
+            "$schema": JSON_SCHEMA_DRAFT_2020_12,
+            "type": "object",
+            "properties": { "name": { "type": "string" } }
+        });
+        let right = serde_json::json!({
+            "properties": { "name": { "type": "string" } },
+            "type": "object",
+            "$schema": JSON_SCHEMA_DRAFT_2020_12
+        });
+        assert_eq!(
+            canonical_schema_digest(&left),
+            canonical_schema_digest(&right)
+        );
+    }
+
+    #[test]
+    fn persistence_contract_requires_a_positive_revision() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.persistence_contract = Some(ArtifactPersistenceContract {
+            revision: 0,
+            schema_digest: digest('b'),
+        });
+
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidPersistenceContract)
         ));
     }
 
@@ -710,6 +1149,9 @@ mod tests {
             idempotency: ModuleBindingIdempotency::Required,
             limit_profile: "command".to_string(),
             capabilities: Vec::new(),
+            event_topics: Vec::new(),
+            schedule: None,
+            http: None,
         });
         assert!(matches!(
             descriptor.validate(),
@@ -730,6 +1172,62 @@ mod tests {
         assert!(matches!(
             descriptor.validate(),
             Err(ModuleArtifactError::InvalidUiContribution(_))
+        ));
+    }
+
+    #[test]
+    fn http_bindings_are_json_only_relative_routes_with_unique_methods() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.permissions = vec![ArtifactPermissionDescriptor {
+            key: "sample_module.http.status.read".to_string(),
+            label: "Read status".to_string(),
+        }];
+        let input_schema = schema_document("http_input");
+        let output_schema = schema_document("http_output");
+        let binding = ModuleRuntimeBinding {
+            id: "http_status".to_string(),
+            kind: ModuleRuntimeBindingKind::Http,
+            entrypoint: "http.status".to_string(),
+            input_schema_digest: input_schema.digest.clone(),
+            output_schema_digest: output_schema.digest.clone(),
+            permission: "sample_module.http.status.read".to_string(),
+            idempotency: ModuleBindingIdempotency::Required,
+            limit_profile: "http_json".to_string(),
+            capabilities: Vec::new(),
+            event_topics: Vec::new(),
+            schedule: None,
+            http: Some(ModuleHttpBinding {
+                method: ModuleHttpMethod::Get,
+                path: "status/summary".to_string(),
+                request_media_type: "application/json".to_string(),
+                response_media_type: "application/json".to_string(),
+                max_body_bytes: 4_096,
+                max_output_bytes: 16_384,
+                timeout_ms: 5_000,
+                streaming: ModuleHttpStreamingPolicy::Forbidden,
+            }),
+        };
+        descriptor.bindings.push(binding.clone());
+        descriptor.schema_documents = vec![input_schema, output_schema];
+        assert!(descriptor.validate().is_ok());
+
+        let mut duplicate = binding;
+        duplicate.id = "http_status_duplicate".to_string();
+        descriptor.bindings.push(duplicate);
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidBinding(_))
+        ));
+
+        descriptor.bindings.truncate(1);
+        descriptor.bindings[0]
+            .http
+            .as_mut()
+            .expect("HTTP contract")
+            .path = "/outside-the-platform-route".to_string();
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidBinding(_))
         ));
     }
 

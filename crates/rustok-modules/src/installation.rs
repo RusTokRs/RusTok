@@ -20,8 +20,8 @@ use rustok_sandbox::{
 };
 
 use crate::{
-    ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleArtifactError,
-    ModuleDependencyLockGraph, TrustPolicyRevision, TrustVerificationDecision,
+    ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor,
+    ModuleArtifactError, ModuleDependencyLockGraph, TrustPolicyRevision, TrustVerificationDecision,
     TrustVerificationRequest, TrustVerifier,
 };
 
@@ -524,6 +524,23 @@ pub struct ArtifactDeactivationResult {
     pub revision: u64,
 }
 
+/// Disables one tenant's intent for an admitted Optional artifact without
+/// changing the installation, admission, runtime binding, or data state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactTenantDisableRequest {
+    pub installation_id: Uuid,
+    pub tenant_id: Uuid,
+    pub expected_revision: u64,
+    pub actor_id: Uuid,
+    pub reason: String,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactTenantDisableResult {
+    pub revision: u64,
+}
+
 /// Removes an inactive artifact selection from one scope without deleting its
 /// immutable evidence or CAS bytes. A separate retention/purge policy owns
 /// physical deletion.
@@ -555,6 +572,64 @@ pub struct ArtifactMigrationCheckpointRequest {
     pub has_irreversible_migration: bool,
 }
 
+/// Immutable owner command for one artifact admission. The actor and
+/// idempotency key are control-plane facts; they are never supplied by the
+/// untrusted OCI descriptor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactAdmissionCommand {
+    pub reference: OciArtifactReference,
+    pub scope: ModuleInstallationScope,
+    pub dependency_lock: ModuleDependencyLockGraph,
+    pub actor_id: Uuid,
+    pub idempotency_key: Uuid,
+}
+
+impl ArtifactAdmissionCommand {
+    fn validate(&self) -> Result<(), ModuleInstallationError> {
+        self.reference.validate()?;
+        if self.actor_id.is_nil() || self.idempotency_key.is_nil() {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "admission requires non-nil actor and idempotency identities".into(),
+            ));
+        }
+        if matches!(&self.scope, ModuleInstallationScope::Tenant { tenant_id } if tenant_id.is_nil())
+        {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "tenant-scoped admission requires a non-nil tenant identity".into(),
+            ));
+        }
+        self.dependency_lock
+            .validate()
+            .map_err(|error| ModuleInstallationError::DependencyLock(error.to_string()))?;
+        Ok(())
+    }
+
+    fn request_digest(&self) -> Result<String, ModuleInstallationError> {
+        #[derive(Serialize)]
+        struct Fingerprint<'a> {
+            reference: &'a OciArtifactReference,
+            scope: &'a ModuleInstallationScope,
+            dependency_lock: &'a ModuleDependencyLockGraph,
+        }
+
+        let bytes = serde_json::to_vec(&Fingerprint {
+            reference: &self.reference,
+            scope: &self.scope,
+            dependency_lock: &self.dependency_lock,
+        })
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        Ok(sha256_digest(&bytes))
+    }
+}
+
+/// Stable acknowledgement of one owner admission command. Retries return the
+/// original installation identity and never create another release selection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactAdmissionResult {
+    pub installation_id: Uuid,
+    pub created: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactAdmissionStage {
@@ -567,12 +642,19 @@ pub enum ArtifactAdmissionStage {
 /// Durable DB/outbox adapter contract for the part that must be atomic.
 #[async_trait]
 pub trait ArtifactAdmissionStore: Send + Sync {
+    async fn find_admission(
+        &self,
+        command: &ArtifactAdmissionCommand,
+        request_digest: &str,
+    ) -> Result<Option<ArtifactAdmissionResult>, ModuleInstallationError>;
     async fn commit_admission(
         &self,
         artifact: &InstalledModuleArtifact,
         staged: &StagedArtifactBlob,
         evidence: &ArtifactVerificationEvidence,
-    ) -> Result<(), ModuleInstallationError>;
+        command: &ArtifactAdmissionCommand,
+        request_digest: &str,
+    ) -> Result<ArtifactAdmissionResult, ModuleInstallationError>;
     async fn unfinished_admissions(
         &self,
     ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError>;
@@ -1159,6 +1241,227 @@ impl SeaOrmArtifactInstallationStore {
         })
     }
 
+    pub async fn disable_artifact_for_tenant(
+        &self,
+        request: ArtifactTenantDisableRequest,
+    ) -> Result<ArtifactTenantDisableResult, ModuleInstallationError> {
+        if request.expected_revision == 0 || request.reason.trim().is_empty() {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "tenant disable requires a positive revision and non-empty reason".into(),
+            ));
+        }
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        configure_rls_scope(
+            &transaction,
+            &ModuleInstallationScope::Tenant {
+                tenant_id: request.tenant_id,
+            },
+        )
+        .await?;
+        let backend = transaction.get_database_backend();
+        let installation_placeholder = if backend == DbBackend::Postgres {
+            "$1"
+        } else {
+            "?1"
+        };
+        let tenant_scope = match backend {
+            DbBackend::Postgres => {
+                "installation.scope_kind = 'platform' OR \
+                 (installation.scope_kind = 'tenant' AND installation.tenant_id = $2)"
+            }
+            _ => {
+                "installation.scope_kind = 'platform' OR \
+                 (installation.scope_kind = 'tenant' AND installation.tenant_id = ?2)"
+            }
+        };
+        let artifact = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT CAST(installation.descriptor AS TEXT) AS descriptor \
+                     FROM module_artifact_installations installation \
+                     JOIN module_artifact_admissions admission \
+                       ON admission.installation_id = installation.installation_id \
+                     WHERE installation.installation_id = {installation_placeholder} \
+                       AND ({tenant_scope}) \
+                       AND admission.status IN ('admitted', 'installed', 'active', 'inactive', 'rolled_back')",
+                ),
+                vec![
+                    uuid_value(request.installation_id, backend),
+                    uuid_value(request.tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .ok_or_else(|| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "artifact is unavailable in the requested tenant scope".into(),
+                )
+            })?;
+        let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
+            &artifact
+                .try_get::<String>("", "descriptor")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+        )
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if descriptor.module_kind != ArtifactModuleKind::Optional {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "tenant disable is allowed only for Optional artifacts".into(),
+            ));
+        }
+        let placeholder = if backend == DbBackend::Postgres {
+            "$1"
+        } else {
+            "?1"
+        };
+        let tenant_placeholder = if backend == DbBackend::Postgres {
+            "$2"
+        } else {
+            "?2"
+        };
+        let existing = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT revision, idempotency_key \
+                     FROM module_artifact_tenant_lifecycle \
+                     WHERE installation_id = {placeholder} AND tenant_id = {tenant_placeholder}"
+                ),
+                vec![
+                    uuid_value(request.installation_id, backend),
+                    uuid_value(request.tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let revision = if let Some(row) = existing {
+            let current: i64 = row
+                .try_get("", "revision")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            let idempotency_key = match backend {
+                DbBackend::Postgres => row
+                    .try_get::<Uuid>("", "idempotency_key")
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+                _ => row
+                    .try_get::<String>("", "idempotency_key")
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+                    .parse::<Uuid>()
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+            };
+            if idempotency_key == request.idempotency_key {
+                transaction
+                    .commit()
+                    .await
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+                return Ok(ArtifactTenantDisableResult {
+                    revision: current as u64,
+                });
+            }
+            if current != request.expected_revision as i64 {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                    "tenant lifecycle revision is stale".into(),
+                ));
+            }
+            let next_revision = u64::try_from(current)
+                .ok()
+                .and_then(|revision| revision.checked_add(1))
+                .ok_or_else(|| {
+                    ModuleInstallationError::AdmissionRevisionConflict(
+                        "tenant lifecycle revision is outside the supported range".into(),
+                    )
+                })?;
+            let placeholders = match backend {
+                DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5", "$6"),
+                _ => ("?1", "?2", "?3", "?4", "?5", "?6"),
+            };
+            let updated = transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "UPDATE module_artifact_tenant_lifecycle \
+                         SET enabled = FALSE, revision = revision + 1, \
+                             idempotency_key = {}, actor_id = {}, reason = {} \
+                         WHERE installation_id = {} AND tenant_id = {} AND revision = {}",
+                        placeholders.0,
+                        placeholders.1,
+                        placeholders.2,
+                        placeholders.3,
+                        placeholders.4,
+                        placeholders.5,
+                    ),
+                    vec![
+                        uuid_value(request.idempotency_key, backend),
+                        uuid_value(request.actor_id, backend),
+                        request.reason.into(),
+                        uuid_value(request.installation_id, backend),
+                        uuid_value(request.tenant_id, backend),
+                        current.into(),
+                    ],
+                ))
+                .await
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            if updated.rows_affected() != 1 {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                    "tenant lifecycle became stale during disable".into(),
+                ));
+            }
+            next_revision
+        } else {
+            if request.expected_revision != 1 {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                    "new tenant lifecycle state starts at revision 1".into(),
+                ));
+            }
+            transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    match backend {
+                        DbBackend::Postgres => "INSERT INTO module_artifact_tenant_lifecycle \
+                            (installation_id, tenant_id, enabled, revision, idempotency_key, actor_id, reason, updated_at) \
+                            VALUES ($1, $2, FALSE, 1, $3, $4, $5, NOW())",
+                        _ => "INSERT INTO module_artifact_tenant_lifecycle \
+                            (installation_id, tenant_id, enabled, revision, idempotency_key, actor_id, reason, updated_at) \
+                            VALUES (?1, ?2, FALSE, 1, ?3, ?4, ?5, datetime('now'))",
+                    }
+                    .to_string(),
+                    vec![
+                        uuid_value(request.installation_id, backend),
+                        uuid_value(request.tenant_id, backend),
+                        uuid_value(request.idempotency_key, backend),
+                        uuid_value(request.actor_id, backend),
+                        request.reason.into(),
+                    ],
+                ))
+                .await
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            1
+        };
+        OutboxTransport::new(self.db.clone())
+            .write_to_outbox(
+                &transaction,
+                EventEnvelope::new(
+                    Uuid::new_v4(),
+                    Some(request.tenant_id),
+                    DomainEvent::ModuleArtifactTenantDisabled {
+                        installation_id: request.installation_id,
+                        tenant_id: request.tenant_id,
+                        revision,
+                    },
+                ),
+            )
+            .await
+            .map_err(|error| ModuleInstallationError::Outbox(error.to_string()))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        Ok(ArtifactTenantDisableResult { revision })
+    }
+
     /// Removes one inactive scope selection while retaining immutable evidence
     /// for rollback/audit and deferred CAS retention.
     pub async fn uninstall_artifact(
@@ -1590,12 +1893,80 @@ fn admission_scope_predicate(
 
 #[async_trait]
 impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
+    async fn find_admission(
+        &self,
+        command: &ArtifactAdmissionCommand,
+        request_digest: &str,
+    ) -> Result<Option<ArtifactAdmissionResult>, ModuleInstallationError> {
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        configure_rls_scope(&transaction, &command.scope).await?;
+        let backend = transaction.get_database_backend();
+        let (scope_kind, scope_tenant_key) = admission_command_scope(command);
+        let placeholders = match backend {
+            DbBackend::Postgres => ("$1", "$2", "$3", "$4"),
+            _ => ("?1", "?2", "?3", "?4"),
+        };
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT request_digest, installation_id \
+                     FROM module_artifact_admission_commands \
+                     WHERE scope_kind = {} AND scope_tenant_key = {} \
+                       AND actor_id = {} AND idempotency_key = {}",
+                    placeholders.0, placeholders.1, placeholders.2, placeholders.3,
+                ),
+                vec![
+                    scope_kind.into(),
+                    scope_tenant_key.into(),
+                    uuid_value(command.actor_id, backend),
+                    uuid_value(command.idempotency_key, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let Some(row) = row else {
+            transaction
+                .commit()
+                .await
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            return Ok(None);
+        };
+        let stored_digest: String = row
+            .try_get("", "request_digest")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if stored_digest != request_digest {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "admission idempotency key was already used for a different request".into(),
+            ));
+        }
+        let installation_id = command_installation_id(&row, backend)?.ok_or_else(|| {
+            ModuleInstallationError::Store(
+                "committed admission command is missing its installation identity".into(),
+            )
+        })?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        Ok(Some(ArtifactAdmissionResult {
+            installation_id,
+            created: false,
+        }))
+    }
+
     async fn commit_admission(
         &self,
         artifact: &InstalledModuleArtifact,
         staged: &StagedArtifactBlob,
         evidence: &ArtifactVerificationEvidence,
-    ) -> Result<(), ModuleInstallationError> {
+        command: &ArtifactAdmissionCommand,
+        request_digest: &str,
+    ) -> Result<ArtifactAdmissionResult, ModuleInstallationError> {
         let transaction = self
             .db
             .begin()
@@ -1603,6 +1974,56 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &artifact.scope).await?;
         let backend = transaction.get_database_backend();
+        let (scope_kind, scope_tenant_key) = admission_command_scope(command);
+        let reservation = transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                admission_command_insert_sql(backend),
+                vec![
+                    scope_kind.into(),
+                    scope_tenant_key.clone().into(),
+                    uuid_value(command.actor_id, backend),
+                    uuid_value(command.idempotency_key, backend),
+                    request_digest.into(),
+                    now_value(backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if reservation.rows_affected() != 1 {
+            let existing = existing_admission_command(
+                &transaction,
+                backend,
+                scope_kind,
+                &scope_tenant_key,
+                command.actor_id,
+                command.idempotency_key,
+            )
+            .await?
+            .ok_or_else(|| {
+                ModuleInstallationError::Store(
+                    "admission command reservation disappeared after a conflict".into(),
+                )
+            })?;
+            if existing.0 != request_digest {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                    "admission idempotency key was already used for a different request".into(),
+                ));
+            }
+            let installation_id = existing.1.ok_or_else(|| {
+                ModuleInstallationError::Store(
+                    "admission command is still incomplete after its transaction committed".into(),
+                )
+            })?;
+            transaction
+                .commit()
+                .await
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            return Ok(ArtifactAdmissionResult {
+                installation_id,
+                created: false,
+            });
+        }
         let previous_installation_id =
             previous_installation_id(&transaction, artifact, backend).await?;
         transaction
@@ -1613,6 +2034,27 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let bound = transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                admission_command_bind_sql(backend),
+                vec![
+                    uuid_value(artifact.installation_id, backend),
+                    scope_kind.into(),
+                    scope_tenant_key.into(),
+                    uuid_value(command.actor_id, backend),
+                    uuid_value(command.idempotency_key, backend),
+                    request_digest.into(),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if bound.rows_affected() != 1 {
+            return Err(ModuleInstallationError::Store(
+                "admission command reservation became unavailable before installation binding"
+                    .into(),
+            ));
+        }
         transaction
             .execute(Statement::from_sql_and_values(
                 backend,
@@ -1644,7 +2086,11 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
         transaction
             .commit()
             .await
-            .map_err(|error| ModuleInstallationError::Store(error.to_string()))
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        Ok(ArtifactAdmissionResult {
+            installation_id: artifact.installation_id,
+            created: true,
+        })
     }
 
     async fn unfinished_admissions(
@@ -1672,6 +2118,112 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                     .map_err(|error| ModuleInstallationError::Store(error.to_string()))
             })
             .collect()
+    }
+}
+
+fn admission_command_scope(command: &ArtifactAdmissionCommand) -> (&'static str, String) {
+    match &command.scope {
+        ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
+        ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
+    }
+}
+
+fn now_value(backend: DbBackend) -> SqlValue {
+    let now = Utc::now();
+    match backend {
+        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(Box::new(now))),
+        _ => now.to_rfc3339().into(),
+    }
+}
+
+fn admission_command_insert_sql(backend: DbBackend) -> String {
+    let placeholders = match backend {
+        DbBackend::Postgres => (1..=6).map(|index| format!("${index}")).collect::<Vec<_>>(),
+        _ => (1..=6).map(|index| format!("?{index}")).collect::<Vec<_>>(),
+    };
+    format!(
+        "INSERT INTO module_artifact_admission_commands (\
+            scope_kind, scope_tenant_key, actor_id, idempotency_key, request_digest, committed_at\
+         ) VALUES ({}) ON CONFLICT DO NOTHING",
+        placeholders.join(", "),
+    )
+}
+
+fn admission_command_bind_sql(backend: DbBackend) -> String {
+    let placeholders = match backend {
+        DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5", "$6"),
+        _ => ("?1", "?2", "?3", "?4", "?5", "?6"),
+    };
+    format!(
+        "UPDATE module_artifact_admission_commands SET installation_id = {} \
+         WHERE scope_kind = {} AND scope_tenant_key = {} AND actor_id = {} \
+           AND idempotency_key = {} AND request_digest = {} AND installation_id IS NULL",
+        placeholders.0,
+        placeholders.1,
+        placeholders.2,
+        placeholders.3,
+        placeholders.4,
+        placeholders.5,
+    )
+}
+
+async fn existing_admission_command<C: ConnectionTrait>(
+    connection: &C,
+    backend: DbBackend,
+    scope_kind: &str,
+    scope_tenant_key: &str,
+    actor_id: Uuid,
+    idempotency_key: Uuid,
+) -> Result<Option<(String, Option<Uuid>)>, ModuleInstallationError> {
+    let placeholders = match backend {
+        DbBackend::Postgres => ("$1", "$2", "$3", "$4"),
+        _ => ("?1", "?2", "?3", "?4"),
+    };
+    let row = connection
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT request_digest, installation_id \
+                 FROM module_artifact_admission_commands \
+                 WHERE scope_kind = {} AND scope_tenant_key = {} \
+                   AND actor_id = {} AND idempotency_key = {}",
+                placeholders.0, placeholders.1, placeholders.2, placeholders.3,
+            ),
+            vec![
+                scope_kind.into(),
+                scope_tenant_key.into(),
+                uuid_value(actor_id, backend),
+                uuid_value(idempotency_key, backend),
+            ],
+        ))
+        .await
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    row.map(|row| {
+        let request_digest = row
+            .try_get("", "request_digest")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        Ok((request_digest, command_installation_id(&row, backend)?))
+    })
+    .transpose()
+}
+
+fn command_installation_id(
+    row: &sea_orm::QueryResult,
+    backend: DbBackend,
+) -> Result<Option<Uuid>, ModuleInstallationError> {
+    match backend {
+        DbBackend::Postgres => row
+            .try_get::<Option<Uuid>>("", "installation_id")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string())),
+        _ => row
+            .try_get::<Option<String>>("", "installation_id")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .map(|value| {
+                value
+                    .parse::<Uuid>()
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))
+            })
+            .transpose(),
     }
 }
 
@@ -1903,13 +2455,23 @@ where
         Self { store, blobs }
     }
 
+    pub async fn find_admission(
+        &self,
+        command: &ArtifactAdmissionCommand,
+        request_digest: &str,
+    ) -> Result<Option<ArtifactAdmissionResult>, ModuleInstallationError> {
+        self.store.find_admission(command, request_digest).await
+    }
+
     pub async fn admit(
         &self,
         artifact: &InstalledModuleArtifact,
         media_type: &str,
         payload: &[u8],
         evidence: &ArtifactVerificationEvidence,
-    ) -> Result<(), ModuleInstallationError> {
+        command: &ArtifactAdmissionCommand,
+        request_digest: &str,
+    ) -> Result<ArtifactAdmissionResult, ModuleInstallationError> {
         artifact.validate_dependency_lock()?;
         let staged = self
             .blobs
@@ -1920,7 +2482,7 @@ where
             return Err(error);
         }
         self.store
-            .commit_admission(artifact, &staged, evidence)
+            .commit_admission(artifact, &staged, evidence, command, request_digest)
             .await
     }
 
@@ -1930,7 +2492,9 @@ where
         media_type: &str,
         source: &std::path::Path,
         evidence: &ArtifactVerificationEvidence,
-    ) -> Result<(), ModuleInstallationError> {
+        command: &ArtifactAdmissionCommand,
+        request_digest: &str,
+    ) -> Result<ArtifactAdmissionResult, ModuleInstallationError> {
         artifact.validate_dependency_lock()?;
         let staged = self
             .blobs
@@ -1941,7 +2505,7 @@ where
             return Err(error);
         }
         self.store
-            .commit_admission(artifact, &staged, evidence)
+            .commit_admission(artifact, &staged, evidence, command, request_digest)
             .await
     }
 }
@@ -1973,14 +2537,20 @@ where
         self
     }
 
-    pub async fn install(
+    pub async fn admit(
         &self,
-        reference: OciArtifactReference,
-        scope: ModuleInstallationScope,
-        dependency_lock: ModuleDependencyLockGraph,
-        installed_at: DateTime<Utc>,
-    ) -> Result<InstalledModuleArtifact, ModuleInstallationError> {
-        reference.validate()?;
+        command: ArtifactAdmissionCommand,
+    ) -> Result<ArtifactAdmissionResult, ModuleInstallationError> {
+        command.validate()?;
+        let request_digest = command.request_digest()?;
+        if let Some(existing) = self
+            .admission
+            .find_admission(&command, &request_digest)
+            .await?
+        {
+            return Ok(existing);
+        }
+        let reference = command.reference.clone();
         let package = self.registry.fetch(&reference, self.limits).await?;
         if package.reference != reference {
             return Err(ModuleInstallationError::RegistryIdentityMismatch {
@@ -2013,13 +2583,14 @@ where
             ));
         }
         let release = package.release_ref();
+        let installed_at = Utc::now();
         let artifact = InstalledModuleArtifact {
             installation_id: Uuid::new_v4(),
-            scope,
+            scope: command.scope.clone(),
             reference: package.reference,
             release,
             descriptor: package.descriptor,
-            dependency_lock,
+            dependency_lock: command.dependency_lock.clone(),
             capability_grant_revision: self.trust_policy.capability_grant_revision,
             installed_at,
         };
@@ -2029,22 +2600,36 @@ where
             decision,
             installed_at,
         );
-        match package.payload {
+        let result = match package.payload {
             ArtifactPayloadSource::Bytes(payload) => {
                 self.admission
-                    .admit(&artifact, &package.media_type, &payload, &evidence)
+                    .admit(
+                        &artifact,
+                        &package.media_type,
+                        &payload,
+                        &evidence,
+                        &command,
+                        &request_digest,
+                    )
                     .await?
             }
             ArtifactPayloadSource::TemporaryFile(path) => {
                 let result = self
                     .admission
-                    .admit_file(&artifact, &package.media_type, &path, &evidence)
+                    .admit_file(
+                        &artifact,
+                        &package.media_type,
+                        &path,
+                        &evidence,
+                        &command,
+                        &request_digest,
+                    )
                     .await;
                 let _ = tokio::fs::remove_file(&path).await;
-                result?;
+                result?
             }
-        }
-        Ok(artifact)
+        };
+        Ok(result)
     }
 }
 
@@ -2176,19 +2761,32 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
-    struct CapturingStore(Mutex<Vec<InstalledModuleArtifact>>);
+    #[derive(Clone, Default)]
+    struct CapturingStore(Arc<Mutex<Vec<InstalledModuleArtifact>>>);
 
     #[async_trait]
     impl ArtifactAdmissionStore for CapturingStore {
+        async fn find_admission(
+            &self,
+            _command: &ArtifactAdmissionCommand,
+            _request_digest: &str,
+        ) -> Result<Option<ArtifactAdmissionResult>, ModuleInstallationError> {
+            Ok(None)
+        }
+
         async fn commit_admission(
             &self,
             artifact: &InstalledModuleArtifact,
             _staged: &StagedArtifactBlob,
             _evidence: &ArtifactVerificationEvidence,
-        ) -> Result<(), ModuleInstallationError> {
+            _command: &ArtifactAdmissionCommand,
+            _request_digest: &str,
+        ) -> Result<ArtifactAdmissionResult, ModuleInstallationError> {
             self.0.lock().expect("store lock").push(artifact.clone());
-            Ok(())
+            Ok(ArtifactAdmissionResult {
+                installation_id: artifact.installation_id,
+                created: true,
+            })
         }
 
         async fn unfinished_admissions(
@@ -2223,13 +2821,26 @@ mod tests {
 
     #[async_trait]
     impl ArtifactAdmissionStore for RecoveryStore {
+        async fn find_admission(
+            &self,
+            _command: &ArtifactAdmissionCommand,
+            _request_digest: &str,
+        ) -> Result<Option<ArtifactAdmissionResult>, ModuleInstallationError> {
+            Ok(None)
+        }
+
         async fn commit_admission(
             &self,
-            _artifact: &InstalledModuleArtifact,
+            artifact: &InstalledModuleArtifact,
             _staged: &StagedArtifactBlob,
             _evidence: &ArtifactVerificationEvidence,
-        ) -> Result<(), ModuleInstallationError> {
-            Ok(())
+            _command: &ArtifactAdmissionCommand,
+            _request_digest: &str,
+        ) -> Result<ArtifactAdmissionResult, ModuleInstallationError> {
+            Ok(ArtifactAdmissionResult {
+                installation_id: artifact.installation_id,
+                created: true,
+            })
         }
 
         async fn unfinished_admissions(
@@ -2255,7 +2866,7 @@ mod tests {
                 digest: format!("sha256:{}", "a".repeat(64)),
             },
             descriptor: ModuleArtifactDescriptor {
-                schema_version: 1,
+                schema_version: crate::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
                 slug: "sample_module".to_string(),
                 version: "1.0.0".to_string(),
                 payload_kind: kind,
@@ -2269,8 +2880,9 @@ mod tests {
                 bindings: Vec::new(),
                 dependencies: Vec::new(),
                 permissions: Vec::new(),
-                settings_schema: None,
-                data_schema: None,
+                schema_documents: Vec::new(),
+                settings_schema_digest: None,
+                data_schema_digest: None,
                 ui_contributions: Vec::new(),
                 persistence_contract: None,
             },
@@ -2281,6 +2893,19 @@ mod tests {
 
     fn empty_dependency_lock() -> ModuleDependencyLockGraph {
         ModuleDependencyLockGraph::create(0, Vec::new()).expect("empty dependency lock")
+    }
+
+    fn admission_command(
+        reference: OciArtifactReference,
+        scope: ModuleInstallationScope,
+    ) -> ArtifactAdmissionCommand {
+        ArtifactAdmissionCommand {
+            reference,
+            scope,
+            dependency_lock: empty_dependency_lock(),
+            actor_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        }
     }
 
     #[tokio::test]
@@ -2337,21 +2962,21 @@ mod tests {
         let store = CapturingStore::default();
         let installer = ModuleInstaller::new(
             FixtureRegistry(package),
-            store,
+            store.clone(),
             InMemoryArtifactBlobStore::default(),
             trust_verifier(),
             trust_policy(),
         );
 
-        let installed = installer
-            .install(
+        let admission = installer
+            .admit(admission_command(
                 reference,
                 ModuleInstallationScope::Platform,
-                empty_dependency_lock(),
-                Utc::now(),
-            )
+            ))
             .await
-            .expect("install");
+            .expect("admission");
+        assert!(admission.created);
+        let installed = store.0.lock().expect("store lock")[0].clone();
 
         assert_eq!(installed.release.slug, "sample_module");
         assert_eq!(installed.descriptor.payload_kind, ArtifactPayloadKind::Rhai);
@@ -2371,12 +2996,10 @@ mod tests {
 
         assert!(matches!(
             installer
-                .install(
+                .admit(admission_command(
                     reference,
                     ModuleInstallationScope::Platform,
-                    empty_dependency_lock(),
-                    Utc::now(),
-                )
+                ))
                 .await,
             Err(ModuleInstallationError::StaticPromotionRequired)
         ));
@@ -2400,12 +3023,10 @@ mod tests {
 
         assert!(matches!(
             installer
-                .install(
+                .admit(admission_command(
                     reference,
                     ModuleInstallationScope::Platform,
-                    empty_dependency_lock(),
-                    Utc::now(),
-                )
+                ))
                 .await,
             Err(ModuleInstallationError::ArtifactTooLarge {
                 kind: "payload",
@@ -2421,35 +3042,36 @@ mod tests {
         let ArtifactPayloadSource::Bytes(payload) = package.payload.clone() else {
             panic!("fixture uses an in-memory payload")
         };
+        let scope = ModuleInstallationScope::Tenant {
+            tenant_id: Uuid::new_v4(),
+        };
+        let store = CapturingStore::default();
         let installer = ModuleInstaller::new(
             FixtureRegistry(package),
-            CapturingStore::default(),
+            store.clone(),
             InMemoryArtifactBlobStore::default(),
             trust_verifier(),
             trust_policy(),
         );
-        let scope = ModuleInstallationScope::Tenant {
-            tenant_id: Uuid::new_v4(),
-        };
-        let installed = installer
-            .install(
-                reference,
-                scope.clone(),
-                empty_dependency_lock(),
-                Utc::now(),
-            )
+        let admission = installer
+            .admit(admission_command(reference, scope.clone()))
             .await
-            .expect("install");
+            .expect("admission");
+        assert!(admission.created);
+        let installed = store.0.lock().expect("store lock")[0].clone();
 
         let request = installed
             .sandbox_request(
                 payload,
                 SandboxContext::new(ExecutionPhase::Event),
-                json!({ "value": 42 }),
+                json!({ "topic": "module.installed", "payload": { "value": 42 } }),
                 SandboxPolicy {
                     grants: vec![CapabilityGrant {
                         name: CapabilityName::new("platform.events").expect("capability"),
-                        constraints: json!({}),
+                        constraints: json!({
+                            "topics": ["module.installed"],
+                            "operations": ["publish"]
+                        }),
                     }],
                     ..Default::default()
                 },
@@ -2486,6 +3108,9 @@ mod tests {
 
         let package = package(ArtifactPayloadKind::Rhai);
         let reference = package.reference.clone();
+        let expected_reference = package.reference.clone();
+        let expected_descriptor = package.descriptor.clone();
+        let expected_lock = empty_dependency_lock();
         let tenant_id = Uuid::new_v4();
         let store = SeaOrmArtifactInstallationStore::new(database.clone());
         let installer = ModuleInstaller::new(
@@ -2495,15 +3120,46 @@ mod tests {
             trust_verifier(),
             trust_policy(),
         );
-        let installed = installer
-            .install(
-                reference,
-                ModuleInstallationScope::Tenant { tenant_id },
-                empty_dependency_lock(),
-                Utc::now(),
-            )
+        let command = ArtifactAdmissionCommand {
+            reference,
+            scope: ModuleInstallationScope::Tenant { tenant_id },
+            dependency_lock: expected_lock.clone(),
+            actor_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        let conflicting_command = ArtifactAdmissionCommand {
+            reference: OciArtifactReference {
+                registry: "registry.example".to_string(),
+                repository: "modules/sample_module".to_string(),
+                digest: format!("sha256:{}", "b".repeat(64)),
+            },
+            scope: command.scope.clone(),
+            dependency_lock: command.dependency_lock.clone(),
+            actor_id: command.actor_id,
+            idempotency_key: command.idempotency_key,
+        };
+        let admission = installer.admit(command.clone()).await.expect("admission");
+        assert!(admission.created);
+        let duplicate = installer
+            .admit(command)
             .await
-            .expect("install");
+            .expect("idempotent admission");
+        assert!(!duplicate.created);
+        assert_eq!(duplicate.installation_id, admission.installation_id);
+        assert!(matches!(
+            installer.admit(conflicting_command).await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
+        let installed = InstalledModuleArtifact {
+            installation_id: admission.installation_id,
+            scope: ModuleInstallationScope::Tenant { tenant_id },
+            reference: expected_reference,
+            release: expected_descriptor.release_ref(),
+            descriptor: expected_descriptor,
+            dependency_lock: expected_lock,
+            capability_grant_revision: 1,
+            installed_at: Utc::now(),
+        };
 
         let row = database
             .query_one(Statement::from_string(
@@ -2560,6 +3216,18 @@ mod tests {
         assert_eq!(
             String::try_get(&admission, "", "payload_digest").expect("admission digest"),
             installed.descriptor.artifact_digest
+        );
+        let admission_command_count = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM module_artifact_admission_commands".to_string(),
+            ))
+            .await
+            .expect("admission command query")
+            .expect("admission command count");
+        assert_eq!(
+            i64::try_get(&admission_command_count, "", "count").expect("admission command count"),
+            1
         );
         let outbox_count = database
             .query_one(Statement::from_string(
@@ -2721,6 +3389,42 @@ mod tests {
         assert_eq!(
             i64::try_get(&deactivation_row, "", "revision").expect("deactivation revision"),
             4
+        );
+        let tenant_disable = ArtifactTenantDisableRequest {
+            installation_id: installed.installation_id,
+            tenant_id,
+            expected_revision: 1,
+            actor_id: Uuid::new_v4(),
+            reason: "disable tenant intent".to_string(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        assert_eq!(
+            store
+                .disable_artifact_for_tenant(tenant_disable.clone())
+                .await
+                .expect("disable tenant artifact")
+                .revision,
+            1
+        );
+        assert_eq!(
+            store
+                .disable_artifact_for_tenant(tenant_disable)
+                .await
+                .expect("idempotent tenant disable")
+                .revision,
+            1
+        );
+        let tenant_disable_outbox = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM sys_events WHERE event_type = 'module.artifact.tenant_disabled'".to_string(),
+            ))
+            .await
+            .expect("tenant disable outbox query")
+            .expect("tenant disable outbox row");
+        assert_eq!(
+            i64::try_get(&tenant_disable_outbox, "", "count").expect("tenant disable outbox count"),
+            1
         );
         assert!(matches!(
             store

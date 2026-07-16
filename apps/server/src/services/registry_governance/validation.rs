@@ -1,4 +1,12 @@
 use super::*;
+use rustok_modules::{
+    ModuleRemoteValidationClaimCommand, ModuleRemoteValidationHeartbeatCommand,
+    ModuleRemoteValidationTerminalCommand, ModuleRemoteValidationTerminalOutcome,
+    ModuleValidationJobClaimCommand, ModuleValidationJobEnqueueCommand,
+    ModuleValidationJobResultCommand, ModuleValidationJobResultOutcome,
+    ModuleValidationJobRetryCommand, ModuleValidationStageReportCommand,
+    SeaOrmModuleGovernanceService,
+};
 
 impl RegistryGovernanceService {
     pub async fn validate_publish_request(
@@ -32,138 +40,22 @@ impl RegistryGovernanceService {
             _ => false,
         };
 
-        match request.status {
-            RegistryPublishRequestStatus::Draft => {
-                return Err(conflict_error(format!(
-                    "Registry publish request '{}' is still in draft status and must receive an artifact upload before validation",
-                    request_id
-                )));
-            }
-            RegistryPublishRequestStatus::Approved | RegistryPublishRequestStatus::Published => {
-                return Ok(RegistryValidationQueueResult {
-                    request,
-                    queued: false,
-                    validation_job_id: None,
-                });
-            }
-            RegistryPublishRequestStatus::Validating => {
-                if let Some(existing_job) = self.latest_active_validation_job(&request.id).await? {
-                    return Ok(RegistryValidationQueueResult {
-                        request,
-                        queued: false,
-                        validation_job_id: Some(existing_job.id),
-                    });
-                }
-
-                let job = self
-                    .create_validation_job(
-                        &request,
-                        authority_actor(authority),
-                        "validation_resumed",
-                    )
-                    .await?;
-                self.record_governance_event(
-                    &request.slug,
-                    Some(&request.id),
-                    None,
-                    "validation_job_queued",
-                    authority_actor(authority),
-                    None,
-                    serde_json::json!({
-                        "job_id": job.id.clone(),
-                        "attempt_number": job.attempt_number,
-                        "queue_reason": job.queue_reason.clone(),
-                        "request_status": request_status_label(request.status.clone()),
-                        "version": request.version.clone(),
-                    }),
-                )
-                .await?;
-                return Ok(RegistryValidationQueueResult {
-                    request,
-                    queued: true,
-                    validation_job_id: Some(job.id),
-                });
-            }
-            RegistryPublishRequestStatus::Rejected
-            | RegistryPublishRequestStatus::ArtifactUploaded
-            | RegistryPublishRequestStatus::Submitted => {}
-            RegistryPublishRequestStatus::ChangesRequested => {
-                return Err(conflict_error(format!(
-                    "Registry publish request '{}' must receive a fresh artifact upload before validation can run again",
-                    request_id
-                )));
-            }
-            RegistryPublishRequestStatus::OnHold => {
-                return Err(conflict_error(format!(
-                    "Registry publish request '{}' is currently on hold and must be resumed before validation can run",
-                    request_id
-                )));
-            }
-        }
-
-        let validating_at = Utc::now();
-        let mut request_active: RegistryPublishRequestActiveModel = request.into();
-        request_active.status = Set(RegistryPublishRequestStatus::Validating);
-        request_active.validation_errors = Set(serde_json::json!([]));
-        request_active.rejected_by = Set(None);
-        request_active.rejection_reason = Set(None);
-        request_active.validated_at = Set(None);
-        request_active.updated_at = Set(validating_at);
-        let request = request_active.update(&self.db).await?;
-        let job = self
-            .create_validation_job(
-                &request,
-                authority_actor(authority),
-                if was_requeued {
-                    "requeued_after_validation_failed"
-                } else {
-                    "initial_validation"
-                },
-            )
-            .await?;
-        self.record_governance_event(
-            &request.slug,
-            Some(&request.id),
-            None,
-            if was_requeued {
-                "validation_requeued"
-            } else {
-                "validation_queued"
-            },
-            authority_actor(authority),
-            None,
-            serde_json::json!({
-                "job_id": job.id.clone(),
-                "attempt_number": job.attempt_number,
-                "queue_reason": job.queue_reason.clone(),
-                "version": request.version.clone(),
-                "status": request_status_label(request.status.clone()),
-                "requeued": was_requeued,
-                "follow_up_gates": follow_up_validation_gate_details(),
-            }),
-        )
-        .await?;
-        self.record_governance_event(
-            &request.slug,
-            Some(&request.id),
-            None,
-            "validation_job_queued",
-            authority_actor(authority),
-            None,
-            serde_json::json!({
-                "job_id": job.id.clone(),
-                "attempt_number": job.attempt_number,
-                "queue_reason": job.queue_reason.clone(),
-                "request_status": request_status_label(request.status.clone()),
-                "version": request.version.clone(),
-            }),
-        )
-        .await?;
-
+        let result = SeaOrmModuleGovernanceService::new(self.db.clone())
+            .enqueue_validation_job(ModuleValidationJobEnqueueCommand {
+                request_id: request.id.clone(),
+                actor_principal: authority.principal.to_json_value(),
+                allow_rejected_retry: was_requeued,
+            })
+            .await
+            .map_err(anyhow::Error::new)?;
+        let request = self
+            .get_publish_request(&result.request_id)
+            .await?
+            .ok_or_else(|| anyhow!("owner-enqueued registry publish request disappeared"))?;
         Ok(RegistryValidationQueueResult {
             request,
-            queued: true,
-            validation_job_id: Some(job.id),
+            queued: result.queued,
+            validation_job_id: result.validation_job_id,
         })
     }
 
@@ -172,18 +64,22 @@ impl RegistryGovernanceService {
         validation_job_id: &str,
         actor: &str,
     ) -> anyhow::Result<registry_publish_request::Model> {
-        let claim = self
-            .claim_validation_job(validation_job_id, actor)
+        let claim = SeaOrmModuleGovernanceService::new(self.db.clone())
+            .claim_validation_job(ModuleValidationJobClaimCommand {
+                validation_job_id: validation_job_id.to_string(),
+                actor_principal: serde_json::json!({"kind":"service","id":actor}),
+            })
             .await?
             .ok_or_else(|| {
                 anyhow!("Registry validation job '{validation_job_id}' was not found")
             })?;
+        let request = self
+            .get_publish_request(&claim.request_id)
+            .await?
+            .ok_or_else(|| anyhow!("Claimed validation job points to a missing publish request"))?;
         if !claim.should_run {
-            return Ok(claim.request);
+            return Ok(request);
         }
-        let job = claim.job;
-        let request = claim.request;
-
         let mut artifact_load_attempt = 1usize;
         let artifact = loop {
             match self.load_registry_artifact(&request).await {
@@ -193,69 +89,48 @@ impl RegistryGovernanceService {
                     if let Some(retry_after_seconds) =
                         validation_retry_delay_seconds(artifact_load_attempt)
                     {
-                        self.record_governance_event(
-                            &request.slug,
-                            Some(&request.id),
-                            None,
-                            "validation_retry_scheduled",
-                            actor,
-                            None,
-                            serde_json::json!({
-                                "job_id": job.id.clone(),
-                                "job_attempt": job.attempt_number,
-                                "version": request.version.clone(),
-                                "status": request_status_label(request.status.clone()),
-                                "attempt": artifact_load_attempt,
-                                "next_attempt": artifact_load_attempt + 1,
-                                "retry_after_seconds": retry_after_seconds,
-                                "error": error.to_string(),
-                            }),
-                        )
-                        .await?;
+                        SeaOrmModuleGovernanceService::new(self.db.clone())
+                            .record_validation_job_retry(ModuleValidationJobRetryCommand {
+                                validation_job_id: validation_job_id.to_string(),
+                                actor_principal: serde_json::json!({"kind":"service","id":actor}),
+                                attempt: artifact_load_attempt as u32,
+                                retry_after_seconds: Some(retry_after_seconds),
+                                error: error.to_string(),
+                            })
+                            .await?;
                         tokio::time::sleep(std::time::Duration::from_secs(retry_after_seconds))
                             .await;
                         artifact_load_attempt += 1;
                         continue;
                     }
 
-                    self.record_governance_event(
-                        &request.slug,
-                        Some(&request.id),
-                        None,
-                        "validation_retry_exhausted",
-                        actor,
-                        None,
-                        serde_json::json!({
-                            "job_id": job.id.clone(),
-                            "job_attempt": job.attempt_number,
-                            "version": request.version.clone(),
-                            "status": request_status_label(request.status.clone()),
-                            "attempt": artifact_load_attempt,
-                            "max_attempts": artifact_load_attempt,
-                            "error": error.to_string(),
-                        }),
-                    )
-                    .await?;
+                    SeaOrmModuleGovernanceService::new(self.db.clone())
+                        .record_validation_job_retry(ModuleValidationJobRetryCommand {
+                            validation_job_id: validation_job_id.to_string(),
+                            actor_principal: serde_json::json!({"kind":"service","id":actor}),
+                            attempt: artifact_load_attempt as u32,
+                            retry_after_seconds: None,
+                            error: error.to_string(),
+                        })
+                        .await?;
                     let errors = vec![format!(
                         "Validation job exhausted artifact-load retries before bundle checks: {error}"
                     )];
-                    let request = self
-                        .mark_validation_job_failed(
-                            job.clone(),
-                            actor,
-                            Some(errors[0].as_str()),
-                            &request,
-                        )
+                    let request_id = SeaOrmModuleGovernanceService::new(self.db.clone())
+                        .apply_validation_job_result(ModuleValidationJobResultCommand {
+                            validation_job_id: validation_job_id.to_string(),
+                            actor_principal: serde_json::json!({"kind":"service","id":actor}),
+                            outcome: ModuleValidationJobResultOutcome::Failed,
+                            warnings: existing_warnings,
+                            errors: errors.clone(),
+                            automated_checks: serde_json::to_value(
+                                validation_failed_check_details(&errors),
+                            )?,
+                        })
                         .await?;
-                    return self
-                        .store_validation_rejection(
-                            request,
-                            actor,
-                            &existing_warnings,
-                            &errors,
-                            validation_failed_check_details(&errors),
-                        )
-                        .await;
+                    return self.get_publish_request(&request_id).await?.ok_or_else(|| {
+                        anyhow!("owner-rejected registry publish request disappeared")
+                    });
                 }
             }
         };
@@ -273,68 +148,40 @@ impl RegistryGovernanceService {
 
         if !validation.errors.is_empty() {
             let errors = dedupe_message_list(validation.errors);
-            let request = self
-                .mark_validation_job_failed(
-                    job.clone(),
-                    actor,
-                    errors.first().map(String::as_str),
-                    &request,
-                )
+            let request_id = SeaOrmModuleGovernanceService::new(self.db.clone())
+                .apply_validation_job_result(ModuleValidationJobResultCommand {
+                    validation_job_id: validation_job_id.to_string(),
+                    actor_principal: serde_json::json!({"kind":"service","id":actor}),
+                    outcome: ModuleValidationJobResultOutcome::Failed,
+                    warnings,
+                    errors: errors.clone(),
+                    automated_checks: serde_json::to_value(validation_failed_check_details(
+                        &errors,
+                    ))?,
+                })
                 .await?;
             return self
-                .store_validation_rejection(
-                    request,
-                    actor,
-                    &warnings,
-                    &errors,
-                    validation_failed_check_details(&errors),
-                )
-                .await;
+                .get_publish_request(&request_id)
+                .await?
+                .ok_or_else(|| anyhow!("owner-rejected registry publish request disappeared"));
         }
 
         let mut warnings = warnings;
         warnings.push(follow_up_validation_warning().to_string());
         let warnings = dedupe_message_list(warnings);
-        let automated_checks = validation_passed_check_details();
-        let follow_up_gates = follow_up_validation_gate_details();
-        let approved_at = Utc::now();
-        let mut request_active: RegistryPublishRequestActiveModel = request.into();
-        request_active.status = Set(RegistryPublishRequestStatus::Approved);
-        request_active.validation_warnings = Set(serde_json::to_value(&warnings)?);
-        request_active.validation_errors = Set(serde_json::json!([]));
-        request_active.rejected_by = Set(None);
-        request_active.rejection_reason = Set(None);
-        request_active.validated_at = Set(Some(approved_at));
-        request_active.approved_by = Set(Some(actor_principal(actor).to_json_value()));
-        request_active.approved_at = Set(Some(approved_at));
-        request_active.updated_at = Set(approved_at);
-        let request = request_active.update(&self.db).await?;
-        let queued_stages = self
-            .queue_follow_up_validation_stages(&request, actor, "validation_passed")
+        let request_id = SeaOrmModuleGovernanceService::new(self.db.clone())
+            .apply_validation_job_result(ModuleValidationJobResultCommand {
+                validation_job_id: validation_job_id.to_string(),
+                actor_principal: serde_json::json!({"kind":"service","id":actor}),
+                outcome: ModuleValidationJobResultOutcome::Passed,
+                warnings,
+                errors: Vec::new(),
+                automated_checks: serde_json::to_value(validation_passed_check_details())?,
+            })
             .await?;
-        self.record_governance_event(
-            &request.slug,
-            Some(&request.id),
-            None,
-            "validation_passed",
-            actor,
-            None,
-            serde_json::json!({
-                "version": request.version.clone(),
-                "status": request_status_label(request.status.clone()),
-                "warnings": warnings.clone(),
-                "automated_checks": automated_checks,
-                "follow_up_gates": follow_up_gates,
-                "validation_stages": queued_stages
-                    .iter()
-                    .map(validation_stage_details_value)
-                    .collect::<Vec<_>>(),
-            }),
-        )
-        .await?;
-        self.mark_validation_job_succeeded(job, actor, &request)
-            .await?;
-        Ok(request)
+        self.get_publish_request(&request_id)
+            .await?
+            .ok_or_else(|| anyhow!("owner-approved registry publish request disappeared"))
     }
 
     pub async fn report_validation_stage(
@@ -353,31 +200,6 @@ impl RegistryGovernanceService {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(|value| value.to_ascii_lowercase());
-        if let Some(reason_code) = normalized_reason_code.as_deref() {
-            if !REGISTRY_VALIDATION_STAGE_REASON_CODES
-                .iter()
-                .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
-            {
-                return Err(malformed_error(format!(
-                    "Validation stage reason_code '{}' is not supported; expected one of {}",
-                    reason_code,
-                    REGISTRY_VALIDATION_STAGE_REASON_CODES.join(", ")
-                )));
-            }
-        }
-        if requeue && requested_status != RegistryValidationStageStatus::Queued {
-            return Err(malformed_error(format!(
-                "Validation stage requeue for '{}' requires status 'queued'",
-                stage_key
-            )));
-        }
-        if !requeue && requested_status == RegistryValidationStageStatus::Queued {
-            return Err(malformed_error(format!(
-                "Validation stage '{}' can only move back to 'queued' via requeue=true",
-                stage_key
-            )));
-        }
-
         let request = self.get_publish_request(request_id).await?.ok_or_else(|| {
             not_found_error(format!(
                 "Registry publish request '{request_id}' was not found"
@@ -389,53 +211,32 @@ impl RegistryGovernanceService {
             "update validation stage",
         )
         .await?;
-        if !matches!(
-            request.status,
-            RegistryPublishRequestStatus::Approved | RegistryPublishRequestStatus::Published
-        ) {
-            return Err(conflict_error(format!(
-                "Registry publish request '{}' is in status '{}' and cannot accept follow-up stage updates",
-                request_id,
-                request_status_label(request.status.clone())
-            )));
-        }
-
         let detail = detail
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToString::to_string)
             .unwrap_or_else(|| default_validation_stage_detail(stage_key, &requested_status));
 
-        let stage = if requeue {
-            self.queue_validation_stage_attempt(
-                &request,
-                stage_key,
-                authority_actor(authority),
-                "manual_requeue",
-                &detail,
-            )
+        SeaOrmModuleGovernanceService::new(self.db.clone())
+            .report_validation_stage(ModuleValidationStageReportCommand {
+                request_id: request.id.clone(),
+                stage_key: stage_key.to_string(),
+                status: validation_stage_status_label(requested_status).to_string(),
+                actor_principal: authority.principal.to_json_value(),
+                detail,
+                reason_code: normalized_reason_code,
+                requeue,
+            })
+            .await
+            .map_err(anyhow::Error::new)?;
+        let request = self
+            .get_publish_request(&request.id)
             .await?
-        } else {
-            let latest_stage = self
-                .latest_validation_stage(&request.id, stage_key)
-                .await?
-                .ok_or_else(|| {
-                    not_found_error(format!(
-                        "Validation stage '{}' has not been queued yet for request '{}'",
-                        stage_key, request_id
-                    ))
-                })?;
-            self.update_validation_stage_status(
-                latest_stage,
-                &request,
-                authority_actor(authority),
-                requested_status,
-                &detail,
-                normalized_reason_code.as_deref(),
-            )
+            .ok_or_else(|| anyhow!("validated registry publish request disappeared"))?;
+        let stage = self
+            .latest_validation_stage(&request.id, stage_key)
             .await?
-        };
-
+            .ok_or_else(|| anyhow!("validated registry stage disappeared"))?;
         Ok(RegistryValidationStageMutationResult { request, stage })
     }
 
@@ -445,124 +246,33 @@ impl RegistryGovernanceService {
         supported_stages: &[String],
         lease_ttl_ms: u64,
     ) -> anyhow::Result<Option<RegistryRemoteValidationClaim>> {
-        let runner_id = runner_id.trim();
-        if runner_id.is_empty() {
-            return Err(malformed_error(
-                "Remote validation runner must provide a non-empty runner_id",
-            ));
-        }
-        let normalized_supported_stages = supported_stages
-            .iter()
-            .map(|stage| normalize_validation_stage_key(stage))
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        if normalized_supported_stages.is_empty() {
-            return Ok(None);
-        }
-
-        let now = Utc::now();
-        let candidates = RegistryValidationStageEntity::find()
-            .filter(
-                Condition::all()
-                    .add(
-                        registry_validation_stage::Column::Status
-                            .eq(RegistryValidationStageStatus::Queued),
-                    )
-                    .add(
-                        registry_validation_stage::Column::StageKey
-                            .is_in(normalized_supported_stages.clone()),
-                    )
-                    .add(
-                        Condition::any()
-                            .add(registry_validation_stage::Column::ClaimExpiresAt.is_null())
-                            .add(registry_validation_stage::Column::ClaimExpiresAt.lte(now)),
-                    ),
-            )
-            .order_by_asc(registry_validation_stage::Column::CreatedAt)
-            .all(&self.db)
-            .await?;
-
-        for candidate in candidates {
-            let Some(request) = self.get_publish_request(&candidate.request_id).await? else {
-                continue;
-            };
-            if !matches!(
-                request.status,
-                RegistryPublishRequestStatus::Approved | RegistryPublishRequestStatus::Published
-            ) {
-                continue;
-            }
-            let Some(_artifact_storage_key) = request.artifact_storage_key.clone() else {
-                continue;
-            };
-            let Some(artifact_checksum_sha256) = request.artifact_checksum_sha256.clone() else {
-                continue;
-            };
-
-            let claim_id = format!("rvc_{}", uuid::Uuid::new_v4().simple());
-            let actor = remote_validation_runner_actor(runner_id);
-            let now = Utc::now();
-            let mut active: RegistryValidationStageActiveModel = candidate.clone().into();
-            active.status = Set(RegistryValidationStageStatus::Running);
-            active.detail = Set(remote_validation_stage_claim_detail(
-                &candidate.stage_key,
-                runner_id,
-            ));
-            active.started_at = Set(candidate.started_at.or(Some(now)));
-            active.finished_at = Set(None);
-            active.claim_id = Set(Some(claim_id.clone()));
-            active.claimed_by = Set(Some(runner_id.to_string()));
-            active.claim_expires_at = Set(Some(now + remote_validation_lease_ttl(lease_ttl_ms)));
-            active.last_heartbeat_at = Set(Some(now));
-            active.runner_kind = Set(Some("remote".to_string()));
-            active.updated_at = Set(now);
-            let stage = active.update(&self.db).await?;
-            self.record_validation_stage_event(
-                &request,
-                &actor,
-                &stage,
-                "validation_stage_running",
-                &stage.detail,
-                None,
-                Some(serde_json::json!({
-                    "claim_id": claim_id.clone(),
-                    "runner_id": runner_id,
-                    "runner_kind": "remote",
-                    "execution_mode": remote_validation_execution_mode(&stage.stage_key),
-                })),
-            )
-            .await?;
-
-            return Ok(Some(RegistryRemoteValidationClaim {
-                claim_id,
-                request_id: request.id.clone(),
-                slug: request.slug,
-                version: request.version,
-                stage_key: stage.stage_key.clone(),
-                execution_mode: remote_validation_execution_mode(&stage.stage_key).to_string(),
-                runnable: true,
-                requires_manual_confirmation: remote_validation_stage_requires_manual_confirmation(
-                    &stage.stage_key,
-                ),
-                allowed_terminal_reason_codes: REGISTRY_VALIDATION_STAGE_REASON_CODES
-                    .iter()
-                    .map(|value| (*value).to_string())
-                    .collect(),
-                suggested_pass_reason_code: Some(
-                    remote_validation_pass_reason_code(&stage.stage_key).to_string(),
-                ),
-                suggested_failure_reason_code: Some(
-                    remote_validation_failure_reason_code(&stage.stage_key).to_string(),
-                ),
-                suggested_blocked_reason_code: Some(
-                    remote_validation_blocked_reason_code(&stage.stage_key).to_string(),
-                ),
-                artifact_download_url: registry_artifact_download_path(&request.id),
-                artifact_checksum_sha256,
-                crate_name: request.crate_name,
-            }));
-        }
-
-        Ok(None)
+        SeaOrmModuleGovernanceService::new(self.db.clone())
+            .claim_remote_validation_stage(ModuleRemoteValidationClaimCommand {
+                runner_id: runner_id.to_string(),
+                supported_stages: supported_stages.to_vec(),
+                lease_ttl_ms,
+            })
+            .await
+            .map_err(anyhow::Error::new)
+            .map(|claim| {
+                claim.map(|claim| RegistryRemoteValidationClaim {
+                    artifact_download_url: registry_artifact_download_path(&claim.request_id),
+                    claim_id: claim.claim_id,
+                    request_id: claim.request_id,
+                    slug: claim.slug,
+                    version: claim.version,
+                    stage_key: claim.stage_key,
+                    execution_mode: claim.execution_mode,
+                    runnable: true,
+                    requires_manual_confirmation: claim.requires_manual_confirmation,
+                    allowed_terminal_reason_codes: claim.allowed_terminal_reason_codes,
+                    suggested_pass_reason_code: Some(claim.suggested_pass_reason_code),
+                    suggested_failure_reason_code: Some(claim.suggested_failure_reason_code),
+                    suggested_blocked_reason_code: Some(claim.suggested_blocked_reason_code),
+                    artifact_checksum_sha256: claim.artifact_checksum_sha256,
+                    crate_name: claim.crate_name,
+                })
+            })
     }
 
     pub async fn heartbeat_remote_validation_stage(
@@ -571,39 +281,16 @@ impl RegistryGovernanceService {
         runner_id: &str,
         lease_ttl_ms: u64,
     ) -> anyhow::Result<registry_validation_stage::Model> {
-        let stage = self
-            .remote_validation_stage_by_claim_id(claim_id)
+        SeaOrmModuleGovernanceService::new(self.db.clone())
+            .heartbeat_remote_validation_stage(ModuleRemoteValidationHeartbeatCommand {
+                claim_id: claim_id.to_string(),
+                runner_id: runner_id.to_string(),
+                lease_ttl_ms,
+            })
+            .await?;
+        self.remote_validation_stage_by_claim_id(claim_id)
             .await?
-            .ok_or_else(|| {
-                not_found_error(format!(
-                    "Remote validation claim '{claim_id}' was not found"
-                ))
-            })?;
-        ensure_remote_validation_claim_runner(&stage, runner_id)?;
-        if stage.status != RegistryValidationStageStatus::Running {
-            return Err(conflict_error(format!(
-                "Remote validation claim '{}' is in status '{}' and cannot accept heartbeats",
-                claim_id,
-                validation_stage_status_label(stage.status.clone())
-            )));
-        }
-
-        let now = Utc::now();
-        if stage
-            .claim_expires_at
-            .as_ref()
-            .is_some_and(|expires_at| *expires_at < now)
-        {
-            return Err(conflict_error(format!(
-                "Remote validation claim '{claim_id}' has expired"
-            )));
-        }
-
-        let mut active: RegistryValidationStageActiveModel = stage.into();
-        active.last_heartbeat_at = Set(Some(now));
-        active.claim_expires_at = Set(Some(now + remote_validation_lease_ttl(lease_ttl_ms)));
-        active.updated_at = Set(now);
-        Ok(active.update(&self.db).await?)
+            .ok_or_else(|| anyhow!("owner-heartbeated validation stage disappeared"))
     }
 
     pub async fn complete_remote_validation_stage(
@@ -613,34 +300,23 @@ impl RegistryGovernanceService {
         detail: Option<&str>,
         reason_code: Option<&str>,
     ) -> anyhow::Result<RegistryValidationStageMutationResult> {
-        let (request, stage) = self
-            .remote_validation_claim_context(claim_id, runner_id)
+        let stage_id = SeaOrmModuleGovernanceService::new(self.db.clone())
+            .complete_remote_validation_stage(ModuleRemoteValidationTerminalCommand {
+                claim_id: claim_id.to_string(),
+                runner_id: runner_id.to_string(),
+                outcome: ModuleRemoteValidationTerminalOutcome::Passed,
+                detail: detail.map(ToString::to_string),
+                reason_code: reason_code.map(|value| value.trim().to_ascii_lowercase()),
+            })
             .await?;
-        let detail = detail
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-            .unwrap_or_else(|| remote_validation_success_detail(&stage.stage_key, &request.slug));
-        let reason_code = reason_code
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| remote_validation_pass_reason_code(&stage.stage_key));
-        let normalized_reason_code = normalize_reason_code(
-            reason_code,
-            REGISTRY_VALIDATION_STAGE_REASON_CODES,
-            "Remote validation completion",
-        )?;
-        let actor = remote_validation_runner_actor(runner_id);
-        let stage = self
-            .update_validation_stage_status(
-                stage,
-                &request,
-                &actor,
-                RegistryValidationStageStatus::Passed,
-                &detail,
-                Some(normalized_reason_code.as_str()),
-            )
-            .await?;
+        let stage = RegistryValidationStageEntity::find_by_id(stage_id)
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| anyhow!("owner-completed validation stage disappeared"))?;
+        let request = self
+            .get_publish_request(&stage.request_id)
+            .await?
+            .ok_or_else(|| anyhow!("owner-completed validation request disappeared"))?;
         Ok(RegistryValidationStageMutationResult { request, stage })
     }
 
@@ -651,272 +327,24 @@ impl RegistryGovernanceService {
         detail: Option<&str>,
         reason_code: Option<&str>,
     ) -> anyhow::Result<RegistryValidationStageMutationResult> {
-        let (request, stage) = self
-            .remote_validation_claim_context(claim_id, runner_id)
+        let stage_id = SeaOrmModuleGovernanceService::new(self.db.clone())
+            .complete_remote_validation_stage(ModuleRemoteValidationTerminalCommand {
+                claim_id: claim_id.to_string(),
+                runner_id: runner_id.to_string(),
+                outcome: ModuleRemoteValidationTerminalOutcome::Failed,
+                detail: detail.map(ToString::to_string),
+                reason_code: reason_code.map(|value| value.trim().to_ascii_lowercase()),
+            })
             .await?;
-        let detail = detail
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-            .unwrap_or_else(|| remote_validation_failure_detail(&stage.stage_key, &request.slug));
-        let reason_code = reason_code
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| remote_validation_failure_reason_code(&stage.stage_key));
-        let normalized_reason_code = normalize_reason_code(
-            reason_code,
-            REGISTRY_VALIDATION_STAGE_REASON_CODES,
-            "Remote validation failure",
-        )?;
-        let actor = remote_validation_runner_actor(runner_id);
-        let stage = self
-            .update_validation_stage_status(
-                stage,
-                &request,
-                &actor,
-                RegistryValidationStageStatus::Failed,
-                &detail,
-                Some(normalized_reason_code.as_str()),
-            )
-            .await?;
-        Ok(RegistryValidationStageMutationResult { request, stage })
-    }
-
-    pub async fn requeue_expired_remote_validation_claims(&self) -> anyhow::Result<usize> {
-        let now = Utc::now();
-        let expired_stages = RegistryValidationStageEntity::find()
-            .filter(
-                Condition::all()
-                    .add(registry_validation_stage::Column::RunnerKind.eq("remote"))
-                    .add(
-                        registry_validation_stage::Column::Status
-                            .eq(RegistryValidationStageStatus::Running),
-                    )
-                    .add(registry_validation_stage::Column::ClaimExpiresAt.lt(now)),
-            )
-            .order_by_asc(registry_validation_stage::Column::ClaimExpiresAt)
-            .all(&self.db)
-            .await?;
-
-        let mut requeued = 0usize;
-        for stage in expired_stages {
-            let Some(request) = self.get_publish_request(&stage.request_id).await? else {
-                continue;
-            };
-            let actor = "system:registry-runner-reaper";
-            let detail = format!(
-                "Remote validation lease expired for runner '{}' (claim '{}'); stage attempt will be requeued.",
-                stage.claimed_by.as_deref().unwrap_or("unknown"),
-                stage.claim_id.as_deref().unwrap_or("unknown"),
-            );
-            let _blocked = self
-                .update_validation_stage_status(
-                    stage.clone(),
-                    &request,
-                    actor,
-                    RegistryValidationStageStatus::Blocked,
-                    &detail,
-                    None,
-                )
-                .await?;
-            self.queue_validation_stage_attempt(
-                &request,
-                &stage.stage_key,
-                actor,
-                "remote_lease_expired",
-                follow_up_gate_detail(&stage.stage_key),
-            )
-            .await?;
-            requeued += 1;
-        }
-
-        Ok(requeued)
-    }
-
-    async fn latest_validation_job(
-        &self,
-        request_id: &str,
-    ) -> anyhow::Result<Option<registry_validation_job::Model>> {
-        Ok(RegistryValidationJobEntity::find()
-            .filter(registry_validation_job::Column::RequestId.eq(request_id))
-            .order_by_desc(registry_validation_job::Column::CreatedAt)
-            .one(&self.db)
-            .await?)
-    }
-
-    async fn latest_active_validation_job(
-        &self,
-        request_id: &str,
-    ) -> anyhow::Result<Option<registry_validation_job::Model>> {
-        Ok(RegistryValidationJobEntity::find()
-            .filter(registry_validation_job::Column::RequestId.eq(request_id))
-            .filter(registry_validation_job::Column::Status.is_in([
-                RegistryValidationJobStatus::Queued,
-                RegistryValidationJobStatus::Running,
-            ]))
-            .order_by_desc(registry_validation_job::Column::CreatedAt)
-            .one(&self.db)
-            .await?)
-    }
-
-    async fn create_validation_job(
-        &self,
-        request: &registry_publish_request::Model,
-        actor: &str,
-        queue_reason: &str,
-    ) -> anyhow::Result<registry_validation_job::Model> {
-        let now = Utc::now();
-        let next_attempt_number = self
-            .latest_validation_job(&request.id)
-            .await?
-            .map(|job| job.attempt_number + 1)
-            .unwrap_or(1);
-        let active = RegistryValidationJobActiveModel {
-            id: Set(format!("rvj_{}", uuid::Uuid::new_v4().simple())),
-            request_id: Set(request.id.clone()),
-            slug: Set(request.slug.clone()),
-            version: Set(request.version.clone()),
-            status: Set(RegistryValidationJobStatus::Queued),
-            triggered_by: Set(normalize_actor(actor)),
-            queue_reason: Set(queue_reason.to_string()),
-            attempt_number: Set(next_attempt_number),
-            started_at: Set(None),
-            finished_at: Set(None),
-            last_error: Set(None),
-            created_at: Set(now),
-            updated_at: Set(now),
-        };
-        Ok(active.insert(&self.db).await?)
-    }
-
-    async fn claim_validation_job(
-        &self,
-        validation_job_id: &str,
-        actor: &str,
-    ) -> anyhow::Result<Option<RegistryValidationJobClaim>> {
-        let Some(job) = RegistryValidationJobEntity::find_by_id(validation_job_id)
+        let stage = RegistryValidationStageEntity::find_by_id(stage_id)
             .one(&self.db)
             .await?
-        else {
-            return Ok(None);
-        };
+            .ok_or_else(|| anyhow!("owner-failed validation stage disappeared"))?;
         let request = self
-            .get_publish_request(&job.request_id)
+            .get_publish_request(&stage.request_id)
             .await?
-            .ok_or_else(|| {
-                anyhow!(
-                    "Registry validation job '{}' points to missing publish request '{}'",
-                    validation_job_id,
-                    job.request_id
-                )
-            })?;
-
-        match job.status {
-            RegistryValidationJobStatus::Queued => {
-                let started_at = Utc::now();
-                let mut active: RegistryValidationJobActiveModel = job.clone().into();
-                active.status = Set(RegistryValidationJobStatus::Running);
-                active.started_at = Set(Some(started_at));
-                active.finished_at = Set(None);
-                active.last_error = Set(None);
-                active.updated_at = Set(started_at);
-                let job = active.update(&self.db).await?;
-                self.record_governance_event(
-                    &request.slug,
-                    Some(&request.id),
-                    None,
-                    "validation_job_started",
-                    actor,
-                    None,
-                    serde_json::json!({
-                        "job_id": job.id.clone(),
-                        "attempt_number": job.attempt_number,
-                        "queue_reason": job.queue_reason.clone(),
-                        "request_status": request_status_label(request.status.clone()),
-                        "version": request.version.clone(),
-                    }),
-                )
-                .await?;
-                Ok(Some(RegistryValidationJobClaim {
-                    job,
-                    request,
-                    should_run: true,
-                }))
-            }
-            RegistryValidationJobStatus::Running
-            | RegistryValidationJobStatus::Succeeded
-            | RegistryValidationJobStatus::Failed => Ok(Some(RegistryValidationJobClaim {
-                job,
-                request,
-                should_run: false,
-            })),
-        }
-    }
-
-    async fn mark_validation_job_succeeded(
-        &self,
-        job: registry_validation_job::Model,
-        actor: &str,
-        request: &registry_publish_request::Model,
-    ) -> anyhow::Result<registry_validation_job::Model> {
-        let finished_at = Utc::now();
-        let mut active: RegistryValidationJobActiveModel = job.clone().into();
-        active.status = Set(RegistryValidationJobStatus::Succeeded);
-        active.finished_at = Set(Some(finished_at));
-        active.last_error = Set(None);
-        active.updated_at = Set(finished_at);
-        let job = active.update(&self.db).await?;
-        self.record_governance_event(
-            &request.slug,
-            Some(&request.id),
-            None,
-            "validation_job_succeeded",
-            actor,
-            None,
-            serde_json::json!({
-                "job_id": job.id.clone(),
-                "attempt_number": job.attempt_number,
-                "queue_reason": job.queue_reason.clone(),
-                "request_status": request_status_label(request.status.clone()),
-                "version": request.version.clone(),
-            }),
-        )
-        .await?;
-        Ok(job)
-    }
-
-    async fn mark_validation_job_failed(
-        &self,
-        job: registry_validation_job::Model,
-        actor: &str,
-        last_error: Option<&str>,
-        request: &registry_publish_request::Model,
-    ) -> anyhow::Result<registry_publish_request::Model> {
-        let finished_at = Utc::now();
-        let mut active: RegistryValidationJobActiveModel = job.clone().into();
-        active.status = Set(RegistryValidationJobStatus::Failed);
-        active.finished_at = Set(Some(finished_at));
-        active.last_error = Set(last_error.map(ToString::to_string));
-        active.updated_at = Set(finished_at);
-        let job = active.update(&self.db).await?;
-        self.record_governance_event(
-            &request.slug,
-            Some(&request.id),
-            None,
-            "validation_job_failed",
-            actor,
-            None,
-            serde_json::json!({
-                "job_id": job.id.clone(),
-                "attempt_number": job.attempt_number,
-                "queue_reason": job.queue_reason.clone(),
-                "request_status": request_status_label(request.status.clone()),
-                "version": request.version.clone(),
-                "error": last_error,
-            }),
-        )
-        .await?;
-        Ok(request.clone())
+            .ok_or_else(|| anyhow!("owner-failed validation request disappeared"))?;
+        Ok(RegistryValidationStageMutationResult { request, stage })
     }
 
     pub(crate) async fn validation_stage_rows(
@@ -968,322 +396,6 @@ impl RegistryGovernanceService {
             .await?)
     }
 
-    async fn remote_validation_claim_context(
-        &self,
-        claim_id: &str,
-        runner_id: &str,
-    ) -> anyhow::Result<(
-        registry_publish_request::Model,
-        registry_validation_stage::Model,
-    )> {
-        let stage = self
-            .remote_validation_stage_by_claim_id(claim_id)
-            .await?
-            .ok_or_else(|| {
-                not_found_error(format!(
-                    "Remote validation claim '{claim_id}' was not found"
-                ))
-            })?;
-        ensure_remote_validation_claim_runner(&stage, runner_id)?;
-        if stage.status != RegistryValidationStageStatus::Running {
-            return Err(conflict_error(format!(
-                "Remote validation claim '{}' is in status '{}' and cannot be completed",
-                claim_id,
-                validation_stage_status_label(stage.status.clone())
-            )));
-        }
-        let now = Utc::now();
-        if stage
-            .claim_expires_at
-            .as_ref()
-            .is_some_and(|expires_at| *expires_at < now)
-        {
-            return Err(conflict_error(format!(
-                "Remote validation claim '{claim_id}' has expired"
-            )));
-        }
-        let request = self
-            .get_publish_request(&stage.request_id)
-            .await?
-            .ok_or_else(|| {
-                anyhow!(
-                    "Remote validation claim '{}' points to missing request '{}'",
-                    claim_id,
-                    stage.request_id
-                )
-            })?;
-        Ok((request, stage))
-    }
-
-    async fn latest_active_validation_stage(
-        &self,
-        request_id: &str,
-        stage_key: &str,
-    ) -> anyhow::Result<Option<registry_validation_stage::Model>> {
-        Ok(RegistryValidationStageEntity::find()
-            .filter(registry_validation_stage::Column::RequestId.eq(request_id))
-            .filter(registry_validation_stage::Column::StageKey.eq(stage_key))
-            .filter(registry_validation_stage::Column::Status.is_in([
-                RegistryValidationStageStatus::Queued,
-                RegistryValidationStageStatus::Running,
-            ]))
-            .order_by_desc(registry_validation_stage::Column::AttemptNumber)
-            .order_by_desc(registry_validation_stage::Column::CreatedAt)
-            .one(&self.db)
-            .await?)
-    }
-
-    async fn queue_follow_up_validation_stages(
-        &self,
-        request: &registry_publish_request::Model,
-        actor: &str,
-        queue_reason: &str,
-    ) -> anyhow::Result<Vec<registry_validation_stage::Model>> {
-        let mut stages = Vec::new();
-
-        for stage_key in REGISTRY_VALIDATION_FOLLOW_UP_GATES {
-            if self
-                .latest_active_validation_stage(&request.id, stage_key)
-                .await?
-                .is_some()
-            {
-                continue;
-            }
-
-            stages.push(
-                self.queue_validation_stage_attempt(
-                    request,
-                    stage_key,
-                    actor,
-                    queue_reason,
-                    follow_up_gate_detail(stage_key),
-                )
-                .await?,
-            );
-        }
-
-        Ok(stages)
-    }
-
-    async fn queue_validation_stage_attempt(
-        &self,
-        request: &registry_publish_request::Model,
-        stage_key: &str,
-        actor: &str,
-        queue_reason: &str,
-        detail: &str,
-    ) -> anyhow::Result<registry_validation_stage::Model> {
-        let now = Utc::now();
-        let next_attempt_number = self
-            .latest_validation_stage(&request.id, stage_key)
-            .await?
-            .map(|stage| stage.attempt_number + 1)
-            .unwrap_or(1);
-        let active = RegistryValidationStageActiveModel {
-            id: Set(format!("rvs_{}", uuid::Uuid::new_v4().simple())),
-            request_id: Set(request.id.clone()),
-            slug: Set(request.slug.clone()),
-            version: Set(request.version.clone()),
-            stage_key: Set(stage_key.to_string()),
-            status: Set(RegistryValidationStageStatus::Queued),
-            triggered_by: Set(normalize_actor(actor)),
-            queue_reason: Set(queue_reason.to_string()),
-            attempt_number: Set(next_attempt_number),
-            detail: Set(detail.to_string()),
-            started_at: Set(None),
-            finished_at: Set(None),
-            last_error: Set(None),
-            claim_id: Set(None),
-            claimed_by: Set(None),
-            claim_expires_at: Set(None),
-            last_heartbeat_at: Set(None),
-            runner_kind: Set(None),
-            created_at: Set(now),
-            updated_at: Set(now),
-        };
-        let stage = active.insert(&self.db).await?;
-        self.record_validation_stage_event(
-            request,
-            actor,
-            &stage,
-            "validation_stage_queued",
-            detail,
-            None,
-            None,
-        )
-        .await?;
-        self.record_follow_up_gate_event(
-            request,
-            actor,
-            stage_key,
-            "follow_up_gate_queued",
-            "pending",
-            detail,
-            None,
-        )
-        .await?;
-        Ok(stage)
-    }
-
-    async fn update_validation_stage_status(
-        &self,
-        stage: registry_validation_stage::Model,
-        request: &registry_publish_request::Model,
-        actor: &str,
-        status: RegistryValidationStageStatus,
-        detail: &str,
-        reason_code: Option<&str>,
-    ) -> anyhow::Result<registry_validation_stage::Model> {
-        ensure_validation_stage_transition_allowed(&stage.status, &status, &stage.stage_key)?;
-
-        let now = Utc::now();
-        let existing_started_at = stage.started_at;
-        let mut active: RegistryValidationStageActiveModel = stage.clone().into();
-        active.status = Set(status.clone());
-        active.detail = Set(detail.to_string());
-        active.updated_at = Set(now);
-        active.last_error = Set(match &status {
-            RegistryValidationStageStatus::Failed => Some(detail.to_string()),
-            _ => None,
-        });
-        match &status {
-            RegistryValidationStageStatus::Queued => {
-                active.started_at = Set(None);
-                active.finished_at = Set(None);
-                active.claim_id = Set(None);
-                active.claimed_by = Set(None);
-                active.claim_expires_at = Set(None);
-                active.last_heartbeat_at = Set(None);
-                active.runner_kind = Set(None);
-            }
-            RegistryValidationStageStatus::Running => {
-                active.started_at = Set(existing_started_at.or(Some(now)));
-                active.finished_at = Set(None);
-            }
-            RegistryValidationStageStatus::Passed
-            | RegistryValidationStageStatus::Failed
-            | RegistryValidationStageStatus::Blocked => {
-                active.started_at = Set(existing_started_at.or(Some(now)));
-                active.finished_at = Set(Some(now));
-                active.claim_id = Set(None);
-                active.claimed_by = Set(None);
-                active.claim_expires_at = Set(None);
-                active.last_heartbeat_at = Set(None);
-                active.runner_kind = Set(None);
-            }
-        }
-        let stage = active.update(&self.db).await?;
-        let event_type = validation_stage_event_type(&status);
-        self.record_validation_stage_event(
-            request,
-            actor,
-            &stage,
-            event_type,
-            detail,
-            reason_code,
-            None,
-        )
-        .await?;
-        match &status {
-            RegistryValidationStageStatus::Passed => {
-                self.record_follow_up_gate_event(
-                    request,
-                    actor,
-                    &stage.stage_key,
-                    "follow_up_gate_passed",
-                    "passed",
-                    detail,
-                    reason_code,
-                )
-                .await?;
-            }
-            RegistryValidationStageStatus::Failed => {
-                self.record_follow_up_gate_event(
-                    request,
-                    actor,
-                    &stage.stage_key,
-                    "follow_up_gate_failed",
-                    "failed",
-                    detail,
-                    reason_code,
-                )
-                .await?;
-            }
-            _ => {}
-        }
-        Ok(stage)
-    }
-
-    async fn record_validation_stage_event(
-        &self,
-        request: &registry_publish_request::Model,
-        actor: &str,
-        stage: &registry_validation_stage::Model,
-        event_type: &str,
-        detail: &str,
-        reason_code: Option<&str>,
-        extra: Option<serde_json::Value>,
-    ) -> anyhow::Result<registry_governance_event::Model> {
-        let mut details = serde_json::json!({
-            "stage_id": stage.id.clone(),
-            "stage_key": stage.stage_key.clone(),
-            "status": validation_stage_status_label(stage.status.clone()),
-            "detail": detail,
-            "attempt_number": stage.attempt_number,
-            "queue_reason": stage.queue_reason.clone(),
-            "request_status": request_status_label(request.status.clone()),
-            "version": request.version.clone(),
-            "started_at": stage.started_at.as_ref().map(|value| value.to_rfc3339()),
-            "finished_at": stage.finished_at.as_ref().map(|value| value.to_rfc3339()),
-        });
-        if let Some(reason_code) = reason_code {
-            details["reason_code"] = serde_json::Value::String(reason_code.to_string());
-        }
-        if let Some(extra) = extra {
-            merge_json_object(&mut details, extra);
-        }
-        self.record_governance_event(
-            &request.slug,
-            Some(&request.id),
-            None,
-            event_type,
-            actor,
-            None,
-            details,
-        )
-        .await
-    }
-
-    async fn record_follow_up_gate_event(
-        &self,
-        request: &registry_publish_request::Model,
-        actor: &str,
-        stage_key: &str,
-        event_type: &str,
-        status: &str,
-        detail: &str,
-        reason_code: Option<&str>,
-    ) -> anyhow::Result<registry_governance_event::Model> {
-        let mut details = serde_json::json!({
-            "stage_key": stage_key,
-            "status": status,
-            "detail": detail,
-        });
-        if let Some(reason_code) = reason_code {
-            details["reason_code"] = serde_json::Value::String(reason_code.to_string());
-        }
-        self.record_governance_event(
-            &request.slug,
-            Some(&request.id),
-            None,
-            event_type,
-            actor,
-            None,
-            details,
-        )
-        .await
-    }
-
     async fn latest_request_event_type(&self, request_id: &str) -> anyhow::Result<Option<String>> {
         Ok(RegistryGovernanceEventEntity::find()
             .filter(registry_governance_event::Column::RequestId.eq(request_id))
@@ -1291,49 +403,6 @@ impl RegistryGovernanceService {
             .one(&self.db)
             .await?
             .map(|event| event.event_type))
-    }
-
-    async fn store_validation_rejection(
-        &self,
-        request: registry_publish_request::Model,
-        actor: &str,
-        warnings: &[String],
-        errors: &[String],
-        failed_checks: Vec<RegistryValidationCheckDetail>,
-    ) -> anyhow::Result<registry_publish_request::Model> {
-        let rejected_at = Utc::now();
-        let errors = dedupe_message_list(errors.to_vec());
-        let warnings = dedupe_message_list(warnings.to_vec());
-        let mut request_active: RegistryPublishRequestActiveModel = request.into();
-        request_active.status = Set(RegistryPublishRequestStatus::Rejected);
-        request_active.validation_warnings = Set(serde_json::to_value(&warnings)?);
-        request_active.validation_errors = Set(serde_json::to_value(&errors)?);
-        request_active.rejected_by = Set(Some(actor_principal(actor).to_json_value()));
-        request_active.rejection_reason = Set(errors.first().cloned());
-        request_active.validated_at = Set(Some(rejected_at));
-        request_active.approved_by = Set(None);
-        request_active.approved_at = Set(None);
-        request_active.published_at = Set(None);
-        request_active.updated_at = Set(rejected_at);
-        let request = request_active.update(&self.db).await?;
-        self.record_governance_event(
-            &request.slug,
-            Some(&request.id),
-            None,
-            "validation_failed",
-            actor,
-            None,
-            serde_json::json!({
-                "version": request.version.clone(),
-                "status": request_status_label(request.status.clone()),
-                "reason": request.rejection_reason.clone(),
-                "warnings": warnings,
-                "errors": errors,
-                "automated_checks": failed_checks,
-            }),
-        )
-        .await?;
-        Ok(request)
     }
 }
 

@@ -19,7 +19,13 @@ Implemented:
 - executor registry and default-deny capability broker;
 - capability-call identity propagation and pre-broker execution, subject,
   tenant, actor, phase, and trace-context matching;
-- observer pipeline for started/succeeded/failed execution evidence;
+- typed HTTP, secret-reference, event-topic, and logical-data grant constraints
+  enforced before broker invocation;
+- typed MCP server/tool-pair constraints enforced before broker invocation;
+- exact-name capability broker router for composing owner adapters while
+  preserving default-deny behavior for unregistered capabilities;
+- fallible observer pipeline for started/succeeded/failed redacted execution
+  evidence and correlation context;
 - generic Rhai engine/executor with resource and timeout limits;
 - request-scoped Rhai host extensions;
 - Wasmtime Component Model executor with fuel, epoch deadlines, store limits,
@@ -30,7 +36,9 @@ Implemented:
 Remaining:
 
 - stable Rhai binding and WIT v1 compatibility contract;
-- durable audit observer and redaction policy;
+- owner-specific durable audit deployment composition; `rustok-modules` now
+  provides the artifact-only SeaORM adapter, while this neutral crate keeps no
+  storage dependency;
 - production compiled-artifact cache policy and metrics;
 - richer capability constraints and call budgets;
 - sidecar executor after its entry conditions are met.
@@ -53,7 +61,9 @@ Remaining:
   Rhai progress callback, Wasmtime epoch watchdog, and capability host.
 - [x] Add runtime-scoped global, executor, tenant, and artifact concurrency
   admission controls with automatic permit release.
-- Add durable observer adapter, redaction, and correlation.
+- [x] Add fallible observer delivery, redaction, and correlation context. The
+  artifact owner supplies the durable SeaORM adapter; hosts must attach it when
+  durable execution evidence is required.
 - Add queue time, execution time, fuel/instruction, memory, output, capability,
   and cache metrics.
 - Add one shared in-process/isolated-worker executor placement contract.
@@ -75,7 +85,7 @@ Remaining:
   invocation.
 - [x] Add typed HTTP host/method/path-prefix constraints before broker
   invocation.
-- Add typed constraints for storage, events, secrets, and MCP.
+- [x] Add typed constraints for storage, events, secrets, and MCP.
 - [x] Add per-execution capability call-count, input-size, and rolling rate
   budgets before broker invocation.
 - Add capability time budgets.

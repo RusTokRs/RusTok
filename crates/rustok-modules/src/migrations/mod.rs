@@ -7,6 +7,12 @@ mod m20260715_000006_module_artifact_uninstall_operations;
 mod m20260716_000007_artifact_migration_checkpoints;
 mod m20260716_000008_module_artifact_deactivation_operations;
 mod m20260716_000009_artifact_tenant_lifecycle;
+mod m20260716_000010_artifact_data_broker;
+mod m20260716_000011_artifact_data_namespace_lifecycle;
+mod m20260716_000012_module_build_requests;
+mod m20260716_000013_artifact_admission_commands;
+mod m20260716_000014_artifact_secret_bindings;
+mod m20260716_000015_artifact_execution_audit;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -21,5 +27,11 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260716_000007_artifact_migration_checkpoints::Migration),
         Box::new(m20260716_000008_module_artifact_deactivation_operations::Migration),
         Box::new(m20260716_000009_artifact_tenant_lifecycle::Migration),
+        Box::new(m20260716_000010_artifact_data_broker::Migration),
+        Box::new(m20260716_000011_artifact_data_namespace_lifecycle::Migration),
+        Box::new(m20260716_000012_module_build_requests::Migration),
+        Box::new(m20260716_000013_artifact_admission_commands::Migration),
+        Box::new(m20260716_000014_artifact_secret_bindings::Migration),
+        Box::new(m20260716_000015_artifact_execution_audit::Migration),
     ]
 }

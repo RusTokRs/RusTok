@@ -25,6 +25,44 @@ The `platform.http` grant requires typed `hosts`, `methods`, and
 matching is exact, while paths use an explicit allowed prefix. The host enforces
 them before it calls the capability broker.
 
+The `platform.secrets` grant requires typed non-empty `references` and
+`operations` lists. A call must contain exactly one logical `reference` selected
+from that allowlist and one declared operation. Resolver aliases, resolver keys,
+and secret values are not guest inputs. The module data owner durably binds a
+logical reference to a host-authorized `SecretRef`. The owner-provided
+`acquire_handle` broker can return only that logical reference and its revision;
+the future value-consuming secret-use broker must still never serialize a
+secret value in a capability response.
+
+The `platform.events` grant requires typed non-empty `topics` and `operations`
+lists. A call may contain only `topic` and optional `payload`; the topic must
+match an exact grant entry or a terminal `.*` wildcard, and the operation must
+be declared. A global wildcard, arbitrary broker input fields, and undeclared
+event topics are denied before the broker is invoked.
+
+The `platform.data` grant requires typed non-empty `key_prefixes` and
+`operations` lists. The tenant/module/data-contract namespace is injected by
+the host; guests can name only logical keys under an admitted prefix. The
+current contract permits `get`, `put`, and bounded `list` inputs and rejects
+physical storage fields such as a table, bucket, path, or namespace. The
+owner-provided adapter delegates all three operations to the data broker;
+listing uses an escaped prefix query and continuation that remain inside the
+admitted logical prefix.
+
+The `platform.mcp` grant requires typed non-empty exact server/tool pairs and
+the `call` operation. A call may contain only a configured server alias, tool
+name, and optional arguments; MCP endpoints, transports, credentials, and
+tool-discovery targets are never guest inputs. `rustok-modules` provides the
+scoped `ArtifactMcpCapabilityBroker` and its `ArtifactMcpInvoker` owner port;
+deployment composition must bind that port to the existing MCP access-policy,
+audit, and configured server-alias implementation.
+
+`CapabilityBrokerRouter` composes owner-provided adapters by their exact
+capability name. It rejects duplicate owners and denies an unregistered route;
+host composition can therefore combine data, secret, and future MCP adapters
+without introducing a platform-global fallback or making one owner adapter
+responsible for another capability.
+
 The request limits also bound the total number of capability calls, the
 serialized input size of each call, and calls in a rolling one-second window.
 These limits are shared by all cloned host handles for one execution and are
@@ -35,9 +73,12 @@ successful, denied, and failed outcomes. A record carries active execution and
 subject identity, request context, capability, operation and stable error code;
 it deliberately excludes input, output, credentials and error text.
 
-Execution observer records similarly contain metrics and stable error codes only;
-the neutral contract has no error-text field, so the runtime cannot persist or
-forward untrusted error text.
+Execution observer records similarly contain only redacted request identity,
+metrics, and stable error codes. The neutral contract has no error-text field,
+so the runtime cannot persist or forward untrusted error text. Observers are
+fallible: a host that requires durable evidence can reject execution when a
+start or terminal record cannot be delivered. `rustok-modules` owns the
+artifact-specific SeaORM adapter; this crate remains storage-neutral.
 
 `SandboxRuntime::execute_with_cancellation` accepts the same request contract
 plus a request-scoped `SandboxCancellation` handle. The runtime rejects a

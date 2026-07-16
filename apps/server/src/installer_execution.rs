@@ -17,7 +17,6 @@ use uuid::Uuid;
 
 use crate::installer_deployment::ServerInstallerDeploymentAdapter;
 use crate::models::users;
-use crate::modules::build_registry;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 
 const INSTALLER_TENANT_READ_DEADLINE: Duration = Duration::from_secs(15);
@@ -26,9 +25,10 @@ pub async fn apply_plan(
     plan: InstallPlan,
     options: InstallApplyOptions,
     build_settings: crate::common::settings::BuildRuntimeSettings,
+    registry: rustok_core::ModuleRegistry,
 ) -> Result<InstallApplyOutput> {
     let ports = ServerInstallerPorts {
-        registry: build_registry(),
+        registry,
         deployment: ServerInstallerDeploymentAdapter::new(build_settings),
     };
     rustok_installer::execute_install_apply(&ports, plan, options)
@@ -40,11 +40,18 @@ pub async fn apply_plan(
 #[derive(Clone)]
 pub struct ServerInstallExecutor {
     build_settings: crate::common::settings::BuildRuntimeSettings,
+    registry: rustok_core::ModuleRegistry,
 }
 
 impl ServerInstallExecutor {
-    pub fn new(build_settings: crate::common::settings::BuildRuntimeSettings) -> Self {
-        Self { build_settings }
+    pub fn new(
+        build_settings: crate::common::settings::BuildRuntimeSettings,
+        registry: rustok_core::ModuleRegistry,
+    ) -> Self {
+        Self {
+            build_settings,
+            registry,
+        }
     }
 }
 
@@ -55,9 +62,14 @@ impl InstallExecutor for ServerInstallExecutor {
         plan: InstallPlan,
         options: InstallApplyOptions,
     ) -> std::result::Result<InstallApplyOutput, InstallExecutionError> {
-        apply_plan(plan, options, self.build_settings.clone())
-            .await
-            .map_err(|error| InstallExecutionError::new(error.to_string()))
+        apply_plan(
+            plan,
+            options,
+            self.build_settings.clone(),
+            self.registry.clone(),
+        )
+        .await
+        .map_err(|error| InstallExecutionError::new(error.to_string()))
     }
 }
 

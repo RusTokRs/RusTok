@@ -15,9 +15,11 @@ pub mod wasm;
 
 pub use admission::SandboxAdmissionLimits;
 pub use capability::{
-    CapabilityAuditOutcome, CapabilityAuditRecord, CapabilityBroker, CapabilityCall,
-    CapabilityCallContext, CapabilityGrant, CapabilityName, CapabilityObserver, CapabilityResponse,
-    HttpCapabilityConstraints, SandboxHost,
+    CapabilityAuditOutcome, CapabilityAuditRecord, CapabilityBroker, CapabilityBrokerRouter,
+    CapabilityCall, CapabilityCallContext, CapabilityGrant, CapabilityName, CapabilityObserver,
+    CapabilityResponse, DataCapabilityConstraints, EventCapabilityConstraints,
+    HttpCapabilityConstraints, McpCapabilityConstraints, McpToolGrant, SandboxHost,
+    SecretReferenceCapabilityConstraints,
 };
 pub use error::{SandboxError, SandboxResult};
 pub use executor::{ExecutorRegistry, SandboxExecutor};

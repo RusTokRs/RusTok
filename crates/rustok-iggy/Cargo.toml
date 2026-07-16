@@ -20,7 +20,7 @@ rustok-events.workspace = true
 rustok-iggy-connector.workspace = true
 
 [features]
-default = []
+default = ["iggy"]
 iggy = ["rustok-iggy-connector/iggy"]
 
 [dev-dependencies]

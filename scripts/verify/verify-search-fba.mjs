@@ -19,6 +19,10 @@ const runtimeInvocation = json(runtimeInvocationPath);
 if (registry.schema_version !== 1) fail('registry schema_version drift');
 if (registry.module !== 'search' || registry.role !== 'provider' || registry.status !== 'boundary_ready') fail('registry identity/status drift');
 if (registry.contract_version !== 'search.query.v1') fail('contract_version drift');
+if (registry.deployment_topology?.current_class !== 'modular_monolith' || registry.deployment_topology?.extraction_class !== 'whole_module_service' || registry.deployment_topology?.remote_transport !== 'grpc' || registry.deployment_topology?.remote_status !== 'planned') fail('search extraction topology drift');
+hasAll(JSON.stringify(registry.deployment_topology.split_blockers), ['search_ingestion_control_contract', 'search_connector_writer_contract', 'query_time_index_sql_reads', 'grpc_conformance', 'isolated_database_evidence'], 'search split blockers');
+if (registry.connector_boundary?.owner !== 'search' || registry.connector_boundary?.internal_contract !== 'SearchEngine' || registry.connector_boundary?.planned_writer_contract !== 'SearchEngineWriter' || registry.connector_boundary?.consumer_access !== 'search_ports_only' || registry.connector_boundary?.credentials_exposed_to_consumers !== false) fail('search connector ownership drift');
+hasAll(JSON.stringify(registry.connector_boundary), ['postgres', 'meilisearch', 'typesense', 'algolia'], 'connector registry');
 const ports = registry.ports ?? [];
 for (const expected of ['SearchQueryPort', 'SearchSuggestionPort']) {
   if (!ports.find((p) => p.name === expected)) fail(`missing ${expected}`);
@@ -48,6 +52,8 @@ if (!suggestionImpl.includes('request.locale.get_or_insert_with(|| context.local
 if (!suggestionImpl.includes('SearchSuggestionService::suggestions(self.connection(), request)')) fail('suggest does not use embedded PostgreSQL suggestion fallback');
 const pgEngine = read('crates/rustok-search/src/pg_engine.rs');
 hasAll(pgEngine, ['pub(crate) fn connection(&self) -> &DatabaseConnection', '&self.db'], 'pg_engine.rs');
+const engine = read('crates/rustok-search/src/engine.rs');
+hasAll(engine, ['pub trait SearchEngine', 'Self::Postgres', 'Self::Meilisearch', 'Self::Typesense', 'Self::Algolia'], 'engine connector boundary');
 
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
 const registryCases = registry.contract_tests.cases.map((c) => c.operation).sort().join('|');
@@ -80,7 +86,7 @@ for (const mode of registry.contract_tests.fallback_smoke.degraded_modes ?? []) 
 }
 
 const plan = read('crates/rustok-search/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `boundary_ready`', 'search-fba-registry.json', 'SearchQueryPort', 'search-contract-test-static-matrix.json', 'search-runtime-fallback-smoke.json', 'search-runtime-contract-smoke.json', 'search-runtime-invocation-trace.json'], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'search-fba-registry.json', 'SearchQueryPort', 'search-contract-test-static-matrix.json', 'search-runtime-fallback-smoke.json', 'search-runtime-contract-smoke.json', 'search-runtime-invocation-trace.json', 'whole-module extraction pilot', 'SearchEngine', '2026-07-16-media-search-extraction-boundaries.md'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `search` |', 'crates/rustok-search/contracts/search-fba-registry.json', '`phase_b_ready` | `boundary_ready`'], 'central registry');
 

@@ -11,7 +11,7 @@ use rustok_installer::{
 };
 use rustok_migrations::Migrator;
 use rustok_modules::{
-    resolve_effective_modules, ModuleDefinitionCatalog, ModuleLifecycleDbWriter,
+    ModuleDefinitionCatalog, ModuleEffectivePolicyQuery, ModuleLifecycleDbWriter,
     TenantModuleOverride,
 };
 use rustok_rbac::RbacRoleAssignmentDbWriter;
@@ -501,11 +501,13 @@ async fn verify_standalone_installation(
         });
     let catalog =
         ModuleDefinitionCatalog::from_static_registry(registry).map_err(execution_error)?;
-    let mut enabled_modules = resolve_effective_modules(
+    let mut enabled_modules = ModuleEffectivePolicyQuery::new(
         &catalog,
         plan.seed_profile.default_enabled_modules(),
         overrides,
     )
+    .execute()
+    .into_enabled_modules()
     .into_iter()
     .collect::<Vec<_>>();
     enabled_modules.sort();

@@ -72,7 +72,7 @@ pub use config::{
     EmbeddedConfig, IggyConfig, IggyMode, RemoteConfig, RetentionConfig, SerializationFormat,
     TopologyConfig,
 };
-pub use consumer::{ConsumedEvent, ConsumerGroup, ConsumerGroupManager};
+pub use consumer::{ConsumedEvent, ConsumerGroup, ConsumerGroupManager, PersistentConsumerGroup};
 pub use dlq::{DlqEntry, DlqManager};
 pub use health::{health_check, HealthCheckResult, HealthStatus};
 pub use partitioning::{calculate_partition, partition_key};
@@ -80,6 +80,9 @@ pub use replay::{ActiveReplay, ReplayConfig, ReplayManager, ReplayStatus};
 pub use serialization::{EventSerializer, JsonSerializer, PostcardSerializer};
 pub use topology::TopologyManager;
 pub use transport::IggyTransport;
+
+/// Dedicated Iggy topic for immutable `module.build.queued` deliveries.
+pub const MODULE_BUILD_TOPIC: &str = "module-build";
 
 #[cfg(test)]
 mod contract_tests;

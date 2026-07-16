@@ -16,3 +16,4 @@ tokio.workspace = true
 tonic = { workspace = true, features = ["tls-ring"] }
 rustok-modules.workspace = true
 rustok-verification-transport = { path = "../rustok-verification-transport" }
+rustok-worker-transport.workspace = true

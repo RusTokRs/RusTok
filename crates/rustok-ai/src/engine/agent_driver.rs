@@ -856,7 +856,7 @@ mod tests {
         });
         let mcp = Arc::new(RecordingMcp::default());
         let driver = RigAgentDriver::new(
-            engine,
+            engine.clone(),
             mcp.clone(),
             ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
         );
@@ -868,10 +868,8 @@ mod tests {
             .await
             .expect_err("max turn budget must stop the next model step");
         assert!(error.to_string().contains("turn"));
-        assert_eq!(
-            mcp.calls.lock().await.as_slice(),
-            ["publish", "publish", "publish"]
-        );
+        assert_eq!(mcp.calls.lock().await.as_slice(), ["publish"]);
+        assert_eq!(engine.responses.lock().await.len(), 2);
     }
 
     #[tokio::test]

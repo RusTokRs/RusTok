@@ -26,6 +26,34 @@ surface.
 - Guardrails: `scripts/verify/verify-search-fba.mjs` and
   `scripts/verify/verify-search-ui-boundary.mjs`.
 
+## Deployment and connector boundary
+
+Search is the second whole-module extraction pilot. The remote deployment
+contains the complete `rustok-search` owner, including `SearchEngine`, ranking,
+dictionaries, query rules, analytics, fallback policy, and the PostgreSQL
+baseline. Storefront and admin consumers call only `SearchQueryPort` and
+`SearchSuggestionPort` over the selected transport.
+
+Meilisearch, Typesense, and Algolia remain connector implementations inside
+this search service. They receive canonical `SearchQuery`/document inputs and
+return normalized `SearchResult`/suggestion DTOs. Consumers never select a
+connector, access engine credentials, or depend on engine-specific schemas.
+
+`rustok-index` remains a separate ingestion/read-model owner. Its canonical
+read models may enrich Search only through `IndexReadModelPort`; current
+query-time SQL reads of `index_product_categories` and
+`index_product_attribute_values` must be replaced by search-owned denormalized
+fields populated during ingestion before database isolation. Search continues
+to own `SearchIngestionHandler` and consumes domain events through a replayable
+event transport. Index-service extraction waits for replay, duplicate, lag,
+rebuild, and recovery evidence. See [ADR: Media and Search
+Extraction Boundaries](../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md).
+
+External connector crates implement the internal `SearchEngine` query contract
+and a planned search-owned document writer contract for schema sync, upsert,
+delete, rebuild, and health. They are linked into the whole Search service;
+only normalized Search ports are exposed remotely.
+
 ## Next results
 
 1. **Execute live provider contract evidence.** Run queries and suggestions

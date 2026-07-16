@@ -494,8 +494,7 @@ mod tests {
         .await
         .unwrap();
 
-        let service = RegistryGovernanceService::new(db.clone());
-        let requeued = service
+        let requeued = rustok_modules::SeaOrmModuleGovernanceService::new(db.clone())
             .requeue_expired_remote_validation_claims()
             .await
             .unwrap();

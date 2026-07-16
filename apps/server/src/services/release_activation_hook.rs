@@ -1,9 +1,9 @@
 //! Server-owned side effects after a release is activated.
 
 use async_trait::async_trait;
-use sea_orm::{sea_query::Expr, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use rustok_modules::SeaOrmModuleCompositionService;
+use sea_orm::DatabaseConnection;
 
-use crate::models::platform_state::{Column as PlatformStateColumn, Entity as PlatformStateEntity};
 use crate::services::oauth_app::sync_manifest_managed_apps_for_all_tenants;
 
 pub struct ServerReleaseActivationHook {
@@ -24,18 +24,10 @@ impl rustok_build::ReleaseActivationHook for ServerReleaseActivationHook {
     ) -> anyhow::Result<()> {
         let manifest = serde_json::from_value(release.manifest_snapshot.clone())?;
         sync_manifest_managed_apps_for_all_tenants(&self.db, &manifest).await?;
-        let _ = PlatformStateEntity::update_many()
-            .filter(PlatformStateColumn::Id.eq("active"))
-            .col_expr(
-                PlatformStateColumn::ActiveReleaseId,
-                Expr::value(Some(release.id.clone())),
-            )
-            .col_expr(
-                PlatformStateColumn::UpdatedAt,
-                Expr::value(chrono::Utc::now()),
-            )
-            .exec(&self.db)
-            .await;
+        SeaOrmModuleCompositionService::new(self.db.clone())
+            .set_active_release(&release.id)
+            .await
+            .map_err(anyhow::Error::msg)?;
         Ok(())
     }
 }

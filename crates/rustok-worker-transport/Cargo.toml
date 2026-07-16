@@ -1,0 +1,10 @@
+[package]
+name = "rustok-worker-transport"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared mutually authenticated listener configuration for RusToK workers"
+
+[dependencies]
+tonic = { workspace = true, features = ["tls-ring"] }

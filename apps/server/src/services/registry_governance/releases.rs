@@ -1,4 +1,8 @@
 use super::*;
+use rustok_modules::{
+    ModuleOwnerBindCommand, ModuleOwnerTransferCommand, ModuleReleaseYankCommand,
+    SeaOrmModuleGovernanceService,
+};
 
 impl RegistryGovernanceService {
     pub async fn yank_release(
@@ -25,30 +29,20 @@ impl RegistryGovernanceService {
         let normalized_reason_code =
             normalize_reason_code(reason_code, REGISTRY_YANK_REASON_CODES, "Registry yank")?;
 
-        let mut active: RegistryModuleReleaseActiveModel = release.into();
-        active.status = Set(RegistryModuleReleaseStatus::Yanked);
-        active.yanked_reason = Set(Some(normalized_reason.clone()));
-        active.yanked_by = Set(Some(authority.principal.to_json_value()));
-        active.yanked_at = Set(Some(Utc::now()));
-        active.updated_at = Set(Utc::now());
-        let release = active.update(&self.db).await?;
-        let publisher = principal_display_label(&release.publisher);
-        self.record_governance_event(
-            &release.slug,
-            release.request_id.as_deref(),
-            Some(&release.id),
-            "release_yanked",
-            authority_actor(authority),
-            Some(&publisher),
-            serde_json::json!({
-                "version": release.version.clone(),
-                "status": release_status_label(release.status.clone()),
-                "reason_code": normalized_reason_code,
-                "reason": release.yanked_reason.clone(),
-            }),
-        )
-        .await?;
-        Ok(release)
+        SeaOrmModuleGovernanceService::new(self.db.clone())
+            .yank_release(ModuleReleaseYankCommand {
+                slug: release.slug.clone(),
+                version: release.version.clone(),
+                reason: normalized_reason,
+                reason_code: normalized_reason_code,
+                actor_principal: authority.principal.to_json_value(),
+            })
+            .await
+            .map_err(anyhow::Error::new)?;
+        RegistryModuleReleaseEntity::find_by_id(release.id)
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| anyhow!("yanked registry release disappeared"))
     }
 
     pub async fn transfer_registry_slug_owner(
@@ -91,33 +85,20 @@ impl RegistryGovernanceService {
             "Registry owner transfer",
         )?;
 
-        let previous_owner = principal_from_json(&existing.owner_principal);
-        let now = Utc::now();
-        let mut active: RegistryModuleOwnerActiveModel = existing.into();
-        active.owner_principal = Set(new_owner.to_json_value());
-        active.bound_by = Set(authority.principal.to_json_value());
-        active.bound_at = Set(now);
-        active.updated_at = Set(now);
-        let binding = active.update(&self.db).await?;
-        self.record_governance_event(
-            slug,
-            None,
-            None,
-            "owner_transferred",
-            authority_actor(authority),
-            Some(new_owner.label()),
-            serde_json::json!({
-                "owner_transition": {
-                    "previous_owner": previous_owner.to_json_value(),
-                    "new_owner": principal_from_json(&binding.owner_principal).to_json_value(),
-                    "bound_by": principal_from_json(&binding.bound_by).to_json_value(),
-                },
-                "reason": normalized_reason,
-                "reason_code": normalized_reason_code,
-            }),
-        )
-        .await?;
-        Ok(binding)
+        SeaOrmModuleGovernanceService::new(self.db.clone())
+            .transfer_owner(ModuleOwnerTransferCommand {
+                slug: slug.to_string(),
+                new_owner_principal: new_owner.to_json_value(),
+                actor_principal: authority.principal.to_json_value(),
+                reason: normalized_reason,
+                reason_code: normalized_reason_code,
+            })
+            .await
+            .map_err(anyhow::Error::new)?;
+        RegistryModuleOwnerEntity::find_by_id(slug)
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| anyhow!("transferred registry owner binding disappeared"))
     }
 
     pub async fn apply_catalog_projection(
@@ -361,86 +342,6 @@ impl RegistryGovernanceService {
         })
     }
 
-    pub(crate) async fn upsert_release_from_request(
-        &self,
-        request_id: &str,
-        _actor: &str,
-        publisher: &str,
-        checksum: String,
-        stored: StoredRegistryArtifact,
-        published_at: chrono::DateTime<Utc>,
-        request: &registry_publish_request::Model,
-    ) -> anyhow::Result<registry_module_release::Model> {
-        let existing = RegistryModuleReleaseEntity::find()
-            .filter(registry_module_release::Column::Slug.eq(&request.slug))
-            .filter(registry_module_release::Column::Version.eq(&request.version))
-            .one(&self.db)
-            .await?;
-
-        let marketplace = request.marketplace.clone();
-        let ui_packages = request.ui_packages.clone();
-        let publisher = normalize_actor(publisher);
-        let publisher_principal = actor_principal(&publisher).to_json_value();
-
-        if let Some(existing) = existing {
-            let mut active: RegistryModuleReleaseActiveModel = existing.into();
-            active.request_id = Set(Some(request_id.to_string()));
-            active.crate_name = Set(request.crate_name.clone());
-            active.default_locale = Set(request.default_locale.clone());
-            active.ownership = Set(request.ownership.clone());
-            active.trust_level = Set(request.trust_level.clone());
-            active.license = Set(request.license.clone());
-            active.entry_type = Set(request.entry_type.clone());
-            active.marketplace = Set(marketplace);
-            active.ui_packages = Set(ui_packages);
-            active.status = Set(RegistryModuleReleaseStatus::Active);
-            active.publisher = Set(publisher_principal);
-            active.artifact_storage_key = Set(Some(stored.artifact_storage_key));
-            active.checksum_sha256 = Set(Some(checksum));
-            active.artifact_size = Set(Some(stored.artifact_size));
-            active.yanked_reason = Set(None);
-            active.yanked_by = Set(None);
-            active.yanked_at = Set(None);
-            active.published_at = Set(published_at);
-            active.updated_at = Set(Utc::now());
-            let release = active.update(&self.db).await?;
-            self.replace_release_translations_from_request(&release.id, request)
-                .await?;
-            return Ok(release);
-        }
-
-        let id = format!("rrel_{}", uuid::Uuid::new_v4().simple());
-        let active = RegistryModuleReleaseActiveModel {
-            id: Set(id),
-            request_id: Set(Some(request_id.to_string())),
-            slug: Set(request.slug.clone()),
-            version: Set(request.version.clone()),
-            crate_name: Set(request.crate_name.clone()),
-            default_locale: Set(request.default_locale.clone()),
-            ownership: Set(request.ownership.clone()),
-            trust_level: Set(request.trust_level.clone()),
-            license: Set(request.license.clone()),
-            entry_type: Set(request.entry_type.clone()),
-            marketplace: Set(marketplace),
-            ui_packages: Set(ui_packages),
-            status: Set(RegistryModuleReleaseStatus::Active),
-            publisher: Set(publisher_principal),
-            artifact_storage_key: Set(Some(stored.artifact_storage_key)),
-            checksum_sha256: Set(Some(checksum)),
-            artifact_size: Set(Some(stored.artifact_size)),
-            yanked_reason: Set(None),
-            yanked_by: Set(None),
-            yanked_at: Set(None),
-            published_at: Set(published_at),
-            created_at: Set(Utc::now()),
-            updated_at: Set(Utc::now()),
-        };
-        let release = active.insert(&self.db).await?;
-        self.replace_release_translations_from_request(&release.id, request)
-            .await?;
-        Ok(release)
-    }
-
     pub(crate) async fn ensure_authority_can_create_publish_request(
         &self,
         authority: &RegistryAuthority,
@@ -558,79 +459,39 @@ impl RegistryGovernanceService {
         owner_principal: &RegistryPrincipalRef,
         bound_by: &RegistryAuthority,
     ) -> anyhow::Result<registry_module_owner::Model> {
-        let owner_principal_json = owner_principal.to_json_value();
-        let bound_by_principal = bound_by.principal.to_json_value();
-        let now = Utc::now();
+        let existing = RegistryModuleOwnerEntity::find_by_id(slug)
+            .one(&self.db)
+            .await?;
+        let allow_rebind = if let Some(existing) = &existing {
+            if principal_matches_ref(&existing.owner_principal, owner_principal) {
+                false
+            } else {
+                if !bound_by.can_manage_modules {
+                    return Err(forbidden_error(format!(
+                        "Principal '{}' is not allowed to rebind registry owner for slug '{}'",
+                        authority_actor(bound_by),
+                        slug
+                    )));
+                }
+                true
+            }
+        } else {
+            false
+        };
 
-        if let Some(existing) = RegistryModuleOwnerEntity::find_by_id(slug)
+        SeaOrmModuleGovernanceService::new(self.db.clone())
+            .bind_owner(ModuleOwnerBindCommand {
+                slug: slug.to_string(),
+                owner_principal: owner_principal.to_json_value(),
+                actor_principal: bound_by.principal.to_json_value(),
+                allow_rebind,
+            })
+            .await
+            .map_err(anyhow::Error::new)?;
+        RegistryModuleOwnerEntity::find_by_id(slug)
             .one(&self.db)
             .await?
-        {
-            if principal_matches_ref(&existing.owner_principal, owner_principal) {
-                let mut active: RegistryModuleOwnerActiveModel = existing.into();
-                active.bound_by = Set(bound_by_principal);
-                active.updated_at = Set(now);
-                return Ok(active.update(&self.db).await?);
-            }
-
-            if !bound_by.can_manage_modules {
-                return Err(forbidden_error(format!(
-                    "Principal '{}' is not allowed to rebind registry owner for slug '{}'",
-                    authority_actor(bound_by),
-                    slug
-                )));
-            }
-
-            let mut active: RegistryModuleOwnerActiveModel = existing.into();
-            active.owner_principal = Set(owner_principal_json);
-            active.bound_by = Set(bound_by_principal);
-            active.bound_at = Set(now);
-            active.updated_at = Set(now);
-            let binding = active.update(&self.db).await?;
-            self.record_governance_event(
-                slug,
-                None,
-                None,
-                "owner_bound",
-                authority_actor(bound_by),
-                Some(owner_principal.label()),
-                serde_json::json!({
-                    "owner_transition": {
-                        "new_owner": principal_from_json(&binding.owner_principal).to_json_value(),
-                        "bound_by": principal_from_json(&binding.bound_by).to_json_value(),
-                    },
-                    "mode": "rebind",
-                }),
-            )
-            .await?;
-            return Ok(binding);
-        }
-
-        let active = RegistryModuleOwnerActiveModel {
-            slug: Set(slug.to_string()),
-            owner_principal: Set(owner_principal_json),
-            bound_by: Set(bound_by_principal),
-            bound_at: Set(now),
-            updated_at: Set(now),
-        };
-        let binding = active.insert(&self.db).await?;
-        self.record_governance_event(
-            slug,
-            None,
-            None,
-            "owner_bound",
-            authority_actor(bound_by),
-            Some(owner_principal.label()),
-            serde_json::json!({
-                "owner_transition": {
-                    "new_owner": principal_from_json(&binding.owner_principal).to_json_value(),
-                    "bound_by": principal_from_json(&binding.bound_by).to_json_value(),
-                },
-                "mode": "initial",
-            }),
-        )
-        .await?;
-        Ok(binding)
+            .ok_or_else(|| anyhow!("bound registry owner disappeared"))
     }
 
     async fn registry_slug_owner(

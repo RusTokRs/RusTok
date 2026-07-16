@@ -3,6 +3,29 @@
   "module": "search",
   "role": "provider",
   "status": "boundary_ready",
+  "deployment_topology": {
+    "current_class": "modular_monolith",
+    "extraction_class": "whole_module_service",
+    "remote_transport": "grpc",
+    "database_ownership": "exclusive",
+    "pilot_phase": "search_query_isolated_pilot",
+    "remote_status": "planned",
+    "split_blockers": [
+      "search_ingestion_control_contract",
+      "search_connector_writer_contract",
+      "query_time_index_sql_reads",
+      "grpc_conformance",
+      "isolated_database_evidence"
+    ]
+  },
+  "connector_boundary": {
+    "owner": "search",
+    "internal_contract": "SearchEngine",
+    "planned_writer_contract": "SearchEngineWriter",
+    "allowed_connectors": ["postgres", "meilisearch", "typesense", "algolia"],
+    "consumer_access": "search_ports_only",
+    "credentials_exposed_to_consumers": false
+  },
   "contract_version": "search.query.v1",
   "ports": [
     {

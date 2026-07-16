@@ -2,15 +2,458 @@
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use oci_distribution::{secrets::RegistryAuth, Client, Reference};
+use http::HeaderValue;
+use oci_distribution::{
+    client::{Config, ImageLayer},
+    manifest::{OciDescriptor, OciImageManifest, OCI_IMAGE_MEDIA_TYPE},
+    secrets::RegistryAuth,
+    Client, Reference,
+};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use crate::{
-    ArtifactAdmissionLimits, ArtifactPayloadSource, ArtifactRegistry, ModuleArtifactPackage,
+    ArtifactAdmissionLimits, ArtifactPayloadSource, ArtifactRegistry, ModuleArtifactDescriptor,
+    ModuleArtifactPackage, ModuleBuildOutcome, ModuleBuildRequest, ModuleBuildResult,
     ModuleInstallationError, OciArtifactReference,
 };
+
+/// Stable OCI config media type for a serialized immutable module descriptor.
+pub const MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE: &str =
+    "application/vnd.rustok.module.descriptor.v1+json";
+/// Stable OCI referrer media type for CycloneDX JSON evidence.
+pub const MODULE_ARTIFACT_SBOM_MEDIA_TYPE: &str = "application/vnd.cyclonedx+json";
+/// Stable OCI referrer media type for in-toto provenance evidence.
+pub const MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE: &str = "application/vnd.in-toto+json";
+/// Stable OCI referrer media type for bounded machine-readable test evidence.
+pub const MODULE_ARTIFACT_TEST_EVIDENCE_MEDIA_TYPE: &str =
+    "application/vnd.rustok.module.test-evidence.v1+json";
+/// Stable OCI referrer media type for immutable release lineage evidence.
+pub const MODULE_ARTIFACT_RELEASE_LINEAGE_MEDIA_TYPE: &str =
+    "application/vnd.rustok.module.release-lineage.v1+json";
+/// OCI 1.1 media type for the mandatory empty config of an evidence referrer.
+pub const OCI_EMPTY_CONFIG_MEDIA_TYPE: &str = "application/vnd.oci.empty.v1+json";
+
+const OCI_EMPTY_CONFIG_BYTES: &[u8] = b"{}";
+
+/// Referrer evidence classes admitted by the publication and trust pipelines.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OciArtifactEvidenceKind {
+    Sbom,
+    Provenance,
+    TestEvidence,
+    ReleaseLineage,
+}
+
+impl OciArtifactEvidenceKind {
+    pub const fn media_type(self) -> &'static str {
+        match self {
+            Self::Sbom => MODULE_ARTIFACT_SBOM_MEDIA_TYPE,
+            Self::Provenance => MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE,
+            Self::TestEvidence => MODULE_ARTIFACT_TEST_EVIDENCE_MEDIA_TYPE,
+            Self::ReleaseLineage => MODULE_ARTIFACT_RELEASE_LINEAGE_MEDIA_TYPE,
+        }
+    }
+}
+
+/// Deployment-owned destination for an OCI publication. The publisher derives
+/// deterministic write tags, but callers receive only digest-pinned identity.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OciArtifactPublicationTarget {
+    pub registry: String,
+    pub repository: String,
+}
+
+impl OciArtifactPublicationTarget {
+    pub fn validate(&self) -> Result<(), OciArtifactPublicationError> {
+        OciArtifactReference {
+            registry: self.registry.clone(),
+            repository: self.repository.clone(),
+            digest: format!("sha256:{}", "0".repeat(64)),
+        }
+        .validate()
+        .map_err(|error| OciArtifactPublicationError::InvalidTarget(error.to_string()))
+    }
+
+    fn tag_reference(&self, tag: String) -> Reference {
+        Reference::with_tag(self.registry.clone(), self.repository.clone(), tag)
+    }
+
+    fn digest_reference(&self, digest: String) -> OciArtifactReference {
+        OciArtifactReference {
+            registry: self.registry.clone(),
+            repository: self.repository.clone(),
+            digest,
+        }
+    }
+}
+
+/// Verified evidence bytes for a fixed OCI referrer class.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OciArtifactEvidence {
+    pub digest: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Complete, immutable publication input. A build worker or publication host
+/// must construct this only from fixed verified output paths.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OciArtifactPublicationBundle {
+    pub descriptor: ModuleArtifactDescriptor,
+    pub payload: Vec<u8>,
+    pub sbom: OciArtifactEvidence,
+    pub provenance: OciArtifactEvidence,
+}
+
+impl OciArtifactPublicationBundle {
+    /// Binds a publication input to a successful immutable build result.
+    pub fn from_verified_component(
+        request: &ModuleBuildRequest,
+        result: &ModuleBuildResult,
+        descriptor: ModuleArtifactDescriptor,
+        payload: Vec<u8>,
+        sbom: OciArtifactEvidence,
+        provenance: OciArtifactEvidence,
+        limits: ArtifactAdmissionLimits,
+    ) -> Result<Self, OciArtifactPublicationError> {
+        request
+            .validate()
+            .and_then(|_| result.validate_against(request))
+            .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
+        if !matches!(&result.outcome, ModuleBuildOutcome::Succeeded)
+            || descriptor.slug != request.expected_module_slug
+            || descriptor.version != request.expected_version
+            || descriptor.runtime_abi != request.runtime_abi
+            || descriptor.payload_kind != crate::ArtifactPayloadKind::WasmComponent
+            || Some(descriptor.artifact_digest.as_str()) != result.component_digest.as_deref()
+            || Some(sbom.digest.as_str()) != result.sbom_digest.as_deref()
+            || Some(provenance.digest.as_str()) != result.provenance_digest.as_deref()
+        {
+            return Err(OciArtifactPublicationError::InvalidBundle(
+                "publication input does not match the successful immutable build result"
+                    .to_string(),
+            ));
+        }
+        let bundle = Self {
+            descriptor,
+            payload,
+            sbom,
+            provenance,
+        };
+        bundle.validate(limits)?;
+        Ok(bundle)
+    }
+
+    fn validate(&self, limits: ArtifactAdmissionLimits) -> Result<(), OciArtifactPublicationError> {
+        self.descriptor
+            .validate()
+            .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
+        let descriptor_bytes = serde_json::to_vec(&self.descriptor)
+            .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
+        limits
+            .validate_descriptor_size(descriptor_bytes.len() as u64)
+            .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
+        validate_publication_bytes(
+            "payload",
+            &self.payload,
+            &self.descriptor.artifact_digest,
+            limits.max_payload_bytes,
+        )?;
+        validate_publication_bytes(
+            "SBOM",
+            &self.sbom.bytes,
+            &self.sbom.digest,
+            limits.max_payload_bytes,
+        )?;
+        validate_publication_bytes(
+            "provenance",
+            &self.provenance.bytes,
+            &self.provenance.digest,
+            limits.max_payload_bytes,
+        )
+    }
+}
+
+/// Digest-pinned OCI identities emitted after publishing the artifact and its
+/// two required OCI 1.1 evidence referrers.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OciArtifactPublicationReceipt {
+    pub artifact: OciArtifactReference,
+    pub sbom_referrer: OciArtifactReference,
+    pub provenance_referrer: OciArtifactReference,
+}
+
+/// Publication port. Implementations must never return write tags as artifact
+/// identity; consumers resolve only the receipt's digest references.
+#[async_trait]
+pub trait OciArtifactPublisher: Send + Sync {
+    async fn publish(
+        &self,
+        target: OciArtifactPublicationTarget,
+        bundle: OciArtifactPublicationBundle,
+        limits: ArtifactAdmissionLimits,
+    ) -> Result<OciArtifactPublicationReceipt, OciArtifactPublicationError>;
+}
+
+/// Terminal publication error for immutable module artifacts and evidence.
+#[derive(Debug, Error)]
+pub enum OciArtifactPublicationError {
+    #[error("OCI publication target is invalid: {0}")]
+    InvalidTarget(String),
+    #[error("OCI publication input is invalid: {0}")]
+    InvalidBundle(String),
+    #[error("OCI publication failed: {0}")]
+    Registry(String),
+    #[error("OCI registry returned manifest digest `{received}`, expected `{expected}")]
+    ManifestDigestMismatch { expected: String, received: String },
+}
+
+/// OCI Distribution publisher for immutable module packages. It uploads one
+/// descriptor-configured executable layer, then OCI 1.1 SBOM and provenance
+/// referrers with an exact subject descriptor.
+#[derive(Clone)]
+pub struct OciDistributionArtifactPublisher {
+    client: Client,
+    auth: RegistryAuth,
+}
+
+impl OciDistributionArtifactPublisher {
+    pub fn new(client: Client, auth: RegistryAuth) -> Self {
+        Self { client, auth }
+    }
+}
+
+#[async_trait]
+impl OciArtifactPublisher for OciDistributionArtifactPublisher {
+    async fn publish(
+        &self,
+        target: OciArtifactPublicationTarget,
+        bundle: OciArtifactPublicationBundle,
+        limits: ArtifactAdmissionLimits,
+    ) -> Result<OciArtifactPublicationReceipt, OciArtifactPublicationError> {
+        target.validate()?;
+        bundle.validate(limits)?;
+        let descriptor_bytes = serde_json::to_vec(&bundle.descriptor)
+            .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
+        let primary_tag = derived_tag("artifact", &[&sha256_digest(&descriptor_bytes)]);
+        let primary_write_reference = target.tag_reference(primary_tag);
+        let layer = ImageLayer::new(
+            bundle.payload,
+            bundle
+                .descriptor
+                .payload_kind
+                .oci_layer_media_type()
+                .to_string(),
+            None,
+        );
+        let config = Config::new(
+            descriptor_bytes,
+            MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE.to_string(),
+            None,
+        );
+        let mut manifest = OciImageManifest::build(&[layer.clone()], &config, None);
+        manifest.media_type = Some(OCI_IMAGE_MEDIA_TYPE.to_string());
+        manifest.artifact_type = Some(layer.media_type.clone());
+        self.client
+            .push(
+                &primary_write_reference,
+                &[layer],
+                config,
+                &self.auth,
+                Some(manifest),
+            )
+            .await
+            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
+        let artifact = self
+            .resolve_published_reference(&target, &primary_write_reference)
+            .await?;
+        let sbom_referrer = self
+            .publish_referrer(
+                &target,
+                &artifact,
+                OciArtifactEvidenceKind::Sbom,
+                bundle.sbom,
+            )
+            .await?;
+        let provenance_referrer = self
+            .publish_referrer(
+                &target,
+                &artifact,
+                OciArtifactEvidenceKind::Provenance,
+                bundle.provenance,
+            )
+            .await?;
+        Ok(OciArtifactPublicationReceipt {
+            artifact,
+            sbom_referrer,
+            provenance_referrer,
+        })
+    }
+}
+
+impl OciDistributionArtifactPublisher {
+    async fn publish_referrer(
+        &self,
+        target: &OciArtifactPublicationTarget,
+        subject: &OciArtifactReference,
+        kind: OciArtifactEvidenceKind,
+        evidence: OciArtifactEvidence,
+    ) -> Result<OciArtifactReference, OciArtifactPublicationError> {
+        let write_reference = target.tag_reference(derived_tag(
+            "referrer",
+            &[&subject.digest, kind.media_type(), &evidence.digest],
+        ));
+        let empty_config_digest = sha256_digest(OCI_EMPTY_CONFIG_BYTES);
+        self.client
+            .push_blob(
+                &write_reference,
+                OCI_EMPTY_CONFIG_BYTES,
+                &empty_config_digest,
+            )
+            .await
+            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
+        self.client
+            .push_blob(&write_reference, &evidence.bytes, &evidence.digest)
+            .await
+            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
+        let manifest = OciReferrerManifest {
+            schema_version: 2,
+            media_type: OCI_IMAGE_MEDIA_TYPE.to_string(),
+            artifact_type: kind.media_type().to_string(),
+            config: OciDescriptor {
+                media_type: OCI_EMPTY_CONFIG_MEDIA_TYPE.to_string(),
+                digest: empty_config_digest,
+                size: OCI_EMPTY_CONFIG_BYTES.len() as i64,
+                urls: None,
+                annotations: None,
+            },
+            layers: vec![OciDescriptor {
+                media_type: kind.media_type().to_string(),
+                digest: evidence.digest,
+                size: evidence.bytes.len() as i64,
+                urls: None,
+                annotations: None,
+            }],
+            subject: OciDescriptor {
+                media_type: OCI_IMAGE_MEDIA_TYPE.to_string(),
+                digest: subject.digest.clone(),
+                size: self.published_manifest_size(subject).await?,
+                urls: None,
+                annotations: None,
+            },
+        };
+        let body = serde_json::to_vec(&manifest)
+            .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
+        self.client
+            .push_manifest_raw(
+                &write_reference,
+                body,
+                HeaderValue::from_static(OCI_IMAGE_MEDIA_TYPE),
+            )
+            .await
+            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
+        self.resolve_published_reference(target, &write_reference)
+            .await
+    }
+
+    async fn published_manifest_size(
+        &self,
+        reference: &OciArtifactReference,
+    ) -> Result<i64, OciArtifactPublicationError> {
+        let image = Reference::with_digest(
+            reference.registry.clone(),
+            reference.repository.clone(),
+            reference.digest.clone(),
+        );
+        let (body, digest) = self
+            .client
+            .pull_manifest_raw(&image, &self.auth)
+            .await
+            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
+        let expected = sha256_digest(&body);
+        if digest != expected || digest != reference.digest {
+            return Err(OciArtifactPublicationError::ManifestDigestMismatch {
+                expected: reference.digest.clone(),
+                received: digest,
+            });
+        }
+        i64::try_from(body.len()).map_err(|_| {
+            OciArtifactPublicationError::InvalidBundle(
+                "published OCI manifest exceeds signed descriptor size range".to_string(),
+            )
+        })
+    }
+
+    async fn resolve_published_reference(
+        &self,
+        target: &OciArtifactPublicationTarget,
+        write_reference: &Reference,
+    ) -> Result<OciArtifactReference, OciArtifactPublicationError> {
+        let (body, received) = self
+            .client
+            .pull_manifest_raw(write_reference, &self.auth)
+            .await
+            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
+        let expected = sha256_digest(&body);
+        if received != expected {
+            return Err(OciArtifactPublicationError::ManifestDigestMismatch { expected, received });
+        }
+        let reference = target.digest_reference(expected);
+        reference
+            .validate()
+            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
+        Ok(reference)
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OciReferrerManifest {
+    schema_version: u8,
+    media_type: String,
+    artifact_type: String,
+    config: OciDescriptor,
+    layers: Vec<OciDescriptor>,
+    subject: OciDescriptor,
+}
+
+fn validate_publication_bytes(
+    kind: &str,
+    bytes: &[u8],
+    expected_digest: &str,
+    maximum_bytes: u64,
+) -> Result<(), OciArtifactPublicationError> {
+    if bytes.is_empty() || bytes.len() as u64 > maximum_bytes {
+        return Err(OciArtifactPublicationError::InvalidBundle(format!(
+            "{kind} bytes are empty or exceed the configured publication limit"
+        )));
+    }
+    let actual_digest = sha256_digest(bytes);
+    if actual_digest != expected_digest {
+        return Err(OciArtifactPublicationError::InvalidBundle(format!(
+            "{kind} digest mismatch: expected `{expected_digest}`, received `{actual_digest}`"
+        )));
+    }
+    Ok(())
+}
+
+fn sha256_digest(bytes: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(bytes))
+}
+
+fn derived_tag(kind: &str, fields: &[&str]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rustok.oci.publication.v1");
+    hasher.update(kind.as_bytes());
+    for field in fields {
+        hasher.update([0]);
+        hasher.update(field.as_bytes());
+    }
+    format!("rustok-{kind}-{:x}", hasher.finalize())
+}
 
 /// Resolves a module artifact from an OCI Distribution registry.
 ///
@@ -68,13 +511,38 @@ impl ArtifactRegistry for OciDistributionArtifactRegistry {
                 ),
             });
         }
-        limits.validate_descriptor_size(config.len() as u64)?;
-        let descriptor = serde_json::from_str(&config).map_err(|error| {
-            ModuleInstallationError::Registry(format!(
-                "OCI artifact config is not a module descriptor: {error}"
-            ))
+        if manifest.config.media_type != MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE {
+            return Err(ModuleInstallationError::Registry(format!(
+                "OCI artifact config media type must be `{MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE}`, received `{}`",
+                manifest.config.media_type
+            )));
+        }
+        let config_size = config.len() as u64;
+        let declared_config_size = u64::try_from(manifest.config.size).map_err(|_| {
+            ModuleInstallationError::Registry(
+                "OCI artifact config declares a negative size".to_string(),
+            )
         })?;
-        let expected_media_type = media_type_for_descriptor(&descriptor);
+        if declared_config_size != config_size {
+            return Err(ModuleInstallationError::Registry(format!(
+                "OCI artifact config size mismatch: manifest declares `{declared_config_size}`, received `{config_size}`"
+            )));
+        }
+        limits.validate_descriptor_size(config_size)?;
+        let config_digest = format!("sha256:{}", hex::encode(Sha256::digest(config.as_bytes())));
+        if manifest.config.digest != config_digest {
+            return Err(ModuleInstallationError::Registry(format!(
+                "OCI artifact config digest mismatch: manifest declares `{}`, received `{config_digest}`",
+                manifest.config.digest
+            )));
+        }
+        let descriptor: ModuleArtifactDescriptor =
+            serde_json::from_str(&config).map_err(|error| {
+                ModuleInstallationError::Registry(format!(
+                    "OCI artifact config is not a module descriptor: {error}"
+                ))
+            })?;
+        let expected_media_type = descriptor.payload_kind.oci_layer_media_type();
         let layers = manifest
             .layers
             .iter()
@@ -170,20 +638,16 @@ impl OciDistributionArtifactRegistry {
     }
 }
 
-fn media_type_for_descriptor(descriptor: &crate::ModuleArtifactDescriptor) -> &'static str {
-    match descriptor.payload_kind {
-        crate::ArtifactPayloadKind::Rhai => "application/vnd.rustok.rhai.source.v1",
-        crate::ArtifactPayloadKind::WasmComponent => "application/wasm",
-        crate::ArtifactPayloadKind::Sidecar => "application/vnd.rustok.sidecar.v1",
-        crate::ArtifactPayloadKind::StaticPromoted => "application/vnd.rustok.static-promotion.v1",
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::OciArtifactReference;
+    use crate::{
+        ArtifactPayloadKind, OciArtifactReference, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
+    };
 
-    use super::OciDistributionArtifactRegistry;
+    use super::{
+        OciArtifactEvidenceKind, OciDistributionArtifactRegistry,
+        MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE,
+    };
 
     #[test]
     fn parser_uses_a_digest_pinned_reference_without_a_tag() {
@@ -197,5 +661,17 @@ mod tests {
             .expect("digest-pinned reference");
 
         assert_eq!(image.to_string(), reference.canonical());
+    }
+
+    #[test]
+    fn payload_and_referrer_media_types_are_frozen_by_contract() {
+        assert_eq!(
+            ArtifactPayloadKind::WasmComponent.oci_layer_media_type(),
+            MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE
+        );
+        assert_eq!(
+            OciArtifactEvidenceKind::Provenance.media_type(),
+            MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE
+        );
     }
 }

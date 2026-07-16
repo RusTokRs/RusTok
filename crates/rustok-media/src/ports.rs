@@ -1,10 +1,53 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{MediaError, MediaImageDescriptor, MediaItem, MediaService, MediaTranslationItem};
+use crate::{
+    MediaError, MediaImageDescriptor, MediaItem, MediaService, MediaStorageCleanupReport,
+    MediaTranslationItem, UpsertTranslationInput, DEFAULT_MAX_SIZE,
+};
 
 const MAX_MEDIA_LIST_LIMIT: u64 = 100;
+const MAX_MEDIA_CLEANUP_LIMIT: u64 = 1_000;
+
+/// Owner-controlled streaming upload endpoint used by the embedded Media deployment.
+///
+/// Upload bytes do not cross a generic port DTO. A future remote provider can replace this
+/// target with a Media-issued presigned upload target without changing consumer ownership.
+pub const MEDIA_OWNER_STREAMING_UPLOAD_PATH: &str = "/api/media";
+
+/// Metadata supplied before a caller sends binary data to a Media-owned upload transport.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaUploadRequest {
+    pub original_name: String,
+    pub content_type: String,
+    pub content_length: Option<u64>,
+}
+
+/// Transport selected and owned by Media for one upload operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaUploadTransport {
+    OwnerStreamingRest,
+    PresignedObjectStore,
+}
+
+/// A Media-owned target for binary upload data.
+///
+/// `endpoint` is only an upload destination. It does not carry a blob, storage credential, or
+/// storage handle through the cross-module control contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaUploadTarget {
+    pub transport: MediaUploadTransport,
+    pub endpoint: String,
+}
+
+/// Bounded request for tenant-scoped orphan cleanup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaStorageCleanupRequest {
+    pub limit: u64,
+}
 
 /// Transport-neutral read boundary for media asset metadata and SEO image descriptors.
 #[async_trait]
@@ -31,6 +74,34 @@ pub trait MediaAssetReadPort: Send + Sync {
         context: PortContext,
         media_id: Uuid,
     ) -> Result<Vec<MediaTranslationItem>, PortError>;
+}
+
+/// Transport-neutral owner boundary for Media write and control operations.
+///
+/// The binary body of an upload stays on a Media-owned streaming REST endpoint or a future
+/// presigned object-store flow. gRPC is reserved for the metadata/control operations below.
+#[async_trait]
+pub trait MediaAssetWritePort: Send + Sync {
+    async fn prepare_upload(
+        &self,
+        context: PortContext,
+        request: MediaUploadRequest,
+    ) -> Result<MediaUploadTarget, PortError>;
+
+    async fn delete_asset(&self, context: PortContext, media_id: Uuid) -> Result<(), PortError>;
+
+    async fn upsert_translation(
+        &self,
+        context: PortContext,
+        media_id: Uuid,
+        input: UpsertTranslationInput,
+    ) -> Result<MediaTranslationItem, PortError>;
+
+    async fn cleanup_storage_orphans(
+        &self,
+        context: PortContext,
+        request: MediaStorageCleanupRequest,
+    ) -> Result<MediaStorageCleanupReport, PortError>;
 }
 
 #[async_trait]
@@ -89,6 +160,58 @@ impl MediaAssetReadPort for MediaService {
     }
 }
 
+#[async_trait]
+impl MediaAssetWritePort for MediaService {
+    async fn prepare_upload(
+        &self,
+        context: PortContext,
+        request: MediaUploadRequest,
+    ) -> Result<MediaUploadTarget, PortError> {
+        require_media_write_policy(&context)?;
+        let _tenant_id = parse_tenant_id(&context)?;
+        validate_upload_request(&request)?;
+
+        Ok(MediaUploadTarget {
+            transport: MediaUploadTransport::OwnerStreamingRest,
+            endpoint: MEDIA_OWNER_STREAMING_UPLOAD_PATH.to_string(),
+        })
+    }
+
+    async fn delete_asset(&self, context: PortContext, media_id: Uuid) -> Result<(), PortError> {
+        require_media_write_policy(&context)?;
+        let tenant_id = parse_tenant_id(&context)?;
+        self.delete(tenant_id, media_id)
+            .await
+            .map_err(media_error_to_port_error)
+    }
+
+    async fn upsert_translation(
+        &self,
+        context: PortContext,
+        media_id: Uuid,
+        input: UpsertTranslationInput,
+    ) -> Result<MediaTranslationItem, PortError> {
+        require_media_write_policy(&context)?;
+        let tenant_id = parse_tenant_id(&context)?;
+        self.upsert_translation(tenant_id, media_id, input)
+            .await
+            .map_err(media_error_to_port_error)
+    }
+
+    async fn cleanup_storage_orphans(
+        &self,
+        context: PortContext,
+        request: MediaStorageCleanupRequest,
+    ) -> Result<MediaStorageCleanupReport, PortError> {
+        require_media_write_policy(&context)?;
+        let tenant_id = parse_tenant_id(&context)?;
+        validate_cleanup_request(&request)?;
+        self.cleanup_storage_orphans(tenant_id, request.limit)
+            .await
+            .map_err(media_error_to_port_error)
+    }
+}
+
 fn validate_media_list_limit(limit: u64) -> Result<(), PortError> {
     if !(1..=MAX_MEDIA_LIST_LIMIT).contains(&limit) {
         return Err(PortError::validation(
@@ -101,6 +224,51 @@ fn validate_media_list_limit(limit: u64) -> Result<(), PortError> {
 
 fn require_media_read_policy(context: &PortContext) -> Result<(), PortError> {
     context.require_policy(PortCallPolicy::read())
+}
+
+fn require_media_write_policy(context: &PortContext) -> Result<(), PortError> {
+    context.require_policy(PortCallPolicy::write())
+}
+
+fn validate_upload_request(request: &MediaUploadRequest) -> Result<(), PortError> {
+    if request.original_name.trim().is_empty() {
+        return Err(PortError::validation(
+            "media.upload_name_empty",
+            "media upload request requires an original file name",
+        ));
+    }
+    if request.content_type.trim().is_empty() {
+        return Err(PortError::validation(
+            "media.upload_content_type_empty",
+            "media upload request requires a declared content type",
+        ));
+    }
+    if request.content_length == Some(0) {
+        return Err(PortError::validation(
+            "media.upload_content_empty",
+            "media upload request must not declare an empty body",
+        ));
+    }
+    if request
+        .content_length
+        .is_some_and(|size| size > DEFAULT_MAX_SIZE)
+    {
+        return Err(PortError::validation(
+            "media.upload_content_too_large",
+            format!("media upload content exceeds the {DEFAULT_MAX_SIZE}-byte limit"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_cleanup_request(request: &MediaStorageCleanupRequest) -> Result<(), PortError> {
+    if !(1..=MAX_MEDIA_CLEANUP_LIMIT).contains(&request.limit) {
+        return Err(PortError::validation(
+            "media.cleanup_limit_invalid",
+            format!("media cleanup limit must be between 1 and {MAX_MEDIA_CLEANUP_LIMIT}"),
+        ));
+    }
+    Ok(())
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
@@ -153,7 +321,12 @@ mod tests {
     use rustok_api::{PortActor, PortContext, PortErrorKind};
     use uuid::Uuid;
 
-    use super::{media_error_to_port_error, parse_tenant_id, require_media_read_policy};
+    use super::{
+        media_error_to_port_error, parse_tenant_id, require_media_read_policy,
+        require_media_write_policy, validate_cleanup_request, validate_upload_request,
+        MediaStorageCleanupRequest, MediaUploadRequest, MediaUploadTransport,
+        MEDIA_OWNER_STREAMING_UPLOAD_PATH,
+    };
     use crate::MediaError;
 
     fn context(tenant_id: impl Into<String>) -> PortContext {
@@ -181,6 +354,48 @@ mod tests {
         assert_eq!(error.code, "port.deadline_required");
 
         assert!(require_media_read_policy(&context(Uuid::new_v4().to_string())).is_ok());
+    }
+
+    #[test]
+    fn require_media_write_policy_requires_deadline_and_idempotency_key() {
+        let without_write_metadata = context(Uuid::new_v4().to_string());
+        let error = require_media_write_policy(&without_write_metadata)
+            .expect_err("write port calls require an idempotency key");
+        assert_eq!(error.kind, PortErrorKind::Validation);
+        assert_eq!(error.code, "port.idempotency_key_required");
+
+        let write_context = without_write_metadata.with_idempotency_key("media-write-1");
+        assert!(require_media_write_policy(&write_context).is_ok());
+    }
+
+    #[test]
+    fn upload_control_validation_keeps_blobs_out_of_the_port_contract() {
+        let target = MediaUploadTransport::OwnerStreamingRest;
+        assert_eq!(target, MediaUploadTransport::OwnerStreamingRest);
+        assert_eq!(MEDIA_OWNER_STREAMING_UPLOAD_PATH, "/api/media");
+
+        assert!(validate_upload_request(&MediaUploadRequest {
+            original_name: "hero.webp".to_string(),
+            content_type: "image/webp".to_string(),
+            content_length: Some(1024),
+        })
+        .is_ok());
+
+        let error = validate_upload_request(&MediaUploadRequest {
+            original_name: " ".to_string(),
+            content_type: "image/webp".to_string(),
+            content_length: None,
+        })
+        .expect_err("empty file name must fail before transport selection");
+        assert_eq!(error.code, "media.upload_name_empty");
+    }
+
+    #[test]
+    fn cleanup_control_validation_bounds_tenant_scoped_work() {
+        assert!(validate_cleanup_request(&MediaStorageCleanupRequest { limit: 100 }).is_ok());
+        let error = validate_cleanup_request(&MediaStorageCleanupRequest { limit: 0 })
+            .expect_err("zero cleanup limit must fail");
+        assert_eq!(error.code, "media.cleanup_limit_invalid");
     }
 
     #[test]

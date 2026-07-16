@@ -34,7 +34,7 @@ pub enum MediaStorageCleanupDecision {
     RetryLater,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct MediaStorageCleanupReport {
     pub inspected: u64,
     pub deleted_records: u64,

@@ -1,0 +1,55 @@
+use std::sync::Arc;
+
+use rustok_modules::{ModuleBuildRequest, ModuleBuildWorker};
+use tonic::{Request, Response, Status};
+
+use crate::proto::module_build_service_server::ModuleBuildService;
+use crate::proto::{
+    ExecuteBuildRequest, ExecuteBuildResponse, ReadinessRequest, ReadinessResponse,
+};
+
+/// Worker-side gRPC adapter. The deployment supplies the isolated executor;
+/// this transport maps only the Rust-owned request/result protocol to mTLS RPC.
+pub struct ModuleBuildGrpcService<W> {
+    worker: Arc<W>,
+}
+
+impl<W> ModuleBuildGrpcService<W> {
+    pub fn new(worker: Arc<W>) -> Self {
+        Self { worker }
+    }
+}
+
+#[tonic::async_trait]
+impl<W> ModuleBuildService for ModuleBuildGrpcService<W>
+where
+    W: ModuleBuildWorker + 'static,
+{
+    async fn get_readiness(
+        &self,
+        _request: Request<ReadinessRequest>,
+    ) -> Result<Response<ReadinessResponse>, Status> {
+        // The deployment starts this service only after it has validated its
+        // policy, OCI-job runtime, and mTLS listener configuration.
+        Ok(Response::new(ReadinessResponse { ready: true }))
+    }
+
+    async fn execute_build(
+        &self,
+        request: Request<ExecuteBuildRequest>,
+    ) -> Result<Response<ExecuteBuildResponse>, Status> {
+        let request: ModuleBuildRequest =
+            serde_json::from_slice(&request.into_inner().module_build_request_json)
+                .map_err(|error| Status::invalid_argument(error.to_string()))?;
+        let result = self
+            .worker
+            .execute_build(request)
+            .await
+            .map_err(|error| Status::failed_precondition(error.to_string()))?;
+        let payload =
+            serde_json::to_vec(&result).map_err(|error| Status::internal(error.to_string()))?;
+        Ok(Response::new(ExecuteBuildResponse {
+            module_build_result_json: payload,
+        }))
+    }
+}

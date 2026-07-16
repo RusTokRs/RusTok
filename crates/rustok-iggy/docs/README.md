@@ -14,7 +14,7 @@ implements `EventTransport` and holds transport-level abstractions over
 
 - `IggyTransport` and transport-facing configuration;
 - JSON/Postcard serialization and deserialization for publish and read paths;
-- management of topology, consumer groups, wrapper `consume_next_as_group` with connector metadata (`offset`/opaque `ack_token`), DLQ, replay and health abstractions;
+- management of topology, consumer groups, persistent receive/ack cursors with connector metadata (`offset`/opaque `ack_token`), DLQ, replay and health abstractions;
 - observability hooks for the transport layer;
 - no ownership over embedded/remote connection lifecycle.
 
@@ -22,6 +22,11 @@ implements `EventTransport` and holds transport-level abstractions over
 
 - depends on `rustok-iggy-connector` for embedded/remote mode abstraction and low-level message I/O;
 - implements `EventTransport` for the platform event system;
+- routes `module.build.queued` to the dedicated `module-build` topic so the
+  build dispatcher does not consume unrelated domain events;
+- exposes `PersistentConsumerGroup`, which retains the same remote cursor for
+  receive and offset acknowledgement; callers must acknowledge a delivery
+  before receiving another one;
 - must remain a transport crate, not a connector/runtime configuration bucket;
 - any changes to transport contracts must be synchronized with outbox/event docs and connector docs.
 

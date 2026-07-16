@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
 use rustok_ai_content::{
-    validate_blog_draft_payload, validate_moderation_decision, GeneratedBlogDraft,
-    GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG, BLOG_DRAFT_TOOL_NAME,
+    blog_draft_must_remain_unpublished, validate_blog_draft_payload, validate_moderation_decision,
+    GeneratedBlogDraft, GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG, BLOG_DRAFT_TOOL_NAME,
 };
 use rustok_ai_product::{
     validate_product_attributes_payload, validate_product_copy_payload, GeneratedProductAttributes,
@@ -373,27 +373,21 @@ impl DirectTaskHandler for MediaImageAssetHandler {
     ) -> AiResult<DirectExecutionResult> {
         let input: AiImageAssetTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
-        let prompt = input.prompt.trim().to_string();
-        if prompt.is_empty() {
-            return Err(AiError::Validation(
-                "prompt is required for image_asset".to_string(),
-            ));
-        }
+        let provider_request = build_image_provider_request(
+            &input,
+            &request.provider_config.model,
+            &request.resolved_locale,
+        )?;
+        let prompt = provider_request.prompt.clone();
+        let requested_image_size = provider_request
+            .size
+            .clone()
+            .unwrap_or_else(|| "1024x1024".to_string());
 
         let started = std::time::Instant::now();
         let provider_image = request
             .provider
-            .generate_image(
-                &request.provider_config,
-                ProviderImageRequest {
-                    model: request.provider_config.model.clone(),
-                    prompt: prompt.clone(),
-                    negative_prompt: input.negative_prompt.clone(),
-                    size: rustok_ai_media::normalize_image_size(input.size.clone())
-                        .map_err(AiError::Validation)?,
-                    locale: Some(request.resolved_locale.clone()),
-                },
-            )
+            .generate_image(&request.provider_config, provider_request)
             .await?;
 
         let file_name = build_generated_file_name(
@@ -451,7 +445,7 @@ impl DirectTaskHandler for MediaImageAssetHandler {
             "image_generation": {
                 "provider_slug": request.provider_config.provider_slug.as_str(),
                 "model": request.provider_config.model,
-                "size": rustok_ai_media::normalize_image_size(input.size.clone()).map_err(AiError::Validation)?.unwrap_or_else(|| "1024x1024".to_string()),
+                "size": requested_image_size,
                 "revised_prompt": provider_image.revised_prompt,
             }
         });
@@ -794,23 +788,17 @@ impl DirectTaskHandler for BlogDraftHandler {
                 .create_post(
                     operator.tenant_id,
                     security.clone(),
-                    CreatePostInput {
-                        locale: request.resolved_locale.clone(),
-                        title: title.clone(),
-                        body: body.clone(),
-                        body_format: CONTENT_FORMAT_MARKDOWN.to_string(),
-                        content_json: None,
-                        excerpt: excerpt.clone(),
-                        slug: slug.clone(),
-                        publish: false,
-                        tags: tags.clone(),
-                        category_id: input.category_id,
-                        featured_image_url: input.featured_image_url.clone(),
-                        seo_title: seo_title.clone(),
-                        seo_description: seo_description.clone(),
-                        channel_slugs: None,
-                        metadata: None,
-                    },
+                    build_blog_draft_create_input(
+                        &input,
+                        &request.resolved_locale,
+                        &title,
+                        &body,
+                        excerpt.as_deref(),
+                        slug.as_deref(),
+                        &tags,
+                        seo_title.as_deref(),
+                        seo_description.as_deref(),
+                    )?,
                 )
                 .await
                 .map_err(|err| AiError::Runtime(err.to_string()))?
@@ -1360,6 +1348,65 @@ fn normalize_tag_list(tags: &[String]) -> Vec<String> {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
+fn build_blog_draft_create_input(
+    task_input: &AiBlogDraftTaskInput,
+    locale: &str,
+    title: &str,
+    body: &str,
+    excerpt: Option<&str>,
+    slug: Option<&str>,
+    tags: &[String],
+    seo_title: Option<&str>,
+    seo_description: Option<&str>,
+) -> AiResult<CreatePostInput> {
+    if !blog_draft_must_remain_unpublished() {
+        return Err(AiError::InvalidConfig(
+            "blog_draft policy must require draft review before persistence".to_string(),
+        ));
+    }
+
+    Ok(CreatePostInput {
+        locale: locale.to_string(),
+        title: title.to_string(),
+        body: body.to_string(),
+        body_format: CONTENT_FORMAT_MARKDOWN.to_string(),
+        content_json: None,
+        excerpt: excerpt.map(ToString::to_string),
+        slug: slug.map(ToString::to_string),
+        publish: false,
+        tags: tags.to_vec(),
+        category_id: task_input.category_id,
+        featured_image_url: task_input.featured_image_url.clone(),
+        seo_title: seo_title.map(ToString::to_string),
+        seo_description: seo_description.map(ToString::to_string),
+        channel_slugs: None,
+        metadata: None,
+    })
+}
+
+fn build_image_provider_request(
+    task_input: &AiImageAssetTaskInput,
+    model: &str,
+    resolved_locale: &str,
+) -> AiResult<ProviderImageRequest> {
+    let prompt = task_input.prompt.trim().to_string();
+    if prompt.is_empty() {
+        return Err(AiError::Validation(
+            "prompt is required for image_asset".to_string(),
+        ));
+    }
+
+    Ok(ProviderImageRequest {
+        model: model.to_string(),
+        prompt,
+        negative_prompt: task_input.negative_prompt.clone(),
+        size: rustok_ai_media::normalize_image_size(task_input.size.clone())
+            .map_err(AiError::Validation)?,
+        locale: Some(resolved_locale.to_string()),
+    })
+}
+
 fn storage_from_runtime(runtime: &AiHostRuntime) -> AiResult<StorageService> {
     runtime.storage().ok_or_else(|| {
         AiError::Runtime("StorageService is not registered in AI runtime".to_string())
@@ -1567,9 +1614,497 @@ fn merge_message_metadata(base: Value, extension: Value) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_generated_file_name, locale_matches, normalize_tag_list};
-    use rustok_ai_content::BLOG_DRAFT_TASK_SLUG;
-    use rustok_ai_media::normalize_image_size;
+    use std::{
+        collections::BTreeMap,
+        sync::{Arc, Mutex},
+    };
+
+    use super::direct_product_attributes::ProductAttributesHandler;
+    use super::{
+        build_blog_draft_create_input, build_generated_file_name, build_image_provider_request,
+        locale_matches, normalize_tag_list, BlogDraftHandler, DirectExecutionRequest,
+        DirectTaskHandler, MediaImageAssetHandler, ProductCopyHandler,
+    };
+    use crate::{
+        engine::InferenceEngine,
+        model::{
+            AiBlogDraftTaskInput, AiImageAssetTaskInput, AiProductAttributesTaskInput,
+            AiProductCopyTaskInput, AiProviderConfig, ChatMessage, ChatMessageRole,
+            DirectExecutionTarget, ProviderChatRequest, ProviderChatResponse, ProviderImageRequest,
+            ProviderImageResponse, ProviderStructuredRequest, ProviderTestResult,
+        },
+        AiHostRuntime, AiOperatorContext, AiProviderTargetCatalog, ProviderEgressPolicy,
+        ProviderSlug, ProviderTargetAuth,
+    };
+    use async_trait::async_trait;
+    use rustok_ai_content::{content_ai_verticals, BLOG_DRAFT_TASK_SLUG};
+    use rustok_ai_media::{media_ai_verticals, normalize_image_size};
+    use rustok_ai_order::order_ai_verticals;
+    use rustok_ai_product::product_ai_verticals;
+    use rustok_core::{registry::ModuleRegistry, Rbac, UserRole};
+    use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
+    use rustok_secrets::SecretResolverRegistry;
+    use rustok_storage::{LocalStorageConfig, StorageConfig, StorageDriver, StorageService};
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use serde_json::json;
+    use uuid::Uuid;
+
+    struct BlogDraftEngine;
+
+    struct ImageAssetEngine {
+        captured_request: Arc<Mutex<Option<ProviderImageRequest>>>,
+    }
+
+    struct ProductCopyEngine;
+
+    struct ProductAttributesEngine;
+
+    #[async_trait]
+    impl InferenceEngine for BlogDraftEngine {
+        async fn test_connection(
+            &self,
+            _config: &AiProviderConfig,
+        ) -> crate::AiResult<ProviderTestResult> {
+            unreachable!("direct draft execution does not probe connectivity")
+        }
+
+        async fn complete(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            unreachable!("blog draft uses typed generation")
+        }
+
+        async fn complete_stream(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+            _emitter: Option<crate::ProviderStreamEmitter>,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            Ok(ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: Some("Draft saved for editorial review.".to_string()),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({}),
+                },
+                finish_reason: Some("stop".to_string()),
+                raw_payload: json!({}),
+            })
+        }
+
+        async fn complete_structured(
+            &self,
+            _request: ProviderStructuredRequest,
+        ) -> crate::AiResult<serde_json::Value> {
+            Ok(json!({
+                "title": "Generated draft",
+                "slug": "generated-draft",
+                "body": "Generated draft body",
+                "excerpt": "Generated excerpt",
+                "seo_title": "Generated SEO title",
+                "seo_description": "Generated SEO description"
+            }))
+        }
+    }
+
+    #[async_trait]
+    impl InferenceEngine for ImageAssetEngine {
+        async fn test_connection(
+            &self,
+            _config: &AiProviderConfig,
+        ) -> crate::AiResult<ProviderTestResult> {
+            unreachable!("direct image execution does not probe connectivity")
+        }
+
+        async fn complete(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            unreachable!("direct image execution uses streaming explanation")
+        }
+
+        async fn complete_stream(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+            _emitter: Option<crate::ProviderStreamEmitter>,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            Ok(ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: Some("Image saved to the media library.".to_string()),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({}),
+                },
+                finish_reason: Some("stop".to_string()),
+                raw_payload: json!({}),
+            })
+        }
+
+        async fn complete_structured(
+            &self,
+            _request: ProviderStructuredRequest,
+        ) -> crate::AiResult<serde_json::Value> {
+            unreachable!("direct image execution does not use typed text generation")
+        }
+
+        async fn generate_image(
+            &self,
+            _config: &AiProviderConfig,
+            request: ProviderImageRequest,
+        ) -> crate::AiResult<ProviderImageResponse> {
+            *self
+                .captured_request
+                .lock()
+                .expect("captured image provider request") = Some(request);
+            Ok(ProviderImageResponse {
+                bytes: b"\x89PNG\r\n\x1a\nimage".to_vec(),
+                mime_type: "image/png".to_string(),
+                revised_prompt: Some("Revised editorial hero image".to_string()),
+                raw_payload: json!({}),
+            })
+        }
+    }
+
+    #[async_trait]
+    impl InferenceEngine for ProductCopyEngine {
+        async fn test_connection(
+            &self,
+            _config: &AiProviderConfig,
+        ) -> crate::AiResult<ProviderTestResult> {
+            unreachable!("direct product copy execution does not probe connectivity")
+        }
+
+        async fn complete(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            unreachable!("direct product copy execution uses typed generation")
+        }
+
+        async fn complete_stream(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+            _emitter: Option<crate::ProviderStreamEmitter>,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            Ok(ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: Some("Product copy saved for the selected locale.".to_string()),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({}),
+                },
+                finish_reason: Some("stop".to_string()),
+                raw_payload: json!({}),
+            })
+        }
+
+        async fn complete_structured(
+            &self,
+            _request: ProviderStructuredRequest,
+        ) -> crate::AiResult<serde_json::Value> {
+            Ok(json!({
+                "title": "Generated product",
+                "handle": "generated-product",
+                "description": "Generated description",
+                "meta_title": "Generated SEO title",
+                "meta_description": "Generated SEO description"
+            }))
+        }
+    }
+
+    #[async_trait]
+    impl InferenceEngine for ProductAttributesEngine {
+        async fn test_connection(
+            &self,
+            _config: &AiProviderConfig,
+        ) -> crate::AiResult<ProviderTestResult> {
+            unreachable!("direct product attributes execution does not probe connectivity")
+        }
+
+        async fn complete(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            unreachable!("direct product attributes execution uses typed generation")
+        }
+
+        async fn complete_stream(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+            _emitter: Option<crate::ProviderStreamEmitter>,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            Ok(ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: Some("Product attributes are ready for review.".to_string()),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({}),
+                },
+                finish_reason: Some("stop".to_string()),
+                raw_payload: json!({}),
+            })
+        }
+
+        async fn complete_structured(
+            &self,
+            _request: ProviderStructuredRequest,
+        ) -> crate::AiResult<serde_json::Value> {
+            Ok(json!({
+                "brand": "Example brand",
+                "material": "Cotton",
+                "color": "Blue",
+                "size": null,
+                "dimensions": null,
+                "compatibility": null,
+                "care_instructions": "Machine wash cold",
+                "hazmat": null,
+                "flex_attributes": [{"key": "fabric_weight", "value": "180 gsm"}]
+            }))
+        }
+    }
+
+    fn provider_config() -> AiProviderConfig {
+        AiProviderConfig {
+            tenant_id: Uuid::nil(),
+            provider_slug: ProviderSlug::new("openai_compatible").unwrap(),
+            target_auth: ProviderTargetAuth::SecretRefs,
+            model: "test-model".to_string(),
+            settings: BTreeMap::new(),
+            credential_refs: BTreeMap::new(),
+            temperature: None,
+            max_tokens: None,
+            capabilities: Vec::new(),
+            usage_policy: Default::default(),
+        }
+    }
+
+    async fn blog_runtime() -> (AiHostRuntime, AiOperatorContext) {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("blog draft database");
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE taxonomy_terms (id TEXT PRIMARY KEY)".to_string(),
+            ))
+            .await
+            .expect("taxonomy term fixture");
+        let manager = SchemaManager::new(&database);
+        SysEventsMigration
+            .up(&manager)
+            .await
+            .expect("outbox migration");
+        for migration in rustok_blog::migrations::migrations() {
+            migration.up(&manager).await.expect("blog migration");
+        }
+
+        let runtime = AiHostRuntime::new(
+            database.clone(),
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(database))),
+            ModuleRegistry::new(),
+            SecretResolverRegistry::builder().build(),
+            ProviderEgressPolicy::default(),
+            AiProviderTargetCatalog::default(),
+        );
+        (runtime, admin_operator())
+    }
+
+    async fn media_runtime(storage: StorageService) -> (AiHostRuntime, AiOperatorContext) {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("media image database");
+        for statement in [
+            "CREATE TABLE media (\
+                id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, uploaded_by TEXT NULL, \
+                filename TEXT NOT NULL, original_name TEXT NOT NULL, mime_type TEXT NOT NULL, \
+                size INTEGER NOT NULL, storage_path TEXT NOT NULL, storage_driver TEXT NOT NULL, \
+                width INTEGER NULL, height INTEGER NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE media_translations (\
+                id TEXT PRIMARY KEY, media_id TEXT NOT NULL, locale TEXT NOT NULL, title TEXT NULL, \
+                alt_text TEXT NULL, caption TEXT NULL, UNIQUE(media_id, locale)\
+             )",
+        ] {
+            database
+                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .await
+                .expect("media fixture schema");
+        }
+        let manager = SchemaManager::new(&database);
+        SysEventsMigration
+            .up(&manager)
+            .await
+            .expect("outbox migration");
+
+        let runtime = AiHostRuntime::new(
+            database.clone(),
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(database))),
+            ModuleRegistry::new(),
+            SecretResolverRegistry::builder().build(),
+            ProviderEgressPolicy::default(),
+            AiProviderTargetCatalog::default(),
+        )
+        .with_storage(Some(storage));
+        (runtime, admin_operator())
+    }
+
+    async fn product_runtime() -> (AiHostRuntime, AiOperatorContext, Uuid) {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("product copy database");
+        for statement in [
+            "CREATE TABLE products (\
+                id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, status TEXT NOT NULL, \
+                seller_id TEXT NULL, vendor TEXT NULL, product_type TEXT NULL, \
+                shipping_profile_slug TEXT NULL, primary_category_id TEXT NULL, metadata TEXT NOT NULL, \
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL, published_at TEXT NULL\
+             )",
+            "CREATE TABLE product_translations (\
+                id TEXT PRIMARY KEY, product_id TEXT NOT NULL, tenant_id TEXT NOT NULL, locale TEXT NOT NULL, \
+                title TEXT NOT NULL, handle TEXT NOT NULL, description TEXT NULL, meta_title TEXT NULL, \
+                meta_description TEXT NULL\
+             )",
+            "CREATE TABLE product_options (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, position INTEGER NOT NULL)",
+            "CREATE TABLE product_variants (\
+                id TEXT PRIMARY KEY, product_id TEXT NOT NULL, tenant_id TEXT NOT NULL, sku TEXT NULL, \
+                barcode TEXT NULL, shipping_profile_slug TEXT NULL, ean TEXT NULL, upc TEXT NULL, \
+                inventory_policy TEXT NOT NULL, inventory_management TEXT NOT NULL, inventory_quantity INTEGER NOT NULL, \
+                weight TEXT NULL, weight_unit TEXT NULL, option1 TEXT NULL, option2 TEXT NULL, option3 TEXT NULL, \
+                position INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE product_images (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, media_id TEXT NOT NULL, position INTEGER NOT NULL, alt_text TEXT NULL)",
+            "CREATE TABLE product_option_translations (id TEXT PRIMARY KEY, option_id TEXT NOT NULL, locale TEXT NOT NULL, title TEXT NOT NULL)",
+            "CREATE TABLE product_option_values (id TEXT PRIMARY KEY, option_id TEXT NOT NULL, position INTEGER NOT NULL, metadata TEXT NOT NULL)",
+            "CREATE TABLE product_option_value_translations (id TEXT PRIMARY KEY, value_id TEXT NOT NULL, locale TEXT NOT NULL, value TEXT NOT NULL)",
+            "CREATE TABLE prices (\
+                id TEXT PRIMARY KEY, variant_id TEXT NOT NULL, price_list_id TEXT NULL, channel_id TEXT NULL, \
+                channel_slug TEXT NULL, currency_code TEXT NOT NULL, region_id TEXT NULL, amount_decimal TEXT NOT NULL, \
+                compare_at_amount_decimal TEXT NULL, amount INTEGER NULL, compare_at_amount INTEGER NULL, \
+                min_quantity INTEGER NULL, max_quantity INTEGER NULL\
+             )",
+            "CREATE TABLE product_variant_translations (id TEXT PRIMARY KEY, variant_id TEXT NOT NULL, locale TEXT NOT NULL, title TEXT NULL)",
+            "CREATE TABLE inventory_items (\
+                id TEXT PRIMARY KEY, variant_id TEXT NOT NULL, sku TEXT NULL, requires_shipping BOOLEAN NOT NULL, \
+                metadata TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE inventory_levels (\
+                id TEXT PRIMARY KEY, inventory_item_id TEXT NOT NULL, location_id TEXT NOT NULL, stocked_quantity INTEGER NOT NULL, \
+                reserved_quantity INTEGER NOT NULL, incoming_quantity INTEGER NOT NULL, low_stock_threshold INTEGER NULL, updated_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE product_tags (product_id TEXT NOT NULL, term_id TEXT NOT NULL, tenant_id TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(product_id, term_id))",
+            "CREATE TABLE product_field_definitions (\
+                id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, field_key TEXT NOT NULL, field_type TEXT NOT NULL, \
+                label TEXT NOT NULL, description TEXT NULL, is_localized BOOLEAN NOT NULL, is_required BOOLEAN NOT NULL, \
+                default_value TEXT NULL, validation TEXT NULL, position INTEGER NOT NULL, is_active BOOLEAN NOT NULL, \
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL\
+             )",
+        ] {
+            database
+                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .await
+                .expect("product copy fixture schema");
+        }
+        let manager = SchemaManager::new(&database);
+        SysEventsMigration
+            .up(&manager)
+            .await
+            .expect("outbox migration");
+
+        let operator = admin_operator();
+        let product_id = Uuid::new_v4();
+        let now = "2026-07-16T00:00:00Z".to_string();
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO products (id, tenant_id, status, metadata, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, ?)"
+                    .to_string(),
+                vec![
+                    product_id.into(),
+                    operator.tenant_id.into(),
+                    "draft".into(),
+                    "{}".into(),
+                    now.clone().into(),
+                    now.clone().into(),
+                ],
+            ))
+            .await
+            .expect("product fixture");
+        for (locale, title, handle, description) in [
+            (
+                "en",
+                "Original product",
+                "original-product",
+                "Original description",
+            ),
+            (
+                "ru",
+                "Original Russian product",
+                "original-ru-product",
+                "Original Russian description",
+            ),
+        ] {
+            database
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "INSERT INTO product_translations \
+                     (id, product_id, tenant_id, locale, title, handle, description) VALUES \
+                     (?, ?, ?, ?, ?, ?, ?)"
+                        .to_string(),
+                    vec![
+                        Uuid::new_v4().into(),
+                        product_id.into(),
+                        operator.tenant_id.into(),
+                        locale.to_string().into(),
+                        title.to_string().into(),
+                        handle.to_string().into(),
+                        description.to_string().into(),
+                    ],
+                ))
+                .await
+                .expect("product translation fixture");
+        }
+
+        let runtime = AiHostRuntime::new(
+            database.clone(),
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(database))),
+            ModuleRegistry::new(),
+            SecretResolverRegistry::builder().build(),
+            ProviderEgressPolicy::default(),
+            AiProviderTargetCatalog::default(),
+        );
+        (runtime, operator, product_id)
+    }
+
+    fn admin_operator() -> AiOperatorContext {
+        AiOperatorContext {
+            tenant_id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            permissions: Rbac::permissions_for_role(&UserRole::Admin)
+                .iter()
+                .copied()
+                .collect(),
+            role_slugs: vec!["admin".to_string()],
+            preferred_locale: Some("ru".to_string()),
+        }
+    }
 
     #[test]
     fn normalize_image_size_accepts_valid_dimensions() {
@@ -1583,6 +2118,44 @@ mod tests {
     fn normalize_image_size_rejects_invalid_dimensions() {
         assert!(normalize_image_size(Some("wide".to_string())).is_err());
         assert!(normalize_image_size(Some("0x768".to_string())).is_err());
+    }
+
+    #[test]
+    fn image_provider_request_uses_adapter_validation_and_resolved_locale() {
+        let request = build_image_provider_request(
+            &AiImageAssetTaskInput {
+                prompt: "  editorial hero image  ".to_string(),
+                negative_prompt: Some("low contrast".to_string()),
+                size: Some(" 1024 x 768 ".to_string()),
+                ..Default::default()
+            },
+            "image-model",
+            "ru",
+        )
+        .unwrap();
+
+        assert_eq!(request.model, "image-model");
+        assert_eq!(request.prompt, "editorial hero image");
+        assert_eq!(request.negative_prompt.as_deref(), Some("low contrast"));
+        assert_eq!(request.size.as_deref(), Some("1024x768"));
+        assert_eq!(request.locale.as_deref(), Some("ru"));
+    }
+
+    #[test]
+    fn image_provider_request_rejects_blank_prompt_before_provider_execution() {
+        let error = build_image_provider_request(
+            &AiImageAssetTaskInput {
+                prompt: "  ".to_string(),
+                ..Default::default()
+            },
+            "image-model",
+            "ru",
+        )
+        .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("prompt is required for image_asset"));
     }
 
     #[test]
@@ -1611,29 +2184,330 @@ mod tests {
     }
 
     #[test]
+    fn generated_blog_content_is_always_created_as_a_draft() {
+        let input = AiBlogDraftTaskInput {
+            category_id: Some(uuid::Uuid::new_v4()),
+            featured_image_url: Some("https://cdn.example.test/hero.webp".to_string()),
+            ..Default::default()
+        };
+        let create = build_blog_draft_create_input(
+            &input,
+            "ru",
+            "Generated title",
+            "Generated body",
+            Some("Excerpt"),
+            Some("generated-title"),
+            &["ai".to_string()],
+            Some("SEO title"),
+            Some("SEO description"),
+        )
+        .unwrap();
+
+        assert!(!create.publish);
+        assert_eq!(create.locale, "ru");
+        assert_eq!(create.title, "Generated title");
+        assert_eq!(create.tags, vec!["ai".to_string()]);
+        assert_eq!(create.category_id, input.category_id);
+    }
+
+    #[tokio::test]
+    async fn direct_blog_draft_persists_an_unpublished_owner_draft() {
+        let (runtime, operator) = blog_runtime().await;
+        let request = DirectExecutionRequest {
+            task_slug: BLOG_DRAFT_TASK_SLUG.to_string(),
+            task_input_json: json!(AiBlogDraftTaskInput {
+                source_locale: Some("ru".to_string()),
+                source_title: Some("Source title".to_string()),
+                source_body: Some("Source body".to_string()),
+                assistant_prompt: Some("Summarize the saved draft.".to_string()),
+                ..Default::default()
+            }),
+            requested_locale: Some("ru".to_string()),
+            resolved_locale: "ru".to_string(),
+            system_prompt: None,
+            provider_config: provider_config(),
+            provider: Arc::new(BlogDraftEngine),
+            stream_emitter: None,
+        };
+
+        let result = BlogDraftHandler
+            .execute(&runtime, &operator, request)
+            .await
+            .unwrap();
+
+        assert_eq!(result.execution_target, DirectExecutionTarget::Blog);
+        assert_eq!(result.metadata["operation"], json!("create_draft"));
+        assert_eq!(result.traces.len(), 1);
+        assert_eq!(result.traces[0].status, "completed");
+        assert_eq!(
+            result.traces[0].output_payload.as_ref().unwrap()["post"]["status"],
+            json!("draft")
+        );
+        assert_eq!(
+            result.appended_messages[0].content.as_deref(),
+            Some("Draft saved for editorial review.")
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_image_asset_persists_media_and_localized_owner_translation() {
+        let storage_dir =
+            std::env::temp_dir().join(format!("rustok-ai-image-test-{}", Uuid::new_v4()));
+        let storage = StorageService::from_config(&StorageConfig {
+            driver: StorageDriver::Local,
+            local: LocalStorageConfig {
+                base_dir: storage_dir.to_string_lossy().into_owned(),
+                base_url: "https://assets.example.test/media".to_string(),
+            },
+            ..Default::default()
+        })
+        .await
+        .expect("media fixture storage");
+        let (runtime, operator) = media_runtime(storage).await;
+        let captured_request = Arc::new(Mutex::new(None));
+        let request = DirectExecutionRequest {
+            task_slug: rustok_ai_media::IMAGE_ASSET_TASK_SLUG.to_string(),
+            task_input_json: json!(AiImageAssetTaskInput {
+                prompt: "  editorial hero image  ".to_string(),
+                negative_prompt: Some("low contrast".to_string()),
+                title: Some("Editorial hero".to_string()),
+                alt_text: Some("A localized editorial hero".to_string()),
+                caption: Some("Generated for the article header".to_string()),
+                file_name: Some("editorial-hero".to_string()),
+                size: Some("1024x768".to_string()),
+                assistant_prompt: Some("Summarize the saved asset.".to_string()),
+            }),
+            requested_locale: Some("ru".to_string()),
+            resolved_locale: "ru".to_string(),
+            system_prompt: None,
+            provider_config: provider_config(),
+            provider: Arc::new(ImageAssetEngine {
+                captured_request: Arc::clone(&captured_request),
+            }),
+            stream_emitter: None,
+        };
+
+        let result = MediaImageAssetHandler
+            .execute(&runtime, &operator, request)
+            .await
+            .unwrap();
+
+        assert_eq!(result.execution_target, DirectExecutionTarget::Media);
+        assert_eq!(result.traces.len(), 1);
+        assert_eq!(result.traces[0].status, "completed");
+        assert_eq!(
+            result.traces[0].output_payload.as_ref().unwrap()["image_generation"]["size"],
+            json!("1024x768")
+        );
+        assert_eq!(
+            result.metadata["media_item"]["mime_type"],
+            json!("image/png")
+        );
+        assert_eq!(result.metadata["translation"]["locale"], json!("ru"));
+        assert_eq!(
+            result.appended_messages[0].content.as_deref(),
+            Some("Image saved to the media library.")
+        );
+
+        let provider_request = captured_request
+            .lock()
+            .expect("captured image provider request")
+            .clone()
+            .expect("image provider invocation");
+        assert_eq!(provider_request.prompt, "editorial hero image");
+        assert_eq!(
+            provider_request.negative_prompt.as_deref(),
+            Some("low contrast")
+        );
+        assert_eq!(provider_request.size.as_deref(), Some("1024x768"));
+        assert_eq!(provider_request.locale.as_deref(), Some("ru"));
+
+        std::fs::remove_dir_all(&storage_dir).expect("media fixture storage cleanup");
+    }
+
+    #[tokio::test]
+    async fn direct_product_copy_updates_only_the_requested_locale_through_catalog_owner() {
+        let (runtime, operator, product_id) = product_runtime().await;
+        let request = DirectExecutionRequest {
+            task_slug: rustok_ai_product::PRODUCT_COPY_TASK_SLUG.to_string(),
+            task_input_json: json!(AiProductCopyTaskInput {
+                product_id,
+                source_locale: Some("en".to_string()),
+                copy_instructions: Some("Adapt for the Russian catalog.".to_string()),
+                assistant_prompt: Some("Summarize the saved product copy.".to_string()),
+                ..Default::default()
+            }),
+            requested_locale: Some("ru".to_string()),
+            resolved_locale: "ru".to_string(),
+            system_prompt: None,
+            provider_config: provider_config(),
+            provider: Arc::new(ProductCopyEngine),
+            stream_emitter: None,
+        };
+
+        let result = ProductCopyHandler
+            .execute(&runtime, &operator, request)
+            .await
+            .unwrap();
+
+        assert_eq!(result.execution_target, DirectExecutionTarget::Commerce);
+        assert_eq!(result.metadata["target_locale"], json!("ru"));
+        assert_eq!(result.metadata["source_locale"], json!("en"));
+        assert_eq!(result.traces[0].status, "completed");
+        assert_eq!(
+            result.traces[0].output_payload.as_ref().unwrap()["target_translation"]["title"],
+            json!("Generated product")
+        );
+        assert_eq!(
+            result.appended_messages[0].content.as_deref(),
+            Some("Product copy saved for the selected locale.")
+        );
+
+        let catalog = rustok_product::CatalogService::new(runtime.db_clone(), runtime.event_bus());
+        let persisted = catalog
+            .get_product(operator.tenant_id, product_id)
+            .await
+            .expect("catalog owner persisted generated copy");
+        let english = persisted
+            .translations
+            .iter()
+            .find(|translation| translation.locale == "en")
+            .expect("preserved English translation");
+        let russian = persisted
+            .translations
+            .iter()
+            .find(|translation| translation.locale == "ru")
+            .expect("updated Russian translation");
+        assert_eq!(english.title, "Original product");
+        assert_eq!(english.handle, "original-product");
+        assert_eq!(russian.title, "Generated product");
+        assert_eq!(russian.handle, "original-ru-product");
+        assert_eq!(
+            russian.description.as_deref(),
+            Some("Generated description")
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_product_attributes_returns_review_only_suggestions_without_product_write() {
+        let (runtime, operator, product_id) = product_runtime().await;
+        let request = DirectExecutionRequest {
+            task_slug: rustok_ai_product::PRODUCT_ATTRIBUTES_TASK_SLUG.to_string(),
+            task_input_json: json!(AiProductAttributesTaskInput {
+                product_id,
+                category_slug: Some("apparel".to_string()),
+                source_title: Some("Original product".to_string()),
+                source_description: Some("Original description".to_string()),
+                copy_instructions: Some("Suggest catalog attributes.".to_string()),
+                assistant_prompt: Some("Summarize the suggestions.".to_string()),
+                ..Default::default()
+            }),
+            requested_locale: Some("ru".to_string()),
+            resolved_locale: "ru".to_string(),
+            system_prompt: None,
+            provider_config: provider_config(),
+            provider: Arc::new(ProductAttributesEngine),
+            stream_emitter: None,
+        };
+
+        let result = ProductAttributesHandler
+            .execute(&runtime, &operator, request)
+            .await
+            .unwrap();
+
+        assert_eq!(result.execution_target, DirectExecutionTarget::Commerce);
+        assert_eq!(result.metadata["review_required"], json!(true));
+        assert_eq!(result.metadata["persistence"], json!("none"));
+        assert_eq!(
+            result.metadata["suggested_attributes"]["flex_attributes"][0]["key"],
+            json!("fabric_weight")
+        );
+        assert_eq!(result.traces[0].status, "completed");
+        assert_eq!(
+            result.appended_messages[0].content.as_deref(),
+            Some("Product attributes are ready for review.")
+        );
+
+        let catalog = rustok_product::CatalogService::new(runtime.db_clone(), runtime.event_bus());
+        let persisted = catalog
+            .get_product(operator.tenant_id, product_id)
+            .await
+            .expect("catalog owner remains the only product writer");
+        let russian = persisted
+            .translations
+            .iter()
+            .find(|translation| translation.locale == "ru")
+            .expect("preserved Russian translation");
+        assert_eq!(russian.title, "Original Russian product");
+        assert_eq!(russian.handle, "original-ru-product");
+    }
+
+    #[test]
     fn core_defaults_do_not_include_domain_handlers() {
         let registry = super::DirectExecutionRegistry::with_core_defaults();
         assert!(registry.handler("alloy_code").is_some());
-        assert!(registry.handler("image_asset").is_some());
 
-        assert!(registry.handler("content_moderation").is_none());
-        assert!(registry.handler("product_copy").is_none());
-        assert!(registry.handler("product_attributes").is_none());
-        assert!(registry.handler("order_analytics").is_none());
-        assert!(registry.handler("order_ops_assistant").is_none());
+        for vertical in media_ai_verticals() {
+            assert!(
+                registry.handler(vertical.task_slug).is_some(),
+                "missing registered handler for media task `{}`",
+                vertical.task_slug
+            );
+        }
+
+        for vertical in content_ai_verticals() {
+            assert!(registry.handler(vertical.task_slug).is_none());
+        }
+        for vertical in product_ai_verticals() {
+            assert!(
+                registry.handler(vertical.task_slug).is_none(),
+                "core defaults must not register product task `{}`",
+                vertical.task_slug
+            );
+        }
+        for vertical in order_ai_verticals() {
+            assert!(
+                registry.handler(vertical.task_slug).is_none(),
+                "core defaults must not register order task `{}`",
+                vertical.task_slug
+            );
+        }
     }
 
     #[test]
     fn defaults_include_domain_handlers() {
         let registry = super::DirectExecutionRegistry::with_defaults();
         assert!(registry.handler("alloy_code").is_some());
-        assert!(registry.handler("image_asset").is_some());
         assert!(registry.handler(BLOG_DRAFT_TASK_SLUG).is_some());
 
-        assert!(registry.handler("content_moderation").is_some());
-        assert!(registry.handler("product_copy").is_some());
-        assert!(registry.handler("product_attributes").is_some());
-        assert!(registry.handler("order_analytics").is_some());
-        assert!(registry.handler("order_ops_assistant").is_some());
+        for vertical in media_ai_verticals() {
+            assert!(
+                registry.handler(vertical.task_slug).is_some(),
+                "missing registered handler for media task `{}`",
+                vertical.task_slug
+            );
+        }
+
+        for vertical in content_ai_verticals() {
+            assert!(
+                registry.handler(vertical.task_slug).is_some(),
+                "missing registered handler for content task `{}`",
+                vertical.task_slug
+            );
+        }
+        for vertical in product_ai_verticals() {
+            assert!(
+                registry.handler(vertical.task_slug).is_some(),
+                "missing registered handler for product task `{}`",
+                vertical.task_slug
+            );
+        }
+        for vertical in order_ai_verticals() {
+            assert!(
+                registry.handler(vertical.task_slug).is_some(),
+                "missing registered handler for order task `{}`",
+                vertical.task_slug
+            );
+        }
     }
 }

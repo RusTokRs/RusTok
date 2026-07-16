@@ -40,6 +40,9 @@ still requires targeted platform verification evidence.
   `scripts/verify/verify-ai-fba-baseline.mjs`, and
   `scripts/verify/verify-orchestrator-fba-runtime-order.mjs`. Domain support
   ownership is checked by `scripts/verify/verify-ai-domain-verticals.mjs`.
+  `ai_router_policy_evidence_expanded` is locked by
+  `scripts/verify/verify-ai-router-policy.mjs`: every router candidate is
+  recorded with its policy decision in the durable run trace.
 
 ## Delivery status and next results
 
@@ -161,6 +164,7 @@ FastEmbed engine entrypoints only. Remote Alloy transport remains owned by the
 - `npm run verify:ai:admin-boundary`
 - `npm run verify:ai:rig-cutover`
 - `npm run verify:ai:fba-baseline`
+- `node scripts/verify/verify-ai-router-policy.mjs`
 - `npm run verify:orchestrator:fba-runtime-order`
 - `cargo test -p rustok-ai --features server metrics::tests -- --nocapture`
 - `cargo test -p rustok-ai --features server direct::tests -- --nocapture`

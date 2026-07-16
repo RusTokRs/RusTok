@@ -6,10 +6,11 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use rustok_core::{ModuleContext, ModuleRegistry};
+use rustok_sandbox::ExecutionPhase;
 
 use crate::{
-    ArtifactReleaseRef, ModuleDefinitionCatalog, ModuleDefinitionSource, ModuleRuntimeBinding,
-    ModuleRuntimeBindingKind,
+    ArtifactReleaseRef, ModuleDefinitionCatalog, ModuleDefinitionSource, ModuleHttpMethod,
+    ModuleRuntimeBinding, ModuleRuntimeBindingKind,
 };
 
 /// The v1 lifecycle binding set. Other binding classes are added to the same
@@ -108,17 +109,176 @@ impl<'a> ModuleExecutionDispatcher<'a> {
                     ModuleDispatchError::ArtifactExecutorUnavailable(module_slug.to_string())
                 })?;
                 executor
-                    .dispatch_lifecycle(ArtifactLifecycleDispatch {
-                        release,
-                        binding,
-                        tenant_id,
-                        config,
-                        phase,
-                    })
+                    .dispatch_lifecycle(release, binding, tenant_id, config, phase)
                     .await
                     .map_err(ModuleDispatchError::ArtifactHook)
             }
         }
+    }
+
+    /// Dispatches an admitted non-lifecycle artifact binding through the same
+    /// sandbox executor used by lifecycle. Static modules deliberately have no
+    /// dynamic fallback: their host contracts remain typed and compiled.
+    pub async fn dispatch_artifact_binding(
+        &self,
+        tenant_id: uuid::Uuid,
+        module_slug: &str,
+        binding_id: &str,
+        input: serde_json::Value,
+        phase: ExecutionPhase,
+    ) -> Result<serde_json::Value, ModuleDispatchError> {
+        let definition = self
+            .catalog
+            .get(module_slug)
+            .ok_or_else(|| ModuleDispatchError::UnknownDefinition(module_slug.to_string()))?;
+        let ModuleDefinitionSource::Artifact { release } = &definition.source else {
+            return Err(ModuleDispatchError::StaticDynamicBindingUnavailable(
+                module_slug.to_string(),
+            ));
+        };
+        let binding = definition.binding(binding_id).ok_or_else(|| {
+            ModuleDispatchError::ArtifactBindingUnavailable(module_slug.to_string())
+        })?;
+        if !binding_allows_phase(binding.kind.clone(), phase) {
+            return Err(ModuleDispatchError::BindingPhaseMismatch {
+                binding_id: binding.id.clone(),
+                phase,
+            });
+        }
+        let executor = self.artifact_executor.ok_or_else(|| {
+            ModuleDispatchError::ArtifactExecutorUnavailable(module_slug.to_string())
+        })?;
+        executor
+            .dispatch_binding(ArtifactBindingDispatch {
+                release,
+                binding,
+                tenant_id,
+                input,
+                phase,
+            })
+            .await
+            .map_err(ModuleDispatchError::ArtifactHook)
+    }
+
+    /// Dispatches every admitted Event binding whose exact or terminal-wildcard
+    /// subscription matches the supplied platform event type.
+    pub async fn dispatch_artifact_event(
+        &self,
+        tenant_id: uuid::Uuid,
+        module_slug: &str,
+        event_type: &str,
+        payload: serde_json::Value,
+    ) -> Result<Vec<serde_json::Value>, ModuleDispatchError> {
+        let definition = self
+            .catalog
+            .get(module_slug)
+            .ok_or_else(|| ModuleDispatchError::UnknownDefinition(module_slug.to_string()))?;
+        let ModuleDefinitionSource::Artifact { .. } = &definition.source else {
+            return Err(ModuleDispatchError::StaticDynamicBindingUnavailable(
+                module_slug.to_string(),
+            ));
+        };
+        let binding_ids = definition
+            .bindings
+            .iter()
+            .filter(|binding| {
+                binding.kind == ModuleRuntimeBindingKind::Event
+                    && binding
+                        .event_topics
+                        .iter()
+                        .any(|topic| event_topic_matches(topic, event_type))
+            })
+            .map(|binding| binding.id.clone())
+            .collect::<Vec<_>>();
+        let mut outputs = Vec::with_capacity(binding_ids.len());
+        for binding_id in binding_ids {
+            outputs.push(
+                self.dispatch_artifact_binding(
+                    tenant_id,
+                    module_slug,
+                    &binding_id,
+                    serde_json::json!({
+                        "binding_id": binding_id.clone(),
+                        "event_type": event_type,
+                        "payload": payload.clone(),
+                    }),
+                    ExecutionPhase::Event,
+                )
+                .await?,
+            );
+        }
+        Ok(outputs)
+    }
+
+    /// Dispatches a platform-routed JSON HTTP request after the host has
+    /// resolved actor authorization. The descriptor supplies only a relative
+    /// route and bounded JSON envelope; it never supplies an Axum router or a
+    /// transport listener.
+    pub async fn dispatch_artifact_http(
+        &self,
+        tenant_id: uuid::Uuid,
+        module_slug: &str,
+        method: ModuleHttpMethod,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, ModuleDispatchError> {
+        let definition = self
+            .catalog
+            .get(module_slug)
+            .ok_or_else(|| ModuleDispatchError::UnknownDefinition(module_slug.to_string()))?;
+        let ModuleDefinitionSource::Artifact { .. } = &definition.source else {
+            return Err(ModuleDispatchError::StaticDynamicBindingUnavailable(
+                module_slug.to_string(),
+            ));
+        };
+        let binding = definition
+            .bindings
+            .iter()
+            .find(|binding| {
+                binding.kind == ModuleRuntimeBindingKind::Http
+                    && binding
+                        .http
+                        .as_ref()
+                        .is_some_and(|http| http.method == method && http.path == path)
+            })
+            .ok_or_else(|| ModuleDispatchError::ArtifactHttpRouteUnavailable {
+                module_slug: module_slug.to_string(),
+                path: path.to_string(),
+            })?;
+        let http = binding
+            .http
+            .as_ref()
+            .expect("HTTP binding was selected only when it has an HTTP contract");
+        let body_bytes = serde_json::to_vec(&body)
+            .map_err(|error| ModuleDispatchError::ArtifactHttpEnvelope(error.to_string()))?;
+        if body_bytes.len() as u64 > http.max_body_bytes {
+            return Err(ModuleDispatchError::ArtifactHttpRequestTooLarge {
+                limit: http.max_body_bytes,
+            });
+        }
+        let binding_id = binding.id.clone();
+        let output = self
+            .dispatch_artifact_binding(
+                tenant_id,
+                module_slug,
+                &binding_id,
+                serde_json::json!({
+                    "binding_id": binding_id,
+                    "method": method,
+                    "path": path,
+                    "body": body,
+                }),
+                ExecutionPhase::Http,
+            )
+            .await?;
+        let output_bytes = serde_json::to_vec(&output)
+            .map_err(|error| ModuleDispatchError::ArtifactHttpEnvelope(error.to_string()))?;
+        if output_bytes.len() as u64 > http.max_output_bytes {
+            return Err(ModuleDispatchError::ArtifactHttpResponseTooLarge {
+                limit: http.max_output_bytes,
+            });
+        }
+        Ok(output)
     }
 }
 
@@ -126,19 +286,49 @@ impl<'a> ModuleExecutionDispatcher<'a> {
 /// admitted installation and execute it through `SandboxRuntime`; a static
 /// callback cannot implement this port.
 #[async_trait]
-pub trait ArtifactLifecycleExecutor: Send + Sync {
-    async fn dispatch_lifecycle(
+pub trait ArtifactBindingExecutor: Send + Sync {
+    async fn dispatch_binding(
         &self,
-        dispatch: ArtifactLifecycleDispatch<'_>,
-    ) -> Result<(), String>;
+        dispatch: ArtifactBindingDispatch<'_>,
+    ) -> Result<serde_json::Value, String>;
 }
 
-pub struct ArtifactLifecycleDispatch<'a> {
+/// Lifecycle remains a convenience surface over the generic admitted binding
+/// port. It is not a second artifact execution path.
+#[async_trait]
+pub trait ArtifactLifecycleExecutor: ArtifactBindingExecutor {
+    async fn dispatch_lifecycle(
+        &self,
+        release: &ArtifactReleaseRef,
+        binding: &ModuleRuntimeBinding,
+        tenant_id: uuid::Uuid,
+        config: &serde_json::Value,
+        phase: ModuleLifecycleHookPhase,
+    ) -> Result<(), String> {
+        self.dispatch_binding(ArtifactBindingDispatch {
+            release,
+            binding,
+            tenant_id,
+            input: serde_json::json!({
+                "binding_id": binding.id,
+                "phase": phase,
+                "config": config,
+            }),
+            phase: ExecutionPhase::Lifecycle,
+        })
+        .await
+        .map(|_| ())
+    }
+}
+
+impl<T> ArtifactLifecycleExecutor for T where T: ArtifactBindingExecutor + ?Sized {}
+
+pub struct ArtifactBindingDispatch<'a> {
     pub release: &'a ArtifactReleaseRef,
     pub binding: &'a ModuleRuntimeBinding,
     pub tenant_id: uuid::Uuid,
-    pub config: &'a serde_json::Value,
-    pub phase: ModuleLifecycleHookPhase,
+    pub input: serde_json::Value,
+    pub phase: ExecutionPhase,
 }
 
 fn lifecycle_binding_kind(phase: ModuleLifecycleHookPhase) -> ModuleRuntimeBindingKind {
@@ -148,6 +338,43 @@ fn lifecycle_binding_kind(phase: ModuleLifecycleHookPhase) -> ModuleRuntimeBindi
         ModuleLifecycleHookPhase::PreDisable => ModuleRuntimeBindingKind::PreDisable,
         ModuleLifecycleHookPhase::PostDisable => ModuleRuntimeBindingKind::PostDisable,
     }
+}
+
+fn binding_allows_phase(kind: ModuleRuntimeBindingKind, phase: ExecutionPhase) -> bool {
+    matches!(
+        (kind, phase),
+        (
+            ModuleRuntimeBindingKind::PreEnable
+                | ModuleRuntimeBindingKind::PostEnable
+                | ModuleRuntimeBindingKind::PreDisable
+                | ModuleRuntimeBindingKind::PostDisable
+                | ModuleRuntimeBindingKind::Health
+                | ModuleRuntimeBindingKind::Readiness
+                | ModuleRuntimeBindingKind::ActivationSmoke,
+            ExecutionPhase::Lifecycle
+        ) | (ModuleRuntimeBindingKind::Command, ExecutionPhase::Manual)
+            | (ModuleRuntimeBindingKind::Http, ExecutionPhase::Http)
+            | (ModuleRuntimeBindingKind::Event, ExecutionPhase::Event)
+            | (
+                ModuleRuntimeBindingKind::Schedule,
+                ExecutionPhase::Scheduled
+            )
+            | (
+                ModuleRuntimeBindingKind::BeforeCommit,
+                ExecutionPhase::BeforeHook
+            )
+            | (
+                ModuleRuntimeBindingKind::AfterCommit | ModuleRuntimeBindingKind::OnCommit,
+                ExecutionPhase::AfterHook
+            )
+    )
+}
+
+fn event_topic_matches(subscription: &str, event_type: &str) -> bool {
+    subscription == event_type
+        || subscription
+            .strip_suffix(".*")
+            .is_some_and(|prefix| event_type.starts_with(&format!("{}.", prefix)))
 }
 
 #[derive(Debug, Error)]
@@ -162,6 +389,21 @@ pub enum ModuleDispatchError {
     ArtifactExecutorUnavailable(String),
     #[error("artifact lifecycle binding failed: {0}")]
     ArtifactHook(String),
+    #[error("static module `{0}` has no dynamic artifact binding path")]
+    StaticDynamicBindingUnavailable(String),
+    #[error("artifact binding phase does not match its declared kind")]
+    BindingPhaseMismatch {
+        binding_id: String,
+        phase: ExecutionPhase,
+    },
+    #[error("artifact module `{module_slug}` has no admitted HTTP route for `{path}")]
+    ArtifactHttpRouteUnavailable { module_slug: String, path: String },
+    #[error("artifact HTTP request exceeds the declared {limit}-byte body limit")]
+    ArtifactHttpRequestTooLarge { limit: u64 },
+    #[error("artifact HTTP response exceeds the declared {limit}-byte output limit")]
+    ArtifactHttpResponseTooLarge { limit: u64 },
+    #[error("artifact HTTP JSON envelope could not be encoded: {0}")]
+    ArtifactHttpEnvelope(String),
     #[error("module lifecycle binding failed: {0}")]
     StaticHook(String),
 }
@@ -181,18 +423,131 @@ mod tests {
 
     struct RecordingArtifactExecutor(Mutex<Vec<(String, ModuleLifecycleHookPhase)>>);
 
+    struct EchoArtifactExecutor;
+
     #[async_trait]
-    impl ArtifactLifecycleExecutor for RecordingArtifactExecutor {
-        async fn dispatch_lifecycle(
+    impl ArtifactBindingExecutor for RecordingArtifactExecutor {
+        async fn dispatch_binding(
             &self,
-            dispatch: ArtifactLifecycleDispatch<'_>,
-        ) -> Result<(), String> {
+            dispatch: ArtifactBindingDispatch<'_>,
+        ) -> Result<serde_json::Value, String> {
+            let phase: ModuleLifecycleHookPhase = dispatch
+                .input
+                .get("phase")
+                .cloned()
+                .ok_or_else(|| "lifecycle phase is missing".to_string())
+                .and_then(|value| {
+                    serde_json::from_value(value).map_err(|error| error.to_string())
+                })?;
             self.0
                 .lock()
                 .expect("executor lock")
-                .push((dispatch.release.slug.clone(), dispatch.phase));
-            Ok(())
+                .push((dispatch.release.slug.clone(), phase));
+            Ok(serde_json::Value::Null)
         }
+    }
+
+    #[async_trait]
+    impl ArtifactBindingExecutor for EchoArtifactExecutor {
+        async fn dispatch_binding(
+            &self,
+            dispatch: ArtifactBindingDispatch<'_>,
+        ) -> Result<serde_json::Value, String> {
+            Ok(dispatch.input)
+        }
+    }
+
+    #[test]
+    fn event_subscriptions_and_binding_phases_are_narrowly_matched() {
+        assert!(event_topic_matches("order.*", "order.completed"));
+        assert!(!event_topic_matches("order.*", "orders.completed"));
+        assert!(!event_topic_matches("*", "order.completed"));
+        assert!(binding_allows_phase(
+            ModuleRuntimeBindingKind::Event,
+            ExecutionPhase::Event
+        ));
+        assert!(!binding_allows_phase(
+            ModuleRuntimeBindingKind::Event,
+            ExecutionPhase::Scheduled
+        ));
+    }
+
+    #[tokio::test]
+    async fn artifact_http_dispatch_matches_only_the_admitted_bounded_route() {
+        let release = ArtifactReleaseRef {
+            slug: "artifact_module".to_string(),
+            version: "1.0.0".to_string(),
+            digest: format!("sha256:{}", "a".repeat(64)),
+        };
+        let mut catalog = ModuleDefinitionCatalog::default();
+        catalog
+            .insert(ModuleDefinition {
+                slug: release.slug.clone(),
+                version: release.version.clone(),
+                kind: ModuleDefinitionKind::Optional,
+                source: ModuleDefinitionSource::Artifact {
+                    release: release.clone(),
+                },
+                dependencies: Vec::new(),
+                permissions: Vec::new(),
+                settings_schema: None,
+                schema_documents: Vec::new(),
+                bindings: vec![ModuleRuntimeBinding {
+                    id: "http_status".to_string(),
+                    kind: ModuleRuntimeBindingKind::Http,
+                    entrypoint: "http.status".to_string(),
+                    input_schema_digest: format!("sha256:{}", "b".repeat(64)),
+                    output_schema_digest: format!("sha256:{}", "c".repeat(64)),
+                    permission: "artifact_module.http.status.read".to_string(),
+                    idempotency: ModuleBindingIdempotency::Required,
+                    limit_profile: "http_json".to_string(),
+                    capabilities: Vec::new(),
+                    event_topics: Vec::new(),
+                    schedule: None,
+                    http: Some(crate::ModuleHttpBinding {
+                        method: ModuleHttpMethod::Post,
+                        path: "status/query".to_string(),
+                        request_media_type: "application/json".to_string(),
+                        response_media_type: "application/json".to_string(),
+                        max_body_bytes: 64,
+                        max_output_bytes: 1_024,
+                        timeout_ms: 5_000,
+                        streaming: crate::ModuleHttpStreamingPolicy::Forbidden,
+                    }),
+                }],
+                ui: Vec::new(),
+                capabilities: Vec::new(),
+            })
+            .expect("artifact definition");
+        let executor = EchoArtifactExecutor;
+        let dispatcher = ModuleExecutionDispatcher::artifact_only(&catalog, &executor);
+        let body = serde_json::json!({ "include": "summary" });
+
+        let output = dispatcher
+            .dispatch_artifact_http(
+                uuid::Uuid::new_v4(),
+                "artifact_module",
+                ModuleHttpMethod::Post,
+                "status/query",
+                body.clone(),
+            )
+            .await
+            .expect("admitted HTTP route");
+        assert_eq!(output["binding_id"], "http_status");
+        assert_eq!(output["body"], body);
+
+        assert!(matches!(
+            dispatcher
+                .dispatch_artifact_http(
+                    uuid::Uuid::new_v4(),
+                    "artifact_module",
+                    ModuleHttpMethod::Get,
+                    "status/query",
+                    serde_json::json!({}),
+                )
+                .await,
+            Err(ModuleDispatchError::ArtifactHttpRouteUnavailable { .. })
+        ));
     }
 
     #[tokio::test]
@@ -214,6 +569,7 @@ mod tests {
                 dependencies: Vec::new(),
                 permissions: Vec::new(),
                 settings_schema: None,
+                schema_documents: Vec::new(),
                 bindings: vec![ModuleRuntimeBinding {
                     id: "pre_disable".to_string(),
                     kind: ModuleRuntimeBindingKind::PreDisable,
@@ -224,6 +580,9 @@ mod tests {
                     idempotency: ModuleBindingIdempotency::Required,
                     limit_profile: "lifecycle".to_string(),
                     capabilities: Vec::new(),
+                    event_topics: Vec::new(),
+                    schedule: None,
+                    http: None,
                 }],
                 ui: Vec::new(),
                 capabilities: Vec::new(),

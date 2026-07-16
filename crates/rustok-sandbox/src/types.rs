@@ -166,6 +166,10 @@ pub enum ExecutionStatus {
 pub struct ExecutionRecord {
     pub execution_id: Uuid,
     pub subject: SandboxSubject,
+    /// Redacted request identity needed by durable owner observers. Payload,
+    /// policy grants, input, output, headers, credentials, and error text are
+    /// deliberately absent.
+    pub context: SandboxContext,
     pub executor: SandboxExecutorKind,
     pub status: ExecutionStatus,
     pub started_at: DateTime<Utc>,

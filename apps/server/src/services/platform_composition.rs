@@ -2,23 +2,17 @@ use rustok_api::manifest_hash::{
     canonical_manifest_snapshot_json, hash_manifest, hash_manifest_snapshot,
 };
 use rustok_core::ModuleRegistry;
-use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr,
-    EntityTrait, QueryFilter, Set, TransactionTrait,
-};
+use sea_orm::{DatabaseConnection, DatabaseTransaction, DbErr};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::models::platform_state::{
-    ActiveModel as PlatformStateActiveModel, Column as PlatformStateColumn,
-    Entity as PlatformStateEntity, Model as PlatformStateModel,
-};
 use crate::modules::{ManifestDiff, ManifestError, ManifestManager, ModulesManifest};
 use rustok_build::build::Model as Build;
 use rustok_build::{BuildEventPublisher, BuildRequest, BuildService};
-use rustok_modules::ModuleDefinitionError;
-
-pub const ACTIVE_PLATFORM_STATE_ID: &str = "active";
+use rustok_modules::{
+    ModuleCompositionBuildEnqueuer, ModuleCompositionError, ModuleCompositionSnapshot,
+    ModuleCompositionUpdate, ModuleDefinitionError, SeaOrmModuleCompositionService,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlatformCompositionSnapshot {
@@ -29,6 +23,8 @@ pub struct PlatformCompositionSnapshot {
 
 #[derive(Debug, Error)]
 pub enum PlatformCompositionError {
+    #[error(transparent)]
+    Owner(#[from] ModuleCompositionError),
     #[error(transparent)]
     Definition(#[from] ModuleDefinitionError),
     #[error(transparent)]
@@ -58,66 +54,68 @@ pub struct PlatformCompositionBuildResult {
 
 pub struct PlatformCompositionBuildService;
 
+struct ServerCompositionBuildEnqueuer {
+    manifest: ModulesManifest,
+    manifest_diff: ManifestDiff,
+    requested_by: String,
+    reason: String,
+}
+
+#[async_trait::async_trait]
+impl ModuleCompositionBuildEnqueuer for ServerCompositionBuildEnqueuer {
+    type Output = Build;
+
+    async fn enqueue(
+        &self,
+        transaction: &DatabaseTransaction,
+        snapshot: &ModuleCompositionSnapshot,
+    ) -> Result<Self::Output, String> {
+        let (build, _created) = BuildService::request_build_on_connection(
+            transaction,
+            BuildRequest {
+                manifest_ref: format!("platform_state:{}", snapshot.revision),
+                manifest_revision: snapshot.revision,
+                manifest_snapshot: snapshot.manifest.clone(),
+                artifact_identity: snapshot.manifest_hash.clone(),
+                requested_by: self.requested_by.clone(),
+                reason: Some(self.reason.clone()),
+                modules_delta: self.manifest_diff.summary(),
+                modules: ManifestManager::build_modules(&self.manifest),
+                profile: ManifestManager::deployment_profile(&self.manifest),
+                execution_plan: ManifestManager::build_execution_plan(&self.manifest),
+            },
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+        Ok(build)
+    }
+}
+
 pub struct PlatformCompositionService;
 
 impl PlatformCompositionService {
     pub async fn active_snapshot(
         db: &DatabaseConnection,
     ) -> Result<PlatformCompositionSnapshot, PlatformCompositionError> {
-        let state = Self::active_state(db).await?;
-        Self::snapshot_from_state(state)
+        let owner = SeaOrmModuleCompositionService::new(db.clone());
+        let snapshot = match owner.active_snapshot().await {
+            Ok(snapshot) => snapshot,
+            Err(ModuleCompositionError::MissingActiveComposition) => {
+                let bootstrap = Self::bootstrap_manifest()?;
+                let bootstrap_json = Self::manifest_snapshot_json(&bootstrap)?;
+                owner
+                    .ensure_active_snapshot(&bootstrap_json, "bootstrap")
+                    .await?
+            }
+            Err(error) => return Err(error.into()),
+        };
+        Self::snapshot_from_owner(snapshot)
     }
 
     pub async fn active_manifest(
         db: &DatabaseConnection,
     ) -> Result<ModulesManifest, PlatformCompositionError> {
         Ok(Self::active_snapshot(db).await?.manifest)
-    }
-
-    pub async fn active_state(
-        db: &DatabaseConnection,
-    ) -> Result<PlatformStateModel, PlatformCompositionError> {
-        Self::active_state_on(db).await
-    }
-
-    pub async fn active_state_on<C>(db: &C) -> Result<PlatformStateModel, PlatformCompositionError>
-    where
-        C: ConnectionTrait,
-    {
-        if let Some(state) = PlatformStateEntity::find_by_id(ACTIVE_PLATFORM_STATE_ID.to_string())
-            .one(db)
-            .await?
-        {
-            return Ok(state);
-        }
-
-        let manifest = Self::bootstrap_manifest()?;
-        let manifest_json = canonical_manifest_snapshot_json(&manifest)
-            .map_err(|err| PlatformCompositionError::Serialize(err.to_string()))?;
-        let manifest_hash = Self::manifest_hash(&manifest);
-        let now = chrono::Utc::now().into();
-        let active = PlatformStateActiveModel {
-            id: Set(ACTIVE_PLATFORM_STATE_ID.to_string()),
-            revision: Set(1),
-            manifest_json: Set(manifest_json),
-            manifest_hash: Set(manifest_hash),
-            active_release_id: Set(None),
-            updated_by: Set(Some("bootstrap".to_string())),
-            created_at: Set(now),
-            updated_at: Set(now),
-        };
-
-        match active.insert(db).await {
-            Ok(state) => Ok(state),
-            Err(_) => PlatformStateEntity::find_by_id(ACTIVE_PLATFORM_STATE_ID.to_string())
-                .one(db)
-                .await?
-                .ok_or_else(|| {
-                    PlatformCompositionError::Database(DbErr::RecordNotFound(
-                        "platform_state.active".to_string(),
-                    ))
-                }),
-        }
     }
 
     pub async fn update_manifest(
@@ -129,56 +127,15 @@ impl PlatformCompositionService {
     ) -> Result<PlatformCompositionSnapshot, PlatformCompositionError> {
         ManifestManager::validate_with_registry(&manifest, registry)?;
 
-        let current = Self::active_state(db).await?;
-        if let Some(expected) = expected_revision {
-            if expected != current.revision {
-                return Err(PlatformCompositionError::RevisionConflict {
-                    expected,
-                    current: current.revision,
-                });
-            }
-        }
-
-        let next_revision = current.revision + 1;
-        let manifest_json = canonical_manifest_snapshot_json(&manifest)
-            .map_err(|err| PlatformCompositionError::Serialize(err.to_string()))?;
-        let manifest_hash = Self::manifest_hash(&manifest);
-        let result = PlatformStateEntity::update_many()
-            .filter(PlatformStateColumn::Id.eq(ACTIVE_PLATFORM_STATE_ID))
-            .filter(PlatformStateColumn::Revision.eq(current.revision))
-            .col_expr(PlatformStateColumn::Revision, Expr::value(next_revision))
-            .col_expr(
-                PlatformStateColumn::ManifestJson,
-                Expr::value(manifest_json.clone()),
-            )
-            .col_expr(
-                PlatformStateColumn::ManifestHash,
-                Expr::value(manifest_hash.clone()),
-            )
-            .col_expr(
-                PlatformStateColumn::UpdatedBy,
-                Expr::value(updated_by.clone()),
-            )
-            .col_expr(
-                PlatformStateColumn::UpdatedAt,
-                Expr::value(chrono::Utc::now()),
-            )
-            .exec(db)
+        let manifest_json = Self::manifest_snapshot_json(&manifest)?;
+        let snapshot = SeaOrmModuleCompositionService::new(db.clone())
+            .replace_active_snapshot(ModuleCompositionUpdate {
+                expected_revision,
+                manifest: manifest_json,
+                updated_by,
+            })
             .await?;
-
-        if result.rows_affected != 1 {
-            let refreshed = Self::active_state(db).await?;
-            return Err(PlatformCompositionError::RevisionConflict {
-                expected: current.revision,
-                current: refreshed.revision,
-            });
-        }
-
-        Ok(PlatformCompositionSnapshot {
-            revision: next_revision,
-            manifest_hash,
-            manifest,
-        })
+        Self::snapshot_from_owner(snapshot)
     }
 
     pub fn manifest_snapshot_json(
@@ -192,14 +149,14 @@ impl PlatformCompositionService {
         hash_manifest(manifest).unwrap_or_else(|_| hash_manifest_snapshot(&serde_json::Value::Null))
     }
 
-    fn snapshot_from_state(
-        state: PlatformStateModel,
+    fn snapshot_from_owner(
+        snapshot: ModuleCompositionSnapshot,
     ) -> Result<PlatformCompositionSnapshot, PlatformCompositionError> {
-        let manifest = serde_json::from_value(state.manifest_json)
+        let manifest = serde_json::from_value(snapshot.manifest)
             .map_err(|err| PlatformCompositionError::Deserialize(err.to_string()))?;
         Ok(PlatformCompositionSnapshot {
-            revision: state.revision,
-            manifest_hash: state.manifest_hash,
+            revision: snapshot.revision,
+            manifest_hash: snapshot.manifest_hash,
             manifest,
         })
     }
@@ -233,102 +190,37 @@ impl PlatformCompositionBuildService {
     ) -> Result<PlatformCompositionBuildResult, PlatformCompositionBuildError> {
         ManifestManager::validate_with_registry(&manifest, registry)
             .map_err(PlatformCompositionError::from)?;
-
-        let txn = db.begin().await.map_err(PlatformCompositionError::from)?;
-        let result = async {
-            let current = PlatformCompositionService::active_state_on(&txn).await?;
-            if let Some(expected) = expected_revision {
-                if expected != current.revision {
-                    return Err(PlatformCompositionBuildError::Composition(
-                        PlatformCompositionError::RevisionConflict {
-                            expected,
-                            current: current.revision,
-                        },
-                    ));
-                }
-            }
-
-            let next_revision = current.revision + 1;
-            let manifest_json = PlatformCompositionService::manifest_snapshot_json(&manifest)?;
-            let manifest_hash = PlatformCompositionService::manifest_hash(&manifest);
-            let result = PlatformStateEntity::update_many()
-                .filter(PlatformStateColumn::Id.eq(ACTIVE_PLATFORM_STATE_ID))
-                .filter(PlatformStateColumn::Revision.eq(current.revision))
-                .col_expr(PlatformStateColumn::Revision, Expr::value(next_revision))
-                .col_expr(
-                    PlatformStateColumn::ManifestJson,
-                    Expr::value(manifest_json.clone()),
-                )
-                .col_expr(
-                    PlatformStateColumn::ManifestHash,
-                    Expr::value(manifest_hash.clone()),
-                )
-                .col_expr(
-                    PlatformStateColumn::UpdatedBy,
-                    Expr::value(Some(requested_by.clone())),
-                )
-                .col_expr(
-                    PlatformStateColumn::UpdatedAt,
-                    Expr::value(chrono::Utc::now()),
-                )
-                .exec(&txn)
-                .await
-                .map_err(PlatformCompositionError::from)?;
-
-            if result.rows_affected != 1 {
-                let refreshed = PlatformCompositionService::active_state_on(&txn).await?;
-                return Err(PlatformCompositionBuildError::Composition(
-                    PlatformCompositionError::RevisionConflict {
-                        expected: current.revision,
-                        current: refreshed.revision,
-                    },
-                ));
-            }
-
-            let snapshot = PlatformCompositionSnapshot {
-                revision: next_revision,
-                manifest_hash,
-                manifest,
-            };
-            let (build, _created) = BuildService::request_build_on_connection(
-                &txn,
-                BuildRequest {
-                    manifest_ref: format!("platform_state:{}", snapshot.revision),
-                    manifest_revision: snapshot.revision,
-                    manifest_snapshot: manifest_json,
-                    artifact_identity: snapshot.manifest_hash.clone(),
-                    requested_by: requested_by.clone(),
-                    reason: Some(reason),
-                    modules_delta: manifest_diff.summary(),
-                    modules: ManifestManager::build_modules(&snapshot.manifest),
-                    profile: ManifestManager::deployment_profile(&snapshot.manifest),
-                    execution_plan: ManifestManager::build_execution_plan(&snapshot.manifest),
+        PlatformCompositionService::active_snapshot(db).await?;
+        let manifest_json = PlatformCompositionService::manifest_snapshot_json(&manifest)?;
+        let enqueuer = ServerCompositionBuildEnqueuer {
+            manifest,
+            manifest_diff,
+            requested_by: requested_by.clone(),
+            reason,
+        };
+        let (owner_snapshot, build) = SeaOrmModuleCompositionService::new(db.clone())
+            .replace_active_snapshot_and_enqueue(
+                ModuleCompositionUpdate {
+                    expected_revision,
+                    manifest: manifest_json,
+                    updated_by: Some(requested_by),
                 },
+                &enqueuer,
             )
             .await
-            .map_err(|err| PlatformCompositionBuildError::Build(err.to_string()))?;
-
-            Ok(PlatformCompositionBuildResult { snapshot, build })
-        }
-        .await;
-
-        match result {
-            Ok(result) => {
-                txn.commit().await.map_err(PlatformCompositionError::from)?;
-                event_publisher
-                    .publish(rustok_build::BuildEvent::BuildRequested {
-                        build_id: result.build.id,
-                        requested_by: result.build.requested_by.clone(),
-                    })
-                    .await
-                    .map_err(|err| PlatformCompositionBuildError::Build(err.to_string()))?;
-                Ok(result)
-            }
-            Err(error) => {
-                let _ = txn.rollback().await;
-                Err(error)
-            }
-        }
+            .map_err(PlatformCompositionError::from)?;
+        let result = PlatformCompositionBuildResult {
+            snapshot: PlatformCompositionService::snapshot_from_owner(owner_snapshot)?,
+            build,
+        };
+        event_publisher
+            .publish(rustok_build::BuildEvent::BuildRequested {
+                build_id: result.build.id,
+                requested_by: result.build.requested_by.clone(),
+            })
+            .await
+            .map_err(|error| PlatformCompositionBuildError::Build(error.to_string()))?;
+        Ok(result)
     }
 }
 

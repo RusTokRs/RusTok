@@ -5,6 +5,7 @@ use rustok_iggy_connector::PublishRequest;
 use crate::config::IggyConfig;
 use crate::partitioning::partition_key;
 use crate::serialization::EventSerializer;
+use crate::MODULE_BUILD_TOPIC;
 
 pub fn build_publish_request(
     config: &IggyConfig,
@@ -25,7 +26,9 @@ pub fn build_publish_request(
 }
 
 fn determine_topic(envelope: &EventEnvelope) -> String {
-    if is_system_event(&envelope.event_type) {
+    if envelope.event_type == "module.build.queued" {
+        MODULE_BUILD_TOPIC.to_string()
+    } else if is_system_event(&envelope.event_type) {
         "system".to_string()
     } else {
         "domain".to_string()
@@ -98,6 +101,19 @@ mod tests {
         let envelope = EventEnvelope::new(Uuid::new_v4(), Some(Uuid::new_v4()), event);
 
         assert_eq!(determine_topic(&envelope), "system");
+    }
+
+    #[test]
+    fn determine_topic_routes_module_build_queue_events_to_dedicated_topic() {
+        let event = DomainEvent::ModuleBuildQueued {
+            request_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            project_id: "module-demo".to_string(),
+            attempt: 1,
+        };
+        let envelope = EventEnvelope::new(Uuid::new_v4(), None, event);
+
+        assert_eq!(determine_topic(&envelope), MODULE_BUILD_TOPIC);
     }
 
     #[test]

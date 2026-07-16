@@ -27,6 +27,9 @@
   of the domain being managed, not through direct role checks inside the module.
 - Product-facing search belongs to `rustok-search`; this crate does not expose a second
   search-engine contract.
+- During the first Search extraction pilot, Index remains the canonical
+  ingestion/read-model owner in the modular monolith. A later worker split is
+  allowed only after replay, deduplication, lag, rebuild, and recovery evidence.
 
 ## Entry points
 
@@ -42,4 +45,5 @@
 
 - [Module docs](./docs/README.md)
 - [Runtime fallback smoke evidence](./contracts/evidence/index-runtime-fallback-smoke.json)
+- [Media and Search extraction ADR](../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md)
 - [Platform docs index](../../docs/index.md)

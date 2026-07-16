@@ -76,7 +76,6 @@ Checks are published in `checks` with `kind = "worker"`:
 
 - `worker:outbox_relay` — critical worker if `rustok.events.transport = "outbox"` and runtime
   built relay config;
-- `worker:build_executor` — critical worker if `rustok.build.enabled = true`;
 - `worker:remote_executor_reaper` — critical worker if `rustok.registry.remote_executor.enabled = true`;
 - `worker:seo_bulk` — critical worker if SEO bulk worker is enabled and build contains `mod-seo`.
 
@@ -134,7 +133,7 @@ Prometheus surface now also publishes:
 
 Worker/readiness metrics:
 
-- `rustok_runtime_worker_state{worker="outbox_relay|build_executor|remote_executor_reaper|seo_bulk"}`:
+- `rustok_runtime_worker_state{worker="outbox_relay|remote_executor_reaper|seo_bulk"}`:
   `-1 = missing`, `0 = disabled`, `1 = running`, `2 = stopped`.
 - `rustok_runtime_worker_lifecycle_state{worker,state}`:
   `starting = 1`, `ready = 2`, `degraded = 3`, `stopping = 4`, `failed = 5`.

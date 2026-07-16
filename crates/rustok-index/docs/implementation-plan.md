@@ -27,6 +27,17 @@ rebuild-disabled fallback; they are not persistence-backed runtime proof.
   `npm run verify:foundation:fba-runtime-smoke` lock port semantics, fallback
   profiles, and the index/search boundary.
 
+## Deployment relationship with Search
+
+Index remains an ingestion and read-model owner, not a search-engine adapter.
+The first extraction pilot isolates the Search query/ingestion service while
+Index stays in the monolith. Search may request optional enrichment only
+through `IndexReadModelPort`; direct reads of Index tables from an isolated
+Search database are prohibited. A later Index worker split requires a
+replayable event or gRPC stream, inbox deduplication, lag/rebuild metrics,
+tenant/locale preservation, and restart/recovery evidence. Search connectors
+must never be implemented in this module or exposed through its ports.
+
 ## Open results
 
 1. **Replace source-locked adapters with persistence-backed runtime evidence.**

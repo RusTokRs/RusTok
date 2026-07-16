@@ -176,7 +176,14 @@ async fn apply(
         lock_ttl_secs: request.lock_ttl_secs.unwrap_or(900),
         pg_admin_url: request.pg_admin_url,
     };
-    let executor = ServerInstallExecutor::new(ctx.settings().build.clone());
+    let registry = ctx
+        .shared_get::<rustok_core::ModuleRegistry>()
+        .ok_or_else(|| {
+            Error::Message(
+                "static module registry is unavailable before installer execution".to_string(),
+            )
+        })?;
+    let executor = ServerInstallExecutor::new(ctx.settings().build.clone(), registry);
     INSTALL_JOBS.lock().await.insert(
         job_id,
         InstallJobStatusResponse {

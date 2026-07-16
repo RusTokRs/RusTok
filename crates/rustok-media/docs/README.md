@@ -16,6 +16,9 @@ relying on `rustok-storage` as the physical storage layer.
 - REST upload/list/get/delete/translation handlers on a narrow `MediaHttpRuntime` with explicit DB/storage handles; `controllers::axum_router` builds it from `HostRuntimeContext` and generated host composition mounts it without a framework adapter;
 - typed cross-module image contract `MediaImageDescriptor` (`url/alt/size/mime` + derived helpers), `MediaImageDeliveryProfile`, `MediaImagePublicUrlPolicy` and `proxy_path` helper for explicit direct-public/proxy-required/not-addressable URL policy;
 - FBA provider contract `MediaAssetReadPort` / `media.asset_read.v1` with source-locked evidence for deadline/context guards, typed `PortError` retryability and `MediaAssetSummary` kind/usage metadata;
+- FBA owner control contract `MediaAssetWritePort` / `media.asset_write.v1` for upload target
+  preparation, delete, translation, and tenant-scoped cleanup; binary bytes stay on Media-owned
+  streaming REST or a future presigned upload target, outside generic port DTOs;
 - GraphQL and REST adapters of the module;
 - upload validation by size/MIME policy and tenant isolation before accessing storage;
 - module-owned admin UI package `rustok-media-admin` with FFA split `core`/`transport`/`ui/leptos`; native server functions use `HostRuntimeContext` and host-provided typed `StorageService` instead of a host-wide `AppContext`;

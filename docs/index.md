@@ -44,6 +44,10 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [`rustok-modules` control-plane documentation](../crates/rustok-modules/docs/README.md)
 - [`rustok-verification-transport` gRPC documentation](../crates/rustok-verification-transport/docs/README.md)
 - [`rustok-verification-worker` documentation](../crates/rustok-verification-worker/docs/README.md)
+- [`rustok-module-build-transport` gRPC documentation](../crates/rustok-module-build-transport/docs/README.md)
+- [`rustok-module-build-worker` documentation](../crates/rustok-module-build-worker/docs/README.md)
+- [`rustok-module-build-dispatcher` documentation](../crates/rustok-module-build-dispatcher/docs/README.md)
+- [`rustok-worker-transport` mTLS foundation](../crates/rustok-worker-transport/docs/README.md)
 - [`rustok-sandbox` execution foundation documentation](../crates/rustok-sandbox/docs/README.md)
 - [`rustok-page-builder` Runtime Contract](../crates/rustok-page-builder/docs/README.md)
 - [Machine-readable FBA Registry Page Builder](../crates/rustok-page-builder/contracts/page-builder-fba-registry.json)
@@ -106,6 +110,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [ADR: Neutral Sandbox Foundation](../DECISIONS/2026-07-11-neutral-sandbox-foundation.md) — one sandbox contract for Alloy-authored Rhai, WebAssembly module artifacts and future sidecars
 - [ADR: Product Storage Integrity and Request Trust](../DECISIONS/2026-07-11-product-storage-integrity-and-request-trust.md) — PostgreSQL product storage, tenant-composite integrity, canonical primary category and request-bound product writes
 - [ADR: Shared API Contract Ownership](../DECISIONS/2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) — `Port*`, permission and locale contracts in `rustok-api`, one-way graph `rustok-core -> rustok-api` and owner-owned outbox adapter
+- [ADR: Media and Search Extraction Boundaries](../DECISIONS/2026-07-16-media-search-extraction-boundaries.md) — whole-module remote pilots with search connectors kept inside `rustok-search`
 - [Channels](./architecture/channels.md)
 - [DataLoader](./architecture/dataloader.md)
 - [Event Flow Contract](./architecture/event-flow-contract.md)

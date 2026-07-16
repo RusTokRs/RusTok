@@ -17,7 +17,8 @@
 - `IggyConfig`
 - `TopologyManager`
 - `ConsumerGroupManager`
-- `ConsumedEvent` / `IggyTransport::consume_next_as_group` / `IggyTransport::ack_consumed`
+- `ConsumedEvent`, `PersistentConsumerGroup`, and
+  `IggyTransport::open_persistent_consumer_group`
 - `DlqManager`
 - `ReplayManager`
 

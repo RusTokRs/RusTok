@@ -14,6 +14,9 @@
 - Publish the module-local `rustok-media-cli` adapter with `media cleanup`, keeping CLI/runtime assembly outside the domain crate.
 - Expose `MediaImageDescriptor` as the typed cross-module image contract (`url/alt/size/mime` + derived helpers, delivery profile, public URL policy, and proxy path helper) for SEO and other read-side consumers.
 - Publish `MediaAssetReadPort` / `media.asset_read.v1` source-locked FBA evidence, including deadline/context guards, typed `PortError` retryability mapping, and `MediaAssetSummary` kind/usage metadata for consumers.
+- Publish `MediaAssetWritePort` / `media.asset_write.v1` for upload control, deletion,
+  translations, and tenant-scoped cleanup. Upload bytes stay on a Media-owned streaming REST
+  target or a future presigned upload flow; they never enter generic port DTOs.
 
 ## Interactions
 
@@ -30,6 +33,9 @@
 - `rustok-media-admin` uses native Leptos `#[server]` functions as the default internal data layer,
   keeps GraphQL as the selected path for `list/detail/translations/delete/usage`, and preserves REST primary
   upload via `/api/media`.
+- Media is the first whole-module remote extraction pilot. Its current mode is
+  in-process; a future gRPC deployment contains the same owner service, media
+  database/schema, storage credentials, and port semantics.
 
 ## Entry points
 
@@ -43,6 +49,7 @@
 - `MediaStorageCleanupDecision` / `MediaStorageCleanupReport`
 - `rustok-media-cli` (`media cleanup [--limit <count>]`)
 - `MediaAssetSummary` / `MediaAssetKind` / `MediaAssetUsageProfile`
+- `MediaAssetWritePort` / `MediaUploadRequest` / `MediaUploadTarget`
 - `MediaImageDescriptor` / `MediaImageDeliveryProfile` / `MediaImagePublicUrlPolicy`
 - `MediaItem`
 - `MediaTranslationItem`
@@ -59,4 +66,5 @@
 ## Docs
 
 - [Module docs](./docs/README.md)
+- [Media and Search extraction ADR](../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md)
 - [Platform docs index](../../docs/index.md)

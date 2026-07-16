@@ -8,8 +8,7 @@ use axum::{
 use crate::common::settings::{EmailProvider, EventTransportKind};
 use crate::error::Result;
 use crate::services::app_lifecycle::{
-    BuildWorkerHandle, OutboxRelayWorkerHandle, RemoteExecutorReaperHandle,
-    RuntimeWorkerLifecycleState, StopHandle,
+    OutboxRelayWorkerHandle, RemoteExecutorReaperHandle, RuntimeWorkerLifecycleState, StopHandle,
 };
 use crate::services::event_transport_factory::{
     outbox_relay_supervisor_metrics_snapshot, EventRuntime, OutboxRelaySupervisorMetricsSnapshot,
@@ -401,12 +400,6 @@ fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
         "outbox_relay",
         relay_required,
         ctx.shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::is_finished),
-        stop_requested,
-    ));
-    payload.push_str(&format_runtime_worker_state(
-        "build_executor",
-        settings.build.enabled,
-        ctx.shared_map::<BuildWorkerHandle, _>(BuildWorkerHandle::is_finished),
         stop_requested,
     ));
     payload.push_str(&format_runtime_worker_state(
@@ -878,10 +871,12 @@ mod tests {
 
     #[test]
     fn runtime_worker_metrics_encode_disabled_running_stopped_and_missing_states() {
-        let disabled = format_runtime_worker_state("build_executor", false, None, false);
-        assert!(disabled.contains("rustok_runtime_worker_state{worker=\"build_executor\"} 0\n"));
+        let disabled = format_runtime_worker_state("remote_executor_reaper", false, None, false);
+        assert!(
+            disabled.contains("rustok_runtime_worker_state{worker=\"remote_executor_reaper\"} 0\n")
+        );
         assert!(disabled.contains(
-            "rustok_runtime_worker_lifecycle_state{worker=\"build_executor\",state=\"ready\"} 2\n"
+            "rustok_runtime_worker_lifecycle_state{worker=\"remote_executor_reaper\",state=\"ready\"} 2\n"
         ));
 
         let running = format_runtime_worker_state("outbox_relay", true, Some(false), false);

@@ -5,8 +5,8 @@ use uuid::Uuid;
 use rustok_core::ModuleRegistry;
 
 use crate::{
-    execute_module_toggle, resolve_effective_modules, ArtifactLifecycleExecutor,
-    ModuleDefinitionCatalog, ModuleDefinitionError, ModuleExecutionDispatcher,
+    execute_module_toggle, ArtifactLifecycleExecutor, ModuleDefinitionCatalog,
+    ModuleDefinitionError, ModuleEffectivePolicyQuery, ModuleExecutionDispatcher,
     ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationStoreError,
     TenantModuleOverride, TenantModuleSettingsRecord, TenantModuleSettingsRequest,
     TenantModuleStateStore,
@@ -84,11 +84,13 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             )
             .map_err(ModuleLifecycleDbWriterError::Definition)?,
         };
-        let effective_enabled_modules = resolve_effective_modules(
+        let effective_enabled_modules = ModuleEffectivePolicyQuery::new(
             &catalog,
             self.default_enabled_modules.iter().cloned(),
             overrides,
-        );
+        )
+        .execute()
+        .into_enabled_modules();
         let current_settings = self.settings(tenant_id, module_slug).await?;
         let dispatcher = match (self.static_registry, self.artifact_executor) {
             (Some(registry), Some(executor)) => {

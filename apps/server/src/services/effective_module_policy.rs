@@ -1,5 +1,5 @@
 use rustok_core::ModuleRegistry;
-use rustok_modules::{resolve_effective_modules, ModuleDefinitionCatalog, TenantModuleOverride};
+use rustok_modules::{ModuleDefinitionCatalog, ModuleEffectivePolicyQuery, TenantModuleOverride};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 use crate::models::_entities::tenant_modules::{
@@ -23,14 +23,16 @@ impl EffectiveModulePolicyService {
 
         let catalog = ModuleDefinitionCatalog::from_static_registry(registry)
             .map_err(PlatformCompositionError::Definition)?;
-        Ok(resolve_effective_modules(
+        Ok(ModuleEffectivePolicyQuery::new(
             &catalog,
             manifest.settings.default_enabled,
             overrides.into_iter().map(|module| TenantModuleOverride {
                 module_slug: module.module_slug,
                 enabled: module.enabled,
             }),
-        ))
+        )
+        .execute()
+        .into_enabled_modules())
     }
 
     pub async fn list_enabled(

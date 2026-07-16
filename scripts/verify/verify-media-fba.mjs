@@ -23,14 +23,22 @@ const runtimeOrderSmoke = json(registry.evidence.runtime_order_smoke);
 if (registry.schema_version !== 1) fail('registry schema_version drift');
 if (registry.module !== 'media' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'media.asset_read.v1') fail('contract_version drift');
+if (registry.deployment_topology?.current_class !== 'modular_monolith' || registry.deployment_topology?.extraction_class !== 'whole_module_service' || registry.deployment_topology?.remote_transport !== 'grpc' || registry.deployment_topology?.remote_status !== 'planned') fail('media extraction topology drift');
+sameSet(registry.deployment_topology.split_blockers, ['grpc_conformance', 'isolated_database_storage_evidence'], 'media split blockers');
 if (registry.evidence?.runtime_fallback_smoke !== fallbackSmokePath) fail('runtime fallback smoke evidence drift');
 if (registry.evidence?.port_error_matrix !== portErrorMatrixPath) fail('port error matrix evidence drift');
-const port = registry.ports?.[0];
-if (!port || port.name !== 'MediaAssetReadPort') fail('port name drift');
+const port = registry.ports?.find((candidate) => candidate.name === 'MediaAssetReadPort');
+if (!port) fail('read port name drift');
 sameSet(port.operations, ['get_asset', 'list_assets', 'get_image_descriptor', 'get_translations'], 'port operations');
 sameSet(port.read_operations, port.operations, 'read operations');
 if ((port.write_operations ?? []).length !== 0 || port.idempotency_required !== false) fail('media read port unexpectedly declares write semantics');
 if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('port context/error drift');
+const writePort = registry.ports?.find((candidate) => candidate.name === 'MediaAssetWritePort');
+if (!writePort || writePort.contract_version !== 'media.asset_write.v1') fail('write port identity/version drift');
+sameSet(writePort.operations, ['prepare_upload', 'delete_asset', 'upsert_translation', 'cleanup_storage_orphans'], 'write port operations');
+sameSet(writePort.write_operations, writePort.operations, 'write operations');
+if ((writePort.read_operations ?? []).length !== 0 || writePort.idempotency_required !== true || writePort.deadline_required !== true) fail('media write port policy drift');
+sameSet(writePort.upload_body_transport, ['media_owned_streaming_rest', 'future_presigned_upload'], 'upload body transport');
 
 const manifest = read('crates/rustok-media/rustok-module.toml');
 hasAll(manifest, ['[fba.provider]', 'registry = "contracts/media-fba-registry.json"', 'contract_version = "media.asset_read.v1"'], 'manifest');
@@ -39,7 +47,7 @@ const lib = read('crates/rustok-media/src/lib.rs');
 hasAll(lib, ['pub mod ports;', 'pub use ports::*;'], 'lib.rs');
 const ports = read('crates/rustok-media/src/ports.rs');
 const dto = read('crates/rustok-media/src/dto.rs');
-hasAll(ports, ['pub trait MediaAssetReadPort', 'impl MediaAssetReadPort for MediaService', 'MediaImageDescriptor', 'PortContext', 'PortError'], 'ports.rs');
+hasAll(ports, ['pub trait MediaAssetReadPort', 'impl MediaAssetReadPort for MediaService', 'pub trait MediaAssetWritePort', 'impl MediaAssetWritePort for MediaService', 'MediaImageDescriptor', 'MediaUploadRequest', 'MEDIA_OWNER_STREAMING_UPLOAD_PATH', 'PortContext', 'PortError'], 'ports.rs');
 const implStart = ports.indexOf('impl MediaAssetReadPort for MediaService');
 if (implStart === -1) fail('ports.rs missing MediaService impl');
 const implPorts = ports.slice(implStart);
@@ -51,6 +59,18 @@ for (const op of port.read_operations) {
   if (!body.includes('context.require_policy(PortCallPolicy::read())?') && !body.includes('require_media_read_policy(&context)?')) fail(`${op} does not require shared read policy`);
   if (body.includes('context.require_write_semantics()?')) fail(`${op} unexpectedly requires write semantics`);
 }
+
+const writeImplStart = ports.indexOf('impl MediaAssetWritePort for MediaService');
+if (writeImplStart === -1) fail('ports.rs missing MediaService write impl');
+const writeImpl = ports.slice(writeImplStart);
+for (const op of writePort.write_operations) {
+  const idx = writeImpl.indexOf(`async fn ${op}`);
+  if (idx === -1) fail(`ports.rs missing write operation ${op}`);
+  const next = writeImpl.indexOf('\n    async fn ', idx + 1);
+  const body = writeImpl.slice(idx, next === -1 ? writeImpl.length : next);
+  if (!body.includes('require_media_write_policy(&context)?')) fail(`${op} does not require shared write policy`);
+}
+if (!ports.includes('context.require_policy(PortCallPolicy::write())')) fail('ports.rs missing explicit media write policy guard helper');
 
 for (const mode of fallbackSmoke.degraded_modes) {
   if (!mode.source_marker || !mode.consumer_contract) fail(`fallback mode ${mode.name} is missing source marker/consumer contract`);
@@ -86,9 +106,9 @@ if (!ports.includes('media.invalid_tenant_id')) fail('ports.rs missing invalid t
 if (!ports.includes('fn require_media_read_policy') || !ports.includes('context.require_policy(PortCallPolicy::read())')) fail('ports.rs missing explicit media read policy guard helper');
 
 const plan = read('crates/rustok-media/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `boundary_ready`', 'media-fba-registry.json', 'MediaAssetReadPort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json', 'media-port-error-matrix.json', 'public URL policy', 'MediaAssetSummary'], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'media-fba-registry.json', 'MediaAssetReadPort', 'MediaAssetWritePort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json', 'media-port-error-matrix.json', 'public URL policy', 'MediaAssetSummary', 'whole-module extraction pilot', '2026-07-16-media-search-extraction-boundaries.md'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `media` |', 'crates/rustok-media/contracts/media-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
+hasAll(central, ['| `media` |', 'MediaAssetWritePort', 'streaming REST', 'crates/rustok-media/contracts/media-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`media`', 'MediaAssetReadPort', 'media-fba-registry.json'], 'unified plan');
 

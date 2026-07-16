@@ -21,6 +21,7 @@
 - `ConnectorConfig`
 - `PublishRequest`
 - `SubscriberMessage` / `SubscriberMessageMetadata`
+- `ConsumerCursor` for persistent remote consumer-group receive/ack
 - `ConnectorAckToken`
 
 ## Interactions

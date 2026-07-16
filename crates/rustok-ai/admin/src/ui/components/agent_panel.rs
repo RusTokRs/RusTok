@@ -75,6 +75,7 @@ pub fn AiAgentPanel(
     let catalog_locale = ui_locale.clone();
     let workflows_locale = ui_locale.clone();
     let principals_locale = ui_locale.clone();
+    let update_principal_locale = ui_locale.clone();
     let operations_label = t(ui_locale.as_deref(), "ai.agents.operations", "Operations");
     let capabilities_label = t(
         ui_locale.as_deref(),
@@ -294,7 +295,7 @@ pub fn AiAgentPanel(
                     <div class="text-xs text-muted-foreground">{move || {
                         let selected = selected_principal_id.get();
                         if selected.is_empty() {
-                            t(ui_locale.as_deref(), "ai.agents.noPrincipalSelected", "Select a principal above")
+                            t(update_principal_locale.as_deref(), "ai.agents.noPrincipalSelected", "Select a principal above")
                         } else {
                             format!("{} ({})", principal_slug.get(), if principal_active.get() { active_label_for_editor.clone() } else { inactive_label_for_editor.clone() })
                         }

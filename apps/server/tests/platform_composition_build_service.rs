@@ -1,6 +1,7 @@
 use rustok_build::build::Entity as BuildEntity;
 use rustok_build::NoopBuildEventPublisher;
 use rustok_core::ModuleRegistry;
+use rustok_modules::ModuleCompositionError;
 use rustok_server::modules::{ManifestDiff, ManifestModuleSpec, ModulesManifest};
 use rustok_server::services::platform_composition::{
     PlatformCompositionBuildError, PlatformCompositionBuildService, PlatformCompositionService,
@@ -164,7 +165,9 @@ async fn stale_revision_does_not_enqueue_build() {
     assert!(matches!(
         err,
         PlatformCompositionBuildError::Composition(
-            rustok_server::services::platform_composition::PlatformCompositionError::RevisionConflict { .. }
+            rustok_server::services::platform_composition::PlatformCompositionError::Owner(
+                ModuleCompositionError::RevisionConflict { .. }
+            )
         )
     ));
 
@@ -207,7 +210,14 @@ async fn build_insert_error_rolls_back_platform_revision() {
         Err(err) => err,
     };
 
-    assert!(matches!(err, PlatformCompositionBuildError::Build(_)));
+    assert!(matches!(
+        err,
+        PlatformCompositionBuildError::Composition(
+            rustok_server::services::platform_composition::PlatformCompositionError::Owner(
+                ModuleCompositionError::BuildEnqueue(_)
+            )
+        )
+    ));
 
     let state_after = PlatformCompositionService::active_snapshot(&db)
         .await
@@ -308,7 +318,9 @@ async fn update_manifest_stale_revision_conflict_does_not_update_platform_state(
 
     assert!(matches!(
         err,
-        rustok_server::services::platform_composition::PlatformCompositionError::RevisionConflict { .. }
+        rustok_server::services::platform_composition::PlatformCompositionError::Owner(
+            ModuleCompositionError::RevisionConflict { .. }
+        )
     ));
 
     assert_snapshot_unchanged(&db, &seeded, "stale revision conflict (update path)").await;

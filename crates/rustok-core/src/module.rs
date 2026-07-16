@@ -80,6 +80,7 @@ impl ModuleRuntimeExtensions {
 
     /// Transfers all module-published typed values into a neutral host runtime
     /// context. The host does not inspect individual capability types.
+    #[cfg(feature = "server")]
     pub fn apply_to_host_runtime(
         &self,
         host: rustok_api::HostRuntimeContext,

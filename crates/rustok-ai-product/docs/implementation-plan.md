@@ -27,17 +27,33 @@ for complete tenant, locale, and persistence validation.
   `crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json`,
   and `scripts/verify/verify-ai-product-fba.mjs`.
 
+## Completed direct-execution evidence
+
+`direct::tests::direct_product_copy_updates_only_the_requested_locale_through_catalog_owner`
+executes `product_copy` through the composed `rustok-ai` handler and the public
+`rustok-product::CatalogService`. Its SQLite fixture contains English and Russian
+translations; after a Russian request, the test proves that the Russian owner
+translation changes while the English title and handle remain unchanged. This
+keeps generated copy inside the product owner boundary and does not add an
+AI-specific product port or persistence path.
+
+`direct::tests::direct_product_attributes_returns_review_only_suggestions_without_product_write`
+proves the complementary attributes boundary. It reads the product through the
+owner service, returns validated suggestions marked `review_required=true` and
+`persistence=none`, and verifies that the localized product record is unchanged.
+Applying an attribute remains an explicit owner-owned operator action rather
+than an implicit AI write.
+
 ## Next results
 
 1. **Execute the catalog-read consumer contract.** Add a composed runtime test
    for projection reads, deadline/error propagation, and every declared
    degraded behavior. Done when the static matrix has concrete runtime evidence
    for the `rustok-ai` consumer.
-2. **Prove localized write safety for generated output.** Cover product-copy
-   and attributes through the direct runtime up to the owner persistence
-   boundary, including locale resolution and operator review where catalog
-   context is unavailable. Done when output cannot silently overwrite a
-   different locale or bypass the product owner.
+2. **Keep generated-output safety covered.** Product-copy has direct
+   owner-persistence evidence that preserves a non-target locale; product
+   attributes are explicitly review-only and cannot write a product. Extend
+   these tests whenever a product-owned apply command is introduced.
 3. **Render the owner-admin package in its hosts.** Connect the existing
    core/transport/UI package to admin routes and verify native server functions
    with parallel GraphQL/headless parity. Done when host-level evidence covers

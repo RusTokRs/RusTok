@@ -14,10 +14,17 @@ pub enum ContentAiApprovalMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContentAiDegradedMode {
+    RequireOperatorReview,
+    KeepDraftForReview,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ContentAiPolicyRule {
     pub task_slug: &'static str,
     pub tool_name: &'static str,
     pub approval_mode: ContentAiApprovalMode,
+    pub degraded_mode: ContentAiDegradedMode,
     pub rationale: &'static str,
 }
 
@@ -46,12 +53,14 @@ pub const CONTENT_AI_POLICY_MATRIX: &[ContentAiPolicyRule] = &[
         task_slug: CONTENT_MODERATION_TASK_SLUG,
         tool_name: CONTENT_MODERATION_TOOL_NAME,
         approval_mode: ContentAiApprovalMode::OperatorApproval,
+        degraded_mode: ContentAiDegradedMode::RequireOperatorReview,
         rationale: "moderation decisions can hide or block user-generated content",
     },
     ContentAiPolicyRule {
         task_slug: BLOG_DRAFT_TASK_SLUG,
         tool_name: BLOG_DRAFT_TOOL_NAME,
         approval_mode: ContentAiApprovalMode::Auto,
+        degraded_mode: ContentAiDegradedMode::KeepDraftForReview,
         rationale: "blog drafts create unpublished editorial artifacts",
     },
 ];
@@ -66,6 +75,16 @@ pub fn content_ai_sensitive_tools() -> Vec<String> {
         .filter(|rule| matches!(rule.approval_mode, ContentAiApprovalMode::OperatorApproval))
         .map(|rule| rule.tool_name.to_string())
         .collect()
+}
+
+pub fn blog_draft_must_remain_unpublished() -> bool {
+    content_ai_policy_matrix().iter().any(|rule| {
+        rule.task_slug == BLOG_DRAFT_TASK_SLUG
+            && matches!(
+                rule.degraded_mode,
+                ContentAiDegradedMode::KeepDraftForReview
+            )
+    })
 }
 
 /// Domain-owned registration entrypoint for content AI vertical metadata.
@@ -170,10 +189,11 @@ pub fn validate_moderation_decision(
 #[cfg(test)]
 mod tests {
     use super::{
-        content_ai_policy_matrix, content_ai_sensitive_tools, content_ai_verticals,
-        normalize_moderation_decision, validate_moderation_decision, ContentAiApprovalMode,
-        GeneratedBlogDraft, GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG,
-        CONTENT_MODERATION_TASK_SLUG, CONTENT_MODERATION_TOOL_NAME,
+        blog_draft_must_remain_unpublished, content_ai_policy_matrix, content_ai_sensitive_tools,
+        content_ai_verticals, normalize_moderation_decision, validate_moderation_decision,
+        ContentAiApprovalMode, ContentAiDegradedMode, GeneratedBlogDraft,
+        GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG, CONTENT_MODERATION_TASK_SLUG,
+        CONTENT_MODERATION_TOOL_NAME,
     };
 
     #[test]
@@ -196,6 +216,11 @@ mod tests {
             ContentAiApprovalMode::OperatorApproval
         );
         assert_eq!(matrix[1].approval_mode, ContentAiApprovalMode::Auto);
+        assert_eq!(
+            matrix[1].degraded_mode,
+            ContentAiDegradedMode::KeepDraftForReview
+        );
+        assert!(blog_draft_must_remain_unpublished());
         assert_eq!(
             content_ai_sensitive_tools(),
             vec![CONTENT_MODERATION_TOOL_NAME]

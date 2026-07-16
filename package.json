@@ -21,6 +21,7 @@
     "verify:storefront:routes": "node scripts/verify/verify-storefront-module-routes.mjs",
     "verify:api:surface-contract": "node scripts/verify/verify-api-surface-contract.mjs",
     "verify:axum:runtime": "node scripts/verify/verify-axum-runtime.mjs",
+    "verify:module-governance:write-path": "node scripts/verify/verify-module-governance-write-path.mjs",
     "generate:cli-registry": "node scripts/generate/generate-cli-registry.mjs",
     "verify:cli-registry": "node scripts/generate/generate-cli-registry.mjs --check",
     "verify:inventory:admin-boundary": "node scripts/verify/verify-inventory-admin-boundary.mjs",

@@ -331,14 +331,10 @@ pub struct SearchReindexSettings {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BuildRuntimeSettings {
+    /// Enables the trusted static deployment adapter used by installer flows.
+    /// It does not start a server-local build worker.
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default = "default_build_poll_interval_ms")]
-    pub poll_interval_ms: u64,
-    #[serde(default)]
-    pub auto_release_environment: Option<String>,
-    #[serde(default)]
-    pub auto_activate_release: bool,
     #[serde(default)]
     pub deployment: BuildDeploymentSettings,
 }
@@ -499,9 +495,6 @@ impl Default for BuildRuntimeSettings {
     fn default() -> Self {
         Self {
             enabled: false,
-            poll_interval_ms: default_build_poll_interval_ms(),
-            auto_release_environment: None,
-            auto_activate_release: false,
             deployment: BuildDeploymentSettings::default(),
         }
     }
@@ -765,33 +758,6 @@ impl RustokSettings {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "rustok.search.reindex.yield_every must be > 0",
-            )));
-        }
-
-        if parsed.build.poll_interval_ms == 0 {
-            return Err(serde_json::Error::io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "rustok.build.poll_interval_ms must be > 0",
-            )));
-        }
-
-        if let Some(environment) = parsed
-            .build
-            .auto_release_environment
-            .as_ref()
-            .map(|value| value.trim().to_string())
-        {
-            if environment.is_empty() {
-                parsed.build.auto_release_environment = None;
-            } else {
-                parsed.build.auto_release_environment = Some(environment);
-            }
-        }
-
-        if parsed.build.auto_activate_release && parsed.build.auto_release_environment.is_none() {
-            return Err(serde_json::Error::io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "rustok.build.auto_activate_release requires rustok.build.auto_release_environment",
             )));
         }
 
@@ -1059,10 +1025,6 @@ fn default_search_reindex_entity_budget() -> usize {
 
 fn default_search_reindex_yield_every() -> u64 {
     50
-}
-
-fn default_build_poll_interval_ms() -> u64 {
-    5_000
 }
 
 fn default_registry_remote_executor_lease_ttl_ms() -> u64 {
@@ -1693,7 +1655,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_build_runtime_defaults_and_rejects_invalid_activation_policy() {
+    fn reads_build_deployment_defaults_and_validates_deployment_configuration() {
         let _guard = env_lock().lock().expect("env lock poisoned");
         let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
@@ -1702,9 +1664,6 @@ mod tests {
         let settings =
             RustokSettings::from_settings(&Some(serde_json::json!({ "rustok": {} }))).unwrap();
         assert!(!settings.build.enabled);
-        assert_eq!(settings.build.poll_interval_ms, 5_000);
-        assert!(settings.build.auto_release_environment.is_none());
-        assert!(!settings.build.auto_activate_release);
         assert_eq!(
             settings.build.deployment.backend,
             BuildDeploymentBackendKind::RecordOnly
@@ -1719,21 +1678,6 @@ mod tests {
         assert_eq!(settings.build.deployment.docker_bin, "docker");
         assert!(settings.build.deployment.image_repository.is_none());
         assert!(settings.build.deployment.rollout_command.is_none());
-
-        let raw = serde_json::json!({
-            "rustok": {
-                "build": {
-                    "enabled": true,
-                    "poll_interval_ms": 1000,
-                    "auto_activate_release": true
-                }
-            }
-        });
-        let err =
-            RustokSettings::from_settings(&Some(raw)).expect_err("build activation validation");
-        assert!(err.to_string().contains(
-            "rustok.build.auto_activate_release requires rustok.build.auto_release_environment"
-        ));
 
         let raw = serde_json::json!({
             "rustok": {

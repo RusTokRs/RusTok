@@ -540,6 +540,31 @@ pub enum DomainEvent {
         tenant_id: Uuid,
         revision: u64,
     },
+    ModuleArtifactDataPurged {
+        tenant_id: Uuid,
+        module_slug: String,
+        data_contract_revision: u64,
+        namespace_revision: u64,
+        purged_records: u64,
+    },
+    ModuleArtifactSecretBound {
+        tenant_id: Uuid,
+        module_slug: String,
+        data_contract_revision: u64,
+        revision: u64,
+    },
+    ModuleBuildQueued {
+        request_id: Uuid,
+        tenant_id: Uuid,
+        project_id: String,
+        attempt: u32,
+    },
+    ModuleBuildCompleted {
+        request_id: Uuid,
+        tenant_id: Uuid,
+        outcome: String,
+        retryable: bool,
+    },
     LocaleEnabled {
         tenant_id: Uuid,
         locale: String,
@@ -731,6 +756,10 @@ impl DomainEvent {
             }
             Self::ModuleArtifactDeactivated { .. } => "module.artifact.deactivated",
             Self::ModuleArtifactTenantDisabled { .. } => "module.artifact.tenant_disabled",
+            Self::ModuleArtifactDataPurged { .. } => "module.artifact.data_purged",
+            Self::ModuleArtifactSecretBound { .. } => "module.artifact.secret_bound",
+            Self::ModuleBuildQueued { .. } => "module.build.queued",
+            Self::ModuleBuildCompleted { .. } => "module.build.completed",
             Self::LocaleEnabled { .. } => "locale.enabled",
             Self::LocaleDisabled { .. } => "locale.disabled",
             Self::PlatformSettingsChanged { .. } => "platform_settings.changed",
@@ -875,6 +904,10 @@ impl DomainEvent {
             Self::ModuleArtifactMigrationCheckpointed { .. } => 1,
             Self::ModuleArtifactDeactivated { .. } => 1,
             Self::ModuleArtifactTenantDisabled { .. } => 1,
+            Self::ModuleArtifactDataPurged { .. } => 1,
+            Self::ModuleArtifactSecretBound { .. } => 1,
+            Self::ModuleBuildQueued { .. } => 1,
+            Self::ModuleBuildCompleted { .. } => 1,
             Self::LocaleEnabled { .. } => 1,
             Self::LocaleDisabled { .. } => 1,
             Self::PlatformSettingsChanged { .. } => 1,
@@ -1849,6 +1882,78 @@ impl ValidateEvent for DomainEvent {
                     return Err(EventValidationError::InvalidValue(
                         "revision",
                         "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactDataPurged {
+                tenant_id,
+                module_slug,
+                data_contract_revision,
+                namespace_revision,
+                purged_records: _,
+            } => {
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 48)?;
+                if *data_contract_revision == 0 || *namespace_revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "data or namespace revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactSecretBound {
+                tenant_id,
+                module_slug,
+                data_contract_revision,
+                revision,
+            } => {
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 48)?;
+                if *data_contract_revision == 0 || *revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "data contract or binding revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleBuildQueued {
+                request_id,
+                tenant_id,
+                project_id,
+                attempt,
+            } => {
+                validators::validate_not_nil_uuid("request_id", request_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_empty("project_id", project_id)?;
+                validators::validate_max_length("project_id", project_id, 256)?;
+                if *attempt == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "attempt",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleBuildCompleted {
+                request_id,
+                tenant_id,
+                outcome,
+                retryable: _,
+            } => {
+                validators::validate_not_nil_uuid("request_id", request_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                if !matches!(
+                    outcome.as_str(),
+                    "succeeded" | "failed" | "cancelled" | "nondeterministic"
+                ) {
+                    return Err(EventValidationError::InvalidValue(
+                        "outcome",
+                        "must be a canonical module build outcome".to_string(),
                     ));
                 }
                 Ok(())

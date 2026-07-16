@@ -14,17 +14,31 @@ canonical sequence is maintained in the
 Server work for that plan is:
 
 - mount the `rustok-modules` facade through authenticated tenant/actor contexts;
-- supply database, OCI, trust, build scheduling, events, audit, clock, and other
-  infrastructure adapters;
+- supply database, OCI, trust, events, audit, clock, and other infrastructure
+  adapters; module-build scheduling and execution run in their separate
+  dispatcher and worker deployments;
 - migrate platform composition, build enqueue, registry governance, effective
   policy, GraphQL, and native adapters to owner operations;
+- keep release activation as a host side-effect adapter: it synchronizes OAuth
+  applications, then delegates the active-release projection to
+  `SeaOrmModuleCompositionService` and never writes `platform_state` directly;
+- adapt typed manifests and bootstrap-file loading at the host boundary while
+  `SeaOrmModuleCompositionService` owns canonical active-snapshot reads and
+  bootstrap persistence, revision-CAS updates, and the combined CAS/build
+  transaction; the server's build adapter receives the owner transaction and
+  publishes the build notification only after commit;
 - split compile-time Core/static implementation registration from the durable
   artifact-aware definition catalog and runtime dispatcher;
+- keep the static registry boot-owned in `ServerRuntimeContext`; request guards
+  consume that injected adapter and fail closed instead of constructing a
+  registry per request; installer execution receives the same boot-owned
+  registry explicitly and does not construct a second topology;
 - supply platform content-addressed artifact storage, transactional outbox, and
   multi-node reconciliation adapters;
 - preserve transactional and transport parity guarantees during cutover;
 - delete replaced service business logic, error taxonomies, direct writes, and
-  optional runtime Cargo references;
+  runtime Cargo execution references; trusted static distribution builds remain
+  installer/CLI operations and never start from server runtime workers;
 - keep only Core/bootstrap and explicitly promoted native modules in static
   host composition.
 

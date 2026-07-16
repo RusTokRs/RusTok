@@ -5,12 +5,14 @@ use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::config::IggyConfig;
+use crate::MODULE_BUILD_TOPIC;
 
 #[derive(Debug)]
 pub struct TopologyManager {
     stream_name: Arc<RwLock<String>>,
     domain_topic: Arc<RwLock<String>>,
     system_topic: Arc<RwLock<String>>,
+    module_build_topic: Arc<RwLock<String>>,
     partitions: Arc<RwLock<u32>>,
     initialized: Arc<RwLock<bool>>,
 }
@@ -27,6 +29,7 @@ impl TopologyManager {
             stream_name: Arc::new(RwLock::new(String::new())),
             domain_topic: Arc::new(RwLock::new(String::new())),
             system_topic: Arc::new(RwLock::new(String::new())),
+            module_build_topic: Arc::new(RwLock::new(String::new())),
             partitions: Arc::new(RwLock::new(0)),
             initialized: Arc::new(RwLock::new(false)),
         }
@@ -53,6 +56,7 @@ impl TopologyManager {
         *self.stream_name.write().await = stream_name.clone();
         *self.domain_topic.write().await = "domain".to_string();
         *self.system_topic.write().await = "system".to_string();
+        *self.module_build_topic.write().await = MODULE_BUILD_TOPIC.to_string();
         *self.partitions.write().await = partitions;
         *self.initialized.write().await = true;
 
@@ -69,6 +73,11 @@ impl TopologyManager {
 
     pub async fn system_topic(&self) -> String {
         self.system_topic.read().await.clone()
+    }
+
+    /// Dedicated queue topic for immutable module build requests.
+    pub async fn module_build_topic(&self) -> String {
+        self.module_build_topic.read().await.clone()
     }
 
     pub async fn is_initialized(&self) -> bool {
@@ -100,6 +109,7 @@ mod tests {
         assert_eq!(manager.stream_name().await, "rustok");
         assert_eq!(manager.domain_topic().await, "domain");
         assert_eq!(manager.system_topic().await, "system");
+        assert_eq!(manager.module_build_topic().await, MODULE_BUILD_TOPIC);
     }
 
     struct MockConnector;

@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use rustok_verification_transport::proto::verification_service_server::VerificationServiceServer;
 use rustok_verification_worker::{
-    CosignTrustVerifier, ListenerConfig, VerificationGrpcService, VerificationPolicy,
+    CosignTrustVerifier, MutualTlsListenerConfig, VerificationGrpcService, VerificationPolicy,
     VerificationWorker,
 };
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = ListenerConfig::from_env()?;
+    let listener = MutualTlsListenerConfig::from_env_prefix("RUSTOK_VERIFICATION")?;
     let policy: VerificationPolicy =
         serde_json::from_str(&std::env::var("RUSTOK_VERIFICATION_POLICY_JSON")?)?;
     policy.validate()?;

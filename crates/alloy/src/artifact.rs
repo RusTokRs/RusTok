@@ -4,7 +4,7 @@ use thiserror::Error;
 use rustok_modules::{
     ArtifactAdmissionLimits, ArtifactOrigin, ArtifactPayloadKind, ArtifactRelease,
     ArtifactReleaseDraft, ArtifactSourceLineage, ModuleArtifactDescriptor, ModuleArtifactError,
-    ModuleArtifactPackage, OciArtifactReference,
+    ModuleArtifactPackage, OciArtifactReference, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
 };
 use rustok_sandbox::CapabilityName;
 
@@ -39,7 +39,7 @@ pub fn stage_rhai_module_release(
     let module_slug = module_slug.into();
     let source_digest = sha256_digest(script.code.as_bytes());
     let descriptor = ModuleArtifactDescriptor {
-        schema_version: 1,
+        schema_version: MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
         slug: module_slug.clone(),
         version: version.into(),
         payload_kind: ArtifactPayloadKind::Rhai,
@@ -53,8 +53,9 @@ pub fn stage_rhai_module_release(
         bindings: Vec::new(),
         dependencies: Vec::new(),
         permissions: Vec::new(),
-        settings_schema: None,
-        data_schema: None,
+        schema_documents: Vec::new(),
+        settings_schema_digest: None,
+        data_schema_digest: None,
         ui_contributions: Vec::new(),
         persistence_contract: None,
     };
@@ -103,7 +104,7 @@ pub fn fork_rhai_module_release(
 /// Packages reviewed Alloy source as the immutable OCI payload selected by an
 /// already-staged module release. The caller supplies a digest-pinned OCI
 /// manifest location; the descriptor separately pins the source payload layer.
-pub fn package_rhai_module_release(
+pub async fn package_rhai_module_release(
     reference: OciArtifactReference,
     draft: &ArtifactReleaseDraft,
     script: &Script,
@@ -118,10 +119,11 @@ pub fn package_rhai_module_release(
         reference,
         descriptor: draft.descriptor.clone(),
         media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
-        payload: script.code.as_bytes().to_vec(),
+        payload: rustok_modules::ArtifactPayloadSource::Bytes(script.code.as_bytes().to_vec()),
     };
     package
         .verify(ArtifactAdmissionLimits::default())
+        .await
         .map_err(|error| AlloyArtifactError::InvalidPackage(error.to_string()))?;
     Ok(package)
 }
@@ -193,8 +195,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn reviewed_rhai_source_packages_at_a_digest_pinned_oci_reference() {
+    #[tokio::test]
+    async fn reviewed_rhai_source_packages_at_a_digest_pinned_oci_reference() {
         let source = script("input.total * 0.2");
         let draft = stage_rhai_module_release("tax_adjustment", "1.0.0", &source, Vec::new())
             .expect("stage release");
@@ -207,9 +209,14 @@ mod tests {
             &draft,
             &source,
         )
+        .await
         .expect("package release");
 
         assert_ne!(package.reference.digest, draft.descriptor.artifact_digest);
-        assert_eq!(package.payload, source.code.as_bytes());
+        assert!(matches!(
+            package.payload,
+            rustok_modules::ArtifactPayloadSource::Bytes(payload)
+                if payload == source.code.as_bytes()
+        ));
     }
 }

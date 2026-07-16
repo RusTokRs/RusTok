@@ -8,12 +8,10 @@ use serde_json::Value;
 use thiserror::Error;
 use tokio::sync::Mutex;
 
-use rustok_sandbox::{
-    ExecutionPhase, SandboxContext, SandboxOutcome, SandboxPolicy, SandboxRuntime,
-};
+use rustok_sandbox::{SandboxContext, SandboxOutcome, SandboxPolicy, SandboxRuntime};
 
 use crate::{
-    ArtifactBlobStore, ArtifactLifecycleDispatch, ArtifactLifecycleExecutor, ArtifactReleaseRef,
+    ArtifactBindingDispatch, ArtifactBindingExecutor, ArtifactBlobStore, ArtifactReleaseRef,
     InstalledModuleArtifact, ModuleInstallationError, ModuleRuntimeBinding,
 };
 
@@ -168,7 +166,7 @@ pub trait ArtifactSandboxPolicyResolver: Send + Sync {
     ) -> Result<SandboxPolicy, String>;
 }
 
-/// Production adapter from dispatcher lifecycle bindings to the shared sandbox.
+/// Production adapter from admitted dispatcher bindings to the shared sandbox.
 pub struct ArtifactRuntimeLifecycleExecutor<R, I, P> {
     runtime: ArtifactRuntime<R>,
     installations: I,
@@ -189,37 +187,27 @@ where
 }
 
 #[async_trait]
-impl<B, I, P> ArtifactLifecycleExecutor for ArtifactRuntimeLifecycleExecutor<B, I, P>
+impl<B, I, P> ArtifactBindingExecutor for ArtifactRuntimeLifecycleExecutor<B, I, P>
 where
     B: ArtifactBlobStore,
     I: ArtifactInstallationResolver,
     P: ArtifactSandboxPolicyResolver,
 {
-    async fn dispatch_lifecycle(
+    async fn dispatch_binding(
         &self,
-        dispatch: ArtifactLifecycleDispatch<'_>,
-    ) -> Result<(), String> {
+        dispatch: ArtifactBindingDispatch<'_>,
+    ) -> Result<Value, String> {
         let artifact = self
             .installations
             .resolve(dispatch.release, dispatch.tenant_id)
             .await?;
         let policy = self.policies.resolve(&artifact, dispatch.tenant_id).await?;
-        let mut context = SandboxContext::new(ExecutionPhase::Lifecycle);
+        let mut context = SandboxContext::new(dispatch.phase);
         context.tenant_id = Some(dispatch.tenant_id);
         self.runtime
-            .execute_binding(
-                &artifact,
-                dispatch.binding,
-                context,
-                serde_json::json!({
-                    "binding_id": dispatch.binding.id,
-                    "phase": dispatch.phase,
-                    "config": dispatch.config,
-                }),
-                policy,
-            )
+            .execute_binding(&artifact, dispatch.binding, context, dispatch.input, policy)
             .await
-            .map(|_| ())
+            .map(|outcome| outcome.output)
             .map_err(|error| error.to_string())
     }
 }
@@ -303,7 +291,7 @@ mod tests {
                 digest: format!("sha256:{}", "a".repeat(64)),
             },
             descriptor: ModuleArtifactDescriptor {
-                schema_version: 1,
+                schema_version: crate::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
                 slug: "sample_module".to_string(),
                 version: "1.0.0".to_string(),
                 payload_kind: ArtifactPayloadKind::Rhai,
@@ -317,8 +305,9 @@ mod tests {
                 bindings: Vec::new(),
                 dependencies: Vec::new(),
                 permissions: Vec::new(),
-                settings_schema: None,
-                data_schema: None,
+                schema_documents: Vec::new(),
+                settings_schema_digest: None,
+                data_schema_digest: None,
                 ui_contributions: Vec::new(),
                 persistence_contract: None,
             },

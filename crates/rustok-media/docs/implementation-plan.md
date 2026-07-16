@@ -31,6 +31,25 @@ storage handle. `MediaImageDescriptor` is the cross-module SEO image boundary;
 - `scripts/verify/verify-media-admin-boundary.mjs` and
   `npm run verify:media:fba` lock the owner UI boundary and read-provider order.
 
+## Deployment and extraction track
+
+Media is the first whole-module extraction pilot. The current deployment stays
+in the modular monolith; the target remote deployment runs the complete
+`rustok-media` owner with its own database/schema, storage credentials, and
+`MediaAssetReadPort` gRPC adapter. Consumers continue to use the same port and
+must not receive raw storage handles or blob payloads through the cross-module
+boundary. See [ADR: Media and Search Extraction Boundaries](../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md).
+
+The pilot is complete only after loopback transport conformance, isolated
+database/storage execution, tenant and security propagation, descriptor/public
+URL fallback behavior, restart/retry evidence, and health/metrics proof.
+`MediaAssetReadPort` covers current cross-module reads. `MediaAssetWritePort`
+now owns upload target preparation, delete, translation, and tenant-scoped
+cleanup control. Large binaries remain on Media-owned streaming REST or a
+future presigned upload rather than generic gRPC DTOs. The embedded upload
+handler remains the current body transport; no remote service cutover is
+implied by this control contract.
+
 ## Open results
 
 1. **Execute MediaAssetReadPort runtime evidence.** Prove tenant context,

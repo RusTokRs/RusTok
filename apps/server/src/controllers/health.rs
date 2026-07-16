@@ -29,8 +29,7 @@ use crate::middleware::tenant::{
     tenant_invalidation_listener_snapshot, TenantInvalidationListenerStatus,
 };
 use crate::services::app_lifecycle::{
-    BuildWorkerHandle, OutboxRelayWorkerHandle, RemoteExecutorReaperHandle,
-    RuntimeWorkerLifecycleState, StopHandle,
+    OutboxRelayWorkerHandle, RemoteExecutorReaperHandle, RuntimeWorkerLifecycleState, StopHandle,
 };
 use crate::services::event_transport_factory;
 use crate::services::runtime_guardrails::{
@@ -648,13 +647,6 @@ fn check_runtime_workers(
     )];
 
     checks.push(runtime_worker_check(
-        "worker:build_executor",
-        settings.build.enabled,
-        ctx.shared_map::<BuildWorkerHandle, _>(BuildWorkerHandle::is_finished),
-        stop_requested,
-    ));
-
-    checks.push(runtime_worker_check(
         "worker:remote_executor_reaper",
         settings.registry.remote_executor.enabled,
         ctx.shared_map::<RemoteExecutorReaperHandle, _>(RemoteExecutorReaperHandle::is_finished),
@@ -1168,18 +1160,6 @@ mod tests {
         assert_eq!(check.criticality, DependencyCriticality::Critical);
         assert_eq!(check.status, ReadinessStatus::Ok);
         assert!(check.reason.is_none());
-    }
-
-    #[test]
-    fn disabled_runtime_worker_is_non_critical_ready() {
-        let check = runtime_worker_check("worker:build_executor", false, None, false);
-
-        assert_eq!(check.criticality, DependencyCriticality::NonCritical);
-        assert_eq!(check.status, ReadinessStatus::Ok);
-        assert!(check
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("disabled")));
     }
 
     #[test]

@@ -53,9 +53,15 @@ use crate::services::registry_governance::{
     REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES,
 };
 use crate::services::registry_principal::RegistryAuthority;
+use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
+use crate::services::registry_remote_transitions::{
+    finish_remote_validation_stage_atomic, heartbeat_remote_validation_stage_atomic,
+    RegistryRemoteTransitionError, RemoteTerminalOutcome,
+};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::context::AuthContextExtension;
 use rustok_api::request::RequestContext;
+use rustok_modules::ModuleGovernanceError;
 use rustok_web::HttpError;
 
 #[derive(Debug, Default, Deserialize, ToSchema, utoipa::IntoParams)]
@@ -1367,14 +1373,14 @@ async fn claim_remote_validation_stage(
     let runner_id = validate_runner_id(&request.runner_id)?;
     validate_supported_runner_stages(&request.supported_stages)?;
     let remote_executor = require_remote_executor_access(&ctx, &headers)?;
-    let claim = RegistryGovernanceService::new(ctx.db_clone())
-        .claim_remote_validation_stage(
-            &runner_id,
-            &request.supported_stages,
-            remote_executor.lease_ttl_ms,
-        )
-        .await
-        .map_err(map_registry_governance_error)?;
+    let claim = claim_remote_validation_stage_atomic(
+        ctx.db(),
+        &runner_id,
+        &request.supported_stages,
+        remote_executor.lease_ttl_ms,
+    )
+    .await
+    .map_err(map_remote_validation_claim_error)?;
 
     Ok((
         StatusCode::OK,
@@ -1420,10 +1426,14 @@ async fn heartbeat_remote_validation_stage(
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
     let remote_executor = require_remote_executor_access(&ctx, &headers)?;
-    let stage = RegistryGovernanceService::new(ctx.db_clone())
-        .heartbeat_remote_validation_stage(&claim_id, &runner_id, remote_executor.lease_ttl_ms)
-        .await
-        .map_err(map_registry_governance_error)?;
+    let stage = heartbeat_remote_validation_stage_atomic(
+        ctx.db(),
+        &claim_id,
+        &runner_id,
+        remote_executor.lease_ttl_ms,
+    )
+    .await
+    .map_err(map_remote_validation_transition_error)?;
 
     Ok((
         StatusCode::OK,
@@ -1471,22 +1481,23 @@ async fn complete_remote_validation_stage(
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
     require_remote_executor_access(&ctx, &headers)?;
-    let result = RegistryGovernanceService::new(ctx.db_clone())
-        .complete_remote_validation_stage(
-            &claim_id,
-            &runner_id,
-            request.detail.as_deref(),
-            request.reason_code.as_deref(),
-        )
-        .await
-        .map_err(map_registry_governance_error)?;
+    let stage = finish_remote_validation_stage_atomic(
+        ctx.db(),
+        &claim_id,
+        &runner_id,
+        RemoteTerminalOutcome::Passed,
+        request.detail.as_deref(),
+        request.reason_code.as_deref(),
+    )
+    .await
+    .map_err(map_remote_validation_transition_error)?;
 
     Ok((
         StatusCode::OK,
         Json(RegistryRunnerMutationResponse {
             accepted: true,
             claim_id,
-            status: validation_stage_status_label(result.stage.status).to_string(),
+            status: validation_stage_status_label(stage.status).to_string(),
             warnings: Vec::new(),
         }),
     ))
@@ -1527,22 +1538,23 @@ async fn fail_remote_validation_stage(
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
     require_remote_executor_access(&ctx, &headers)?;
-    let result = RegistryGovernanceService::new(ctx.db_clone())
-        .fail_remote_validation_stage(
-            &claim_id,
-            &runner_id,
-            request.detail.as_deref(),
-            request.reason_code.as_deref(),
-        )
-        .await
-        .map_err(map_registry_governance_error)?;
+    let stage = finish_remote_validation_stage_atomic(
+        ctx.db(),
+        &claim_id,
+        &runner_id,
+        RemoteTerminalOutcome::Failed,
+        request.detail.as_deref(),
+        request.reason_code.as_deref(),
+    )
+    .await
+    .map_err(map_remote_validation_transition_error)?;
 
     Ok((
         StatusCode::OK,
         Json(RegistryRunnerMutationResponse {
             accepted: true,
             claim_id,
-            status: validation_stage_status_label(result.stage.status).to_string(),
+            status: validation_stage_status_label(stage.status).to_string(),
             warnings: Vec::new(),
         }),
     ))
@@ -2664,6 +2676,41 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
         )),
         Some(RegistryGovernanceError::Internal(_)) | None => {
             tracing::error!(error = %error, "Registry governance error");
+            Error::InternalServerError
+        }
+    }
+}
+
+fn map_remote_validation_claim_error(error: anyhow::Error) -> Error {
+    let typed = error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<ModuleGovernanceError>());
+    match typed {
+        Some(ModuleGovernanceError::InvalidRemoteValidationLeaseCommand)
+        | Some(ModuleGovernanceError::InvalidRemoteValidationClaimStage(_)) => {
+            Error::BadRequest(error.to_string())
+        }
+        _ => {
+            tracing::error!(error = %error, "Remote validation claim failed");
+            Error::InternalServerError
+        }
+    }
+}
+
+fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) -> Error {
+    match error {
+        RegistryRemoteTransitionError::Invalid(message) => Error::BadRequest(message),
+        RegistryRemoteTransitionError::Forbidden(message) => {
+            http_error(HttpError::forbidden("forbidden", message.as_str()))
+        }
+        RegistryRemoteTransitionError::NotFound(_) => Error::NotFound,
+        RegistryRemoteTransitionError::Conflict(message) => http_error(HttpError::new(
+            StatusCode::CONFLICT,
+            "conflict",
+            message.as_str(),
+        )),
+        RegistryRemoteTransitionError::Internal(message) => {
+            tracing::error!(%message, "Remote validation transition failed");
             Error::InternalServerError
         }
     }

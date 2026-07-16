@@ -72,53 +72,88 @@ pub fn validate_module_toggle(
     Ok(())
 }
 
-/// Resolves the effective module set from the platform defaults and tenant
-/// overrides.
-///
-/// Core modules are always present and neither defaults nor tenant overrides
-/// can disable them. Defaults and overrides are accepted only for registered
-/// Optional modules. Database and manifest loading deliberately remain outside
-/// this pure owner policy function.
-pub fn resolve_effective_modules(
-    catalog: &ModuleDefinitionCatalog,
-    default_enabled: impl IntoIterator<Item = String>,
-    tenant_overrides: impl IntoIterator<Item = TenantModuleOverride>,
-) -> HashSet<String> {
-    let mut enabled = catalog
-        .definitions()
-        .filter(|definition| definition.kind == ModuleDefinitionKind::Core)
-        .map(|definition| definition.slug.clone())
-        .collect::<HashSet<_>>();
+/// Owner-owned effective-availability query. Host adapters supply their
+/// distribution defaults and persisted tenant overrides; this query applies the
+/// canonical catalog semantics equally to static and artifact definitions.
+pub struct ModuleEffectivePolicyQuery<'a> {
+    catalog: &'a ModuleDefinitionCatalog,
+    default_enabled: Vec<String>,
+    tenant_overrides: Vec<TenantModuleOverride>,
+}
 
-    for slug in default_enabled {
-        if catalog
-            .get(&slug)
-            .is_some_and(|definition| definition.kind == ModuleDefinitionKind::Optional)
-        {
-            enabled.insert(slug);
+/// The resolved module set used by lifecycle, routing, and installer adapters.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModuleEffectivePolicy {
+    enabled_modules: HashSet<String>,
+}
+
+impl<'a> ModuleEffectivePolicyQuery<'a> {
+    pub fn new(
+        catalog: &'a ModuleDefinitionCatalog,
+        default_enabled: impl IntoIterator<Item = String>,
+        tenant_overrides: impl IntoIterator<Item = TenantModuleOverride>,
+    ) -> Self {
+        Self {
+            catalog,
+            default_enabled: default_enabled.into_iter().collect(),
+            tenant_overrides: tenant_overrides.into_iter().collect(),
         }
     }
 
-    for module in tenant_overrides {
-        let Some(definition) = catalog.get(&module.module_slug) else {
-            continue;
-        };
-        if definition.kind == ModuleDefinitionKind::Core {
-            continue;
+    /// Resolves the immutable core set, selected optional defaults, and tenant
+    /// intent. Unknown and legacy overrides are ignored rather than becoming
+    /// active definitions.
+    pub fn execute(self) -> ModuleEffectivePolicy {
+        let mut enabled = self
+            .catalog
+            .definitions()
+            .filter(|definition| definition.kind == ModuleDefinitionKind::Core)
+            .map(|definition| definition.slug.clone())
+            .collect::<HashSet<_>>();
+
+        for slug in self.default_enabled {
+            if self
+                .catalog
+                .get(&slug)
+                .is_some_and(|definition| definition.kind == ModuleDefinitionKind::Optional)
+            {
+                enabled.insert(slug);
+            }
         }
-        if module.enabled {
-            enabled.insert(module.module_slug);
-        } else {
-            enabled.remove(&module.module_slug);
+
+        for module in self.tenant_overrides {
+            let Some(definition) = self.catalog.get(&module.module_slug) else {
+                continue;
+            };
+            if definition.kind == ModuleDefinitionKind::Core {
+                continue;
+            }
+            if module.enabled {
+                enabled.insert(module.module_slug);
+            } else {
+                enabled.remove(&module.module_slug);
+            }
+        }
+
+        ModuleEffectivePolicy {
+            enabled_modules: enabled,
         }
     }
+}
 
-    enabled
+impl ModuleEffectivePolicy {
+    pub fn contains(&self, module_slug: &str) -> bool {
+        self.enabled_modules.contains(module_slug)
+    }
+
+    pub fn into_enabled_modules(self) -> HashSet<String> {
+        self.enabled_modules
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_effective_modules, TenantModuleOverride};
+    use super::{ModuleEffectivePolicyQuery, TenantModuleOverride};
     use crate::{ModuleDefinitionCatalog, ModulesModule};
     use rustok_core::ModuleRegistry;
 
@@ -128,7 +163,7 @@ mod tests {
             &ModuleRegistry::new().register(ModulesModule),
         )
         .expect("catalog");
-        let enabled = resolve_effective_modules(
+        let policy = ModuleEffectivePolicyQuery::new(
             &catalog,
             ["modules".to_string(), "missing".to_string()],
             [
@@ -141,10 +176,11 @@ mod tests {
                     enabled: true,
                 },
             ],
-        );
+        )
+        .execute();
 
-        assert!(enabled.contains("modules"));
-        assert!(!enabled.contains("missing"));
-        assert!(!enabled.contains("persisted-legacy-override"));
+        assert!(policy.contains("modules"));
+        assert!(!policy.contains("missing"));
+        assert!(!policy.contains("persisted-legacy-override"));
     }
 }

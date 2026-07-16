@@ -193,8 +193,9 @@ struct Records(Mutex<Vec<ExecutionRecord>>);
 
 #[async_trait]
 impl ExecutionObserver for Records {
-    async fn observe(&self, record: &ExecutionRecord) {
+    async fn observe(&self, record: &ExecutionRecord) -> SandboxResult<()> {
         self.0.lock().expect("records lock").push(record.clone());
+        Ok(())
     }
 }
 
@@ -226,12 +227,15 @@ fn request(granted: bool) -> SandboxRequest {
             entrypoint: "main".to_string(),
             bytes: b"42".to_vec(),
         },
-        input: json!({ "value": 42 }),
+        input: json!({ "topic": "sandbox.fixture", "payload": { "value": 42 } }),
         policy: SandboxPolicy {
             grants: granted
                 .then_some(CapabilityGrant {
                     name: capability,
-                    constraints: json!({}),
+                    constraints: json!({
+                        "topics": ["sandbox.fixture"],
+                        "operations": ["publish"]
+                    }),
                 })
                 .into_iter()
                 .collect(),

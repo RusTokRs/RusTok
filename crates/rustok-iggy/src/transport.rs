@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tracing::{error, info};
 
 use crate::config::{IggyConfig, IggyMode};
-use crate::consumer::ConsumerGroupManager;
+use crate::consumer::{ConsumerGroupManager, PersistentConsumerGroup};
 use crate::producer;
 use crate::serialization::{EventSerializer, JsonSerializer, PostcardSerializer};
 use crate::topology::TopologyManager;
@@ -85,6 +85,30 @@ impl IggyTransport {
         );
 
         self.consumers.ensure_group(group).await
+    }
+
+    /// Opens one broker-backed consumer-group cursor for result-first work.
+    ///
+    /// It is intentionally distinct from the legacy partition subscriber API:
+    /// both receive and acknowledgement operate on the same remote cursor.
+    /// The caller must retain the returned value for its complete lifetime.
+    pub async fn open_persistent_consumer_group(
+        &self,
+        group_name: &str,
+        topic: &str,
+    ) -> Result<PersistentConsumerGroup> {
+        let stream = self.config.topology.stream_name.clone();
+        let cursor = self
+            .connector
+            .open_consumer_group(&stream, topic, group_name)
+            .await
+            .map_err(|error| rustok_core::Error::External(error.to_string()))?;
+        Ok(PersistentConsumerGroup::new(
+            stream,
+            topic.to_string(),
+            Arc::clone(&self.serializer),
+            cursor,
+        ))
     }
 
     pub async fn consume_next_as_group(

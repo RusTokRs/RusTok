@@ -1,0 +1,149 @@
+# Module build worker
+
+The worker requires a mutually authenticated listener configured with the
+`RUSTOK_MODULE_BUILD` prefix:
+
+- `RUSTOK_MODULE_BUILD_LISTEN_ADDR`;
+- `RUSTOK_MODULE_BUILD_SERVER_CERT_PEM`;
+- `RUSTOK_MODULE_BUILD_SERVER_KEY_PEM`;
+- `RUSTOK_MODULE_BUILD_CLIENT_CA_PEM`;
+- `RUSTOK_MODULE_BUILD_RUNNER`.
+- `RUSTOK_MODULE_BUILD_WORKDIR` (an existing absolute image-owned directory).
+- `RUSTOK_MODULE_BUILD_SOURCE_ROOT` (an existing absolute read-only CAS archive mount).
+- `RUSTOK_MODULE_BUILD_CARGO` (an absolute non-symlink Cargo executable owned by the image).
+- `RUSTOK_MODULE_BUILD_CARGO_HOME` (an absolute non-symlink deployment-owned
+  Cargo cache directory).
+- `RUSTOK_MODULE_BUILD_WASM_TOOLS` (an absolute non-symlink image-owned
+  `wasm-tools` executable).
+- `RUSTOK_MODULE_BUILD_PUBLICATION_REGISTRY` and
+  `RUSTOK_MODULE_BUILD_PUBLICATION_REPOSITORY` (the deployment-owned scoped OCI
+  publication destination).
+
+`RUSTOK_MODULE_BUILD_PUBLICATION_USERNAME` and
+`RUSTOK_MODULE_BUILD_PUBLICATION_PASSWORD` are optional mounted credentials but
+must be supplied together. When both are absent, the worker uses anonymous
+registry access. The identity must be restricted to publishing this configured
+repository; it is never accepted from request data.
+
+`RUSTOK_MODULE_BUILD_DEPENDENCY_MATERIALIZER` is optional for deployments that
+accept only `network_policy: denied`. When configured, it must be an absolute,
+regular, image-owned executable that submits or runs a separate OCI network
+sandbox for scoped dependency materialization. The worker never grants that
+sandbox's egress to Cargo, the fixed build runner, or publication.
+
+The materializer receives canonical `ModuleBuildRequest` JSON on standard input
+and the source directory, fresh Cargo-home output directory, and approved
+endpoint array through the `RUSTOK_MODULE_DEPENDENCY_MATERIALIZER_*`
+environment. It must write exactly one JSON receipt to standard output:
+`protocol_version: 1`, `source_digest`, `dependency_lock_digest`, the exact
+ordered `endpoints`, and `outcome` (`materialized` or `endpoint_denied`). It
+must not create `config` or `config.toml` in Cargo home, links anywhere in that
+tree, or files above the build disk limit. Its OCI sandbox and allowlist proxy
+are deployment-owned enforcement points, not source-controlled configuration.
+
+Optional listener limits are `RUSTOK_MODULE_BUILD_REQUEST_TIMEOUT_MS`,
+`RUSTOK_MODULE_BUILD_CONCURRENCY_LIMIT`, and
+`RUSTOK_MODULE_BUILD_MAX_MESSAGE_SIZE` (at most 1 MiB). Startup fails if the
+mounted runner, Cargo executable/cache, or `wasm-tools` executable is absent or
+invalid, or the mTLS configuration is incomplete. There is no plaintext or
+server-local fallback.
+
+The fixed runner receives canonical request JSON on standard input and must
+write exactly one canonical `ModuleBuildResult` JSON value to standard output.
+It is an image-owned entrypoint, not request-selected input. The worker clears
+the runner environment and supplies only request-scoped source/output/target/
+home paths, the fixed `RUSTOK_MODULE_BUILD_CARGO` executable, a verified
+`CARGO_HOME`, and `CARGO_NET_OFFLINE=true`. The runner must invoke that fixed
+Cargo path and must not clear or override offline mode. Cargo homes containing
+config or credential files are rejected. The worker uses a fixed image-owned
+workdir, caps aggregate stdout/stderr by the request output limit while reading
+it, derives execution timeout from both deployment and request limits, kills
+the runner on timeout, and validates the terminal result against the immutable
+request before it crosses gRPC. The runner path cannot be a symlink.
+
+For a successful result, the runner must also write its only executable payload
+to `RUSTOK_MODULE_BUILD_OUTPUT_DIR/component.wasm`. The worker rejects a
+symlink, empty, oversized, non-component, invalid, or digest-mismatched file.
+It validates the Component Model bytes with `wasmparser` and requires the
+reported imports/exports to equal the root component's inspected interface.
+The deployment-owned `wasm-tools` executable extracts WIT from that same fixed
+payload. The worker parses the extracted WIT and requires the request's
+package, world, version, and complete import/export surface to match exactly.
+This rejects undeclared capability imports; the runner cannot supply WIT text
+or choose the inspection executable. The JSON result is therefore evidence
+about a fixed output, not an unverified substitute for the payload. Publication
+uses only that verified output; signing and admission remain later stages.
+
+The runner must additionally write
+`RUSTOK_MODULE_BUILD_OUTPUT_DIR/module-artifact-descriptor.json`. The worker
+parses this regular non-symlink file under the descriptor limit and binds its
+slug, version, runtime ABI, WASM payload kind, and payload digest to the
+immutable successful build result. It publishes the fixed component, SBOM, and
+provenance through the configured scoped OCI destination. The returned result
+then carries only digest-pinned artifact/SBOM/provenance references; the owner
+rejects any successful result that lacks those publication facts.
+
+Successful builds must also emit `sbom.cdx.json` and `provenance.intoto.json`
+in the same output directory. The worker rehashes both regular non-symlink
+files against the result digests and parses them before accepting success. The
+SBOM must be bounded CycloneDX JSON with a metadata component. Provenance must
+be a bounded SLSA in-toto Statement whose subject carries the component SHA-256
+and whose `predicate.buildDefinition.externalParameters.rustok` object binds
+the immutable source, dependency-lock, toolchain, and WIT digests. This checks
+production evidence before the worker publishes OCI referrers; signature and
+admission trust policy remain separate stages.
+
+For v1, source reference must exactly be `cas://sha256/<hex>` and its matching
+`<hex>.tar` file must exist in `RUSTOK_MODULE_BUILD_SOURCE_ROOT`. The worker
+rehashes the archive before use, accepts only checksummed USTAR regular
+files/directories, rejects links, devices, and escaping paths, and enforces the
+request disk limit while extracting,
+and removes the request-scoped materialized directory after the runner exits.
+The runner receives the materialized paths through
+`RUSTOK_MODULE_BUILD_SOURCE_DIR` and `RUSTOK_MODULE_BUILD_OUTPUT_DIR`.
+Digest mismatch, unsafe archive, and extraction-limit violations return a
+validated terminal build result (`source_digest_mismatch`, `unsafe_archive`, or
+`resource_limit_exceeded`) with `revise_source`; they are not retried as broker
+transport failures. Worker I/O faults remain unacknowledged for retry.
+
+Before starting the runner, the worker also requires a `Cargo.lock` and binds
+its raw bytes to `dependency_policy.lock_digest` (`sha256:<hex>`). It rejects
+Cargo config files from the source tree and every parent work directory,
+patches/replacements, path dependencies, non-allowlisted registry sources, Git
+dependencies when forbidden, and manifests that request build scripts or native
+`links` while those permissions are denied. It parses
+the resolved lock graph without executing Cargo, bounds package/dependency
+counts, requires checksums for registry packages, requires a pinned revision
+for allowed Git packages, and rejects credentials in source URLs. The allowlist
+accepts a canonical crates.io index when the request specifies
+`https://crates.io`. These are terminal policy facts (`dependency_policy_denied`,
+`build_script_denied`, or `native_link_denied`), not broker retries. The runner
+must still run `cargo metadata --locked` after controlled dependency
+materialization to produce resolved-graph evidence; this preflight does not
+replace that pipeline stage.
+
+The worker now performs that metadata step itself before the fixed runner. It
+clears Cargo's environment, uses only the image-owned Cargo executable and
+deployment-owned cache, forces `--locked --offline`, caps combined metadata
+stdout/stderr with the request output limit, applies the request deadline, and
+checks every resolved package, dependency source, custom build target, native
+link declaration, workspace path, and resolve-node identity. For scoped
+dependency policy, the worker first invokes only the fixed materializer adapter
+with the exact endpoint list and a fresh job-local Cargo home. The materializer
+must return a receipt binding the source digest, raw lock digest, and ordered
+endpoint list; the worker rejects symlinks plus Cargo config and credential
+files in that cache before again forcing Cargo offline. Missing materializer
+configuration, a receipt mismatch, or endpoint denial becomes
+`network_policy_denied`. The OCI materializer deployment must enforce egress
+with its own network namespace and allowlist proxy; this worker never broadens
+its own egress.
+
+Production deployment supplies the runner and `wasm-tools` in an unprivileged
+OCI image through the absolute, regular, non-symlink
+`RUSTOK_MODULE_BUILD_RUNNER` and `RUSTOK_MODULE_BUILD_WASM_TOOLS` paths. It
+also provides the deployment-owned `RUSTOK_MODULE_BUILD_CARGO` and
+`RUSTOK_MODULE_BUILD_CARGO_HOME` paths. The worker uses ephemeral
+source/target/cache volumes, no host mounts or container socket, and the
+resource/network controls specified in the module control-plane plan. The
+runner pipeline still needs evidence generation tools, signature publication,
+and admission trust stages.

@@ -12,10 +12,12 @@ low-level message I/O, without taking away transport-level semantics from `rusto
 
 ## Responsibilities
 
-- `IggyConnector`, `RemoteConnector`, `EmbeddedConnector`;
+- `IggyConnector`, `RemoteConnector`, `EmbeddedConnector`, `ConsumerCursor`;
 - `ConnectorConfig`, `PublishRequest`, `MessageSubscriber`, `SubscriberMessage`, `SubscriberMessageMetadata`, `ConnectorAckToken`, `ConnectorError`;
 - connection lifecycle, mode abstraction and low-level publish/subscribe contracts;
-- optional Iggy SDK integration via feature flag;
+- real remote consumer-group cursors via the Iggy SDK; a cursor keeps receive
+  and offset acknowledgement on the same backend consumer and permits only one
+  outstanding delivery;
 - no ownership over transport-level serialization, DLQ, replay and topology policy;
 - connector metadata includes only low-level facts (`stream`, `topic`, `partition`, optional `offset`, `message_id`, `delivery_attempt`, opaque `ack_token`) and does not define retry/DLQ/replay rules;
 - `ConnectorAckToken` centralizes the simulated token and real Iggy SDK cursor token seam, and remote/embedded subscribers check scope token before ack without adding transport policy.
@@ -25,7 +27,8 @@ low-level message I/O, without taking away transport-level semantics from `rusto
 - used by `rustok-iggy` as a low-level connection layer;
 - must remain a separate connector crate without transport/business semantics;
 - any changes to connector contracts must be synchronized with `rustok-iggy` docs and runtime expectations;
-- simulation mode without a feature flag must remain an explicitly documented compatibility surface.
+- SDK-disabled simulation remains explicit and cannot supply a persistent
+  production consumer group.
 
 ## Verification
 

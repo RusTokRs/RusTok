@@ -3,6 +3,14 @@
   "module": "index",
   "role": "provider",
   "status": "boundary_ready",
+  "deployment_topology": {
+    "current_class": "modular_monolith",
+    "extraction_class": "search_ingestion_worker",
+    "remote_transport": "grpc_or_event_stream",
+    "database_ownership": "exclusive",
+    "pilot_phase": "search_query_isolated_pilot",
+    "remote_status": "deferred_until_replay_evidence"
+  },
   "contract_version": "index.read_model.v1",
   "ports": [
     {

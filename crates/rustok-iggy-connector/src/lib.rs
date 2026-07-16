@@ -32,7 +32,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 #[cfg(feature = "iggy")]
-use iggy::prelude::{Client, IggyClient, IggyError};
+use futures_util::StreamExt;
+#[cfg(feature = "iggy")]
+use iggy::prelude::{Client, IggyClient, IggyConsumer, IggyError};
 
 /// Connection mode for Iggy connector
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -220,8 +222,40 @@ pub trait IggyConnector: Send + Sync + 'static {
         partition: u32,
     ) -> Result<Box<dyn MessageSubscriber>, ConnectorError>;
 
+    /// Opens a persistent consumer-group cursor. A cursor owns both message
+    /// receipt and acknowledgement so an offset can only be committed by the
+    /// exact backend consumer that observed it.
+    ///
+    /// This is intentionally separate from the legacy per-partition subscriber
+    /// API. A real broker consumer group must not create one cursor to receive
+    /// an event and another cursor to commit its offset.
+    async fn open_consumer_group(
+        &self,
+        stream: &str,
+        topic: &str,
+        group_name: &str,
+    ) -> Result<Box<dyn ConsumerCursor>, ConnectorError> {
+        Err(ConnectorError::Config(format!(
+            "persistent consumer groups are not supported for {stream}/{topic} ({group_name})"
+        )))
+    }
+
     /// Graceful shutdown
     async fn shutdown(&self) -> Result<(), ConnectorError>;
+}
+
+/// Persistent external-broker cursor with explicit acknowledgement.
+///
+/// Callers must acknowledge a returned message before requesting another one.
+/// This preserves at-least-once delivery when owner-side processing fails or a
+/// worker becomes unavailable before its result is persisted.
+#[async_trait]
+pub trait ConsumerCursor: Send {
+    /// Receives one message without committing its broker offset.
+    async fn receive(&mut self) -> Result<Option<SubscriberMessage>, ConnectorError>;
+
+    /// Commits the opaque token from the most recently received message.
+    async fn acknowledge(&mut self, ack_token: &str) -> Result<(), ConnectorError>;
 }
 
 /// Metadata attached to a consumed connector message.
@@ -739,6 +773,52 @@ impl IggyConnector for RemoteConnector {
         )))
     }
 
+    async fn open_consumer_group(
+        &self,
+        stream: &str,
+        topic: &str,
+        group_name: &str,
+    ) -> Result<Box<dyn ConsumerCursor>, ConnectorError> {
+        if !*self.connected.read().await {
+            return Err(ConnectorError::NotConnected);
+        }
+
+        #[cfg(feature = "iggy")]
+        {
+            let client_guard = self.client.read().await;
+            let client: &IggyClient = client_guard.as_ref().ok_or(ConnectorError::NotConnected)?;
+            let mut consumer = client
+                .consumer_group(group_name, stream, topic)
+                .map_err(|error: IggyError| ConnectorError::Subscribe(error.to_string()))?
+                .commit_failed_messages()
+                .build();
+            consumer
+                .init()
+                .await
+                .map_err(|error: IggyError| ConnectorError::Subscribe(error.to_string()))?;
+
+            tracing::info!(
+                mode = "remote",
+                stream,
+                topic,
+                consumer_group = group_name,
+                "Opened persistent Iggy consumer-group cursor"
+            );
+
+            return Ok(Box::new(RemoteConsumerGroupCursor::new(
+                consumer, stream, topic, group_name,
+            )));
+        }
+
+        #[cfg(not(feature = "iggy"))]
+        {
+            let _ = (stream, topic, group_name);
+            Err(ConnectorError::Config(
+                "remote Iggy consumer groups require the `iggy` feature".to_string(),
+            ))
+        }
+    }
+
     async fn shutdown(&self) -> Result<(), ConnectorError> {
         #[cfg(feature = "iggy")]
         {
@@ -747,6 +827,108 @@ impl IggyConnector for RemoteConnector {
         *self.connected.write().await = false;
 
         tracing::info!(mode = "remote", "Iggy remote connector shutdown");
+        Ok(())
+    }
+}
+
+/// Real remote Iggy consumer-group cursor. It permits only one outstanding
+/// delivery: Iggy SDK offsets are cursor-scoped, so receiving again before an
+/// acknowledgement could commit the wrong partition or skip a redelivery.
+#[cfg(feature = "iggy")]
+pub struct RemoteConsumerGroupCursor {
+    consumer: IggyConsumer,
+    stream: String,
+    topic: String,
+    group_name: String,
+    pending: Option<(u32, u64)>,
+}
+
+#[cfg(feature = "iggy")]
+impl RemoteConsumerGroupCursor {
+    fn new(consumer: IggyConsumer, stream: &str, topic: &str, group_name: &str) -> Self {
+        Self {
+            consumer,
+            stream: stream.to_string(),
+            topic: topic.to_string(),
+            group_name: group_name.to_string(),
+            pending: None,
+        }
+    }
+}
+
+#[cfg(feature = "iggy")]
+#[async_trait]
+impl ConsumerCursor for RemoteConsumerGroupCursor {
+    async fn receive(&mut self) -> Result<Option<SubscriberMessage>, ConnectorError> {
+        if self.pending.is_some() {
+            return Err(ConnectorError::Receive(
+                "acknowledge the outstanding consumer-group delivery before receiving another"
+                    .to_string(),
+            ));
+        }
+
+        let received = match self.consumer.next().await {
+            Some(Ok(message)) => message,
+            Some(Err(error)) => return Err(ConnectorError::Receive(error.to_string())),
+            None => return Ok(None),
+        };
+        // `current_offset` tracks the cursor's polling state. Commit the
+        // message header offset instead, because that is the exact delivery
+        // acknowledged by this cursor.
+        let offset = received.message.header.offset;
+        let partition = received.partition_id;
+        self.pending = Some((partition, offset));
+        let ack_token = ConnectorAckToken::iggy_sdk(
+            &self.stream,
+            &self.topic,
+            partition,
+            offset,
+            &self.group_name,
+        )
+        .encode();
+
+        Ok(Some(SubscriberMessage::new(
+            received.message.payload.to_vec(),
+            SubscriberMessageMetadata::new(&self.stream, &self.topic, partition)
+                .with_offset(offset)
+                .with_ack_token(ack_token),
+        )))
+    }
+
+    async fn acknowledge(&mut self, ack_token: &str) -> Result<(), ConnectorError> {
+        let token = ConnectorAckToken::decode(ack_token)?;
+        let (partition, offset) = self.pending.ok_or_else(|| {
+            ConnectorError::Config("consumer-group cursor has no outstanding delivery".to_string())
+        })?;
+        let ConnectorAckToken::IggySdk {
+            stream,
+            topic,
+            partition: token_partition,
+            offset: token_offset,
+            consumer_id,
+        } = token
+        else {
+            return Err(ConnectorError::Config(
+                "real Iggy cursor requires an Iggy SDK acknowledgement token".to_string(),
+            ));
+        };
+
+        if stream != self.stream
+            || topic != self.topic
+            || token_partition != partition
+            || token_offset != offset
+            || consumer_id != self.group_name
+        {
+            return Err(ConnectorError::Config(
+                "ack token does not match the outstanding Iggy consumer-group delivery".to_string(),
+            ));
+        }
+
+        self.consumer
+            .store_offset(offset, Some(partition))
+            .await
+            .map_err(|error: IggyError| ConnectorError::Receive(error.to_string()))?;
+        self.pending = None;
         Ok(())
     }
 }

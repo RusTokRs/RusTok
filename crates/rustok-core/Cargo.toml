@@ -37,6 +37,7 @@ base64 = "0.22"
 reqwest = { workspace = true }
 
 [features]
+server = ["rustok-api/server"]
 redis-cache = ["redis"]
 
 [dev-dependencies]

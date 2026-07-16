@@ -54,6 +54,10 @@ module and support/capability crate local docs and does not duplicate local cont
 | `rustok-modules` | [docs](../../crates/rustok-modules/docs/README.md) | [plan](../../crates/rustok-modules/docs/implementation-plan.md) |
 | `rustok-verification-transport` | [docs](../../crates/rustok-verification-transport/docs/README.md) | gRPC transport contract is recorded in the crate README. |
 | `rustok-verification-worker` | [docs](../../crates/rustok-verification-worker/docs/README.md) | Worker rollout is recorded in the module control-plane plan. |
+| `rustok-module-build-transport` | [docs](../../crates/rustok-module-build-transport/docs/README.md) | mTLS build-worker transport is recorded in the module control-plane plan. |
+| `rustok-module-build-worker` | [docs](../../crates/rustok-module-build-worker/docs/README.md) | Isolated build-worker rollout is recorded in the module control-plane plan. |
+| `rustok-module-build-dispatcher` | [docs](../../crates/rustok-module-build-dispatcher/docs/README.md) | Broker-neutral build-delivery contract is recorded in the module control-plane plan. |
+| `rustok-worker-transport` | [docs](../../crates/rustok-worker-transport/docs/README.md) | Shared mutually authenticated worker-listener foundation. |
 | `rustok-sandbox` | [docs](../../crates/rustok-sandbox/docs/README.md) | [plan](../../crates/rustok-sandbox/docs/implementation-plan.md) |
 | `rustok-web` | [docs](../../crates/rustok-web/docs/README.md) | [plan](../../crates/rustok-web/docs/implementation-plan.md) |
 | `rustok-fba` | [docs](../../crates/rustok-fba/docs/README.md) | [plan](../../crates/rustok-fba/docs/implementation-plan.md) |
