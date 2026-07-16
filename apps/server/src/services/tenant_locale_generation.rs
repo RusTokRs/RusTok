@@ -6,9 +6,9 @@ use std::time::Duration;
 use futures_util::FutureExt;
 use rustok_cache::{
     cache_backend_generation_snapshot, BoundedCacheInvalidationGapTracker,
-    BoundedInvalidationTrackerError, CacheInvalidationMessage, CacheInvalidationObservation,
-    CacheInvalidationPayloadError, CacheService, LocalCacheInvalidationSubscription,
-    VersionedCacheInvalidation,
+    BoundedInvalidationTrackerError, CacheGenerationError, CacheInvalidationMessage,
+    CacheInvalidationObservation, CacheInvalidationPayloadError, CacheService,
+    LocalCacheInvalidationSubscription, VersionedCacheInvalidation,
 };
 use rustok_core::{Error, Result};
 use tokio::task::JoinHandle;
@@ -74,13 +74,30 @@ impl TenantLocaleGenerationListener {
                         .to_string(),
                 ));
             }
-            return self
+            return match self
                 .cache
                 .namespace_generations()
                 .read(TENANT_CACHE_BACKEND_PREFIX)
                 .await
-                .map(|generation| generation.value())
-                .map_err(|error| Error::Cache(error.to_string()));
+            {
+                Ok(generation) => Ok(generation.value()),
+                Err(CacheGenerationError::GenerationRegressed { local, shared }) => {
+                    invalidate_all_tenant_locale_cache(&self.ctx).await;
+                    tracing::error!(
+                        local,
+                        shared,
+                        "Tenant locale shared generation regressed; cache cleared and readiness remains failed"
+                    );
+                    rustok_telemetry::metrics::record_event_error(
+                        "tenant.locale.generation",
+                        "generation_regressed",
+                    );
+                    Err(Error::Cache(format!(
+                        "tenant locale shared generation regressed from {local} to {shared}"
+                    )))
+                }
+                Err(error) => Err(Error::Cache(error.to_string())),
+            };
         }
 
         let snapshot = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
@@ -117,18 +134,18 @@ impl TenantLocaleGenerationListener {
             }
             Some(previous) => {
                 invalidate_all_tenant_locale_cache(&self.ctx).await;
-                self.tracker.reset(TENANT_CACHE_GENERATION_CHANNEL);
-                acknowledge_locale_recovery(&self.tracker, generation)?;
                 tracing::error!(
                     previous,
                     current = generation,
-                    "Tenant locale generation regressed; cache baseline was rebuilt"
+                    "Tenant locale generation regressed; cache cleared and readiness remains failed"
                 );
                 rustok_telemetry::metrics::record_event_error(
                     "tenant.locale.generation",
                     "generation_regressed",
                 );
-                return Ok(generation);
+                return Err(Error::Cache(format!(
+                    "tenant locale generation regressed from {previous} to {generation}"
+                )));
             }
         }
 
@@ -138,8 +155,9 @@ impl TenantLocaleGenerationListener {
 
     async fn handle_message(&self, message: CacheInvalidationMessage) -> Result<()> {
         let result = self.handle_message_inner(message).await;
-        if result.is_err() {
-            self.health.mark_failed();
+        match &result {
+            Ok(()) => self.health.mark_ready(),
+            Err(_) => self.health.mark_failed(),
         }
         result
     }
