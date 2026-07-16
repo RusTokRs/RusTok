@@ -50,6 +50,10 @@ const files = {
   providerOperations: "crates/rustok-commerce/src/graphql/mutations/provider_operations.rs",
   fulfillmentFacade: "crates/rustok-commerce/src/services/fulfillment_orchestration_facade.rs",
   fulfillmentGuard: "apps/server/tests/commerce_fulfillment_transport_guard.rs",
+  adminChanges: "crates/rustok-commerce/src/controllers/admin/changes.rs",
+  orderChangeOrchestration:
+    "crates/rustok-commerce/src/services/order_change_orchestration.rs",
+  orderChangeGuard: "apps/server/tests/commerce_order_change_transport_guard.rs",
   legacyApi: "crates/rustok-commerce/admin/src/api.rs",
   implementationPlan: "crates/rustok-commerce/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
@@ -76,6 +80,9 @@ const commerceRoot = readRepo(files.commerceRoot);
 const providerOperations = readRepo(files.providerOperations);
 const fulfillmentFacade = readRepo(files.fulfillmentFacade);
 const fulfillmentGuard = readRepo(files.fulfillmentGuard);
+const adminChanges = readRepo(files.adminChanges);
+const orderChangeOrchestration = readRepo(files.orderChangeOrchestration);
+const orderChangeGuard = readRepo(files.orderChangeGuard);
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
 const packageJson = readRepo(files.packageJson);
@@ -152,6 +159,38 @@ assertContains(
   fulfillmentGuard,
   "graphql_fulfillment_mutations_use_commerce_orchestration",
   `${files.fulfillmentGuard}: fulfillment transport source guard is missing`,
+);
+
+assertContains(
+  adminChanges,
+  "OrderChangeOrchestrationService::new(",
+  `${files.adminChanges}: REST order-change apply must use commerce orchestration`,
+);
+assertNotContains(
+  adminChanges,
+  "match order_change.change_type.as_str()",
+  `${files.adminChanges}: REST transport must not dispatch order-change domain types`,
+);
+assertContains(
+  orderChangeOrchestration,
+  "match order_change.change_type.as_str()",
+  `${files.orderChangeOrchestration}: orchestration must own order-change type dispatch`,
+);
+for (const operation of [
+  ".apply_exchange_order_change(",
+  ".apply_claim_order_change(",
+  ".apply_order_change(",
+]) {
+  assertContains(
+    orderChangeOrchestration,
+    operation,
+    `${files.orderChangeOrchestration}: missing order-change orchestration call ${operation}`,
+  );
+}
+assertContains(
+  orderChangeGuard,
+  "rest_order_change_application_uses_commerce_orchestration",
+  `${files.orderChangeGuard}: order-change transport source guard is missing`,
 );
 
 assertContains(implementationPlan, "verify-commerce-admin-boundary.mjs", `${files.implementationPlan}: local plan must mention commerce admin guardrail`);
