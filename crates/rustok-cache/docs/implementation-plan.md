@@ -103,8 +103,12 @@ Last reconciled with `main`: 2026-07-16.
 
 - [x] Tenant resolution uses weighted positive/negative backends, canonical keys, typed values,
   coalescing and durable tenant generation recovery.
-- [x] Tenant locale uses weighted process cache plus exact/wildcard durable tenant-generation
-  recovery, supervised local/Redis/reconcile workers and critical readiness.
+- [x] Tenant locale uses a byte-weighted process cache plus exact/wildcard durable tenant-generation
+  recovery, supervised local/Redis/reconcile workers and critical recovery readiness. Source tests
+  use two actual serving contexts to cover exact and wildcard value refresh, deterministic local
+  listener lag, a completely missed PubSub publication, Redis reconnect after shared-generation
+  loss, fail-closed regression, explicit epoch restoration and delivery of the next `N+1` event.
+  Every event validates the durable epoch before cache mutation or tracker acknowledgement.
 - [x] Marketplace list/detail caches are byte-weighted, hashed, response-bounded and single-flight;
   detail negatives use a short independent TTL.
 - [x] Channel cache is byte-weighted with hashed request facts, bounded monotonic tenant versions,
@@ -142,6 +146,9 @@ The detailed active-cache contract is maintained in
 - [x] Guard the channel workflow path scope, Channel/Flex Clippy commands, PostgreSQL job, full
   non-ignored resolved-value suite, combined lag/value lib test, live Redis readiness/resolved-value
   commands, self-hosted Redis restart setup and durable recovery sources from accidental removal.
+- [x] Guard tenant-locale path scope, compiled and ignored Redis commands, exact/wildcard value
+  evidence, deterministic lag, missed publication, shared-state loss/restoration, critical readiness
+  and durable-before-apply ordering from accidental removal.
 - [x] Guard live Redis latency/circuit and two-restart scenarios plus the production
   timeout/open-circuit markers from accidental removal.
 - [x] Guard the full local CAS command and expiry, eviction, contention and invalidation-race test
@@ -169,8 +176,8 @@ The detailed active-cache contract is maintained in
   resolved-value, PostgreSQL 17, live Redis, latency/circuit and repeated self-hosted Redis restart
   jobs on the same revision and record their results.
 - [ ] Run ignored `rustok-cache` and `rustok-core` suites against isolated Redis 7.
-- [ ] Prove exact/wildcard tenant-locale recovery, listener lag handling and periodic generation
-  reconciliation across multiple replicas.
+- [ ] Execute and record the source-complete exact/wildcard tenant-locale, listener-lag,
+  missed-publication, Redis state-loss/restoration and critical-readiness scenarios.
 - [ ] Prove Flex singleton generation and all four owner triggers on PostgreSQL and SQLite, including
   reorder/soft delete, concurrent mutation, startup seed-before-clear, database outage/recovery,
   generation regression and critical readiness across multiple replicas.
@@ -223,6 +230,7 @@ cargo test -p rustok-channel invalidation_generation --lib
 cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib
 cargo test -p rustok-server channel_cache_invalidation --lib
 cargo test -p rustok-server --test channel_cache_resolved_value
+cargo test -p rustok-server tenant_locale_generation --lib
 cargo test -p rustok-server field_definition_cache_generation --lib
 cargo test -p rustok-server \
   --test cache_architecture_guard \
@@ -250,6 +258,10 @@ RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
   cargo test -p rustok-cache -- --ignored --nocapture --test-threads=1
 RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
   cargo test -p rustok-core cache -- --ignored --nocapture --test-threads=1
+RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
+RUSTOK_CACHE_REDIS_SERVER_BIN=/usr/bin/redis-server \
+  cargo test -p rustok-server tenant_locale_generation --lib \
+  -- --ignored --nocapture --test-threads=1
 RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
   cargo test -p rustok-server redis_publication_drives_remote_replica_readiness_recovery \
   --lib -- --ignored --nocapture --test-threads=1
