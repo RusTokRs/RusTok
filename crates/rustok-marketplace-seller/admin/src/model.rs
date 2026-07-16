@@ -18,6 +18,15 @@ pub struct MarketplaceSellerAdminDirectory {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct MarketplaceSellerAdminFilters {
+    pub search: Option<String>,
+    pub status: Option<String>,
+    pub onboarding_status: Option<String>,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct MarketplaceSellerAdminRecord {
     pub id: String,
     pub tenant_id: String,
@@ -83,6 +92,49 @@ pub struct MarketplaceSellerMemberUpdateDraft {
     pub role: Option<String>,
     pub status: Option<String>,
     pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum MarketplaceSellerAdminCommand {
+    Create {
+        draft: MarketplaceSellerCreateDraft,
+    },
+    UpdateProfile {
+        seller_id: String,
+        draft: MarketplaceSellerProfileDraft,
+    },
+    SubmitOnboarding {
+        seller_id: String,
+        note: Option<String>,
+    },
+    ReviewOnboarding {
+        seller_id: String,
+        approved: bool,
+        note: Option<String>,
+    },
+    Suspend {
+        seller_id: String,
+        reason: String,
+    },
+    Reactivate {
+        seller_id: String,
+    },
+    AddMember {
+        seller_id: String,
+        draft: MarketplaceSellerMemberCreateDraft,
+    },
+    UpdateMember {
+        seller_id: String,
+        member_id: String,
+        draft: MarketplaceSellerMemberUpdateDraft,
+    },
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct MarketplaceSellerAdminCommandResult {
+    pub seller: Option<MarketplaceSellerAdminRecord>,
+    pub member: Option<MarketplaceSellerAdminMember>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
