@@ -122,6 +122,30 @@ requireMarker(
   ".create_refund_idempotent(",
   `${restPath}: REST refund must use explicit idempotent API`,
 );
+for (const operation of [".complete_refund(", ".cancel_refund("]) {
+  requireMarker(
+    rest,
+    operation,
+    `${restPath}: REST refund write surface is missing ${operation}`,
+  );
+}
+forbidMarker(
+  rest,
+  "PaymentService::new(runtime.db_clone())\n        .complete_refund(",
+  `${restPath}: REST complete_refund must use PaymentOrchestrationService`,
+);
+forbidMarker(
+  rest,
+  "PaymentService::new(runtime.db_clone())\n        .cancel_refund(",
+  `${restPath}: REST cancel_refund must use PaymentOrchestrationService`,
+);
+const restOrchestrationCalls =
+  rest.match(/PaymentOrchestrationService::new\(runtime\.db_clone\(\)\)/g)?.length ?? 0;
+if (restOrchestrationCalls < 6) {
+  failures.push(
+    `${restPath}: all six payment/refund write endpoints must use PaymentOrchestrationService`,
+  );
+}
 requireMarker(
   graphql,
   "idempotency_key: String",
