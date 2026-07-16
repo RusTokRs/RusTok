@@ -60,6 +60,8 @@ pub mod runtime_guardrails;
 pub mod server_bootstrap;
 pub mod server_runtime_context;
 pub mod settings_service;
+#[cfg(feature = "mod-seo")]
+pub mod seo_redirect_cache_reconciliation;
 pub mod tenant_cache_generation;
 pub mod tenant_cache_generation_status;
 pub mod tenant_generation_delivery_gate;
