@@ -285,7 +285,7 @@ groups:
           description: "P95 query duration is {{ $value | humanizeDuration }} (threshold: 100ms)"
 
       # Very Slow Database Queries
-      - alert: VerySlowRequestLatency
+      - alert: VerySlowDatabaseQueries
         expr: |
           histogram_quantile(
             0.95,
