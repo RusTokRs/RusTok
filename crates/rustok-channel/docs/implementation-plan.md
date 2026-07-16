@@ -74,9 +74,11 @@ The source now includes eleven durable-recovery evidence layers:
 
 The durable cross-replica contract, normal delivery, missed publication, local
 listener lag, database loss/recovery, generation regression and Redis
-restart/reconnect scenarios are source-complete. They are not compiled or live
-verified on the current revision until the permanent cache workflow reports
-successful compiled, PostgreSQL and Redis jobs.
+restart/reconnect scenarios are source-complete. The cache-owned live suite also
+uses Redis 7 `CLIENT PAUSE` to protect the shared two-second operation timeout,
+fast circuit-open rejection and half-open recovery contract. None of these are
+compiled or live verified on the current revision until the permanent cache
+workflow reports successful compiled, PostgreSQL and Redis jobs.
 
 ## FFA/FBA boundary
 
@@ -100,24 +102,16 @@ contracts documented and source-locked.
 ## Open results
 
 1. **Execute the permanent durable cache gate.** Run the source-complete SQLite,
-   server two-replica, lagged-listener resolved-value, PostgreSQL, Redis readiness
-   and Redis restart scenarios on one reconciled `main` revision, then fix every
-   format, compile, test or Clippy failure before recording the revision as
-   verified.
+   server two-replica, lagged-listener resolved-value, PostgreSQL, Redis readiness,
+   Redis restart and cache-owned latency/circuit scenarios on one reconciled
+   `main` revision, then fix every format, compile, test or Clippy failure before
+   recording the revision as verified.
    **Depends on:** GitHub Actions visibility or another Rust 1.96 build
    environment with ephemeral PostgreSQL, Redis 7 and `redis-server`.
    **Done when:** `compiled-contract`, `postgres-channel`, and `live-redis` pass
    on the same revision and the result is recorded without copying raw logs.
 
-2. **Exercise heavier transport degradation.** Add bounded Redis latency and
-   repeated reconnect/circuit-breaker evidence without changing Redis PubSub from
-   an optional low-latency path into the source of truth.
-   **Depends on:** a controllable TCP fault proxy or equivalent deterministic
-   transport fixture.
-   **Done when:** connection timeout, repeated restart and recovery metrics are
-   reproducible without flaky wall-clock assumptions.
-
-3. **Collect full runtime evidence for channel resolution.** Exercise
+2. **Collect full runtime evidence for channel resolution.** Exercise
    `ChannelReadPort` and server middleware with real locale/OAuth facts, policy
    selection, inactive/degraded behavior, cache isolation, generation rollover,
    and the durable cross-replica behavior before promotion beyond
@@ -126,14 +120,14 @@ contracts documented and source-locked.
    **Done when:** targeted Rust middleware/port tests provide reproducible
    runtime evidence for every published read and fallback profile.
 
-4. **Extend channel-aware proof points only with owner evidence.** New domain
+3. **Extend channel-aware proof points only with owner evidence.** New domain
    reads must use the already resolved `ChannelContext`, local tests, and local
    documentation; they must not introduce a second channel-selection mechanism.
    **Depends on:** the consuming module's public contract.
    **Done when:** the proof-point verifier and affected module docs identify the
    same resolved-channel source and visibility behavior.
 
-5. **Defer richer target or connector taxonomy until pressure is concrete.**
+4. **Defer richer target or connector taxonomy until pressure is concrete.**
    Do not add speculative target types or connector abstraction merely to expand
    the model.
    **Depends on:** a demonstrated runtime/product need.
@@ -155,10 +149,11 @@ contracts documented and source-locked.
 - `RUSTOK_CHANNEL_TEST_POSTGRES_URL=postgres://... cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1`
 - `RUSTOK_CACHE_REAL_REDIS_URL=redis://... RUSTOK_CACHE_REDIS_SERVER_BIN=/usr/bin/redis-server cargo test -p rustok-server --test channel_cache_resolved_value -- --ignored --nocapture --test-threads=1`
 - `RUSTOK_CACHE_REAL_REDIS_URL=redis://... cargo test -p rustok-server redis_publication_drives_remote_replica_readiness_recovery --lib -- --ignored --nocapture --test-threads=1`
+- `RUSTOK_CACHE_REAL_REDIS_URL=redis://... cargo test -p rustok-cache --test real_redis_hardening -- --ignored --nocapture --test-threads=1`
 - `cargo clippy -p rustok-channel --lib -- -D warnings`
 - `cargo xtask module validate channel`
 - `cargo xtask module test channel`
-- Targeted Redis latency and policy-lifecycle tests.
+- Targeted policy-lifecycle tests.
 
 ## References
 
