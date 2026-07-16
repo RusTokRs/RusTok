@@ -16,15 +16,16 @@ Last reviewed: 2026-07-16
 - [x] Own no seller, listing, commission, ledger, or payout tables.
 - [x] Declare the required `rustok-marketplace-*` owner-module naming contract.
 - [x] Publish a consumer registry for seller directory projections.
-- [ ] Compose `MarketplaceSellerReadPort` through a root-owned service after the
-  seller provider is available.
+- [x] Compose `MarketplaceSellerReadPort` through the root-owned
+  `MarketplaceSellerDirectoryService` without seller entities or database access.
 - [ ] Add listing, allocation, commission, ledger, and payout consumers only after
   their owner contracts exist.
 
 ## FBA promotion
 
-- [ ] Reach `boundary_ready` after typed seller provider/consumer ports, the
-  in-process provider, deadline/error rules, and source guards are aligned.
+- [ ] Reach `boundary_ready` after the seller provider closes durable command
+  identity, source contracts compile, and the central readiness board is safely
+  synchronized.
 - [ ] Retain remote-profile timeout, degraded-mode, and fallback evidence before
   `transport_verified`.
 
