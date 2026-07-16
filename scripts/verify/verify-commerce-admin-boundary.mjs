@@ -48,6 +48,8 @@ const files = {
   nativeAdapter: "crates/rustok-commerce/admin/src/transport/native_server_adapter.rs",
   commerceRoot: "crates/rustok-commerce/src/lib.rs",
   providerOperations: "crates/rustok-commerce/src/graphql/mutations/provider_operations.rs",
+  graphqlFulfillment: "crates/rustok-commerce/src/graphql/mutations/fulfillment.rs",
+  graphqlRuntime: "crates/rustok-commerce/src/graphql_runtime.rs",
   fulfillmentFacade: "crates/rustok-commerce/src/services/fulfillment_orchestration_facade.rs",
   fulfillmentGuard: "apps/server/tests/commerce_fulfillment_transport_guard.rs",
   adminChanges: "crates/rustok-commerce/src/controllers/admin/changes.rs",
@@ -78,6 +80,8 @@ const orderChange = readRepo(files.orderChange);
 const nativeAdapter = readRepo(files.nativeAdapter);
 const commerceRoot = readRepo(files.commerceRoot);
 const providerOperations = readRepo(files.providerOperations);
+const graphqlFulfillment = readRepo(files.graphqlFulfillment);
+const graphqlRuntime = readRepo(files.graphqlRuntime);
 const fulfillmentFacade = readRepo(files.fulfillmentFacade);
 const fulfillmentGuard = readRepo(files.fulfillmentGuard);
 const adminChanges = readRepo(files.adminChanges);
@@ -166,11 +170,44 @@ assertContains(
   "OrderChangeOrchestrationService::new(",
   `${files.adminChanges}: REST order-change apply must use commerce orchestration`,
 );
+assertContains(
+  adminChanges,
+  ".apply_order_change(tenant.id, id, input.difference_refund, input.metadata)",
+  `${files.adminChanges}: REST order-change apply must pass the complete command`,
+);
 assertNotContains(
   adminChanges,
   "match order_change.change_type.as_str()",
   `${files.adminChanges}: REST transport must not dispatch order-change domain types`,
 );
+
+assertContains(
+  graphqlFulfillment,
+  "order_change_orchestration_from_context(",
+  `${files.graphqlFulfillment}: GraphQL order-change apply must use composed commerce orchestration`,
+);
+assertContains(
+  graphqlFulfillment,
+  ".apply_order_change(tenant_id, id, difference_refund, metadata)",
+  `${files.graphqlFulfillment}: GraphQL order-change apply must pass the complete command`,
+);
+for (const marker of [
+  "match order_change.change_type.as_str()",
+  ".apply_exchange_order_change(",
+  ".apply_claim_order_change(",
+]) {
+  assertNotContains(
+    graphqlFulfillment,
+    marker,
+    `${files.graphqlFulfillment}: GraphQL transport must not own order-change dispatch (${marker})`,
+  );
+}
+assertContains(
+  graphqlRuntime,
+  "pub(crate) fn order_change_orchestration_from_context(",
+  `${files.graphqlRuntime}: GraphQL runtime must compose order-change orchestration`,
+);
+
 assertContains(
   orderChangeOrchestration,
   "match order_change.change_type.as_str()",
@@ -189,7 +226,7 @@ for (const operation of [
 }
 assertContains(
   orderChangeGuard,
-  "rest_order_change_application_uses_commerce_orchestration",
+  "order_change_application_uses_commerce_orchestration",
   `${files.orderChangeGuard}: order-change transport source guard is missing`,
 );
 
