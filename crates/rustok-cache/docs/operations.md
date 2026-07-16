@@ -19,6 +19,8 @@ The canonical rules are in `ops/prometheus/alert_rules.yml`.
 | `CacheRedisDegraded` | critical | Redis is configured but client initialization or connectivity is unhealthy for two minutes | Check Redis reachability, credentials/TLS, DNS and circuit-breaker state; keep the pod degraded until connectivity recovers |
 | `CacheGenerationBumpFailure` | critical | A shared generation could not advance | Identify the owning mutation, confirm whether its database transaction committed, and do not blindly retry a non-idempotent mutation |
 | `CacheInvalidationPublishFailures` | warning | Redis PubSub fast-path publication failed | Confirm the owner has a durable generation/cursor and that reconciliation is advancing; investigate Redis without treating PubSub as the source of truth |
+| `EventConsumerSkippedMessages` | critical | A long-lived event consumer reported broadcast lag and skipped at least one message | Stop acknowledgement and execute the consumer owner’s gap/full-clear recovery before resuming fast-path processing |
+| `RepeatedRuntimeWorkerRestarts` | warning | A supervised runtime worker restarted more than three times in ten minutes | Inspect the bounded restart reason, terminal error and readiness state; fix the dependency or worker defect before changing restart delay |
 | `CacheRefreshSaturated` | warning | The bounded refresh coordinator rejected work | Inspect loader duration, in-flight refreshes and hot keys; reduce loader latency or isolate hot keys before raising concurrency |
 | `CacheCompareAndSetFailures` | warning | Atomic CAS returned an error rather than `Mismatch` | Check Redis/backend health and timeouts; verify fallback did not report a process-local success while the shared primary was unavailable |
 | `LowCacheHitRate` / `VeryLowCacheHitRate` | warning / critical | Cache effectiveness is below the current baseline | Check key version churn, TTL changes, generation rotation and source-of-truth latency before increasing TTL |
@@ -68,6 +70,18 @@ Never apply only the latest event and assume intermediate invalidations were har
 3. Seed the tracker from persisted state.
 4. Resume fast-path events only after recovery completes.
 5. Acknowledge the recovered offset/generation last.
+
+## Worker restart triage
+
+A restart is a recovery attempt, not proof that the dependency or worker is healthy.
+
+1. Group `rustok_event_bus_errors_total` by `event_type` and bounded restart `error_type`.
+2. Check the corresponding runtime guardrail/readiness reason for a terminal handle.
+3. Identify whether the worker exits because its channel closed, a dependency is unavailable, or the worker panicked.
+4. Verify each restart creates a fresh subscription/connection and does not leave an orphan task.
+5. Keep the alert active until restart frequency returns to baseline and the owner recovery checkpoint advances.
+
+Do not increase restart delays merely to suppress the alert; that lengthens stale-data or delivery recovery time.
 
 ## Refresh saturation triage
 
