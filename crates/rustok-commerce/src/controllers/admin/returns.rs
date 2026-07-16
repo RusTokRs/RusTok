@@ -6,8 +6,7 @@ use axum::{
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_order::OrderService;
-use rustok_payment::PaymentService;
-use rustok_web::{HttpError, HttpResult};
+use rustok_web::HttpResult;
 use uuid::Uuid;
 
 use super::{
@@ -19,11 +18,12 @@ use super::{
 };
 use crate::{
     dto::{
-        CancelOrderReturnInput, CompleteRefundInput, CreateOrderReturnInput, CreateRefundInput,
-        ListOrderReturnsInput, OrderReturnResponse,
+        CancelOrderReturnInput, CreateOrderReturnInput, ListOrderReturnsInput,
+        OrderReturnResponse,
     },
-    CreateReturnDecisionInput, PaymentOrchestrationService, PostOrderOrchestrationService,
-    ReturnDecisionResponse,
+    CompleteReturnClaimInput, CompleteReturnExchangeInput, CompleteReturnRefundInput,
+    CompleteReturnResolutionInput, CreateReturnDecisionInput, PostOrderOrchestrationService,
+    ReturnCompletionOrchestrationService, ReturnDecisionResponse,
 };
 
 #[utoipa::path(
@@ -169,36 +169,6 @@ pub async fn show_order_return(
     Ok(Json(item))
 }
 
-fn attach_return_order_change_context(
-    value: serde_json::Value,
-    return_id: Uuid,
-    change_type: &str,
-) -> HttpResult<serde_json::Value> {
-    let mut object = match value {
-        serde_json::Value::Null => serde_json::Map::new(),
-        serde_json::Value::Object(obj) => obj,
-        _ => {
-            return Err(HttpError::bad_request(
-                "commerce_operation_failed",
-                "Value must be a JSON object".to_string(),
-            ))
-        }
-    };
-    object.insert(
-        "order_return_id".to_string(),
-        serde_json::Value::String(return_id.to_string()),
-    );
-    object.insert(
-        "return_decision_action".to_string(),
-        serde_json::Value::String(change_type.to_string()),
-    );
-    object.insert(
-        "return_decision_source".to_string(),
-        serde_json::Value::String("rustok-commerce".to_string()),
-    );
-    Ok(serde_json::Value::Object(object))
-}
-
 #[utoipa::path(
     post,
     path = "/admin/returns/{id}/complete",
@@ -231,184 +201,38 @@ pub async fn complete_order_return(
         )?;
     }
 
-    let db = runtime.db_clone();
-    let event_bus = runtime.event_bus();
-    let payment_provider_registry = runtime.payment_provider_registry();
-    let order_service = OrderService::new(db.clone(), event_bus);
-    let mut complete_input = rustok_order::dto::CompleteOrderReturnInput {
+    let command = CompleteReturnResolutionInput {
         resolution_type: input.resolution_type,
         refund_id: input.refund_id,
         order_change_id: input.order_change_id,
+        refund: input.refund.map(|refund| CompleteReturnRefundInput {
+            payment_collection_id: refund.payment_collection_id,
+            amount: refund.amount,
+            reason: refund.reason,
+            metadata: refund.metadata,
+            complete: refund.complete,
+        }),
+        exchange: input.exchange.map(|exchange| CompleteReturnExchangeInput {
+            description: exchange.description,
+            preview: exchange.preview,
+            metadata: exchange.metadata,
+        }),
+        claim: input.claim.map(|claim| CompleteReturnClaimInput {
+            description: claim.description,
+            preview: claim.preview,
+            metadata: claim.metadata,
+        }),
         metadata: input.metadata,
     };
-    let has_refund_helper = input.refund.is_some();
-    let has_exchange_helper = input.exchange.is_some();
-    let has_claim_helper = input.claim.is_some();
+    let item = ReturnCompletionOrchestrationService::new(
+        runtime.db_clone(),
+        runtime.event_bus(),
+    )
+    .with_payment_provider_registry(runtime.payment_provider_registry())
+    .complete_return(tenant.id, auth.user_id, id, command)
+    .await
+    .map_err(super::map_post_order_orchestration_error)?;
 
-    if let Some(refund_input) = input.refund {
-        if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() {
-            return Err(HttpError::bad_request(
-                "commerce_operation_failed",
-                "refund helper cannot be combined with explicit refund_id or order_change_id".to_string(),
-            ));
-        }
-        if complete_input
-            .resolution_type
-            .as_deref()
-            .map(|value| value.trim().eq_ignore_ascii_case("refund"))
-            == Some(false)
-        {
-            return Err(HttpError::bad_request(
-                "commerce_operation_failed",
-                "refund helper requires resolution_type to be omitted or `refund`".to_string(),
-            ));
-        }
-
-        let existing_return = order_service
-            .get_return(tenant.id, id)
-            .await
-            .map_err(super::map_order_error)?;
-        let payment_service = PaymentService::new(db.clone());
-        let collection_id = super::resolve_return_refund_collection_id(
-            &payment_service,
-            tenant.id,
-            existing_return.order_id,
-            refund_input.payment_collection_id,
-        )
-        .await?;
-        let should_complete = refund_input.complete;
-        let payment_orchestration = PaymentOrchestrationService::new(db.clone())
-            .with_provider_registry(payment_provider_registry.clone());
-        let refund = payment_orchestration
-            .create_refund_idempotent(
-                tenant.id,
-                collection_id,
-                format!("order_return:{id}:refund"),
-                CreateRefundInput {
-                    amount: refund_input.amount,
-                    reason: refund_input.reason,
-                    metadata: refund_input.metadata,
-                },
-            )
-            .await
-            .map_err(super::map_payment_orchestration_error)?;
-        let refund = if should_complete {
-            payment_orchestration
-                .complete_refund(
-                    tenant.id,
-                    refund.id,
-                    CompleteRefundInput {
-                        metadata: serde_json::json!({
-                            "source": "order_return_completion",
-                            "return_id": id,
-                        }),
-                    },
-                )
-                .await
-                .map_err(super::map_payment_orchestration_error)?
-        } else {
-            refund
-        };
-        complete_input.resolution_type = Some("refund".to_string());
-        complete_input.refund_id = Some(refund.id);
-    }
-
-    if let Some(exchange_input) = input.exchange {
-        if complete_input.refund_id.is_some()
-            || complete_input.order_change_id.is_some()
-            || has_refund_helper
-            || has_claim_helper
-        {
-            return Err(HttpError::bad_request(
-                "commerce_operation_failed",
-                "exchange helper cannot be combined with explicit refund_id, order_change_id, refund helper, or claim helper".to_string(),
-            ));
-        }
-        if complete_input
-            .resolution_type
-            .as_deref()
-            .map(|value| value.trim().eq_ignore_ascii_case("exchange"))
-            == Some(false)
-        {
-            return Err(HttpError::bad_request(
-                "commerce_operation_failed",
-                "exchange helper requires resolution_type to be omitted or `exchange`".to_string(),
-            ));
-        }
-        let existing_return = order_service
-            .get_return(tenant.id, id)
-            .await
-            .map_err(super::map_order_error)?;
-        let preview = attach_return_order_change_context(exchange_input.preview, id, "exchange")?;
-        let metadata = attach_return_order_change_context(exchange_input.metadata, id, "exchange")?;
-        let order_change = order_service
-            .create_order_change(
-                tenant.id,
-                auth.user_id,
-                existing_return.order_id,
-                rustok_order::dto::CreateOrderChangeInput {
-                    change_type: "exchange".to_string(),
-                    description: exchange_input.description,
-                    preview,
-                    metadata,
-                },
-            )
-            .await
-            .map_err(super::map_order_error)?;
-        complete_input.resolution_type = Some("exchange".to_string());
-        complete_input.order_change_id = Some(order_change.id);
-    }
-
-    if let Some(claim_input) = input.claim {
-        if complete_input.refund_id.is_some()
-            || complete_input.order_change_id.is_some()
-            || has_refund_helper
-            || has_exchange_helper
-        {
-            return Err(HttpError::bad_request(
-                "commerce_operation_failed",
-                "claim helper cannot be combined with explicit refund_id, order_change_id, refund helper, or exchange helper".to_string(),
-            ));
-        }
-        if complete_input
-            .resolution_type
-            .as_deref()
-            .map(|value| value.trim().eq_ignore_ascii_case("claim"))
-            == Some(false)
-        {
-            return Err(HttpError::bad_request(
-                "commerce_operation_failed",
-                "claim helper requires resolution_type to be omitted or `claim`".to_string(),
-            ));
-        }
-        let existing_return = order_service
-            .get_return(tenant.id, id)
-            .await
-            .map_err(super::map_order_error)?;
-        let preview = attach_return_order_change_context(claim_input.preview, id, "claim")?;
-        let metadata = attach_return_order_change_context(claim_input.metadata, id, "claim")?;
-        let order_change = order_service
-            .create_order_change(
-                tenant.id,
-                auth.user_id,
-                existing_return.order_id,
-                rustok_order::dto::CreateOrderChangeInput {
-                    change_type: "claim".to_string(),
-                    description: claim_input.description,
-                    preview,
-                    metadata,
-                },
-            )
-            .await
-            .map_err(super::map_order_error)?;
-        complete_input.resolution_type = Some("claim".to_string());
-        complete_input.order_change_id = Some(order_change.id);
-    }
-
-    let item = order_service
-        .complete_return(tenant.id, id, complete_input)
-        .await
-        .map_err(super::map_order_error)?;
     Ok(Json(item))
 }
 
