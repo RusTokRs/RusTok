@@ -19,6 +19,17 @@ function read(relativePath) {
   return readFileSync(absolute, "utf8");
 }
 
+function readJson(relativePath) {
+  const source = read(relativePath);
+  if (!source) return {};
+  try {
+    return JSON.parse(source);
+  } catch (error) {
+    failures.push(`${relativePath}: invalid JSON (${error.message})`);
+    return {};
+  }
+}
+
 function requireMarker(source, marker, message) {
   if (!source.includes(marker)) failures.push(message);
 }
@@ -39,6 +50,8 @@ const graphqlPath =
 const graphqlReturnPath =
   "crates/rustok-commerce/src/graphql/mutations/provider_return_helpers.rs";
 const adminReturnPath = "crates/rustok-commerce/src/controllers/admin/returns.rs";
+const schemaSmokePath = "crates/rustok-migrations/tests/ecommerce_schema_smoke.rs";
+const paymentRegistryPath = "crates/rustok-payment/contracts/payment-fba-registry.json";
 const packagePath = "package.json";
 const planPath = "crates/rustok-commerce/docs/implementation-plan.md";
 
@@ -51,6 +64,8 @@ const rest = read(restPath);
 const graphql = read(graphqlPath);
 const graphqlReturn = read(graphqlReturnPath);
 const adminReturn = read(adminReturnPath);
+const schemaSmoke = read(schemaSmokePath);
+const paymentRegistry = readJson(paymentRegistryPath);
 const packageJson = read(packagePath);
 const plan = read(planPath);
 
@@ -134,6 +149,51 @@ forbidMarker(
   ".create_refund(\n",
   `${graphqlPath}: GraphQL must not call legacy refund creation`,
 );
+requireMarker(
+  schemaSmoke,
+  "PaymentRefundCreationService",
+  `${schemaSmokePath}: migrated-schema smoke must use the refund owner service`,
+);
+forbidMarker(
+  schemaSmoke,
+  ".create_refund(\n",
+  `${schemaSmokePath}: migrated-schema smoke must not call removed refund API`,
+);
+
+const refundContract = paymentRegistry.refund_creation;
+if (
+  refundContract?.owner_service !== "PaymentRefundCreationService" ||
+  refundContract?.operation !== "create_or_replay" ||
+  refundContract?.public_identity_required !== true ||
+  refundContract?.legacy_identityless_owner_api_present !== false
+) {
+  failures.push(`${paymentRegistryPath}: refund creation owner contract drift`);
+}
+for (const assertion of [
+  "creation_identity_required",
+  "canonical_request_hash",
+  "same_key_same_payload_replayed",
+  "same_key_different_payload_rejected",
+  "concurrent_same_key_single_identity",
+  "identityless_database_insert_rejected",
+]) {
+  const refundCase = paymentRegistry.contract_tests?.cases?.find(
+    (entry) => entry.operation === "create_or_replay_refund",
+  );
+  if (!refundCase?.assertions?.includes(assertion)) {
+    failures.push(`${paymentRegistryPath}: refund contract case missing ${assertion}`);
+  }
+}
+const stripeAdapter = paymentRegistry.provider_spi?.adapters?.find(
+  (entry) => entry.provider_id === "stripe",
+);
+if (
+  stripeAdapter?.credential_scope !== "tenant" ||
+  stripeAdapter?.status !== "source_implemented_not_registered_compiled_or_executed"
+) {
+  failures.push(`${paymentRegistryPath}: Stripe source/evidence status drift`);
+}
+
 requireMarker(
   packageJson,
   '"verify:payment:refund-identity"',
