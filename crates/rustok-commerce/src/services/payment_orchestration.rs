@@ -389,7 +389,21 @@ impl PaymentOrchestrationService {
         }
     }
 
+    /// Internal owner-workflow entrypoint. The workflow must already have written
+    /// an immutable return/change identity into metadata.
     pub async fn create_refund(
+        &self,
+        tenant_id: Uuid,
+        collection_id: Uuid,
+        input: CreateRefundInput,
+    ) -> PaymentOrchestrationResult<RefundResponse> {
+        let creation_key = workflow_refund_creation_key(&input.metadata)?;
+        self.create_refund_idempotent(tenant_id, collection_id, creation_key, input)
+            .await
+    }
+
+    /// Public/provider-facing entrypoint with an explicit stable creation key.
+    pub async fn create_refund_idempotent(
         &self,
         tenant_id: Uuid,
         collection_id: Uuid,
@@ -524,6 +538,28 @@ fn executable_payment_amount(collection: &PaymentCollectionResponse) -> Decimal 
     }
 }
 
+fn workflow_refund_creation_key(metadata: &Value) -> Result<String, PaymentError> {
+    if let Some(return_id) = metadata
+        .get("order_return_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(format!("order_return:{return_id}:refund"));
+    }
+    if let Some(change_id) = metadata
+        .get("order_change_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(format!("order_change:{change_id}:difference_refund"));
+    }
+    Err(PaymentError::Validation(
+        "refund workflow metadata requires order_return_id or order_change_id".to_string(),
+    ))
+}
+
 fn merge_provider_context(current: Value, patch: Value) -> Value {
     match (current, patch) {
         (Value::Object(mut current), Value::Object(patch)) => {
@@ -599,5 +635,17 @@ mod tests {
 
         value.captured_amount = dec!(60);
         assert_eq!(executable_payment_amount(&value), dec!(60));
+    }
+
+    #[test]
+    fn workflow_refund_key_requires_owner_identity() {
+        assert_eq!(
+            workflow_refund_creation_key(&serde_json::json!({
+                "order_return_id": "return-1"
+            }))
+            .unwrap(),
+            "order_return:return-1:refund"
+        );
+        assert!(workflow_refund_creation_key(&serde_json::json!({})).is_err());
     }
 }
