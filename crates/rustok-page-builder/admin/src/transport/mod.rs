@@ -3,6 +3,16 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub type PageBuilderAdminFacadeFuture = Pin<
+    Box<
+        dyn Future<Output = Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>>
+            + Send
+            + 'static,
+    >,
+>;
+
+#[cfg(target_arch = "wasm32")]
 pub type PageBuilderAdminFacadeFuture = Pin<
     Box<
         dyn Future<Output = Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>>
@@ -14,8 +24,8 @@ pub type PageBuilderAdminFacadeFuture = Pin<
 ///
 /// Implementations may use a native Leptos server function or GraphQL, but the editor and its
 /// controller only see the canonical capability envelope and never branch on transport. The facade
-/// itself is `Send + Sync` so it can live in Leptos owner context; individual browser futures remain
-/// local and are executed through `spawn_local`.
+/// itself is `Send + Sync` so it can live in Leptos owner context. Native SSR futures are `Send` for
+/// Axum handlers; wasm-client futures remain local for `spawn_local`.
 pub trait PageBuilderAdminFacade: Send + Sync {
     fn execute(&self, request: PageBuilderCapabilityRequest) -> PageBuilderAdminFacadeFuture;
 }
