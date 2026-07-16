@@ -168,11 +168,16 @@ this section.
   `executing -> reconciliation_required` and forbid automatic re-claim.
 - [x] Add migration `000120`, migrated-SQLite integration coverage, and
   `verify-payment-provider-outcome-contract.mjs` for uncertain outcomes.
+- [x] Add opt-in server feature `payment-stripe` and compose Stripe into the shared
+  payment provider registry used by GraphQL, REST, and native transports.
+- [x] Resolve tenant Stripe credentials only through deployment-owned `SecretRef`
+  mappings and `SecretResolverRegistry`; reject duplicate tenants, cross-tenant
+  reference reuse, unknown resolver aliases, and raw secret configuration.
+- [x] Add and aggregate `verify-payment-stripe-runtime.mjs`.
 - [ ] Update the legacy GraphQL runtime parity refund mutation helper to pass
   `idempotencyKey`.
-- [ ] Register Stripe through a deployment-owned tenant secret resolver.
-- [ ] Compile and execute authorize, capture, cancel, and refund against a
-  production-like Stripe endpoint.
+- [ ] Execute deployment secret resolution and authorize, capture, cancel, refund,
+  and webhook handling against a production-like Stripe endpoint.
 - [ ] Prove adapters never persist payment/refund lifecycle state.
 
 ### Webhook ingress and durable inbox
@@ -221,8 +226,11 @@ Payment evidence:
 - `crates/rustok-migrations/tests/refund_creation_identity_smoke.rs`
 - `crates/rustok-migrations/tests/refund_creation_identity_required_smoke.rs`
 - `crates/rustok-migrations/tests/payment_provider_operation_uncertain_outcome.rs`
+- `apps/server/src/services/payment_provider_runtime.rs`
+- `apps/server/src/services/commerce_provider_runtime.rs`
 - `scripts/verify/verify-payment-refund-identity.mjs`
 - `scripts/verify/verify-payment-provider-outcome-contract.mjs`
+- `scripts/verify/verify-payment-stripe-runtime.mjs`
 - `apps/server/src/services/payment_provider_event_worker.rs`
 
 ## Cross-domain evidence
@@ -263,6 +271,7 @@ Source inspection is not execution evidence.
 - [ ] `npm run verify:payment:storefront-boundary`
 - [ ] `npm run verify:payment:refund-identity`
 - [ ] `npm run verify:payment:provider-outcomes`
+- [ ] `npm run verify:payment:stripe-runtime`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate payment`
 
@@ -270,7 +279,7 @@ Source inspection is not execution evidence.
 
 - [ ] `cargo check -p rustok-commerce --lib`
 - [ ] `cargo check -p rustok-payment --all-features`
-- [ ] `cargo check -p rustok-server --features mod-payment`
+- [ ] `cargo check -p rustok-server --features payment-stripe,mod-commerce`
 - [ ] `cargo xtask module test commerce`
 - [ ] `cargo xtask module test payment`
 - [ ] Targeted checkout, refund identity, provider-operation, provider-event,
@@ -297,8 +306,8 @@ Source inspection is not execution evidence.
 3. [ ] Run commerce, payment, Stripe-feature, and server compile checks.
 4. [ ] Run clean SQLite migrations and targeted regression tests.
 5. [ ] Run PostgreSQL contention, restart, and kill-point scenarios.
-6. [ ] Mount a deployment-owned Stripe tenant credential resolver and execute the
-   adapter against a production-like endpoint.
+6. [ ] Execute deployment secret resolution and the Stripe adapter against a
+   production-like endpoint.
 7. [ ] Run mounted HTTP and background-worker recovery scenarios.
 8. [ ] Integrate and execute an approved carrier adapter.
 9. [ ] Reassess FFA/FBA promotion from retained evidence.
