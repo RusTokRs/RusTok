@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use rustok_api::Permission;
@@ -19,6 +19,8 @@ use crate::dto::{
     CompleteRefundInput, CreateRefundInput, ListPaymentCollectionsInput, ListRefundsInput,
     PaymentCollectionResponse, RefundResponse,
 };
+
+const MAX_REFUND_CREATION_KEY_LENGTH: usize = 191;
 
 /// List admin payment collections
 #[utoipa::path(
@@ -207,10 +209,14 @@ pub async fn cancel_payment_collection(
     post,
     path = "/admin/payment-collections/{id}/refunds",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Payment collection ID")),
+    params(
+        ("id" = Uuid, Path, description = "Payment collection ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable refund creation identity, maximum 191 bytes")
+    ),
     request_body = CreateRefundInput,
     responses(
-        (status = 201, description = "Refund created", body = RefundResponse),
+        (status = 201, description = "Refund created or replayed", body = RefundResponse),
+        (status = 400, description = "Missing, invalid, or conflicting idempotency key"),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Payment collection not found")
     )
@@ -220,6 +226,7 @@ pub async fn create_refund(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<CreateRefundInput>,
 ) -> HttpResult<(StatusCode, Json<RefundResponse>)> {
     ensure_permissions(
@@ -227,10 +234,11 @@ pub async fn create_refund(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
+    let creation_key = refund_creation_key(&headers)?;
 
     let refund = crate::PaymentOrchestrationService::new(runtime.db_clone())
         .with_provider_registry(runtime.payment_provider_registry())
-        .create_refund(tenant.id, id, input)
+        .create_refund(tenant.id, id, creation_key, input)
         .await
         .map_err(super::map_payment_orchestration_error)?;
 
@@ -379,4 +387,27 @@ pub async fn cancel_refund(
         .map_err(super::map_payment_error)?;
 
     Ok(Json(refund))
+}
+
+fn refund_creation_key(headers: &HeaderMap) -> HttpResult<String> {
+    let value = headers
+        .get("idempotency-key")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            HttpError::bad_request(
+                "refund_idempotency_key_required",
+                "Idempotency-Key header is required",
+            )
+        })?;
+    if value.len() > MAX_REFUND_CREATION_KEY_LENGTH {
+        return Err(HttpError::bad_request(
+            "refund_idempotency_key_invalid",
+            format!(
+                "Idempotency-Key must contain at most {MAX_REFUND_CREATION_KEY_LENGTH} bytes"
+            ),
+        ));
+    }
+    Ok(value.to_string())
 }
