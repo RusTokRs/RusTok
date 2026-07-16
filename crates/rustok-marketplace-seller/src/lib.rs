@@ -9,6 +9,8 @@ mod receipted_commands;
 pub mod dto;
 pub mod entities;
 pub mod error;
+#[cfg(feature = "graphql")]
+pub mod graphql;
 pub mod migrations;
 pub mod ports;
 pub mod service;
