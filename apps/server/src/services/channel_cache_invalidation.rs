@@ -9,12 +9,14 @@ use rustok_cache::{
     CacheInvalidationMessage, CacheService, DurableCacheInvalidationRecord,
     LocalCacheInvalidationSubscription, VersionedCacheInvalidation,
 };
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::middleware::channel::invalidate_tenant_channel_cache_local;
+use crate::middleware::channel::{
+    invalidate_all_channel_cache_local, invalidate_tenant_channel_cache_local,
+};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 pub const CHANNEL_RESOLUTION_INVALIDATION_CHANNEL: &str = "channel.resolution.generation.v1";
@@ -179,23 +181,6 @@ impl ChannelCacheInvalidationListener {
             .map_err(|error| Error::Cache(error.to_string()))
     }
 
-    async fn invalidate_all_tenants(&self) -> Result<()> {
-        let rows = self
-            .db
-            .query_all(Statement::from_string(
-                self.db.get_database_backend(),
-                "SELECT id FROM tenants".to_string(),
-            ))
-            .await
-            .map_err(Error::from)?;
-
-        for row in rows {
-            let tenant_id = row.try_get::<Uuid>("", "id").map_err(Error::from)?;
-            invalidate_tenant_channel_cache_local(&self.ctx, tenant_id).await;
-        }
-        Ok(())
-    }
-
     async fn reconcile_generation(&self) -> Result<Option<u64>> {
         let result = self.reconcile_generation_inner().await;
         match &result {
@@ -213,7 +198,7 @@ impl ChannelCacheInvalidationListener {
             return Ok(None);
         }
 
-        self.invalidate_all_tenants().await?;
+        invalidate_all_channel_cache_local(&self.ctx).await;
         self.applied.replace(generation);
         if let Some(previous) = previous
             && generation < previous
