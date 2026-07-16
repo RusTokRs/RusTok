@@ -1,4 +1,6 @@
-use crate::editor::{SsrDropRequest, SsrLocalizedPageMetadataRequest};
+use crate::editor::{
+    SsrDropRequest, SsrLocalePolicyRequest, SsrLocalizedPageMetadataRequest,
+};
 use crate::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
 use fly::{GrapesJsV1Codec, ProjectHash};
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentError};
@@ -69,6 +71,17 @@ fn dispatch_named_intent(
                 .ssr_drop_intent(request)
                 .map_err(BrowserIntentDispatchError::Authoring)?;
             controller.dispatch(intent)?
+        }
+        "set_locale_policy" => {
+            let request = serde_json::from_value::<SsrLocalePolicyRequest>(payload.clone())
+                .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
+            let intent = controller
+                .ssr_locale_policy_intent(request)
+                .map_err(BrowserIntentDispatchError::Authoring)?;
+            controller.dispatch(intent)?
+        }
+        "clear_locale_policy" => {
+            controller.dispatch(controller.ssr_clear_locale_policy_intent())?
         }
         "upsert_localized_page_metadata" => {
             let request = serde_json::from_value::<SsrLocalizedPageMetadataRequest>(payload.clone())
@@ -230,6 +243,8 @@ fn is_mutating_intent(envelope: &BrowserIntentEnvelope) -> bool {
             envelope.intent.as_str(),
             "patch_component_property"
                 | "patch_page_metadata"
+                | "set_locale_policy"
+                | "clear_locale_policy"
                 | "upsert_localized_page_metadata"
                 | "create_page"
                 | "rename_page"
@@ -449,6 +464,31 @@ mod tests {
                 .unwrap()
                 .attributes["aria-label"],
             "Hero section"
+        );
+    }
+
+    #[test]
+    fn locale_policy_form_uses_revision_protected_translation_history() {
+        let mut controller = controller();
+        let result = dispatch_browser_intent(
+            &mut controller,
+            intent(
+                "set_locale_policy",
+                json!({
+                    "default_locale": "ru",
+                    "supported_locales": "ru, en",
+                    "required_locales": "ru, en",
+                    "fallback_locales": "en",
+                    "enforce_required_locales": false
+                }),
+            ),
+        )
+        .expect("locale policy");
+        assert!(result.dirty);
+        assert_eq!(
+            controller.editor().document().project.extensions["flyLocales"]
+                ["default_locale"],
+            "ru"
         );
     }
 
