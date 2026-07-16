@@ -13,7 +13,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 | Module/Crate | Local plan | Status | Nearest priority |
 | --- | --- | --- | --- |
 | `alloy` | [plan](../../crates/alloy/docs/implementation-plan.md) | `in_progress` | Move Alloy execution through the neutral sandbox, then package source revisions as immutable module artifacts. |
-| `flex` | [plan](../../crates/flex/docs/implementation-plan.md) | `in_progress` | Make field-definition cache recovery durable across replicas, then finish owner transport extraction and targeted runtime evidence. |
+| `flex` | [plan](../../crates/flex/docs/implementation-plan.md) | `in_progress` | Execute the source-complete SQLite owner matrix, PostgreSQL transaction/concurrency/replay and two-replica outage/regression recovery evidence, then finish owner transport extraction. |
 | `leptos-auth` | [plan](../../crates/leptos-auth/docs/implementation-plan.md) | `not_started` | Remove the legacy `api` compatibility re-export after migrating callers. |
 | `leptos-hook-form` | [plan](../../crates/leptos-hook-form/docs/implementation-plan.md) | `not_started` | Validate the shared form-state contract with concrete consumers. |
 | `leptos-shadcn-pagination` | [plan](../../crates/leptos-shadcn-pagination/docs/implementation-plan.md) | `not_started` | Remove package-local pagination copy through the host locale contract. |
@@ -30,7 +30,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 | `auth` | [plan](../../crates/rustok-auth/docs/implementation-plan.md) | `not_started` | Record browser/runtime parity evidence for the auth admin user and OAuth mutation flows before promoting to parityverified. |
 | `blog` | [plan](../../crates/rustok-blog/docs/implementation-plan.md) | `in_progress` | Add public/write rate limits, verify search projection, and obtain live comments plus host-parity evidence. |
 | `build` | [plan](../../crates/rustok-build/docs/implementation-plan.md) | `in_progress` | Move the build queue and executor from the server host, then expose the shared execution service to the platform CLI. |
-| `cache` | [plan](../../crates/rustok-cache/docs/implementation-plan.md) | `in_progress` | Execute compiled, PostgreSQL, full local CAS, tenant-locale and isolated Redis latency/restart jobs on one reconciled `main` revision; fix failures and record the verified revision. |
+| `cache` | [plan](../../crates/rustok-cache/docs/implementation-plan.md) | `in_progress` | Execute compiled, PostgreSQL channel/Flex, full local CAS, tenant-locale and isolated Redis latency/restart jobs on one reconciled `main` revision; fix failures and record it. |
 | `cart` | [plan](../../crates/rustok-cart/docs/implementation-plan.md) | `not_started` | Continue only with owner-module checkout handoff slices that remove real umbrella presentation/read leakage, or return to parity/evidence hardening for SSR native path, GraphQL selected path, headless cart mutation contracts and DOM evidence. |
 | `channel` | [plan](../../crates/rustok-channel/docs/implementation-plan.md) | `in_progress` | Execute the complete durable-generation, lag/value, PostgreSQL, Redis restart and cache-owned latency/circuit evidence on one revision, then continue full locale/OAuth/policy runtime evidence. |
 | `cli` | [plan](../../crates/rustok-cli/docs/implementation-plan.md) | `in_progress` | Register the first module-local provider, then migrate one owned server workflow to it. |
