@@ -255,10 +255,11 @@ pub async fn complete_refund(
     Json(input): Json<CompleteRefundInput>,
 ) -> HttpResult<Json<RefundResponse>> {
     ensure_permissions(&auth, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
-    let refund = PaymentService::new(runtime.db_clone())
+    let refund = crate::PaymentOrchestrationService::new(runtime.db_clone())
+        .with_provider_registry(runtime.payment_provider_registry())
         .complete_refund(tenant.id, id, input)
         .await
-        .map_err(super::map_payment_error)?;
+        .map_err(super::map_payment_orchestration_error)?;
     Ok(Json(refund))
 }
 
@@ -278,10 +279,11 @@ pub async fn cancel_refund(
     Json(input): Json<CancelRefundInput>,
 ) -> HttpResult<Json<RefundResponse>> {
     ensure_permissions(&auth, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
-    let refund = PaymentService::new(runtime.db_clone())
+    let refund = crate::PaymentOrchestrationService::new(runtime.db_clone())
+        .with_provider_registry(runtime.payment_provider_registry())
         .cancel_refund(tenant.id, id, input)
         .await
-        .map_err(super::map_payment_error)?;
+        .map_err(super::map_payment_orchestration_error)?;
     Ok(Json(refund))
 }
 
