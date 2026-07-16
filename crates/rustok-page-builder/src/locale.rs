@@ -14,11 +14,12 @@ pub struct PageBuilderLocaleContext {
 }
 
 impl PageBuilderLocaleContext {
-    pub fn new(
-        locale: Option<impl AsRef<str>>,
-        fallback_locales: impl IntoIterator<Item = impl AsRef<str>>,
-    ) -> Self {
-        let locale = locale.and_then(|locale| normalize_locale_tag(locale.as_ref()));
+    pub fn new<I, S>(locale: Option<&str>, fallback_locales: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let locale = locale.and_then(normalize_locale_tag);
         let mut normalized_fallbacks = Vec::new();
         for fallback in fallback_locales {
             let Some(fallback) = normalize_locale_tag(fallback.as_ref()) else {
