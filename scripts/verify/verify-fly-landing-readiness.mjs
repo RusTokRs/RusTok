@@ -48,7 +48,11 @@ rejectText(
 );
 requireText(
   "crates/rustok-page-builder/admin/src/editor/runtime_publish_gate.rs",
-  "Landing readiness:",
+  "page_builder.runtimePublishGate.readiness",
+);
+requireText(
+  "crates/rustok-page-builder/admin/src/editor/audit_panel.rs",
+  "page_builder.audit.errors",
 );
 requireText(
   "crates/rustok-page-builder/admin/src/editor/mod.rs",
@@ -57,6 +61,31 @@ requireText(
 requireText(
   "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
   "<AuditPanel runtime=audit_runtime />",
+);
+for (const localePath of [
+  "crates/rustok-page-builder/admin/locales/en.json",
+  "crates/rustok-page-builder/admin/locales/ru.json",
+]) {
+  requireText(localePath, '"runtimePublishGate"');
+  requireText(localePath, '"readinessCategory"');
+  requireText(localePath, '"audit"');
+  requireText(localePath, '"checkRuntimeGate"');
+}
+requireText(
+  "crates/rustok-page-builder/admin/locales/en.json",
+  "Block publish when required translations are missing",
+);
+requireText(
+  "crates/rustok-page-builder/admin/locales/ru.json",
+  "Блокировать публикацию при отсутствии обязательных переводов",
+);
+rejectText(
+  "crates/rustok-page-builder/admin/locales/en.json",
+  "Block save and publish",
+);
+rejectText(
+  "crates/rustok-page-builder/admin/locales/ru.json",
+  "Блокировать сохранение и публикацию",
 );
 
 console.log("Fly landing readiness publish-only wiring verified.");
