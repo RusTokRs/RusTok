@@ -1,9 +1,10 @@
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     Json,
 };
 use rustok_api::{AuthContext, Permission, TenantContext};
-use rustok_web::HttpResult;
+use rustok_web::{HttpError, HttpResult};
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -16,7 +17,7 @@ use crate::dto::OrderReturnResponse;
 use crate::services::{
     ListReturnCompletionOperationsInput, ReturnCompletionOperationResponse,
 };
-use crate::ReturnCompletionOrchestrationService;
+use crate::{PostOrderOrchestrationError, ReturnCompletionOrchestrationService};
 
 #[derive(Clone, Debug, Default, Deserialize, ToSchema, IntoParams)]
 pub struct AdminListReturnCompletionOperationsParams {
@@ -71,7 +72,7 @@ pub async fn list_return_completion_operations(
         },
     )
     .await
-    .map_err(super::admin::map_post_order_orchestration_error)?;
+    .map_err(map_operator_error)?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -108,7 +109,7 @@ pub async fn show_return_completion_operation(
     .with_payment_provider_registry(runtime.payment_provider_registry())
     .get_operation(tenant.id, id)
     .await
-    .map_err(super::admin::map_post_order_orchestration_error)?;
+    .map_err(map_operator_error)?;
     Ok(Json(operation))
 }
 
@@ -121,7 +122,8 @@ pub async fn show_return_completion_operation(
         (status = 200, description = "Return completion retried", body = OrderReturnResponse),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Return completion operation not found"),
-        (status = 409, description = "Operation is leased or requires reconciliation")
+        (status = 409, description = "Operation is leased or requires reconciliation"),
+        (status = 503, description = "Recovery storage or provider is unavailable")
     )
 )]
 pub async fn retry_return_completion_operation(
@@ -142,6 +144,43 @@ pub async fn retry_return_completion_operation(
     .with_payment_provider_registry(runtime.payment_provider_registry())
     .retry_operation(tenant.id, auth.user_id, id)
     .await
-    .map_err(super::admin::map_post_order_orchestration_error)?;
+    .map_err(map_operator_error)?;
     Ok(Json(order_return))
+}
+
+fn map_operator_error(error: PostOrderOrchestrationError) -> HttpError {
+    match error {
+        PostOrderOrchestrationError::Validation(message)
+            if message.contains("was not found") =>
+        {
+            HttpError::not_found(
+                "return_completion_operation_not_found",
+                "Return completion operation not found",
+            )
+        }
+        PostOrderOrchestrationError::Validation(message)
+            if message.contains("currently leased")
+                || message.contains("requires reconciliation")
+                || message.contains("terminally failed")
+                || message.contains("already completed")
+                || message.contains("different completion command")
+                || message.contains("already bound to another command")
+                || message.contains("command hash does not match") =>
+        {
+            HttpError::new(
+                StatusCode::CONFLICT,
+                "return_completion_operation_conflict",
+                message,
+            )
+        }
+        PostOrderOrchestrationError::Order(
+            rustok_order::error::OrderError::Database(_)
+            | rustok_order::error::OrderError::Core(_),
+        ) => HttpError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "return_completion_storage_unavailable",
+            "Return completion recovery storage is unavailable",
+        ),
+        other => super::admin::map_post_order_orchestration_error(other),
+    }
 }
