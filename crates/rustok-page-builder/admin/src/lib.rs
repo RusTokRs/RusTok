@@ -4,6 +4,7 @@
 mod context_contract;
 
 pub mod browser_intent;
+pub mod draft_session;
 pub mod editor;
 mod i18n;
 mod model;
@@ -13,6 +14,10 @@ pub mod ui;
 pub use browser_intent::{
     dispatch_browser_intent, BrowserIntentDispatchError, BrowserIntentDispatchResult,
     BrowserIntentEffect,
+};
+pub use draft_session::{
+    InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,
+    SsrDraftSessionStore,
 };
 pub use model::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
 pub use transport::{
