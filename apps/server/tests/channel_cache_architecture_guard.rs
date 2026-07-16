@@ -203,7 +203,8 @@ fn cache_workflow_retains_channel_compiled_evidence() {
     let postgres = source("crates/rustok-channel/tests/postgres_invalidation_generation.rs");
     for required in [
         "postgres_generation_is_transactional_concurrent_and_recoverable",
-        "let replica = Database::connect(&url).await.unwrap();",
+        "ConnectOptions::new(url.to_string())",
+        "let replica = connect_postgres(url.as_str()).await;",
         "let mutation_a = tokio::spawn",
         "let mutation_b = tokio::spawn",
         "migration.up(&manager).await.unwrap();",
