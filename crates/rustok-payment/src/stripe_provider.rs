@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use hmac::{Hmac, Mac};
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, StatusCode, Url};
 use rust_decimal::Decimal;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use sha2::Sha256;
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 use crate::{
@@ -19,6 +19,7 @@ use crate::{
 pub const STRIPE_PAYMENT_PROVIDER_ID: &str = "stripe";
 const DEFAULT_STRIPE_API_BASE: &str = "https://api.stripe.com";
 const DEFAULT_WEBHOOK_TOLERANCE_SECONDS: i64 = 300;
+const DEFAULT_REQUEST_TIMEOUT_SECONDS: u64 = 30;
 const MAX_STRIPE_ID_LENGTH: usize = 191;
 
 #[derive(Clone)]
@@ -58,7 +59,7 @@ pub trait StripeCredentialProvider: Send + Sync {
 }
 
 /// Explicit static credential map for tests and local single-process profiles.
-/// Production hosts should resolve tenant-owned secret references instead.
+/// Production hosts must resolve tenant-owned secret references instead.
 #[derive(Clone, Default)]
 pub struct StaticStripeCredentialProvider {
     credentials: Arc<HashMap<Uuid, StripeCredentials>>,
@@ -91,6 +92,7 @@ impl StripeCredentialProvider for StaticStripeCredentialProvider {
 pub struct StripePaymentProviderConfig {
     pub api_base: String,
     pub webhook_tolerance_seconds: i64,
+    pub request_timeout_seconds: u64,
     pub default_for_new_collections: bool,
 }
 
@@ -99,6 +101,7 @@ impl Default for StripePaymentProviderConfig {
         Self {
             api_base: DEFAULT_STRIPE_API_BASE.to_string(),
             webhook_tolerance_seconds: DEFAULT_WEBHOOK_TOLERANCE_SECONDS,
+            request_timeout_seconds: DEFAULT_REQUEST_TIMEOUT_SECONDS,
             default_for_new_collections: false,
         }
     }
@@ -111,12 +114,12 @@ impl StripePaymentProviderConfig {
                 "stripe webhook tolerance must be between 1 and 3600 seconds".to_string(),
             ));
         }
-        let api_base = self.api_base.trim();
-        if !api_base.starts_with("https://") && !api_base.starts_with("http://localhost") {
+        if !(1..=120).contains(&self.request_timeout_seconds) {
             return Err(PaymentError::Validation(
-                "stripe api base must use https or localhost".to_string(),
+                "stripe request timeout must be between 1 and 120 seconds".to_string(),
             ));
         }
+        validate_api_base(self.api_base.as_str())?;
         Ok(())
     }
 }
@@ -133,9 +136,22 @@ impl StripePaymentProvider {
         config: StripePaymentProviderConfig,
         credentials: Arc<dyn StripeCredentialProvider>,
     ) -> PaymentResult<Self> {
-        Self::with_client(config, credentials, Client::new())
+        config.validate()?;
+        let client = Client::builder()
+            .timeout(Duration::from_secs(config.request_timeout_seconds))
+            .build()
+            .map_err(|_| {
+                PaymentError::Validation("stripe HTTP client configuration failed".to_string())
+            })?;
+        Ok(Self {
+            client,
+            config,
+            credentials,
+        })
     }
 
+    /// Test and host-integration seam for a preconfigured client. The host remains
+    /// responsible for applying an equivalent bounded timeout.
     pub fn with_client(
         config: StripePaymentProviderConfig,
         credentials: Arc<dyn StripeCredentialProvider>,
@@ -217,8 +233,8 @@ impl StripePaymentProvider {
                 PaymentError::Validation("stripe signature header is required".to_string())
             })?;
         let parsed = parse_stripe_signature(signature)?;
-        let age = (Utc::now().timestamp() - parsed.timestamp).abs();
-        if age > self.config.webhook_tolerance_seconds {
+        let age = Utc::now().timestamp().abs_diff(parsed.timestamp);
+        if age > self.config.webhook_tolerance_seconds as u64 {
             return Err(PaymentError::Validation(
                 "stripe webhook timestamp is outside the allowed tolerance".to_string(),
             ));
@@ -371,7 +387,11 @@ impl PaymentProvider for StripePaymentProvider {
                 intent.status
             )));
         }
-        let authorized_minor = intent.amount_capturable.max(intent.amount);
+        let authorized_minor = if intent.amount_capturable > 0 {
+            intent.amount_capturable
+        } else {
+            intent.amount
+        };
         let provider_payment_id = intent.id.clone();
         Ok(PaymentProviderOperationResult {
             provider_id: STRIPE_PAYMENT_PROVIDER_ID.to_string(),
@@ -457,7 +477,7 @@ impl PaymentProvider for StripePaymentProvider {
         let refund_id = required_metadata_string(&request.metadata, "refund_id")?;
         let amount = to_minor_units(request.amount, request.currency_code.as_str())?;
         let form = vec![
-            ("payment_intent".to_string(), intent_id),
+            ("payment_intent".to_string(), intent_id.clone()),
             ("amount".to_string(), amount.to_string()),
             ("metadata[rustok_refund_id]".to_string(), refund_id),
         ];
@@ -562,7 +582,7 @@ fn parse_stripe_signature(value: &str) -> PaymentResult<ParsedStripeSignature> {
 }
 
 fn decode_hex(value: &str) -> PaymentResult<Vec<u8>> {
-    if value.len() % 2 != 0 {
+    if value.is_empty() || !value.is_ascii() || value.len() % 2 != 0 {
         return Err(PaymentError::Validation(
             "stripe signature digest is invalid".to_string(),
         ));
@@ -575,6 +595,25 @@ fn decode_hex(value: &str) -> PaymentResult<Vec<u8>> {
             })
         })
         .collect()
+}
+
+fn validate_api_base(value: &str) -> PaymentResult<()> {
+    let url = Url::parse(value.trim()).map_err(|_| {
+        PaymentError::Validation("stripe api base must be a valid URL".to_string())
+    })?;
+    if url.query().is_some() || url.fragment().is_some() {
+        return Err(PaymentError::Validation(
+            "stripe api base must not contain a query or fragment".to_string(),
+        ));
+    }
+    let local_http = url.scheme() == "http"
+        && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
+    if url.scheme() != "https" && !local_http {
+        return Err(PaymentError::Validation(
+            "stripe api base must use https or an exact loopback host".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn map_stripe_status(status: StatusCode) -> PaymentError {
@@ -706,5 +745,19 @@ mod tests {
         assert_eq!(to_minor_units(Decimal::new(2500, 2), "USD").unwrap(), 2500);
         assert!(to_minor_units(Decimal::new(251, 3), "USD").is_err());
         assert_eq!(to_minor_units(Decimal::new(2500, 2), "JPY").unwrap(), 25);
+    }
+
+    #[test]
+    fn api_base_rejects_non_loopback_http_and_url_suffixes() {
+        assert!(validate_api_base("http://localhost:12111").is_ok());
+        assert!(validate_api_base("http://127.0.0.1:12111").is_ok());
+        assert!(validate_api_base("http://localhost.evil.example").is_err());
+        assert!(validate_api_base("https://api.stripe.com?secret=x").is_err());
+    }
+
+    #[test]
+    fn signature_hex_rejects_unicode_without_panicking() {
+        assert!(decode_hex("éé").is_err());
+        assert!(decode_hex("").is_err());
     }
 }
