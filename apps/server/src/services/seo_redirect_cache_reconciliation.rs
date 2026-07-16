@@ -59,6 +59,10 @@ struct SeoRedirectCacheReconciliationStartLock(Arc<Mutex<()>>);
 /// Ensure every serving runtime reconciles its process-local redirect cache from the
 /// transactionally persisted SEO delivery log.
 pub fn start_seo_redirect_cache_reconciliation(ctx: &ServerRuntimeContext) {
+    if ctx.settings().runtime.is_registry_only() {
+        return;
+    }
+
     let _ = ctx.shared_insert_if_absent(SeoRedirectCacheReconciliationStartLock::default());
     let start_lock = ctx
         .shared_get::<SeoRedirectCacheReconciliationStartLock>()
