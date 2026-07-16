@@ -125,9 +125,7 @@ impl TenantLocaleGenerationListener {
             .last_generation(TENANT_CACHE_GENERATION_CHANNEL);
 
         match previous {
-            None => {
-                invalidate_all_tenant_locale_cache(&self.ctx).await;
-            }
+            None => invalidate_all_tenant_locale_cache(&self.ctx).await,
             Some(previous) if generation == previous => {}
             Some(previous) if generation > previous => {
                 invalidate_all_tenant_locale_cache(&self.ctx).await;
@@ -157,15 +155,14 @@ impl TenantLocaleGenerationListener {
         let result = async {
             let event = VersionedCacheInvalidation::from_message(&message)
                 .map_err(|error| Error::Cache(error.to_string()))?;
-            let received_generation = event.generation;
-            self.handle_event(event).await?;
             let durable = self.current_generation().await?;
-            if durable < received_generation {
+            if durable < event.generation {
                 return Err(Error::Cache(format!(
-                    "shared tenant locale generation {durable} trails received {received_generation}"
+                    "shared tenant locale generation {durable} trails received {}",
+                    event.generation
                 )));
             }
-            Ok(())
+            self.handle_event(event, durable).await
         }
         .await;
         match &result {
@@ -175,7 +172,11 @@ impl TenantLocaleGenerationListener {
         result
     }
 
-    async fn handle_event(&self, event: VersionedCacheInvalidation) -> Result<()> {
+    async fn handle_event(
+        &self,
+        event: VersionedCacheInvalidation,
+        durable: u64,
+    ) -> Result<()> {
         if event.channel != TENANT_CACHE_GENERATION_CHANNEL {
             return Err(Error::Validation(format!(
                 "unexpected tenant locale invalidation channel {}",
@@ -200,7 +201,6 @@ impl TenantLocaleGenerationListener {
             }
             CacheInvalidationObservation::Duplicate { .. } => {}
             CacheInvalidationObservation::Stale { last, .. } => {
-                let durable = self.current_generation().await?;
                 if durable < last {
                     self.recover_if_advanced().await?;
                 }
@@ -208,14 +208,7 @@ impl TenantLocaleGenerationListener {
             CacheInvalidationObservation::UnverifiedFirst { .. }
             | CacheInvalidationObservation::Gap { .. } => {
                 invalidate_all_tenant_locale_cache(&self.ctx).await;
-                let recovered = self.current_generation().await?;
-                if recovered < event.generation {
-                    return Err(Error::Cache(format!(
-                        "shared tenant locale generation {recovered} trails received {}",
-                        event.generation
-                    )));
-                }
-                acknowledge_locale_recovery(&self.tracker, recovered)?;
+                acknowledge_locale_recovery(&self.tracker, durable)?;
             }
         }
         Ok(())
