@@ -4,6 +4,7 @@ use crate::services::field_definition_cache::FieldDefinitionCacheInvalidationHan
 use crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle;
 use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::tenant_locale_generation::TenantLocaleGenerationListenerHandle;
 
 mod base {
     include!("runtime_guardrails_base.rs");
@@ -27,6 +28,13 @@ pub async fn collect_runtime_guardrail_snapshot(
         &mut snapshot,
         "event bus transport forwarder",
         ctx.shared_get::<EventForwarderHandle>()
+            .map(|handle| handle.is_running()),
+        RuntimeGuardrailStatus::Critical,
+    );
+    observe_worker(
+        &mut snapshot,
+        "tenant locale durable generation runtime",
+        ctx.shared_get::<TenantLocaleGenerationListenerHandle>()
             .map(|handle| handle.is_running()),
         RuntimeGuardrailStatus::Critical,
     );
