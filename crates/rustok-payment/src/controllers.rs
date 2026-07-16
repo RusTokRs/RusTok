@@ -102,7 +102,6 @@ impl From<provider_event::Model> for PaymentProviderEventAdminResponse {
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct DeadLetterQuery {
-    /// Maximum number of newest dead-letter events to return (1..100).
     pub limit: Option<u64>,
 }
 
@@ -145,11 +144,7 @@ pub fn axum_webhook_router(runtime: &HostRuntimeContext) -> anyhow::Result<Route
         ("idempotency-key" = Option<String>, Header, description = "Optional untrusted replay identity hint; verified provider output is authoritative"),
         ("x-provider-signature" = String, Header, description = "Provider-specific signature; adapters may also accept a documented provider header")
     ),
-    request_body(
-        content = Vec<u8>,
-        content_type = "application/octet-stream",
-        description = "Raw signed provider payload, maximum 1 MiB"
-    ),
+    request_body(content = Vec<u8>, content_type = "application/octet-stream", description = "Raw signed provider payload, maximum 1 MiB"),
     responses(
         (status = 200, description = "Provider event processed or replayed", body = PaymentWebhookIngressResponse),
         (status = 202, description = "Provider event is already processing", body = PaymentWebhookIngressResponse),
@@ -158,7 +153,7 @@ pub fn axum_webhook_router(runtime: &HostRuntimeContext) -> anyhow::Result<Route
         (status = 409, description = "Provider event conflicts with current owner state"),
         (status = 413, description = "Payload exceeds 1 MiB"),
         (status = 422, description = "Provider event requires operator review"),
-        (status = 503, description = "Storage or owner state is temporarily unavailable")
+        (status = 503, description = "Storage, configuration, or provider is temporarily unavailable")
     )
 )]
 pub async fn ingest_provider_webhook(
@@ -205,7 +200,6 @@ pub async fn ingest_provider_webhook(
             lease_owner,
         )
         .await;
-
     map_ingress_result(result)
 }
 
@@ -382,15 +376,27 @@ fn map_replay_error(error: PaymentProviderEventIngressError) -> (StatusCode, Jso
 
 fn map_webhook_payment_error(error: PaymentError) -> (StatusCode, Json<Value>) {
     match error {
-        PaymentError::Database(_) => safe_error(
+        PaymentError::Database(_) | PaymentError::ProviderUnavailable { .. } => safe_error(
             StatusCode::SERVICE_UNAVAILABLE,
-            "payment_webhook_storage_unavailable",
+            "payment_webhook_temporarily_unavailable",
             "Payment provider event will be retried",
         ),
-        PaymentError::Validation(_) => safe_error(
+        PaymentError::ProviderConfiguration { .. } => safe_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "payment_webhook_provider_not_configured",
+            "Payment provider webhook configuration is unavailable",
+        ),
+        PaymentError::Validation(_)
+        | PaymentError::ProviderRejected { .. }
+        | PaymentError::ProviderInvalidResponse { .. } => safe_error(
             StatusCode::BAD_REQUEST,
             "payment_webhook_invalid",
             "Payment provider webhook could not be verified or parsed",
+        ),
+        PaymentError::ProviderOutcomeUnknown { .. } => safe_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "payment_webhook_outcome_unknown",
+            "Payment provider event requires operator review",
         ),
         PaymentError::InvalidTransition { .. } => safe_error(
             StatusCode::CONFLICT,
@@ -409,10 +415,12 @@ fn map_webhook_payment_error(error: PaymentError) -> (StatusCode, Json<Value>) {
 
 fn map_admin_payment_error(error: PaymentError) -> (StatusCode, Json<Value>) {
     match error {
-        PaymentError::Database(_) => safe_error(
+        PaymentError::Database(_)
+        | PaymentError::ProviderUnavailable { .. }
+        | PaymentError::ProviderConfiguration { .. } => safe_error(
             StatusCode::SERVICE_UNAVAILABLE,
-            "payment_provider_event_storage_unavailable",
-            "Payment provider event storage is unavailable",
+            "payment_provider_event_unavailable",
+            "Payment provider event service is unavailable",
         ),
         PaymentError::Validation(_) => safe_error(
             StatusCode::NOT_FOUND,
@@ -423,6 +431,17 @@ fn map_admin_payment_error(error: PaymentError) -> (StatusCode, Json<Value>) {
             StatusCode::CONFLICT,
             "payment_provider_event_state_conflict",
             "Payment provider event state changed concurrently",
+        ),
+        PaymentError::ProviderOutcomeUnknown { .. } => safe_error(
+            StatusCode::CONFLICT,
+            "payment_provider_outcome_unknown",
+            "Payment provider operation requires reconciliation",
+        ),
+        PaymentError::ProviderRejected { .. }
+        | PaymentError::ProviderInvalidResponse { .. } => safe_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "payment_provider_event_invalid",
+            "Payment provider event cannot be applied",
         ),
         PaymentError::PaymentCollectionNotFound(_)
         | PaymentError::PaymentNotFound(_)
