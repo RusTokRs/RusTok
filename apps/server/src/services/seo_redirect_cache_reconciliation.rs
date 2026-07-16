@@ -15,6 +15,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 const SEO_REDIRECT_CACHE_RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
 const SEO_REDIRECT_CACHE_RESTART_DELAY: Duration = Duration::from_secs(1);
 const SEO_REDIRECT_CACHE_BATCH_LIMIT: u64 = 256;
+const SEO_REDIRECT_CACHE_MAX_PAGES_PER_POLL: usize = 16;
 
 struct AbortOnDropSeoRedirectCacheTask {
     task: JoinHandle<()>,
@@ -135,34 +136,67 @@ async fn supervise_seo_redirect_cache_reconciliation(
     }
 }
 
+async fn seed_redirect_cache_state(
+    db: &DatabaseConnection,
+) -> rustok_seo::SeoResult<(Option<rustok_seo::services::SeoRedirectCacheCursor>, u64)> {
+    // Read count first, then the high-water cursor, then clear. Any commit racing between these
+    // reads either appears after the cursor and is consumed normally or changes the next count
+    // delta and triggers another safe full-clear recovery.
+    let observed_count = rustok_seo::services::redirect_cache_change_count(db).await?;
+    let cursor = rustok_seo::services::latest_redirect_cache_cursor(db).await?;
+    rustok_seo::services::invalidate_all_redirect_cache().await;
+    Ok((cursor, observed_count))
+}
+
 async fn run_seo_redirect_cache_reconciliation(
     db: DatabaseConnection,
     healthy: Arc<AtomicBool>,
 ) -> rustok_seo::SeoResult<()> {
-    // Read the high-water mark before clearing. Transactions at or before this cursor are covered
-    // by the full clear; transactions committed after it are consumed below. This ordering avoids
-    // the startup race where a post-clear commit could otherwise be incorrectly treated as seeded.
-    let mut cursor = rustok_seo::services::latest_redirect_cache_cursor(&db).await?;
-    rustok_seo::services::invalidate_all_redirect_cache().await;
+    let (mut cursor, mut observed_count) = seed_redirect_cache_state(&db).await?;
     healthy.store(true, Ordering::Release);
 
     loop {
-        let changes = rustok_seo::services::redirect_cache_changes_after(
-            &db,
-            cursor.as_ref(),
-            SEO_REDIRECT_CACHE_BATCH_LIMIT,
-        )
-        .await?;
-        let full_batch = changes.len() as u64 == SEO_REDIRECT_CACHE_BATCH_LIMIT;
+        let current_count = rustok_seo::services::redirect_cache_change_count(&db).await?;
+        let mut processed = 0_u64;
 
-        for change in changes {
-            rustok_seo::services::invalidate_redirect_cache(change.tenant_id).await;
-            cursor = Some(change.cursor);
+        for _ in 0..SEO_REDIRECT_CACHE_MAX_PAGES_PER_POLL {
+            let changes = rustok_seo::services::redirect_cache_changes_after(
+                &db,
+                cursor.as_ref(),
+                SEO_REDIRECT_CACHE_BATCH_LIMIT,
+            )
+            .await?;
+            let page_len = changes.len() as u64;
+
+            for change in changes {
+                rustok_seo::services::invalidate_redirect_cache(change.tenant_id).await;
+                cursor = Some(change.cursor);
+            }
+            processed = processed.saturating_add(page_len);
+
+            if page_len < SEO_REDIRECT_CACHE_BATCH_LIMIT {
+                break;
+            }
+            tokio::task::yield_now().await;
         }
 
-        if full_batch {
-            tokio::task::yield_now().await;
-            continue;
+        let expected_count = observed_count.saturating_add(processed);
+        if current_count != expected_count {
+            tracing::warn!(
+                observed_count,
+                current_count,
+                processed,
+                "SEO redirect cursor/count gap detected; clearing and reseeding cache"
+            );
+            rustok_telemetry::metrics::record_event_error(
+                "seo.redirect.cache",
+                "cursor_gap_recovery",
+            );
+            healthy.store(false, Ordering::Release);
+            (cursor, observed_count) = seed_redirect_cache_state(&db).await?;
+            healthy.store(true, Ordering::Release);
+        } else {
+            observed_count = current_count;
         }
 
         tokio::time::sleep(SEO_REDIRECT_CACHE_RECONCILE_INTERVAL).await;
