@@ -32,16 +32,16 @@ pub fn RuntimePublishGatePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         on:click={
                             let check_runtime = check_runtime.clone();
                             move |_| {
-                            if let Some(evaluation) = check_runtime.evaluate_runtime_publish_gate() {
-                                let allowed = evaluation.allowed;
-                                check_runtime.runtime_publish_gate_evaluation.set(Some(evaluation));
-                                if allowed {
-                                    check_runtime.announce("Runtime publish gate passed");
-                                    check_runtime.last_error.set(None);
-                                } else {
-                                    check_runtime.fail("Runtime publish gate has blocking issues");
+                                if let Some(evaluation) = check_runtime.evaluate_runtime_publish_gate() {
+                                    let allowed = evaluation.allowed;
+                                    check_runtime.runtime_publish_gate_evaluation.set(Some(evaluation));
+                                    if allowed {
+                                        check_runtime.announce("Runtime publish gate passed");
+                                        check_runtime.last_error.set(None);
+                                    } else {
+                                        check_runtime.fail("Runtime publish gate has blocking issues");
+                                    }
                                 }
-                            }
                             }
                         }
                     >{check_label.clone()}</button>
@@ -50,57 +50,79 @@ pub fn RuntimePublishGatePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 {{
                     let report_runtime = report_runtime.clone();
                     move || {
-                    let _tracked_context = report_runtime.runtime_context.get();
-                    let evaluation = report_runtime.evaluate_runtime_publish_gate();
-                    let Some(evaluation) = evaluation else {
-                        return view! {
-                            <p class="text-xs text-muted-foreground">"Runtime publish policy is not configured."</p>
+                        let _tracked_context = report_runtime.runtime_context.get();
+                        let evaluation = report_runtime.evaluate_runtime_publish_gate();
+                        let Some(evaluation) = evaluation else {
+                            return view! {
+                                <p class="text-xs text-muted-foreground">"Runtime publish policy is not configured."</p>
+                            }
+                            .into_any();
+                        };
+                        let error_count = evaluation.diagnostics.iter().filter(|diagnostic| {
+                            diagnostic.severity == fly::ValidationSeverity::Error
+                        }).count();
+                        let warning_count = evaluation.diagnostics.iter().filter(|diagnostic| {
+                            diagnostic.severity == fly::ValidationSeverity::Warning
+                        }).count();
+                        let scenario_summary = evaluation.scenarios.as_ref().map(|suite| {
+                            format!(
+                                "{} scenario(s) accepted · {} rejected",
+                                suite.accepted_count,
+                                suite.rejected_count,
+                            )
+                        });
+                        let readiness_summary = evaluation.readiness.as_ref().map(|report| {
+                            let categories = report
+                                .categories
+                                .iter()
+                                .map(|summary| {
+                                    format!(
+                                        "{}: {} errors, {} warnings",
+                                        summary.category.as_str(),
+                                        summary.error_count,
+                                        summary.warning_count,
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" · ");
+                            format!(
+                                "Landing readiness: {} · {categories}",
+                                if report.ready { "ready" } else { "blocked" },
+                            )
+                        });
+                        let status_class = if evaluation.allowed {
+                            "rounded bg-emerald-500/10 px-2 py-1 text-emerald-700"
+                        } else {
+                            "rounded bg-destructive/10 px-2 py-1 text-destructive"
+                        };
+                        let status_text = if evaluation.allowed {
+                            "Publish runtime gate passed".to_string()
+                        } else {
+                            format!("Publish blocked · {error_count} error(s)")
+                        };
+                        view! {
+                            <div class="space-y-2 text-xs">
+                                <p class=status_class>{status_text}</p>
+                                <p class="text-muted-foreground">{format!(
+                                    "{error_count} errors · {warning_count} warnings"
+                                )}</p>
+                                {readiness_summary.map(|summary| view! {
+                                    <p class="text-muted-foreground">{summary}</p>
+                                })}
+                                {scenario_summary.map(|summary| view! {
+                                    <p class="text-muted-foreground">{summary}</p>
+                                })}
+                                {evaluation.diagnostics.into_iter().filter(|diagnostic| {
+                                    diagnostic.severity != fly::ValidationSeverity::Info
+                                }).take(8).map(|diagnostic| view! {
+                                    <p class="rounded bg-muted px-2 py-1">
+                                        <strong>{diagnostic.code}</strong>
+                                        <span class="ml-1">{diagnostic.message}</span>
+                                    </p>
+                                }).collect_view()}
+                            </div>
                         }
-                        .into_any();
-                    };
-                    let error_count = evaluation.diagnostics.iter().filter(|diagnostic| {
-                        diagnostic.severity == fly::ValidationSeverity::Error
-                    }).count();
-                    let warning_count = evaluation.diagnostics.iter().filter(|diagnostic| {
-                        diagnostic.severity == fly::ValidationSeverity::Warning
-                    }).count();
-                    let scenario_summary = evaluation.scenarios.as_ref().map(|suite| {
-                        format!(
-                            "{} scenario(s) accepted · {} rejected",
-                            suite.accepted_count,
-                            suite.rejected_count,
-                        )
-                    });
-                    let status_class = if evaluation.allowed {
-                        "rounded bg-emerald-500/10 px-2 py-1 text-emerald-700"
-                    } else {
-                        "rounded bg-destructive/10 px-2 py-1 text-destructive"
-                    };
-                    let status_text = if evaluation.allowed {
-                        "Publish runtime gate passed".to_string()
-                    } else {
-                        format!("Publish blocked · {error_count} error(s)")
-                    };
-                    view! {
-                        <div class="space-y-2 text-xs">
-                            <p class=status_class>{status_text}</p>
-                            <p class="text-muted-foreground">{format!(
-                                "{error_count} errors · {warning_count} warnings"
-                            )}</p>
-                            {scenario_summary.map(|summary| view! {
-                                <p class="text-muted-foreground">{summary}</p>
-                            })}
-                            {evaluation.diagnostics.into_iter().filter(|diagnostic| {
-                                diagnostic.severity != fly::ValidationSeverity::Info
-                            }).take(8).map(|diagnostic| view! {
-                                <p class="rounded bg-muted px-2 py-1">
-                                    <strong>{diagnostic.code}</strong>
-                                    <span class="ml-1">{diagnostic.message}</span>
-                                </p>
-                            }).collect_view()}
-                        </div>
-                    }
-                    .into_any()
+                        .into_any()
                     }
                 }}
             </section>
