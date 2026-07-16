@@ -25,7 +25,7 @@ five-second database reconciliation performs a safe namespace-wide local clear
 when delivery was missed, the generation regressed, or a replica starts from an
 unverified baseline. The worker runtime is a critical host guardrail.
 
-The source now includes six durable-recovery evidence layers:
+The source now includes ten durable-recovery evidence layers:
 
 - SQLite reader tests prove that independent replica handles observe committed
   generations without PubSub, rolled-back changes do not advance the epoch, and
@@ -50,12 +50,28 @@ The source now includes six durable-recovery evidence layers:
   a direct committed mutation with no publication, then requires the persisted
   generation poll to replace it within the documented recovery window. This is
   the source contract for a completely missed fast-path event.
+- A deterministic local-broadcast test exceeds the 256-message buffer, observes
+  `RecvError::Lagged`, proves the runtime fails closed while durable state is
+  absent, and recovers readiness only after database reconciliation succeeds.
+- A resolved-value database-state-loss test commits a new channel value, removes
+  the generation table before reconciliation, observes critical readiness
+  degrade, restores the persisted generation and requires the Axum replica to
+  return the new value.
+- A resolved-value generation-regression test first applies a forward epoch,
+  rewinds the persisted epoch, commits a new channel value and requires the next
+  reconciliation to rebuild the namespace instead of retaining the old value.
+- An ignored self-hosted Redis restart test starts two existing replicas, stops
+  Redis, proves polling convergence during the outage, restarts Redis, waits for
+  both original subscriptions to return through `PUBSUB NUMSUB`, and then
+  requires a new resolved value to arrive within three seconds before the next
+  database poll.
 
-This durable cross-replica contract, normal delivery and missed-publication
+The durable cross-replica contract, normal delivery, missed publication,
+database loss/recovery, generation regression and Redis restart/reconnect
 scenarios are source-complete. They are not compiled or live verified on the
 current revision until the permanent cache workflow reports successful
-compiled, PostgreSQL and Redis jobs. Redis disconnect/reconnect and listener-lag
-fault injection remain separate evidence.
+compiled, PostgreSQL and Redis jobs. Resolved-value recovery after a deliberately
+lagged local listener remains separate evidence.
 
 ## FFA/FBA boundary
 
@@ -79,27 +95,32 @@ contracts documented and source-locked.
 ## Open results
 
 1. **Execute the permanent durable cache gate.** Run the source-complete SQLite,
-   server two-replica, missed-publication, PostgreSQL, Redis readiness and
-   resolved-value scenarios on one reconciled `main` revision, then fix every
-   format, compile, test or Clippy failure before recording the revision as
-   verified.
+   server two-replica, resolved-value, PostgreSQL, Redis readiness and Redis
+   restart scenarios on one reconciled `main` revision, then fix every format,
+   compile, test or Clippy failure before recording the revision as verified.
    **Depends on:** GitHub Actions visibility or another Rust 1.96 build
-   environment with ephemeral PostgreSQL and Redis.
+   environment with ephemeral PostgreSQL, Redis 7 and `redis-server`.
    **Done when:** `compiled-contract`, `postgres-channel`, and `live-redis` pass
    on the same revision and the result is recorded without copying raw logs.
 
-2. **Collect transport-failure stale-resolution evidence.** Exercise listener
-   lag, Redis disconnect/reconnect and database outage/recovery while two serving
-   replicas resolve real channel requests. Prove reconciliation rotates the
-   namespace before an obsolete resolution can be served beyond the five-second
-   recovery bound.
-   **Depends on:** controllable Redis failure, migrated PostgreSQL/SQLite
-   fixtures, and representative channel request data.
-   **Done when:** tests cover listener lag, Redis disconnect/reconnect,
-   generation regression and terminal-worker readiness while checking the
-   resolved channel result rather than only worker state.
+2. **Complete listener-lag resolved-value evidence.** Drive a serving replica's
+   local invalidation subscription into a confirmed lag while a stale resolved
+   channel value is cached, then prove durable reconciliation replaces the value
+   and restores readiness within the five-second recovery bound.
+   **Depends on:** a deterministic scheduling fixture that preserves the current
+   fixed-size local broadcast contract without production-only test hooks.
+   **Done when:** the test checks `RecvError::Lagged`, critical readiness and the
+   resolved channel value in the same scenario.
 
-3. **Collect full runtime evidence for channel resolution.** Exercise
+3. **Exercise heavier transport degradation.** Add bounded Redis latency and
+   repeated reconnect/circuit-breaker evidence without changing Redis PubSub from
+   an optional low-latency path into the source of truth.
+   **Depends on:** a controllable TCP fault proxy or equivalent deterministic
+   transport fixture.
+   **Done when:** connection timeout, repeated restart and recovery metrics are
+   reproducible without flaky wall-clock assumptions.
+
+4. **Collect full runtime evidence for channel resolution.** Exercise
    `ChannelReadPort` and server middleware with real locale/OAuth facts, policy
    selection, inactive/degraded behavior, cache isolation, generation rollover,
    and the durable cross-replica behavior before promotion beyond
@@ -108,14 +129,14 @@ contracts documented and source-locked.
    **Done when:** targeted Rust middleware/port tests provide reproducible
    runtime evidence for every published read and fallback profile.
 
-4. **Extend channel-aware proof points only with owner evidence.** New domain
+5. **Extend channel-aware proof points only with owner evidence.** New domain
    reads must use the already resolved `ChannelContext`, local tests, and local
    documentation; they must not introduce a second channel-selection mechanism.
    **Depends on:** the consuming module's public contract.
    **Done when:** the proof-point verifier and affected module docs identify the
    same resolved-channel source and visibility behavior.
 
-5. **Defer richer target or connector taxonomy until pressure is concrete.**
+6. **Defer richer target or connector taxonomy until pressure is concrete.**
    Do not add speculative target types or connector abstraction merely to expand
    the model.
    **Depends on:** a demonstrated runtime/product need.
@@ -133,15 +154,14 @@ contracts documented and source-locked.
 - `cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib`
 - `cargo test -p rustok-server channel_cache_invalidation --lib`
 - `cargo test -p rustok-server --test channel_cache_architecture_guard`
-- `cargo test -p rustok-server --test channel_cache_resolved_value missed_publication_refreshes_remote_resolved_value_via_durable_poll`
+- `cargo test -p rustok-server --test channel_cache_resolved_value`
 - `RUSTOK_CHANNEL_TEST_POSTGRES_URL=postgres://... cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1`
+- `RUSTOK_CACHE_REAL_REDIS_URL=redis://... RUSTOK_CACHE_REDIS_SERVER_BIN=/usr/bin/redis-server cargo test -p rustok-server --test channel_cache_resolved_value -- --ignored --nocapture --test-threads=1`
 - `RUSTOK_CACHE_REAL_REDIS_URL=redis://... cargo test -p rustok-server redis_publication_drives_remote_replica_readiness_recovery --lib -- --ignored --nocapture --test-threads=1`
-- `RUSTOK_CACHE_REAL_REDIS_URL=redis://... cargo test -p rustok-server --test channel_cache_resolved_value -- --ignored --nocapture --test-threads=1`
 - `cargo clippy -p rustok-channel --lib -- -D warnings`
 - `cargo xtask module validate channel`
 - `cargo xtask module test channel`
-- Targeted Redis disconnect/reconnect, listener-lag, database recovery and
-  policy-lifecycle tests.
+- Targeted listener-lag resolved-value, latency and policy-lifecycle tests.
 
 ## References
 
