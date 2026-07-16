@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
+  appsAdmin: 'apps/admin/Cargo.toml',
   flyBrowserCargo: 'crates/fly-browser/Cargo.toml',
   flyBrowserLib: 'crates/fly-browser/src/lib.rs',
   flyBrowserJs: 'crates/fly-browser/assets/fly-browser.js',
@@ -10,6 +11,7 @@ const paths = {
   adminAdapter: 'crates/rustok-page-builder/admin/src/ui/browser_adapter.rs',
   adminCanvas: 'crates/rustok-page-builder/admin/src/editor/modular_canvas.rs',
   adminHost: 'crates/rustok-page-builder/admin/src/ui/leptos.rs',
+  browserIntent: 'crates/rustok-page-builder/admin/src/browser_intent.rs',
   palette: 'crates/rustok-page-builder/admin/src/editor/palette_layers.rs',
 };
 
@@ -27,12 +29,32 @@ const forbidMarker = (key, marker, message) => {
   if (source[key].includes(marker)) failures.push(message);
 };
 
+for (const marker of [
+  'default = ["ssr"]',
+  'csr = ["leptos/csr"',
+  '"dep:wasm-bindgen"',
+  '"dep:web-sys"',
+  'wasm-bindgen = { version = "0.2", optional = true }',
+  'web-sys = { version = "0.3", optional = true',
+  'leptos.workspace = true',
+  'leptos_i18n.workspace = true',
+]) {
+  requireMarker('appsAdmin', marker, `apps/admin SSR default is missing ${marker}`);
+}
+for (const forbidden of [
+  'leptos = { workspace = true, features = ["csr"] }',
+  'leptos_i18n = { workspace = true, features = ["csr"] }',
+]) {
+  forbidMarker('appsAdmin', forbidden, `apps/admin must not force ${forbidden} in the SSR profile`);
+}
+
 requireMarker('flyBrowserCargo', 'name = "fly-browser"', 'standalone fly-browser package is missing');
 for (const marker of [
   'FLY_BROWSER_ADAPTER_JS',
   'BrowserAdapterConfig',
   'BrowserIntentEnvelope',
   'FLY_BROWSER_PROTOCOL_V1',
+  'pub fn is_mutating',
 ]) {
   requireMarker('flyBrowserLib', marker, `fly-browser contract is missing ${marker}`);
 }
@@ -43,7 +65,8 @@ for (const marker of [
   'fly:canvas-message',
   'fly:browser-intent',
   'credentials: "same-origin"',
-  'data-fly-browser-root',
+  'instance_id: adapter.instanceId',
+  'project_hash:',
 ]) {
   requireMarker('flyBrowserJs', marker, `SSR browser bridge is missing ${marker}`);
 }
@@ -66,11 +89,11 @@ for (const marker of [
 ]) {
   requireMarker('flyLeptosRoot', marker, `fly-leptos root is missing ${marker}`);
 }
-for (const forbidden of [
+forbidMarker(
+  'flyLeptosRoot',
   '#[cfg(target_arch = "wasm32")]',
-]) {
-  forbidMarker('flyLeptosRoot', forbidden, 'fly-leptos browser modules must require the explicit wasm-client feature');
-}
+  'fly-leptos browser modules must require the explicit wasm-client feature',
+);
 
 for (const marker of [
   'default = ["ssr", "browser-js"]',
@@ -106,6 +129,16 @@ for (const marker of [
   'with_browser_csrf_token',
 ]) {
   requireMarker('adminHost', marker, `Admin host context is missing ${marker}`);
+}
+for (const marker of [
+  'dispatch_browser_intent',
+  'BrowserIntentEnvelope',
+  'RevisionConflict',
+  'ProjectHashConflict',
+  'GrapesJsV1Codec::encode_value',
+  'PageBuilderCapabilityRequest',
+]) {
+  requireMarker('browserIntent', marker, `classic SSR intent dispatcher is missing ${marker}`);
 }
 for (const marker of ['data-fly-block-id', 'data-fly-component-id']) {
   requireMarker('palette', marker, `SSR control hooks are missing ${marker}`);
