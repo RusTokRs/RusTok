@@ -40,21 +40,29 @@ async fn main() {
         let token = bearer_token(&headers)
             .or_else(|| compatibility_token(&headers))
             .or_else(|| auth.session.as_ref().map(|session| session.token.clone()))
-            .ok_or_else(|| auth_error(StatusCode::UNAUTHORIZED, "Page Builder access token is missing"))?;
+            .ok_or_else(|| {
+                auth_error(
+                    StatusCode::UNAUTHORIZED,
+                    "Page Builder access token is missing",
+                )
+            })?;
         let tenant_slug = header_value(&headers, "x-tenant-slug")
             .or_else(|| auth.session.as_ref().map(|session| session.tenant.clone()))
-            .ok_or_else(|| auth_error(StatusCode::BAD_REQUEST, "Page Builder tenant is missing"))?;
-        let verified_user = leptos_auth::api::fetch_current_user(
-            token.clone(),
-            tenant_slug.clone(),
-        )
-        .await
-        .map_err(auth_transport_error)?
-        .ok_or_else(|| auth_error(StatusCode::UNAUTHORIZED, "Authenticated user was not found"))?;
-        let editor_capabilities = pages_editor_capability_policy_for_role(Some(
-            verified_user.role.as_str(),
-        ))
-        .evaluate();
+            .ok_or_else(|| {
+                auth_error(
+                    StatusCode::BAD_REQUEST,
+                    "Page Builder tenant is missing",
+                )
+            })?;
+        let verified_user =
+            leptos_auth::api::fetch_current_user(token.clone(), tenant_slug.clone())
+                .await
+                .map_err(auth_transport_error)?
+                .ok_or_else(|| {
+                    auth_error(StatusCode::UNAUTHORIZED, "Authenticated user was not found")
+                })?;
+        let editor_capabilities =
+            pages_editor_capability_policy_for_role(Some(verified_user.role.as_str())).evaluate();
         let default_locale = header_value(&headers, "accept-language")
             .and_then(|language| language.split(',').next().map(str::to_string))
             .unwrap_or_else(|| "en".to_string());
@@ -101,8 +109,9 @@ async fn main() {
         let status = match &error {
             AuthError::Unauthorized | AuthError::InvalidCredentials => StatusCode::UNAUTHORIZED,
             AuthError::Network => StatusCode::BAD_GATEWAY,
-            AuthError::Http(status) => StatusCode::from_u16(*status)
-                .unwrap_or(StatusCode::BAD_GATEWAY),
+            AuthError::Http(status) => {
+                StatusCode::from_u16(*status).unwrap_or(StatusCode::BAD_GATEWAY)
+            }
         };
         auth_error(status, error.to_string())
     }
@@ -128,9 +137,11 @@ async fn main() {
                 rustok_page_builder_admin::BrowserIntentDispatchError::RevisionConflict { .. }
                 | rustok_page_builder_admin::BrowserIntentDispatchError::ProjectHashConflict { .. },
             ) => StatusCode::CONFLICT,
-            PagesBrowserIntentError::Dispatch(
-                rustok_page_builder_admin::BrowserIntentDispatchError::Authoring(message),
-            ) if message.contains("requires editor capability") => StatusCode::FORBIDDEN,
+            PagesBrowserIntentError::Dispatch(error)
+                if rustok_page_builder_admin::browser_capability_denial(error).is_some() =>
+            {
+                StatusCode::FORBIDDEN
+            }
             PagesBrowserIntentError::Draft(
                 rustok_page_builder_admin::SsrDraftSessionError::GenerationConflict { .. }
                 | rustok_page_builder_admin::SsrDraftSessionError::PageMismatch { .. },
