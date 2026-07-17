@@ -1,0 +1,107 @@
+name: Agent Current UI and Deny Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-current-ui-deny-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  page-builder-admin:
+    if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-current-clean' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.93.1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: agent-current-page-builder-admin
+      - name: Capture Page Builder admin tests
+        shell: bash
+        run: |
+          mkdir -p /tmp/agent-current-page-builder-admin
+          set +e
+          cargo test -p rustok-page-builder-admin --lib > /tmp/agent-current-page-builder-admin/test.log 2>&1
+          status=$?
+          echo "$status" > /tmp/agent-current-page-builder-admin/test.status
+          exit 0
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agent-current-page-builder-admin
+          path: /tmp/agent-current-page-builder-admin
+      - name: Fail on test error
+        run: exit "$(cat /tmp/agent-current-page-builder-admin/test.status)"
+
+  next-admin-format:
+    if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-current-clean' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/next-admin
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/next-admin/package-lock.json
+      - run: npm ci
+      - name: Capture Prettier check and proposed diff
+        shell: bash
+        run: |
+          mkdir -p /tmp/agent-current-next-admin
+          set +e
+          npm run format:check > /tmp/agent-current-next-admin/check.log 2>&1
+          echo $? > /tmp/agent-current-next-admin/check.status
+          npm run format > /tmp/agent-current-next-admin/write.log 2>&1
+          echo $? > /tmp/agent-current-next-admin/write.status
+          git diff --name-only -- . > /tmp/agent-current-next-admin/files.txt
+          git diff -- . > /tmp/agent-current-next-admin/prettier.patch
+          exit 0
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agent-current-next-admin-format
+          path: /tmp/agent-current-next-admin
+      - name: Fail on format drift
+        shell: bash
+        run: |
+          test "$(cat /tmp/agent-current-next-admin/check.status)" = 0
+          test "$(cat /tmp/agent-current-next-admin/write.status)" = 0
+
+  cargo-deny:
+    if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-current-clean' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install cargo-deny 0.20.2
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error \
+            https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz \
+            | tar -xz --strip-components=1 -C /tmp
+          chmod +x /tmp/cargo-deny
+      - name: Capture cargo-deny output
+        shell: bash
+        run: |
+          mkdir -p /tmp/agent-current-cargo-deny
+          set +e
+          /tmp/cargo-deny --log-level warn --manifest-path ./Cargo.toml --all-features check \
+            > /tmp/agent-current-cargo-deny/deny.log 2>&1
+          status=$?
+          echo "$status" > /tmp/agent-current-cargo-deny/deny.status
+          exit 0
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agent-current-cargo-deny
+          path: /tmp/agent-current-cargo-deny
+      - name: Fail on deny error
+        run: exit "$(cat /tmp/agent-current-cargo-deny/deny.status)"
