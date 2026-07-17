@@ -30,31 +30,56 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Apply canonical tenant context loader refactor
-        run: python3 scripts/migrations/unify_tenant_context_loading.py
-
-      - name: Format touched Rust files
+      - name: Apply, format and verify
+        id: migration
+        shell: bash
         run: |
-          rustfmt --edition 2021 \
-            apps/server/src/middleware/tenant_resolution.rs \
-            apps/server/src/middleware/tenant.rs \
-            apps/server/src/middleware/mod.rs \
-            apps/server/src/controllers/graphql.rs
+          set +e
+          {
+            python3 scripts/migrations/unify_tenant_context_loading.py && \
+            rustfmt --edition 2021 \
+              apps/server/src/middleware/tenant_resolution.rs \
+              apps/server/src/middleware/tenant.rs \
+              apps/server/src/middleware/mod.rs \
+              apps/server/src/controllers/graphql.rs && \
+            node scripts/verify/verify-tenant-resolution-architecture.mjs && \
+            git diff --check
+          } > /tmp/tenant-migration.log 2>&1
+          status=$?
+          cat /tmp/tenant-migration.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
-      - name: Verify architecture and patch integrity
+      - name: Prepare failure report
+        if: steps.migration.outputs.status != '0'
+        shell: bash
         run: |
-          node scripts/verify/verify-tenant-resolution-architecture.mjs
-          git diff --check
+          {
+            echo '# Tenant context loading migration failure'
+            echo
+            echo '```text'
+            cat /tmp/tenant-migration.log
+            echo '```'
+          } > TENANT_MIGRATION_FAILURE.md
 
-      - name: Commit atomically to main
+      - name: Remove one-time migration infrastructure
         shell: bash
         run: |
           rm scripts/migrations/unify_tenant_context_loading.py
           rm .github/workflows/unify-tenant-context-loading.yml
+
+      - name: Commit result atomically to main
+        shell: bash
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "refactor(tenant): unify context loading across transports"
+          if [[ "${{ steps.migration.outputs.status }}" == "0" ]]; then
+            message="refactor(tenant): unify context loading across transports"
+          else
+            message="chore: record tenant context migration failure"
+          fi
+          git commit -m "$message"
           git pull --rebase origin main
           git push origin HEAD:main
