@@ -25,14 +25,36 @@ function forbidMarker(source, marker, file) {
   }
 }
 
+function stringConstant(source, name, file) {
+  const match = new RegExp(`const ${name}: &str = "([^"]+)";`).exec(source);
+  if (!match) {
+    failures.push(`${file}: ${name} string constant not found`);
+    return null;
+  }
+  return match[1];
+}
+
+function directive(policy, name) {
+  return policy
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(name));
+}
+
 const headersFile = "apps/server/src/middleware/security_headers.rs";
 const reportsFile = "apps/server/src/middleware/csp_reports.rs";
 const middlewareFile = "apps/server/src/middleware/mod.rs";
+const webFile = "crates/rustok-web/src/lib.rs";
+const storefrontFile = "apps/storefront/src/lib.rs";
+const appRouterFile = "apps/server/src/services/app_router.rs";
 const inventoryFile = "docs/security/csp-report-only-inventory.md";
 
 const headers = read(headersFile);
 const reports = read(reportsFile);
 const middleware = read(middlewareFile);
+const web = read(webFile);
+const storefront = read(storefrontFile);
+const appRouter = read(appRouterFile);
 const inventory = read(inventoryFile);
 
 for (const marker of [
@@ -41,30 +63,72 @@ for (const marker of [
   "reporting-endpoints",
   "csp_reports::is_report_request",
   "csp_reports::handle(request).await",
+  "CspNonce::generate",
+  "request.extensions_mut().insert(nonce.clone())",
+  "script-src-attr 'none'",
 ]) {
   requireMarker(headers, marker, headersFile);
 }
 
-const enforcedMatch = /const UI_CSP: &str = "([^"]+)";/.exec(headers);
-if (!enforcedMatch) {
-  failures.push(`${headersFile}: enforced UI policy constant not found`);
-} else {
+const enforced = stringConstant(headers, "UI_CSP_TEMPLATE", headersFile);
+if (enforced) {
+  requireMarker(enforced, "{nonce}", headersFile);
+  const script = directive(enforced, "script-src");
+  if (!script) {
+    failures.push(`${headersFile}: enforced script-src directive not found`);
+  } else {
+    for (const forbidden of ["'unsafe-inline'", "'unsafe-eval'"]) {
+      if (script.includes(forbidden)) {
+        failures.push(`${headersFile}: enforced script-src contains ${forbidden}`);
+      }
+    }
+    if (!script.includes("{nonce}")) {
+      failures.push(`${headersFile}: enforced script-src does not carry the response nonce`);
+    }
+  }
   for (const forbidden of ["'unsafe-eval'", " http:"]) {
-    if (enforcedMatch[1].includes(forbidden)) {
+    if (enforced.includes(forbidden)) {
       failures.push(`${headersFile}: enforced UI policy contains ${forbidden}`);
     }
   }
 }
 
-const reportOnlyMatch = /const UI_CSP_REPORT_ONLY: &str = "([^"]+)";/.exec(headers);
-if (!reportOnlyMatch) {
-  failures.push(`${headersFile}: strict report-only policy constant not found`);
-} else {
+const reportOnly = stringConstant(headers, "UI_CSP_REPORT_ONLY_TEMPLATE", headersFile);
+if (reportOnly) {
   for (const forbidden of ["'unsafe-inline'", "'unsafe-eval'", " http:", " ws:"]) {
-    if (reportOnlyMatch[1].includes(forbidden)) {
+    if (reportOnly.includes(forbidden)) {
       failures.push(`${headersFile}: report-only policy contains ${forbidden}`);
     }
   }
+  if (!directive(reportOnly, "script-src")?.includes("{nonce}")) {
+    failures.push(`${headersFile}: report-only script-src does not carry the response nonce`);
+  }
+}
+
+for (const marker of [
+  "pub struct CspNonce(String)",
+  "Uuid::new_v4().simple().to_string()",
+  "pub fn source_expression(&self) -> String",
+]) {
+  requireMarker(web, marker, webFile);
+}
+
+for (const marker of [
+  'let trusted_opening_tag = r#"<script type="application/ld+json">"#',
+  "nonce_structured_data_scripts",
+  "Option<Extension<CspNonce>>",
+  'assert!(rendered.contains("<script>alert(1)</script>"))',
+]) {
+  requireMarker(storefront, marker, storefrontFile);
+}
+
+for (const marker of [
+  'request.extensions().get::<CspNonce>().cloned()',
+  "nonce_trusted_admin_scripts",
+  "immutable bundled index document",
+  "if !is_document",
+]) {
+  requireMarker(appRouter, marker, appRouterFile);
 }
 
 for (const marker of [
@@ -115,4 +179,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ enforced/report-only CSP and bounded violation collection are aligned");
+console.log("✔ nonce-backed script CSP, trusted renderers and bounded violation collection are aligned");
