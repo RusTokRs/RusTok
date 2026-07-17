@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
+  vocabulary: 'crates/fly-browser/src/lib.rs',
   flyUiLib: 'crates/fly-ui/src/lib.rs',
   policy: 'crates/fly-ui/src/capability_policy.rs',
   commandCapability: 'crates/fly-ui/src/command_capability.rs',
@@ -40,7 +41,22 @@ const rejectMarker = (key, marker, message) => {
 const requireMarkers = (key, markers, label) => {
   for (const marker of markers) requireMarker(key, marker, `${label} is missing ${marker}`);
 };
+const flattenKeys = (value, prefix = '') => Object.entries(value).flatMap(([key, nested]) => {
+  const path = prefix ? `${prefix}.${key}` : key;
+  return nested && typeof nested === 'object' && !Array.isArray(nested)
+    ? flattenKeys(nested, path)
+    : [path];
+}).sort();
 
+requireMarkers('vocabulary', [
+  'pub enum BrowserIntentKind',
+  'pub const ALL: [Self; 48]',
+  'pub fn parse(value: &str)',
+  'pub const fn as_str(self)',
+  'pub const fn is_mutating(self)',
+  'pub fn kind(&self) -> Option<BrowserIntentKind>',
+  'intent_kind_names_are_unique_and_round_trip',
+], 'typed browser intent vocabulary');
 requireMarkers('flyUiLib', [
   'mod capability_policy;',
   'mod command_capability;',
@@ -128,17 +144,25 @@ requireMarkers('assetSection', [
 ], 'cross-capability asset apply gate');
 
 requireMarkers('browserAccess', [
+  'use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};',
   'pub struct BrowserCapabilityDenial',
   'pub enum BrowserCapabilityAccessError',
   'Denied(#[from] BrowserCapabilityDenial)',
   'Dispatch(#[from] BrowserIntentDispatchError)',
   'Result<(), BrowserCapabilityAccessError>',
-  'for capability in capability_requirements(envelope)?',
-  '"select_asset" => vec![EditorCapability::Assets, EditorCapability::Properties]',
-  '| "rename_page"',
+  'let Some(kind) = envelope.kind()',
+  'match kind',
+  'BrowserIntentKind::SelectAsset =>',
+  'BrowserIntentKind::RenamePage',
+  'BrowserIntentKind::SetRuntimeContext',
+  'runtime_preview_context_uses_properties_capability',
   'malformed_shortcut_remains_a_typed_dispatch_error',
 ], 'typed browser capability preflight');
-for (const forbidden of ['CAPABILITY_DENIAL_PREFIX', 'FLY_CAPABILITY_DENIED:']) {
+for (const forbidden of [
+  'CAPABILITY_DENIAL_PREFIX',
+  'FLY_CAPABILITY_DENIED:',
+  'match envelope.intent.as_str()',
+]) {
   rejectMarker('browserAccess', forbidden, `browser access must not contain ${forbidden}`);
 }
 requireMarkers('pageBuilderLib', [
@@ -175,7 +199,7 @@ requireMarkers('pagesProblem', [
 ], 'testable Pages problem mapping');
 requireMarkers('pagesLib', [
   'mod browser_problem;',
-  'PagesBrowserIntentProblem,',
+  'pub use browser_problem::PagesBrowserIntentProblem;',
   'PagesBrowserIntentAccessError,',
 ], 'Pages public access and problem exports');
 
@@ -196,10 +220,10 @@ for (const forbidden of [
   rejectMarker('adminMain', forbidden, `admin host must not own ${forbidden}`);
 }
 
-for (const localeKey of ['localeEn', 'localeRu']) JSON.parse(source[localeKey]);
-if (JSON.stringify(Object.keys(JSON.parse(source.localeEn)).sort())
-  !== JSON.stringify(Object.keys(JSON.parse(source.localeRu)).sort())) {
-  failures.push('Page Builder top-level en/ru locale parity failed');
+const en = JSON.parse(source.localeEn);
+const ru = JSON.parse(source.localeRu);
+if (JSON.stringify(flattenKeys(en)) !== JSON.stringify(flattenKeys(ru))) {
+  failures.push('Page Builder en/ru locale key parity failed');
 }
 
 if (failures.length > 0) {
