@@ -25,6 +25,17 @@ healthy only after seed/clear succeeds and becomes critical while the worker is
 terminal or a database/query failure is being retried. Cross-replica freshness
 therefore no longer depends on local-only module-event delivery.
 
+Source evidence now drives two independent serving contexts against one durable
+change log. It proves startup seed-before-clear, exact tenant invalidation, ten
+new rows consumed through multiple three-row test pages, an out-of-order row
+behind the cursor forcing count-mismatch full recovery, database table outage
+and automatic restart recovery, and terminal isolation where one aborted replica
+is no longer running or ready while the other remains healthy. The architecture
+guard locks the transaction-before-local-invalidation ordering, cursor index,
+worker readiness, source evidence markers and permanent cache workflow command.
+This evidence is source-complete but is not compiled verified until the targeted
+Rust gate passes on the same revision.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -47,17 +58,16 @@ therefore no longer depends on local-only module-event delivery.
 
 ## Next results
 
-1. **Execute multi-replica redirect cache recovery evidence.** Prove startup
+1. **Execute the source-complete multi-replica redirect cache gate.** Run startup
    count/cursor-before-clear ordering, exact tenant invalidation, more-than-one-
-   batch catch-up, count-mismatch full-clear recovery, process restart, database
-   outage/recovery, serving-host scoping, and unhealthy-worker readiness across
-   two serving replicas.
-   **Depends on:** a composed multi-replica server runtime with the SEO cursor
-   index migration applied.
-   **Done when:** a committed redirect mutation is removed from every healthy
-   serving replica within one polling/recovery cycle, startup and out-of-order
-   commit races cannot preserve stale redirect state, and a failed required
-   reconciliation path makes readiness non-OK until recovery succeeds.
+   batch catch-up, count-mismatch full-clear recovery, database outage/recovery,
+   serving-host scoping and terminal-worker readiness on one reconciled `main`
+   revision.
+   **Depends on:** the permanent cache workflow or another Rust 1.96 environment
+   with the SEO cursor index migration applied.
+   **Done when:** the server lib test and architecture guard pass on the same
+   revision, every discovered failure is fixed, and the verified revision is
+   recorded without copying raw logs.
 
 2. **Execute the D8 backend and host matrix.** Capture deployed GraphQL/REST
    parity, outbox/index before-after counters, Next robots/sitemap/metadata,
@@ -85,9 +95,9 @@ therefore no longer depends on local-only module-event delivery.
 - `npm run verify:seo:fba`
 - `node scripts/verify/verify-seo-admin-boundary.mjs`
 - `cargo test -p rustok-server --test seo_redirect_cache_reconciliation_guard`
-- Targeted backend, outbox/index, Next, Leptos, media fallback, redirect
-  multi-replica recovery, cursor/count/index, and incident runtime checks defined
-  by the live-evidence template.
+- `cargo test -p rustok-server seo_redirect_cache_reconciliation --lib`
+- Targeted backend, outbox/index, Next, Leptos, media fallback, cursor/count/index,
+  and incident runtime checks defined by the live-evidence template.
 
 ## References
 
