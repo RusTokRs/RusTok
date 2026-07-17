@@ -1,5 +1,9 @@
 #[test]
 fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
+    let workspace = include_str!("../../../Cargo.toml");
+    let admin_host = include_str!("../../admin/Cargo.toml");
+    let permissions = include_str!("../../../crates/rustok-api/src/permissions.rs");
+    let owner = include_str!("../../../crates/rustok-marketplace-listing/src/lib.rs");
     let manifest = include_str!(
         "../../../crates/rustok-marketplace-listing/rustok-module.toml"
     );
@@ -31,11 +35,40 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
         assert!(manifest.contains(marker), "listing manifest is missing {marker}");
     }
     assert!(cargo.contains("rustok-marketplace-listing = { path = \"..\", optional = true }"));
+    assert!(workspace.contains("\"crates/rustok-marketplace-listing/admin\""));
+    assert!(workspace.contains("rustok-marketplace-listing-admin = { path = \"crates/rustok-marketplace-listing/admin\" }"));
+    for marker in [
+        "rustok-marketplace-listing-admin/hydrate",
+        "rustok-marketplace-listing-admin/ssr",
+        "rustok-marketplace-listing-admin = { path = \"../../crates/rustok-marketplace-listing/admin\"",
+    ] {
+        assert!(admin_host.contains(marker), "admin host is missing {marker}");
+    }
+
+    for marker in [
+        "MarketplaceListings",
+        "marketplace_listings",
+        "MARKETPLACE_LISTINGS_CREATE",
+        "MARKETPLACE_LISTINGS_READ",
+        "MARKETPLACE_LISTINGS_UPDATE",
+        "MARKETPLACE_LISTINGS_LIST",
+        "MARKETPLACE_LISTINGS_MANAGE",
+        "MARKETPLACE_LISTINGS_PUBLISH",
+        "MARKETPLACE_LISTINGS_MODERATE",
+    ] {
+        assert!(permissions.contains(marker), "platform RBAC is missing {marker}");
+        assert!(
+            owner.contains(marker) || marker == "MarketplaceListings" || marker == "marketplace_listings",
+            "listing owner permission declaration is missing {marker}"
+        );
+    }
 
     for marker in [
         "MarketplaceListingAdminDetail",
         "MarketplaceListingAdminEvent",
         "MarketplaceListingAdminCommand",
+        "MarketplaceListingAdminAction",
+        "pub const fn permission",
         "legacy_snapshot",
         "has_unknown_attribution",
     ] {
@@ -53,11 +86,15 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
         "MarketplaceListingReadPort::list_listing_events",
         "MarketplaceListingCommandPort::create_listing",
         "MarketplaceListingCommandPort::archive_listing",
+        "action.permission()",
+        "marketplace listing native runtime is not mounted in this host",
+        "use_context::<MarketplaceListingAdminNativeRuntime>()",
         "port_context",
         "authorize",
     ] {
         assert!(native.contains(marker), "listing native adapter is missing {marker}");
     }
+    assert!(!native.contains("expect_context::<MarketplaceListingAdminNativeRuntime>"));
     assert!(!native.contains("entities::"));
     assert!(!native.contains("DatabaseConnection"));
     assert!(!native.contains("MarketplaceListingService::new"));
