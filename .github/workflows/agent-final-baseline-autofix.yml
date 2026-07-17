@@ -73,4 +73,4 @@ jobs:
           git add -A
           git diff --cached --quiet && exit 0
           git commit -m "fix(ci): repair current repository baseline [agent-final-autofix]"
-          git push --force-with-lease origin HEAD:agent/ci-baseline-final-clean
+          git push origin HEAD:agent/ci-baseline-final-generated-v1
