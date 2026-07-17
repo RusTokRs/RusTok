@@ -125,7 +125,10 @@ Last reconciled with `main`: 2026-07-16.
 - [x] RBAC permissions use weighted typed identity, bounded striped epochs and database-backed durable
   generation recovery.
 - [x] SEO redirects reconcile from transactionally persisted rows with a bounded `(created_at, id)`
-  cursor, indexed paging, seed-before-clear startup and critical worker readiness.
+  cursor, indexed paging, seed-before-clear startup and critical worker readiness. Two-replica source
+  evidence covers exact tenant invalidation, multi-page catch-up, out-of-order count/cursor gap
+  recovery, database outage/restart recovery and terminal isolation of one worker while the other
+  remains ready.
 - [x] Flex field-definition cache is byte-weighted, keeps exact local EventBus invalidation as a fast
   path and advances one transaction-local singleton generation from user/product/order/topic table
   triggers. Source tests cover all four SQLite owner triggers with reorder, soft delete, rollback,
@@ -154,6 +157,9 @@ The detailed active-cache contract is maintained in
 - [x] Guard tenant-locale path scope, compiled and ignored Redis commands, exact/wildcard value,
   durable-ahead namespace recovery, deterministic lag, missed publication, shared-state
   loss/restoration, critical readiness and durable-before-apply ordering from accidental removal.
+- [x] Guard SEO transaction ordering, cursor index, seed-before-clear readiness, exact/multi-page/gap
+  and database outage recovery, terminal-worker isolation and permanent workflow execution from
+  accidental removal.
 - [x] Guard Flex SQLite/PostgreSQL test paths and commands, all four owner mutation classes,
   two-replica outage/regression recovery, clear-before-ack ordering and critical `is_ready()` wiring
   from accidental removal.
@@ -188,8 +194,8 @@ The detailed active-cache contract is maintained in
   listener-lag, missed-publication, Redis state-loss/restoration and critical-readiness scenarios.
 - [ ] Execute and record the source-complete Flex SQLite owner matrix, PostgreSQL
   transaction/concurrency/replay and two-replica startup/outage/regression recovery scenarios.
-- [ ] Prove SEO seed-before-clear startup, exact tenant invalidation, multi-page catch-up, database
-  outage recovery and terminal-worker readiness across multiple replicas.
+- [ ] Execute and record the source-complete SEO seed-before-clear, exact tenant, multi-page,
+  count/cursor-gap, database outage/recovery and terminal-worker scenarios across two replicas.
 - [ ] Prove binary-safe CAS applied/mismatch/failure behavior and fail-closed fallback against live
   Redis.
 - [ ] Execute and record the source-complete degraded-health plus eligible-local-read scenario.
@@ -239,6 +245,7 @@ cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_prese
 cargo test -p rustok-server channel_cache_invalidation --lib
 cargo test -p rustok-server --test channel_cache_resolved_value
 cargo test -p rustok-server tenant_locale_generation --lib
+cargo test -p rustok-server seo_redirect_cache_reconciliation --lib
 cargo test -p rustok-server field_definition_cache_generation --lib
 cargo test -p rustok-server \
   --test cache_architecture_guard \
