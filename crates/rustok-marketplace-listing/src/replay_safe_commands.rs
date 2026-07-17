@@ -292,8 +292,6 @@ async fn create_in_transaction(
         channel_slug: Set(channel_slug),
         status: Set(MarketplaceListingStatus::Draft.as_str().to_string()),
         approval_status: Set(MarketplaceListingApprovalStatus::Draft.as_str().to_string()),
-        approval_note: Set(None),
-        suspension_reason: Set(None),
         current_terms_version: Set(1),
         metadata: Set(metadata),
         published_at: Set(None),
@@ -371,7 +369,6 @@ async fn activate_in_transaction(
     let mut active: listing::ActiveModel = current.into();
     active.status = Set(MarketplaceListingStatus::Active.as_str().to_string());
     active.published_at = Set(Some(now.clone().into()));
-    active.suspension_reason = Set(None);
     active.updated_at = Set(now.into());
     let model = active.update(&receipt.transaction).await?;
     append_listing_event(
