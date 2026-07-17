@@ -69,9 +69,10 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
     }
     for marker in [
         "table_name = \"marketplace_listing_events\"",
-        "pub actor_id: Uuid",
+        "pub actor_id: Option<Uuid>",
         "pub event_kind: String",
-        "pub locale: String",
+        "pub locale: Option<String>",
+        "pub provenance: String",
         "pub note: Option<String>",
     ] {
         assert!(event_entity.contains(marker), "event entity is missing {marker}");
