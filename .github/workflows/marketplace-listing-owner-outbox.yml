@@ -78,27 +78,68 @@ jobs:
             crates/rustok-marketplace-listing/src/replay_safe_commands.rs \
             crates/rustok-marketplace-listing/src/service.rs \
             > rustfmt.patch
-      - name: Upload owner outbox rustfmt patch
+      - name: Compile listing crate
+        id: compile
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo check -p rustok-marketplace-listing --all-targets 2>&1 | tee cargo-check.log
+      - name: Test listing owner atomicity
+        id: tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo test -p rustok-marketplace-listing 2>&1 | tee cargo-test.log
+      - name: Clippy listing crate
+        id: clippy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo clippy -p rustok-marketplace-listing --all-targets -- -D warnings 2>&1 | tee cargo-clippy.log
+      - name: Verify listing owner boundaries
+        id: verify
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          {
+            node scripts/verify/verify-marketplace-listing-boundary.mjs
+            node scripts/verify/verify-marketplace-listing-event-contract.mjs
+          } 2>&1 | tee listing-verifiers.log
+      - name: Upload listing owner diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: marketplace-listing-owner-outbox-rustfmt-patch
-          path: rustfmt.patch
+          name: marketplace-listing-owner-outbox-diagnostics
+          path: |
+            rustfmt.patch
+            cargo-check.log
+            cargo-test.log
+            cargo-clippy.log
+            listing-verifiers.log
           if-no-files-found: error
           retention-days: 3
-      - name: Compile listing crate
-        run: cargo check -p rustok-marketplace-listing --all-targets
-      - name: Test listing owner atomicity
-        run: cargo test -p rustok-marketplace-listing
-      - name: Clippy listing crate
-        run: cargo clippy -p rustok-marketplace-listing --all-targets -- -D warnings
-      - name: Verify listing owner boundaries
+      - name: Enforce listing owner gates
+        if: always()
         run: |
-          node scripts/verify/verify-marketplace-listing-boundary.mjs
-          node scripts/verify/verify-marketplace-listing-event-contract.mjs
-      - name: Enforce clean owner outbox rustfmt
-        run: |
+          failed=0
           if test -s rustfmt.patch; then
-            cat rustfmt.patch
-            exit 1
+            echo "owner outbox Rust files are not rustfmt-clean"
+            failed=1
           fi
+          if test "${{ steps.compile.outcome }}" != "success"; then
+            echo "listing crate compile failed"
+            failed=1
+          fi
+          if test "${{ steps.tests.outcome }}" != "success"; then
+            echo "listing crate tests failed"
+            failed=1
+          fi
+          if test "${{ steps.clippy.outcome }}" != "success"; then
+            echo "listing crate Clippy failed"
+            failed=1
+          fi
+          if test "${{ steps.verify.outcome }}" != "success"; then
+            echo "listing source verifiers failed"
+            failed=1
+          fi
+          exit "$failed"
