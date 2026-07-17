@@ -9,7 +9,7 @@
  */
 
 pub mod async_utils;
-pub mod cache;
+mod cache;
 mod cache_atomic;
 pub mod config;
 pub mod content_format;
@@ -43,10 +43,8 @@ pub use async_utils::{
     batch, parallel, retry, timeout, BackoffConfig, Coalescer, Debouncer, RetryError, Throttler,
     TimeoutError,
 };
-#[cfg(feature = "redis-cache")]
-pub use cache::RedisCacheBackend;
 pub use cache::CacheStats;
-pub use cache_atomic::{FallbackCacheBackend, InMemoryCacheBackend};
+pub use cache_atomic::InMemoryCacheBackend;
 pub use config::{
     Config, ConfigError, ConfigLoader, ConfigSource, ConfigValue, DatabaseConfig, Secret,
     ServerConfig,
@@ -143,11 +141,9 @@ pub mod prelude {
     pub use crate::security_principal::security_context_from_access_token;
     pub use crate::typed_error::{DomainError, ErrorCode, TypedResult};
     pub use crate::types::{UserRole, UserStatus};
-    #[cfg(feature = "redis-cache")]
-    pub use crate::RedisCacheBackend;
     pub use crate::{
-        AppContext, CacheBackend, CacheCompareAndSetOutcome, CacheStats, FallbackCacheBackend,
-        InMemoryCacheBackend, SearchBackend,
+        AppContext, CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend,
+        SearchBackend,
     };
     pub use rustok_api::{Action, Permission, Resource};
     pub use uuid::Uuid;
