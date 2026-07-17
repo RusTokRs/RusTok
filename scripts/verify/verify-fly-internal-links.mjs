@@ -9,6 +9,7 @@ const paths = {
   browserContract: 'crates/fly-browser/src/lib.rs',
   browserIntent: 'crates/rustok-page-builder/admin/src/browser_intent.rs',
   ssrInternalLink: 'crates/rustok-page-builder/admin/src/editor/ssr_internal_link.rs',
+  adminMod: 'crates/rustok-page-builder/admin/src/editor/mod.rs',
   adminCanvas: 'crates/rustok-page-builder/admin/src/editor/modular_canvas.rs',
   localeEn: 'crates/rustok-page-builder/admin/locales/en.json',
   localeRu: 'crates/rustok-page-builder/admin/locales/ru.json',
@@ -43,12 +44,13 @@ requireMarkers('localizedRoute', [
   'pub struct LocalizedPageRouteEntry',
 ], 'localized route dependency');
 requireMarkers('runtimePipeline', [
-  'materialize_internal_page_links(document, &localized_input_context)',
-  'materialize_localized_page_metadata(&linked_document, &localized_input_context)',
+  'validate_internal_page_links(&dynamic_document)',
+  'materialize_internal_page_links(&dynamic_document, &effective_context)',
   'pub resolved_internal_links: usize',
   'pub fallback_internal_links: usize',
   'pub unresolved_internal_links: usize',
-  'internal_page_links_materialize_after_locale_selection_and_before_bindings',
+  'internal_page_links_materialize_after_bindings_and_repeaters',
+  'runtime_bound_navigation_conflict_is_validated_before_materialization',
 ], 'internal link runtime ordering');
 requireMarkers('runtimeRender', [
   'pub resolved_internal_links: usize',
@@ -85,9 +87,15 @@ requireMarkers('ssrInternalLink', [
   'internal_link_form_uses_patch_history_and_preserves_extensions',
   'missing_target_is_rejected_before_dispatch',
 ], 'localized SSR internal link editor');
+requireMarkers('adminMod', [
+  'mod ssr_internal_link;',
+  'SsrInternalPageLinkPanel',
+  'SsrInternalPageLinkRemoveRequest',
+  'SsrInternalPageLinkRequest',
+], 'internal link editor registration');
 requireMarker(
   'adminCanvas',
-  'SsrInternalPageLinkPanel',
+  '<SsrInternalPageLinkPanel runtime=ssr_internal_link_runtime />',
   'internal link panel is not mounted in the admin canvas',
 );
 
