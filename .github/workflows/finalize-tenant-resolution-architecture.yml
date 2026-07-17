@@ -1,0 +1,94 @@
+name: Finalize tenant resolution architecture
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/finalize-tenant-resolution-architecture.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-tenant-resolution-architecture-main
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply tenant architecture finalization
+        id: migration
+        shell: bash
+        run: |
+          set +e
+          {
+            python3 scripts/migrations/finalize_tenant_resolution.py && \
+            python3 scripts/migrations/finalize_tenant_runtime.py && \
+            python3 scripts/migrations/finalize_tenant_transport_docs.py && \
+            rustfmt --edition 2021 \
+              apps/server/src/middleware/tenant_resolution.rs \
+              apps/server/src/middleware/tenant_route_policy.rs \
+              apps/server/src/middleware/tenant.rs \
+              apps/server/src/middleware/mod.rs \
+              apps/server/src/controllers/graphql.rs && \
+            node scripts/verify/verify-tenant-resolution-architecture.mjs && \
+            git diff --check
+          } > /tmp/tenant-architecture-finalization.log 2>&1
+          status=$?
+          cat /tmp/tenant-architecture-finalization.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Reset partial changes after failure
+        if: steps.migration.outputs.status != '0'
+        run: git reset --hard HEAD
+
+      - name: Prepare failure report
+        if: steps.migration.outputs.status != '0'
+        shell: bash
+        run: |
+          {
+            echo '# Tenant architecture finalization failure'
+            echo
+            echo '```text'
+            cat /tmp/tenant-architecture-finalization.log
+            echo '```'
+          } > TENANT_ARCHITECTURE_FINALIZATION_FAILURE.md
+
+      - name: Remove one-time staging files
+        shell: bash
+        run: |
+          rm -f \
+            .github/workflows/finalize-tenant-resolution-architecture.yml \
+            scripts/migrations/finalize_tenant_resolution.py \
+            scripts/migrations/finalize_tenant_runtime.py \
+            scripts/migrations/finalize_tenant_transport_docs.py
+
+      - name: Commit atomically to main
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          if [[ "${{ steps.migration.outputs.status }}" == "0" ]]; then
+            message="refactor(tenant): finalize canonical resolution architecture"
+          else
+            message="chore: record tenant architecture finalization failure"
+          fi
+          git commit -m "$message"
+          git pull --rebase origin main
+          git push origin HEAD:main
