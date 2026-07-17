@@ -11,7 +11,7 @@ use std::{collections::BTreeSet, fmt};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BrowserCapabilityDenial {
-    pub intent: String,
+    pub intent: BrowserIntentKind,
     /// Backward-compatible primary capability. New clients should use `required` and `missing`.
     pub capability: EditorCapability,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -20,9 +20,12 @@ pub struct BrowserCapabilityDenial {
     pub missing: Vec<EditorCapability>,
 }
 
+/// Framework-neutral capability failure contract used by browser, HTTP and UI adapters.
+pub type CapabilityFailure = BrowserCapabilityDenial;
+
 impl BrowserCapabilityDenial {
     fn from_requirements(
-        intent: impl Into<String>,
+        intent: BrowserIntentKind,
         requirements: impl IntoIterator<Item = EditorCapability>,
         capabilities: CapabilityState,
     ) -> Option<Self> {
@@ -38,7 +41,7 @@ impl BrowserCapabilityDenial {
             .collect::<Vec<_>>();
         let capability = missing.first().copied()?;
         Some(Self {
-            intent: intent.into(),
+            intent,
             capability,
             required,
             missing,
@@ -52,7 +55,7 @@ impl fmt::Display for BrowserCapabilityDenial {
             return write!(
                 formatter,
                 "browser intent `{}` requires editor capability `{}`",
-                self.intent,
+                self.intent.as_str(),
                 self.capability.as_str()
             );
         }
@@ -71,7 +74,9 @@ impl fmt::Display for BrowserCapabilityDenial {
         write!(
             formatter,
             "browser intent `{}` requires editor capabilities [{}]; missing [{}]",
-            self.intent, required, missing
+            self.intent.as_str(),
+            required,
+            missing
         )
     }
 }
@@ -100,12 +105,12 @@ pub fn validate_browser_capability_access(
     capabilities: CapabilityState,
 ) -> Result<(), BrowserCapabilityAccessError> {
     let capabilities = capabilities.normalized();
-    let requirements = capability_requirements(envelope)?;
-    let Some(denial) = BrowserCapabilityDenial::from_requirements(
-        envelope.intent.clone(),
-        requirements,
-        capabilities,
-    ) else {
+    let Some((intent, requirements)) = capability_requirements(envelope)? else {
+        return Ok(());
+    };
+    let Some(denial) =
+        BrowserCapabilityDenial::from_requirements(intent, requirements, capabilities)
+    else {
         return Ok(());
     };
     Err(denial.into())
@@ -113,9 +118,9 @@ pub fn validate_browser_capability_access(
 
 fn capability_requirements(
     envelope: &BrowserIntentEnvelope,
-) -> Result<Vec<EditorCapability>, BrowserCapabilityAccessError> {
+) -> Result<Option<(BrowserIntentKind, Vec<EditorCapability>)>, BrowserCapabilityAccessError> {
     let Some(kind) = envelope.kind() else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
     let requirements = match kind {
         BrowserIntentKind::Select
@@ -162,7 +167,7 @@ fn capability_requirements(
             asset_command(),
             property_command(),
         ])),
-        BrowserIntentKind::KeyStroke => return shortcut_requirements(envelope),
+        BrowserIntentKind::KeyStroke => return Ok(Some((kind, shortcut_requirements(envelope)?))),
         BrowserIntentKind::InsertBlock
         | BrowserIntentKind::RemoveSelected
         | BrowserIntentKind::MoveSelected
@@ -172,7 +177,7 @@ fn capability_requirements(
         | BrowserIntentKind::CreatePage
         | BrowserIntentKind::RemovePage => command_requirements(structural_command()),
     };
-    Ok(requirements)
+    Ok(Some((kind, requirements)))
 }
 
 fn shortcut_requirements(
@@ -285,10 +290,10 @@ mod tests {
             clipboard: false,
             ..CapabilityState::full()
         };
-        for (intent, capability) in [
-            ("save", EditorCapability::Publish),
-            ("undo", EditorCapability::History),
-            ("copy", EditorCapability::Clipboard),
+        for (intent, kind, capability) in [
+            ("save", BrowserIntentKind::Save, EditorCapability::Publish),
+            ("undo", BrowserIntentKind::Undo, EditorCapability::History),
+            ("copy", BrowserIntentKind::Copy, EditorCapability::Clipboard),
         ] {
             let error = validate_browser_capability_access(
                 &envelope(intent, json!({})),
@@ -298,7 +303,7 @@ mod tests {
             assert_eq!(
                 browser_capability_denial(&error),
                 Some(&BrowserCapabilityDenial {
-                    intent: intent.to_string(),
+                    intent: kind,
                     capability,
                     required: vec![capability],
                     missing: vec![capability],
@@ -355,10 +360,9 @@ mod tests {
             capabilities,
         )
         .expect_err("page rename is a PageCommand::Patch");
-        assert_eq!(
-            browser_capability_denial(&error).map(|denial| denial.capability),
-            Some(EditorCapability::Properties)
-        );
+        let denial = browser_capability_denial(&error).expect("typed denial");
+        assert_eq!(denial.intent, BrowserIntentKind::RenamePage);
+        assert_eq!(denial.capability, EditorCapability::Properties);
     }
 
     #[test]
@@ -376,10 +380,9 @@ mod tests {
                 capabilities,
             )
             .expect_err("runtime preview properties denial");
-            assert_eq!(
-                browser_capability_denial(&error).map(|denial| denial.capability),
-                Some(EditorCapability::Properties)
-            );
+            let denial = browser_capability_denial(&error).expect("typed denial");
+            assert_eq!(denial.intent, kind);
+            assert_eq!(denial.capability, EditorCapability::Properties);
         }
     }
 
@@ -395,6 +398,7 @@ mod tests {
         )
         .expect_err("asset application changes component properties");
         let denial = browser_capability_denial(&error).expect("typed denial");
+        assert_eq!(denial.intent, BrowserIntentKind::SelectAsset);
         assert_eq!(denial.capability, EditorCapability::Properties);
         assert_eq!(
             denial.required,
@@ -478,10 +482,9 @@ mod tests {
             capabilities,
         )
         .expect_err("publish shortcut capability denial");
-        assert_eq!(
-            browser_capability_denial(&error).map(|denial| denial.capability),
-            Some(EditorCapability::Publish)
-        );
+        let denial = browser_capability_denial(&error).expect("typed denial");
+        assert_eq!(denial.intent, BrowserIntentKind::KeyStroke);
+        assert_eq!(denial.capability, EditorCapability::Publish);
     }
 
     #[test]
@@ -510,9 +513,8 @@ mod tests {
             capabilities,
         )
         .expect_err("edit capability denial");
-        assert_eq!(
-            browser_capability_denial(&error).map(|denial| denial.capability),
-            Some(EditorCapability::Edit)
-        );
+        let denial = browser_capability_denial(&error).expect("typed denial");
+        assert_eq!(denial.intent, BrowserIntentKind::InsertBlock);
+        assert_eq!(denial.capability, EditorCapability::Edit);
     }
 }
