@@ -12,6 +12,7 @@ use serde_json::{Map, Value};
 
 const MAX_ASSET_SOURCE_BYTES: usize = 64 * 1024;
 const MAX_ASSET_TEXT_BYTES: usize = 4 * 1024;
+const ALLOWED_ASSET_SOURCE_ATTRIBUTES: [&str; 3] = ["src", "srcset", "poster"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SsrAssetUpsertRequest {
@@ -118,7 +119,7 @@ impl AdminCanvasController {
     ) -> Result<UiIntent, String> {
         let component_id = required(&request.component_id, "component id")?;
         let asset_id = required(&request.asset_id, "asset id")?;
-        let source_attribute = required(&request.source_attribute, "source attribute")?;
+        let source_attribute = normalize_asset_source_attribute(&request.source_attribute)?;
         if self
             .editor()
             .document()
@@ -189,7 +190,8 @@ pub fn SsrAssetPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             .with(|controller| controller.ui().state.selection.component_id.clone())
             .unwrap_or_default();
         let assets_enabled = runtime.capability_enabled(EditorCapability::Assets);
-        let apply_enabled = assets_enabled && runtime.capability_enabled(EditorCapability::Properties);
+        let apply_enabled =
+            assets_enabled && runtime.capability_enabled(EditorCapability::Properties);
         let has_assets = !catalog.assets.is_empty();
 
         view! {
@@ -265,12 +267,14 @@ pub fn SsrAssetPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                         <input type="hidden" name="asset_id" value=apply_asset_id />
                                         <label class="grid gap-1">
                                             <span>{source_attribute_label}</span>
-                                            <input
+                                            <select
                                                 name="source_attribute"
-                                                value="src"
                                                 class="rounded border border-input bg-background px-2 py-1 text-xs"
-                                                autocomplete="off"
-                                            />
+                                            >
+                                                <option value="src">"src"</option>
+                                                <option value="srcset">"srcset"</option>
+                                                <option value="poster">"poster"</option>
+                                            </select>
                                         </label>
                                         <button
                                             type="submit"
@@ -305,6 +309,19 @@ pub fn SsrAssetPanel(runtime: AdminEditorRuntime) -> impl IntoView {
 
 fn default_source_attribute() -> String {
     "src".to_string()
+}
+
+fn normalize_asset_source_attribute(value: &str) -> Result<&'static str, String> {
+    let value = required(value, "source attribute")?.to_ascii_lowercase();
+    ALLOWED_ASSET_SOURCE_ATTRIBUTES
+        .into_iter()
+        .find(|allowed| *allowed == value)
+        .ok_or_else(|| {
+            format!(
+                "source attribute `{value}` is not supported; expected one of {}",
+                ALLOWED_ASSET_SOURCE_ATTRIBUTES.join(", ")
+            )
+        })
 }
 
 fn required<'a>(value: &'a str, label: &str) -> Result<&'a str, String> {
@@ -400,6 +417,18 @@ mod tests {
         let component = controller.editor().document().component("image").unwrap();
         assert_eq!(component.attributes["src"], "/old.webp");
         assert_eq!(component.attributes["data-fly-asset-id"], "hero");
+    }
+
+    #[test]
+    fn asset_apply_rejects_arbitrary_attribute_names() {
+        let controller = controller();
+        assert!(controller
+            .ssr_asset_apply_intent(SsrAssetApplyRequest {
+                component_id: "image".to_string(),
+                asset_id: "hero".to_string(),
+                source_attribute: "onerror".to_string(),
+            })
+            .is_err());
     }
 
     #[test]
