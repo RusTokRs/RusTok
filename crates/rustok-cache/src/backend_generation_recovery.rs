@@ -23,6 +23,17 @@ fn bind_generation_recovery_owner(
         .unwrap_or_else(std::sync::PoisonError::into_inner);
 
     if let Some(owner) = owners.get(&state_identity) {
+        let Some(existing_state) = owner.state.upgrade() else {
+            return Err(CacheBackendGenerationError::SharedGeneration(
+                "cache backend generation recovery state expired; refusing unsafe owner rebinding"
+                    .to_string(),
+            ));
+        };
+        if !Arc::ptr_eq(&existing_state, state) {
+            return Err(CacheBackendGenerationError::SharedGeneration(
+                "cache backend generation recovery pointer collision detected".to_string(),
+            ));
+        }
         let Some(existing) = owner.identity.upgrade() else {
             return Err(CacheBackendGenerationError::SharedGeneration(
                 "cache backend generation recovery owner expired; refusing unsafe owner rebinding"
