@@ -1,9 +1,10 @@
 name: Final current-only Page Builder cleanup
 
 on:
-  pull_request:
+  push:
     branches: [main]
-    types: [opened, synchronize, reopened]
+    paths:
+      - .github/workflows/page-builder-current-cleanup-final.yml
 
 permissions:
   contents: write
@@ -21,7 +22,7 @@ jobs:
       - name: Load all staged cleanup scripts
         shell: bash
         run: |
-          git fetch origin chore/page-builder-cleanup-stage
+          git fetch origin chore/page-builder-cleanup-stage:refs/remotes/origin/chore/page-builder-cleanup-stage
           mkdir -p scripts/migrations
           for script in \
             cleanup_page_builder_current \
@@ -122,11 +123,13 @@ jobs:
             echo '```'
           } > PAGE_BUILDER_CURRENT_CLEANUP_FAILURE.md
 
-      - name: Remove temporary runner and scripts
+      - name: Remove temporary runners and scripts
         run: |
           rm -f \
             scripts/migrations/cleanup_page_builder_*.py \
-            .github/workflows/page-builder-current-cleanup-final.yml
+            .github/workflows/page-builder-current-cleanup-final.yml \
+            .github/workflows/cleanup-page-builder-current.yml \
+            PAGE_BUILDER_CLEANUP_FAILURE.md
 
       - name: Commit atomically to main
         shell: bash
