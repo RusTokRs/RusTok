@@ -56,12 +56,6 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
                     input.page_id, snapshot.page_id
                 )));
             }
-            if input.schema_version != GRAPESJS_FORMAT {
-                return Err(PageBuilderAdminFacadeError::new(format!(
-                    "Unsupported Page Builder schema `{}`; expected `{GRAPESJS_FORMAT}`",
-                    input.schema_version
-                )));
-            }
 
             let current_page = transport::fetch_page(
                 snapshot.token.clone(),
@@ -224,7 +218,7 @@ fn synchronize_frame_component(
         .and_then(Value::as_object_mut)
         .ok_or_else(|| {
             PageBuilderAdminFacadeError::new(
-                "Page Builder first frame must be an object for legacy compatibility",
+                "Page Builder first frame must be an object for compatibility",
             )
         })?;
     frame.insert("component".to_string(), component);
@@ -253,7 +247,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn canonicalization_copies_legacy_frame_component_to_page_root() {
+    fn canonicalization_copies_frame_component_to_page_root() {
         let project = canonicalize_builder_project(json!({
             "pages": [{
                 "id": "home",
@@ -275,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn canonical_component_refreshes_legacy_frame_snapshot() {
+    fn canonical_component_refreshes_frame_snapshot() {
         let project = canonicalize_builder_project(json!({
             "pages": [{
                 "id": "home",
@@ -303,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_project_receives_editable_root_and_legacy_snapshot() {
+    fn empty_project_receives_editable_root_and_frame_snapshot() {
         let project = canonicalize_builder_project(json!({})).expect("canonical project");
         assert_eq!(project["pages"][0]["component"]["id"], "root");
         assert_eq!(project["pages"][0]["frames"][0]["component"]["id"], "root");
