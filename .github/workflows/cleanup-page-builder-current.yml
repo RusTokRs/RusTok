@@ -24,65 +24,70 @@ jobs:
       github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     steps:
-      - name: Check out main
+      - name: Check out latest main
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
-      - name: Stop when cleanup is already complete
-        id: staged
-        shell: bash
-        run: |
-          if [[ -f scripts/migrations/cleanup_page_builder_current.py ]]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install Rust toolchain
-        if: steps.staged.outputs.present == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.96
           components: rustfmt
 
-      - name: Apply cleanup
-        if: steps.staged.outputs.present == 'true'
-        run: python3 scripts/migrations/cleanup_page_builder_current.py
+      - name: Apply and validate cleanup
+        id: cleanup
+        shell: bash
+        run: |
+          set +e
+          {
+            python3 scripts/migrations/cleanup_page_builder_current.py && \
+            cargo fmt --all && \
+            cargo check -p fly -p rustok-page-builder --all-features && \
+            cargo test -p fly --lib && \
+            cargo test -p rustok-page-builder --lib --all-features && \
+            git diff --check
+          } > /tmp/page-builder-cleanup.log 2>&1
+          status=$?
+          cat /tmp/page-builder-cleanup.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
-      - name: Format
-        if: steps.staged.outputs.present == 'true'
-        run: cargo fmt --all
+      - name: Reset partial changes after failure
+        if: steps.cleanup.outputs.status != '0'
+        run: git reset --hard HEAD
 
-      - name: Check Fly and Page Builder
-        if: steps.staged.outputs.present == 'true'
-        run: cargo check -p fly -p rustok-page-builder --all-features
+      - name: Write failure report
+        if: steps.cleanup.outputs.status != '0'
+        shell: bash
+        run: |
+          {
+            echo '# Page Builder current-only cleanup failure'
+            echo
+            echo '```text'
+            cat /tmp/page-builder-cleanup.log
+            echo '```'
+          } > PAGE_BUILDER_CLEANUP_FAILURE.md
 
-      - name: Test Fly
-        if: steps.staged.outputs.present == 'true'
-        run: cargo test -p fly --lib
+      - name: Remove one-time files
+        run: |
+          rm -f \
+            scripts/migrations/cleanup_page_builder_current.py \
+            .github/workflows/cleanup-page-builder-current.yml
 
-      - name: Test Page Builder
-        if: steps.staged.outputs.present == 'true'
-        run: cargo test -p rustok-page-builder --lib --all-features
-
-      - name: Verify diff
-        if: steps.staged.outputs.present == 'true'
-        run: git diff --check
-
-      - name: Remove one-time migration
-        if: steps.staged.outputs.present == 'true'
-        run: rm -f scripts/migrations/cleanup_page_builder_current.py .github/workflows/cleanup-page-builder-current.yml
-
-      - name: Commit directly to main
-        if: steps.staged.outputs.present == 'true'
+      - name: Commit atomically to main
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "refactor(page-builder): keep only the current API"
+          if [[ "${{ steps.cleanup.outputs.status }}" == "0" ]]; then
+            message="refactor(page-builder): keep only the current API"
+          else
+            message="chore(page-builder): record current-only cleanup failure"
+          fi
+          git commit -m "$message"
           git pull --rebase origin main
           git push origin HEAD:main
