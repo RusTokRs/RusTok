@@ -8,11 +8,16 @@ const paths = {
   adapter: 'crates/fly-ui/src/contribution_adapter.rs',
   factory: 'crates/fly-ui/src/contribution_factory.rs',
   manifest: 'crates/fly-ui/src/contribution_manifest.rs',
+  paletteAccess: 'crates/fly-ui/src/palette_access.rs',
+  pageBuilderLib: 'crates/rustok-page-builder/admin/src/lib.rs',
   pageBuilderHost: 'crates/rustok-page-builder/admin/src/ui/leptos.rs',
   pageBuilderCanvas: 'crates/rustok-page-builder/admin/src/editor/modular_canvas.rs',
   pageBuilderPalette: 'crates/rustok-page-builder/admin/src/editor/palette_layers.rs',
+  pageBuilderPaletteAccess: 'crates/rustok-page-builder/admin/src/palette_access.rs',
   pageBuilderContextContract: 'crates/rustok-page-builder/admin/src/context_contract.rs',
+  pagesLib: 'crates/rustok-pages/admin/src/lib.rs',
   pagesContributions: 'crates/rustok-pages/admin/src/contributions.rs',
+  pagesContributionBrowser: 'crates/rustok-pages/admin/src/contribution_browser_intent.rs',
   pagesComposition: 'crates/rustok-pages/admin/src/composition.rs',
   tests: 'crates/fly-ui/src/tests.rs',
 };
@@ -36,10 +41,12 @@ requireMarkers('flyUiLib', [
   'mod contribution_adapter;',
   'mod contribution_factory;',
   'mod contribution_manifest;',
+  'mod palette_access;',
   'pub use contribution::*;',
   'pub use contribution_adapter::*;',
   'pub use contribution_factory::*;',
   'pub use contribution_manifest::*;',
+  'pub use palette_access::*;',
 ], 'fly-ui contribution module wiring');
 requireMarkers('error', [
   'InvalidContribution',
@@ -129,6 +136,17 @@ requireMarkers('manifest', [
   'target_provider_version_mismatch_is_rejected',
   'admin_and_storefront_surfaces_remain_separate',
 ], 'owner-safe contribution manifests');
+requireMarkers('paletteAccess', [
+  'pub struct PaletteBlockAccess',
+  'pub fn unrestricted()',
+  'pub fn from_assembly(',
+  'pub fn from_optional_assembly(',
+  'pub fn allows(',
+  '!is_namespaced_block(block_id)',
+  'legacy_surface_is_unrestricted',
+  'assembled_surface_keeps_primitives_and_filters_namespaced_blocks',
+  'block_provenance_is_deterministic',
+], 'contribution-aware palette access');
 requireMarkers('pageBuilderHost', [
   'pub contribution_assembly: Option<Arc<ContributionAssemblyResult>>',
   'pub fn with_contribution_assembly(',
@@ -141,13 +159,30 @@ requireMarkers('pageBuilderCanvas', [
   'contribution_assembly',
 ], 'Page Builder canvas contribution routing');
 requireMarkers('pageBuilderPalette', [
+  'PaletteBlockAccess::from_optional_assembly(',
   'data-fly-contribution-registry="true"',
   'data-fly-contribution-ids=contribution_attr',
-  'fn contributed_block_sources(',
-  'assembly.registry.iter()',
-  'controller.palette_blocks()',
-  'contribution_provenance_is_derived_without_copying_block_definitions',
-], 'Page Builder palette contribution provenance');
+  'controller.palette_blocks_with_access(&access)',
+  'begin_palette_drag_intent_with_access(',
+  'insert_palette_block_intent_with_access(',
+  'contribution_access_filters_templates_without_copying_block_definitions',
+], 'Page Builder palette contribution enforcement');
+requireMarkers('pageBuilderPaletteAccess', [
+  'pub fn palette_blocks_with_access(',
+  'pub fn palette_block_with_access(',
+  'pub fn begin_palette_drag_intent_with_access(',
+  'pub fn insert_palette_block_intent_with_access(',
+  'pub fn dispatch_browser_intent_with_palette_access(',
+  'pub fn validate_browser_palette_access(',
+  '"insert_block" | "begin_palette_drag"',
+  '"drop" => block_drop_id',
+  'browser_insert_and_drop_cannot_bypass_contribution_filtering',
+], 'Page Builder palette intent preflight');
+requireMarkers('pageBuilderLib', [
+  'mod palette_access;',
+  'dispatch_browser_intent_with_palette_access',
+  'validate_browser_palette_access',
+], 'Page Builder palette access exports');
 requireMarker(
   'pageBuilderContextContract',
   'assert_send_sync::<Arc<ContributionAssemblyResult>>()',
@@ -178,6 +213,27 @@ requireMarkers('pagesContributions', [
   'capability_constants_match_the_module_manifest',
   'storefront_surface_stays_empty_until_a_real_adapter_exists',
 ], 'Pages Fly contribution manifest and policy');
+requireMarkers('pagesContributionBrowser', [
+  'pub fn pages_palette_block_access()',
+  'pub async fn dispatch_pages_browser_intent(',
+  'pub async fn dispatch_pages_browser_intent_with_store(',
+  'fn preflight_pages_palette_intent(',
+  'validate_browser_palette_access(&envelope, &pages_palette_block_access())',
+  'pages_preflight_allows_primitives_and_declared_templates',
+  'pages_preflight_rejects_uncontributed_namespaced_templates',
+  'pages_preflight_rejects_block_drop_bypass',
+], 'Pages contribution-aware browser dispatcher');
+requireMarkers('pagesLib', [
+  'mod contribution_browser_intent;',
+  'pub use contribution_browser_intent::{',
+  'dispatch_pages_browser_intent, dispatch_pages_browser_intent_with_store,',
+  'pages_palette_block_access,',
+], 'Pages crate-root browser preflight routing');
+rejectMarker(
+  'pagesLib',
+  'pub use browser_intent::{\n    dispatch_pages_browser_intent',
+  'Pages must not export the private browser dispatcher without contribution preflight',
+);
 requireMarkers('pagesComposition', [
   'build_pages_admin_contribution_registry(',
   'pages_admin_contribution_policy()',
@@ -196,7 +252,14 @@ for (const forbidden of [
   'rustok_',
   'rustok-',
 ]) {
-  for (const key of ['contribution', 'adapter', 'factory', 'manifest', 'flyUiCargo']) {
+  for (const key of [
+    'contribution',
+    'adapter',
+    'factory',
+    'manifest',
+    'paletteAccess',
+    'flyUiCargo',
+  ]) {
     rejectMarker(
       key,
       forbidden,
@@ -211,7 +274,7 @@ requireMarker(
 );
 
 if (failures.length > 0) {
-  console.error('Fly UI contribution verification failed:');
+  console.error('Fly UI contributions failed:');
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
