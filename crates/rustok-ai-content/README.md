@@ -26,6 +26,6 @@
 ## Docs
 
 - [Module docs](./docs/README.md)
-- Leptos admin UI scaffold: [`./admin/README.md`](./admin/README.md)
-- Next.js admin UI scaffold: [`../../apps/next-admin/packages/rustok-ai-content/README.md`](../../apps/next-admin/packages/rustok-ai-content/README.md)
+- Adapter controls are composed by the `rustok-ai` Leptos and Next.js admin
+  surfaces; this support crate does not expose a standalone content-admin route.
 - [Platform docs index](../../docs/index.md)

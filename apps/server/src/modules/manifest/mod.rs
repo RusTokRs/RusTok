@@ -11,16 +11,14 @@ pub use validation::*;
 
 use crate::error::{Error as ServerError, Result as ServerResult};
 use rustok_api::module_registry_contract::{
-    validate_module_registry_contract, ManifestModuleContract, ModuleRegistryContractError,
-    RegistryModuleContract,
+    ManifestModuleContract, ModuleRegistryContractError, RegistryModuleContract,
 };
 use rustok_build::{
     BuildExecutionPlan, BuildRuntimeMode, DeploymentProfile, ModuleSpec as BuildModuleSpec,
     RoleBuildPlan,
 };
 use rustok_core::ModuleRegistry;
-use semver::{Version, VersionReq};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 pub struct ManifestManager;
@@ -422,6 +420,14 @@ impl ManifestManager {
         module_slug: &str,
         settings: serde_json::Value,
     ) -> Result<serde_json::Value, ManifestError> {
+        let schema = Self::module_settings_schema(module_slug)?;
+        rustok_modules::normalize_module_settings(module_slug, &schema, settings)
+            .map_err(map_module_settings_validation_error)
+    }
+
+    pub fn module_settings_schema(
+        module_slug: &str,
+    ) -> Result<HashMap<String, rustok_modules::ModuleSettingSpec>, ManifestError> {
         let manifest = Self::load()?;
         let resolved_specs = resolve_module_specs(&manifest)?;
 
@@ -433,131 +439,18 @@ impl ManifestManager {
             HashMap::new()
         };
 
-        normalize_module_settings(module_slug, &schema, settings)
+        Ok(to_module_settings_schema(&schema))
     }
 
     pub fn validate(manifest: &ModulesManifest) -> Result<(), ManifestError> {
         let resolved_specs = resolve_module_specs(manifest)?;
-
-        let installed = resolved_specs.keys().cloned().collect::<HashSet<_>>();
-
-        let missing_defaults = manifest
-            .settings
-            .default_enabled
-            .iter()
-            .filter(|slug| !installed.contains(*slug))
-            .cloned()
-            .collect::<Vec<_>>();
-
-        if !missing_defaults.is_empty() {
-            return Err(ManifestError::UnknownDefaultEnabled(
-                missing_defaults.join(", "),
-            ));
-        }
-
-        let mut ordered_slugs = resolved_specs.keys().cloned().collect::<Vec<_>>();
-        ordered_slugs.sort();
-
-        for slug in ordered_slugs {
-            let spec = resolved_specs
-                .get(&slug)
-                .expect("resolved module slug must exist");
-            let missing = spec
-                .depends_on
-                .iter()
-                .filter(|dependency| !installed.contains(*dependency))
-                .cloned()
-                .collect::<Vec<_>>();
-
-            if !missing.is_empty() {
-                return Err(ManifestError::MissingDependencies {
-                    slug: slug.clone(),
-                    missing: missing.join(", "),
-                });
-            }
-
-            for conflict in &spec.conflicts_with {
-                if installed.contains(conflict) {
-                    return Err(ManifestError::ConflictingModule {
-                        slug: slug.clone(),
-                        conflicts_with: conflict.clone(),
-                    });
-                }
-            }
-
-            for (dependency, raw_req) in &spec.dependency_version_reqs {
-                let Some(dependency_spec) = resolved_specs.get(dependency) else {
-                    continue;
-                };
-
-                let installed_version = dependency_spec.version.as_deref().ok_or_else(|| {
-                    ManifestError::MissingDependencyVersion {
-                        slug: slug.clone(),
-                        dependency: dependency.clone(),
-                    }
-                })?;
-                let installed_version = Version::parse(installed_version).map_err(|_| {
-                    ManifestError::InvalidModuleVersion {
-                        slug: dependency.clone(),
-                        value: installed_version.to_string(),
-                    }
-                })?;
-                let version_req = VersionReq::parse(raw_req).map_err(|_| {
-                    ManifestError::InvalidDependencyVersionReq {
-                        slug: slug.clone(),
-                        dependency: dependency.clone(),
-                        value: raw_req.clone(),
-                    }
-                })?;
-
-                if !version_req.matches(&installed_version) {
-                    return Err(ManifestError::IncompatibleDependencyVersion {
-                        slug: slug.clone(),
-                        dependency: dependency.clone(),
-                        required: raw_req.clone(),
-                        installed: installed_version.to_string(),
-                    });
-                }
-            }
-
-            if let Some(current_version) = current_platform_version() {
-                let min_ok = spec
-                    .rustok_min_version
-                    .as_deref()
-                    .map(|raw| normalize_version_req(raw, false))
-                    .map(|req| VersionReq::parse(&req))
-                    .transpose()
-                    .map_err(|_| ManifestError::IncompatibleRustokVersion {
-                        slug: slug.clone(),
-                        current_version: current_version.to_string(),
-                        minimum: spec.rustok_min_version.clone(),
-                        maximum: spec.rustok_max_version.clone(),
-                    })?
-                    .is_none_or(|req| req.matches(&current_version));
-                let max_ok = spec
-                    .rustok_max_version
-                    .as_deref()
-                    .map(|raw| normalize_version_req(raw, true))
-                    .map(|req| VersionReq::parse(&req))
-                    .transpose()
-                    .map_err(|_| ManifestError::IncompatibleRustokVersion {
-                        slug: slug.clone(),
-                        current_version: current_version.to_string(),
-                        minimum: spec.rustok_min_version.clone(),
-                        maximum: spec.rustok_max_version.clone(),
-                    })?
-                    .is_none_or(|req| req.matches(&current_version));
-
-                if !(min_ok && max_ok) {
-                    return Err(ManifestError::IncompatibleRustokVersion {
-                        slug: slug.clone(),
-                        current_version: current_version.to_string(),
-                        minimum: spec.rustok_min_version.clone(),
-                        maximum: spec.rustok_max_version.clone(),
-                    });
-                }
-            }
-        }
+        let topology = to_static_module_topology_contract(
+            &resolved_specs,
+            &manifest.settings.default_enabled,
+            current_platform_version(),
+        );
+        rustok_modules::validate_static_module_topology_contract(&topology)
+            .map_err(map_static_module_topology_validation_error)?;
 
         validate_build_surfaces(manifest)?;
 
@@ -593,17 +486,19 @@ impl ManifestManager {
                     .collect::<BTreeSet<_>>(),
             });
 
-        validate_module_registry_contract(manifest_contracts, registry_contracts).map_err(|error| {
-            match error {
-                ModuleRegistryContractError::MissingInRegistry(details) => {
-                    ManifestError::MissingInRegistry(details)
-                }
-                ModuleRegistryContractError::RequiredMismatch(details) => {
-                    ManifestError::RequiredMismatch(details)
-                }
-                ModuleRegistryContractError::DependencyMismatch(details) => {
-                    ManifestError::DependencyMismatch(details)
-                }
+        rustok_modules::validate_static_module_registry_contracts(
+            manifest_contracts,
+            registry_contracts,
+        )
+        .map_err(|error| match error {
+            ModuleRegistryContractError::MissingInRegistry(details) => {
+                ManifestError::MissingInRegistry(details)
+            }
+            ModuleRegistryContractError::RequiredMismatch(details) => {
+                ManifestError::RequiredMismatch(details)
+            }
+            ModuleRegistryContractError::DependencyMismatch(details) => {
+                ManifestError::DependencyMismatch(details)
             }
         })
     }

@@ -20,6 +20,6 @@ pub use materializer::{DependencyMaterializationError, OciScopedDependencyMateri
 pub use policy::{
     CargoMetadataError, CargoMetadataInspector, SourcePolicyError, SourcePolicyPreflight,
 };
-pub use runner::CommandBuildWorker;
+pub use runner::{OciJobBuildWorker, OciJobRuntime};
 pub use signing::{CosignArtifactSigner, CosignSigningError};
 pub use source::{SourceMaterializationError, SourceMaterializer};

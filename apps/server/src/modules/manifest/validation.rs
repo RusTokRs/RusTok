@@ -1,6 +1,5 @@
 use super::types::*;
-use rustok_api::normalize_locale_tag;
-use semver::{Version, VersionReq};
+use semver::Version;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -118,109 +117,25 @@ pub fn validate_module_ui_i18n_contract(
     let Some(i18n) = ui.i18n.as_ref() else {
         return Ok(());
     };
+    let i18n = rustok_modules::validate_static_module_ui_i18n_contract(
+        &rustok_modules::StaticModuleUiI18nContract {
+            default_locale: i18n.default_locale.clone(),
+            supported_locales: i18n.supported_locales.clone(),
+            leptos_locales_path: i18n.leptos_locales_path.clone(),
+            next_messages_path: i18n.next_messages_path.clone(),
+            has_leptos_crate: ui
+                .leptos_crate
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty()),
+            has_next_package: ui
+                .next_package
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty()),
+        },
+    )
+    .map_err(|error| map_static_module_ui_i18n_validation_error(slug, surface, error))?;
 
-    let supported_locales = i18n
-        .supported_locales
-        .iter()
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .map(|locale| {
-            normalize_locale_tag(locale).ok_or_else(|| ManifestError::InvalidModuleUiWiring {
-                slug: slug.to_string(),
-                surface: surface.to_string(),
-                reason: format!("i18n.supported_locales contains invalid locale '{locale}'"),
-            })
-        })
-        .collect::<Result<std::collections::BTreeSet<_>, _>>()?
-        .into_iter()
-        .collect::<Vec<_>>();
-
-    if supported_locales.is_empty() {
-        return Err(ManifestError::InvalidModuleUiWiring {
-            slug: slug.to_string(),
-            surface: surface.to_string(),
-            reason: "i18n.supported_locales must list at least one locale".to_string(),
-        });
-    }
-
-    if let Some(default_locale) = i18n
-        .default_locale
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        let default_locale = normalize_locale_tag(default_locale).ok_or_else(|| {
-            ManifestError::InvalidModuleUiWiring {
-                slug: slug.to_string(),
-                surface: surface.to_string(),
-                reason: format!("i18n.default_locale '{default_locale}' is invalid"),
-            }
-        })?;
-        if !supported_locales
-            .iter()
-            .any(|locale| locale == &default_locale)
-        {
-            return Err(ManifestError::InvalidModuleUiWiring {
-                slug: slug.to_string(),
-                surface: surface.to_string(),
-                reason: format!(
-                    "i18n.default_locale '{default_locale}' must be present in i18n.supported_locales"
-                ),
-            });
-        }
-    }
-
-    let leptos_locales_path = i18n
-        .leptos_locales_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let next_messages_path = i18n
-        .next_messages_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-
-    if leptos_locales_path.is_none() && next_messages_path.is_none() {
-        return Err(ManifestError::InvalidModuleUiWiring {
-            slug: slug.to_string(),
-            surface: surface.to_string(),
-            reason: "i18n contract must declare leptos_locales_path and/or next_messages_path"
-                .to_string(),
-        });
-    }
-
-    if leptos_locales_path.is_some()
-        && ui
-            .leptos_crate
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_none()
-    {
-        return Err(ManifestError::InvalidModuleUiWiring {
-            slug: slug.to_string(),
-            surface: surface.to_string(),
-            reason: "i18n.leptos_locales_path requires [provides.*_ui].leptos_crate".to_string(),
-        });
-    }
-
-    if next_messages_path.is_some()
-        && ui
-            .next_package
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_none()
-    {
-        return Err(ManifestError::InvalidModuleUiWiring {
-            slug: slug.to_string(),
-            surface: surface.to_string(),
-            reason: "i18n.next_messages_path requires [provides.*_ui].next_package".to_string(),
-        });
-    }
-
-    if let Some(path) = leptos_locales_path {
+    if let Some(path) = i18n.leptos_locales_path.as_deref() {
         let resolved = resolve_module_contract_path(module_root, path).map_err(|reason| {
             ManifestError::InvalidModuleUiWiring {
                 slug: slug.to_string(),
@@ -233,11 +148,11 @@ pub fn validate_module_ui_i18n_contract(
             surface,
             "i18n.leptos_locales_path",
             &resolved,
-            &supported_locales,
+            &i18n.supported_locales,
         )?;
     }
 
-    if let Some(path) = next_messages_path {
+    if let Some(path) = i18n.next_messages_path.as_deref() {
         let resolved = resolve_module_contract_path(module_root, path).map_err(|reason| {
             ManifestError::InvalidModuleUiWiring {
                 slug: slug.to_string(),
@@ -250,11 +165,46 @@ pub fn validate_module_ui_i18n_contract(
             surface,
             "i18n.next_messages_path",
             &resolved,
-            &supported_locales,
+            &i18n.supported_locales,
         )?;
     }
 
     Ok(())
+}
+
+fn map_static_module_ui_i18n_validation_error(
+    slug: &str,
+    surface: &str,
+    error: rustok_modules::StaticModuleUiI18nValidationError,
+) -> ManifestError {
+    let reason = match error {
+        rustok_modules::StaticModuleUiI18nValidationError::InvalidSupportedLocale { value } => {
+            format!("i18n.supported_locales contains invalid locale '{value}'")
+        }
+        rustok_modules::StaticModuleUiI18nValidationError::MissingSupportedLocales => {
+            "i18n.supported_locales must list at least one locale".to_string()
+        }
+        rustok_modules::StaticModuleUiI18nValidationError::InvalidDefaultLocale { value } => {
+            format!("i18n.default_locale '{value}' is invalid")
+        }
+        rustok_modules::StaticModuleUiI18nValidationError::DefaultLocaleNotSupported { value } => {
+            format!("i18n.default_locale '{value}' must be present in i18n.supported_locales")
+        }
+        rustok_modules::StaticModuleUiI18nValidationError::MissingBundlePath => {
+            "i18n contract must declare leptos_locales_path and/or next_messages_path".to_string()
+        }
+        rustok_modules::StaticModuleUiI18nValidationError::LeptosPathWithoutCrate => {
+            "i18n.leptos_locales_path requires [provides.*_ui].leptos_crate".to_string()
+        }
+        rustok_modules::StaticModuleUiI18nValidationError::NextPathWithoutPackage => {
+            "i18n.next_messages_path requires [provides.*_ui].next_package".to_string()
+        }
+    };
+    ManifestError::InvalidModuleUiWiring {
+        slug: slug.to_string(),
+        surface: surface.to_string(),
+        reason,
+    }
 }
 
 pub fn merge_module_package_manifest(
@@ -376,20 +326,28 @@ pub fn merge_module_package_manifest(
         }
     }
     if let Some(http) = package_manifest.provides.http {
-        if http.routes.is_some() && http.axum_router.is_some() {
-            return Err(ManifestError::InvalidModuleHttpWiring {
-                slug: module_slug.clone(),
-                reason: "[provides.http] cannot declare both routes and axum_router".to_string(),
-            });
-        }
-        if http.webhook_routes.is_some() && http.axum_webhook_router.is_some() {
-            return Err(ManifestError::InvalidModuleHttpWiring {
-                slug: module_slug,
-                reason:
+        rustok_modules::validate_static_module_http_provides_contract(
+            rustok_modules::StaticModuleHttpProvidesContract {
+                has_routes: http.routes.is_some(),
+                has_axum_router: http.axum_router.is_some(),
+                has_webhook_routes: http.webhook_routes.is_some(),
+                has_axum_webhook_router: http.axum_webhook_router.is_some(),
+            },
+        )
+        .map_err(|error| {
+            let reason = match error {
+                rustok_modules::StaticModuleHttpProvidesValidationError::RoutesAndAxumRouter => {
+                    "[provides.http] cannot declare both routes and axum_router"
+                }
+                rustok_modules::StaticModuleHttpProvidesValidationError::WebhookRoutesAndAxumWebhookRouter => {
                     "[provides.http] cannot declare both webhook_routes and axum_webhook_router"
-                        .to_string(),
-            });
-        }
+                }
+            };
+            ManifestError::InvalidModuleHttpWiring {
+                slug: module_slug.clone(),
+                reason: reason.to_string(),
+            }
+        })?;
         if let Some(routes_fn) = qualify_module_member_path(&crate_name, http.routes.as_deref()) {
             spec.http_routes_fn = Some(routes_fn);
         }
@@ -463,43 +421,6 @@ pub fn qualify_module_member_path(crate_name: &str, value: Option<&str>) -> Opti
     qualify_module_type_path(crate_name, value)
 }
 
-pub fn is_valid_module_setting_key(value: &str) -> bool {
-    !value.is_empty()
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
-}
-
-pub fn is_supported_setting_type(value_type: &str) -> bool {
-    matches!(
-        value_type,
-        "string" | "integer" | "number" | "boolean" | "object" | "array" | "json" | "any"
-    )
-}
-
-pub fn declared_object_keys(spec: &ModuleSettingSpec) -> Vec<String> {
-    if !spec.properties.is_empty() {
-        let mut keys = spec.properties.keys().cloned().collect::<Vec<_>>();
-        keys.sort();
-        keys
-    } else {
-        spec.object_keys.clone()
-    }
-}
-
-pub fn declared_item_type(spec: &ModuleSettingSpec) -> Option<&str> {
-    spec.items
-        .as_deref()
-        .map(|item| item.value_type.trim())
-        .filter(|value| !value.is_empty())
-        .or_else(|| {
-            spec.item_type
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-        })
-}
-
 pub fn module_setting_shape_value(spec: &ModuleSettingSpec) -> Option<serde_json::Value> {
     let mut shape = serde_json::Map::new();
 
@@ -532,609 +453,310 @@ pub fn module_setting_shape_value(spec: &ModuleSettingSpec) -> Option<serde_json
     (!shape.is_empty()).then_some(serde_json::Value::Object(shape))
 }
 
-pub fn setting_value_matches_type(value_type: &str, value: &serde_json::Value) -> bool {
-    match value_type {
-        "string" => value.is_string(),
-        "integer" => {
-            value.as_i64().is_some()
-                || value.as_u64().is_some()
-                || value
-                    .as_f64()
-                    .is_some_and(|number| number.fract().abs() < f64::EPSILON)
-        }
-        "number" => value.is_number(),
-        "boolean" => value.is_boolean(),
-        "object" => value.is_object(),
-        "array" => value.is_array(),
-        "json" | "any" => true,
-        _ => false,
-    }
-}
-
-pub fn validate_setting_spec(
-    slug: &str,
-    key: &str,
-    spec: &ModuleSettingSpec,
-) -> Result<(), ManifestError> {
-    use std::collections::HashSet;
-
-    if !is_valid_module_setting_key(key) {
-        return Err(ManifestError::InvalidModuleSettingKey {
-            slug: slug.to_string(),
-            key: key.to_string(),
-        });
-    }
-
-    let value_type = spec.value_type.trim();
-    if !is_supported_setting_type(value_type) {
-        return Err(ManifestError::InvalidModuleSettingSchema {
-            slug: slug.to_string(),
-            key: key.to_string(),
-            reason: format!("unsupported type '{value_type}'"),
-        });
-    }
-
-    if let Some(default) = &spec.default {
-        if !setting_value_matches_type(value_type, default) {
-            return Err(ManifestError::InvalidModuleSettingSchema {
-                slug: slug.to_string(),
-                key: key.to_string(),
-                reason: "default does not match declared type".to_string(),
-            });
-        }
-    }
-
-    if let (Some(min), Some(max)) = (spec.min, spec.max) {
-        if min > max {
-            return Err(ManifestError::InvalidModuleSettingSchema {
-                slug: slug.to_string(),
-                key: key.to_string(),
-                reason: format!("min ({min}) must not exceed max ({max})"),
-            });
-        }
-    }
-
-    if (spec.min.is_some() || spec.max.is_some())
-        && !matches!(value_type, "integer" | "number" | "string" | "array")
-    {
-        return Err(ManifestError::InvalidModuleSettingSchema {
-            slug: slug.to_string(),
-            key: key.to_string(),
-            reason: "min/max are only supported for string, array, integer, and number".to_string(),
-        });
-    }
-
-    if !spec.options.is_empty() {
-        if !matches!(value_type, "string" | "integer" | "number" | "boolean") {
-            return Err(ManifestError::InvalidModuleSettingSchema {
-                slug: slug.to_string(),
-                key: key.to_string(),
-                reason:
-                    "options are only supported for scalar string/integer/number/boolean settings"
-                        .to_string(),
-            });
-        }
-
-        for option in &spec.options {
-            if !setting_value_matches_type(value_type, option) {
-                return Err(ManifestError::InvalidModuleSettingSchema {
-                    slug: slug.to_string(),
-                    key: key.to_string(),
-                    reason: "all options must match the declared type".to_string(),
-                });
-            }
-        }
-
-        if let Some(default) = &spec.default {
-            if !spec.options.iter().any(|option| option == default) {
-                return Err(ManifestError::InvalidModuleSettingSchema {
-                    slug: slug.to_string(),
-                    key: key.to_string(),
-                    reason: "default must be one of the declared options".to_string(),
-                });
-            }
-        }
-    }
-
-    if !spec.object_keys.is_empty() {
-        if value_type != "object" {
-            return Err(ManifestError::InvalidModuleSettingSchema {
-                slug: slug.to_string(),
-                key: key.to_string(),
-                reason: "object_keys are only supported for object settings".to_string(),
-            });
-        }
-
-        let mut seen_keys = HashSet::new();
-        for object_key in &spec.object_keys {
-            if !is_valid_module_setting_key(object_key) {
-                return Err(ManifestError::InvalidModuleSettingSchema {
-                    slug: slug.to_string(),
-                    key: key.to_string(),
-                    reason: format!("invalid object key '{object_key}'"),
-                });
-            }
-
-            if !seen_keys.insert(object_key.clone()) {
-                return Err(ManifestError::InvalidModuleSettingSchema {
-                    slug: slug.to_string(),
-                    key: key.to_string(),
-                    reason: format!("duplicate object key '{object_key}'"),
-                });
-            }
-        }
-
-        if let Some(default) = &spec.default {
-            if let Some(object) = default.as_object() {
-                if let Some(unknown_key) = object
-                    .keys()
-                    .find(|candidate| !spec.object_keys.iter().any(|allowed| allowed == *candidate))
-                {
-                    return Err(ManifestError::InvalidModuleSettingSchema {
-                        slug: slug.to_string(),
-                        key: key.to_string(),
-                        reason: format!("default contains undeclared object key '{unknown_key}'"),
-                    });
-                }
-            }
-        }
-    }
-
-    if !spec.properties.is_empty() {
-        if value_type != "object" {
-            return Err(ManifestError::InvalidModuleSettingSchema {
-                slug: slug.to_string(),
-                key: key.to_string(),
-                reason: "properties are only supported for object settings".to_string(),
-            });
-        }
-
-        let mut property_keys = spec.properties.keys().cloned().collect::<Vec<_>>();
-        property_keys.sort();
-        let mut explicit_object_keys = spec.object_keys.clone();
-        explicit_object_keys.sort();
-        if !spec.object_keys.is_empty() && property_keys != explicit_object_keys {
-            return Err(ManifestError::InvalidModuleSettingSchema {
-                slug: slug.to_string(),
-                key: key.to_string(),
-                reason: "object_keys must match declared properties when both are provided"
-                    .to_string(),
-            });
-        }
-
-        for (property_key, property_spec) in &spec.properties {
-            validate_setting_spec(slug, &format!("{key}.{property_key}"), property_spec)?;
-        }
-
-        if let Some(default) = &spec.default {
-            if let Some(object) = default.as_object() {
-                for (property_key, property_value) in object {
-                    if let Some(property_spec) = spec.properties.get(property_key) {
-                        validate_setting_value(
-                            slug,
-                            &format!("{key}.{property_key}"),
-                            property_spec,
-                            property_value,
-                        )?;
-                    }
-                }
-            }
-        }
-    }
-
-    if let Some(item_type) = spec.item_type.as_deref() {
-        let item_type = item_type.trim();
-        if value_type != "array" {
-            return Err(ManifestError::InvalidModuleSettingSchema {
-                slug: slug.to_string(),
-                key: key.to_string(),
-                reason: "item_type is only supported for array settings".to_string(),
-            });
-        }
-
-        if !is_supported_setting_type(item_type) {
-            return Err(ManifestError::InvalidModuleSettingSchema {
-                slug: slug.to_string(),
-                key: key.to_string(),
-                reason: format!("unsupported array item type '{item_type}'"),
-            });
-        }
-
-        if let Some(default) = &spec.default {
-            if let Some(items) = default.as_array() {
-                if items
-                    .iter()
-                    .any(|item| !setting_value_matches_type(item_type, item))
-                {
-                    return Err(ManifestError::InvalidModuleSettingSchema {
-                        slug: slug.to_string(),
-                        key: key.to_string(),
-                        reason: "default array items must match declared item_type".to_string(),
-                    });
-                }
-            }
-        }
-    }
-
-    if let Some(items) = &spec.items {
-        if value_type != "array" {
-            return Err(ManifestError::InvalidModuleSettingSchema {
-                slug: slug.to_string(),
-                key: key.to_string(),
-                reason: "items are only supported for array settings".to_string(),
-            });
-        }
-
-        validate_setting_spec(slug, &format!("{key}[]"), items)?;
-
-        if let Some(item_type) = spec.item_type.as_deref() {
-            if items.value_type.trim() != item_type.trim() {
-                return Err(ManifestError::InvalidModuleSettingSchema {
-                    slug: slug.to_string(),
-                    key: key.to_string(),
-                    reason: "item_type must match items.type when both are provided".to_string(),
-                });
-            }
-        }
-
-        if let Some(default) = &spec.default {
-            if let Some(array) = default.as_array() {
-                for (index, item) in array.iter().enumerate() {
-                    validate_setting_value(slug, &format!("{key}[{index}]"), items, item)?;
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-pub fn validate_setting_value(
-    slug: &str,
-    key: &str,
-    spec: &ModuleSettingSpec,
-    value: &serde_json::Value,
-) -> Result<(), ManifestError> {
-    let value_type = spec.value_type.trim();
-    if !setting_value_matches_type(value_type, value) {
-        return Err(ManifestError::InvalidModuleSettingValue {
-            slug: slug.to_string(),
-            key: key.to_string(),
-            reason: format!("expected {value_type}"),
-        });
-    }
-
-    if !spec.options.is_empty() && !spec.options.iter().any(|option| option == value) {
-        let allowed = spec
-            .options
-            .iter()
-            .map(serde_json::Value::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(ManifestError::InvalidModuleSettingValue {
-            slug: slug.to_string(),
-            key: key.to_string(),
-            reason: format!("must be one of: {allowed}"),
-        });
-    }
-
-    if !declared_object_keys(spec).is_empty() {
-        let object = value
-            .as_object()
-            .expect("object_keys validation only runs for object values");
-        let allowed_keys = declared_object_keys(spec);
-        let mut unknown_keys = object
-            .keys()
-            .filter(|candidate| !allowed_keys.iter().any(|allowed| allowed == *candidate))
-            .cloned()
-            .collect::<Vec<_>>();
-        unknown_keys.sort();
-        if let Some(unknown_key) = unknown_keys.first() {
-            return Err(ManifestError::InvalidModuleSettingValue {
-                slug: slug.to_string(),
-                key: key.to_string(),
-                reason: format!(
-                    "unknown object key '{unknown_key}'; allowed keys: {}",
-                    allowed_keys.join(", ")
-                ),
-            });
-        }
-    }
-
-    if let Some(item_type) = declared_item_type(spec) {
-        let array = value
-            .as_array()
-            .expect("item_type validation only runs for array values");
-        if let Some((index, _)) = array
-            .iter()
-            .enumerate()
-            .find(|(_, item)| !setting_value_matches_type(item_type, item))
-        {
-            return Err(ManifestError::InvalidModuleSettingValue {
-                slug: slug.to_string(),
-                key: key.to_string(),
-                reason: format!("array item at index {index} must be {item_type}"),
-            });
-        }
-    }
-
-    if !spec.properties.is_empty() {
-        let object = value
-            .as_object()
-            .expect("properties validation only runs for object values");
-        for (property_key, property_value) in object {
-            if let Some(property_spec) = spec.properties.get(property_key) {
-                validate_setting_value(
-                    slug,
-                    &format!("{key}.{property_key}"),
-                    property_spec,
-                    property_value,
-                )?;
-            }
-        }
-    }
-
-    if let Some(items) = &spec.items {
-        let array = value
-            .as_array()
-            .expect("items validation only runs for array values");
-        for (index, item) in array.iter().enumerate() {
-            validate_setting_value(slug, &format!("{key}[{index}]"), items, item)?;
-        }
-    }
-
-    match value_type {
-        "integer" | "number" => {
-            let numeric_value =
-                value
-                    .as_f64()
-                    .ok_or_else(|| ManifestError::InvalidModuleSettingValue {
-                        slug: slug.to_string(),
-                        key: key.to_string(),
-                        reason: format!("expected {value_type}"),
-                    })?;
-            if let Some(min) = spec.min {
-                if numeric_value < min {
-                    return Err(ManifestError::InvalidModuleSettingValue {
-                        slug: slug.to_string(),
-                        key: key.to_string(),
-                        reason: format!("must be >= {min}"),
-                    });
-                }
-            }
-            if let Some(max) = spec.max {
-                if numeric_value > max {
-                    return Err(ManifestError::InvalidModuleSettingValue {
-                        slug: slug.to_string(),
-                        key: key.to_string(),
-                        reason: format!("must be <= {max}"),
-                    });
-                }
-            }
-        }
-        "string" => {
-            let length = value
-                .as_str()
-                .map(|item| item.chars().count())
-                .unwrap_or_default() as f64;
-            if let Some(min) = spec.min {
-                if length < min {
-                    return Err(ManifestError::InvalidModuleSettingValue {
-                        slug: slug.to_string(),
-                        key: key.to_string(),
-                        reason: format!("length must be >= {min}"),
-                    });
-                }
-            }
-            if let Some(max) = spec.max {
-                if length > max {
-                    return Err(ManifestError::InvalidModuleSettingValue {
-                        slug: slug.to_string(),
-                        key: key.to_string(),
-                        reason: format!("length must be <= {max}"),
-                    });
-                }
-            }
-        }
-        "array" => {
-            let length = value
-                .as_array()
-                .map(|items| items.len())
-                .unwrap_or_default() as f64;
-            if let Some(min) = spec.min {
-                if length < min {
-                    return Err(ManifestError::InvalidModuleSettingValue {
-                        slug: slug.to_string(),
-                        key: key.to_string(),
-                        reason: format!("length must be >= {min}"),
-                    });
-                }
-            }
-            if let Some(max) = spec.max {
-                if length > max {
-                    return Err(ManifestError::InvalidModuleSettingValue {
-                        slug: slug.to_string(),
-                        key: key.to_string(),
-                        reason: format!("length must be <= {max}"),
-                    });
-                }
-            }
-        }
-        _ => {}
-    }
-
-    Ok(())
-}
-
-pub fn normalize_module_settings(
-    slug: &str,
+pub fn to_module_settings_schema(
     schema: &HashMap<String, ModuleSettingSpec>,
-    settings: serde_json::Value,
-) -> Result<serde_json::Value, ManifestError> {
-    let mut settings_object =
-        settings
-            .as_object()
-            .cloned()
-            .ok_or_else(|| ManifestError::InvalidModuleSettingValue {
-                slug: slug.to_string(),
-                key: "$root".to_string(),
-                reason: "module settings must be a JSON object".to_string(),
-            })?;
+) -> HashMap<String, rustok_modules::ModuleSettingSpec> {
+    schema
+        .iter()
+        .map(|(key, spec)| (key.clone(), to_owner_setting_spec(spec)))
+        .collect()
+}
 
-    if schema.is_empty() {
-        return Ok(serde_json::Value::Object(settings_object));
-    }
-
-    let mut allowed_keys = schema.keys().cloned().collect::<Vec<_>>();
-    allowed_keys.sort();
-
-    let mut unknown_keys = settings_object
-        .keys()
-        .filter(|key| !schema.contains_key(*key))
-        .cloned()
-        .collect::<Vec<_>>();
-    unknown_keys.sort();
-    if let Some(key) = unknown_keys.first() {
-        return Err(ManifestError::InvalidModuleSettingValue {
-            slug: slug.to_string(),
-            key: key.clone(),
-            reason: format!("unknown setting; allowed keys: {}", allowed_keys.join(", ")),
-        });
-    }
-
-    let mut normalized = serde_json::Map::new();
-    for key in allowed_keys {
-        let spec = schema
-            .get(&key)
-            .expect("allowed settings key must exist in schema");
-
-        match settings_object.remove(&key) {
-            Some(value) => {
-                validate_setting_value(slug, &key, spec, &value)?;
-                normalized.insert(key, value);
-            }
-            None if spec.required && spec.default.is_none() => {
-                return Err(ManifestError::InvalidModuleSettingValue {
-                    slug: slug.to_string(),
-                    key,
-                    reason: "required setting is missing".to_string(),
-                });
-            }
-            None => {
-                if let Some(default) = spec.default.clone() {
-                    normalized.insert(key, default);
-                }
+pub fn map_module_settings_validation_error(
+    error: rustok_modules::ModuleSettingsValidationError,
+) -> ManifestError {
+    match error {
+        rustok_modules::ModuleSettingsValidationError::InvalidKey { module_slug, key } => {
+            ManifestError::InvalidModuleSettingKey {
+                slug: module_slug,
+                key,
             }
         }
+        rustok_modules::ModuleSettingsValidationError::InvalidSchema {
+            module_slug,
+            key,
+            reason,
+        } => ManifestError::InvalidModuleSettingSchema {
+            slug: module_slug,
+            key,
+            reason,
+        },
+        rustok_modules::ModuleSettingsValidationError::InvalidValue {
+            module_slug,
+            key,
+            reason,
+        } => ManifestError::InvalidModuleSettingValue {
+            slug: module_slug,
+            key,
+            reason,
+        },
     }
+}
 
-    Ok(serde_json::Value::Object(normalized))
+fn to_owner_setting_spec(spec: &ModuleSettingSpec) -> rustok_modules::ModuleSettingSpec {
+    rustok_modules::ModuleSettingSpec {
+        value_type: spec.value_type.clone(),
+        required: spec.required,
+        default: spec.default.clone(),
+        description: spec.description.clone(),
+        min: spec.min,
+        max: spec.max,
+        options: spec.options.clone(),
+        object_keys: spec.object_keys.clone(),
+        item_type: spec.item_type.clone(),
+        properties: to_module_settings_schema(&spec.properties),
+        items: spec
+            .items
+            .as_deref()
+            .map(to_owner_setting_spec)
+            .map(Box::new),
+    }
+}
+
+fn to_static_module_package_contract(
+    package_manifest: &ModulePackageManifest,
+) -> rustok_modules::StaticModulePackageContract {
+    let metadata = &package_manifest.module;
+    rustok_modules::StaticModulePackageContract {
+        declared_slug: metadata.slug.clone(),
+        version: metadata.version.clone(),
+        ownership: metadata.ownership.clone(),
+        trust_level: metadata.trust_level.clone(),
+        recommended_admin_surfaces: metadata.recommended_admin_surfaces.clone(),
+        showcase_admin_surfaces: metadata.showcase_admin_surfaces.clone(),
+        dependencies: package_manifest
+            .dependencies
+            .iter()
+            .map(|(slug, dependency)| (slug.clone(), dependency.version_req.clone()))
+            .collect(),
+        conflicts: package_manifest.conflicts.modules.clone(),
+        settings_schema: to_module_settings_schema(&package_manifest.settings),
+    }
+}
+
+fn map_static_module_package_validation_error(
+    slug: &str,
+    error: rustok_modules::StaticModulePackageValidationError,
+) -> ManifestError {
+    match error {
+        rustok_modules::StaticModulePackageValidationError::SlugMismatch { found, .. } => {
+            ManifestError::ModulePackageSlugMismatch {
+                slug: slug.to_string(),
+                found,
+            }
+        }
+        rustok_modules::StaticModulePackageValidationError::InvalidVersion { value } => {
+            ManifestError::InvalidModuleVersion {
+                slug: slug.to_string(),
+                value,
+            }
+        }
+        rustok_modules::StaticModulePackageValidationError::InvalidOwnership { value } => {
+            ManifestError::InvalidModuleOwnership {
+                slug: slug.to_string(),
+                value,
+            }
+        }
+        rustok_modules::StaticModulePackageValidationError::InvalidTrustLevel { value } => {
+            ManifestError::InvalidModuleTrustLevel {
+                slug: slug.to_string(),
+                value,
+            }
+        }
+        rustok_modules::StaticModulePackageValidationError::InvalidAdminSurface {
+            field,
+            value,
+        } => ManifestError::InvalidModuleAdminSurface {
+            slug: slug.to_string(),
+            field,
+            value,
+        },
+        rustok_modules::StaticModulePackageValidationError::ConflictingAdminSurface { surface } => {
+            ManifestError::ConflictingModuleAdminSurface {
+                slug: slug.to_string(),
+                surface,
+            }
+        }
+        rustok_modules::StaticModulePackageValidationError::InvalidDependency { dependency } => {
+            ManifestError::InvalidModuleDependency {
+                slug: slug.to_string(),
+                dependency,
+            }
+        }
+        rustok_modules::StaticModulePackageValidationError::InvalidDependencyVersionReq {
+            dependency,
+            value,
+        } => ManifestError::InvalidDependencyVersionReq {
+            slug: slug.to_string(),
+            dependency,
+            value,
+        },
+        rustok_modules::StaticModulePackageValidationError::InvalidConflict { conflict } => {
+            ManifestError::InvalidModuleConflict {
+                slug: slug.to_string(),
+                conflict,
+            }
+        }
+        rustok_modules::StaticModulePackageValidationError::Settings(error) => {
+            map_module_settings_validation_error(error)
+        }
+    }
+}
+
+fn to_static_module_catalog_contract(
+    spec: &ManifestModuleSpec,
+) -> rustok_modules::StaticModuleCatalogContract {
+    rustok_modules::StaticModuleCatalogContract {
+        ownership: spec.ownership.clone(),
+        trust_level: spec.trust_level.clone(),
+        recommended_admin_surfaces: spec.recommended_admin_surfaces.clone(),
+        showcase_admin_surfaces: spec.showcase_admin_surfaces.clone(),
+        description: spec.description.clone(),
+        icon_url: spec.icon_url.clone(),
+        banner_url: spec.banner_url.clone(),
+        screenshots: spec.screenshots.clone(),
+    }
+}
+
+fn map_static_module_catalog_validation_error(
+    slug: &str,
+    error: rustok_modules::StaticModuleCatalogValidationError,
+) -> ManifestError {
+    match error {
+        rustok_modules::StaticModuleCatalogValidationError::InvalidOwnership { value } => {
+            ManifestError::InvalidModuleOwnership {
+                slug: slug.to_string(),
+                value,
+            }
+        }
+        rustok_modules::StaticModuleCatalogValidationError::InvalidTrustLevel { value } => {
+            ManifestError::InvalidModuleTrustLevel {
+                slug: slug.to_string(),
+                value,
+            }
+        }
+        rustok_modules::StaticModuleCatalogValidationError::InvalidAdminSurface {
+            field,
+            value,
+        } => ManifestError::InvalidModuleAdminSurface {
+            slug: slug.to_string(),
+            field,
+            value,
+        },
+        rustok_modules::StaticModuleCatalogValidationError::ConflictingAdminSurface { surface } => {
+            ManifestError::ConflictingModuleAdminSurface {
+                slug: slug.to_string(),
+                surface,
+            }
+        }
+        rustok_modules::StaticModuleCatalogValidationError::InvalidMarketplaceMetadata {
+            field,
+            reason,
+        } => ManifestError::InvalidModuleMarketplaceMetadata {
+            slug: slug.to_string(),
+            field,
+            reason,
+        },
+    }
+}
+
+pub fn to_static_module_topology_contract(
+    specs: &HashMap<String, ManifestModuleSpec>,
+    default_enabled: &[String],
+    platform_version: Option<Version>,
+) -> rustok_modules::StaticModuleTopologyContract {
+    rustok_modules::StaticModuleTopologyContract {
+        modules: specs
+            .iter()
+            .map(|(slug, spec)| {
+                (
+                    slug.clone(),
+                    rustok_modules::StaticModuleTopologyModule {
+                        version: spec.version.clone(),
+                        dependencies: spec.depends_on.clone(),
+                        dependency_version_requirements: spec.dependency_version_reqs.clone(),
+                        conflicts: spec.conflicts_with.clone(),
+                        rustok_min_version: spec.rustok_min_version.clone(),
+                        rustok_max_version: spec.rustok_max_version.clone(),
+                    },
+                )
+            })
+            .collect(),
+        default_enabled: default_enabled.to_vec(),
+        platform_version,
+    }
+}
+
+pub fn map_static_module_topology_validation_error(
+    error: rustok_modules::StaticModuleTopologyValidationError,
+) -> ManifestError {
+    match error {
+        rustok_modules::StaticModuleTopologyValidationError::UnknownDefaultEnabled { slugs } => {
+            ManifestError::UnknownDefaultEnabled(slugs.join(", "))
+        }
+        rustok_modules::StaticModuleTopologyValidationError::MissingDependencies {
+            slug,
+            dependencies,
+        } => ManifestError::MissingDependencies {
+            slug,
+            missing: dependencies.join(", "),
+        },
+        rustok_modules::StaticModuleTopologyValidationError::Conflict { slug, conflict } => {
+            ManifestError::ConflictingModule {
+                slug,
+                conflicts_with: conflict,
+            }
+        }
+        rustok_modules::StaticModuleTopologyValidationError::MissingDependencyVersion {
+            slug,
+            dependency,
+        } => ManifestError::MissingDependencyVersion { slug, dependency },
+        rustok_modules::StaticModuleTopologyValidationError::InvalidModuleVersion {
+            slug,
+            value,
+        } => ManifestError::InvalidModuleVersion { slug, value },
+        rustok_modules::StaticModuleTopologyValidationError::InvalidDependencyVersionRequirement {
+            slug,
+            dependency,
+            value,
+        } => ManifestError::InvalidDependencyVersionReq {
+            slug,
+            dependency,
+            value,
+        },
+        rustok_modules::StaticModuleTopologyValidationError::IncompatibleDependencyVersion {
+            slug,
+            dependency,
+            required,
+            installed,
+        } => ManifestError::IncompatibleDependencyVersion {
+            slug,
+            dependency,
+            required,
+            installed,
+        },
+        rustok_modules::StaticModuleTopologyValidationError::IncompatiblePlatformVersion {
+            slug,
+            current_version,
+            minimum,
+            maximum,
+        } => ManifestError::IncompatibleRustokVersion {
+            slug,
+            current_version,
+            minimum,
+            maximum,
+        },
+    }
 }
 
 pub fn validate_module_package_metadata(
     slug: &str,
     package_manifest: &ModulePackageManifest,
 ) -> Result<(), ManifestError> {
-    let metadata = &package_manifest.module;
-
-    if let Some(found_slug) = metadata
-        .slug
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        if !is_valid_module_slug(found_slug) || found_slug != slug {
-            return Err(ManifestError::ModulePackageSlugMismatch {
-                slug: slug.to_string(),
-                found: found_slug.to_string(),
-            });
-        }
-    }
-
-    if let Some(version) = metadata
-        .version
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        Version::parse(version).map_err(|_| ManifestError::InvalidModuleVersion {
-            slug: slug.to_string(),
-            value: version.to_string(),
-        })?;
-    }
-
-    let ownership = metadata.ownership.trim();
-    if !ownership.is_empty() && !is_valid_module_ownership(ownership) {
-        return Err(ManifestError::InvalidModuleOwnership {
-            slug: slug.to_string(),
-            value: ownership.to_string(),
-        });
-    }
-
-    let trust_level = metadata.trust_level.trim();
-    if !trust_level.is_empty() && !is_valid_trust_level(trust_level) {
-        return Err(ManifestError::InvalidModuleTrustLevel {
-            slug: slug.to_string(),
-            value: trust_level.to_string(),
-        });
-    }
-
-    let recommended = validate_admin_surfaces(
-        slug,
-        "recommended_admin_surfaces",
-        &metadata.recommended_admin_surfaces,
-    )?;
-    let showcase = validate_admin_surfaces(
-        slug,
-        "showcase_admin_surfaces",
-        &metadata.showcase_admin_surfaces,
-    )?;
-
-    if let Some(surface) = recommended.intersection(&showcase).next() {
-        return Err(ManifestError::ConflictingModuleAdminSurface {
-            slug: slug.to_string(),
-            surface: surface.clone(),
-        });
-    }
-
-    for (dependency, dependency_spec) in &package_manifest.dependencies {
-        let dependency = dependency.trim();
-        if !is_valid_module_slug(dependency) {
-            return Err(ManifestError::InvalidModuleDependency {
-                slug: slug.to_string(),
-                dependency: dependency.to_string(),
-            });
-        }
-
-        let version_req = dependency_spec.version_req.trim();
-        if version_req.is_empty() {
-            continue;
-        }
-
-        VersionReq::parse(version_req).map_err(|_| ManifestError::InvalidDependencyVersionReq {
-            slug: slug.to_string(),
-            dependency: dependency.to_string(),
-            value: version_req.to_string(),
-        })?;
-    }
-
-    for conflict in &package_manifest.conflicts.modules {
-        let conflict = conflict.trim();
-        if !is_valid_module_slug(conflict) || conflict == slug {
-            return Err(ManifestError::InvalidModuleConflict {
-                slug: slug.to_string(),
-                conflict: conflict.to_string(),
-            });
-        }
-    }
-
-    for (key, spec) in &package_manifest.settings {
-        validate_setting_spec(slug, key, spec)?;
-    }
-
-    Ok(())
+    let contract = to_static_module_package_contract(package_manifest);
+    rustok_modules::validate_static_module_package_contract(slug, &contract)
+        .map_err(|error| map_static_module_package_validation_error(slug, error))
 }
-
 pub fn validate_module_ui_wiring(
     slug: &str,
     module_root: &Path,
@@ -1227,61 +849,25 @@ pub fn module_package_ui_surface_flags(
     })
 }
 
-pub fn catalog_module_ui_classification(
-    has_admin_ui: bool,
-    has_storefront_ui: bool,
-) -> &'static str {
-    match (has_admin_ui, has_storefront_ui) {
-        (true, true) => "dual_surface",
-        (true, false) => "admin_only",
-        (false, true) => "storefront_only",
-        (false, false) => "no_ui",
-    }
-}
-
-pub fn normalize_module_ui_classification(value: &str) -> Option<String> {
-    let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
-    match normalized.as_str() {
-        "dual_surface" | "admin_only" | "storefront_only" | "no_ui" | "capability_only"
-        | "future_ui" => Some(normalized),
-        _ => None,
-    }
-}
-
 pub fn resolved_catalog_module_ui_classification(
     slug: &str,
     explicit: Option<&str>,
     has_admin_ui: bool,
     has_storefront_ui: bool,
 ) -> Result<String, ManifestError> {
-    let derived = catalog_module_ui_classification(has_admin_ui, has_storefront_ui);
-    let Some(explicit) = explicit.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(derived.to_string());
-    };
-
-    let normalized = normalize_module_ui_classification(explicit).ok_or_else(|| {
-        ManifestError::InvalidModuleUiClassification {
-            slug: slug.to_string(),
-            value: explicit.to_string(),
+    rustok_modules::resolve_static_module_ui_classification(
+        explicit,
+        has_admin_ui,
+        has_storefront_ui,
+    )
+    .map_err(|error| match error {
+        rustok_modules::StaticModuleUiClassificationError::Invalid { value } => {
+            ManifestError::InvalidModuleUiClassification {
+                slug: slug.to_string(),
+                value,
+            }
         }
-    })?;
-
-    let matches_surface_contract = match normalized.as_str() {
-        "dual_surface" => has_admin_ui && has_storefront_ui,
-        "admin_only" => has_admin_ui && !has_storefront_ui,
-        "storefront_only" => !has_admin_ui && has_storefront_ui,
-        "no_ui" | "capability_only" | "future_ui" => !has_admin_ui && !has_storefront_ui,
-        _ => false,
-    };
-
-    if !matches_surface_contract {
-        return Err(ManifestError::InvalidModuleUiClassification {
-            slug: slug.to_string(),
-            value: explicit.to_string(),
-        });
-    }
-
-    Ok(normalized)
+    })
 }
 
 pub fn apply_module_package_manifest(
@@ -1590,225 +1176,18 @@ pub fn builtin_default_enabled() -> HashSet<&'static str> {
     ])
 }
 
-pub fn is_valid_module_ownership(value: &str) -> bool {
-    matches!(value, "first_party" | "third_party")
-}
-
-pub fn is_valid_trust_level(value: &str) -> bool {
-    matches!(value, "core" | "verified" | "unverified" | "private")
-}
-
-pub fn is_valid_module_slug(value: &str) -> bool {
-    !value.is_empty()
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-' || ch == '_')
-}
-
-pub fn is_valid_admin_surface(value: &str) -> bool {
-    !value.is_empty()
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
-}
-
-pub fn normalize_version_req(raw: &str, is_max: bool) -> String {
-    let trimmed = raw.trim();
-    let wildcard = trimmed.replace(".x", ".*").replace(".X", ".*");
-    let has_operator = wildcard.contains('<')
-        || wildcard.contains('>')
-        || wildcard.contains('=')
-        || wildcard.contains('~')
-        || wildcard.contains('^')
-        || wildcard.contains('*')
-        || wildcard.contains(',');
-
-    if has_operator {
-        return wildcard;
-    }
-
-    if is_max {
-        format!("<= {wildcard}")
-    } else {
-        format!(">= {wildcard}")
-    }
-}
-
 pub fn current_platform_version() -> Option<Version> {
     Version::parse(env!("CARGO_PKG_VERSION")).ok()
-}
-
-pub fn validate_admin_surfaces(
-    slug: &str,
-    field: &str,
-    surfaces: &[String],
-) -> Result<HashSet<String>, ManifestError> {
-    let mut normalized = HashSet::new();
-
-    for surface in surfaces {
-        let surface = surface.trim();
-        if !is_valid_admin_surface(surface) {
-            return Err(ManifestError::InvalidModuleAdminSurface {
-                slug: slug.to_string(),
-                field: field.to_string(),
-                value: surface.to_string(),
-            });
-        }
-
-        normalized.insert(surface.to_string());
-    }
-
-    Ok(normalized)
 }
 
 pub fn validate_catalog_metadata(
     slug: &str,
     spec: &ManifestModuleSpec,
 ) -> Result<(), ManifestError> {
-    let ownership = spec.ownership.trim();
-    if !is_valid_module_ownership(ownership) {
-        return Err(ManifestError::InvalidModuleOwnership {
-            slug: slug.to_string(),
-            value: ownership.to_string(),
-        });
-    }
-
-    let trust_level = spec.trust_level.trim();
-    if !is_valid_trust_level(trust_level) {
-        return Err(ManifestError::InvalidModuleTrustLevel {
-            slug: slug.to_string(),
-            value: trust_level.to_string(),
-        });
-    }
-
-    let recommended = validate_admin_surfaces(
-        slug,
-        "recommended_admin_surfaces",
-        &spec.recommended_admin_surfaces,
-    )?;
-    let showcase = validate_admin_surfaces(
-        slug,
-        "showcase_admin_surfaces",
-        &spec.showcase_admin_surfaces,
-    )?;
-
-    if let Some(surface) = recommended.intersection(&showcase).next() {
-        return Err(ManifestError::ConflictingModuleAdminSurface {
-            slug: slug.to_string(),
-            surface: surface.clone(),
-        });
-    }
-
-    validate_marketplace_metadata(slug, spec)?;
-
-    Ok(())
+    let contract = to_static_module_catalog_contract(spec);
+    rustok_modules::validate_static_module_catalog_contract(&contract)
+        .map_err(|error| map_static_module_catalog_validation_error(slug, error))
 }
-
-pub fn validate_marketplace_metadata(
-    slug: &str,
-    spec: &ManifestModuleSpec,
-) -> Result<(), ManifestError> {
-    if let Some(description) = spec
-        .description
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        if description.chars().count() < 20 {
-            return Err(ManifestError::InvalidModuleMarketplaceMetadata {
-                slug: slug.to_string(),
-                field: "description".to_string(),
-                reason: "must be at least 20 characters".to_string(),
-            });
-        }
-    }
-
-    if let Some(icon_url) = spec
-        .icon_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        validate_marketplace_asset_url(slug, "icon", icon_url, &["svg"])?;
-    }
-
-    if let Some(banner_url) = spec
-        .banner_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        validate_marketplace_asset_url(
-            slug,
-            "banner",
-            banner_url,
-            &["png", "jpg", "jpeg", "webp", "svg"],
-        )?;
-    }
-
-    for (index, screenshot) in spec.screenshots.iter().enumerate() {
-        let screenshot = screenshot.trim();
-        if screenshot.is_empty() {
-            continue;
-        }
-
-        validate_marketplace_asset_url(
-            slug,
-            &format!("screenshots[{index}]"),
-            screenshot,
-            &["png", "jpg", "jpeg", "webp", "svg"],
-        )?;
-    }
-
-    Ok(())
-}
-
-pub fn validate_marketplace_asset_url(
-    slug: &str,
-    field: &str,
-    value: &str,
-    allowed_extensions: &[&str],
-) -> Result<(), ManifestError> {
-    let parsed = reqwest::Url::parse(value).map_err(|error| {
-        ManifestError::InvalidModuleMarketplaceMetadata {
-            slug: slug.to_string(),
-            field: field.to_string(),
-            reason: format!("must be a valid absolute URL: {error}"),
-        }
-    })?;
-
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err(ManifestError::InvalidModuleMarketplaceMetadata {
-            slug: slug.to_string(),
-            field: field.to_string(),
-            reason: "must use http or https".to_string(),
-        });
-    }
-
-    let path = parsed.path();
-    let has_allowed_extension = allowed_extensions.iter().any(|extension| {
-        path.rsplit('/')
-            .next()
-            .map(|segment| segment.to_ascii_lowercase())
-            .is_some_and(|segment| segment.ends_with(&format!(".{extension}")))
-    });
-
-    if !has_allowed_extension {
-        let allowed = allowed_extensions
-            .iter()
-            .map(|extension| format!(".{extension}"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(ManifestError::InvalidModuleMarketplaceMetadata {
-            slug: slug.to_string(),
-            field: field.to_string(),
-            reason: format!("must point to one of: {allowed}"),
-        });
-    }
-
-    Ok(())
-}
-
 pub fn resolve_module_specs(
     manifest: &ModulesManifest,
 ) -> Result<HashMap<String, ManifestModuleSpec>, ManifestError> {

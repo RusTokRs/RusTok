@@ -38,6 +38,7 @@ pub struct Model {
     pub trust_level: String,
     pub license: String,
     pub entry_type: Option<String>,
+    pub artifact_origin: String,
     pub marketplace: Json,
     pub ui_packages: Json,
     pub status: RegistryPublishRequestStatus,

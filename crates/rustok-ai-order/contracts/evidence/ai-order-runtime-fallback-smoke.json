@@ -2,14 +2,14 @@
   "schema_version": 1,
   "generated_from": "crates/rustok-ai-order/contracts/ai-order-fba-registry.json",
   "status": "runtime_verified",
-  "runner": "cargo test -p rustok-ai-order --lib",
+  "runner": "cargo test -p rustok-ai --features server direct::tests::direct_order_ --lib",
   "profile": "embedded_native",
   "degraded_mode": "generate_summary_without_live_status",
   "cases": [
     {
       "provider": "order",
       "operation": "read_order_status",
-      "expected_behavior": "order analytics and ops assistant keep order-owned generated payload validation and require operator review when live order status cannot be read"
+      "expected_behavior": "the host-composed CheckoutCompletionPort receives and enforces a three-second read deadline; typed unavailable and deadline-exceeded errors become degraded context while analytics and operations output remain review-only and never persist order data"
     }
   ]
 }

@@ -30,6 +30,7 @@ impl SeaOrmArtifactExecutionObserver {
             return Err(());
         }
         let SandboxSubject::ModuleArtifact {
+            installation_id,
             slug,
             version,
             digest,
@@ -37,7 +38,8 @@ impl SeaOrmArtifactExecutionObserver {
         else {
             return Err(());
         };
-        if slug.trim().is_empty()
+        if installation_id.is_nil()
+            || slug.trim().is_empty()
             || version.trim().is_empty()
             || !valid_digest(digest)
             || record
@@ -67,8 +69,8 @@ impl SeaOrmArtifactExecutionObserver {
         let backend = transaction.get_database_backend();
         match record.status {
             ExecutionStatus::Started => {
-                let columns = "execution_id, tenant_id, module_slug, module_version, artifact_digest, executor, phase, actor_id, trace_id, status, started_at";
-                let values = (1..=11)
+                let columns = "execution_id, tenant_id, installation_id, module_slug, module_version, artifact_digest, executor, phase, actor_id, trace_id, status, started_at";
+                let values = (1..=12)
                     .map(|index| placeholder(backend, index))
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -82,6 +84,7 @@ impl SeaOrmArtifactExecutionObserver {
                         vec![
                             uuid_value(record.execution_id, backend),
                             optional_uuid_value(record.context.tenant_id, backend),
+                            uuid_value(*installation_id, backend),
                             slug.clone().into(),
                             version.clone().into(),
                             digest.clone().into(),

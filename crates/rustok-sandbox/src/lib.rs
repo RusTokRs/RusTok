@@ -27,6 +27,8 @@ pub use error::{SandboxError, SandboxResult};
 pub use executor::{ExecutorRegistry, SandboxExecutor};
 pub use harness::{FixtureCapabilityBroker, LocalSandboxHarness};
 pub use policy::{SandboxLimits, SandboxPolicy};
+#[cfg(feature = "rhai")]
+pub use rhai::RhaiCapabilityBridge;
 pub use rhai_binding::{
     RhaiBindingError, RhaiBindingInput, RhaiBindingOutput, RHAI_BINDING_VERSION,
 };

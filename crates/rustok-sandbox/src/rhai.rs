@@ -18,8 +18,9 @@ use rhai::{Dynamic, Engine, EvalAltResult, Map, Scope};
 use serde_json::Value;
 
 use crate::{
-    ExecutionMetrics, RhaiBindingInput, RhaiBindingOutput, SandboxError, SandboxExecutor,
-    SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxRequest, SandboxResult,
+    CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionMetrics, RhaiBindingInput,
+    RhaiBindingOutput, SandboxError, SandboxExecutor, SandboxExecutorKind, SandboxHost,
+    SandboxOutcome, SandboxRequest, SandboxResult,
 };
 
 const TIMEOUT_MARKER: &str = "__RUSTOK_SANDBOX_TIMEOUT__";
@@ -65,6 +66,81 @@ pub trait RhaiHostExtension: Send + Sync {
     ) -> SandboxResult<Value> {
         Ok(output)
     }
+}
+
+/// Neutral Rhai bridge for every brokered host capability. It exposes only
+/// `capability_call(name, operation, input)` and forwards the request through
+/// the current [`SandboxHost`]; extensions cannot give Rhai direct access to
+/// network, filesystem, database, or credential clients.
+#[derive(Debug, Default)]
+pub struct RhaiCapabilityBridge;
+
+impl RhaiHostExtension for RhaiCapabilityBridge {
+    fn register(&self, engine: &mut Engine, request: &SandboxRequest, host: SandboxHost) {
+        let context = RhaiCapabilityContext::from_request(request);
+        engine.register_fn(
+            "capability_call",
+            move |name: &str, operation: &str, input: Dynamic| {
+                invoke_capability(&host, &context, name, operation, dynamic_to_json(input))
+            },
+        );
+    }
+}
+
+#[derive(Clone)]
+struct RhaiCapabilityContext {
+    execution_id: uuid::Uuid,
+    subject: crate::SandboxSubject,
+    context: CapabilityCallContext,
+}
+
+impl RhaiCapabilityContext {
+    fn from_request(request: &SandboxRequest) -> Self {
+        Self {
+            execution_id: request.context.execution_id,
+            subject: request.subject.clone(),
+            context: CapabilityCallContext::from(&request.context),
+        }
+    }
+}
+
+fn invoke_capability(
+    host: &SandboxHost,
+    context: &RhaiCapabilityContext,
+    name: &str,
+    operation: &str,
+    input: Value,
+) -> Map {
+    let capability = match CapabilityName::new(name) {
+        Ok(capability) => capability,
+        Err(error) => return capability_error_map(error),
+    };
+    let call = CapabilityCall {
+        execution_id: context.execution_id,
+        subject: context.subject.clone(),
+        context: context.context.clone(),
+        capability,
+        operation: operation.to_string(),
+        input,
+    };
+    match host.invoke_blocking(&call) {
+        Ok(response) => capability_response_map(response.output),
+        Err(error) => capability_error_map(error),
+    }
+}
+
+fn capability_response_map(output: Value) -> Map {
+    let mut response = Map::new();
+    response.insert("ok".into(), Dynamic::from(true));
+    response.insert("output".into(), json_to_dynamic(&output));
+    response
+}
+
+fn capability_error_map(error: SandboxError) -> Map {
+    let mut response = Map::new();
+    response.insert("ok".into(), Dynamic::from(false));
+    response.insert("error_code".into(), Dynamic::from(error.code().to_string()));
+    response
 }
 
 impl RhaiExecutor {

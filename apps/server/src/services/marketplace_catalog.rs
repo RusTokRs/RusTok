@@ -8,7 +8,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::{DateTime, SecondsFormat, Utc};
 use moka::future::Cache;
-use reqwest::{Client, StatusCode};
+use reqwest::Client;
 use rustok_core::ModuleRegistry;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -24,12 +24,14 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 pub const REGISTRY_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
 const REGISTRY_CATALOG_PATH: &str = "/v1/catalog";
-const LEGACY_REGISTRY_CATALOG_PATH: &str = "/catalog";
 const REGISTRY_CATALOG_MODULE_PATH: &str = "/v1/catalog/{slug}";
-const LEGACY_REGISTRY_CATALOG_MODULE_PATH: &str = "/catalog/{slug}";
 const REGISTRY_PUBLISH_PATH: &str = "/v2/catalog/publish";
 const REGISTRY_PUBLISH_STATUS_PATH: &str = "/v2/catalog/publish/{request_id}";
 const REGISTRY_PUBLISH_ARTIFACT_PATH: &str = "/v2/catalog/publish/{request_id}/artifact";
+const REGISTRY_PUBLISH_EXTERNAL_STAGE_PATH: &str =
+    "/v2/catalog/publish/{request_id}/external-prebuilt-stage";
+const REGISTRY_PUBLISH_PLATFORM_BUILD_STAGE_PATH: &str =
+    "/v2/catalog/publish/{request_id}/platform-build-stage";
 const REGISTRY_PUBLISH_VALIDATE_PATH: &str = "/v2/catalog/publish/{request_id}/validate";
 const REGISTRY_PUBLISH_STAGE_REPORT_PATH: &str = "/v2/catalog/publish/{request_id}/stages";
 const REGISTRY_PUBLISH_APPROVE_PATH: &str = "/v2/catalog/publish/{request_id}/approve";
@@ -173,26 +175,8 @@ impl RegistryMarketplaceProvider {
         registry_url: &str,
         query: &MarketplaceCatalogQuery,
     ) -> anyhow::Result<Vec<CatalogManifestModule>> {
-        match self
-            .fetch_catalog_from_path(registry_url, REGISTRY_CATALOG_PATH, query)
+        self.fetch_catalog_from_path(registry_url, REGISTRY_CATALOG_PATH, query)
             .await
-        {
-            Ok(modules) => Ok(modules),
-            Err(err) if should_fallback_to_legacy_catalog_path(&err) => {
-                tracing::info!(
-                    registry_url,
-                    primary_path = REGISTRY_CATALOG_PATH,
-                    fallback_path = LEGACY_REGISTRY_CATALOG_PATH,
-                    search = query.normalized_search(),
-                    category = query.normalized_category(),
-                    tag = query.normalized_tag(),
-                    "Registry marketplace provider falling back to legacy catalog path"
-                );
-                self.fetch_catalog_from_path(registry_url, LEGACY_REGISTRY_CATALOG_PATH, query)
-                    .await
-            }
-            Err(err) => Err(err),
-        }
     }
 
     async fn fetch_catalog_from_path(
@@ -229,34 +213,9 @@ impl RegistryMarketplaceProvider {
         registry_url: &str,
         slug: &str,
     ) -> anyhow::Result<Option<CatalogManifestModule>> {
-        match self
-            .fetch_module_from_path(registry_url, REGISTRY_CATALOG_MODULE_PATH, slug)
+        self.fetch_module_from_path(registry_url, REGISTRY_CATALOG_MODULE_PATH, slug)
             .await
-        {
-            Ok(module) => Ok(Some(module)),
-            Err(err) if should_fallback_to_legacy_catalog_path(&err) => {
-                tracing::info!(
-                    registry_url,
-                    primary_path = REGISTRY_CATALOG_MODULE_PATH,
-                    fallback_path = LEGACY_REGISTRY_CATALOG_MODULE_PATH,
-                    slug,
-                    "Registry marketplace provider falling back to legacy catalog detail path"
-                );
-                match self
-                    .fetch_module_from_path(registry_url, LEGACY_REGISTRY_CATALOG_MODULE_PATH, slug)
-                    .await
-                {
-                    Ok(module) => Ok(Some(module)),
-                    Err(err) if should_fallback_to_legacy_catalog_path(&err) => Ok(self
-                        .fetch_catalog(registry_url, &MarketplaceCatalogQuery::default())
-                        .await?
-                        .into_iter()
-                        .find(|module| module.slug.eq_ignore_ascii_case(slug))),
-                    Err(err) => Err(err),
-                }
-            }
-            Err(err) => Err(err),
-        }
+            .map(Some)
     }
 
     async fn fetch_module_from_path(
@@ -548,6 +507,8 @@ pub struct RegistryPublishStatusResponse {
     pub slug: String,
     pub version: String,
     pub status: String,
+    #[serde(rename = "artifactOrigin")]
+    pub artifact_origin: String,
     pub accepted: bool,
     #[serde(default)]
     pub warnings: Vec<String>,
@@ -608,6 +569,86 @@ pub struct RegistryPublishValidationRequest {
     pub schema_version: u32,
     #[serde(default)]
     pub dry_run: bool,
+}
+
+/// Operator-only input for staging an external prebuilt artifact. Exactly one
+/// source form is accepted: a reproducible reference plus digest, or an
+/// explicit source-absence reason.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryExternalPrebuiltStageRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub dry_run: bool,
+    #[serde(rename = "artifactDigest")]
+    pub artifact_digest: String,
+    #[serde(default, rename = "sourceReference")]
+    pub source_reference: Option<String>,
+    #[serde(default, rename = "sourceDigest")]
+    pub source_digest: Option<String>,
+    #[serde(default, rename = "sourceAbsenceReason")]
+    pub source_absence_reason: Option<String>,
+    #[serde(rename = "provenanceReference")]
+    pub provenance_reference: String,
+    #[serde(rename = "provenanceDigest")]
+    pub provenance_digest: String,
+    #[serde(rename = "provenancePolicyRevision")]
+    pub provenance_policy_revision: String,
+    #[serde(rename = "quarantineReviewReference")]
+    pub quarantine_review_reference: String,
+    #[serde(rename = "quarantinePolicyRevision")]
+    pub quarantine_policy_revision: String,
+    #[serde(rename = "idempotencyKey")]
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryExternalPrebuiltStageResponse {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    #[serde(rename = "requestId")]
+    pub request_id: String,
+    pub slug: String,
+    pub version: String,
+    pub status: String,
+    #[serde(rename = "stagingId")]
+    pub staging_id: Option<String>,
+    pub created: bool,
+    #[serde(rename = "dryRun")]
+    pub dry_run: bool,
+    pub next_step: Option<String>,
+}
+
+/// Operator-only input for binding one completed tenant-scoped platform build
+/// to the current uploaded artifact. The tenant is intentionally derived from
+/// the authenticated session rather than accepted from this payload.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryPlatformBuildStageRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub dry_run: bool,
+    #[serde(rename = "buildRequestId")]
+    pub build_request_id: Uuid,
+    #[serde(rename = "idempotencyKey")]
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryPlatformBuildStageResponse {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    #[serde(rename = "requestId")]
+    pub request_id: String,
+    pub slug: String,
+    pub version: String,
+    pub status: String,
+    #[serde(rename = "stagingId")]
+    pub staging_id: Option<String>,
+    pub created: bool,
+    #[serde(rename = "dryRun")]
+    pub dry_run: bool,
+    pub next_step: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -727,6 +768,16 @@ pub struct RegistryPublishRequest {
     pub module: RegistryPublishModuleRequest,
 }
 
+/// Immutable artifact provenance selected at publish-request creation. There
+/// is intentionally no default: callers must choose the platform-build or
+/// external-prebuilt review path explicitly.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistryPublishArtifactOrigin {
+    PlatformBuilt,
+    ExternalPrebuilt,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RegistryPublishModuleRequest {
     pub slug: String,
@@ -739,6 +790,8 @@ pub struct RegistryPublishModuleRequest {
     pub trust_level: String,
     pub license: String,
     pub entry_type: Option<String>,
+    #[serde(rename = "artifactOrigin")]
+    pub artifact_origin: RegistryPublishArtifactOrigin,
     #[serde(default)]
     pub marketplace: RegistryPublishMarketplaceRequest,
     #[serde(default)]
@@ -926,16 +979,8 @@ pub fn registry_catalog_path() -> &'static str {
     REGISTRY_CATALOG_PATH
 }
 
-pub fn legacy_registry_catalog_path() -> &'static str {
-    LEGACY_REGISTRY_CATALOG_PATH
-}
-
 pub fn registry_catalog_module_path() -> &'static str {
     REGISTRY_CATALOG_MODULE_PATH
-}
-
-pub fn legacy_registry_catalog_module_path() -> &'static str {
-    LEGACY_REGISTRY_CATALOG_MODULE_PATH
 }
 
 pub fn registry_publish_path() -> &'static str {
@@ -948,6 +993,14 @@ pub fn registry_publish_status_path() -> &'static str {
 
 pub fn registry_publish_artifact_path() -> &'static str {
     REGISTRY_PUBLISH_ARTIFACT_PATH
+}
+
+pub fn registry_publish_external_stage_path() -> &'static str {
+    REGISTRY_PUBLISH_EXTERNAL_STAGE_PATH
+}
+
+pub fn registry_publish_platform_build_stage_path() -> &'static str {
+    REGISTRY_PUBLISH_PLATFORM_BUILD_STAGE_PATH
 }
 
 pub fn registry_publish_validate_path() -> &'static str {
@@ -1693,17 +1746,6 @@ fn compare_registry_semver_desc(left: &str, right: &str) -> Ordering {
         (Err(_), Ok(_)) => Ordering::Greater,
         (Err(_), Err(_)) => Ordering::Equal,
     }
-}
-
-fn should_fallback_to_legacy_catalog_path(err: &anyhow::Error) -> bool {
-    err.downcast_ref::<reqwest::Error>()
-        .and_then(|error| error.status())
-        .is_some_and(|status| {
-            matches!(
-                status,
-                StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
-            )
-        })
 }
 
 fn validate_registry_schema_version(schema_version: u32) -> anyhow::Result<()> {

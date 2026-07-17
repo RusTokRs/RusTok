@@ -14,6 +14,9 @@
       "operations": [
         "read_product_projection"
       ],
+      "consuming_tasks": [
+        "product_attributes"
+      ],
       "required_profiles": [
         "in_process",
         "remote_adapter_placeholder"
@@ -80,9 +83,9 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "product_copy_shape_preserved",
-          "product_attributes_shape_preserved",
-          "degraded_generate_from_prompt_only_on_unavailable"
+          "product_attributes_port_invocation",
+          "degraded_generate_from_prompt_only_on_unavailable",
+          "degraded_generate_from_prompt_only_on_deadline"
         ]
       }
     ],

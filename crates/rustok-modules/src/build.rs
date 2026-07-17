@@ -37,7 +37,7 @@ const MAX_BUILD_DIAGNOSTICS: usize = 32;
 const MAX_WALL_CLOCK_MS: u64 = 2 * 60 * 60 * 1_000;
 
 /// Current transport contract version for isolated module build workers.
-pub const MODULE_BUILD_PROTOCOL_VERSION: u32 = 6;
+pub const MODULE_BUILD_PROTOCOL_VERSION: u32 = 7;
 
 /// Immutable request submitted by the control plane to an isolated worker.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -152,6 +152,22 @@ pub enum ModuleBuildValidationProfile {
     Vulnerability,
 }
 
+/// Terminal outcome for one requested, image-owned validation profile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleBuildValidationOutcome {
+    Passed,
+    Failed,
+}
+
+/// Machine-readable outcome for one requested validation profile. Raw command
+/// output remains behind the separately authorized evidence references.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleBuildValidationResult {
+    pub profile: ModuleBuildValidationProfile,
+    pub outcome: ModuleBuildValidationOutcome,
+}
+
 /// Terminal worker result. Payload, SBOM, provenance, and logs are immutable
 /// references, never inline bytes or reusable credentials.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -242,6 +258,9 @@ pub struct ModuleBuildComponentInterface {
 pub struct ModuleBuildEvidence {
     pub log_reference: String,
     pub policy_report_reference: String,
+    /// Ordered outcomes for requested validation profiles. Successful builds
+    /// report every requested profile as passed.
+    pub validation_results: Vec<ModuleBuildValidationResult>,
     /// Bounded stable diagnostics for CLI, Alloy, CI, and admin consumers.
     /// They intentionally do not contain a compiler line, file path, or runner
     /// output; consumers can retrieve the separately authorized log reference.
@@ -340,6 +359,14 @@ pub trait ModuleBuildWorker: Send + Sync {
     ) -> Result<ModuleBuildResult, ModuleBuildProtocolError>;
 }
 
+/// Runtime health evidence for a separately deployed module build worker.
+///
+/// Transport readiness must use this worker-owned probe rather than assuming
+/// that a bound mTLS listener implies an available hardened build runtime.
+pub trait ModuleBuildWorkerReadiness: Send + Sync {
+    fn is_ready(&self) -> bool;
+}
+
 /// Durable acknowledgement of a build submission. `created` is false only
 /// when the exact tenant/project idempotency key already queued this request.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -354,6 +381,14 @@ pub struct ModuleBuildSubmission {
 pub struct ModuleBuildResultRecord {
     pub request_id: Uuid,
     pub created: bool,
+}
+
+/// One durable immutable build pair loaded under its tenant scope. Consumers
+/// use this instead of accepting a request/result pair from a host transport.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleBuildCompletedResult {
+    pub request: ModuleBuildRequest,
+    pub result: ModuleBuildResult,
 }
 
 /// Owner-side durable queue for isolated module builds. It performs no source
@@ -631,6 +666,56 @@ impl SeaOrmModuleBuildService {
         Ok(request)
     }
 
+    /// Loads one completed immutable build request/result pair under tenant RLS.
+    /// The result is revalidated against its stored request before it crosses
+    /// into another owner boundary such as release staging.
+    pub async fn load_completed(
+        &self,
+        tenant_id: Uuid,
+        request_id: Uuid,
+    ) -> Result<ModuleBuildCompletedResult, ModuleBuildProtocolError> {
+        if tenant_id.is_nil() || request_id.is_nil() {
+            return Err(ModuleBuildProtocolError::InvalidRequest);
+        }
+        let transaction = self.db.begin().await.map_err(persistence_error)?;
+        configure_tenant_scope(&transaction, tenant_id)
+            .await
+            .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
+        let backend = transaction.get_database_backend();
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT request, result, status FROM module_build_requests WHERE request_id = {}",
+                    placeholder(backend, 1),
+                ),
+                vec![uuid_value(request_id, backend)],
+            ))
+            .await
+            .map_err(persistence_error)?
+            .ok_or(ModuleBuildProtocolError::UnknownRequest)?;
+        let status: String = row.try_get("", "status").map_err(persistence_error)?;
+        if status != "completed" {
+            transaction.commit().await.map_err(persistence_error)?;
+            return Err(ModuleBuildProtocolError::NotCompleted);
+        }
+        let request_json: serde_json::Value =
+            row.try_get("", "request").map_err(persistence_error)?;
+        let result_json: Option<serde_json::Value> =
+            row.try_get("", "result").map_err(persistence_error)?;
+        let request: ModuleBuildRequest = serde_json::from_value(request_json)
+            .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
+        let result: ModuleBuildResult =
+            serde_json::from_value(result_json.ok_or(ModuleBuildProtocolError::InvalidResult)?)
+                .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
+        result.validate_against(&request)?;
+        if request.context.tenant_id != Some(tenant_id) || result.tenant_id != tenant_id {
+            return Err(ModuleBuildProtocolError::InvalidResult);
+        }
+        transaction.commit().await.map_err(persistence_error)?;
+        Ok(ModuleBuildCompletedResult { request, result })
+    }
+
     /// Delivers one outbox-selected request to the isolated worker. The owner
     /// never executes Cargo itself: it loads the immutable queued request,
     /// releases the database transaction, delegates through the worker port,
@@ -773,6 +858,13 @@ impl ModuleBuildResult {
         if self.retryable != (self.next_action == ModuleBuildNextAction::RetryBuild) {
             return Err(ModuleBuildProtocolError::InvalidResult);
         }
+        if !valid_validation_results(
+            &self.evidence.validation_results,
+            &request.validation_profiles,
+            &self.outcome,
+        ) {
+            return Err(ModuleBuildProtocolError::InvalidResult);
+        }
         match &self.outcome {
             ModuleBuildOutcome::Succeeded => {
                 if self.component_digest.is_none()
@@ -913,6 +1005,41 @@ fn valid_component_interface(interface: &ModuleBuildComponentInterface) -> bool 
         }
     }
     true
+}
+
+fn valid_validation_results(
+    results: &[ModuleBuildValidationResult],
+    requested: &[ModuleBuildValidationProfile],
+    outcome: &ModuleBuildOutcome,
+) -> bool {
+    if results.len() > requested.len()
+        || results
+            .iter()
+            .enumerate()
+            .any(|(index, result)| requested.get(index) != Some(&result.profile))
+    {
+        return false;
+    }
+    match outcome {
+        ModuleBuildOutcome::Succeeded => {
+            results.len() == requested.len()
+                && results
+                    .iter()
+                    .all(|result| result.outcome == ModuleBuildValidationOutcome::Passed)
+        }
+        ModuleBuildOutcome::Failed(ModuleBuildFailureCode::ValidationFailed) => {
+            !results.is_empty()
+                && results
+                    .last()
+                    .is_some_and(|result| result.outcome == ModuleBuildValidationOutcome::Failed)
+                && results[..results.len() - 1]
+                    .iter()
+                    .all(|result| result.outcome == ModuleBuildValidationOutcome::Passed)
+        }
+        ModuleBuildOutcome::Failed(_)
+        | ModuleBuildOutcome::Cancelled
+        | ModuleBuildOutcome::Nondeterministic => results.is_empty(),
+    }
 }
 
 fn validate_text(value: &str) -> Result<(), ModuleBuildProtocolError> {
@@ -1063,6 +1190,8 @@ pub enum ModuleBuildProtocolError {
     UnknownRequest,
     #[error("module build request is no longer queued")]
     NotQueued,
+    #[error("module build request is not completed")]
+    NotCompleted,
     #[error("module build request already has a different terminal result")]
     ResultConflict,
     #[error("module build transport failed: {0}")]
@@ -1183,6 +1312,7 @@ mod tests {
             evidence: ModuleBuildEvidence {
                 log_reference: "cas://logs/1".to_string(),
                 policy_report_reference: "cas://reports/1".to_string(),
+                validation_results: Vec::new(),
                 diagnostics: Vec::new(),
             },
             publication: None,
@@ -1247,6 +1377,7 @@ mod tests {
             evidence: ModuleBuildEvidence {
                 log_reference: "cas://logs/1".to_string(),
                 policy_report_reference: "cas://reports/1".to_string(),
+                validation_results: Vec::new(),
                 diagnostics: Vec::new(),
             },
             publication: None,
@@ -1266,6 +1397,10 @@ mod tests {
         result.evidence.diagnostics = vec![ModuleBuildDiagnostic {
             stage: ModuleBuildDiagnosticStage::Validation,
             code: ModuleBuildFailureCode::ValidationFailed,
+        }];
+        result.evidence.validation_results = vec![ModuleBuildValidationResult {
+            profile: ModuleBuildValidationProfile::Check,
+            outcome: ModuleBuildValidationOutcome::Failed,
         }];
         assert!(result.validate_against(&request).is_ok());
 
@@ -1299,6 +1434,16 @@ mod tests {
             evidence: ModuleBuildEvidence {
                 log_reference: "cas://logs/1".to_string(),
                 policy_report_reference: "cas://reports/1".to_string(),
+                validation_results: vec![
+                    ModuleBuildValidationResult {
+                        profile: ModuleBuildValidationProfile::Check,
+                        outcome: ModuleBuildValidationOutcome::Passed,
+                    },
+                    ModuleBuildValidationResult {
+                        profile: ModuleBuildValidationProfile::Test,
+                        outcome: ModuleBuildValidationOutcome::Passed,
+                    },
+                ],
                 diagnostics: Vec::new(),
             },
             publication: None,
@@ -1320,6 +1465,7 @@ mod tests {
 
         result.wit_digest = request.wit.protocol_digest();
         result.outcome = ModuleBuildOutcome::Failed(ModuleBuildFailureCode::WorkerUnavailable);
+        result.evidence.validation_results.clear();
         result.retryable = true;
         result.next_action = ModuleBuildNextAction::ReviseSource;
         assert!(matches!(

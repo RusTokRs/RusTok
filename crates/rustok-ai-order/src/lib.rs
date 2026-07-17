@@ -9,10 +9,22 @@ pub const ORDER_ANALYTICS_TOOL_NAME: &str = "direct.orders.analytics";
 pub const ORDER_OPS_ASSISTANT_TOOL_NAME: &str = "direct.orders.ops_assistant";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OrderAiExecutionPolicy {
+    pub review_required: bool,
+    pub persistence: &'static str,
+}
+
+const ADVISORY_ORDER_POLICY: OrderAiExecutionPolicy = OrderAiExecutionPolicy {
+    review_required: true,
+    persistence: "none",
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OrderAiVerticalDescriptor {
     pub task_slug: &'static str,
     pub tool_name: &'static str,
     pub sensitive: bool,
+    pub execution_policy: OrderAiExecutionPolicy,
 }
 
 pub const ORDER_AI_VERTICALS: &[OrderAiVerticalDescriptor] = &[
@@ -20,17 +32,29 @@ pub const ORDER_AI_VERTICALS: &[OrderAiVerticalDescriptor] = &[
         task_slug: ORDER_ANALYTICS_TASK_SLUG,
         tool_name: ORDER_ANALYTICS_TOOL_NAME,
         sensitive: false,
+        execution_policy: ADVISORY_ORDER_POLICY,
     },
     OrderAiVerticalDescriptor {
         task_slug: ORDER_OPS_ASSISTANT_TASK_SLUG,
         tool_name: ORDER_OPS_ASSISTANT_TOOL_NAME,
         sensitive: true,
+        execution_policy: ADVISORY_ORDER_POLICY,
     },
 ];
 
 /// Domain-owned registration entrypoint for order AI vertical metadata.
 pub fn order_ai_verticals() -> &'static [OrderAiVerticalDescriptor] {
     ORDER_AI_VERTICALS
+}
+
+/// Returns the domain-owned execution policy for an order AI vertical.
+/// Generated order output is always advisory; an owner-owned operator flow
+/// must apply any order mutation separately.
+pub fn order_ai_execution_policy(task_slug: &str) -> Option<OrderAiExecutionPolicy> {
+    order_ai_verticals()
+        .iter()
+        .find(|vertical| vertical.task_slug == task_slug)
+        .map(|vertical| vertical.execution_policy)
 }
 
 /// Backward-compatible entrypoint kept for composition callers. Runtime
@@ -121,7 +145,7 @@ pub fn validate_order_ops_assistant_payload(
 #[cfg(test)]
 mod tests {
     use super::{
-        order_ai_verticals, validate_order_analytics_payload,
+        order_ai_execution_policy, order_ai_verticals, validate_order_analytics_payload,
         validate_order_ops_assistant_confidence, validate_order_ops_assistant_payload,
         GeneratedOrderAnalytics, GeneratedOrderOpsAssistant, ORDER_ANALYTICS_TASK_SLUG,
         ORDER_OPS_ASSISTANT_TASK_SLUG,
@@ -138,6 +162,14 @@ mod tests {
             vec![ORDER_ANALYTICS_TASK_SLUG, ORDER_OPS_ASSISTANT_TASK_SLUG]
         );
         assert!(order_ai_verticals()[1].sensitive);
+        for vertical in order_ai_verticals() {
+            assert!(vertical.execution_policy.review_required);
+            assert_eq!(vertical.execution_policy.persistence, "none");
+            assert_eq!(
+                order_ai_execution_policy(vertical.task_slug),
+                Some(vertical.execution_policy)
+            );
+        }
     }
 
     #[test]

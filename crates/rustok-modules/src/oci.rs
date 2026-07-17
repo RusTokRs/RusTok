@@ -11,6 +11,7 @@ use oci_distribution::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::time::Duration;
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
@@ -39,6 +40,43 @@ pub const OCI_EMPTY_CONFIG_MEDIA_TYPE: &str = "application/vnd.oci.empty.v1+json
 
 const OCI_EMPTY_CONFIG_BYTES: &[u8] = b"{}";
 const OCI_REGISTRY_MAX_CONCURRENT_REQUESTS: usize = 1;
+const OCI_REGISTRY_ADMISSION_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
+/// Removes a private OCI staging file if its producer returns an error or is
+/// cancelled, including by the outer admission deadline.
+struct ArtifactStagingFile {
+    path: Option<std::path::PathBuf>,
+}
+
+impl ArtifactStagingFile {
+    fn new() -> Self {
+        Self {
+            path: Some(
+                std::env::temp_dir().join(format!("rustok-artifact-stage-{}", Uuid::new_v4())),
+            ),
+        }
+    }
+
+    fn path(&self) -> &std::path::Path {
+        self.path
+            .as_deref()
+            .expect("staging path is available until it is persisted")
+    }
+
+    fn persist(mut self) -> std::path::PathBuf {
+        self.path
+            .take()
+            .expect("staging path is available until it is persisted")
+    }
+}
+
+impl Drop for ArtifactStagingFile {
+    fn drop(&mut self) {
+        if let Some(path) = self.path.as_ref() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
 
 /// Constructs the strict subset of registry transport policy that the current
 /// OCI Distribution client can enforce itself. Redirect/proxy enforcement is
@@ -236,8 +274,14 @@ pub struct OciDistributionArtifactPublisher {
 }
 
 impl OciDistributionArtifactPublisher {
-    pub fn new(client: Client, auth: RegistryAuth) -> Self {
-        Self { client, auth }
+    /// Creates a publisher that uses the mandatory strict registry transport
+    /// subset. Callers cannot supply a client with weaker TLS settings.
+    pub fn strict(auth: RegistryAuth) -> Result<Self, OciArtifactPublicationError> {
+        Ok(Self {
+            client: strict_oci_distribution_client()
+                .map_err(OciArtifactPublicationError::Registry)?,
+            auth,
+        })
     }
 }
 
@@ -520,21 +564,24 @@ pub struct OciDistributionArtifactRegistry {
 }
 
 impl OciDistributionArtifactRegistry {
-    pub fn new(client: Client, auth: RegistryAuth) -> Self {
+    fn with_client(client: Client, auth: RegistryAuth) -> Self {
         Self { client, auth }
     }
 
-    pub fn anonymous() -> Self {
-        Self::new(Client::default(), RegistryAuth::Anonymous)
+    /// Creates an authenticated registry adapter with the mandatory strict
+    /// transport subset. Callers cannot supply a client with weaker TLS
+    /// settings.
+    pub fn strict(auth: RegistryAuth) -> Result<Self, ModuleInstallationError> {
+        Ok(Self::with_client(
+            strict_oci_distribution_client().map_err(ModuleInstallationError::Registry)?,
+            auth,
+        ))
     }
 
     /// Creates an anonymous registry adapter with the strict transport subset
     /// used by production artifact distribution.
     pub fn strict_anonymous() -> Result<Self, ModuleInstallationError> {
-        Ok(Self::new(
-            strict_oci_distribution_client().map_err(ModuleInstallationError::Registry)?,
-            RegistryAuth::Anonymous,
-        ))
+        Self::strict(RegistryAuth::Anonymous)
     }
 
     fn image_reference(
@@ -557,86 +604,146 @@ impl ArtifactRegistry for OciDistributionArtifactRegistry {
         reference: &OciArtifactReference,
         limits: ArtifactAdmissionLimits,
     ) -> Result<ModuleArtifactPackage, ModuleInstallationError> {
-        let image = Self::image_reference(reference)?;
-        let (manifest, manifest_digest, config) = self
-            .client
-            .pull_manifest_and_config(&image, &self.auth)
-            .await
-            .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
-        if manifest_digest != reference.digest {
-            return Err(ModuleInstallationError::RegistryIdentityMismatch {
-                requested: reference.canonical(),
-                received: format!(
-                    "{}/{}@{manifest_digest}",
-                    reference.registry, reference.repository
-                ),
-            });
-        }
-        if manifest.config.media_type != MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE {
-            return Err(ModuleInstallationError::Registry(format!(
-                "OCI artifact config media type must be `{MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE}`, received `{}`",
-                manifest.config.media_type
-            )));
-        }
-        let config_size = config.len() as u64;
-        let declared_config_size = u64::try_from(manifest.config.size).map_err(|_| {
-            ModuleInstallationError::Registry(
-                "OCI artifact config declares a negative size".to_string(),
-            )
-        })?;
-        if declared_config_size != config_size {
-            return Err(ModuleInstallationError::Registry(format!(
-                "OCI artifact config size mismatch: manifest declares `{declared_config_size}`, received `{config_size}`"
-            )));
-        }
-        limits.validate_descriptor_size(config_size)?;
-        let config_digest = format!("sha256:{}", hex::encode(Sha256::digest(config.as_bytes())));
-        if manifest.config.digest != config_digest {
-            return Err(ModuleInstallationError::Registry(format!(
-                "OCI artifact config digest mismatch: manifest declares `{}`, received `{config_digest}`",
-                manifest.config.digest
-            )));
-        }
-        let descriptor: ModuleArtifactDescriptor =
-            serde_json::from_str(&config).map_err(|error| {
-                ModuleInstallationError::Registry(format!(
-                    "OCI artifact config is not a module descriptor: {error}"
-                ))
+        let admission = async {
+            let image = Self::image_reference(reference)?;
+            let (manifest, manifest_digest) = self
+                .client
+                .pull_image_manifest(&image, &self.auth)
+                .await
+                .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
+            if manifest_digest != reference.digest {
+                return Err(ModuleInstallationError::RegistryIdentityMismatch {
+                    requested: reference.canonical(),
+                    received: format!(
+                        "{}/{}@{manifest_digest}",
+                        reference.registry, reference.repository
+                    ),
+                });
+            }
+            if manifest.config.media_type != MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE {
+                return Err(ModuleInstallationError::Registry(format!(
+                    "OCI artifact config media type must be `{MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE}`, received `{}`",
+                    manifest.config.media_type
+                )));
+            }
+            let config = self
+                .pull_config_to_memory(&image, &manifest.config, limits)
+                .await?;
+            let config_size = config.len() as u64;
+            let config_digest = format!("sha256:{}", hex::encode(Sha256::digest(&config)));
+            if manifest.config.digest != config_digest {
+                return Err(ModuleInstallationError::Registry(format!(
+                    "OCI artifact config digest mismatch: manifest declares `{}`, received `{config_digest}`",
+                    manifest.config.digest
+                )));
+            }
+            let descriptor: ModuleArtifactDescriptor =
+                serde_json::from_slice(&config).map_err(|error| {
+                    ModuleInstallationError::Registry(format!(
+                        "OCI artifact config is not a module descriptor: {error}"
+                    ))
+                })?;
+            let expected_media_type = descriptor.payload_kind.oci_layer_media_type();
+            let layers = manifest
+                .layers
+                .iter()
+                .filter(|layer| {
+                    layer.digest == descriptor.artifact_digest
+                        && layer.media_type == expected_media_type
+                })
+                .collect::<Vec<_>>();
+            let [layer] = layers.as_slice() else {
+                return Err(ModuleInstallationError::Registry(format!(
+                    "OCI artifact must contain exactly one `{expected_media_type}` layer with digest `{}`",
+                    descriptor.artifact_digest
+                )));
+            };
+            let layer_size = u64::try_from(layer.size).map_err(|_| {
+                ModuleInstallationError::Registry("OCI layer declares a negative size".to_string())
             })?;
-        let expected_media_type = descriptor.payload_kind.oci_layer_media_type();
-        let layers = manifest
-            .layers
-            .iter()
-            .filter(|layer| {
-                layer.digest == descriptor.artifact_digest
-                    && layer.media_type == expected_media_type
-            })
-            .collect::<Vec<_>>();
-        let [layer] = layers.as_slice() else {
-            return Err(ModuleInstallationError::Registry(format!(
-                "OCI artifact must contain exactly one `{expected_media_type}` layer with digest `{}`",
-                descriptor.artifact_digest
-            )));
+            limits.validate_payload_size(layer_size)?;
+            let payload = self
+                .pull_payload_to_temporary_storage(
+                    &image,
+                    layer,
+                    &descriptor.artifact_digest,
+                    limits,
+                )
+                .await?;
+            let package = ModuleArtifactPackage {
+                reference: reference.clone(),
+                media_type: layer.media_type.clone(),
+                descriptor,
+                payload: ArtifactPayloadSource::TemporaryFile(payload),
+            };
+            package.verify(limits).await?;
+            Ok(package)
         };
-        let layer_size = u64::try_from(layer.size).map_err(|_| {
-            ModuleInstallationError::Registry("OCI layer declares a negative size".to_string())
-        })?;
-        limits.validate_payload_size(layer_size)?;
-        let payload = self
-            .pull_payload_to_temporary_storage(&image, layer, &descriptor.artifact_digest, limits)
-            .await?;
-        let package = ModuleArtifactPackage {
-            reference: reference.clone(),
-            media_type: layer.media_type.clone(),
-            descriptor,
-            payload: ArtifactPayloadSource::TemporaryFile(payload),
-        };
-        package.verify(limits).await?;
-        Ok(package)
+        tokio::time::timeout(OCI_REGISTRY_ADMISSION_TIMEOUT, admission)
+            .await
+            .map_err(|_| {
+                ModuleInstallationError::Registry(
+                    "OCI artifact admission exceeded the 300 second deadline".to_string(),
+                )
+            })?
     }
 }
 
 impl OciDistributionArtifactRegistry {
+    /// Streams the descriptor config only after its declared size passes the
+    /// admission bound. The upstream client otherwise buffers this blob before
+    /// callers can validate it.
+    async fn pull_config_to_memory(
+        &self,
+        image: &Reference,
+        config: &oci_distribution::manifest::OciDescriptor,
+        limits: ArtifactAdmissionLimits,
+    ) -> Result<Vec<u8>, ModuleInstallationError> {
+        let declared_size = u64::try_from(config.size).map_err(|_| {
+            ModuleInstallationError::Registry(
+                "OCI artifact config declares a negative size".to_string(),
+            )
+        })?;
+        limits.validate_descriptor_size(declared_size)?;
+        let capacity = usize::try_from(declared_size).map_err(|_| {
+            ModuleInstallationError::Registry(
+                "OCI artifact config size cannot be represented by this platform".to_string(),
+            )
+        })?;
+        let stream = self
+            .client
+            .pull_blob_stream(image, config)
+            .await
+            .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
+        futures_util::pin_mut!(stream);
+        let mut bytes = Vec::with_capacity(capacity);
+        let mut received = 0_u64;
+        while let Some(chunk) = stream.next().await {
+            let chunk =
+                chunk.map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
+            received = received.checked_add(chunk.len() as u64).ok_or({
+                ModuleInstallationError::ArtifactTooLarge {
+                    kind: "descriptor",
+                    limit: limits.max_descriptor_bytes,
+                    actual: u64::MAX,
+                }
+            })?;
+            if received > declared_size {
+                return Err(ModuleInstallationError::Registry(format!(
+                    "OCI artifact config size mismatch: manifest declares `{declared_size}`, received more bytes"
+                )));
+            }
+            limits.validate_descriptor_size(received)?;
+            bytes.extend_from_slice(&chunk);
+        }
+        if received != declared_size {
+            return Err(ModuleInstallationError::Registry(format!(
+                "OCI artifact config size mismatch: manifest declares `{declared_size}`, received `{received}`"
+            )));
+        }
+        Ok(bytes)
+    }
+
     /// Streams a registry layer through a bounded private staging file. The
     /// current object-storage port still accepts a bounded buffer after this
     /// check; this method deliberately avoids an unbounded network `Vec<u8>`.
@@ -647,55 +754,62 @@ impl OciDistributionArtifactRegistry {
         expected_digest: &str,
         limits: ArtifactAdmissionLimits,
     ) -> Result<std::path::PathBuf, ModuleInstallationError> {
-        let path = std::env::temp_dir().join(format!("rustok-artifact-stage-{}", Uuid::new_v4()));
-        let result = async {
-            let mut file = tokio::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&path)
-                .await
-                .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
-            let stream = self
-                .client
-                .pull_blob_stream(image, layer)
-                .await
-                .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
-            futures_util::pin_mut!(stream);
-            let mut received = 0_u64;
-            let mut hasher = Sha256::new();
-            while let Some(chunk) = stream.next().await {
-                let chunk =
-                    chunk.map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
-                received = received.checked_add(chunk.len() as u64).ok_or({
-                    ModuleInstallationError::ArtifactTooLarge {
-                        kind: "payload",
-                        limit: limits.max_payload_bytes,
-                        actual: u64::MAX,
-                    }
-                })?;
-                limits.validate_payload_size(received)?;
-                hasher.update(&chunk);
-                file.write_all(&chunk)
-                    .await
-                    .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
+        let declared_size = u64::try_from(layer.size).map_err(|_| {
+            ModuleInstallationError::Registry("OCI layer declares a negative size".to_string())
+        })?;
+        limits.validate_payload_size(declared_size)?;
+        let staging_file = ArtifactStagingFile::new();
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(staging_file.path())
+            .await
+            .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
+        let stream = self
+            .client
+            .pull_blob_stream(image, layer)
+            .await
+            .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
+        futures_util::pin_mut!(stream);
+        let mut received = 0_u64;
+        let mut hasher = Sha256::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk =
+                chunk.map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
+            received = received.checked_add(chunk.len() as u64).ok_or({
+                ModuleInstallationError::ArtifactTooLarge {
+                    kind: "payload",
+                    limit: limits.max_payload_bytes,
+                    actual: u64::MAX,
+                }
+            })?;
+            if received > declared_size {
+                return Err(ModuleInstallationError::Registry(format!(
+                    "OCI layer size mismatch: manifest declares `{declared_size}`, received more bytes"
+                )));
             }
-            file.flush()
+            limits.validate_payload_size(received)?;
+            hasher.update(&chunk);
+            file.write_all(&chunk)
                 .await
                 .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
-            let actual_digest = format!("sha256:{}", hex::encode(hasher.finalize()));
-            if actual_digest != expected_digest {
-                return Err(ModuleInstallationError::PayloadDigestMismatch {
-                    expected: expected_digest.to_string(),
-                    actual: actual_digest,
-                });
-            }
-            Ok(path.clone())
         }
-        .await;
-        if result.is_err() {
-            let _ = tokio::fs::remove_file(&path).await;
+        file.flush()
+            .await
+            .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
+        if received != declared_size {
+            return Err(ModuleInstallationError::Registry(format!(
+                "OCI layer size mismatch: manifest declares `{declared_size}`, received `{received}`"
+            )));
         }
-        result
+        let actual_digest = format!("sha256:{}", hex::encode(hasher.finalize()));
+        if actual_digest != expected_digest {
+            return Err(ModuleInstallationError::PayloadDigestMismatch {
+                expected: expected_digest.to_string(),
+                actual: actual_digest,
+            });
+        }
+        Ok(staging_file.persist())
     }
 }
 
@@ -706,9 +820,32 @@ mod tests {
     };
 
     use super::{
-        cosign_signature_tag, OciArtifactEvidenceKind, OciDistributionArtifactRegistry,
-        MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE,
+        cosign_signature_tag, ArtifactStagingFile, OciArtifactEvidenceKind,
+        OciDistributionArtifactRegistry, MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE,
     };
+
+    #[test]
+    fn staging_file_is_deleted_when_a_download_is_cancelled_or_fails() {
+        let staging_file = ArtifactStagingFile::new();
+        let path = staging_file.path().to_path_buf();
+        std::fs::write(&path, b"partial artifact").expect("stage partial artifact");
+
+        drop(staging_file);
+
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn persisted_staging_file_is_retained_for_admission_consumption() {
+        let staging_file = ArtifactStagingFile::new();
+        let path = staging_file.path().to_path_buf();
+        std::fs::write(&path, b"verified artifact").expect("stage verified artifact");
+        let persisted = staging_file.persist();
+
+        assert_eq!(persisted, path);
+        assert!(persisted.exists());
+        std::fs::remove_file(persisted).expect("remove persisted test artifact");
+    }
 
     #[test]
     fn parser_uses_a_digest_pinned_reference_without_a_tag() {

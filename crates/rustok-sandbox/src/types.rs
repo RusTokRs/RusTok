@@ -53,6 +53,9 @@ pub enum SandboxSubject {
         revision: u64,
     },
     ModuleArtifact {
+        /// Exact durable installation selected by the module owner. This is
+        /// host-controlled execution identity, not artifact-supplied input.
+        installation_id: Uuid,
         slug: String,
         version: String,
         digest: String,
@@ -120,6 +123,17 @@ pub struct SandboxRequest {
 
 impl SandboxRequest {
     pub fn validate(&self) -> Result<(), SandboxError> {
+        if matches!(
+            &self.subject,
+            SandboxSubject::ModuleArtifact {
+                installation_id,
+                ..
+            } if installation_id.is_nil()
+        ) {
+            return Err(SandboxError::InvalidRequest(
+                "module artifact installation_id must not be nil".to_string(),
+            ));
+        }
         if self.payload.media_type.trim().is_empty() {
             return Err(SandboxError::InvalidRequest(
                 "payload media_type must not be empty".to_string(),

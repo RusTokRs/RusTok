@@ -207,7 +207,7 @@ impl CommerceFulfillmentMutation {
         let difference_refund = input
             .difference_refund
             .map(|diff| {
-                Ok(crate::ExchangeDifferenceRefundInput {
+                Ok::<_, async_graphql::Error>(crate::ExchangeDifferenceRefundInput {
                     amount: parse_decimal(&diff.amount)?,
                     reason: diff.reason,
                     metadata: parse_optional_metadata(diff.metadata.as_deref())?,
@@ -352,7 +352,7 @@ impl CommerceFulfillmentMutation {
             refund: input
                 .refund
                 .map(|refund| {
-                    Ok(crate::CompleteReturnRefundInput {
+                    Ok::<_, async_graphql::Error>(crate::CompleteReturnRefundInput {
                         payment_collection_id: refund.payment_collection_id,
                         amount: parse_decimal(&refund.amount)?,
                         reason: refund.reason,
@@ -364,7 +364,7 @@ impl CommerceFulfillmentMutation {
             exchange: input
                 .exchange
                 .map(|exchange| {
-                    Ok(crate::CompleteReturnExchangeInput {
+                    Ok::<_, async_graphql::Error>(crate::CompleteReturnExchangeInput {
                         description: exchange.description,
                         preview: parse_json_payload(
                             exchange.preview.as_str(),
@@ -377,7 +377,7 @@ impl CommerceFulfillmentMutation {
             claim: input
                 .claim
                 .map(|claim| {
-                    Ok(crate::CompleteReturnClaimInput {
+                    Ok::<_, async_graphql::Error>(crate::CompleteReturnClaimInput {
                         description: claim.description,
                         preview: parse_json_payload(
                             claim.preview.as_str(),

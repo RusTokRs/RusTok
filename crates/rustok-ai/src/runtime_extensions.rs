@@ -340,8 +340,33 @@ fn environment_bool(name: &str) -> Result<bool, String> {
 mod tests {
     use super::{
         environment_bool, policy, register_deployment_resolver, secret_prefixes,
-        validate_config_aliases, vault_auth, DeploymentSecretResolverConfig,
+        secret_registry_from_environment, validate_config_aliases, vault_auth,
+        DeploymentSecretResolverConfig,
     };
+
+    static DEPLOYMENT_RESOLVER_CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct ScopedEnvironmentVariable {
+        name: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl ScopedEnvironmentVariable {
+        fn set(name: &'static str, value: &str) -> Self {
+            let previous = std::env::var_os(name);
+            unsafe { std::env::set_var(name, value) };
+            Self { name, previous }
+        }
+    }
+
+    impl Drop for ScopedEnvironmentVariable {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(value) => unsafe { std::env::set_var(self.name, value) },
+                None => unsafe { std::env::remove_var(self.name) },
+            }
+        }
+    }
 
     #[test]
     fn defaults_to_ai_scoped_environment_secret_prefix() {
@@ -398,6 +423,61 @@ mod tests {
             },
         ];
         assert!(validate_config_aliases(&configs).is_err());
+    }
+
+    #[test]
+    fn explicit_resolver_json_registers_deployment_aliases_without_legacy_fallback() {
+        let _lock = DEPLOYMENT_RESOLVER_CONFIG_LOCK
+            .lock()
+            .expect("deployment resolver configuration lock must not be poisoned");
+        let _config = ScopedEnvironmentVariable::set(
+            "RUSTOK_AI_SECRET_RESOLVERS_JSON",
+            r#"[
+                {"kind":"env","alias":"deployment_env","key_prefixes":["RUSTOK_AI_"]},
+                {"kind":"mounted_file","alias":"deployment_file","root":"/var/run/secrets/rustok","key_prefixes":["ai/"]},
+                {"kind":"vault","alias":"deployment_vault","endpoint":"https://vault.example.test","kv_mount":"secret","key_prefixes":["ai/"],"token_env":"RUSTOK_AI_TEST_DEPLOYMENT_VAULT_TOKEN"},
+                {"kind":"aws_secrets_manager","alias":"deployment_aws","key_prefixes":["ai/"]},
+                {"kind":"gcp_secret_manager","alias":"deployment_gcp","project":"rustok-prod1","key_prefixes":["ai/"]}
+            ]"#,
+        );
+        let _vault_token =
+            ScopedEnvironmentVariable::set("RUSTOK_AI_TEST_DEPLOYMENT_VAULT_TOKEN", "test-token");
+
+        let registry = secret_registry_from_environment()
+            .expect("explicit deployment resolver configuration must register");
+        for alias in [
+            "deployment_env",
+            "deployment_file",
+            "deployment_vault",
+            "deployment_aws",
+            "deployment_gcp",
+        ] {
+            assert!(registry.contains(alias), "missing configured alias {alias}");
+        }
+        assert!(
+            !registry.contains("env"),
+            "explicit deployment configuration must not add the legacy env resolver"
+        );
+    }
+
+    #[test]
+    fn explicit_resolver_json_fails_closed_for_duplicate_aliases() {
+        let _lock = DEPLOYMENT_RESOLVER_CONFIG_LOCK
+            .lock()
+            .expect("deployment resolver configuration lock must not be poisoned");
+        let _config = ScopedEnvironmentVariable::set(
+            "RUSTOK_AI_SECRET_RESOLVERS_JSON",
+            r#"[
+                {"kind":"env","alias":"duplicate","key_prefixes":["RUSTOK_AI_"]},
+                {"kind":"aws_secrets_manager","alias":"duplicate","key_prefixes":["ai/"]}
+            ]"#,
+        );
+
+        let error = match secret_registry_from_environment() {
+            Ok(_) => panic!("duplicate deployment aliases must fail closed"),
+            Err(error) => error,
+        };
+        assert!(error.contains("aliases must be unique and non-empty"));
     }
 
     #[test]

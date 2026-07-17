@@ -2,8 +2,9 @@
 
 This executable is the isolated deployment boundary for untrusted module Rust
 builds. It exposes the owner-owned module build protocol only over mTLS gRPC,
-then invokes a fixed deployment-owned job runner inside the hardened worker
-image. The server and module runtime never invoke Cargo through this package.
+then delegates each build to a fixed deployment-owned OCI job launcher using a
+required gVisor or Kata runtime. The server and module runtime never invoke
+Cargo through this package.
 
 The worker has no database or CAS dependency. It receives immutable request
 facts and returns a typed terminal result; `rustok-modules` validates and

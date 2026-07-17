@@ -238,6 +238,8 @@ type DirectSubmitKind =
   | 'image_asset'
   | 'alloy_code'
   | 'product_attributes'
+  | 'order_analytics'
+  | 'order_ops_assistant'
   | 'new_session';
 
 const DIRECT_SUBMIT_LOCK_MESSAGE =
@@ -649,6 +651,23 @@ export function AiAdminPage(props: AiAdminPageProps) {
       'РЎС„РѕСЂРјРёСЂСѓР№ С‚РѕР»СЊРєРѕ РїРѕРґС‚РІРµСЂР¶РґР°РµРјС‹Рµ Р°С‚СЂРёР±СѓС‚С‹ Рё РїРѕРјРµС‚СЊ РЅРµРїРѕРґС‚РІРµСЂР¶РґР°РµРјС‹Рµ РєР°Рє not_specified.',
     assistantPrompt: ''
   });
+  const [orderAnalyticsForm, setOrderAnalyticsForm] = React.useState({
+    title: 'Order Analytics',
+    locale: '',
+    orderIds: '',
+    dateFrom: '',
+    dateTo: '',
+    focus: '',
+    assistantPrompt: ''
+  });
+  const [orderOpsForm, setOrderOpsForm] = React.useState({
+    title: 'Order Operations Assistant',
+    locale: '',
+    orderId: '',
+    recommendedAction: '',
+    context: '',
+    assistantPrompt: ''
+  });
   const [blogForm, setBlogForm] = React.useState({
     title: 'Blog Draft',
     locale: '',
@@ -705,6 +724,36 @@ export function AiAdminPage(props: AiAdminPageProps) {
       ) ?? null,
     [taskProfiles]
   );
+  const orderAnalyticsTaskProfile = React.useMemo(
+    () =>
+      taskProfiles.find(
+        (profile) => profile.slug === 'order_analytics' && profile.isActive
+      ) ?? null,
+    [taskProfiles]
+  );
+  const orderOpsTaskProfile = React.useMemo(
+    () =>
+      taskProfiles.find(
+        (profile) => profile.slug === 'order_ops_assistant' && profile.isActive
+      ) ?? null,
+    [taskProfiles]
+  );
+  const selectedTaskProfile = React.useMemo(
+    () =>
+      taskProfiles.find(
+        (profile) => profile.id === sessionForm.taskProfileId
+      ) ?? null,
+    [sessionForm.taskProfileId, taskProfiles]
+  );
+  const canSubmitOrderAnalytics =
+    !!orderAnalyticsTaskProfile &&
+    splitCsv(orderAnalyticsForm.orderIds).length > 0 &&
+    (!selectedTaskProfile || selectedTaskProfile.slug === 'order_analytics');
+  const canSubmitOrderOps =
+    !!orderOpsTaskProfile &&
+    orderOpsForm.orderId.trim().length > 0 &&
+    (!selectedTaskProfile ||
+      selectedTaskProfile.slug === 'order_ops_assistant');
   const productAttributesParsedImageUrls = React.useMemo(
     () => parseCsvUrls(productAttributesForm.imageUrls),
     [productAttributesForm.imageUrls]
@@ -962,6 +1011,45 @@ export function AiAdminPage(props: AiAdminPageProps) {
     },
     [props]
   );
+
+  const startOrderTask = async (
+    title: string,
+    taskProfileId: string,
+    locale: string,
+    taskInputJson: string,
+    feedbackLabel: string
+  ) => {
+    const started = await gql<
+      {
+        runAiTaskJob: {
+          session: { session: { id: string; title: string } };
+        };
+      },
+      { input: Record<string, unknown> }
+    >(
+      RUN_TASK_JOB_MUTATION,
+      {
+        input: {
+          title,
+          providerProfileId: sessionForm.providerProfileId || null,
+          taskProfileId,
+          executionMode: 'DIRECT',
+          locale: locale || null,
+          taskInputJson,
+          metadata: '{}'
+        }
+      },
+      props
+    ).catch((err: Error) => {
+      setError(err.message);
+      return null;
+    });
+    if (!started) return;
+    const session = started.runAiTaskJob.session.session;
+    setFeedback(`${feedbackLabel} \`${session.title}\` completed.`);
+    await loadBootstrap();
+    await loadSession(session.id);
+  };
 
   React.useEffect(() => {
     void loadBootstrap();
@@ -2853,6 +2941,281 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     {isSubmittingProductAttributes
                       ? 'GeneratingвЂ¦'
                       : 'Generate product attributes'}
+                  </button>
+                </form>
+              </Card>
+            ) : null}
+
+            {!diagnosticsOnly ? (
+              <Card title='Order Analytics'>
+                <form
+                  className='space-y-3'
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    if (isSubmittingDirectJob) return;
+                    if (!orderAnalyticsTaskProfile) {
+                      setError(
+                        'Task profile `order_analytics` is not configured. Create or activate it first.'
+                      );
+                      return;
+                    }
+                    if (
+                      selectedTaskProfile &&
+                      selectedTaskProfile.slug !== 'order_analytics'
+                    ) {
+                      setError(
+                        'Current task profile is not `order_analytics`. Switch profile or use the configured profile.'
+                      );
+                      return;
+                    }
+                    const orderIds = splitCsv(orderAnalyticsForm.orderIds);
+                    if (orderIds.length === 0) {
+                      setError('At least one order id is required.');
+                      return;
+                    }
+                    const accepted = await runDirectSubmit(
+                      'order_analytics',
+                      async () => {
+                        await startOrderTask(
+                          orderAnalyticsForm.title.trim() || 'Order Analytics',
+                          selectedTaskProfile?.id ??
+                            orderAnalyticsTaskProfile.id,
+                          orderAnalyticsForm.locale.trim(),
+                          JSON.stringify({
+                            order_ids: orderIds,
+                            date_from:
+                              orderAnalyticsForm.dateFrom.trim() || null,
+                            date_to: orderAnalyticsForm.dateTo.trim() || null,
+                            focus: orderAnalyticsForm.focus.trim() || null,
+                            assistant_prompt:
+                              orderAnalyticsForm.assistantPrompt.trim() || null
+                          }),
+                          'Order analytics job'
+                        );
+                      }
+                    );
+                    if (accepted === DIRECT_SUBMIT_LOCK_REJECTED) {
+                      showDirectSubmitLockRejected();
+                    }
+                  }}
+                >
+                  <Input
+                    label='Job title'
+                    value={orderAnalyticsForm.title}
+                    onChange={(title) =>
+                      setOrderAnalyticsForm((current) => ({
+                        ...current,
+                        title
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Locale'
+                    placeholder='auto (request locale -> tenant default -> en)'
+                    value={orderAnalyticsForm.locale}
+                    onChange={(locale) =>
+                      setOrderAnalyticsForm((current) => ({
+                        ...current,
+                        locale
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Order ids (csv)'
+                    placeholder='UUID, UUID or one UUID per line'
+                    value={orderAnalyticsForm.orderIds}
+                    onChange={(orderIds) =>
+                      setOrderAnalyticsForm((current) => ({
+                        ...current,
+                        orderIds
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Date from (RFC 3339, optional)'
+                    placeholder='2026-07-01T00:00:00Z'
+                    value={orderAnalyticsForm.dateFrom}
+                    onChange={(dateFrom) =>
+                      setOrderAnalyticsForm((current) => ({
+                        ...current,
+                        dateFrom
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Date to (RFC 3339, optional)'
+                    placeholder='2026-07-31T23:59:59Z'
+                    value={orderAnalyticsForm.dateTo}
+                    onChange={(dateTo) =>
+                      setOrderAnalyticsForm((current) => ({
+                        ...current,
+                        dateTo
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Analysis focus'
+                    value={orderAnalyticsForm.focus}
+                    onChange={(focus) =>
+                      setOrderAnalyticsForm((current) => ({
+                        ...current,
+                        focus
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Assistant prompt'
+                    value={orderAnalyticsForm.assistantPrompt}
+                    onChange={(assistantPrompt) =>
+                      setOrderAnalyticsForm((current) => ({
+                        ...current,
+                        assistantPrompt
+                      }))
+                    }
+                  />
+                  <div className='border-border text-muted-foreground rounded-lg border px-3 py-2 text-sm'>
+                    Provider: {sessionForm.providerProfileId || 'optional'}
+                    <br />
+                    Task profile:{' '}
+                    {selectedTaskProfile?.id ??
+                      orderAnalyticsTaskProfile?.id ??
+                      'order_analytics (missing or inactive)'}
+                    <br />
+                    Mode: direct; output is advisory and requires review.
+                  </div>
+                  <button
+                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
+                    type='submit'
+                    disabled={!canSubmitOrderAnalytics || isSubmittingDirectJob}
+                  >
+                    {activeDirectSubmit === 'order_analytics'
+                      ? 'Submitting...'
+                      : 'Generate order analytics'}
+                  </button>
+                </form>
+              </Card>
+            ) : null}
+
+            {!diagnosticsOnly ? (
+              <Card title='Order Operations Assistant'>
+                <form
+                  className='space-y-3'
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    if (isSubmittingDirectJob) return;
+                    if (!orderOpsTaskProfile) {
+                      setError(
+                        'Task profile `order_ops_assistant` is not configured. Create or activate it first.'
+                      );
+                      return;
+                    }
+                    if (
+                      selectedTaskProfile &&
+                      selectedTaskProfile.slug !== 'order_ops_assistant'
+                    ) {
+                      setError(
+                        'Current task profile is not `order_ops_assistant`. Switch profile or use the configured profile.'
+                      );
+                      return;
+                    }
+                    const orderId = orderOpsForm.orderId.trim();
+                    if (!orderId) {
+                      setError('Order id is required.');
+                      return;
+                    }
+                    const accepted = await runDirectSubmit(
+                      'order_ops_assistant',
+                      async () => {
+                        await startOrderTask(
+                          orderOpsForm.title.trim() ||
+                            'Order Operations Assistant',
+                          selectedTaskProfile?.id ?? orderOpsTaskProfile.id,
+                          orderOpsForm.locale.trim(),
+                          JSON.stringify({
+                            order_id: orderId,
+                            recommended_action:
+                              orderOpsForm.recommendedAction.trim() || null,
+                            context: orderOpsForm.context.trim() || null,
+                            assistant_prompt:
+                              orderOpsForm.assistantPrompt.trim() || null
+                          }),
+                          'Order operations assistant job'
+                        );
+                      }
+                    );
+                    if (accepted === DIRECT_SUBMIT_LOCK_REJECTED) {
+                      showDirectSubmitLockRejected();
+                    }
+                  }}
+                >
+                  <Input
+                    label='Job title'
+                    value={orderOpsForm.title}
+                    onChange={(title) =>
+                      setOrderOpsForm((current) => ({ ...current, title }))
+                    }
+                  />
+                  <Input
+                    label='Locale'
+                    placeholder='auto (request locale -> tenant default -> en)'
+                    value={orderOpsForm.locale}
+                    onChange={(locale) =>
+                      setOrderOpsForm((current) => ({ ...current, locale }))
+                    }
+                  />
+                  <Input
+                    label='Order id'
+                    value={orderOpsForm.orderId}
+                    onChange={(orderId) =>
+                      setOrderOpsForm((current) => ({ ...current, orderId }))
+                    }
+                  />
+                  <Input
+                    label='Requested action (optional)'
+                    value={orderOpsForm.recommendedAction}
+                    onChange={(recommendedAction) =>
+                      setOrderOpsForm((current) => ({
+                        ...current,
+                        recommendedAction
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Operator context'
+                    value={orderOpsForm.context}
+                    onChange={(context) =>
+                      setOrderOpsForm((current) => ({ ...current, context }))
+                    }
+                  />
+                  <Input
+                    label='Assistant prompt'
+                    value={orderOpsForm.assistantPrompt}
+                    onChange={(assistantPrompt) =>
+                      setOrderOpsForm((current) => ({
+                        ...current,
+                        assistantPrompt
+                      }))
+                    }
+                  />
+                  <div className='border-border text-muted-foreground rounded-lg border px-3 py-2 text-sm'>
+                    Provider: {sessionForm.providerProfileId || 'optional'}
+                    <br />
+                    Task profile:{' '}
+                    {selectedTaskProfile?.id ??
+                      orderOpsTaskProfile?.id ??
+                      'order_ops_assistant (missing or inactive)'}
+                    <br />
+                    Mode: direct; sensitive advisory output cannot modify
+                    orders.
+                  </div>
+                  <button
+                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
+                    type='submit'
+                    disabled={!canSubmitOrderOps || isSubmittingDirectJob}
+                  >
+                    {activeDirectSubmit === 'order_ops_assistant'
+                      ? 'Submitting...'
+                      : 'Run order operations assistant'}
                   </button>
                 </form>
               </Card>

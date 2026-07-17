@@ -33,7 +33,7 @@ use crate::model::{
 };
 use crate::router::AiRouter;
 use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent};
-use crate::{AiError, AiResult, McpClientAdapter};
+use crate::{AiError, AiResult, McpClientAdapter, ProviderSlug};
 
 pub use helpers::*;
 pub use mapping::*;
@@ -248,6 +248,21 @@ async fn agent_execution_context_for_run(
 }
 
 pub struct AiManagementService;
+
+async fn runtime_inference_engine(
+    runtime: &AiHostRuntime,
+    provider_slug: &ProviderSlug,
+    provider_config: &crate::AiProviderConfig,
+) -> AiResult<Arc<dyn InferenceEngine>> {
+    #[cfg(test)]
+    if let Some(engine) = runtime.test_inference_engine() {
+        return Ok(engine);
+    }
+
+    Ok(Arc::<dyn InferenceEngine>::from(
+        inference_for_slug(provider_slug, provider_config, runtime.secret_registry()).await?,
+    ))
+}
 
 impl AiManagementService {
     /// Atomically claims a scheduler-ready stage. Only the holder of the
@@ -1879,6 +1894,493 @@ mod agent_principal_rbac_tests {
     }
 }
 
+#[cfg(test)]
+mod product_agent_workflow_persistence_tests {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use chrono::{Duration, Utc};
+    use sea_orm::{
+        ActiveModelTrait, ColumnTrait, ConnectionTrait, Database, DbBackend, EntityTrait,
+        QueryFilter, Set, Statement,
+    };
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::{
+        ai_agent_workflow_stages, AiManagementService, AiOperatorContext,
+        CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput,
+        CreateAiAgentWorkflowRunInput, CreateAiTaskProfileInput, ExecutionMode,
+        ResolveAiAgentWorkflowStageApprovalInput,
+    };
+    use crate::{
+        engine::InferenceEngine, entities::ai_provider_profiles, AiHostRuntime, AiProviderConfig,
+        AiProviderTarget, AiProviderTargetCatalog, ChatMessage, ChatMessageRole,
+        ProviderCapability, ProviderChatRequest, ProviderChatResponse, ProviderEgressPolicy,
+        ProviderStructuredRequest, ProviderTargetAuth, ProviderTestResult,
+    };
+    use rustok_api::{Permission, TenantRbacCatalog, TenantRbacPermission, TenantRbacRole};
+    use rustok_core::registry::ModuleRegistry;
+    use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+    use rustok_secrets::SecretResolverRegistry;
+
+    struct ProductAgentRoleCatalog;
+
+    struct WorkflowAttributesEngine;
+
+    #[async_trait]
+    impl InferenceEngine for WorkflowAttributesEngine {
+        async fn test_connection(
+            &self,
+            _config: &AiProviderConfig,
+        ) -> crate::AiResult<ProviderTestResult> {
+            unreachable!("workflow test uses deterministic structured generation")
+        }
+
+        async fn complete(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            unreachable!("workflow attributes task uses structured generation")
+        }
+
+        async fn complete_stream(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+            _emitter: Option<crate::ProviderStreamEmitter>,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            Ok(ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: Some("Product attributes are ready for review.".to_string()),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({}),
+                },
+                finish_reason: Some("stop".to_string()),
+                raw_payload: json!({}),
+            })
+        }
+
+        async fn complete_structured(
+            &self,
+            _request: ProviderStructuredRequest,
+        ) -> crate::AiResult<serde_json::Value> {
+            Ok(json!({
+                "brand": "Example brand",
+                "material": "Cotton",
+                "color": "Blue",
+                "size": null,
+                "dimensions": null,
+                "compatibility": null,
+                "care_instructions": "Machine wash cold",
+                "hazmat": null,
+                "flex_attributes": [{"key": "fabric_weight", "value": "180 gsm"}]
+            }))
+        }
+    }
+
+    impl TenantRbacCatalog for ProductAgentRoleCatalog {
+        fn roles(&self, _tenant_id: Uuid) -> Vec<TenantRbacRole> {
+            vec![TenantRbacRole {
+                slug: "product-ai-operator".to_string(),
+                display_name: "Product AI operator".to_string(),
+                permission_slugs: vec![
+                    Permission::AI_TASKS_TEXT_RUN.to_string(),
+                    Permission::PRODUCTS_UPDATE.to_string(),
+                ],
+            }]
+        }
+
+        fn permissions(&self, _tenant_id: Uuid) -> Vec<TenantRbacPermission> {
+            Vec::new()
+        }
+    }
+
+    async fn database() -> sea_orm::DatabaseConnection {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("product agent workflow database");
+        for statement in [
+            "CREATE TABLE ai_provider_profiles (\
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, slug TEXT NOT NULL, \
+                display_name TEXT NOT NULL, provider_slug TEXT NOT NULL, \
+                provider_target_id TEXT NOT NULL, model TEXT NOT NULL, credential_refs JSON NOT NULL, \
+                temperature REAL NULL, max_tokens INTEGER NULL, is_active BOOLEAN NOT NULL, \
+                capabilities JSON NOT NULL, allowed_task_profiles JSON NOT NULL, \
+                denied_task_profiles JSON NOT NULL, restricted_role_slugs JSON NOT NULL, \
+                metadata JSON NOT NULL, created_by UUID NULL, updated_by UUID NULL, \
+                created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL)",
+            "CREATE TABLE ai_agent_principals (\
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, slug TEXT NOT NULL, \
+                descriptor_owner TEXT NOT NULL, descriptor_slug TEXT NOT NULL, \
+                role_slugs JSON NOT NULL, permission_slugs JSON NOT NULL, is_active BOOLEAN NOT NULL, \
+                metadata JSON NOT NULL, created_by UUID NULL, updated_by UUID NULL, \
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE ai_agent_model_assignments (\
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, agent_principal_id UUID NOT NULL, \
+                provider_profile_id UUID NOT NULL, model_override TEXT NULL, execution_mode TEXT NOT NULL, \
+                is_active BOOLEAN NOT NULL, metadata JSON NOT NULL, created_by UUID NULL, \
+                updated_by UUID NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE ai_agent_workflow_runs (\
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, workflow_owner TEXT NOT NULL, \
+                workflow_slug TEXT NOT NULL, initiator_id UUID NOT NULL, status TEXT NOT NULL, \
+                input_payload JSON NOT NULL, output_payload JSON NULL, metadata JSON NOT NULL, \
+                created_at TIMESTAMPTZ NOT NULL, started_at TIMESTAMPTZ NULL, \
+                completed_at TIMESTAMPTZ NULL, updated_at TIMESTAMPTZ NOT NULL)",
+            "CREATE TABLE ai_agent_workflow_stages (\
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, workflow_run_id UUID NOT NULL, \
+                stage_id TEXT NOT NULL, agent_principal_id UUID NOT NULL, \
+                model_assignment_id UUID NULL, run_id UUID NULL, status TEXT NOT NULL, \
+                requires_approval BOOLEAN NOT NULL, input_payload JSON NOT NULL, \
+                output_payload JSON NULL, error_message TEXT NULL, metadata JSON NOT NULL, \
+                lease_token UUID NULL, lease_expires_at TIMESTAMPTZ NULL, attempt_count INTEGER NOT NULL, \
+                created_at TIMESTAMPTZ NOT NULL, started_at TIMESTAMPTZ NULL, \
+                completed_at TIMESTAMPTZ NULL, updated_at TIMESTAMPTZ NOT NULL)",
+            "CREATE TABLE ai_task_profiles (\
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, slug TEXT NOT NULL, display_name TEXT NOT NULL, \
+                description TEXT NULL, target_capability TEXT NOT NULL, system_prompt TEXT NULL, \
+                allowed_provider_profile_ids JSON NOT NULL, preferred_provider_profile_ids JSON NOT NULL, \
+                fallback_strategy TEXT NOT NULL, tool_profile_id UUID NULL, approval_policy JSON NOT NULL, \
+                default_execution_mode TEXT NOT NULL, is_active BOOLEAN NOT NULL, metadata JSON NOT NULL, \
+                created_by UUID NULL, updated_by UUID NULL, \
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE ai_chat_sessions (\
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, title TEXT NOT NULL, \
+                provider_profile_id UUID NOT NULL, task_profile_id UUID NULL, tool_profile_id UUID NULL, \
+                execution_mode TEXT NOT NULL, requested_locale TEXT NULL, resolved_locale TEXT NOT NULL, \
+                status TEXT NOT NULL, created_by UUID NULL, metadata JSON NOT NULL, \
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE ai_chat_messages (\
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, session_id UUID NOT NULL, run_id UUID NULL, \
+                role TEXT NOT NULL, content TEXT NULL, name TEXT NULL, tool_call_id TEXT NULL, \
+                tool_calls JSON NOT NULL, metadata JSON NOT NULL, created_by UUID NULL, \
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE ai_chat_runs (\
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, session_id UUID NOT NULL, \
+                provider_profile_id UUID NOT NULL, task_profile_id UUID NULL, tool_profile_id UUID NULL, \
+                status TEXT NOT NULL, model TEXT NOT NULL, execution_mode TEXT NOT NULL, \
+                execution_path TEXT NOT NULL, requested_locale TEXT NULL, resolved_locale TEXT NOT NULL, \
+                temperature REAL NULL, max_tokens INTEGER NULL, error_message TEXT NULL, \
+                pending_approval_id UUID NULL, decision_trace JSON NOT NULL, metadata JSON NOT NULL, \
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, started_at TIMESTAMPTZ NOT NULL, \
+                completed_at TIMESTAMPTZ NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE ai_tool_traces (\
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, session_id UUID NOT NULL, run_id UUID NOT NULL, \
+                tool_name TEXT NOT NULL, status TEXT NOT NULL, input_payload JSON NOT NULL, \
+                output_payload JSON NULL, error_message TEXT NULL, duration_ms INTEGER NULL, \
+                sensitive BOOLEAN NOT NULL, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL)",
+            "CREATE TABLE ai_approval_requests (\
+                id UUID PRIMARY KEY, tenant_id UUID NOT NULL, session_id UUID NOT NULL, run_id UUID NOT NULL, \
+                approval_batch_id TEXT NOT NULL, tool_name TEXT NOT NULL, tool_call_id TEXT NOT NULL, \
+                tool_input JSON NOT NULL, reason TEXT NULL, status TEXT NOT NULL, resolved_by UUID NULL, \
+                resolved_at TIMESTAMPTZ NULL, metadata JSON NOT NULL, \
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+        ] {
+            database
+                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .await
+                .expect("product agent workflow schema");
+        }
+        database
+    }
+
+    fn operator() -> AiOperatorContext {
+        AiOperatorContext {
+            tenant_id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            permissions: [
+                Permission::AI_APPROVALS_RESOLVE,
+                Permission::AI_TASKS_TEXT_RUN,
+                Permission::PRODUCTS_UPDATE,
+            ]
+            .into_iter()
+            .collect(),
+            role_slugs: vec!["product-ai-operator".to_string()],
+            preferred_locale: Some("en".to_string()),
+        }
+    }
+
+    async fn stage(
+        database: &sea_orm::DatabaseConnection,
+        tenant_id: Uuid,
+        workflow_run_id: Uuid,
+        stage_id: &str,
+    ) -> ai_agent_workflow_stages::Model {
+        ai_agent_workflow_stages::Entity::find()
+            .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
+            .filter(ai_agent_workflow_stages::Column::WorkflowRunId.eq(workflow_run_id))
+            .filter(ai_agent_workflow_stages::Column::StageId.eq(stage_id))
+            .one(database)
+            .await
+            .expect("product agent workflow stage query")
+            .expect("product agent workflow stage")
+    }
+
+    #[tokio::test]
+    async fn product_enrichment_workflow_persists_owner_bindings_and_approval_gates() {
+        let database = database().await;
+        let operator = operator();
+        let provider_id = Uuid::new_v4();
+        let now = Utc::now();
+        ai_provider_profiles::ActiveModel {
+            id: Set(provider_id),
+            tenant_id: Set(operator.tenant_id),
+            slug: Set("product-agent-provider".to_string()),
+            display_name: Set("Product agent provider".to_string()),
+            provider_slug: Set("openai_compatible".to_string()),
+            provider_target_id: Set("openai_compatible".to_string()),
+            model: Set("test-model".to_string()),
+            credential_refs: Set(json!({})),
+            temperature: Set(None),
+            max_tokens: Set(None),
+            is_active: Set(true),
+            capabilities: Set(json!([
+                ProviderCapability::TextGeneration.slug(),
+                ProviderCapability::StructuredGeneration.slug(),
+            ])),
+            allowed_task_profiles: Set(json!([])),
+            denied_task_profiles: Set(json!([])),
+            restricted_role_slugs: Set(json!([])),
+            metadata: Set(json!({})),
+            created_by: Set(Some(operator.user_id)),
+            updated_by: Set(Some(operator.user_id)),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&database)
+        .await
+        .expect("product agent provider profile");
+
+        let role_catalog = ProductAgentRoleCatalog;
+        let copy_principal = AiManagementService::create_agent_principal(
+            &database,
+            &operator,
+            &role_catalog,
+            CreateAiAgentPrincipalInput {
+                slug: "product-copywriter-agent".to_string(),
+                descriptor_owner: "rustok-ai-product".to_string(),
+                descriptor_slug: "product_copywriter".to_string(),
+                role_slugs: vec!["product-ai-operator".to_string()],
+                metadata: json!({}),
+            },
+        )
+        .await
+        .expect("product copywriter principal");
+        let attributes_principal = AiManagementService::create_agent_principal(
+            &database,
+            &operator,
+            &role_catalog,
+            CreateAiAgentPrincipalInput {
+                slug: "product-attribute-agent".to_string(),
+                descriptor_owner: "rustok-ai-product".to_string(),
+                descriptor_slug: "product_attribute_enricher".to_string(),
+                role_slugs: vec!["product-ai-operator".to_string()],
+                metadata: json!({}),
+            },
+        )
+        .await
+        .expect("product attribute principal");
+        let copy_assignment = AiManagementService::create_agent_model_assignment(
+            &database,
+            &operator,
+            CreateAiAgentModelAssignmentInput {
+                agent_principal_id: copy_principal.id,
+                provider_profile_id: provider_id,
+                model_override: None,
+                execution_mode: ExecutionMode::Direct,
+                metadata: json!({}),
+            },
+        )
+        .await
+        .expect("product copywriter assignment");
+        let attributes_assignment = AiManagementService::create_agent_model_assignment(
+            &database,
+            &operator,
+            CreateAiAgentModelAssignmentInput {
+                agent_principal_id: attributes_principal.id,
+                provider_profile_id: provider_id,
+                model_override: None,
+                execution_mode: ExecutionMode::Direct,
+                metadata: json!({}),
+            },
+        )
+        .await
+        .expect("product attribute assignment");
+        let attributes_task = AiManagementService::create_task_profile(
+            &database,
+            &operator,
+            CreateAiTaskProfileInput {
+                slug: rustok_ai_product::PRODUCT_ATTRIBUTES_TASK_SLUG.to_string(),
+                display_name: "Product attributes".to_string(),
+                description: None,
+                target_capability: ProviderCapability::StructuredGeneration,
+                system_prompt: None,
+                allowed_provider_profile_ids: vec![provider_id],
+                preferred_provider_profile_ids: vec![provider_id],
+                fallback_strategy: "ordered".to_string(),
+                tool_profile_id: None,
+                approval_policy: json!({}),
+                default_execution_mode: ExecutionMode::Direct,
+                metadata: json!({}),
+            },
+        )
+        .await
+        .expect("product attributes task profile");
+
+        let product_id = Uuid::new_v4();
+        let stage_inputs = BTreeMap::from([
+            ("copy".to_string(), json!({"product_id": product_id})),
+            ("attributes".to_string(), json!({"product_id": product_id})),
+        ]);
+        let workflow_run_id = AiManagementService::create_agent_workflow_run(
+            &database,
+            &operator,
+            CreateAiAgentWorkflowRunInput {
+                workflow_owner: "rustok-ai-product".to_string(),
+                workflow_slug: "product_enrichment".to_string(),
+                stage_principal_ids: BTreeMap::from([
+                    ("copy".to_string(), copy_principal.id),
+                    ("attributes".to_string(), attributes_principal.id),
+                ]),
+                stage_model_assignment_ids: BTreeMap::from([
+                    ("copy".to_string(), copy_assignment.id),
+                    ("attributes".to_string(), attributes_assignment.id),
+                ]),
+                stage_input_payloads: stage_inputs,
+                input_payload: json!({"product_id": product_id}),
+                metadata: json!({}),
+            },
+        )
+        .await
+        .expect("product enrichment workflow");
+
+        let copy_stage = stage(&database, operator.tenant_id, workflow_run_id, "copy").await;
+        let attributes_stage =
+            stage(&database, operator.tenant_id, workflow_run_id, "attributes").await;
+        assert_eq!(copy_stage.status, "waiting_approval");
+        assert_eq!(attributes_stage.status, "pending");
+
+        assert!(AiManagementService::resolve_agent_workflow_stage_approval(
+            &database,
+            &operator,
+            copy_stage.id,
+            ResolveAiAgentWorkflowStageApprovalInput {
+                approved: true,
+                reason: Some("copy reviewed".to_string()),
+            },
+        )
+        .await
+        .expect("copy stage approval"));
+        let copy_lease = Uuid::new_v4();
+        assert!(AiManagementService::claim_agent_workflow_stage(
+            &database,
+            operator.tenant_id,
+            copy_stage.id,
+            copy_lease,
+            Utc::now() + Duration::minutes(1),
+        )
+        .await
+        .expect("copy stage claim"));
+        assert!(AiManagementService::complete_agent_workflow_stage(
+            &database,
+            operator.tenant_id,
+            copy_stage.id,
+            copy_lease,
+            json!({"ai_run_id": Uuid::new_v4()}),
+        )
+        .await
+        .expect("copy stage completion"));
+
+        let attributes_stage =
+            stage(&database, operator.tenant_id, workflow_run_id, "attributes").await;
+        assert_eq!(attributes_stage.status, "waiting_approval");
+        assert!(AiManagementService::resolve_agent_workflow_stage_approval(
+            &database,
+            &operator,
+            attributes_stage.id,
+            ResolveAiAgentWorkflowStageApprovalInput {
+                approved: true,
+                reason: Some("attributes reviewed".to_string()),
+            },
+        )
+        .await
+        .expect("attributes stage approval"));
+        let attributes_lease = Uuid::new_v4();
+        assert!(AiManagementService::claim_agent_workflow_stage(
+            &database,
+            operator.tenant_id,
+            attributes_stage.id,
+            attributes_lease,
+            Utc::now() + Duration::minutes(1),
+        )
+        .await
+        .expect("attributes stage claim"));
+        let egress_policy = ProviderEgressPolicy::default();
+        let provider_targets = AiProviderTargetCatalog::new_with_egress_policy(
+            vec![AiProviderTarget {
+                id: crate::ProviderTargetId::new("openai_compatible").expect("provider target id"),
+                provider_slug: crate::ProviderSlug::openai_compatible(),
+                display_name: "Workflow test provider".to_string(),
+                auth: ProviderTargetAuth::None,
+                settings: BTreeMap::from([(
+                    "base_url".to_string(),
+                    json!("https://provider.example.test/v1"),
+                )]),
+            }],
+            &egress_policy,
+        )
+        .expect("workflow test provider targets");
+        let runtime = AiHostRuntime::new(
+            database.clone(),
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(database.clone()))),
+            ModuleRegistry::new(),
+            SecretResolverRegistry::builder().build(),
+            egress_policy,
+            provider_targets,
+        )
+        .with_test_inference_engine(Arc::new(WorkflowAttributesEngine));
+        let run = AiManagementService::execute_agent_workflow_stage(
+            &runtime,
+            &operator,
+            attributes_stage.id,
+            attributes_lease,
+        )
+        .await
+        .expect("canonical product attributes stage execution");
+        assert_eq!(run.status, "completed");
+        assert_eq!(run.task_profile_id, Some(attributes_task.id));
+
+        let completed_attributes =
+            stage(&database, operator.tenant_id, workflow_run_id, "attributes").await;
+        assert_eq!(completed_attributes.status, "completed");
+        assert_eq!(completed_attributes.run_id, Some(run.id));
+        assert_eq!(
+            run.metadata
+                .get("product_context")
+                .and_then(|value| value.get("source"))
+                .and_then(serde_json::Value::as_str),
+            Some("degraded")
+        );
+
+        let workflow_run = super::ai_agent_workflow_runs::Entity::find_by_id(workflow_run_id)
+            .one(&database)
+            .await
+            .expect("product enrichment workflow query")
+            .expect("product enrichment workflow run");
+        assert_eq!(workflow_run.status, "completed");
+    }
+}
+
 impl AiManagementService {
     pub fn metrics_snapshot() -> AiRuntimeMetricsSnapshot {
         ai_metrics::metrics_snapshot()
@@ -3315,10 +3817,8 @@ impl AiManagementService {
                     runtime.provider_targets(),
                     runtime.egress_policy(),
                 )?;
-                let provider = Arc::<dyn InferenceEngine>::from(
-                    inference_for_slug(&provider_slug, &provider_config, runtime.secret_registry())
-                        .await?,
-                );
+                let provider =
+                    runtime_inference_engine(runtime, &provider_slug, &provider_config).await?;
                 let direct_result = match handler
                     .execute(
                         runtime,
@@ -3423,9 +3923,7 @@ impl AiManagementService {
             runtime.provider_targets(),
             runtime.egress_policy(),
         )?;
-        let provider = Arc::<dyn InferenceEngine>::from(
-            inference_for_slug(&provider_slug, &provider_config, runtime.secret_registry()).await?,
-        );
+        let provider = runtime_inference_engine(runtime, &provider_slug, &provider_config).await?;
         let access_context = access_context_for_operator(operator);
         let adapter = Arc::new(InProcessMcpAdapter::new(runtime, access_context)?);
         let policy = policy_from_model(tool_profile.as_ref());

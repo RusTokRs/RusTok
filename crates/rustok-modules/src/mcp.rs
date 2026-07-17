@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -9,7 +10,11 @@ use rustok_sandbox::{
     ExecutionPhase, SandboxError, SandboxResult, SandboxSubject,
 };
 
-use crate::ArtifactDataScope;
+use crate::data::artifact_data_scope_for_execution;
+use crate::{
+    resolve_granted_artifact_capability, ArtifactCapabilityBrokerResolver,
+    ArtifactCapabilityExecution, ArtifactDataScope,
+};
 
 const MAX_ARTIFACT_MCP_OUTPUT_BYTES: usize = 64 * 1024;
 
@@ -107,6 +112,47 @@ where
             });
         }
         Ok(CapabilityResponse { output })
+    }
+}
+
+/// Dynamic `platform.mcp` owner route. It derives the MCP authorization scope
+/// from the exact admitted installation and delegates only to the deployment's
+/// explicit MCP invoker; no artifact-controlled endpoint is ever resolved.
+#[derive(Clone)]
+pub struct ArtifactMcpCapabilityBrokerResolver<I> {
+    db: sea_orm::DatabaseConnection,
+    invoker: I,
+}
+
+impl<I> ArtifactMcpCapabilityBrokerResolver<I>
+where
+    I: ArtifactMcpInvoker + Clone,
+{
+    pub fn new(db: sea_orm::DatabaseConnection, invoker: I) -> Self {
+        Self { db, invoker }
+    }
+}
+
+#[async_trait]
+impl<I> ArtifactCapabilityBrokerResolver for ArtifactMcpCapabilityBrokerResolver<I>
+where
+    I: ArtifactMcpInvoker + Clone + Send + Sync + 'static,
+{
+    async fn resolve_broker(
+        &self,
+        execution: &ArtifactCapabilityExecution,
+        capability: &CapabilityName,
+    ) -> SandboxResult<Arc<dyn CapabilityBroker>> {
+        if capability.as_str() != "platform.mcp" {
+            return Err(SandboxError::CapabilityDenied(capability.clone()));
+        }
+        let installation =
+            resolve_granted_artifact_capability(&self.db, execution, capability).await?;
+        let scope = artifact_data_scope_for_execution(&installation, execution, capability)?;
+        Ok(Arc::new(ArtifactMcpCapabilityBroker::new(
+            self.invoker.clone(),
+            scope,
+        )))
     }
 }
 
@@ -217,6 +263,7 @@ mod tests {
         CapabilityCall {
             execution_id: Uuid::new_v4(),
             subject: SandboxSubject::ModuleArtifact {
+                installation_id: Uuid::new_v4(),
                 slug: "sample_module".to_string(),
                 version: "1.0.0".to_string(),
                 digest: "sha256:sample".to_string(),

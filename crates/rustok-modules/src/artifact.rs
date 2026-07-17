@@ -1,7 +1,10 @@
 use chrono::{DateTime, Utc};
+use chrono_tz::Tz;
+use cron::Schedule;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::str::FromStr;
 use thiserror::Error;
 
 use rustok_api::{
@@ -751,7 +754,9 @@ fn valid_digest(value: &str) -> bool {
             .all(|character| character.is_ascii_hexdigit())
 }
 
-fn valid_event_topic(value: &str) -> bool {
+/// Validates an admitted event subscription. A terminal wildcard is permitted
+/// only for subscriptions; delivered platform event types must be exact.
+pub(crate) fn valid_event_topic(value: &str) -> bool {
     if value.is_empty() || value.len() > 128 || value == "*" {
         return false;
     }
@@ -770,19 +775,61 @@ fn valid_event_topic(value: &str) -> bool {
     })
 }
 
+/// Matches one admitted exact or terminal-wildcard subscription against an
+/// exact platform event type. Callers must validate the delivered event type
+/// separately; wildcard syntax is never valid in a delivered envelope.
+pub(crate) fn event_topic_matches(subscription: &str, event_type: &str) -> bool {
+    subscription == event_type
+        || subscription
+            .strip_suffix(".*")
+            .is_some_and(|prefix| event_type.starts_with(&format!("{prefix}.")))
+}
+
 impl ModuleScheduleBinding {
     fn validate(&self) -> bool {
-        let cron_fields = self.cron.split_whitespace().collect::<Vec<_>>();
-        matches!(cron_fields.len(), 5 | 6)
-            && cron_fields.iter().all(|field| {
-                !field.is_empty()
-                    && field.chars().all(|character| {
-                        character.is_ascii_alphanumeric()
-                            || matches!(character, '*' | '/' | ',' | '-' | '?' | '#')
-                    })
-            })
-            && valid_timezone(&self.timezone)
+        schedule_cron_expression(&self.cron)
+            .is_some_and(|expression| Schedule::from_str(&expression).is_ok())
+            && Tz::from_str(&self.timezone).is_ok()
     }
+}
+
+/// Converts the admitted five-field minute cron form to the six-field parser
+/// form with an explicit zero-second prefix. Six-field descriptors already
+/// carry `second minute hour day month weekday` directly.
+pub(crate) fn schedule_cron_expression(value: &str) -> Option<String> {
+    let fields = value.split_whitespace().collect::<Vec<_>>();
+    if !matches!(fields.len(), 5 | 6)
+        || fields.iter().any(|field| {
+            field.is_empty()
+                || !field.chars().all(|character| {
+                    character.is_ascii_alphanumeric()
+                        || matches!(character, '*' | '/' | ',' | '-' | '?' | '#')
+                })
+        })
+    {
+        return None;
+    }
+    Some(match fields.len() {
+        5 => format!("0 {value}"),
+        6 => value.to_string(),
+        _ => unreachable!("field count is already validated"),
+    })
+}
+
+/// Canonical immutable identity for a declared schedule. Durable slot records
+/// store this digest so a descriptor replacement cannot silently complete or
+/// deduplicate work for a different cron/timezone/policy contract.
+pub fn schedule_binding_digest(schedule: &ModuleScheduleBinding) -> String {
+    format!(
+        "sha256:{}",
+        hash_manifest_snapshot(&serde_json::json!({
+            "cron": schedule.cron,
+            "timezone": schedule.timezone,
+            "misfire": schedule.misfire,
+            "overlap": schedule.overlap,
+            "deduplication": schedule.deduplication,
+        }))
+    )
 }
 
 impl ModuleHttpBinding {
@@ -814,20 +861,6 @@ fn valid_http_relative_path(value: &str) -> bool {
                         || matches!(character, '_' | '-')
                 })
         })
-}
-
-fn valid_timezone(value: &str) -> bool {
-    value == "UTC"
-        || (!value.is_empty()
-            && value.len() <= 64
-            && value.split('/').all(|segment| {
-                !segment.is_empty()
-                    && segment.chars().all(|character| {
-                        character.is_ascii_alphabetic()
-                            || character.is_ascii_digit()
-                            || matches!(character, '_' | '-' | '+')
-                    })
-            }))
 }
 
 fn validate_local_schema_references(schema: &Value) -> Result<(), ModuleArtifactError> {

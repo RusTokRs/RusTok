@@ -19,9 +19,6 @@ impl MigrationTrait for Migration {
                     idempotency_key UUID NOT NULL UNIQUE,\
                     actor_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
-                    idempotency_key UUID NOT NULL UNIQUE,\
-                    actor_id UUID NOT NULL,\
-                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     updated_at TIMESTAMPTZ NOT NULL,\
                     PRIMARY KEY (installation_id, tenant_id)\
                 )",
@@ -36,9 +33,6 @@ impl MigrationTrait for Migration {
                     tenant_id TEXT NOT NULL,\
                     enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),\
                     revision INTEGER NOT NULL CHECK (revision > 0),\
-                    idempotency_key TEXT NOT NULL UNIQUE,\
-                    actor_id TEXT NOT NULL,\
-                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     idempotency_key TEXT NOT NULL UNIQUE,\
                     actor_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\

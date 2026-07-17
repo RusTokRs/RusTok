@@ -136,6 +136,7 @@ impl std::fmt::Debug for AzureKeyVaultResolver {
 
 impl AzureKeyVaultResolver {
     pub fn from_default_credential(endpoint: &str) -> Result<Self, SecretError> {
+        Self::validate_endpoint(endpoint)?;
         let credential: Arc<dyn TokenCredential> =
             if std::env::var_os("AZURE_FEDERATED_TOKEN_FILE").is_some() {
                 azure_identity::WorkloadIdentityCredential::new(None).map_err(azure_error)?
@@ -153,6 +154,16 @@ impl AzureKeyVaultResolver {
         endpoint: &str,
         credential: Arc<dyn TokenCredential>,
     ) -> Result<Self, SecretError> {
+        Self::validate_endpoint(endpoint)?;
+        let endpoint = reqwest::Url::parse(endpoint).map_err(azure_error)?;
+        let client =
+            azure_security_keyvault_secrets::SecretClient::new(endpoint.as_str(), credential, None)
+                .map_err(azure_error)?;
+        Ok(Self { client })
+    }
+
+    /// Validates a deployment-owned Key Vault endpoint before credential discovery.
+    pub fn validate_endpoint(endpoint: &str) -> Result<(), SecretError> {
         let endpoint = reqwest::Url::parse(endpoint).map_err(azure_error)?;
         if endpoint.scheme() != "https"
             || !endpoint.username().is_empty()
@@ -165,10 +176,7 @@ impl AzureKeyVaultResolver {
                 "Azure Key Vault endpoint must be a plain HTTPS URL",
             ));
         }
-        let client =
-            azure_security_keyvault_secrets::SecretClient::new(endpoint.as_str(), credential, None)
-                .map_err(azure_error)?;
-        Ok(Self { client })
+        Ok(())
     }
 }
 
@@ -273,7 +281,10 @@ fn azure_error(error: impl std::fmt::Display) -> SecretError {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_azure_secret_name, validate_gcp_project, validate_gcp_secret_id};
+    use super::{
+        validate_azure_secret_name, validate_gcp_project, validate_gcp_secret_id,
+        AzureKeyVaultResolver,
+    };
 
     #[test]
     fn gcp_resolver_rejects_cross_project_resource_names() {
@@ -288,5 +299,19 @@ mod tests {
     fn azure_resolver_accepts_only_vault_secret_names() {
         assert!(validate_azure_secret_name("openai-api-key").is_ok());
         assert!(validate_azure_secret_name("../certificates/admin").is_err());
+    }
+
+    #[test]
+    fn azure_resolver_rejects_unsafe_endpoint_before_credential_discovery() {
+        assert!(AzureKeyVaultResolver::validate_endpoint("https://rustok.vault.azure.net").is_ok());
+        assert!(AzureKeyVaultResolver::validate_endpoint("http://rustok.vault.azure.net").is_err());
+        assert!(
+            AzureKeyVaultResolver::validate_endpoint("https://user@rustok.vault.azure.net")
+                .is_err()
+        );
+        assert!(AzureKeyVaultResolver::validate_endpoint(
+            "https://rustok.vault.azure.net?token=forbidden"
+        )
+        .is_err());
     }
 }

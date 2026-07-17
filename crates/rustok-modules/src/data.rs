@@ -1,11 +1,13 @@
 use async_trait::async_trait;
 use jsonschema::{Draft, PatternOptions};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
+    TransactionTrait, Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::{collections::HashSet, sync::Arc};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -17,13 +19,17 @@ use rustok_sandbox::{
 };
 
 use crate::{
-    ArtifactBindingDispatch, ArtifactBindingExecutor, ArtifactMigrationCheckpointRequest,
-    ArtifactReleaseRef, ModuleInstallationScope, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+    resolve_granted_artifact_capability, ArtifactBindingDispatch, ArtifactBindingExecutor,
+    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactInstallationTarget,
+    ArtifactMigrationCheckpointRequest, ArtifactReleaseRef, InstalledModuleArtifact,
+    ModuleArtifactDescriptor, ModuleInstallationScope, ModuleRuntimeBinding,
+    ModuleRuntimeBindingKind,
 };
 
 const MAX_ARTIFACT_DATA_KEY_BYTES: usize = 256;
 const MAX_ARTIFACT_DATA_VALUE_BYTES: usize = 64 * 1024;
 const MAX_ARTIFACT_DATA_PAGE_SIZE: u32 = 100;
+const MAX_ARTIFACT_DATA_BATCH_SIZE: usize = 32;
 const MAX_DATA_SCHEMA_REGEX_BYTES: usize = 64 * 1024;
 
 /// Host-owned namespace for untrusted artifact data. Guests never supply a
@@ -47,6 +53,14 @@ pub struct ArtifactDataWrite {
     #[serde(default)]
     pub create_only: bool,
     pub idempotency_key: Uuid,
+}
+
+/// A bounded, atomic group of structured-value writes. The guest supplies
+/// logical keys and values only; the owner validates the whole batch before it
+/// opens its transaction and commits every accepted write together.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactDataBatchWrite {
+    pub writes: Vec<ArtifactDataWrite>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -179,6 +193,41 @@ impl ArtifactDataScope {
     }
 }
 
+/// Derives the namespace used by data-adjacent capabilities from an exact
+/// installation selected by the shared capability resolver. The artifact call
+/// never supplies a tenant, data revision, or policy revision for this scope.
+pub(crate) fn artifact_data_scope_for_execution(
+    installation: &InstalledModuleArtifact,
+    execution: &ArtifactCapabilityExecution,
+    capability: &rustok_sandbox::CapabilityName,
+) -> SandboxResult<ArtifactDataScope> {
+    if installation.installation_id != execution.installation_id
+        || installation.release.slug != execution.slug
+        || installation.release.version != execution.version
+        || installation.release.digest != execution.digest
+        || installation.descriptor.slug != execution.slug
+        || installation.descriptor.version != execution.version
+        || installation.descriptor.artifact_digest != execution.digest
+    {
+        return Err(SandboxError::CapabilityDenied(capability.clone()));
+    }
+    let contract = installation
+        .descriptor
+        .persistence_contract
+        .as_ref()
+        .ok_or_else(|| SandboxError::CapabilityDenied(capability.clone()))?;
+    let scope = ArtifactDataScope {
+        tenant_id: execution.tenant_id,
+        module_slug: installation.descriptor.slug.clone(),
+        data_contract_revision: contract.revision,
+        policy_revision: installation.capability_grant_revision,
+    };
+    scope
+        .validate()
+        .map_err(|_| SandboxError::CapabilityDenied(capability.clone()))?;
+    Ok(scope)
+}
+
 pub fn validate_artifact_data_key(key: &str) -> Result<(), ArtifactDataError> {
     if key.is_empty()
         || key.len() > MAX_ARTIFACT_DATA_KEY_BYTES
@@ -208,6 +257,25 @@ fn validate_artifact_data_value(value: &Value) -> Result<(), ArtifactDataError> 
             limit: MAX_ARTIFACT_DATA_VALUE_BYTES,
             actual: encoded.len(),
         });
+    }
+    Ok(())
+}
+
+fn validate_artifact_data_batch(batch: &ArtifactDataBatchWrite) -> Result<(), ArtifactDataError> {
+    if batch.writes.is_empty() || batch.writes.len() > MAX_ARTIFACT_DATA_BATCH_SIZE {
+        return Err(ArtifactDataError::InvalidBatch);
+    }
+    let mut keys = HashSet::with_capacity(batch.writes.len());
+    let mut idempotency_keys = HashSet::with_capacity(batch.writes.len());
+    for write in &batch.writes {
+        validate_artifact_data_key(&write.key)?;
+        validate_artifact_data_value(&write.value)?;
+        if write.idempotency_key.is_nil() {
+            return Err(ArtifactDataError::InvalidIdempotencyKey);
+        }
+        if !keys.insert(&write.key) || !idempotency_keys.insert(write.idempotency_key) {
+            return Err(ArtifactDataError::InvalidBatch);
+        }
     }
     Ok(())
 }
@@ -262,6 +330,12 @@ pub trait ArtifactDataBroker: Send + Sync {
         scope: &ArtifactDataScope,
         write: ArtifactDataWrite,
     ) -> Result<ArtifactDataRecord, ArtifactDataError>;
+
+    async fn put_batch(
+        &self,
+        scope: &ArtifactDataScope,
+        batch: ArtifactDataBatchWrite,
+    ) -> Result<Vec<ArtifactDataRecord>, ArtifactDataError>;
 
     async fn list(
         &self,
@@ -328,6 +402,7 @@ where
             .dispatch_binding(ArtifactBindingDispatch {
                 release: &self.release,
                 binding: &self.binding,
+                target: ArtifactInstallationTarget::CurrentRelease,
                 tenant_id: input.source.tenant_id,
                 input: json!({
                     "source": input.source,
@@ -339,6 +414,7 @@ where
                 // neutral sandbox phase while the binding kind carries the
                 // admission and authorization distinction.
                 phase: ExecutionPhase::Manual,
+                context: crate::ArtifactBindingExecutionContext::default(),
             })
             .await
             .map_err(ArtifactDataError::UpgradeHook)
@@ -463,7 +539,7 @@ impl ArtifactDataSchemaValidator for SeaOrmArtifactDataSchemaValidator {
             .should_validate_formats(true)
             .should_ignore_unknown_formats(false)
             .with_pattern_options(
-                PatternOptions::default()
+                PatternOptions::fancy_regex()
                     .backtrack_limit(MAX_DATA_SCHEMA_REGEX_BYTES)
                     .dfa_size_limit(MAX_DATA_SCHEMA_REGEX_BYTES),
             )
@@ -807,173 +883,39 @@ where
             .await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
-        ensure_active_namespace(&transaction, scope, backend).await?;
-        if let Some(row) = transaction
-            .query_one(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT data_key, value, revision, expected_revision FROM module_artifact_data_operations
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND idempotency_key = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                ),
-                vec![
-                    uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
-                    uuid_value(write.idempotency_key, backend),
-                ],
-            ))
-            .await
-            .map_err(storage_error)?
-        {
-            let expected_revision: Option<i64> = row
-                .try_get("", "expected_revision")
-                .map_err(storage_error)?;
-            let record = record_from_row(row)?;
-            if record.key != write.key
-                || record.value != write.value
-                || expected_revision
-                    .map(u64::try_from)
-                    .transpose()
-                    .map_err(|_| ArtifactDataError::IdempotencyConflict)?
-                    != write.expected_revision
-            {
-                return Err(ArtifactDataError::IdempotencyConflict);
-            }
-            transaction.commit().await.map_err(storage_error)?;
-            return Ok(record);
-        }
-
-        let current = transaction
-            .query_one(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT data_key, value, revision FROM module_artifact_data
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND data_key = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                ),
-                scope_values(scope, backend, &write.key)?,
-            ))
-            .await
-            .map_err(storage_error)?;
-        let revision = if let Some(row) = current {
-            let current = record_from_row(row)?;
-            if write.create_only || write.expected_revision != Some(current.revision) {
-                return Err(ArtifactDataError::RevisionConflict);
-            }
-            let next_revision = current
-                .revision
-                .checked_add(1)
-                .ok_or(ArtifactDataError::RevisionConflict)?;
-            let result = transaction
-                .execute(Statement::from_sql_and_values(
-                    backend,
-                    format!(
-                        "UPDATE module_artifact_data SET value = {}, revision = {}, updated_at = {}
-                         WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
-                         AND data_key = {} AND revision = {}",
-                        placeholder(backend, 1),
-                        placeholder(backend, 2),
-                        now_expression(backend),
-                        placeholder(backend, 3),
-                        placeholder(backend, 4),
-                        placeholder(backend, 5),
-                        placeholder(backend, 6),
-                        placeholder(backend, 7),
-                    ),
-                    vec![
-                        SqlValue::Json(Some(Box::new(write.value.clone()))),
-                        revision_value(next_revision)?,
-                        uuid_value(scope.tenant_id, backend),
-                        scope.module_slug.clone().into(),
-                        revision_value(scope.data_contract_revision)?,
-                        write.key.clone().into(),
-                        revision_value(current.revision)?,
-                    ],
-                ))
-                .await
-                .map_err(storage_error)?;
-            if result.rows_affected() != 1 {
-                return Err(ArtifactDataError::RevisionConflict);
-            }
-            next_revision
-        } else {
-            if write.expected_revision.is_some() {
-                return Err(ArtifactDataError::RevisionConflict);
-            }
-            let result = transaction
-                .execute(Statement::from_sql_and_values(
-                    backend,
-                    format!(
-                        "INSERT INTO module_artifact_data
-                         (tenant_id, module_slug, data_contract_revision, data_key, value, revision, updated_at)
-                         VALUES ({}, {}, {}, {}, {}, 1, {}) ON CONFLICT DO NOTHING",
-                        placeholder(backend, 1),
-                        placeholder(backend, 2),
-                        placeholder(backend, 3),
-                        placeholder(backend, 4),
-                        placeholder(backend, 5),
-                        now_expression(backend),
-                    ),
-                    vec![
-                        uuid_value(scope.tenant_id, backend),
-                        scope.module_slug.clone().into(),
-                        revision_value(scope.data_contract_revision)?,
-                        write.key.clone().into(),
-                        SqlValue::Json(Some(Box::new(write.value.clone()))),
-                    ],
-                ))
-                .await
-                .map_err(storage_error)?;
-            if result.rows_affected() != 1 {
-                return Err(ArtifactDataError::RevisionConflict);
-            }
-            1
-        };
-        let record = ArtifactDataRecord {
-            key: write.key,
-            value: write.value,
-            revision,
-        };
-        transaction
-            .execute(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "INSERT INTO module_artifact_data_operations
-                     (tenant_id, module_slug, data_contract_revision, idempotency_key, data_key, value, expected_revision, revision, completed_at)
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    now_expression(backend),
-                ),
-                vec![
-                    uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
-                    uuid_value(write.idempotency_key, backend),
-                    record.key.clone().into(),
-                    SqlValue::Json(Some(Box::new(record.value.clone()))),
-                    optional_revision_value(write.expected_revision)?,
-                    revision_value(record.revision)?,
-                ],
-            ))
-            .await
-            .map_err(storage_error)?;
+        let record = persist_artifact_data_write(&transaction, scope, write).await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(record)
+    }
+
+    async fn put_batch(
+        &self,
+        scope: &ArtifactDataScope,
+        batch: ArtifactDataBatchWrite,
+    ) -> Result<Vec<ArtifactDataRecord>, ArtifactDataError> {
+        scope.validate()?;
+        validate_artifact_data_batch(&batch)?;
+        for write in &batch.writes {
+            self.schema_validator
+                .validate_data_value(scope, &write.value)
+                .await?;
+            self.authorizer
+                .authorize_data(
+                    scope,
+                    ArtifactDataAccess::Write {
+                        key: write.key.clone(),
+                    },
+                )
+                .await?;
+        }
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let mut records = Vec::with_capacity(batch.writes.len());
+        for write in batch.writes {
+            records.push(persist_artifact_data_write(&transaction, scope, write).await?);
+        }
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(records)
     }
 
     async fn list(
@@ -1056,6 +998,178 @@ where
     }
 }
 
+async fn persist_artifact_data_write(
+    transaction: &DatabaseTransaction,
+    scope: &ArtifactDataScope,
+    write: ArtifactDataWrite,
+) -> Result<ArtifactDataRecord, ArtifactDataError> {
+    let backend = transaction.get_database_backend();
+    ensure_active_namespace(transaction, scope, backend).await?;
+    if let Some(row) = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT data_key, value, revision, expected_revision FROM module_artifact_data_operations
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND idempotency_key = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+            ),
+            vec![
+                uuid_value(scope.tenant_id, backend),
+                scope.module_slug.clone().into(),
+                revision_value(scope.data_contract_revision)?,
+                uuid_value(write.idempotency_key, backend),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?
+    {
+        let expected_revision: Option<i64> = row
+            .try_get("", "expected_revision")
+            .map_err(storage_error)?;
+        let record = record_from_row(row)?;
+        if record.key != write.key
+            || record.value != write.value
+            || expected_revision
+                .map(u64::try_from)
+                .transpose()
+                .map_err(|_| ArtifactDataError::IdempotencyConflict)?
+                != write.expected_revision
+        {
+            return Err(ArtifactDataError::IdempotencyConflict);
+        }
+        return Ok(record);
+    }
+
+    let current = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT data_key, value, revision FROM module_artifact_data
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND data_key = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+            ),
+            scope_values(scope, backend, &write.key)?,
+        ))
+        .await
+        .map_err(storage_error)?;
+    let revision = if let Some(row) = current {
+        let current = record_from_row(row)?;
+        if write.create_only || write.expected_revision != Some(current.revision) {
+            return Err(ArtifactDataError::RevisionConflict);
+        }
+        let next_revision = current
+            .revision
+            .checked_add(1)
+            .ok_or(ArtifactDataError::RevisionConflict)?;
+        let result = transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE module_artifact_data SET value = {}, revision = {}, updated_at = {}
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND data_key = {} AND revision = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    now_expression(backend),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    placeholder(backend, 6),
+                    placeholder(backend, 7),
+                ),
+                vec![
+                    SqlValue::Json(Some(Box::new(write.value.clone()))),
+                    revision_value(next_revision)?,
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    write.key.clone().into(),
+                    revision_value(current.revision)?,
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
+        if result.rows_affected() != 1 {
+            return Err(ArtifactDataError::RevisionConflict);
+        }
+        next_revision
+    } else {
+        if write.expected_revision.is_some() {
+            return Err(ArtifactDataError::RevisionConflict);
+        }
+        let result = transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO module_artifact_data
+                     (tenant_id, module_slug, data_contract_revision, data_key, value, revision, updated_at)
+                     VALUES ({}, {}, {}, {}, {}, 1, {}) ON CONFLICT DO NOTHING",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    now_expression(backend),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    write.key.clone().into(),
+                    SqlValue::Json(Some(Box::new(write.value.clone()))),
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
+        if result.rows_affected() != 1 {
+            return Err(ArtifactDataError::RevisionConflict);
+        }
+        1
+    };
+    let record = ArtifactDataRecord {
+        key: write.key,
+        value: write.value,
+        revision,
+    };
+    transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO module_artifact_data_operations
+                 (tenant_id, module_slug, data_contract_revision, idempotency_key, data_key, value, expected_revision, revision, completed_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+                placeholder(backend, 5),
+                placeholder(backend, 6),
+                placeholder(backend, 7),
+                placeholder(backend, 8),
+                now_expression(backend),
+            ),
+            vec![
+                uuid_value(scope.tenant_id, backend),
+                scope.module_slug.clone().into(),
+                revision_value(scope.data_contract_revision)?,
+                uuid_value(write.idempotency_key, backend),
+                record.key.clone().into(),
+                SqlValue::Json(Some(Box::new(record.value.clone()))),
+                optional_revision_value(write.expected_revision)?,
+                revision_value(record.revision)?,
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    Ok(record)
+}
+
 /// The `platform.data` adapter for one admitted artifact namespace. It is
 /// injected into the neutral sandbox runtime and delegates all persistence,
 /// policy, schema, and RLS enforcement to the owner data broker.
@@ -1124,6 +1238,16 @@ where
                     output: json!({ "record": record }),
                 })
             }
+            DataCapabilityCall::PutBatch { batch } => {
+                let records = self
+                    .data
+                    .put_batch(&self.scope, batch)
+                    .await
+                    .map_err(|error| data_capability_error(&call.capability, error))?;
+                Ok(CapabilityResponse {
+                    output: json!({ "records": records }),
+                })
+            }
             DataCapabilityCall::List { page } => {
                 let page = self
                     .data
@@ -1141,9 +1265,71 @@ where
     }
 }
 
+/// Production resolver for the `platform.data` owner. It derives the complete
+/// namespace from the exact sandbox installation identity and never accepts
+/// tenant, module, revision, or schema information from an artifact call.
+#[derive(Clone)]
+pub struct SeaOrmArtifactDataCapabilityBrokerResolver {
+    db: DatabaseConnection,
+}
+
+impl SeaOrmArtifactDataCapabilityBrokerResolver {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+}
+
+#[derive(Clone)]
+struct ExactArtifactDataAuthorizer {
+    scope: ArtifactDataScope,
+}
+
+#[async_trait]
+impl ArtifactDataAuthorizer for ExactArtifactDataAuthorizer {
+    async fn authorize_data(
+        &self,
+        scope: &ArtifactDataScope,
+        _access: ArtifactDataAccess,
+    ) -> Result<(), ArtifactDataError> {
+        if scope == &self.scope {
+            Ok(())
+        } else {
+            Err(ArtifactDataError::PolicyDenied)
+        }
+    }
+}
+
+#[async_trait]
+impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerResolver {
+    async fn resolve_broker(
+        &self,
+        execution: &ArtifactCapabilityExecution,
+        capability: &rustok_sandbox::CapabilityName,
+    ) -> SandboxResult<Arc<dyn CapabilityBroker>> {
+        if capability.as_str() != "platform.data" {
+            return Err(SandboxError::CapabilityDenied(capability.clone()));
+        }
+        let installation =
+            resolve_granted_artifact_capability(&self.db, execution, capability).await?;
+        let scope = artifact_data_scope_for_execution(&installation, execution, capability)?;
+        let authorizer = ExactArtifactDataAuthorizer {
+            scope: scope.clone(),
+        };
+        let schema_validator =
+            SeaOrmArtifactDataSchemaValidator::new(self.db.clone(), execution.installation_id);
+        Ok(Arc::new(SeaOrmArtifactDataCapabilityBroker::new(
+            self.db.clone(),
+            authorizer,
+            schema_validator,
+            scope,
+        )))
+    }
+}
+
 enum DataCapabilityCall {
     Get { key: String },
     Put { write: ArtifactDataWrite },
+    PutBatch { batch: ArtifactDataBatchWrite },
     List { page: ArtifactDataPageRequest },
 }
 
@@ -1159,45 +1345,29 @@ fn decode_data_capability_call(call: &CapabilityCall) -> SandboxResult<DataCapab
                 key: required_data_capability_string(call, input, "key")?.to_string(),
             })
         }
-        "put" => {
-            reject_data_capability_fields(
-                call,
-                input,
-                &["key", "value", "expected_revision", "idempotency_key"],
-            )?;
-            let value = input
-                .get("value")
-                .cloned()
-                .ok_or_else(|| data_capability_constraint(call, "data put input requires value"))?;
-            let expected_revision = input
-                .get("expected_revision")
+        "put" => Ok(DataCapabilityCall::Put {
+            write: decode_data_capability_write(call, input)?,
+        }),
+        "put_batch" => {
+            reject_data_capability_fields(call, input, &["writes"])?;
+            let writes = input
+                .get("writes")
+                .and_then(Value::as_array)
+                .ok_or_else(|| data_capability_constraint(call, "data writes must be an array"))?
+                .iter()
                 .map(|value| {
                     value
-                        .as_u64()
-                        .filter(|revision| *revision > 0)
+                        .as_object()
                         .ok_or_else(|| {
-                            data_capability_constraint(
-                                call,
-                                "data expected_revision must be a positive integer",
-                            )
+                            data_capability_constraint(call, "data batch entry must be an object")
                         })
+                        .and_then(|write| decode_data_capability_write(call, write))
                 })
-                .transpose()?;
-            let idempotency_key = Uuid::parse_str(required_data_capability_string(
-                call,
-                input,
-                "idempotency_key",
-            )?)
-            .map_err(|_| data_capability_constraint(call, "data idempotency_key must be a UUID"))?;
-            Ok(DataCapabilityCall::Put {
-                write: ArtifactDataWrite {
-                    key: required_data_capability_string(call, input, "key")?.to_string(),
-                    value,
-                    expected_revision,
-                    create_only: false,
-                    idempotency_key,
-                },
-            })
+                .collect::<SandboxResult<Vec<_>>>()?;
+            let batch = ArtifactDataBatchWrite { writes };
+            validate_artifact_data_batch(&batch)
+                .map_err(|_| data_capability_constraint(call, "data batch is invalid"))?;
+            Ok(DataCapabilityCall::PutBatch { batch })
         }
         "list" => {
             reject_data_capability_fields(call, input, &["prefix", "after_key", "limit"])?;
@@ -1232,6 +1402,48 @@ fn decode_data_capability_call(call: &CapabilityCall) -> SandboxResult<DataCapab
             "data operation is unsupported",
         )),
     }
+}
+
+fn decode_data_capability_write(
+    call: &CapabilityCall,
+    input: &serde_json::Map<String, Value>,
+) -> SandboxResult<ArtifactDataWrite> {
+    reject_data_capability_fields(
+        call,
+        input,
+        &["key", "value", "expected_revision", "idempotency_key"],
+    )?;
+    let value = input
+        .get("value")
+        .cloned()
+        .ok_or_else(|| data_capability_constraint(call, "data put input requires value"))?;
+    let expected_revision = input
+        .get("expected_revision")
+        .map(|value| {
+            value
+                .as_u64()
+                .filter(|revision| *revision > 0)
+                .ok_or_else(|| {
+                    data_capability_constraint(
+                        call,
+                        "data expected_revision must be a positive integer",
+                    )
+                })
+        })
+        .transpose()?;
+    let idempotency_key = Uuid::parse_str(required_data_capability_string(
+        call,
+        input,
+        "idempotency_key",
+    )?)
+    .map_err(|_| data_capability_constraint(call, "data idempotency_key must be a UUID"))?;
+    Ok(ArtifactDataWrite {
+        key: required_data_capability_string(call, input, "key")?.to_string(),
+        value,
+        expected_revision,
+        create_only: false,
+        idempotency_key,
+    })
 }
 
 fn data_capability_constraint(call: &CapabilityCall, reason: &str) -> SandboxError {
@@ -1281,14 +1493,22 @@ fn data_capability_error(
         ArtifactDataError::InvalidScope
         | ArtifactDataError::InvalidKey
         | ArtifactDataError::InvalidPage
+        | ArtifactDataError::InvalidBatch
         | ArtifactDataError::RevisionConflict
         | ArtifactDataError::NamespacePurged
         | ArtifactDataError::PurgePrecondition
         | ArtifactDataError::InvalidIdempotencyKey
         | ArtifactDataError::IdempotencyConflict
         | ArtifactDataError::ValueTooLarge { .. }
+        | ArtifactDataError::DataContractSchemaViolation
         | ArtifactDataError::PolicyDenied => SandboxError::CapabilityDenied(capability.clone()),
-        ArtifactDataError::Storage(_) => SandboxError::HostCapability {
+        ArtifactDataError::InvalidUpgrade
+        | ArtifactDataError::UpgradeHook(_)
+        | ArtifactDataError::StaleUpgradePlan
+        | ArtifactDataError::MigrationCheckpoint(_)
+        | ArtifactDataError::DataContractUnavailable
+        | ArtifactDataError::DataContractSchemaInvalid
+        | ArtifactDataError::Storage(_) => SandboxError::HostCapability {
             capability: capability.clone(),
             message: "artifact data capability is unavailable".to_string(),
         },
@@ -1701,6 +1921,8 @@ pub enum ArtifactDataError {
     InvalidKey,
     #[error("artifact data page is invalid")]
     InvalidPage,
+    #[error("artifact data batch is invalid")]
+    InvalidBatch,
     #[error("artifact data upgrade request is invalid")]
     InvalidUpgrade,
     #[error("artifact data upgrade hook failed: {0}")]
@@ -1774,6 +1996,16 @@ mod tests {
             _: &ArtifactDataScope,
             _: ArtifactDataWrite,
         ) -> Result<ArtifactDataRecord, ArtifactDataError> {
+            Err(ArtifactDataError::Storage(
+                "not used by upgrade planning".to_string(),
+            ))
+        }
+
+        async fn put_batch(
+            &self,
+            _: &ArtifactDataScope,
+            _: ArtifactDataBatchWrite,
+        ) -> Result<Vec<ArtifactDataRecord>, ArtifactDataError> {
             Err(ArtifactDataError::Storage(
                 "not used by upgrade planning".to_string(),
             ))
@@ -1902,6 +2134,16 @@ mod tests {
             Ok(record)
         }
 
+        async fn put_batch(
+            &self,
+            _: &ArtifactDataScope,
+            _: ArtifactDataBatchWrite,
+        ) -> Result<Vec<ArtifactDataRecord>, ArtifactDataError> {
+            Err(ArtifactDataError::Storage(
+                "not used by upgrade application".to_string(),
+            ))
+        }
+
         async fn list(
             &self,
             _: &ArtifactDataScope,
@@ -1970,6 +2212,7 @@ mod tests {
         let mut call = CapabilityCall {
             execution_id: Uuid::new_v4(),
             subject: SandboxSubject::ModuleArtifact {
+                installation_id: Uuid::new_v4(),
                 slug: "sample_module".to_string(),
                 version: "1.0.0".to_string(),
                 digest: "sha256:sample".to_string(),
@@ -1990,6 +2233,49 @@ mod tests {
         ));
         call.input = json!({ "prefix": "state/", "after_key": "other/one", "limit": 10 });
         assert!(decode_data_capability_call(&call).is_err());
+    }
+
+    #[test]
+    fn sandbox_data_batch_requires_distinct_bounded_writes() {
+        let idempotency_key = Uuid::new_v4();
+        let call = CapabilityCall {
+            execution_id: Uuid::new_v4(),
+            subject: SandboxSubject::ModuleArtifact {
+                installation_id: Uuid::new_v4(),
+                slug: "sample_module".to_string(),
+                version: "1.0.0".to_string(),
+                digest: "sha256:sample".to_string(),
+            },
+            context: CapabilityCallContext {
+                phase: ExecutionPhase::Lifecycle,
+                tenant_id: Some(Uuid::new_v4()),
+                actor_id: None,
+                trace_id: None,
+            },
+            capability: CapabilityName::new("platform.data").expect("capability name"),
+            operation: "put_batch".to_string(),
+            input: json!({
+                "writes": [
+                    { "key": "state/one", "value": 1, "idempotency_key": idempotency_key },
+                    { "key": "state/two", "value": 2, "idempotency_key": Uuid::new_v4() }
+                ]
+            }),
+        };
+        assert!(matches!(
+            decode_data_capability_call(&call),
+            Ok(DataCapabilityCall::PutBatch { .. })
+        ));
+
+        let duplicate = CapabilityCall {
+            input: json!({
+                "writes": [
+                    { "key": "state/one", "value": 1, "idempotency_key": idempotency_key },
+                    { "key": "state/two", "value": 2, "idempotency_key": idempotency_key }
+                ]
+            }),
+            ..call
+        };
+        assert!(decode_data_capability_call(&duplicate).is_err());
     }
 
     #[tokio::test]

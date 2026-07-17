@@ -187,11 +187,11 @@ pub struct KubernetesSecretResolver {
 
 impl KubernetesSecretResolver {
     pub fn in_cluster(namespace: impl Into<String>) -> Result<Self, SecretError> {
+        let namespace = namespace.into();
+        validate_dns_name(&namespace, "Kubernetes namespace")?;
         let host = std::env::var("KUBERNETES_SERVICE_HOST").map_err(kubernetes_error)?;
         let port =
             std::env::var("KUBERNETES_SERVICE_PORT_HTTPS").unwrap_or_else(|_| "443".to_string());
-        let namespace = namespace.into();
-        validate_dns_name(&namespace, "Kubernetes namespace")?;
         let ca = std::fs::read("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
             .map_err(kubernetes_error)?;
         let certificate = reqwest::Certificate::from_pem(&ca).map_err(kubernetes_error)?;
@@ -491,6 +491,11 @@ mod tests {
         let request = request.await.unwrap();
         assert!(request.starts_with("GET /api/v1/namespaces/operator/secrets/ai "));
         assert!(request.contains("authorization: Bearer workload-token"));
+    }
+
+    #[test]
+    fn kubernetes_resolver_rejects_invalid_namespace_before_cluster_discovery() {
+        assert!(KubernetesSecretResolver::in_cluster("invalid namespace").is_err());
     }
 
     #[tokio::test]

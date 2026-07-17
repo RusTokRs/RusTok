@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use rustok_api::HostRuntimeContext;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -17,12 +19,13 @@ pub fn attach_commerce_provider_registries(
         let registry = server
             .shared_get::<rustok_payment::providers::PaymentProviderRegistry>()
             .unwrap_or_else(|| {
-                let registry = crate::services::payment_provider_runtime::build_payment_provider_registry(
-                    server,
-                )
-                .unwrap_or_else(|error| {
-                    panic!("payment provider runtime initialization failed: {error}")
-                });
+                let registry =
+                    crate::services::payment_provider_runtime::build_payment_provider_registry(
+                        server,
+                    )
+                    .unwrap_or_else(|error| {
+                        panic!("payment provider runtime initialization failed: {error}")
+                    });
                 server.shared_insert(registry.clone());
                 registry
             });
@@ -39,6 +42,28 @@ pub fn attach_commerce_provider_registries(
                 registry
             });
         host.with_shared_value(registry)
+    };
+
+    #[cfg(all(feature = "mod-ai", feature = "mod-order"))]
+    let host = if let Some(event_bus) = server.shared_get::<rustok_outbox::TransactionalEventBus>()
+    {
+        let port: Arc<dyn rustok_order::CheckoutCompletionPort> = Arc::new(
+            rustok_order::OrderService::new(server.db_clone(), event_bus),
+        );
+        host.with_shared_value(rustok_ai::SharedAiOrderStatusPort(port))
+    } else {
+        host
+    };
+
+    #[cfg(all(feature = "mod-ai", feature = "mod-product"))]
+    let host = if let Some(event_bus) = server.shared_get::<rustok_outbox::TransactionalEventBus>()
+    {
+        let port: Arc<dyn rustok_product::ProductCatalogReadPort> = Arc::new(
+            rustok_product::CatalogService::new(server.db_clone(), event_bus),
+        );
+        host.with_shared_value(rustok_ai::SharedAiProductCatalogReadPort(port))
+    } else {
+        host
     };
 
     host
@@ -84,5 +109,63 @@ mod tests {
             first_fulfillment.descriptors(),
             second_fulfillment.descriptors()
         );
+    }
+}
+
+#[cfg(all(test, feature = "mod-ai", feature = "mod-order"))]
+mod order_status_port_tests {
+    use std::sync::Arc;
+
+    use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+    use sea_orm::Database;
+
+    use super::attach_commerce_provider_registries;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    #[tokio::test]
+    async fn attaches_order_status_port_for_ai_runtime() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory database");
+        let server = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        server.shared_insert(TransactionalEventBus::new(Arc::new(OutboxTransport::new(
+            db.clone(),
+        ))));
+
+        let host =
+            attach_commerce_provider_registries(rustok_api::HostRuntimeContext::new(db), &server);
+        assert!(host
+            .shared_get::<rustok_ai::SharedAiOrderStatusPort>()
+            .is_some());
+    }
+}
+
+#[cfg(all(test, feature = "mod-ai", feature = "mod-product"))]
+mod product_catalog_read_port_tests {
+    use std::sync::Arc;
+
+    use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+    use sea_orm::Database;
+
+    use super::attach_commerce_provider_registries;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    #[tokio::test]
+    async fn attaches_product_catalog_read_port_for_ai_runtime() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory database");
+        let server = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        server.shared_insert(TransactionalEventBus::new(Arc::new(OutboxTransport::new(
+            db.clone(),
+        ))));
+
+        let host =
+            attach_commerce_provider_registries(rustok_api::HostRuntimeContext::new(db), &server);
+        assert!(host
+            .shared_get::<rustok_ai::SharedAiProductCatalogReadPort>()
+            .is_some());
     }
 }

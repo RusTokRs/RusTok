@@ -70,6 +70,7 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
+          "deadline_enforced_with_typed_degraded_context",
           "order_analytics_shape_preserved",
           "ops_assistant_prefill_requires_structured_value",
           "degraded_require_operator_review_on_unavailable"

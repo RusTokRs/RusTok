@@ -33,6 +33,15 @@ documentation for this module must live inside the crate, not spread across
   never writes `roles` or `role_permissions` during registration. Its owner
   migration is aggregated by `rustok-migrations::Migrator`, the installer and
   CLI schema path used by production hosts;
+- `RbacArtifactPermissionAssignmentService` owns explicit, idempotent
+  tenant-role grants and revocations for that vocabulary in
+  `rbac_artifact_role_permissions`; it validates the exact installation and
+  platform-or-tenant catalog scope before writing, records the acting operator
+  in its durable operation ledger, and never mutates static `role_permissions`.
+  `SeaOrmArtifactPermissionAuthorizer` resolves the matching role-derived grant
+  for an exact tenant, user, installation, and permission key. The platform
+  artifact HTTP and command routes are runtime consumers; they never interpret
+  a module-defined permission as a static `Permission` enum value;
 - the operator-facing admin overview lives in `rustok-rbac-admin` and is structured as FFA `core` + native-only `transport` + `ui/leptos` adapter;
 - new public RBAC surfaces and event contracts require synchronization of module docs, server docs and verification plan.
 

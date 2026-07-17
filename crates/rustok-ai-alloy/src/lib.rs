@@ -3,6 +3,31 @@
 pub const ALLOY_CODE_TASK_SLUG: &str = "alloy_code";
 pub const ALLOY_CODE_TOOL_NAME: &str = "direct.alloy.run_script";
 
+/// Typed Alloy operations owned by the Alloy support adapter.
+///
+/// The AI runtime dispatches the selected operation but must not define a
+/// second operation catalog.
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AlloyOperation {
+    #[default]
+    ListScripts,
+    GetScript,
+    ValidateScript,
+    RunScript,
+}
+
+impl AlloyOperation {
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::ListScripts => "list_scripts",
+            Self::GetScript => "get_script",
+            Self::ValidateScript => "validate_script",
+            Self::RunScript => "run_script",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AlloyCodeAgentDescriptor {
     pub slug: &'static str,
@@ -301,6 +326,20 @@ mod tests {
                 "run_script"
             ]
         );
+    }
+
+    #[test]
+    fn alloy_operation_catalog_uses_the_policy_slugs() {
+        let operations = [
+            AlloyOperation::ListScripts,
+            AlloyOperation::GetScript,
+            AlloyOperation::ValidateScript,
+            AlloyOperation::RunScript,
+        ];
+
+        for operation in operations {
+            assert!(ALLOY_SCRIPT_ALLOWED_OPERATIONS.contains(&operation.slug()));
+        }
     }
 
     #[test]

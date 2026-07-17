@@ -20,6 +20,8 @@
       "sessions": "Сессии",
       "operatorChat": "Операторский чат",
       "productAttributes": "Атрибуты товара",
+      "orderAnalytics": "Order Analytics",
+      "orderOpsAssistant": "Order Operations Assistant",
       "agents": "Агенты"
     },
     "field": {
@@ -77,6 +79,13 @@
       "initialMessage": "Первое сообщение",
       "categorySlug": "Slug категории",
       "imageUrlsCsv": "URL изображений (csv)",
+      "orderIdsCsv": "Order ids (csv)",
+      "orderId": "Order id",
+      "dateFrom": "Date from (RFC 3339, optional)",
+      "dateTo": "Date to (RFC 3339, optional)",
+      "focus": "Analysis focus",
+      "recommendedAction": "Requested action (optional)",
+      "orderContext": "Operator context",
       "agentDescriptor": "Дескриптор агента",
       "modelOverride": "Переопределение модели (необязательно)"
     },
@@ -97,6 +106,8 @@
       "approve": "Одобрить",
       "reject": "Отклонить",
       "generateProductAttributes": "Сгенерировать атрибуты товара",
+      "generateOrderAnalytics": "Generate order analytics",
+      "runOrderOpsAssistant": "Run order operations assistant",
       "createAgentPrincipal": "Создать принципал агента",
       "createModelAssignment": "Создать назначение модели"
     },
@@ -158,6 +169,8 @@
       "productCompleted": "Задача по текстам товара `{title}` завершена.",
       "blogCompleted": "Черновик блога `{title}` завершён.",
       "productAttributesCompleted": "Задача по атрибутам товара `{title}` завершена.",
+      "orderAnalyticsCompleted": "Order analytics job `{title}` completed.",
+      "orderOpsAssistantCompleted": "Order operations assistant job `{title}` completed.",
       "agentPrincipalCreated": "Принципал агента `{slug}` создан.",
       "agentPrincipalUpdated": "Принципал агента `{slug}` обновлён.",
       "modelAssignmentCreated": "Назначение модели создано.",
@@ -179,7 +192,11 @@
       "assembleProductPayload": "Не удалось собрать payload для текстов товара. Проверьте product id.",
       "assembleBlogPayload": "Не удалось собрать payload для черновика блога. Проверьте post/category ids.",
       "selectProductAttributesTaskProfile": "Перед генерацией атрибутов товара выберите профиль задачи `product_attributes`.",
-      "assembleProductAttributesPayload": "Не удалось собрать payload для атрибутов товара. Проверьте product id и source-поля."
+      "assembleProductAttributesPayload": "Не удалось собрать payload для атрибутов товара. Проверьте product id и source-поля.",
+      "selectOrderAnalyticsTaskProfile": "Select the `order_analytics` task profile before generating order analytics.",
+      "selectOrderOpsAssistantTaskProfile": "Select the `order_ops_assistant` task profile before running the order operations assistant.",
+      "assembleOrderAnalyticsPayload": "Failed to assemble order analytics payload. Check order ids and RFC 3339 dates.",
+      "assembleOrderOpsAssistantPayload": "Failed to assemble order operations payload. Check the order id."
     },
     "summary": {
       "bucketNoData": "нет данных",
@@ -211,10 +228,16 @@
       "alloyTitle": "Alloy Assist",
       "imageTitle": "Media Image",
       "productTitle": "Product Copy",
-      "blogTitle": "Blog Draft"
+      "blogTitle": "Blog Draft",
+      "orderAnalyticsTitle": "Order Analytics",
+      "orderOpsAssistantTitle": "Order Operations Assistant"
     },
     "hint": {
-      "productAttributesRequirements": "Выберите профиль задачи и product id для запуска генерации."
+      "productAttributesRequirements": "Выберите профиль задачи и product id для запуска генерации.",
+      "orderAdvisory": "Advisory output only. Review generated findings before taking any order action.",
+      "orderAnalyticsRequirements": "Select the active `order_analytics` task profile and provide at least one order id.",
+      "orderOpsAdvisory": "Sensitive advisory output only. It cannot modify an order and requires operator review.",
+      "orderOpsRequirements": "Select the active `order_ops_assistant` task profile and provide an order id."
     },
     "agents": {
       "ownerCatalog": "Каталог владельца",

@@ -2,12 +2,14 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use alloy::utils::{dynamic_to_json, json_to_dynamic};
 use alloy::ScriptRegistry;
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
+use rustok_ai_alloy::AlloyOperation;
 use rustok_ai_content::{
     blog_draft_must_remain_unpublished, validate_blog_draft_payload, validate_moderation_decision,
     GeneratedBlogDraft, GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG, BLOG_DRAFT_TOOL_NAME,
@@ -16,6 +18,7 @@ use rustok_ai_product::{
     validate_product_attributes_payload, validate_product_copy_payload, GeneratedProductAttributes,
     GeneratedProductCopy, PRODUCT_COPY_TASK_SLUG, PRODUCT_COPY_TOOL_NAME,
 };
+use rustok_api::{PortActor, PortContext};
 use rustok_blog::{CreatePostInput, PostService, UpdatePostInput};
 use rustok_core::infer_user_role_from_permissions;
 use rustok_mcp::alloy_tools::{alloy_validate_script, AlloyMcpState, ValidateScriptRequest};
@@ -29,9 +32,9 @@ use uuid::Uuid;
 
 use crate::engine::InferenceEngine;
 use crate::model::{
-    AiAlloyOperation, AiAlloyTaskInput, AiBlogDraftTaskInput, AiContentModerationTaskInput,
-    AiImageAssetTaskInput, AiProductAttributesTaskInput, AiProductCopyTaskInput, AiProviderConfig,
-    ChatMessage, ChatMessageRole, DirectExecutionTarget, ProviderChatRequest, ProviderImageRequest,
+    AiAlloyTaskInput, AiBlogDraftTaskInput, AiContentModerationTaskInput, AiImageAssetTaskInput,
+    AiProductAttributesTaskInput, AiProductCopyTaskInput, AiProviderConfig, ChatMessage,
+    ChatMessageRole, DirectExecutionTarget, ProviderChatRequest, ProviderImageRequest,
     ProviderStreamEmitter, ToolTrace,
 };
 use crate::service::{AiHostRuntime, AiOperatorContext};
@@ -78,6 +81,24 @@ pub struct DirectExecutionResult {
     pub appended_messages: Vec<ChatMessage>,
     pub traces: Vec<ToolTrace>,
     pub metadata: Value,
+}
+
+pub(crate) fn direct_operator_port_context(
+    operator: &AiOperatorContext,
+    locale: &str,
+    task_slug: &str,
+    deadline: Duration,
+) -> PortContext {
+    operator.role_slugs.iter().fold(
+        PortContext::new(
+            operator.tenant_id.to_string(),
+            PortActor::user(operator.user_id.to_string()),
+            locale,
+            format!("ai-direct:{task_slug}"),
+        )
+        .with_deadline(deadline),
+        |context, role| context.with_role(role.clone()),
+    )
 }
 
 #[async_trait]
@@ -146,7 +167,7 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
         let started = std::time::Instant::now();
 
         let (trace_name, operation_payload, summary) = match input.operation {
-            AiAlloyOperation::ListScripts => {
+            AlloyOperation::ListScripts => {
                 let page = scoped
                     .storage
                     .find_paginated(alloy::ScriptQuery::All, 0, 100)
@@ -175,7 +196,7 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
                     format!("Listed {} Alloy scripts.", page.total),
                 )
             }
-            AiAlloyOperation::GetScript => {
+            AlloyOperation::GetScript => {
                 let script =
                     resolve_script(&scoped.storage, input.script_id, input.script_name).await?;
                 (
@@ -195,7 +216,7 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
                     format!("Loaded Alloy script `{}`.", script.name),
                 )
             }
-            AiAlloyOperation::ValidateScript => {
+            AlloyOperation::ValidateScript => {
                 let script_source = input
                     .script_source
                     .filter(|value| !value.trim().is_empty())
@@ -232,7 +253,7 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
                     summary,
                 )
             }
-            AiAlloyOperation::RunScript => {
+            AlloyOperation::RunScript => {
                 let script =
                     resolve_script(&scoped.storage, input.script_id, input.script_name).await?;
                 let params = parse_runtime_payload(input.runtime_payload_json)?;
@@ -1162,7 +1183,7 @@ pub(crate) async fn generate_product_attributes(
     system_prompt: Option<&str>,
     target_locale: &str,
     input: &AiProductAttributesTaskInput,
-    product: &rustok_product::dto::ProductResponse,
+    product: Option<&rustok_product::dto::ProductResponse>,
 ) -> AiResult<GeneratedProductAttributes> {
     let locale_instruction = concat!(
         "Return valid JSON only with keys: `brand`, `material`, `color`, `size`, `dimensions`, ",
@@ -1179,9 +1200,12 @@ pub(crate) async fn generate_product_attributes(
         "task": "product_attributes",
         "target_locale": target_locale,
         "product": {
-            "id": product.id,
-            "product_type": product.product_type,
-            "vendor": product.vendor,
+            "id": input.product_id,
+            "catalog_projection": product.map(|product| json!({
+                "id": product.id,
+                "product_type": product.product_type,
+                "vendor": product.vendor,
+            })),
             "category_slug": input.category_slug,
             "source_title": input.source_title,
             "source_description": input.source_description,
@@ -1619,6 +1643,7 @@ mod tests {
         sync::{Arc, Mutex},
     };
 
+    use super::direct_order_tasks::{OrderAnalyticsHandler, OrderOpsAssistantHandler};
     use super::direct_product_attributes::ProductAttributesHandler;
     use super::{
         build_blog_draft_create_input, build_generated_file_name, build_image_provider_request,
@@ -1628,21 +1653,29 @@ mod tests {
     use crate::{
         engine::InferenceEngine,
         model::{
-            AiBlogDraftTaskInput, AiImageAssetTaskInput, AiProductAttributesTaskInput,
-            AiProductCopyTaskInput, AiProviderConfig, ChatMessage, ChatMessageRole,
-            DirectExecutionTarget, ProviderChatRequest, ProviderChatResponse, ProviderImageRequest,
-            ProviderImageResponse, ProviderStructuredRequest, ProviderTestResult,
+            AiBlogDraftTaskInput, AiImageAssetTaskInput, AiOrderAnalyticsTaskInput,
+            AiOrderOpsAssistantTaskInput, AiProductAttributesTaskInput, AiProductCopyTaskInput,
+            AiProviderConfig, ChatMessage, ChatMessageRole, DirectExecutionTarget,
+            ProviderChatRequest, ProviderChatResponse, ProviderImageRequest, ProviderImageResponse,
+            ProviderStructuredRequest, ProviderTestResult,
         },
         AiHostRuntime, AiOperatorContext, AiProviderTargetCatalog, ProviderEgressPolicy,
         ProviderSlug, ProviderTargetAuth,
     };
     use async_trait::async_trait;
+    use rust_decimal::Decimal;
     use rustok_ai_content::{content_ai_verticals, BLOG_DRAFT_TASK_SLUG};
     use rustok_ai_media::{media_ai_verticals, normalize_image_size};
     use rustok_ai_order::order_ai_verticals;
     use rustok_ai_product::product_ai_verticals;
+    use rustok_api::{PortContext, PortError};
     use rustok_core::{registry::ModuleRegistry, Rbac, UserRole};
+    use rustok_order::{
+        CheckoutCompletionPort, CheckoutCompletionSnapshot, CheckoutResultRequest,
+        CompleteCheckoutPortRequest, OrderStatusRequest, OrderStatusSnapshot,
+    };
     use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
+    use rustok_product::{CatalogService, ProductCatalogReadPort, ProductProjectionRequest};
     use rustok_secrets::SecretResolverRegistry;
     use rustok_storage::{LocalStorageConfig, StorageConfig, StorageDriver, StorageService};
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
@@ -1659,6 +1692,90 @@ mod tests {
     struct ProductCopyEngine;
 
     struct ProductAttributesEngine;
+
+    struct OrderAnalyticsEngine;
+
+    struct OrderOpsAssistantEngine;
+
+    struct RecordingOrderStatusPort {
+        calls: Arc<Mutex<Vec<(PortContext, OrderStatusRequest)>>>,
+        response: Result<OrderStatusSnapshot, PortError>,
+        delay: Option<std::time::Duration>,
+    }
+
+    struct RecordingProductCatalogReadPort {
+        calls: Arc<Mutex<Vec<(PortContext, ProductProjectionRequest)>>>,
+        response: Result<rustok_product::dto::ProductResponse, PortError>,
+        delay: Option<std::time::Duration>,
+    }
+
+    #[async_trait]
+    impl ProductCatalogReadPort for RecordingProductCatalogReadPort {
+        async fn read_product_projection(
+            &self,
+            context: PortContext,
+            request: ProductProjectionRequest,
+        ) -> Result<rustok_product::dto::ProductResponse, PortError> {
+            self.calls
+                .lock()
+                .expect("product catalog read calls lock")
+                .push((context, request));
+            if let Some(delay) = self.delay {
+                tokio::time::sleep(delay).await;
+            }
+            self.response.clone()
+        }
+
+        async fn read_variant_product_projection(
+            &self,
+            _context: PortContext,
+            _request: rustok_product::VariantProductProjectionRequest,
+        ) -> Result<rustok_product::dto::ProductResponse, PortError> {
+            unreachable!("AI product attributes use the product-id projection")
+        }
+
+        async fn list_published_products(
+            &self,
+            _context: PortContext,
+            _request: rustok_product::PublishedProductsRequest,
+        ) -> Result<rustok_product::StorefrontProductList, PortError> {
+            unreachable!("AI product attributes do not list storefront products")
+        }
+    }
+
+    #[async_trait]
+    impl CheckoutCompletionPort for RecordingOrderStatusPort {
+        async fn complete_checkout(
+            &self,
+            _context: PortContext,
+            _request: CompleteCheckoutPortRequest,
+        ) -> Result<CheckoutCompletionSnapshot, PortError> {
+            unreachable!("AI order enrichment performs only read_order_status")
+        }
+
+        async fn read_checkout_result(
+            &self,
+            _context: PortContext,
+            _request: CheckoutResultRequest,
+        ) -> Result<CheckoutCompletionSnapshot, PortError> {
+            unreachable!("AI order enrichment performs only read_order_status")
+        }
+
+        async fn read_order_status(
+            &self,
+            context: PortContext,
+            request: OrderStatusRequest,
+        ) -> Result<OrderStatusSnapshot, PortError> {
+            self.calls
+                .lock()
+                .expect("order status calls lock")
+                .push((context, request));
+            if let Some(delay) = self.delay {
+                tokio::time::sleep(delay).await;
+            }
+            self.response.clone()
+        }
+    }
 
     #[async_trait]
     impl InferenceEngine for BlogDraftEngine {
@@ -1880,6 +1997,107 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl InferenceEngine for OrderAnalyticsEngine {
+        async fn test_connection(
+            &self,
+            _config: &AiProviderConfig,
+        ) -> crate::AiResult<ProviderTestResult> {
+            unreachable!("direct order analytics execution does not probe connectivity")
+        }
+
+        async fn complete(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            unreachable!("direct order analytics execution uses typed generation")
+        }
+
+        async fn complete_stream(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+            _emitter: Option<crate::ProviderStreamEmitter>,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            Ok(ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: Some("Order analytics are ready for review.".to_string()),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({}),
+                },
+                finish_reason: Some("stop".to_string()),
+                raw_payload: json!({}),
+            })
+        }
+
+        async fn complete_structured(
+            &self,
+            _request: ProviderStructuredRequest,
+        ) -> crate::AiResult<serde_json::Value> {
+            Ok(json!({
+                "summary": "One order needs an address review.",
+                "key_findings": ["Address format differs from prior orders"],
+                "risk_flags": ["address_mismatch"],
+                "recommended_actions": ["Ask an operator to confirm the address"]
+            }))
+        }
+    }
+
+    #[async_trait]
+    impl InferenceEngine for OrderOpsAssistantEngine {
+        async fn test_connection(
+            &self,
+            _config: &AiProviderConfig,
+        ) -> crate::AiResult<ProviderTestResult> {
+            unreachable!("direct order operations execution does not probe connectivity")
+        }
+
+        async fn complete(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            unreachable!("direct order operations execution uses typed generation")
+        }
+
+        async fn complete_stream(
+            &self,
+            _config: &AiProviderConfig,
+            _request: ProviderChatRequest,
+            _emitter: Option<crate::ProviderStreamEmitter>,
+        ) -> crate::AiResult<ProviderChatResponse> {
+            Ok(ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: Some("Order operation is ready for review.".to_string()),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({}),
+                },
+                finish_reason: Some("stop".to_string()),
+                raw_payload: json!({}),
+            })
+        }
+
+        async fn complete_structured(
+            &self,
+            _request: ProviderStructuredRequest,
+        ) -> crate::AiResult<serde_json::Value> {
+            Ok(json!({
+                "recommended_action": "contact_customer",
+                "rationale": "The shipping address needs confirmation.",
+                "prefill": {"message": "Please confirm your shipping address."},
+                "requires_human": true,
+                "confidence": 85
+            }))
+        }
+    }
+
     fn provider_config() -> AiProviderConfig {
         AiProviderConfig {
             tenant_id: Uuid::nil(),
@@ -2082,14 +2300,19 @@ mod tests {
                 .expect("product translation fixture");
         }
 
+        let event_bus =
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(database.clone())));
+        let product_port: Arc<dyn ProductCatalogReadPort> =
+            Arc::new(CatalogService::new(database.clone(), event_bus.clone()));
         let runtime = AiHostRuntime::new(
             database.clone(),
-            TransactionalEventBus::new(Arc::new(OutboxTransport::new(database))),
+            event_bus,
             ModuleRegistry::new(),
             SecretResolverRegistry::builder().build(),
             ProviderEgressPolicy::default(),
             AiProviderTargetCatalog::default(),
-        );
+        )
+        .with_product_catalog_read_port(Some(product_port));
         (runtime, operator, product_id)
     }
 
@@ -2391,6 +2614,18 @@ mod tests {
     #[tokio::test]
     async fn direct_product_attributes_returns_review_only_suggestions_without_product_write() {
         let (runtime, operator, product_id) = product_runtime().await;
+        let product = CatalogService::new(runtime.db_clone(), runtime.event_bus())
+            .get_product(operator.tenant_id, product_id)
+            .await
+            .expect("catalog owner product projection");
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let runtime = runtime.with_product_catalog_read_port(Some(Arc::new(
+            RecordingProductCatalogReadPort {
+                calls: Arc::clone(&calls),
+                response: Ok(product),
+                delay: None,
+            },
+        )));
         let request = DirectExecutionRequest {
             task_slug: rustok_ai_product::PRODUCT_ATTRIBUTES_TASK_SLUG.to_string(),
             task_input_json: json!(AiProductAttributesTaskInput {
@@ -2419,6 +2654,14 @@ mod tests {
         assert_eq!(result.metadata["review_required"], json!(true));
         assert_eq!(result.metadata["persistence"], json!("none"));
         assert_eq!(
+            result.metadata["product_context"]["source"],
+            json!("owner_port")
+        );
+        assert_eq!(
+            result.metadata["product_context"]["catalog_enrichment"],
+            json!("applied")
+        );
+        assert_eq!(
             result.metadata["suggested_attributes"]["flex_attributes"][0]["key"],
             json!("fabric_weight")
         );
@@ -2440,6 +2683,289 @@ mod tests {
             .expect("preserved Russian translation");
         assert_eq!(russian.title, "Original Russian product");
         assert_eq!(russian.handle, "original-ru-product");
+
+        let calls = calls.lock().expect("product catalog read calls lock");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].1.product_id, product_id);
+        assert_eq!(calls[0].1.locale.as_deref(), Some("ru"));
+        assert_eq!(calls[0].0.tenant_id, operator.tenant_id.to_string());
+        assert_eq!(calls[0].0.deadline_ms, Some(3_000));
+    }
+
+    #[tokio::test]
+    async fn direct_product_attributes_degrades_when_catalog_port_is_unavailable() {
+        let (runtime, operator, product_id) = product_runtime().await;
+        let runtime = runtime.with_product_catalog_read_port(Some(Arc::new(
+            RecordingProductCatalogReadPort {
+                calls: Arc::new(Mutex::new(Vec::new())),
+                response: Err(PortError::unavailable(
+                    "product.remote_unavailable",
+                    "product catalog adapter is unavailable",
+                )),
+                delay: None,
+            },
+        )));
+        let request = DirectExecutionRequest {
+            task_slug: rustok_ai_product::PRODUCT_ATTRIBUTES_TASK_SLUG.to_string(),
+            task_input_json: json!(AiProductAttributesTaskInput {
+                product_id,
+                source_title: Some("Prompt-only product".to_string()),
+                source_description: Some("Prompt-only context".to_string()),
+                ..Default::default()
+            }),
+            requested_locale: Some("ru".to_string()),
+            resolved_locale: "ru".to_string(),
+            system_prompt: None,
+            provider_config: provider_config(),
+            provider: Arc::new(ProductAttributesEngine),
+            stream_emitter: None,
+        };
+
+        let result = ProductAttributesHandler
+            .execute(&runtime, &operator, request)
+            .await
+            .expect("advisory generation must survive an unavailable catalog port");
+
+        assert_eq!(result.metadata["review_required"], json!(true));
+        assert_eq!(result.metadata["persistence"], json!("none"));
+        assert_eq!(
+            result.metadata["product_context"]["source"],
+            json!("degraded")
+        );
+        assert_eq!(
+            result.metadata["product_context"]["catalog_enrichment"],
+            json!("skipped")
+        );
+        assert_eq!(
+            result.metadata["product_context"]["errors"][0]["code"],
+            json!("product.remote_unavailable")
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_product_attributes_degrades_when_catalog_port_exceeds_its_deadline() {
+        let (runtime, operator, product_id) = product_runtime().await;
+        let product = CatalogService::new(runtime.db_clone(), runtime.event_bus())
+            .get_product(operator.tenant_id, product_id)
+            .await
+            .expect("catalog owner product projection");
+        let runtime = runtime.with_product_catalog_read_port(Some(Arc::new(
+            RecordingProductCatalogReadPort {
+                calls: Arc::new(Mutex::new(Vec::new())),
+                response: Ok(product),
+                delay: Some(std::time::Duration::from_secs(4)),
+            },
+        )));
+        let request = DirectExecutionRequest {
+            task_slug: rustok_ai_product::PRODUCT_ATTRIBUTES_TASK_SLUG.to_string(),
+            task_input_json: json!(AiProductAttributesTaskInput {
+                product_id,
+                source_title: Some("Prompt-only product".to_string()),
+                ..Default::default()
+            }),
+            requested_locale: Some("ru".to_string()),
+            resolved_locale: "ru".to_string(),
+            system_prompt: None,
+            provider_config: provider_config(),
+            provider: Arc::new(ProductAttributesEngine),
+            stream_emitter: None,
+        };
+
+        let result = ProductAttributesHandler
+            .execute(&runtime, &operator, request)
+            .await
+            .expect("advisory generation must survive a catalog-port timeout");
+
+        assert_eq!(
+            result.metadata["product_context"]["errors"][0]["kind"],
+            json!("deadline_exceeded")
+        );
+        assert_eq!(
+            result.metadata["product_context"]["errors"][0]["code"],
+            json!("ai_product.catalog_read_port_deadline_exceeded")
+        );
+        assert_eq!(result.metadata["review_required"], json!(true));
+        assert_eq!(result.metadata["persistence"], json!("none"));
+    }
+
+    #[tokio::test]
+    async fn direct_order_analytics_is_advisory_and_does_not_persist() {
+        let (runtime, operator) = blog_runtime().await;
+        let order_id = Uuid::new_v4();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let runtime = runtime.with_order_status_port(Some(Arc::new(RecordingOrderStatusPort {
+            calls: Arc::clone(&calls),
+            response: Ok(OrderStatusSnapshot {
+                order_id,
+                status: "pending".to_string(),
+                paid: false,
+                shipped: false,
+                delivered: false,
+                total_amount: Decimal::new(12_500, 2),
+            }),
+            delay: None,
+        })));
+        let request = DirectExecutionRequest {
+            task_slug: rustok_ai_order::ORDER_ANALYTICS_TASK_SLUG.to_string(),
+            task_input_json: json!(AiOrderAnalyticsTaskInput {
+                order_ids: vec![order_id],
+                focus: Some("shipping risk".to_string()),
+                assistant_prompt: Some("Summarize the analytics.".to_string()),
+                ..Default::default()
+            }),
+            requested_locale: Some("en".to_string()),
+            resolved_locale: "en".to_string(),
+            system_prompt: None,
+            provider_config: provider_config(),
+            provider: Arc::new(OrderAnalyticsEngine),
+            stream_emitter: None,
+        };
+
+        let result = OrderAnalyticsHandler
+            .execute(&runtime, &operator, request)
+            .await
+            .unwrap();
+
+        assert_eq!(result.execution_target, DirectExecutionTarget::Orders);
+        assert_eq!(result.metadata["review_required"], json!(true));
+        assert_eq!(result.metadata["persistence"], json!("none"));
+        assert_eq!(
+            result.metadata["order_status_context"]["source"],
+            json!("owner_port")
+        );
+        assert_eq!(
+            result.metadata["order_status_context"]["snapshots"][0]["order_id"],
+            json!(order_id)
+        );
+        assert_eq!(
+            result.metadata["order_analytics"]["risk_flags"][0],
+            json!("address_mismatch")
+        );
+        assert!(!result.traces[0].sensitive);
+        assert_eq!(
+            result.appended_messages[0].content.as_deref(),
+            Some("Order analytics are ready for review.")
+        );
+        let calls = calls.lock().expect("order status calls lock");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].1.order_id, order_id);
+        assert_eq!(calls[0].0.deadline_ms, Some(3_000));
+        assert_eq!(calls[0].0.tenant_id, operator.tenant_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn direct_order_operations_are_review_only_and_sensitive() {
+        let (runtime, operator) = blog_runtime().await;
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let runtime = runtime.with_order_status_port(Some(Arc::new(RecordingOrderStatusPort {
+            calls: Arc::clone(&calls),
+            response: Err(PortError::unavailable(
+                "order.remote_unavailable",
+                "order status adapter is unavailable",
+            )),
+            delay: None,
+        })));
+        let request = DirectExecutionRequest {
+            task_slug: rustok_ai_order::ORDER_OPS_ASSISTANT_TASK_SLUG.to_string(),
+            task_input_json: json!(AiOrderOpsAssistantTaskInput {
+                order_id: Uuid::new_v4(),
+                recommended_action: Some("contact_customer".to_string()),
+                context: Some("Address format differs from prior orders.".to_string()),
+                assistant_prompt: Some("Summarize the operation suggestion.".to_string()),
+            }),
+            requested_locale: Some("en".to_string()),
+            resolved_locale: "en".to_string(),
+            system_prompt: None,
+            provider_config: provider_config(),
+            provider: Arc::new(OrderOpsAssistantEngine),
+            stream_emitter: None,
+        };
+
+        let result = OrderOpsAssistantHandler
+            .execute(&runtime, &operator, request)
+            .await
+            .unwrap();
+
+        assert_eq!(result.execution_target, DirectExecutionTarget::Orders);
+        assert_eq!(result.metadata["review_required"], json!(true));
+        assert_eq!(result.metadata["persistence"], json!("none"));
+        assert_eq!(
+            result.metadata["order_status_context"]["source"],
+            json!("degraded")
+        );
+        assert_eq!(
+            result.metadata["order_status_context"]["errors"][0]["kind"],
+            json!("unavailable")
+        );
+        assert_eq!(
+            result.metadata["order_status_context"]["errors"][0]["code"],
+            json!("order.remote_unavailable")
+        );
+        assert_eq!(
+            result.metadata["order_ops_assistant"]["recommended_action"],
+            json!("contact_customer")
+        );
+        assert!(result.traces[0].sensitive);
+        assert_eq!(
+            result.appended_messages[0].content.as_deref(),
+            Some("Order operation is ready for review.")
+        );
+        assert_eq!(calls.lock().expect("order status calls lock").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn direct_order_analytics_degrades_when_the_status_port_exceeds_its_deadline() {
+        let (runtime, operator) = blog_runtime().await;
+        let order_id = Uuid::new_v4();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let runtime = runtime.with_order_status_port(Some(Arc::new(RecordingOrderStatusPort {
+            calls: Arc::clone(&calls),
+            response: Ok(OrderStatusSnapshot {
+                order_id,
+                status: "pending".to_string(),
+                paid: false,
+                shipped: false,
+                delivered: false,
+                total_amount: Decimal::new(12_500, 2),
+            }),
+            delay: Some(std::time::Duration::from_secs(4)),
+        })));
+        let request = DirectExecutionRequest {
+            task_slug: rustok_ai_order::ORDER_ANALYTICS_TASK_SLUG.to_string(),
+            task_input_json: json!(AiOrderAnalyticsTaskInput {
+                order_ids: vec![order_id],
+                focus: Some("shipping risk".to_string()),
+                assistant_prompt: Some("Summarize the analytics.".to_string()),
+                ..Default::default()
+            }),
+            requested_locale: Some("en".to_string()),
+            resolved_locale: "en".to_string(),
+            system_prompt: None,
+            provider_config: provider_config(),
+            provider: Arc::new(OrderAnalyticsEngine),
+            stream_emitter: None,
+        };
+
+        let result = OrderAnalyticsHandler
+            .execute(&runtime, &operator, request)
+            .await
+            .expect("generation remains advisory after a status-port timeout");
+
+        assert_eq!(result.metadata["review_required"], json!(true));
+        assert_eq!(result.metadata["persistence"], json!("none"));
+        assert_eq!(
+            result.metadata["order_status_context"]["source"],
+            json!("degraded")
+        );
+        assert_eq!(
+            result.metadata["order_status_context"]["errors"][0]["kind"],
+            json!("deadline_exceeded")
+        );
+        assert_eq!(
+            result.metadata["order_status_context"]["errors"][0]["code"],
+            json!("ai_order.status_port_deadline_exceeded")
+        );
+        assert_eq!(calls.lock().expect("order status calls lock").len(), 1);
     }
 
     #[test]

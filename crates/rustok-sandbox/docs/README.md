@@ -45,9 +45,11 @@ The `platform.data` grant requires typed non-empty `key_prefixes` and
 the host; guests can name only logical keys under an admitted prefix. The
 current contract permits `get`, `put`, and bounded `list` inputs and rejects
 physical storage fields such as a table, bucket, path, or namespace. The
-owner-provided adapter delegates all three operations to the data broker;
-listing uses an escaped prefix query and continuation that remain inside the
-admitted logical prefix.
+owner-provided adapter also permits an explicitly granted `put_batch` of at
+most 32 writes. The sandbox validates every batch entry's logical key and UUID
+idempotency key, requires both to be distinct across the batch, and keeps every
+key inside an admitted prefix before invoking the owner. Listing uses an escaped
+prefix query and continuation that remain inside the admitted logical prefix.
 
 The `platform.mcp` grant requires typed non-empty exact server/tool pairs and
 the `call` operation. A call may contain only a configured server alias, tool
@@ -110,6 +112,11 @@ the consumer's typed output binding. The extension receives no global runtime
 state and must not introduce another executor or bypass the capability broker.
 Its only platform handle is the scoped `SandboxHost`; broker implementations,
 infrastructure clients, and credentials are never exposed to an adapter.
+`RhaiCapabilityBridge` is the standard neutral extension for installed
+artifacts: it exposes only `capability_call(name, operation, input)` and returns
+`{ ok, output }` on success or `{ ok: false, error_code }` on denial/failure.
+The named call remains subject to the same policy, identity, limit, audit, and
+cancellation checks as a WIT capability invocation.
 The synchronous Rhai/WIT bridge admits only one native thread per execution, so
 guest code cannot create an unbounded number of blocking broker threads.
 

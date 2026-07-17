@@ -14,6 +14,13 @@ mod m20260716_000013_artifact_admission_commands;
 mod m20260716_000014_artifact_secret_bindings;
 mod m20260716_000015_artifact_execution_audit;
 mod m20260716_000016_artifact_execution_audit_metrics;
+mod m20260717_000017_artifact_tenant_lifecycle_idempotency_command;
+mod m20260717_000018_artifact_event_deliveries;
+mod m20260717_000019_artifact_schedule_deliveries;
+mod m20260717_000020_artifact_schedule_cursors;
+mod m20260717_000021_artifact_sandbox_policies;
+mod m20260717_000022_artifact_execution_audit_installation_identity;
+mod m20260717_000023_artifact_binding_operations;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -35,5 +42,12 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260716_000014_artifact_secret_bindings::Migration),
         Box::new(m20260716_000015_artifact_execution_audit::Migration),
         Box::new(m20260716_000016_artifact_execution_audit_metrics::Migration),
+        Box::new(m20260717_000017_artifact_tenant_lifecycle_idempotency_command::Migration),
+        Box::new(m20260717_000018_artifact_event_deliveries::Migration),
+        Box::new(m20260717_000019_artifact_schedule_deliveries::Migration),
+        Box::new(m20260717_000020_artifact_schedule_cursors::Migration),
+        Box::new(m20260717_000021_artifact_sandbox_policies::Migration),
+        Box::new(m20260717_000022_artifact_execution_audit_installation_identity::Migration),
+        Box::new(m20260717_000023_artifact_binding_operations::Migration),
     ]
 }

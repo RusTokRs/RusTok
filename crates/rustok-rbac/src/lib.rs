@@ -1,3 +1,4 @@
+mod artifact_permission_assignment;
 mod artifact_permission_catalog;
 pub mod bootstrap;
 pub mod catalog;
@@ -9,10 +10,16 @@ pub mod graphql;
 pub mod integration;
 mod invalidation_generation;
 mod m20260716_000001_artifact_permission_catalog;
+mod m20260717_000001_artifact_role_permissions;
 pub mod ports;
 mod repair;
 pub mod services;
 
+pub use artifact_permission_assignment::{
+    ArtifactPermissionAssignmentError, ArtifactRolePermissionAssignmentCommand,
+    ArtifactRolePermissionAssignmentResult, RbacArtifactPermissionAssignmentService,
+    SeaOrmArtifactPermissionAuthorizer,
+};
 pub use artifact_permission_catalog::RbacArtifactPermissionCatalog;
 pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
 pub use catalog::BuiltinTenantRbacCatalog;
@@ -103,9 +110,10 @@ pub struct RbacModule;
 
 impl MigrationSource for RbacModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        vec![Box::new(
-            m20260716_000001_artifact_permission_catalog::Migration,
-        )]
+        vec![
+            Box::new(m20260716_000001_artifact_permission_catalog::Migration),
+            Box::new(m20260717_000001_artifact_role_permissions::Migration),
+        ]
     }
 }
 

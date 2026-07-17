@@ -29,4 +29,7 @@ variables:
 `RUSTOK_MODULE_BUILD_DISPATCHER_IDLE_POLL_DELAY_MS` is optional and bounded to
 one minute. The binary validates worker readiness before it begins consuming.
 Processing, worker, owner-persistence, or acknowledgement errors leave the
-current broker offset uncommitted for redelivery.
+current broker offset uncommitted for redelivery. The dispatcher then exits
+instead of retaining a pending delivery in memory; its deployment supervisor
+must restart it with bounded backoff so the persistent consumer cursor can
+redeliver that exact offset.

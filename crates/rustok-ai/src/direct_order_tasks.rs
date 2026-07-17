@@ -3,19 +3,79 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::json;
+use std::time::Duration;
+use uuid::Uuid;
 
 use crate::direct::{
-    explain_result, generate_order_analytics, generate_order_ops_assistant, DirectExecutionRequest,
-    DirectExecutionResult, DirectTaskHandler,
+    direct_operator_port_context, explain_result, generate_order_analytics,
+    generate_order_ops_assistant, DirectExecutionRequest, DirectExecutionResult, DirectTaskHandler,
 };
 use crate::model::{AiOrderAnalyticsTaskInput, AiOrderOpsAssistantTaskInput};
 use crate::model::{DirectExecutionTarget, ToolTrace};
 use crate::service::{AiHostRuntime, AiOperatorContext};
 use crate::{AiError, AiResult};
 use rustok_ai_order::{
-    ORDER_ANALYTICS_TASK_SLUG, ORDER_ANALYTICS_TOOL_NAME, ORDER_OPS_ASSISTANT_TASK_SLUG,
-    ORDER_OPS_ASSISTANT_TOOL_NAME,
+    order_ai_execution_policy, ORDER_ANALYTICS_TASK_SLUG, ORDER_ANALYTICS_TOOL_NAME,
+    ORDER_OPS_ASSISTANT_TASK_SLUG, ORDER_OPS_ASSISTANT_TOOL_NAME,
 };
+use rustok_order::OrderStatusRequest;
+
+const ORDER_STATUS_PORT_DEADLINE: Duration = Duration::from_secs(3);
+
+async fn order_status_context(
+    runtime: &AiHostRuntime,
+    operator: &AiOperatorContext,
+    locale: &str,
+    task_slug: &str,
+    order_ids: impl IntoIterator<Item = Uuid>,
+) -> serde_json::Value {
+    let deadline_ms = ORDER_STATUS_PORT_DEADLINE.as_millis() as u64;
+    let Some(port) = runtime.order_status_port() else {
+        return json!({
+            "source": "degraded",
+            "snapshots": [],
+            "errors": [{
+                "kind": "unavailable",
+                "code": "ai_order.status_port_unavailable",
+                "retryable": true,
+            }],
+            "deadline_ms": deadline_ms,
+        });
+    };
+    let context =
+        direct_operator_port_context(operator, locale, task_slug, ORDER_STATUS_PORT_DEADLINE);
+    let mut snapshots = Vec::new();
+    let mut errors = Vec::new();
+    for order_id in order_ids {
+        match tokio::time::timeout(
+            ORDER_STATUS_PORT_DEADLINE,
+            port.read_order_status(context.clone(), OrderStatusRequest { order_id }),
+        )
+        .await
+        {
+            Err(_) => errors.push(json!({
+                "order_id": order_id,
+                "kind": "deadline_exceeded",
+                "code": "ai_order.status_port_deadline_exceeded",
+                "retryable": true,
+            })),
+            Ok(Ok(snapshot)) => snapshots
+                .push(serde_json::to_value(snapshot).expect("order status is serializable")),
+            Ok(Err(error)) => errors.push(json!({
+                "order_id": order_id,
+                "kind": error.kind,
+                "code": error.code,
+                "retryable": error.retryable,
+            })),
+        }
+    }
+    json!({
+        "source": if errors.is_empty() { "owner_port" } else { "degraded" },
+        "snapshots": snapshots,
+        "errors": errors,
+        "deadline_ms": deadline_ms,
+    })
+}
 
 pub struct OrderAnalyticsHandler;
 pub struct OrderOpsAssistantHandler;
@@ -27,12 +87,22 @@ impl DirectTaskHandler for OrderAnalyticsHandler {
     }
     async fn execute(
         &self,
-        _runtime: &AiHostRuntime,
-        _operator: &AiOperatorContext,
+        runtime: &AiHostRuntime,
+        operator: &AiOperatorContext,
         request: DirectExecutionRequest,
     ) -> AiResult<DirectExecutionResult> {
         let input: AiOrderAnalyticsTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
+        let execution_policy = order_ai_execution_policy(ORDER_ANALYTICS_TASK_SLUG)
+            .expect("order analytics execution policy must be registered");
+        let status_context = order_status_context(
+            runtime,
+            operator,
+            request.resolved_locale.as_str(),
+            ORDER_ANALYTICS_TASK_SLUG,
+            input.order_ids.clone(),
+        )
+        .await;
         let started = std::time::Instant::now();
         let generated = generate_order_analytics(
             &request.provider,
@@ -40,6 +110,7 @@ impl DirectTaskHandler for OrderAnalyticsHandler {
             request.system_prompt.as_deref(),
             request.resolved_locale.as_str(),
             &input,
+            status_context.clone(),
         )
         .await?;
         let operation_payload = serde_json::to_value(&generated).map_err(AiError::Json)?;
@@ -69,7 +140,15 @@ impl DirectTaskHandler for OrderAnalyticsHandler {
             execution_target: DirectExecutionTarget::Orders,
             appended_messages: vec![explanation],
             traces: vec![trace],
-            metadata: json!({"direct_task": request.task_slug,"requested_locale": request.requested_locale,"resolved_locale": request.resolved_locale,"order_analytics": operation_payload,}),
+            metadata: json!({
+                "direct_task": request.task_slug,
+                "requested_locale": request.requested_locale,
+                "resolved_locale": request.resolved_locale,
+                "order_analytics": operation_payload,
+                "order_status_context": status_context,
+                "review_required": execution_policy.review_required,
+                "persistence": execution_policy.persistence,
+            }),
         })
     }
 }
@@ -81,12 +160,22 @@ impl DirectTaskHandler for OrderOpsAssistantHandler {
     }
     async fn execute(
         &self,
-        _runtime: &AiHostRuntime,
-        _operator: &AiOperatorContext,
+        runtime: &AiHostRuntime,
+        operator: &AiOperatorContext,
         request: DirectExecutionRequest,
     ) -> AiResult<DirectExecutionResult> {
         let input: AiOrderOpsAssistantTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
+        let execution_policy = order_ai_execution_policy(ORDER_OPS_ASSISTANT_TASK_SLUG)
+            .expect("order operations execution policy must be registered");
+        let status_context = order_status_context(
+            runtime,
+            operator,
+            request.resolved_locale.as_str(),
+            ORDER_OPS_ASSISTANT_TASK_SLUG,
+            [input.order_id],
+        )
+        .await;
         let started = std::time::Instant::now();
         let generated = generate_order_ops_assistant(
             &request.provider,
@@ -94,6 +183,7 @@ impl DirectTaskHandler for OrderOpsAssistantHandler {
             request.system_prompt.as_deref(),
             request.resolved_locale.as_str(),
             &input,
+            status_context.clone(),
         )
         .await?;
         let operation_payload = serde_json::to_value(&generated).map_err(AiError::Json)?;
@@ -126,7 +216,15 @@ impl DirectTaskHandler for OrderOpsAssistantHandler {
             execution_target: DirectExecutionTarget::Orders,
             appended_messages: vec![explanation],
             traces: vec![trace],
-            metadata: json!({"direct_task": request.task_slug,"requested_locale": request.requested_locale,"resolved_locale": request.resolved_locale,"order_ops_assistant": operation_payload,}),
+            metadata: json!({
+                "direct_task": request.task_slug,
+                "requested_locale": request.requested_locale,
+                "resolved_locale": request.resolved_locale,
+                "order_ops_assistant": operation_payload,
+                "order_status_context": status_context,
+                "review_required": execution_policy.review_required,
+                "persistence": execution_policy.persistence,
+            }),
         })
     }
 }

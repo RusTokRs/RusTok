@@ -408,30 +408,9 @@ pub enum RuntimeOutcome {
     },
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum AiAlloyOperation {
-    #[default]
-    ListScripts,
-    GetScript,
-    ValidateScript,
-    RunScript,
-}
-
-impl AiAlloyOperation {
-    pub const fn slug(self) -> &'static str {
-        match self {
-            Self::ListScripts => "list_scripts",
-            Self::GetScript => "get_script",
-            Self::ValidateScript => "validate_script",
-            Self::RunScript => "run_script",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AiAlloyTaskInput {
-    pub operation: AiAlloyOperation,
+    pub operation: rustok_ai_alloy::AlloyOperation,
     pub script_id: Option<Uuid>,
     pub script_name: Option<String>,
     pub script_source: Option<String>,

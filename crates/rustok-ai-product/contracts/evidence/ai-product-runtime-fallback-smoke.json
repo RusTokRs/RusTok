@@ -9,7 +9,7 @@
     {
       "provider": "product",
       "operation": "read_product_projection",
-      "expected_behavior": "product_copy and product_attributes requests keep module-owned validation and fall back to prompt-only generation context when catalog projection is unavailable"
+      "expected_behavior": "product_attributes keeps module-owned validation and falls back to prompt-only advisory generation when the host-composed catalog projection is unavailable; it skips catalog enrichment and requires operator review without writing product data"
     }
   ]
 }

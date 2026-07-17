@@ -81,6 +81,8 @@ SCRIPTS=(
     "verify-inventory-admin-boundary.mjs:Inventory Admin Boundary"
     "verify-ai-domain-verticals.mjs:AI Domain Verticals"
     "verify-module-lifecycle-bypass-usage.mjs:Module Lifecycle Bypass Usage"
+    "verify-module-control-plane-write-path.mjs:Module Control-plane Write Path"
+    "verify-module-build-worker-isolation.mjs:Module Build Worker Isolation"
     "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs:Page Builder Contract Parity"
     "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs:Page Builder Contract Registry"
     "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs:Page Builder Fallback Profiles"

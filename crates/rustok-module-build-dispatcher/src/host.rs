@@ -86,8 +86,11 @@ impl ModuleBuildDispatcherConfig {
 }
 
 /// Runs the independent result-first delivery host until it receives a process
-/// shutdown signal. A delivery-processing failure deliberately leaves the
-/// broker offset uncommitted, so Iggy can redeliver it after the host recovers.
+/// shutdown signal. A delivery-processing or broker-receive failure deliberately
+/// terminates this process without committing its offset. The deployment
+/// supervisor must restart it, allowing the persistent cursor to redeliver the
+/// outstanding message instead of keeping an unacknowledgeable delivery in
+/// process memory.
 pub async fn run_dispatcher(config: ModuleBuildDispatcherConfig) -> Result<(), String> {
     let mut options = ConnectOptions::new(config.database_url);
     options.sqlx_logging(false);
@@ -129,13 +132,17 @@ pub async fn run_dispatcher(config: ModuleBuildDispatcherConfig) -> Result<(), S
                         let consumer = ModuleBuildDeliveryConsumer::new(&service, &worker);
                         if let Err(error) = consumer.process_and_acknowledge(&source, delivery).await {
                             error!(error = %error, "Module build delivery failed; broker offset remains uncommitted");
-                            tokio::time::sleep(config.idle_poll_delay).await;
+                            return Err(format!(
+                                "module-build delivery failed before acknowledgement; restart the dispatcher to redeliver: {error}"
+                            ));
                         }
                     }
                     Ok(None) => tokio::time::sleep(config.idle_poll_delay).await,
                     Err(error) => {
-                        error!(error = %error, "Module build broker receive failed; retaining cursor without acknowledgement");
-                        tokio::time::sleep(config.idle_poll_delay).await;
+                        error!(error = %error, "Module build broker receive failed; terminating without acknowledgement");
+                        return Err(format!(
+                            "module-build broker receive failed; restart the dispatcher to recover its persistent cursor: {error}"
+                        ));
                     }
                 }
             }

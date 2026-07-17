@@ -7,7 +7,7 @@ use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
@@ -25,15 +25,16 @@ use rustok_sandbox::{
 
 use crate::{
     ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactModuleKind,
-    ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleArtifactError,
-    ModuleDependencyLockGraph, TrustPolicyRevision, TrustVerificationDecision,
-    TrustVerificationRequest, TrustVerifier,
+    ArtifactPayloadKind, ArtifactReleaseRef, ArtifactSandboxPolicyResolver,
+    ModuleArtifactDescriptor, ModuleArtifactError, ModuleDependencyLockGraph, TrustPolicyRevision,
+    TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
 };
 
 const RHAI_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
 const WASM_COMPONENT_MEDIA_TYPE: &str = "application/wasm";
 const SIDECAR_MEDIA_TYPE: &str = "application/vnd.rustok.sidecar.v1";
 const STATIC_PROMOTION_MEDIA_TYPE: &str = "application/vnd.rustok.static-promotion.v1";
+const MAX_ARTIFACT_MIGRATION_CHECKPOINT_BYTES: usize = 16 * 1024;
 
 /// Hard bounds applied before an artifact enters the admission pipeline. The
 /// registry adapter must use them before downloading an OCI layer; the package
@@ -358,6 +359,7 @@ impl InstalledModuleArtifact {
 
         Ok(SandboxRequest {
             subject: SandboxSubject::ModuleArtifact {
+                installation_id: self.installation_id,
                 slug: self.release.slug.clone(),
                 version: self.release.version.clone(),
                 digest: self.release.digest.clone(),
@@ -554,6 +556,62 @@ pub struct ArtifactTenantDisableResult {
     pub revision: u64,
 }
 
+/// Re-enables one tenant's intent for an admitted Optional artifact without
+/// changing its immutable installation, admission, runtime binding, or data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactTenantEnableRequest {
+    pub installation_id: Uuid,
+    pub tenant_id: Uuid,
+    pub expected_revision: u64,
+    pub actor_id: Uuid,
+    pub reason: String,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactTenantEnableResult {
+    pub revision: u64,
+}
+
+#[derive(Debug)]
+struct ArtifactTenantLifecycleCommand {
+    installation_id: Uuid,
+    tenant_id: Uuid,
+    expected_revision: u64,
+    actor_id: Uuid,
+    reason: String,
+    idempotency_key: Uuid,
+    enabled: bool,
+}
+
+impl From<ArtifactTenantDisableRequest> for ArtifactTenantLifecycleCommand {
+    fn from(request: ArtifactTenantDisableRequest) -> Self {
+        Self {
+            installation_id: request.installation_id,
+            tenant_id: request.tenant_id,
+            expected_revision: request.expected_revision,
+            actor_id: request.actor_id,
+            reason: request.reason,
+            idempotency_key: request.idempotency_key,
+            enabled: false,
+        }
+    }
+}
+
+impl From<ArtifactTenantEnableRequest> for ArtifactTenantLifecycleCommand {
+    fn from(request: ArtifactTenantEnableRequest) -> Self {
+        Self {
+            installation_id: request.installation_id,
+            tenant_id: request.tenant_id,
+            expected_revision: request.expected_revision,
+            actor_id: request.actor_id,
+            reason: request.reason,
+            idempotency_key: request.idempotency_key,
+            enabled: true,
+        }
+    }
+}
+
 /// Removes an inactive artifact selection from one scope without deleting its
 /// immutable evidence or CAS bytes. A separate retention/purge policy owns
 /// physical deletion.
@@ -588,11 +646,14 @@ pub struct ArtifactMigrationCheckpointRequest {
 /// Immutable owner command for one artifact admission. The actor and
 /// idempotency key are control-plane facts; they are never supplied by the
 /// untrusted OCI descriptor.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ArtifactAdmissionCommand {
     pub reference: OciArtifactReference,
     pub scope: ModuleInstallationScope,
     pub dependency_lock: ModuleDependencyLockGraph,
+    /// Host-selected sandbox grants and limits. Descriptor declarations are
+    /// validated against this policy but cannot create grants themselves.
+    pub sandbox_policy: SandboxPolicy,
     pub actor_id: Uuid,
     pub idempotency_key: Uuid,
 }
@@ -623,12 +684,14 @@ impl ArtifactAdmissionCommand {
             reference: &'a OciArtifactReference,
             scope: &'a ModuleInstallationScope,
             dependency_lock: &'a ModuleDependencyLockGraph,
+            sandbox_policy: &'a SandboxPolicy,
         }
 
         let bytes = serde_json::to_vec(&Fingerprint {
             reference: &self.reference,
             scope: &self.scope,
             dependency_lock: &self.dependency_lock,
+            sandbox_policy: &self.sandbox_policy,
         })
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         Ok(sha256_digest(&bytes))
@@ -901,9 +964,78 @@ pub struct SeaOrmArtifactInstallationStore {
     db: DatabaseConnection,
 }
 
+/// Resolves the host-owned durable sandbox policy for one exact admitted
+/// artifact installation. Descriptor capabilities are declarations only; a
+/// policy must explicitly grant them before the sandbox can use a host
+/// capability.
+#[derive(Clone)]
+pub struct SeaOrmArtifactSandboxPolicyResolver {
+    db: DatabaseConnection,
+}
+
+impl SeaOrmArtifactSandboxPolicyResolver {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+}
+
 impl SeaOrmArtifactInstallationStore {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+
+    /// Resolves the exact active installation named by a platform-routed binding.
+    /// The initial identity lookup is not trusted for execution: it is reduced
+    /// to an immutable release tuple and then rechecked through `resolve_exact`.
+    pub async fn resolve_routed_installation(
+        &self,
+        installation_id: Uuid,
+        tenant_id: Uuid,
+    ) -> Result<InstalledModuleArtifact, String> {
+        if installation_id.is_nil() || tenant_id.is_nil() {
+            return Err("artifact route requires non-nil identities".to_string());
+        }
+        let transaction = self.db.begin().await.map_err(|error| error.to_string())?;
+        configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
+            .await
+            .map_err(|error| error.to_string())?;
+        let backend = transaction.get_database_backend();
+        let placeholder = if backend == DbBackend::Postgres {
+            "$1"
+        } else {
+            "?1"
+        };
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT slug, version, payload_digest FROM module_artifact_installations WHERE installation_id = {placeholder} LIMIT 1"
+                ),
+                vec![uuid_value(installation_id, backend)],
+            ))
+            .await
+            .map_err(|error| error.to_string())?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| error.to_string())?;
+        let row = row.ok_or_else(|| "artifact routed installation is unavailable".to_string())?;
+        let release = ArtifactReleaseRef {
+            slug: row.try_get("", "slug").map_err(|error| error.to_string())?,
+            version: row
+                .try_get("", "version")
+                .map_err(|error| error.to_string())?,
+            digest: row
+                .try_get("", "payload_digest")
+                .map_err(|error| error.to_string())?,
+        };
+        <Self as crate::ArtifactInstallationResolver>::resolve_exact(
+            self,
+            installation_id,
+            &release,
+            tenant_id,
+        )
+        .await
     }
 
     /// Persists a data-migration checkpoint with the admission revision CAS.
@@ -913,11 +1045,7 @@ impl SeaOrmArtifactInstallationStore {
         &self,
         request: ArtifactMigrationCheckpointRequest,
     ) -> Result<u64, ModuleInstallationError> {
-        if request.expected_revision == 0 || !request.checkpoint.is_object() {
-            return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                "migration checkpoint requires a positive revision and an object value".into(),
-            ));
-        }
+        validate_migration_checkpoint_request(&request)?;
         let transaction = self
             .db
             .begin()
@@ -1076,7 +1204,8 @@ impl SeaOrmArtifactInstallationStore {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT operation.operation_id, operation.expected_revision \
+                    "SELECT operation.operation_id, operation.installation_id, \
+                     operation.expected_revision, operation.actor_id, operation.reason \
                      FROM module_artifact_deactivation_operations operation \
                      JOIN module_artifact_installations installation ON installation.installation_id = operation.installation_id \
                      WHERE operation.idempotency_key = {} AND {scope}",
@@ -1091,24 +1220,24 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         if let Some(existing) = existing {
+            let installation_id = required_uuid_from_row(&existing, "installation_id", backend)?;
             let expected: i64 = existing
                 .try_get("", "expected_revision")
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-            if expected != request.expected_revision as i64 {
+            let actor_id = required_uuid_from_row(&existing, "actor_id", backend)?;
+            let reason: String = existing
+                .try_get("", "reason")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            if installation_id != request.installation_id
+                || expected != request.expected_revision as i64
+                || actor_id != request.actor_id
+                || reason != request.reason
+            {
                 return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                    "idempotency key was already used for another deactivation revision".into(),
+                    "idempotency key was already used for a different deactivation command".into(),
                 ));
             }
-            let operation_id = match backend {
-                DbBackend::Postgres => existing
-                    .try_get::<Uuid>("", "operation_id")
-                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
-                _ => existing
-                    .try_get::<String>("", "operation_id")
-                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
-                    .parse::<Uuid>()
-                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
-            };
+            let operation_id = required_uuid_from_row(&existing, "operation_id", backend)?;
             return Ok(ArtifactDeactivationResult {
                 operation_id,
                 revision: request.expected_revision + 1,
@@ -1258,9 +1387,29 @@ impl SeaOrmArtifactInstallationStore {
         &self,
         request: ArtifactTenantDisableRequest,
     ) -> Result<ArtifactTenantDisableResult, ModuleInstallationError> {
+        self.set_artifact_tenant_enabled(request.into())
+            .await
+            .map(|revision| ArtifactTenantDisableResult { revision })
+    }
+
+    /// Restores an Optional artifact's tenant intent through the same
+    /// revision-CAS, idempotency, audit, and outbox path as disable.
+    pub async fn enable_artifact_for_tenant(
+        &self,
+        request: ArtifactTenantEnableRequest,
+    ) -> Result<ArtifactTenantEnableResult, ModuleInstallationError> {
+        self.set_artifact_tenant_enabled(request.into())
+            .await
+            .map(|revision| ArtifactTenantEnableResult { revision })
+    }
+
+    async fn set_artifact_tenant_enabled(
+        &self,
+        request: ArtifactTenantLifecycleCommand,
+    ) -> Result<u64, ModuleInstallationError> {
         if request.expected_revision == 0 || request.reason.trim().is_empty() {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                "tenant disable requires a positive revision and non-empty reason".into(),
+                "tenant lifecycle change requires a positive revision and non-empty reason".into(),
             ));
         }
         let transaction = self
@@ -1323,7 +1472,7 @@ impl SeaOrmArtifactInstallationStore {
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         if descriptor.module_kind != ArtifactModuleKind::Optional {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                "tenant disable is allowed only for Optional artifacts".into(),
+                "tenant lifecycle changes are allowed only for Optional artifacts".into(),
             ));
         }
         let placeholder = if backend == DbBackend::Postgres {
@@ -1340,7 +1489,7 @@ impl SeaOrmArtifactInstallationStore {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT revision, idempotency_key \
+                    "SELECT enabled, revision, expected_revision, idempotency_key, actor_id, reason \
                      FROM module_artifact_tenant_lifecycle \
                      WHERE installation_id = {placeholder} AND tenant_id = {tenant_placeholder}"
                 ),
@@ -1352,8 +1501,21 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let revision = if let Some(row) = existing {
+            let current_enabled = match backend {
+                DbBackend::Postgres => row
+                    .try_get::<bool>("", "enabled")
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+                _ => {
+                    row.try_get::<i64>("", "enabled")
+                        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+                        != 0
+                }
+            };
             let current: i64 = row
                 .try_get("", "revision")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            let expected_revision: i64 = row
+                .try_get("", "expected_revision")
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
             let idempotency_key = match backend {
                 DbBackend::Postgres => row
@@ -1366,12 +1528,28 @@ impl SeaOrmArtifactInstallationStore {
                     .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
             };
             if idempotency_key == request.idempotency_key {
+                let actor_id = required_uuid_from_row(&row, "actor_id", backend)?;
+                let reason: String = row
+                    .try_get("", "reason")
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+                if current_enabled != request.enabled
+                    || expected_revision != request.expected_revision as i64
+                    || actor_id != request.actor_id
+                    || reason != request.reason
+                {
+                    return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                        "idempotency key was already used for a different tenant lifecycle command"
+                            .into(),
+                    ));
+                }
                 transaction
                     .commit()
                     .await
                     .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-                return Ok(ArtifactTenantDisableResult {
-                    revision: current as u64,
+                return u64::try_from(current).map_err(|_| {
+                    ModuleInstallationError::AdmissionRevisionConflict(
+                        "tenant lifecycle revision is outside the supported range".into(),
+                    )
                 });
             }
             if current != request.expected_revision as i64 {
@@ -1388,15 +1566,16 @@ impl SeaOrmArtifactInstallationStore {
                     )
                 })?;
             let placeholders = match backend {
-                DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5", "$6"),
-                _ => ("?1", "?2", "?3", "?4", "?5", "?6"),
+                DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5", "$6", "$7"),
+                _ => ("?1", "?2", "?3", "?4", "?5", "?6", "?7"),
             };
+            let enabled = if request.enabled { "TRUE" } else { "FALSE" };
             let updated = transaction
                 .execute(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "UPDATE module_artifact_tenant_lifecycle \
-                         SET enabled = FALSE, revision = revision + 1, \
+                         SET enabled = {enabled}, revision = revision + 1, expected_revision = {}, \
                              idempotency_key = {}, actor_id = {}, reason = {} \
                          WHERE installation_id = {} AND tenant_id = {} AND revision = {}",
                         placeholders.0,
@@ -1405,8 +1584,10 @@ impl SeaOrmArtifactInstallationStore {
                         placeholders.3,
                         placeholders.4,
                         placeholders.5,
+                        placeholders.6,
                     ),
                     vec![
+                        (request.expected_revision as i64).into(),
                         uuid_value(request.idempotency_key, backend),
                         uuid_value(request.actor_id, backend),
                         request.reason.into(),
@@ -1419,7 +1600,7 @@ impl SeaOrmArtifactInstallationStore {
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
             if updated.rows_affected() != 1 {
                 return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                    "tenant lifecycle became stale during disable".into(),
+                    "tenant lifecycle became stale during update".into(),
                 ));
             }
             next_revision
@@ -1429,21 +1610,27 @@ impl SeaOrmArtifactInstallationStore {
                     "new tenant lifecycle state starts at revision 1".into(),
                 ));
             }
+            let enabled = if request.enabled { "TRUE" } else { "FALSE" };
+            let insert_sql = match backend {
+                DbBackend::Postgres => format!(
+                    "INSERT INTO module_artifact_tenant_lifecycle \
+                     (installation_id, tenant_id, enabled, revision, expected_revision, idempotency_key, actor_id, reason, updated_at) \
+                     VALUES ($1, $2, {enabled}, 1, $3, $4, $5, $6, NOW())"
+                ),
+                _ => format!(
+                    "INSERT INTO module_artifact_tenant_lifecycle \
+                     (installation_id, tenant_id, enabled, revision, expected_revision, idempotency_key, actor_id, reason, updated_at) \
+                     VALUES (?1, ?2, {enabled}, 1, ?3, ?4, ?5, ?6, datetime('now'))"
+                ),
+            };
             transaction
                 .execute(Statement::from_sql_and_values(
                     backend,
-                    match backend {
-                        DbBackend::Postgres => "INSERT INTO module_artifact_tenant_lifecycle \
-                            (installation_id, tenant_id, enabled, revision, idempotency_key, actor_id, reason, updated_at) \
-                            VALUES ($1, $2, FALSE, 1, $3, $4, $5, NOW())",
-                        _ => "INSERT INTO module_artifact_tenant_lifecycle \
-                            (installation_id, tenant_id, enabled, revision, idempotency_key, actor_id, reason, updated_at) \
-                            VALUES (?1, ?2, FALSE, 1, ?3, ?4, ?5, datetime('now'))",
-                    }
-                    .to_string(),
+                    insert_sql,
                     vec![
                         uuid_value(request.installation_id, backend),
                         uuid_value(request.tenant_id, backend),
+                        (request.expected_revision as i64).into(),
                         uuid_value(request.idempotency_key, backend),
                         uuid_value(request.actor_id, backend),
                         request.reason.into(),
@@ -1459,10 +1646,18 @@ impl SeaOrmArtifactInstallationStore {
                 EventEnvelope::new(
                     Uuid::new_v4(),
                     Some(request.tenant_id),
-                    DomainEvent::ModuleArtifactTenantDisabled {
-                        installation_id: request.installation_id,
-                        tenant_id: request.tenant_id,
-                        revision,
+                    if request.enabled {
+                        DomainEvent::ModuleArtifactTenantEnabled {
+                            installation_id: request.installation_id,
+                            tenant_id: request.tenant_id,
+                            revision,
+                        }
+                    } else {
+                        DomainEvent::ModuleArtifactTenantDisabled {
+                            installation_id: request.installation_id,
+                            tenant_id: request.tenant_id,
+                            revision,
+                        }
                     },
                 ),
             )
@@ -1472,7 +1667,7 @@ impl SeaOrmArtifactInstallationStore {
             .commit()
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-        Ok(ArtifactTenantDisableResult { revision })
+        Ok(revision)
     }
 
     /// Removes one inactive scope selection while retaining immutable evidence
@@ -1507,7 +1702,8 @@ impl SeaOrmArtifactInstallationStore {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT uninstall.operation_id, uninstall.expected_revision \
+                    "SELECT uninstall.operation_id, uninstall.installation_id, \
+                     uninstall.expected_revision, uninstall.actor_id, uninstall.reason \
                      FROM module_artifact_uninstall_operations uninstall \
                      JOIN module_artifact_installations installation ON installation.installation_id = uninstall.installation_id \
                      WHERE uninstall.idempotency_key = {} AND {scope}",
@@ -1522,24 +1718,24 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
         if let Some(existing) = existing {
+            let installation_id = required_uuid_from_row(&existing, "installation_id", backend)?;
             let expected: i64 = existing
                 .try_get("", "expected_revision")
                 .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
-            if expected != request.expected_revision as i64 {
+            let actor_id = required_uuid_from_row(&existing, "actor_id", backend)?;
+            let reason: String = existing
+                .try_get("", "reason")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            if installation_id != request.installation_id
+                || expected != request.expected_revision as i64
+                || actor_id != request.actor_id
+                || reason != request.reason
+            {
                 return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                    "idempotency key was already used for another uninstall revision".into(),
+                    "idempotency key was already used for a different uninstall command".into(),
                 ));
             }
-            let operation_id = match backend {
-                DbBackend::Postgres => existing
-                    .try_get::<Uuid>("", "operation_id")
-                    .map_err(|e| ModuleInstallationError::Store(e.to_string()))?,
-                _ => existing
-                    .try_get::<String>("", "operation_id")
-                    .map_err(|e| ModuleInstallationError::Store(e.to_string()))?
-                    .parse::<Uuid>()
-                    .map_err(|e| ModuleInstallationError::Store(e.to_string()))?,
-            };
+            let operation_id = required_uuid_from_row(&existing, "operation_id", backend)?;
             return Ok(ArtifactUninstallResult {
                 operation_id,
                 revision: request.expected_revision + 1,
@@ -1874,6 +2070,287 @@ impl SeaOrmArtifactInstallationStore {
     }
 }
 
+/// Resolves the one active immutable artifact that may execute a catalog release
+/// for a tenant. A tenant-scoped admission shadows an active platform admission;
+/// an explicit tenant disable suppresses the platform candidate. This keeps
+/// runtime dispatch independent from registry lookups and mutable tags.
+#[async_trait]
+impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
+    async fn resolve(
+        &self,
+        release: &ArtifactReleaseRef,
+        tenant_id: Uuid,
+    ) -> Result<InstalledModuleArtifact, String> {
+        let transaction = self.db.begin().await.map_err(|error| error.to_string())?;
+        configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
+            .await
+            .map_err(|error| error.to_string())?;
+        let backend = transaction.get_database_backend();
+        let placeholders = match backend {
+            DbBackend::Postgres => ("$1", "$2", "$3", "$4"),
+            _ => ("?1", "?2", "?3", "?4"),
+        };
+        let platform_enabled = match backend {
+            DbBackend::Postgres => "COALESCE(tenant_lifecycle.enabled, TRUE) = TRUE",
+            _ => "COALESCE(tenant_lifecycle.enabled, 1) = 1",
+        };
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT installation.installation_id, installation.scope_kind, installation.tenant_id, \
+                     installation.registry, installation.repository, installation.manifest_digest, \
+                     installation.slug, installation.version, installation.payload_digest, \
+                     CAST(installation.descriptor AS TEXT) AS descriptor, \
+                     installation.dependency_graph_revision, installation.dependency_graph_digest, \
+                     CAST(installation.dependency_lock AS TEXT) AS dependency_lock, \
+                     installation.capability_grant_revision, installation.installed_at \
+                     FROM module_artifact_installations installation \
+                     JOIN module_artifact_admissions admission \
+                       ON admission.installation_id = installation.installation_id \
+                     LEFT JOIN module_artifact_tenant_lifecycle tenant_lifecycle \
+                       ON tenant_lifecycle.installation_id = installation.installation_id \
+                      AND tenant_lifecycle.tenant_id = {} \
+                     WHERE installation.slug = {} \
+                       AND installation.version = {} \
+                       AND installation.payload_digest = {} \
+                       AND admission.status = 'active' \
+                       AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
+                                       WHERE uninstall.installation_id = installation.installation_id) \
+                       AND {platform_enabled} \
+                       AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {}) \
+                            OR (installation.scope_kind = 'platform' \
+                                AND installation.tenant_id IS NULL)) \
+                     ORDER BY CASE WHEN installation.scope_kind = 'tenant' THEN 0 ELSE 1 END \
+                     LIMIT 1",
+                    placeholders.3,
+                    placeholders.0,
+                    placeholders.1,
+                    placeholders.2,
+                    placeholders.3,
+                ),
+                vec![
+                    release.slug.clone().into(),
+                    release.version.clone().into(),
+                    release.digest.clone().into(),
+                    uuid_value(tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| error.to_string())?;
+        let Some(row) = row else {
+            transaction
+                .commit()
+                .await
+                .map_err(|error| error.to_string())?;
+            return Err("active artifact release is unavailable for the requested tenant".into());
+        };
+
+        let installation_id = required_uuid_from_row(&row, "installation_id", backend)
+            .map_err(|error| error.to_string())?;
+        let scope_kind: String = row
+            .try_get("", "scope_kind")
+            .map_err(|error| error.to_string())?;
+        let scope = match scope_kind.as_str() {
+            "platform" => ModuleInstallationScope::Platform,
+            "tenant" => ModuleInstallationScope::Tenant {
+                tenant_id: required_uuid_from_row(&row, "tenant_id", backend)
+                    .map_err(|error| error.to_string())?,
+            },
+            _ => return Err("artifact installation has an invalid scope".into()),
+        };
+        let reference = OciArtifactReference {
+            registry: row
+                .try_get("", "registry")
+                .map_err(|error| error.to_string())?,
+            repository: row
+                .try_get("", "repository")
+                .map_err(|error| error.to_string())?,
+            digest: row
+                .try_get("", "manifest_digest")
+                .map_err(|error| error.to_string())?,
+        };
+        reference.validate().map_err(|error| error.to_string())?;
+        let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
+            &row.try_get::<String>("", "descriptor")
+                .map_err(|error| error.to_string())?,
+        )
+        .map_err(|_| "artifact installation descriptor is invalid".to_string())?;
+        descriptor
+            .validate()
+            .map_err(|_| "artifact installation descriptor is invalid".to_string())?;
+        let dependency_lock: ModuleDependencyLockGraph = serde_json::from_str(
+            &row.try_get::<String>("", "dependency_lock")
+                .map_err(|error| error.to_string())?,
+        )
+        .map_err(|_| "artifact installation dependency lock is invalid".to_string())?;
+        dependency_lock
+            .validate()
+            .map_err(|_| "artifact installation dependency lock is invalid".to_string())?;
+        let persisted_graph_revision: i64 = row
+            .try_get("", "dependency_graph_revision")
+            .map_err(|error| error.to_string())?;
+        let persisted_graph_digest: String = row
+            .try_get("", "dependency_graph_digest")
+            .map_err(|error| error.to_string())?;
+        let capability_grant_revision: i64 = row
+            .try_get("", "capability_grant_revision")
+            .map_err(|error| error.to_string())?;
+        let installed_at = match backend {
+            DbBackend::Postgres => row
+                .try_get::<DateTime<Utc>>("", "installed_at")
+                .map_err(|error| error.to_string())?,
+            _ => DateTime::parse_from_rfc3339(
+                &row.try_get::<String>("", "installed_at")
+                    .map_err(|error| error.to_string())?,
+            )
+            .map_err(|_| "artifact installation timestamp is invalid".to_string())?
+            .with_timezone(&Utc),
+        };
+        transaction
+            .commit()
+            .await
+            .map_err(|error| error.to_string())?;
+
+        let persisted_slug: String = row.try_get("", "slug").map_err(|error| error.to_string())?;
+        let persisted_version: String = row
+            .try_get("", "version")
+            .map_err(|error| error.to_string())?;
+        let persisted_payload_digest: String = row
+            .try_get("", "payload_digest")
+            .map_err(|error| error.to_string())?;
+        if descriptor.slug != persisted_slug
+            || descriptor.version != persisted_version
+            || descriptor.artifact_digest != persisted_payload_digest
+            || descriptor.release_ref() != *release
+            || dependency_lock.graph_revision != persisted_graph_revision as u64
+            || dependency_lock.graph_digest != persisted_graph_digest
+        {
+            return Err(
+                "artifact installation immutable state does not match its persisted identity"
+                    .into(),
+            );
+        }
+        let capability_grant_revision = u64::try_from(capability_grant_revision)
+            .map_err(|_| "artifact installation capability revision is invalid".to_string())?;
+        Ok(InstalledModuleArtifact {
+            installation_id,
+            scope,
+            reference,
+            release: release.clone(),
+            descriptor,
+            dependency_lock,
+            capability_grant_revision,
+            installed_at,
+        })
+    }
+}
+
+#[async_trait]
+impl ArtifactSandboxPolicyResolver for SeaOrmArtifactSandboxPolicyResolver {
+    async fn resolve(
+        &self,
+        artifact: &InstalledModuleArtifact,
+        tenant_id: Uuid,
+    ) -> Result<SandboxPolicy, String> {
+        if artifact.installation_id.is_nil() || tenant_id.is_nil() {
+            return Err("artifact sandbox policy requires non-nil identities".to_string());
+        }
+        if matches!(&artifact.scope, ModuleInstallationScope::Tenant { tenant_id: scope_tenant } if *scope_tenant != tenant_id)
+        {
+            return Err("tenant-scoped artifact cannot execute for another tenant".to_string());
+        }
+
+        let transaction = self.db.begin().await.map_err(|error| error.to_string())?;
+        configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
+            .await
+            .map_err(|error| error.to_string())?;
+        let backend = transaction.get_database_backend();
+        let placeholders = match backend {
+            DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
+            _ => ("?1", "?2", "?3", "?4", "?5"),
+        };
+        let policy_scope = match &artifact.scope {
+            ModuleInstallationScope::Platform => format!(
+                "(policy.tenant_id = {} OR policy.tenant_id IS NULL)",
+                placeholders.1
+            ),
+            ModuleInstallationScope::Tenant { .. } => {
+                format!("policy.tenant_id = {}", placeholders.1)
+            }
+        };
+        let lifecycle_enabled = match backend {
+            DbBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
+            _ => "COALESCE(lifecycle.enabled, 1) = 1",
+        };
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT policy.capability_grant_revision, CAST(policy.policy AS TEXT) AS policy \
+                     FROM module_artifact_sandbox_policies policy \
+                     JOIN module_artifact_installations installation \
+                       ON installation.installation_id = policy.installation_id \
+                     JOIN module_artifact_admissions admission \
+                       ON admission.installation_id = installation.installation_id \
+                     LEFT JOIN module_artifact_tenant_lifecycle lifecycle \
+                       ON lifecycle.installation_id = installation.installation_id \
+                      AND lifecycle.tenant_id = {tenant} \
+                     WHERE policy.installation_id = {installation_id} \
+                       AND installation.slug = {slug} \
+                       AND installation.version = {version} \
+                       AND installation.payload_digest = {digest} \
+                       AND admission.status = 'active' \
+                       AND (installation.scope_kind = 'platform' \
+                            OR (installation.scope_kind = 'tenant' \
+                                AND installation.tenant_id = {tenant})) \
+                       AND {lifecycle_enabled} \
+                       AND {policy_scope} \
+                     ORDER BY CASE WHEN policy.tenant_id = {tenant} THEN 0 ELSE 1 END \
+                     LIMIT 1",
+                    installation_id = placeholders.0,
+                    tenant = placeholders.1,
+                    slug = placeholders.2,
+                    version = placeholders.3,
+                    digest = placeholders.4,
+                ),
+                vec![
+                    uuid_value(artifact.installation_id, backend),
+                    uuid_value(tenant_id, backend),
+                    artifact.release.slug.clone().into(),
+                    artifact.release.version.clone().into(),
+                    artifact.release.digest.clone().into(),
+                ],
+            ))
+            .await
+            .map_err(|error| error.to_string())?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| error.to_string())?;
+        let row = row.ok_or_else(|| {
+            "no eligible durable sandbox policy exists for the artifact installation".to_string()
+        })?;
+        let revision: i64 = row
+            .try_get("", "capability_grant_revision")
+            .map_err(|error| error.to_string())?;
+        let revision = u64::try_from(revision)
+            .map_err(|_| "sandbox policy revision is outside the supported range".to_string())?;
+        if revision != artifact.capability_grant_revision {
+            return Err(
+                "sandbox policy revision does not match the admitted installation".to_string(),
+            );
+        }
+        let policy: SandboxPolicy = serde_json::from_str(
+            &row.try_get::<String>("", "policy")
+                .map_err(|error| error.to_string())?,
+        )
+        .map_err(|_| "sandbox policy is invalid".to_string())?;
+        validate_sandbox_policy(artifact, &policy)?;
+        Ok(policy)
+    }
+}
+
 #[async_trait]
 impl ArtifactDataMigrationCheckpointStore for SeaOrmArtifactInstallationStore {
     async fn record_data_upgrade_checkpoint(
@@ -2056,6 +2533,14 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                 backend,
                 installation_insert_sql(backend),
                 installation_values(artifact, previous_installation_id, backend)?,
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                sandbox_policy_insert_sql(backend),
+                sandbox_policy_values(artifact, &command.sandbox_policy, backend)?,
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
@@ -2252,6 +2737,23 @@ fn command_installation_id(
     }
 }
 
+fn required_uuid_from_row(
+    row: &sea_orm::QueryResult,
+    column: &str,
+    backend: DbBackend,
+) -> Result<Uuid, ModuleInstallationError> {
+    match backend {
+        DbBackend::Postgres => row
+            .try_get::<Uuid>("", column)
+            .map_err(|error| ModuleInstallationError::Store(error.to_string())),
+        _ => row
+            .try_get::<String>("", column)
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .parse::<Uuid>()
+            .map_err(|error| ModuleInstallationError::Store(error.to_string())),
+    }
+}
+
 async fn configure_rls_scope<C: ConnectionTrait>(
     connection: &C,
     scope: &ModuleInstallationScope,
@@ -2289,6 +2791,91 @@ fn installation_insert_sql(backend: DbBackend) -> String {
          ) VALUES ({})",
         placeholders.join(", ")
     )
+}
+
+fn sandbox_policy_insert_sql(backend: DbBackend) -> String {
+    let placeholders = match backend {
+        DbBackend::Postgres => (1..=5).map(|index| format!("${index}")).collect::<Vec<_>>(),
+        _ => (1..=5).map(|index| format!("?{index}")).collect::<Vec<_>>(),
+    };
+    format!(
+        "INSERT INTO module_artifact_sandbox_policies \
+         (installation_id, tenant_id, capability_grant_revision, policy, created_at) \
+         VALUES ({})",
+        placeholders.join(", ")
+    )
+}
+
+fn sandbox_policy_values(
+    artifact: &InstalledModuleArtifact,
+    policy: &SandboxPolicy,
+    backend: DbBackend,
+) -> Result<Vec<SqlValue>, ModuleInstallationError> {
+    let tenant_id = match &artifact.scope {
+        ModuleInstallationScope::Platform => None,
+        ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
+    };
+    let revision = i64::try_from(artifact.capability_grant_revision).map_err(|_| {
+        ModuleInstallationError::AdmissionRevisionConflict(
+            "sandbox policy revision exceeds database range".to_string(),
+        )
+    })?;
+    let policy = serde_json::to_value(policy)
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    Ok(vec![
+        uuid_value(artifact.installation_id, backend),
+        optional_uuid_value(tenant_id, backend),
+        revision.into(),
+        SqlValue::Json(Some(Box::new(policy))),
+        now_value(backend),
+    ])
+}
+
+fn validate_sandbox_policy(
+    artifact: &InstalledModuleArtifact,
+    policy: &SandboxPolicy,
+) -> Result<(), String> {
+    validate_sandbox_policy_for_admission(&artifact.descriptor, policy)
+        .map_err(|error| error.to_string())
+}
+
+fn validate_sandbox_policy_for_admission(
+    descriptor: &ModuleArtifactDescriptor,
+    policy: &SandboxPolicy,
+) -> Result<(), ModuleInstallationError> {
+    let limits = policy.limits;
+    if limits.wall_clock_ms == 0
+        || limits.instruction_budget == 0
+        || limits.max_memory_bytes == 0
+        || limits.max_output_bytes == 0
+        || limits.max_concurrency == 0
+        || limits.max_capability_calls == 0
+        || limits.max_capability_input_bytes == 0
+        || limits.max_capability_calls_per_second == 0
+    {
+        return Err(ModuleInstallationError::InvalidSandboxPolicy(
+            "sandbox policy limits must be positive".to_string(),
+        ));
+    }
+    let mut granted = HashSet::new();
+    for grant in &policy.grants {
+        let name = grant.name.as_str();
+        if !descriptor
+            .capabilities
+            .iter()
+            .any(|declared| declared == &grant.name)
+        {
+            return Err(ModuleInstallationError::UndeclaredCapability(
+                grant.name.as_str().to_string(),
+            ));
+        }
+        if !granted.insert(name) {
+            return Err(ModuleInstallationError::InvalidSandboxPolicy(
+                "sandbox policy contains a duplicate capability grant".to_string(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn installation_values(
@@ -2597,6 +3184,7 @@ where
         if package.descriptor.payload_kind == ArtifactPayloadKind::StaticPromoted {
             return Err(ModuleInstallationError::StaticPromotionRequired);
         }
+        validate_sandbox_policy_for_admission(&package.descriptor, &command.sandbox_policy)?;
         let verification_request = TrustVerificationRequest {
             reference: package.reference.clone(),
             descriptor: package.descriptor.clone(),
@@ -2704,7 +3292,12 @@ where
                     .collect(),
             })
             .await
-            .map_err(|error| ModuleInstallationError::PermissionRegistration(error.to_string()))
+            .map_err(|error| {
+                ModuleInstallationError::PermissionRegistration(format!(
+                    "{}: {}",
+                    error.code, error.message
+                ))
+            })
     }
 }
 
@@ -2730,6 +3323,8 @@ pub enum ModuleInstallationError {
     StaticPromotionRequired,
     #[error("sandbox policy grants undeclared artifact capability `{0}")]
     UndeclaredCapability(String),
+    #[error("artifact sandbox policy is invalid: {0}")]
+    InvalidSandboxPolicy(String),
     #[error("artifact Rhai binding serialization failed: {0}")]
     RhaiBinding(String),
     #[error("artifact registry error: {0}")]
@@ -2781,19 +3376,55 @@ pub(crate) fn sha256_digest(bytes: &[u8]) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
+fn validate_migration_checkpoint_request(
+    request: &ArtifactMigrationCheckpointRequest,
+) -> Result<(), ModuleInstallationError> {
+    if request.expected_revision == 0 || !request.checkpoint.is_object() {
+        return Err(ModuleInstallationError::AdmissionRevisionConflict(
+            "migration checkpoint requires a positive revision and an object value".into(),
+        ));
+    }
+    let checkpoint_size = serde_json::to_vec(&request.checkpoint)
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+        .len();
+    if checkpoint_size > MAX_ARTIFACT_MIGRATION_CHECKPOINT_BYTES {
+        return Err(ModuleInstallationError::AdmissionRevisionConflict(format!(
+            "migration checkpoint exceeds the {} byte owner metadata limit",
+            MAX_ARTIFACT_MIGRATION_CHECKPOINT_BYTES
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
 
     use chrono::Utc;
     use rustok_core::MigrationSource;
-    use rustok_sandbox::{CapabilityGrant, CapabilityName, ExecutionPhase};
+    use rustok_sandbox::{CapabilityGrant, CapabilityName, ExecutionPhase, SandboxPolicy};
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TryGetable};
     use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
     use serde_json::json;
 
     use super::*;
     use crate::ArtifactModuleKind;
+
+    #[test]
+    fn migration_checkpoint_rejects_oversized_owner_metadata() {
+        let request = ArtifactMigrationCheckpointRequest {
+            installation_id: Uuid::new_v4(),
+            scope: ModuleInstallationScope::Platform,
+            expected_revision: 1,
+            checkpoint: json!({ "payload": "x".repeat(MAX_ARTIFACT_MIGRATION_CHECKPOINT_BYTES) }),
+            has_irreversible_migration: false,
+        };
+
+        assert!(matches!(
+            validate_migration_checkpoint_request(&request),
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
+    }
 
     struct FixtureRegistry(ModuleArtifactPackage);
 
@@ -3010,6 +3641,7 @@ mod tests {
             reference,
             scope,
             dependency_lock: empty_dependency_lock(),
+            sandbox_policy: SandboxPolicy::default(),
             actor_id: Uuid::new_v4(),
             idempotency_key: Uuid::new_v4(),
         }
@@ -3232,7 +3864,8 @@ mod tests {
 
         assert!(matches!(
             request.subject,
-            SandboxSubject::ModuleArtifact { .. }
+            SandboxSubject::ModuleArtifact { installation_id, .. }
+                if installation_id == installed.installation_id
         ));
         assert_eq!(
             request.payload.executor,
@@ -3283,6 +3916,7 @@ mod tests {
             reference,
             scope: ModuleInstallationScope::Tenant { tenant_id },
             dependency_lock: expected_lock.clone(),
+            sandbox_policy: SandboxPolicy::default(),
             actor_id: Uuid::new_v4(),
             idempotency_key: Uuid::new_v4(),
         };
@@ -3294,6 +3928,7 @@ mod tests {
             },
             scope: command.scope.clone(),
             dependency_lock: command.dependency_lock.clone(),
+            sandbox_policy: command.sandbox_policy.clone(),
             actor_id: command.actor_id,
             idempotency_key: command.idempotency_key,
         };
@@ -3511,6 +4146,14 @@ mod tests {
             .await
             .expect("deactivate artifact");
         assert_eq!(deactivated.revision, 4);
+        let conflicting_deactivation = ArtifactDeactivationRequest {
+            actor_id: Uuid::new_v4(),
+            ..deactivation_request.clone()
+        };
+        assert!(matches!(
+            store.deactivate_artifact(conflicting_deactivation).await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
         assert_eq!(
             store
                 .deactivate_artifact(deactivation_request)
@@ -3565,13 +4208,60 @@ mod tests {
                 .revision,
             1
         );
+        let conflicting_tenant_disable = ArtifactTenantDisableRequest {
+            reason: "a different disable reason".to_string(),
+            ..tenant_disable.clone()
+        };
+        assert!(matches!(
+            store
+                .disable_artifact_for_tenant(conflicting_tenant_disable)
+                .await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
         assert_eq!(
             store
-                .disable_artifact_for_tenant(tenant_disable)
+                .disable_artifact_for_tenant(tenant_disable.clone())
                 .await
                 .expect("idempotent tenant disable")
                 .revision,
             1
+        );
+        assert!(matches!(
+            store
+                .enable_artifact_for_tenant(ArtifactTenantEnableRequest {
+                    installation_id: installed.installation_id,
+                    tenant_id,
+                    expected_revision: 1,
+                    actor_id: tenant_disable.actor_id,
+                    reason: tenant_disable.reason.clone(),
+                    idempotency_key: tenant_disable.idempotency_key,
+                })
+                .await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
+        let tenant_enable = ArtifactTenantEnableRequest {
+            installation_id: installed.installation_id,
+            tenant_id,
+            expected_revision: 1,
+            actor_id: Uuid::new_v4(),
+            reason: "restore tenant intent".to_string(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        assert_eq!(
+            store
+                .enable_artifact_for_tenant(tenant_enable.clone())
+                .await
+                .expect("enable tenant artifact")
+                .revision,
+            2
+        );
+        assert_eq!(
+            store
+                .enable_artifact_for_tenant(tenant_enable)
+                .await
+                .expect("idempotent tenant enable")
+                .revision,
+            2
         );
         let tenant_disable_outbox = database
             .query_one(Statement::from_string(
@@ -3583,6 +4273,60 @@ mod tests {
             .expect("tenant disable outbox row");
         assert_eq!(
             i64::try_get(&tenant_disable_outbox, "", "count").expect("tenant disable outbox count"),
+            1
+        );
+        let tenant_enable_outbox = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM sys_events WHERE event_type = 'module.artifact.tenant_enabled'".to_string(),
+            ))
+            .await
+            .expect("tenant enable outbox query")
+            .expect("tenant enable outbox row");
+        assert_eq!(
+            i64::try_get(&tenant_enable_outbox, "", "count").expect("tenant enable outbox count"),
+            1
+        );
+        let uninstall_request = ArtifactUninstallRequest {
+            installation_id: installed.installation_id,
+            scope: ModuleInstallationScope::Tenant { tenant_id },
+            expected_revision: 4,
+            actor_id: Uuid::new_v4(),
+            reason: "remove inactive selection".to_string(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        let uninstalled = store
+            .uninstall_artifact(uninstall_request.clone())
+            .await
+            .expect("uninstall inactive artifact");
+        assert_eq!(uninstalled.revision, 5);
+        let conflicting_uninstall = ArtifactUninstallRequest {
+            installation_id: Uuid::new_v4(),
+            ..uninstall_request.clone()
+        };
+        assert!(matches!(
+            store.uninstall_artifact(conflicting_uninstall).await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
+        assert_eq!(
+            store
+                .uninstall_artifact(uninstall_request)
+                .await
+                .expect("idempotent uninstall"),
+            uninstalled
+        );
+        let uninstall_outbox_count = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM sys_events \
+                 WHERE event_type = 'module.artifact.uninstalled'"
+                    .to_string(),
+            ))
+            .await
+            .expect("uninstall outbox query")
+            .expect("uninstall outbox count");
+        assert_eq!(
+            i64::try_get(&uninstall_outbox_count, "", "count").expect("uninstall outbox count"),
             1
         );
         assert!(matches!(
@@ -3598,5 +4342,115 @@ mod tests {
                 .await,
             Err(ModuleInstallationError::AdmissionRevisionConflict(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn runtime_resolver_prefers_tenant_artifact_and_honors_tenant_disable() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        rustok_outbox::SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration");
+        let module = crate::ModulesModule;
+        for migration in module.migrations() {
+            migration
+                .up(&SchemaManager::new(&database))
+                .await
+                .expect("migration");
+        }
+
+        let package = package(ArtifactPayloadKind::Rhai);
+        let release = package.descriptor.release_ref();
+        let tenant_id = Uuid::new_v4();
+        let store = SeaOrmArtifactInstallationStore::new(database.clone());
+        let platform = ModuleInstaller::new(
+            FixtureRegistry(package.clone()),
+            store.clone(),
+            InMemoryArtifactBlobStore::default(),
+            trust_verifier(),
+            trust_policy(),
+            AllowArtifactPermissionRegistrar,
+        )
+        .admit(admission_command(
+            package.reference.clone(),
+            ModuleInstallationScope::Platform,
+        ))
+        .await
+        .expect("platform admission");
+        let tenant = ModuleInstaller::new(
+            FixtureRegistry(package.clone()),
+            store.clone(),
+            InMemoryArtifactBlobStore::default(),
+            trust_verifier(),
+            trust_policy(),
+            AllowArtifactPermissionRegistrar,
+        )
+        .admit(admission_command(
+            package.reference.clone(),
+            ModuleInstallationScope::Tenant { tenant_id },
+        ))
+        .await
+        .expect("tenant admission");
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE module_artifact_admissions SET status = 'active'".to_string(),
+            ))
+            .await
+            .expect("activate admissions");
+
+        let selected = crate::ArtifactInstallationResolver::resolve(&store, &release, tenant_id)
+            .await
+            .expect("tenant resolution");
+        assert_eq!(selected.installation_id, tenant.installation_id);
+        assert_eq!(
+            selected.scope,
+            ModuleInstallationScope::Tenant { tenant_id }
+        );
+        let policies = SeaOrmArtifactSandboxPolicyResolver::new(database.clone());
+        let policy = crate::ArtifactSandboxPolicyResolver::resolve(&policies, &selected, tenant_id)
+            .await
+            .expect("tenant sandbox policy");
+        assert!(policy.grants.is_empty());
+
+        store
+            .disable_artifact_for_tenant(ArtifactTenantDisableRequest {
+                installation_id: tenant.installation_id,
+                tenant_id,
+                expected_revision: 1,
+                actor_id: Uuid::new_v4(),
+                reason: "tenant supersedes this artifact".to_string(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("disable tenant artifact");
+        let selected = crate::ArtifactInstallationResolver::resolve(&store, &release, tenant_id)
+            .await
+            .expect("platform fallback");
+        assert_eq!(selected.installation_id, platform.installation_id);
+        assert!(
+            crate::ArtifactSandboxPolicyResolver::resolve(&policies, &selected, tenant_id)
+                .await
+                .is_ok()
+        );
+
+        store
+            .disable_artifact_for_tenant(ArtifactTenantDisableRequest {
+                installation_id: platform.installation_id,
+                tenant_id,
+                expected_revision: 1,
+                actor_id: Uuid::new_v4(),
+                reason: "tenant disables the platform artifact".to_string(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("disable platform artifact");
+        assert!(
+            crate::ArtifactInstallationResolver::resolve(&store, &release, tenant_id)
+                .await
+                .is_err()
+        );
     }
 }

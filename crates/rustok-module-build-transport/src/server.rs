@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rustok_modules::{ModuleBuildRequest, ModuleBuildWorker};
+use rustok_modules::{ModuleBuildRequest, ModuleBuildWorker, ModuleBuildWorkerReadiness};
 use tonic::{Request, Response, Status};
 
 use crate::proto::module_build_service_server::ModuleBuildService;
@@ -23,15 +23,15 @@ impl<W> ModuleBuildGrpcService<W> {
 #[tonic::async_trait]
 impl<W> ModuleBuildService for ModuleBuildGrpcService<W>
 where
-    W: ModuleBuildWorker + 'static,
+    W: ModuleBuildWorker + ModuleBuildWorkerReadiness + 'static,
 {
     async fn get_readiness(
         &self,
         _request: Request<ReadinessRequest>,
     ) -> Result<Response<ReadinessResponse>, Status> {
-        // The deployment starts this service only after it has validated its
-        // policy, OCI-job runtime, and mTLS listener configuration.
-        Ok(Response::new(ReadinessResponse { ready: true }))
+        Ok(Response::new(ReadinessResponse {
+            ready: self.worker.is_ready(),
+        }))
     }
 
     async fn execute_build(

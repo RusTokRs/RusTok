@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use rustok_ui_core::{normalize_ui_text, parse_ui_csv};
 
 pub fn parse_csv(value: String) -> Vec<String> {
@@ -176,6 +177,91 @@ pub fn product_attributes_task_payload(
     serde_json::to_string(&payload)
 }
 
+pub struct OrderAnalyticsTaskPayloadInput {
+    pub order_ids_csv: String,
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+    pub focus: Option<String>,
+    pub assistant_prompt: Option<String>,
+}
+
+pub fn order_analytics_task_payload(
+    input: OrderAnalyticsTaskPayloadInput,
+) -> Result<String, serde_json::Error> {
+    let OrderAnalyticsTaskPayloadInput {
+        order_ids_csv,
+        date_from,
+        date_to,
+        focus,
+        assistant_prompt,
+    } = input;
+    let order_ids = parse_csv(order_ids_csv)
+        .into_iter()
+        .map(|value| uuid::Uuid::parse_str(value.as_str()).map_err(invalid_input_error))
+        .collect::<Result<Vec<_>, _>>()?;
+    if order_ids.is_empty() {
+        return Err(invalid_input_message("at least one order id is required"));
+    }
+
+    let date_from = parse_optional_rfc3339(date_from)?;
+    let date_to = parse_optional_rfc3339(date_to)?;
+    if date_from
+        .as_ref()
+        .zip(date_to.as_ref())
+        .is_some_and(|(date_from, date_to)| date_from > date_to)
+    {
+        return Err(invalid_input_message("date_from must not be after date_to"));
+    }
+
+    let payload = serde_json::json!({
+        "order_ids": order_ids,
+        "date_from": date_from,
+        "date_to": date_to,
+        "focus": focus.and_then(|value| optional_text(value)),
+        "assistant_prompt": assistant_prompt.and_then(|value| optional_text(value)),
+    });
+    serde_json::to_string(&payload)
+}
+
+pub struct OrderOpsAssistantTaskPayloadInput {
+    pub order_id: String,
+    pub recommended_action: Option<String>,
+    pub context: Option<String>,
+    pub assistant_prompt: Option<String>,
+}
+
+pub fn order_ops_assistant_task_payload(
+    input: OrderOpsAssistantTaskPayloadInput,
+) -> Result<String, serde_json::Error> {
+    let OrderOpsAssistantTaskPayloadInput {
+        order_id,
+        recommended_action,
+        context,
+        assistant_prompt,
+    } = input;
+    let order_id = uuid::Uuid::parse_str(order_id.trim()).map_err(invalid_input_error)?;
+    let payload = serde_json::json!({
+        "order_id": order_id,
+        "recommended_action": recommended_action.and_then(|value| optional_text(value)),
+        "context": context.and_then(|value| optional_text(value)),
+        "assistant_prompt": assistant_prompt.and_then(|value| optional_text(value)),
+    });
+    serde_json::to_string(&payload)
+}
+
+fn parse_optional_rfc3339(
+    value: Option<String>,
+) -> Result<Option<DateTime<Utc>>, serde_json::Error> {
+    value
+        .and_then(|value| optional_text(value))
+        .map(|value| {
+            DateTime::parse_from_rfc3339(value.as_str())
+                .map(|value| value.with_timezone(&Utc))
+                .map_err(|error| invalid_input_message(error.to_string().as_str()))
+        })
+        .transpose()
+}
+
 pub struct BlogTaskPayloadInput {
     pub post_id: Option<String>,
     pub source_locale: Option<String>,
@@ -278,12 +364,105 @@ where
 }
 
 fn invalid_input_error(error: uuid::Error) -> serde_json::Error {
-    serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidInput, error))
+    invalid_input_message(error.to_string().as_str())
+}
+
+fn invalid_input_message(message: &str) -> serde_json::Error {
+    serde_json::Error::io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        message.to_string(),
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn order_analytics_payload_normalizes_ids_and_period() {
+        let first = uuid::Uuid::new_v4();
+        let second = uuid::Uuid::new_v4();
+        let payload = order_analytics_task_payload(OrderAnalyticsTaskPayloadInput {
+            order_ids_csv: format!(" {first},\n{second} "),
+            date_from: Some("2026-07-01T00:00:00Z".to_string()),
+            date_to: Some("2026-07-02T00:00:00+00:00".to_string()),
+            focus: Some("  shipping risk  ".to_string()),
+            assistant_prompt: Some("  summarize  ".to_string()),
+        })
+        .expect("payload should be valid");
+
+        let json: serde_json::Value =
+            serde_json::from_str(payload.as_str()).expect("payload must be JSON");
+        assert_eq!(json["order_ids"].as_array().map(Vec::len), Some(2));
+        assert_eq!(json["focus"].as_str(), Some("shipping risk"));
+        assert_eq!(json["assistant_prompt"].as_str(), Some("summarize"));
+        assert_eq!(json["date_from"].as_str(), Some("2026-07-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn order_analytics_payload_requires_ids_and_a_valid_period() {
+        assert!(
+            order_analytics_task_payload(OrderAnalyticsTaskPayloadInput {
+                order_ids_csv: String::new(),
+                date_from: None,
+                date_to: None,
+                focus: None,
+                assistant_prompt: None,
+            })
+            .is_err()
+        );
+        assert!(
+            order_analytics_task_payload(OrderAnalyticsTaskPayloadInput {
+                order_ids_csv: uuid::Uuid::new_v4().to_string(),
+                date_from: Some("2026-07-03T00:00:00Z".to_string()),
+                date_to: Some("2026-07-02T00:00:00Z".to_string()),
+                focus: None,
+                assistant_prompt: None,
+            })
+            .is_err()
+        );
+        assert!(
+            order_analytics_task_payload(OrderAnalyticsTaskPayloadInput {
+                order_ids_csv: uuid::Uuid::new_v4().to_string(),
+                date_from: Some("2026-07-03T00:00:00Z".to_string()),
+                date_to: None,
+                focus: None,
+                assistant_prompt: None,
+            })
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn order_ops_payload_requires_a_valid_order_id() {
+        let order_id = uuid::Uuid::new_v4();
+        let payload = order_ops_assistant_task_payload(OrderOpsAssistantTaskPayloadInput {
+            order_id: format!(" {order_id} "),
+            recommended_action: Some("  contact_customer  ".to_string()),
+            context: Some("  address mismatch  ".to_string()),
+            assistant_prompt: None,
+        })
+        .expect("payload should be valid");
+        let json: serde_json::Value =
+            serde_json::from_str(payload.as_str()).expect("payload must be JSON");
+        assert_eq!(
+            json["order_id"].as_str(),
+            Some(order_id.to_string().as_str())
+        );
+        assert_eq!(
+            json["recommended_action"].as_str(),
+            Some("contact_customer")
+        );
+        assert!(
+            order_ops_assistant_task_payload(OrderOpsAssistantTaskPayloadInput {
+                order_id: "not-a-uuid".to_string(),
+                recommended_action: None,
+                context: None,
+                assistant_prompt: None,
+            })
+            .is_err()
+        );
+    }
 
     #[test]
     fn product_attributes_payload_requires_seed_content() {

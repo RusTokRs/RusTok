@@ -13,6 +13,8 @@ oci-distribution = ["dep:oci-distribution"]
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+chrono-tz = "0.9"
+cron = "0.17"
 semver = "1.0"
 serde.workspace = true
 serde_json.workspace = true
@@ -26,6 +28,7 @@ http = "1.1"
 tokio.workspace = true
 rustok-core.workspace = true
 rustok-api.workspace = true
+rustok-runtime.workspace = true
 rustok-sandbox.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
@@ -36,6 +39,8 @@ sea-orm.workspace = true
 oci-distribution = { version = "0.11.0", optional = true }
 pubgrub = "0.4"
 jsonschema = { version = "=0.46.10", default-features = false }
+toml.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

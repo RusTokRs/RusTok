@@ -26,6 +26,7 @@ const dependency = registry.provider_dependencies?.[0];
 if (!dependency) fail('missing product provider dependency');
 if (dependency.module !== 'product' || dependency.registry !== providerPath) fail('provider dependency identity drift');
 if (dependency.contract_version !== provider.contract_version || dependency.port !== 'ProductCatalogReadPort') fail('provider contract/port drift');
+sameSet(dependency.consuming_tasks ?? [], ['product_attributes'], 'product catalog read consuming tasks');
 const productConsumer = provider.consumers?.find(c => c.module === 'ai-product');
 if (!productConsumer) fail('product provider registry lacks ai-product consumer profile');
 sameSet(dependency.fallback_profiles, productConsumer.fallback_profiles, 'consumer/provider fallback profiles');
@@ -73,8 +74,42 @@ hasAll(aiService, [
   'TaskJobExecutionAuthority::RegisteredAgentAssignment'
 ], 'product agent canonical task-run composition');
 
+const attributesHandler = read('crates/rustok-ai/src/direct_product_attributes.rs');
+hasAll(attributesHandler, [
+  'runtime.product_catalog_read_port()',
+  'read_product_projection(',
+  'tokio::time::timeout(',
+  'ai_product.catalog_read_port_unavailable',
+  'ai_product.catalog_read_port_deadline_exceeded',
+  '"catalog_enrichment": "skipped"',
+  '"review_required": true',
+  '"persistence": "none"'
+], 'product attributes owner-port adapter');
+if (attributesHandler.includes('CatalogService')) {
+  fail('product attributes must not bypass ProductCatalogReadPort with CatalogService');
+}
+
+const runtimeTypes = read('crates/rustok-ai/src/service/types.rs');
+hasAll(runtimeTypes, [
+  'SharedAiProductCatalogReadPort',
+  'product_catalog_read_port',
+  'with_product_catalog_read_port'
+], 'AI product catalog runtime composition');
+const commerceRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
+hasAll(commerceRuntime, [
+  'Arc<dyn rustok_product::ProductCatalogReadPort>',
+  'SharedAiProductCatalogReadPort'
+], 'server product catalog runtime composition');
+const directTests = read('crates/rustok-ai/src/direct.rs');
+hasAll(directTests, [
+  'direct_product_attributes_returns_review_only_suggestions_without_product_write',
+  'direct_product_attributes_degrades_when_catalog_port_is_unavailable',
+  'direct_product_attributes_degrades_when_catalog_port_exceeds_its_deadline'
+], 'product attributes direct runtime evidence');
+
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');
+sameSet(evidence.cases[0]?.assertions ?? [], registry.contract_tests.cases[0]?.assertions ?? [], 'evidence/registry assertions');
 sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'fallback profiles');
 sameSet(evidence.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'degraded modes');
 if (fallbackSmoke.generated_from !== registryPath || !['source_smoke_locked', 'runtime_verified'].includes(fallbackSmoke.status)) fail('fallback smoke header drift');

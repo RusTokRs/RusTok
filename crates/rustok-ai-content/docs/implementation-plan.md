@@ -10,11 +10,12 @@ maintained in the crate and module README.
 
 ## FFA/FBA readiness
 
-- FFA status: `in_progress`.
-- FBA status: `boundary_ready` (`core_transport_ui`).
-- Structural shape: `core_transport_ui`
-- The module-owned admin package separates core, selected transport, and
-  Leptos UI, but its concrete host rendering remains incomplete.
+- FFA status: `not_started` (no standalone support-adapter UI).
+- FBA status: `boundary_ready` (`no_ui_boundary`).
+- Structural shape: `no_ui_boundary`
+- Content adapter controls are composed by the `rustok-ai` owner Leptos and
+  Next.js admin surfaces. They must not create a route inside Blog, Forum, or
+  this support crate.
 - `content_ai_policy_matrix` is the canonical source of moderation approval
   defaults and must remain consumed by `rustok-ai` rather than duplicated
   there. Its typed degraded modes are `require_operator_review` and
@@ -37,11 +38,7 @@ through the Blog owner service.
 
 ## Next results
 
-1. **Render the owned admin surface in its hosts.** Connect the existing
-   core/transport/UI package to the appropriate admin route and verify native
-   server-function selection with parallel GraphQL/headless parity. Done when
-   a host-level test or runtime evidence covers both selected paths.
-2. **Add only product-approved content verticals.** Any new task must add a
+1. **Add only product-approved content verticals.** Any new task must add a
    content-owned descriptor, generated-payload validation, approval policy,
    and composed evidence before registration in `rustok-ai`. Done when no
    content task identity or policy is hard-coded by the runtime.

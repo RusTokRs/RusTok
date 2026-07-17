@@ -10,9 +10,9 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect, Set,
 };
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
+use uuid::Uuid;
 
 use crate::models::registry_governance_event::{
     self, ActiveModel as RegistryGovernanceEventActiveModel,
@@ -49,16 +49,15 @@ use crate::models::registry_validation_stage::{
 };
 use crate::modules::{CatalogManifestModule, CatalogModuleVersion};
 use crate::services::marketplace_catalog::{
-    RegistryPublishMarketplaceRequest, RegistryPublishRequest, RegistryPublishUiPackagesRequest,
-    REGISTRY_MUTATION_SCHEMA_VERSION,
+    RegistryPublishArtifactOrigin, RegistryPublishMarketplaceRequest, RegistryPublishRequest,
+    RegistryPublishUiPackagesRequest,
 };
 use crate::services::registry_principal::{RegistryAuthority, RegistryPrincipalRef};
 use thiserror::Error;
 
-const REGISTRY_ARTIFACT_BUNDLE_TYPE: &str = "rustok-module-publish-bundle";
+pub use rustok_modules::MODULE_PUBLISH_ARTIFACT_MAX_BYTES;
 const REGISTRY_VALIDATION_FOLLOW_UP_GATES: &[&str] =
     &["compile_smoke", "targeted_tests", "security_policy_review"];
-const REGISTRY_VALIDATION_LOAD_RETRY_DELAYS_SECONDS: &[u64] = &[1, 3, 5];
 pub use rustok_modules::REGISTRY_APPROVE_OVERRIDE_REASON_CODES;
 pub use rustok_modules::REGISTRY_HOLD_REASON_CODES;
 pub use rustok_modules::REGISTRY_OWNER_TRANSFER_REASON_CODES;
@@ -106,6 +105,31 @@ pub struct RegistryArtifactUpload {
     pub bytes: bytes::Bytes,
 }
 
+/// Host-normalized external prebuilt evidence. The server derives actor and
+/// quarantine approver from authenticated authority rather than accepting
+/// either principal from the transport payload.
+#[derive(Debug, Clone)]
+pub struct RegistryExternalPrebuiltStageInput {
+    pub artifact_digest: String,
+    pub source_evidence: rustok_modules::ModuleExternalSourceEvidence,
+    pub provenance_reference: String,
+    pub provenance_digest: String,
+    pub provenance_policy_revision: String,
+    pub quarantine_review_reference: String,
+    pub quarantine_policy_revision: String,
+    pub idempotency_key: Uuid,
+}
+
+/// Host-normalized platform build selection. The controller derives
+/// `tenant_id` from the authenticated session, preserving the build owner's
+/// tenant-RLS boundary at this cross-owner promotion point.
+#[derive(Debug, Clone)]
+pub struct RegistryPlatformBuildStageInput {
+    pub tenant_id: Uuid,
+    pub build_request_id: Uuid,
+    pub idempotency_key: Uuid,
+}
+
 #[derive(Clone)]
 pub struct RegistryGovernanceService {
     db: DatabaseConnection,
@@ -148,6 +172,7 @@ pub struct RegistryRemoteValidationClaim {
 pub struct RegistryPublishRequestSnapshot {
     pub id: String,
     pub status: String,
+    pub artifact_origin: String,
     pub requested_by: RegistryPrincipalRef,
     pub publisher: Option<RegistryPrincipalRef>,
     pub approved_by: Option<RegistryPrincipalRef>,
@@ -267,12 +292,6 @@ pub struct RegistryPublishRequestFollowUpSnapshot {
     pub governance_actions: Vec<RegistryGovernanceActionSnapshot>,
 }
 
-#[derive(Debug, Default)]
-pub(crate) struct RegistryArtifactValidation {
-    warnings: Vec<String>,
-    errors: Vec<String>,
-}
-
 #[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct RegistryValidationCheckDetail {
     key: String,
@@ -285,61 +304,6 @@ struct RegistryLocalizedMetadata {
     locale: String,
     name: String,
     description: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct RegistryPublishArtifactBundle {
-    schema_version: u32,
-    artifact_type: String,
-    module: RegistryPublishArtifactModule,
-    files: RegistryPublishArtifactFiles,
-}
-
-#[derive(Debug, Deserialize)]
-struct RegistryPublishArtifactModule {
-    slug: String,
-    version: String,
-    crate_name: String,
-    module_name: String,
-    module_description: String,
-    ownership: String,
-    trust_level: String,
-    license: String,
-    module_entry_type: Option<String>,
-    marketplace: RegistryPublishArtifactMarketplace,
-    ui_packages: RegistryPublishArtifactUiPackages,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct RegistryPublishArtifactMarketplace {
-    category: Option<String>,
-    #[serde(default)]
-    tags: Vec<String>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct RegistryPublishArtifactUiPackages {
-    admin: Option<RegistryPublishArtifactUiPackage>,
-    storefront: Option<RegistryPublishArtifactUiPackage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RegistryPublishArtifactUiPackage {
-    crate_name: String,
-    #[allow(dead_code)]
-    manifest_path: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct RegistryPublishArtifactFiles {
-    #[serde(rename = "rustok-module.toml")]
-    package_manifest: Option<String>,
-    #[serde(rename = "Cargo.toml")]
-    crate_manifest: Option<String>,
-    #[serde(rename = "admin/Cargo.toml")]
-    admin_manifest: Option<String>,
-    #[serde(rename = "storefront/Cargo.toml")]
-    storefront_manifest: Option<String>,
 }
 
 pub mod publishing;
@@ -378,36 +342,6 @@ impl RegistryGovernanceService {
         self.storage
             .as_ref()
             .ok_or_else(|| anyhow!("StorageService is required for registry artifact operations"))
-    }
-
-    async fn load_registry_artifact(
-        &self,
-        request: &registry_publish_request::Model,
-    ) -> anyhow::Result<RegistryArtifactUpload> {
-        let artifact_storage_key = request.artifact_storage_key.as_deref().ok_or_else(|| {
-            anyhow!(
-                "Registry publish request '{}' is missing artifact_storage_key",
-                request.id
-            )
-        })?;
-        let bytes = self
-            .require_storage()?
-            .read(artifact_storage_key)
-            .await
-            .with_context(|| {
-                format!(
-                    "failed to read registry artifact for request '{}' from storage key '{}'",
-                    request.id, artifact_storage_key
-                )
-            })?;
-
-        Ok(RegistryArtifactUpload {
-            content_type: request
-                .artifact_content_type
-                .clone()
-                .unwrap_or_else(|| "application/octet-stream".to_string()),
-            bytes,
-        })
     }
 
     async fn store_registry_artifact(
@@ -479,33 +413,6 @@ fn follow_up_validation_gate_details() -> Vec<RegistryValidationCheckDetail> {
             detail: follow_up_gate_detail(gate).to_string(),
         })
         .collect()
-}
-
-fn validation_passed_check_details() -> Vec<RegistryValidationCheckDetail> {
-    vec![RegistryValidationCheckDetail {
-        key: "artifact_bundle_contract".to_string(),
-        status: "passed".to_string(),
-        detail:
-            "Artifact bundle JSON, rustok-module.toml parity, and crate/UI manifest contract checks passed."
-                .to_string(),
-    }]
-}
-
-fn validation_failed_check_details(errors: &[String]) -> Vec<RegistryValidationCheckDetail> {
-    vec![RegistryValidationCheckDetail {
-        key: "artifact_bundle_contract".to_string(),
-        status: "failed".to_string(),
-        detail: errors
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "Artifact bundle contract validation failed.".to_string()),
-    }]
-}
-
-pub(crate) fn validation_retry_delay_seconds(failed_attempt: usize) -> Option<u64> {
-    REGISTRY_VALIDATION_LOAD_RETRY_DELAYS_SECONDS
-        .get(failed_attempt.saturating_sub(1))
-        .copied()
 }
 
 async fn load_publish_request_translation_rows<C>(

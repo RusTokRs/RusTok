@@ -1,10 +1,12 @@
 use super::*;
 use rustok_modules::{
-    ModulePublishApprovalOverride, ModulePublishArtifactAttachCommand,
-    ModulePublishRequestChangesCommand, ModulePublishRequestCreateCommand,
-    ModulePublishRequestHoldCommand, ModulePublishRequestPublicationCommand,
-    ModulePublishRequestRejectCommand, ModulePublishRequestResumeCommand,
-    SeaOrmModuleGovernanceService,
+    ModuleExternalPrebuiltStageCommand, ModuleExternalPrebuiltStageResult,
+    ModulePublicationArtifactOrigin, ModulePublishApprovalOverride,
+    ModulePublishArtifactAttachCommand, ModulePublishPlatformBuildStageCommand,
+    ModulePublishPlatformBuildStageResult, ModulePublishRequestChangesCommand,
+    ModulePublishRequestCreateCommand, ModulePublishRequestHoldCommand,
+    ModulePublishRequestPublicationCommand, ModulePublishRequestRejectCommand,
+    ModulePublishRequestResumeCommand, SeaOrmModuleGovernanceService,
 };
 
 impl RegistryGovernanceService {
@@ -12,36 +14,30 @@ impl RegistryGovernanceService {
         &self,
         request: &RegistryPublishRequest,
         authority: &RegistryAuthority,
-        warnings: &[String],
     ) -> anyhow::Result<registry_publish_request::Model> {
         self.ensure_authority_can_create_publish_request(authority, &request.module.slug)
             .await?;
 
+        let command =
+            module_publish_request_create_command(request, authority.principal.to_json_value())?;
         let request_id = SeaOrmModuleGovernanceService::new(self.db.clone())
-            .create_publish_request(ModulePublishRequestCreateCommand {
-                slug: request.module.slug.clone(),
-                version: request.module.version.clone(),
-                crate_name: request.module.crate_name.clone(),
-                default_locale: normalize_registry_locale(&request.module.default_locale),
-                ownership: request.module.ownership.clone(),
-                trust_level: request.module.trust_level.clone(),
-                license: request.module.license.clone(),
-                entry_type: request.module.entry_type.clone(),
-                marketplace: serde_json::to_value(&request.module.marketplace)
-                    .context("failed to serialize registry publish marketplace metadata")?,
-                ui_packages: serde_json::to_value(&request.module.ui_packages)
-                    .context("failed to serialize registry publish ui_packages metadata")?,
-                name: request.module.name.clone(),
-                description: request.module.description.clone(),
-                warnings: warnings.to_vec(),
-                actor_principal: authority.principal.to_json_value(),
-            })
+            .create_publish_request(command)
             .await?;
         self.get_publish_request(&request_id).await?.ok_or_else(|| {
             anyhow::Error::new(RegistryGovernanceError::Internal(anyhow!(
                 "registry publish request disappeared after insert"
             )))
         })
+    }
+
+    /// Validates platform-domain request facts and returns only owner-derived
+    /// warnings. HTTP schema and authentication remain controller concerns.
+    pub fn publish_request_warnings(
+        request: &RegistryPublishRequest,
+    ) -> anyhow::Result<Vec<String>> {
+        module_publish_request_create_command(request, serde_json::json!({}))?
+            .validation_warnings()
+            .map_err(anyhow::Error::new)
     }
 
     pub async fn get_publish_request(
@@ -70,6 +66,12 @@ impl RegistryGovernanceService {
         authority: &RegistryAuthority,
         artifact: RegistryArtifactUpload,
     ) -> anyhow::Result<registry_publish_request::Model> {
+        if artifact.bytes.len() > REGISTRY_PUBLISH_ARTIFACT_MAX_BYTES {
+            return Err(malformed_error(format!(
+                "Registry publish artifact exceeds the {} byte maximum size",
+                REGISTRY_PUBLISH_ARTIFACT_MAX_BYTES
+            )));
+        }
         let request = self.get_publish_request(request_id).await?.ok_or_else(|| {
             not_found_error(format!(
                 "Registry publish request '{request_id}' was not found"
@@ -113,6 +115,74 @@ impl RegistryGovernanceService {
         self.get_publish_request(&result.request_id)
             .await?
             .ok_or_else(|| anyhow!("owner-attached registry artifact request disappeared"))
+    }
+
+    /// Operator-only transport adapter for external prebuilt staging. The
+    /// owner service remains the sole writer of the immutable policy and
+    /// quarantine fact; this adapter contributes only authenticated identity.
+    pub async fn stage_external_prebuilt(
+        &self,
+        request_id: &str,
+        authority: &RegistryAuthority,
+        input: RegistryExternalPrebuiltStageInput,
+    ) -> anyhow::Result<ModuleExternalPrebuiltStageResult> {
+        if !authority.can_manage_modules {
+            return Err(forbidden_error(
+                "External prebuilt staging requires modules.manage authority",
+            ));
+        }
+        if self.get_publish_request(request_id).await?.is_none() {
+            return Err(not_found_error(format!(
+                "Registry publish request '{request_id}' was not found"
+            )));
+        }
+        SeaOrmModuleGovernanceService::new(self.db.clone())
+            .stage_external_prebuilt(ModuleExternalPrebuiltStageCommand {
+                request_id: request_id.to_string(),
+                artifact_digest: input.artifact_digest,
+                source_evidence: input.source_evidence,
+                provenance_reference: input.provenance_reference,
+                provenance_digest: input.provenance_digest,
+                provenance_policy_revision: input.provenance_policy_revision,
+                quarantine_review_reference: input.quarantine_review_reference,
+                quarantine_policy_revision: input.quarantine_policy_revision,
+                quarantine_approved_by_principal: authority.principal.to_json_value(),
+                idempotency_key: input.idempotency_key,
+                actor_principal: authority.principal.to_json_value(),
+            })
+            .await
+            .map_err(anyhow::Error::new)
+    }
+
+    /// Operator-only adapter for staging an immutable completed platform build.
+    /// It receives a tenant only from the session-authenticated controller and
+    /// leaves all build/result and artifact identity checks to the owner.
+    pub async fn stage_platform_build(
+        &self,
+        request_id: &str,
+        authority: &RegistryAuthority,
+        input: RegistryPlatformBuildStageInput,
+    ) -> anyhow::Result<ModulePublishPlatformBuildStageResult> {
+        if !authority.can_manage_modules {
+            return Err(forbidden_error(
+                "Platform build staging requires modules.manage authority",
+            ));
+        }
+        if self.get_publish_request(request_id).await?.is_none() {
+            return Err(not_found_error(format!(
+                "Registry publish request '{request_id}' was not found"
+            )));
+        }
+        SeaOrmModuleGovernanceService::new(self.db.clone())
+            .stage_platform_build(ModulePublishPlatformBuildStageCommand {
+                request_id: request_id.to_string(),
+                tenant_id: input.tenant_id,
+                build_request_id: input.build_request_id,
+                idempotency_key: input.idempotency_key,
+                actor_principal: authority.principal.to_json_value(),
+            })
+            .await
+            .map_err(anyhow::Error::new)
     }
 
     pub async fn approve_publish_request(
@@ -352,6 +422,37 @@ impl RegistryGovernanceService {
             .await?
             .ok_or_else(|| anyhow!("resumed registry publish request disappeared"))
     }
+}
+
+fn module_publish_request_create_command(
+    request: &RegistryPublishRequest,
+    actor_principal: serde_json::Value,
+) -> anyhow::Result<ModulePublishRequestCreateCommand> {
+    Ok(ModulePublishRequestCreateCommand {
+        slug: request.module.slug.clone(),
+        version: request.module.version.clone(),
+        crate_name: request.module.crate_name.clone(),
+        default_locale: request.module.default_locale.clone(),
+        ownership: request.module.ownership.clone(),
+        trust_level: request.module.trust_level.clone(),
+        license: request.module.license.clone(),
+        entry_type: request.module.entry_type.clone(),
+        artifact_origin: match request.module.artifact_origin {
+            RegistryPublishArtifactOrigin::PlatformBuilt => {
+                ModulePublicationArtifactOrigin::PlatformBuilt
+            }
+            RegistryPublishArtifactOrigin::ExternalPrebuilt => {
+                ModulePublicationArtifactOrigin::ExternalPrebuilt
+            }
+        },
+        marketplace: serde_json::to_value(&request.module.marketplace)
+            .context("failed to serialize registry publish marketplace metadata")?,
+        ui_packages: serde_json::to_value(&request.module.ui_packages)
+            .context("failed to serialize registry publish ui_packages metadata")?,
+        name: request.module.name.clone(),
+        description: request.module.description.clone(),
+        actor_principal,
+    })
 }
 
 pub fn request_status_label(status: RegistryPublishRequestStatus) -> &'static str {

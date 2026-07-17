@@ -42,15 +42,7 @@ pub struct RustokSettings {
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct RegistrySettings {
     #[serde(default)]
-    pub validation_runner: RegistryValidationRunnerSettings,
-    #[serde(default)]
     pub remote_executor: RegistryRemoteExecutorSettings,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub struct RegistryValidationRunnerSettings {
-    #[serde(default)]
-    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

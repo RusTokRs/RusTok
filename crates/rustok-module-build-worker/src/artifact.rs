@@ -147,6 +147,14 @@ impl BuildEvidenceInspector {
         let wit_digest = request.wit.protocol_digest();
         let sdk_version = request.authoring.sdk_version.clone();
         let template_version = request.authoring.template_version.clone();
+        let expected_module_slug = request.expected_module_slug.clone();
+        let expected_version = request.expected_version.clone();
+        let runtime_abi = request.runtime_abi.clone();
+        let attempt = request.attempt;
+        let validation_profiles = serde_json::to_value(&request.validation_profiles)
+            .map_err(|error| BuildEvidenceError::Internal(error.to_string()))?;
+        let validation_results = serde_json::to_value(&result.evidence.validation_results)
+            .map_err(|error| BuildEvidenceError::Internal(error.to_string()))?;
         let maximum_bytes = request
             .limits
             .disk_bytes
@@ -164,6 +172,12 @@ impl BuildEvidenceInspector {
                 &wit_digest,
                 &sdk_version,
                 &template_version,
+                &expected_module_slug,
+                &expected_version,
+                &runtime_abi,
+                attempt,
+                &validation_profiles,
+                &validation_results,
                 maximum_bytes,
             )
         })
@@ -598,6 +612,12 @@ fn inspect_build_evidence(
     wit_digest: &str,
     sdk_version: &str,
     template_version: &str,
+    expected_module_slug: &str,
+    expected_version: &str,
+    runtime_abi: &str,
+    attempt: u32,
+    validation_profiles: &serde_json::Value,
+    validation_results: &serde_json::Value,
     maximum_bytes: u64,
 ) -> Result<(), BuildEvidenceError> {
     let sbom = read_verified_json_output(
@@ -624,6 +644,12 @@ fn inspect_build_evidence(
         wit_digest,
         sdk_version,
         template_version,
+        expected_module_slug,
+        expected_version,
+        runtime_abi,
+        attempt,
+        validation_profiles,
+        validation_results,
     )
 }
 
@@ -698,6 +724,12 @@ fn inspect_slsa_provenance(
     wit_digest: &str,
     sdk_version: &str,
     template_version: &str,
+    expected_module_slug: &str,
+    expected_version: &str,
+    runtime_abi: &str,
+    attempt: u32,
+    validation_profiles: &serde_json::Value,
+    validation_results: &serde_json::Value,
 ) -> Result<(), BuildEvidenceError> {
     if !document
         .get("_type")
@@ -737,10 +769,19 @@ fn inspect_slsa_provenance(
         ("witDigest", wit_digest),
         ("sdkVersion", sdk_version),
         ("templateVersion", template_version),
+        ("expectedModuleSlug", expected_module_slug),
+        ("expectedVersion", expected_version),
+        ("runtimeAbi", runtime_abi),
     ] {
         if rustok.get(key).and_then(serde_json::Value::as_str) != Some(expected) {
             return Err(BuildEvidenceError::ProvenanceInvalid);
         }
+    }
+    if rustok.get("attempt").and_then(serde_json::Value::as_u64) != Some(u64::from(attempt))
+        || rustok.get("validationProfiles") != Some(validation_profiles)
+        || rustok.get("validationResults") != Some(validation_results)
+    {
+        return Err(BuildEvidenceError::ProvenanceInvalid);
     }
     if !document
         .pointer("/predicate/runDetails/builder/id")
@@ -822,7 +863,23 @@ mod tests {
                             "toolchainDigest": digest('d'),
                             "witDigest": digest('e'),
                             "sdkVersion": "1.2.3",
-                            "templateVersion": "4.5.6"
+                            "templateVersion": "4.5.6",
+                            "expectedModuleSlug": "example",
+                            "expectedVersion": "1.0.0",
+                            "runtimeAbi": "wit-component-v1",
+                            "attempt": 1,
+                            "validationProfiles": [
+                                "format",
+                                "check",
+                                "lint",
+                                "test",
+                                "dependency_policy",
+                                "vulnerability"
+                            ],
+                            "validationResults": [
+                                { "profile": "check", "outcome": "passed" },
+                                { "profile": "test", "outcome": "passed" }
+                            ]
                         }
                     }
                 },
@@ -832,8 +889,20 @@ mod tests {
     }
 
     #[test]
-    fn provenance_rejects_a_substituted_authoring_version() {
+    fn provenance_rejects_a_substituted_immutable_request_fact() {
         let document = provenance();
+        let profiles = json!([
+            "format",
+            "check",
+            "lint",
+            "test",
+            "dependency_policy",
+            "vulnerability"
+        ]);
+        let results = json!([
+            { "profile": "check", "outcome": "passed" },
+            { "profile": "test", "outcome": "passed" }
+        ]);
         assert!(inspect_slsa_provenance(
             &document,
             &digest('c'),
@@ -843,6 +912,12 @@ mod tests {
             &digest('e'),
             "1.2.3",
             "4.5.6",
+            "example",
+            "1.0.0",
+            "wit-component-v1",
+            1,
+            &profiles,
+            &results,
         )
         .is_ok());
 
@@ -856,6 +931,12 @@ mod tests {
                 &digest('e'),
                 "1.2.4",
                 "4.5.6",
+                "example",
+                "1.0.0",
+                "wit-component-v1",
+                1,
+                &profiles,
+                &results,
             ),
             Err(BuildEvidenceError::ProvenanceInvalid)
         ));

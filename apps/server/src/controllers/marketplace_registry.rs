@@ -11,11 +11,13 @@ use axum::{
     Json,
 };
 
-/// Maximum allowed size for a registry artifact upload (100 MiB).
+/// Maximum allowed size for a registry publish-bundle upload (2 MiB).
 ///
-/// Prevents DoS via unbounded disk writes. Enforced at the Axum layer before
-/// the body is read into memory, so oversized requests are rejected early.
-const REGISTRY_ARTIFACT_MAX_BYTES: usize = 100 * 1024 * 1024;
+/// Publish bundles contain only contract metadata and bounded manifest text;
+/// executable payloads belong to the immutable artifact/CAS pipeline. The
+/// Axum limit rejects oversized requests before they are read into memory.
+const REGISTRY_ARTIFACT_MAX_BYTES: usize =
+    crate::services::registry_governance::REGISTRY_PUBLISH_ARTIFACT_MAX_BYTES;
 const LEGACY_REGISTRY_ACTOR_HEADER: &str = concat!("x-rustok-", "actor");
 const LEGACY_REGISTRY_PUBLISHER_HEADER: &str = concat!("x-rustok-", "publisher");
 use semver::Version;
@@ -26,16 +28,18 @@ use utoipa::ToSchema;
 use crate::error::{http_error, Error};
 use crate::modules::{CatalogManifestModule, ManifestManager, ModulesManifest};
 use crate::services::marketplace_catalog::{
-    legacy_registry_catalog_module_path, legacy_registry_catalog_path,
     registry_catalog_from_modules, registry_catalog_module_path, registry_catalog_path,
     registry_owner_transfer_path, registry_publish_approve_path, registry_publish_artifact_path,
-    registry_publish_hold_path, registry_publish_path, registry_publish_reject_path,
+    registry_publish_external_stage_path, registry_publish_hold_path, registry_publish_path,
+    registry_publish_platform_build_stage_path, registry_publish_reject_path,
     registry_publish_request_changes_path, registry_publish_resume_path,
     registry_publish_stage_report_path, registry_publish_status_path,
     registry_publish_validate_path, registry_runner_claim_path, registry_runner_complete_path,
     registry_runner_fail_path, registry_runner_heartbeat_path, registry_yank_path,
     validate_registry_mutation_schema_version, RegistryCatalogModule, RegistryCatalogResponse,
+    RegistryExternalPrebuiltStageRequest, RegistryExternalPrebuiltStageResponse,
     RegistryGovernanceAction, RegistryMutationResponse, RegistryOwnerTransferRequest,
+    RegistryPlatformBuildStageRequest, RegistryPlatformBuildStageResponse,
     RegistryPublishDecisionRequest, RegistryPublishRequest, RegistryPublishStatusFollowUpGate,
     RegistryPublishStatusResponse, RegistryPublishStatusValidationStage,
     RegistryPublishValidationRequest, RegistryRunnerClaimPayload, RegistryRunnerClaimRequest,
@@ -45,8 +49,9 @@ use crate::services::marketplace_catalog::{
 use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::registry_governance::{
     release_status_label, request_status_label, validation_stage_status_label,
-    RegistryArtifactUpload, RegistryFollowUpGateSnapshot, RegistryGovernanceActionSnapshot,
-    RegistryGovernanceError, RegistryGovernanceService, RegistryValidationStageSnapshot,
+    RegistryArtifactUpload, RegistryExternalPrebuiltStageInput, RegistryFollowUpGateSnapshot,
+    RegistryGovernanceActionSnapshot, RegistryGovernanceError, RegistryGovernanceService,
+    RegistryPlatformBuildStageInput, RegistryValidationStageSnapshot,
     REGISTRY_APPROVE_OVERRIDE_REASON_CODES, REGISTRY_HOLD_REASON_CODES,
     REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
     REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
@@ -61,7 +66,7 @@ use crate::services::registry_remote_transitions::{
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::context::AuthContextExtension;
 use rustok_api::request::RequestContext;
-use rustok_modules::ModuleGovernanceError;
+use rustok_modules::{ModuleExternalSourceEvidence, ModuleGovernanceError};
 use rustok_web::HttpError;
 
 #[derive(Debug, Default, Deserialize, ToSchema, utoipa::IntoParams)]
@@ -201,26 +206,33 @@ async fn publish(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
 
-    let warnings = validate_publish_request_payload(&request)?;
+    let warnings = RegistryGovernanceService::publish_request_warnings(&request)
+        .map_err(map_registry_governance_error)?;
 
     if !request.dry_run {
-        if !request.module.ownership.eq_ignore_ascii_case("first_party") {
-            return Err(Error::BadRequest(
-                "Live registry publish currently supports only first_party module ownership"
-                    .to_string(),
-            ));
-        }
-
         let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
         let authority = authority_from_auth(&headers, auth, "Registry publish operations")?;
+        if !request.module.ownership.eq_ignore_ascii_case("first_party")
+            && !authority.can_manage_modules
+        {
+            return Err(Error::BadRequest(
+                "Live third-party registry publish requires modules.manage authority".to_string(),
+            ));
+        }
+        if matches!(
+            request.module.artifact_origin,
+            crate::services::marketplace_catalog::RegistryPublishArtifactOrigin::ExternalPrebuilt
+        ) && !authority.can_manage_modules
+        {
+            return Err(http_error(HttpError::forbidden(
+                "forbidden",
+                "External prebuilt publish requests require modules.manage authority",
+            )));
+        }
         let created = RegistryGovernanceService::new(ctx.db_clone())
-            .create_publish_request(&request, &authority, &warnings)
+            .create_publish_request(&request, &authority)
             .await
-            .map_err(|error| {
-                Error::Message(format!(
-                    "Failed to create registry publish request: {error}"
-                ))
-            })?;
+            .map_err(map_registry_governance_error)?;
 
         return Ok((
             StatusCode::ACCEPTED,
@@ -324,6 +336,7 @@ async fn publish_status(
         slug: request.slug,
         version: request.version,
         status: request_status_label(request.status.clone()).to_string(),
+        artifact_origin: request.artifact_origin.clone(),
         accepted: publish_request_accepted(&request.status),
         warnings,
         errors: deserialize_message_list(&request.validation_errors),
@@ -435,6 +448,241 @@ async fn upload_publish_artifact(
             next_step: publish_request_next_step(&request.status, &request_id),
         }),
     ))
+}
+
+/// POST /v2/catalog/publish/{request_id}/external-prebuilt-stage - Record an operator-approved external prebuilt stage
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/publish/{request_id}/external-prebuilt-stage",
+    tag = "marketplace",
+    params(
+        ("request_id" = String, Path, description = "Registry publish request identifier")
+    ),
+    request_body = RegistryExternalPrebuiltStageRequest,
+    responses(
+        (
+            status = 200,
+            description = "External prebuilt stage accepted or idempotently replayed",
+            body = RegistryExternalPrebuiltStageResponse
+        ),
+        (
+            status = 400,
+            description = "External source, provenance, quarantine, or artifact evidence is invalid"
+        ),
+        (
+            status = 403,
+            description = "External prebuilt staging requires modules.manage authority"
+        ),
+        (
+            status = 404,
+            description = "Registry publish request was not found"
+        )
+    )
+)]
+async fn stage_external_prebuilt(
+    State(ctx): State<ServerRuntimeContext>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+    auth_ext: Option<axum::Extension<AuthContextExtension>>,
+    Json(request): Json<RegistryExternalPrebuiltStageRequest>,
+) -> Result<Json<RegistryExternalPrebuiltStageResponse>, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    let source_evidence = external_prebuilt_source_evidence(&request)?;
+    let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
+    let authority = authority_from_auth(&headers, auth, "External prebuilt staging")?;
+    if !authority.can_manage_modules {
+        return Err(http_error(HttpError::forbidden(
+            "forbidden",
+            "External prebuilt staging requires modules.manage authority",
+        )));
+    }
+    let governance = RegistryGovernanceService::new(ctx.db_clone());
+    let existing = governance
+        .get_publish_request(&request_id)
+        .await
+        .map_err(|error| {
+            Error::Message(format!("Failed to load registry publish request: {error}"))
+        })?
+        .ok_or(Error::NotFound)?;
+    if request.dry_run {
+        return Ok(Json(RegistryExternalPrebuiltStageResponse {
+            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+            request_id,
+            slug: existing.slug,
+            version: existing.version,
+            status: "dry_run".to_string(),
+            staging_id: None,
+            created: false,
+            dry_run: true,
+            next_step: Some(
+                "Re-run with dry_run=false to persist the external provenance and quarantine stage."
+                    .to_string(),
+            ),
+        }));
+    }
+
+    let staged = governance
+        .stage_external_prebuilt(
+            &request_id,
+            &authority,
+            RegistryExternalPrebuiltStageInput {
+                artifact_digest: request.artifact_digest,
+                source_evidence,
+                provenance_reference: request.provenance_reference,
+                provenance_digest: request.provenance_digest,
+                provenance_policy_revision: request.provenance_policy_revision,
+                quarantine_review_reference: request.quarantine_review_reference,
+                quarantine_policy_revision: request.quarantine_policy_revision,
+                idempotency_key: request.idempotency_key,
+            },
+        )
+        .await
+        .map_err(map_registry_governance_error)?;
+    Ok(Json(RegistryExternalPrebuiltStageResponse {
+        schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        request_id,
+        slug: existing.slug,
+        version: existing.version,
+        status: request_status_label(existing.status).to_string(),
+        staging_id: Some(staged.staging_id),
+        created: staged.created,
+        dry_run: false,
+        next_step: Some(
+            "Continue registry validation and final approval through the owner workflow."
+                .to_string(),
+        ),
+    }))
+}
+
+/// POST /v2/catalog/publish/{request_id}/platform-build-stage - Bind one completed tenant-scoped platform build to the uploaded artifact
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/publish/{request_id}/platform-build-stage",
+    tag = "marketplace",
+    params(
+        ("request_id" = String, Path, description = "Registry publish request identifier")
+    ),
+    request_body = RegistryPlatformBuildStageRequest,
+    responses(
+        (
+            status = 200,
+            description = "Platform build stage accepted or idempotently replayed",
+            body = RegistryPlatformBuildStageResponse
+        ),
+        (
+            status = 400,
+            description = "The completed tenant-scoped build does not match the uploaded artifact"
+        ),
+        (
+            status = 403,
+            description = "Platform build staging requires modules.manage authority"
+        ),
+        (
+            status = 404,
+            description = "Registry publish request was not found"
+        ),
+        (
+            status = 409,
+            description = "Idempotency key was reused with different immutable build input"
+        )
+    )
+)]
+async fn stage_platform_build(
+    State(ctx): State<ServerRuntimeContext>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+    auth_ext: Option<axum::Extension<AuthContextExtension>>,
+    Json(request): Json<RegistryPlatformBuildStageRequest>,
+) -> Result<Json<RegistryPlatformBuildStageResponse>, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
+    let authority = authority_from_auth(&headers, auth, "Platform build staging")?;
+    if !authority.can_manage_modules {
+        return Err(http_error(HttpError::forbidden(
+            "forbidden",
+            "Platform build staging requires modules.manage authority",
+        )));
+    }
+    let tenant_id = auth
+        .map(|AuthContextExtension(context)| context.tenant_id)
+        .ok_or_else(|| {
+            Error::Unauthorized("Platform build staging requires authentication".into())
+        })?;
+    let governance = RegistryGovernanceService::new(ctx.db_clone());
+    let existing = governance
+        .get_publish_request(&request_id)
+        .await
+        .map_err(|error| {
+            Error::Message(format!("Failed to load registry publish request: {error}"))
+        })?
+        .ok_or(Error::NotFound)?;
+    if request.dry_run {
+        return Ok(Json(RegistryPlatformBuildStageResponse {
+            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+            request_id,
+            slug: existing.slug,
+            version: existing.version,
+            status: "dry_run".to_string(),
+            staging_id: None,
+            created: false,
+            dry_run: true,
+            next_step: Some(
+                "Re-run with dry_run=false to bind the completed tenant-scoped platform build."
+                    .to_string(),
+            ),
+        }));
+    }
+
+    let staged = governance
+        .stage_platform_build(
+            &request_id,
+            &authority,
+            RegistryPlatformBuildStageInput {
+                tenant_id,
+                build_request_id: request.build_request_id,
+                idempotency_key: request.idempotency_key,
+            },
+        )
+        .await
+        .map_err(map_registry_governance_error)?;
+    Ok(Json(RegistryPlatformBuildStageResponse {
+        schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        request_id,
+        slug: existing.slug,
+        version: existing.version,
+        status: request_status_label(existing.status).to_string(),
+        staging_id: Some(staged.staging_id),
+        created: staged.created,
+        dry_run: false,
+        next_step: Some(
+            "Continue registry validation and final approval through the owner workflow."
+                .to_string(),
+        ),
+    }))
+}
+
+fn external_prebuilt_source_evidence(
+    request: &RegistryExternalPrebuiltStageRequest,
+) -> Result<ModuleExternalSourceEvidence, Error> {
+    match (
+        request.source_reference.as_ref(),
+        request.source_digest.as_ref(),
+        request.source_absence_reason.as_ref(),
+    ) {
+        (Some(reference), Some(digest), None) => Ok(ModuleExternalSourceEvidence::Reproducible {
+            reference: reference.clone(),
+            digest: digest.clone(),
+        }),
+        (None, None, Some(reason_code)) => Ok(ModuleExternalSourceEvidence::Unavailable {
+            reason_code: reason_code.clone(),
+        }),
+        _ => Err(Error::BadRequest(
+            "External prebuilt staging requires either sourceReference plus sourceDigest or sourceAbsenceReason, but not both."
+                .to_string(),
+        )),
+    }
 }
 
 async fn download_publish_artifact(
@@ -572,35 +820,6 @@ async fn validate_publish_request_step(
         .validate_publish_request(&request_id, &authority)
         .await
         .map_err(map_registry_governance_error)?;
-    if validation.queued {
-        let db = ctx.db_clone();
-        let storage = ctx
-            .shared_get::<rustok_storage::StorageService>()
-            .ok_or_else(|| Error::Message("StorageService not initialized".to_string()))?;
-        let request_id = validation.request.id.clone();
-        let validation_job_id = validation.validation_job_id.clone().ok_or_else(|| {
-            Error::Message(format!(
-                "Validation was queued for publish request '{request_id}', but no validation job id was returned"
-            ))
-        })?;
-        let actor = authority.principal.label().to_string();
-        tokio::spawn(async move {
-            if let Err(error) = RegistryGovernanceService::new(db)
-                .with_storage(storage)
-                .run_publish_validation_job(&validation_job_id, &actor)
-                .await
-            {
-                tracing::error!(
-                    error = %error,
-                    validation_job_id = %validation_job_id,
-                    request_id = %request_id,
-                    actor = %actor,
-                    "Background registry publish validation failed"
-                );
-            }
-        });
-    }
-
     let validated = validation.request;
     let status_code = if validated.status
         == crate::models::registry_publish_request::RegistryPublishRequestStatus::Validating
@@ -1787,6 +2006,14 @@ pub fn router() -> crate::routes::ServerRouter {
             put(upload_publish_artifact).layer(DefaultBodyLimit::max(REGISTRY_ARTIFACT_MAX_BYTES)),
         )
         .route(
+            registry_publish_external_stage_path(),
+            post(stage_external_prebuilt),
+        )
+        .route(
+            registry_publish_platform_build_stage_path(),
+            post(stage_platform_build),
+        )
+        .route(
             registry_publish_artifact_download_path(),
             get(download_publish_artifact),
         )
@@ -1836,9 +2063,7 @@ fn registry_publish_artifact_download_path() -> &'static str {
 pub fn read_only_router() -> crate::routes::ServerRouter {
     axum::Router::new()
         .route(registry_catalog_path(), get(catalog))
-        .route(legacy_registry_catalog_path(), get(catalog))
         .route(registry_catalog_module_path(), get(catalog_module))
-        .route(legacy_registry_catalog_module_path(), get(catalog_module))
 }
 
 async fn first_party_catalog_modules(
@@ -2045,57 +2270,6 @@ fn request_matches_etag(headers: &HeaderMap, etag: &str) -> bool {
                 .any(|candidate| candidate == "*" || candidate == etag)
         })
         .unwrap_or(false)
-}
-
-fn validate_publish_request_payload(
-    request: &RegistryPublishRequest,
-) -> Result<Vec<String>, Error> {
-    validate_registry_slug(&request.module.slug)?;
-    validate_registry_version(&request.module.version)?;
-
-    if request.module.crate_name.trim().is_empty() {
-        return Err(Error::BadRequest(
-            "Registry publish request must include module.crate_name".to_string(),
-        ));
-    }
-    if rustok_api::normalize_locale_tag(&request.module.default_locale).is_none() {
-        return Err(Error::BadRequest(
-            "Registry publish request must include module.default_locale as a valid locale tag"
-                .to_string(),
-        ));
-    }
-    if request.module.name.trim().is_empty() {
-        return Err(Error::BadRequest(
-            "Registry publish request must include module.name".to_string(),
-        ));
-    }
-    if request.module.description.trim().len() < 20 {
-        return Err(Error::BadRequest(
-            "Registry publish request requires module.description >= 20 characters".to_string(),
-        ));
-    }
-    if request.module.license.trim().is_empty() {
-        return Err(Error::BadRequest(
-            "Registry publish request must include module.license".to_string(),
-        ));
-    }
-
-    let mut warnings = Vec::new();
-    if request.module.ui_packages.admin.is_none() && request.module.ui_packages.storefront.is_none()
-    {
-        warnings.push(
-            "No publishable admin/storefront UI packages declared; only backend contract would be published."
-                .to_string(),
-        );
-    }
-    if !request.module.ownership.eq_ignore_ascii_case("first_party") {
-        warnings.push(
-            "Third-party moderation/governance flow is not implemented yet; request is accepted only as a dry-run contract preview."
-                .to_string(),
-        );
-    }
-
-    Ok(warnings)
 }
 
 fn validate_yank_request(request: &RegistryYankRequest) -> Result<Vec<String>, Error> {
@@ -2581,6 +2755,26 @@ fn publish_request_status_next_step(
         return Some(approval_override_next_step(request_id, validation_stages));
     }
 
+    if request.status
+        == crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
+        && request.artifact_origin == "external_prebuilt"
+    {
+        return Some(format!(
+            "Stage approved external provenance and quarantine evidence via POST {} before final publication.",
+            registry_publish_external_stage_path().replace("{request_id}", request_id)
+        ));
+    }
+
+    if request.status
+        == crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
+        && request.artifact_origin == "platform_built"
+    {
+        return Some(format!(
+            "Bind the completed tenant-scoped platform build via POST {} before final publication.",
+            registry_publish_platform_build_stage_path().replace("{request_id}", request_id)
+        ));
+    }
+
     publish_request_next_step(&request.status, request_id)
 }
 
@@ -2654,6 +2848,13 @@ fn publish_status_governance_action(
 }
 
 fn map_registry_governance_error(error: anyhow::Error) -> Error {
+    if let Some(owner_error) = error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<ModuleGovernanceError>())
+    {
+        return map_module_governance_error(owner_error, &error);
+    }
+
     let typed = error
         .chain()
         .find_map(|cause| cause.downcast_ref::<RegistryGovernanceError>());
@@ -2681,20 +2882,97 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
     }
 }
 
-fn map_remote_validation_claim_error(error: anyhow::Error) -> Error {
-    let typed = error
-        .chain()
-        .find_map(|cause| cause.downcast_ref::<ModuleGovernanceError>());
-    match typed {
-        Some(ModuleGovernanceError::InvalidRemoteValidationLeaseCommand)
-        | Some(ModuleGovernanceError::InvalidRemoteValidationClaimStage(_)) => {
+/// Maps the stable owner error contract at the HTTP edge. The registry adapter
+/// must not reclassify owner failures into server-local error types.
+fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::Error) -> Error {
+    match error {
+        ModuleGovernanceError::InvalidYankCommand
+        | ModuleGovernanceError::InvalidYankReasonCode(_)
+        | ModuleGovernanceError::InvalidOwnerTransferCommand
+        | ModuleGovernanceError::InvalidOwnerBindCommand
+        | ModuleGovernanceError::InvalidPublishRequestRejectCommand
+        | ModuleGovernanceError::InvalidPublishRequestChangesCommand
+        | ModuleGovernanceError::InvalidPublishRequestHoldCommand
+        | ModuleGovernanceError::InvalidPublishRequestResumeCommand
+        | ModuleGovernanceError::InvalidPublishRequestPublicationCommand
+        | ModuleGovernanceError::InvalidPublishApprovalOverride
+        | ModuleGovernanceError::InvalidValidationStageReportCommand
+        | ModuleGovernanceError::InvalidValidationStageRequeue
+        | ModuleGovernanceError::InvalidRemoteValidationLeaseCommand
+        | ModuleGovernanceError::InvalidValidationJobEnqueueCommand
+        | ModuleGovernanceError::InvalidValidationJobClaimCommand
+        | ModuleGovernanceError::InvalidValidationJobResultCommand
+        | ModuleGovernanceError::InvalidValidationJobRetryCommand
+        | ModuleGovernanceError::InvalidPublishRequestCreateCommand
+        | ModuleGovernanceError::InvalidPublishArtifactAttachCommand
+        | ModuleGovernanceError::InvalidPublicationEvidenceCommand
+        | ModuleGovernanceError::InvalidBuildServiceAttestationCommand
+        | ModuleGovernanceError::InvalidPlatformAdmissionCommand
+        | ModuleGovernanceError::InvalidPlatformBuildStageCommand
+        | ModuleGovernanceError::InvalidExternalPrebuiltStageCommand
+        | ModuleGovernanceError::InvalidRemoteValidationClaimStage(_)
+        | ModuleGovernanceError::InvalidOwnerTransferReasonCode(_)
+        | ModuleGovernanceError::InvalidPublishRequestRejectReasonCode(_)
+        | ModuleGovernanceError::InvalidPublishRequestChangesReasonCode(_)
+        | ModuleGovernanceError::InvalidPublishRequestHoldReasonCode(_)
+        | ModuleGovernanceError::InvalidPublishRequestResumeReasonCode(_)
+        | ModuleGovernanceError::InvalidPublishApprovalOverrideReasonCode(_)
+        | ModuleGovernanceError::InvalidValidationStageReasonCode(_) => {
             Error::BadRequest(error.to_string())
         }
-        _ => {
-            tracing::error!(error = %error, "Remote validation claim failed");
+        ModuleGovernanceError::PublicationEvidenceAuthorityReserved => {
+            http_error(HttpError::forbidden("forbidden", error.to_string()))
+        }
+        ModuleGovernanceError::ReleaseNotFound
+        | ModuleGovernanceError::OwnerBindingNotFound
+        | ModuleGovernanceError::PublishRequestNotFound
+        | ModuleGovernanceError::ValidationJobNotFound
+        | ModuleGovernanceError::ValidationStageNotFound
+        | ModuleGovernanceError::RemoteValidationLeaseNotFound => Error::NotFound,
+        ModuleGovernanceError::Store(_) => {
+            tracing::error!(error = %source, "Registry governance owner store error");
             Error::InternalServerError
         }
+        ModuleGovernanceError::OwnerUnchanged
+        | ModuleGovernanceError::OwnerAlreadyBound
+        | ModuleGovernanceError::PublishRequestReleaseAlreadyActive { .. }
+        | ModuleGovernanceError::PublishRequestCannotBeRejected(_)
+        | ModuleGovernanceError::PublishRequestCannotRequestChanges(_)
+        | ModuleGovernanceError::PublishRequestCannotBeHeld(_)
+        | ModuleGovernanceError::PublishRequestCannotBeResumed(_)
+        | ModuleGovernanceError::PublishRequestCannotBePublished(_)
+        | ModuleGovernanceError::PublishedRequestMissingRelease
+        | ModuleGovernanceError::PublishRequestCannotAttachArtifact(_)
+        | ModuleGovernanceError::PublishRequestCannotRecordPublicationEvidence(_)
+        | ModuleGovernanceError::PublishRequestCannotReportValidationStage(_)
+        | ModuleGovernanceError::PublishRequestCannotQueueValidation(_)
+        | ModuleGovernanceError::ValidationJobNotRunning(_)
+        | ModuleGovernanceError::ValidationJobRequestStateMismatch(_)
+        | ModuleGovernanceError::PublishRequestMissingArtifactStorageKey
+        | ModuleGovernanceError::PublishRequestMissingArtifactChecksum
+        | ModuleGovernanceError::PublishRequestInvalidArtifactChecksum
+        | ModuleGovernanceError::PublishRequestMissingArtifactSize
+        | ModuleGovernanceError::PublishRequestMissingPlatformBuildStage
+        | ModuleGovernanceError::PublishRequestMissingExternalPrebuiltStage
+        | ModuleGovernanceError::PublishRequestArtifactOriginUnclassified
+        | ModuleGovernanceError::PublishRequestMissingAuthorSignature
+        | ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission
+        | ModuleGovernanceError::PublishRequestMissingExternalPlatformAdmission
+        | ModuleGovernanceError::PublishRequestMissingTranslations
+        | ModuleGovernanceError::RemoteValidationLeaseRunnerMismatch
+        | ModuleGovernanceError::RemoteValidationLeaseNotRunning(_)
+        | ModuleGovernanceError::RemoteValidationLeaseExpired
+        | ModuleGovernanceError::InvalidValidationStageTransition { .. }
+        | ModuleGovernanceError::PublishRequestInvalidHeldFromStatus
+        | ModuleGovernanceError::PlatformBuildStageIdempotencyConflict
+        | ModuleGovernanceError::ExternalPrebuiltStageIdempotencyConflict => http_error(
+            HttpError::new(StatusCode::CONFLICT, "conflict", error.to_string()),
+        ),
     }
+}
+
+fn map_remote_validation_claim_error(error: anyhow::Error) -> Error {
+    map_registry_governance_error(error)
 }
 
 fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) -> Error {

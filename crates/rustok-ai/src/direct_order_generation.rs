@@ -78,6 +78,7 @@ pub(crate) async fn generate_order_analytics(
     system_prompt: Option<&str>,
     target_locale: &str,
     input: &AiOrderAnalyticsTaskInput,
+    order_status_context: Value,
 ) -> AiResult<GeneratedOrderAnalytics> {
     let locale_instruction = concat!(
         "Return valid JSON only with keys `summary`, `key_findings`, `risk_flags`, `recommended_actions`. ",
@@ -90,7 +91,10 @@ pub(crate) async fn generate_order_analytics(
         target_locale,
         "order_analytics",
         locale_instruction,
-        serde_json::to_value(input).map_err(AiError::Json)?,
+        json!({
+            "request": serde_json::to_value(input).map_err(AiError::Json)?,
+            "order_status_context": order_status_context,
+        }),
     )
     .await?;
     validate_order_analytics_payload(&generated).map_err(AiError::Validation)?;
@@ -103,6 +107,7 @@ pub(crate) async fn generate_order_ops_assistant(
     system_prompt: Option<&str>,
     target_locale: &str,
     input: &AiOrderOpsAssistantTaskInput,
+    order_status_context: Value,
 ) -> AiResult<GeneratedOrderOpsAssistant> {
     let locale_instruction = concat!(
         "Return valid JSON only with keys `recommended_action`, `rationale`, `prefill`, `requires_human`, `confidence`. ",
@@ -115,7 +120,10 @@ pub(crate) async fn generate_order_ops_assistant(
         target_locale,
         "order_ops_assistant",
         locale_instruction,
-        serde_json::to_value(input).map_err(AiError::Json)?,
+        json!({
+            "request": serde_json::to_value(input).map_err(AiError::Json)?,
+            "order_status_context": order_status_context,
+        }),
     )
     .await?;
     validate_order_ops_assistant_payload(&decision).map_err(AiError::Validation)?;

@@ -1,6 +1,8 @@
 pub mod app_lifecycle;
 pub mod app_router;
 pub mod app_runtime;
+pub mod artifact_delivery_tenants;
+pub mod artifact_runtime;
 pub mod auth_admin_mutation_provider;
 pub mod auth_invite;
 pub mod auth_lifecycle;
@@ -64,11 +66,11 @@ pub mod registry_remote_transitions;
 pub mod release_activation_hook;
 pub mod release_backend;
 pub mod runtime_guardrails;
+#[cfg(feature = "mod-seo")]
+pub mod seo_redirect_cache_reconciliation;
 pub mod server_bootstrap;
 pub mod server_runtime_context;
 pub mod settings_service;
-#[cfg(feature = "mod-seo")]
-pub mod seo_redirect_cache_reconciliation;
 pub mod tenant_cache_generation;
 pub mod tenant_cache_generation_status;
 pub mod tenant_generation_delivery_gate;

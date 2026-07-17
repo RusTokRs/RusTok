@@ -41,12 +41,17 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         crate::controllers::marketplace_registry::publish,
         crate::controllers::marketplace_registry::publish_status,
         crate::controllers::marketplace_registry::upload_publish_artifact,
+        crate::controllers::marketplace_registry::stage_external_prebuilt,
+        crate::controllers::marketplace_registry::stage_platform_build,
         crate::controllers::marketplace_registry::validate_publish_request_step,
         crate::controllers::marketplace_registry::approve_publish_request,
         crate::controllers::marketplace_registry::reject_publish_request,
         crate::controllers::marketplace_registry::report_validation_stage,
         crate::controllers::marketplace_registry::transfer_owner,
         crate::controllers::marketplace_registry::yank,
+        // RBAC artifact permissions
+        crate::controllers::artifact_permissions::grant_artifact_permission,
+        crate::controllers::artifact_permissions::revoke_artifact_permission,
         // Swagger
         crate::controllers::swagger::openapi_json,
         crate::controllers::swagger::openapi_yaml,
@@ -92,11 +97,19 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             crate::services::marketplace_catalog::RegistryPublishRequest,
             crate::services::marketplace_catalog::RegistryPublishDecisionRequest,
             crate::services::marketplace_catalog::RegistryPublishStatusResponse,
+            crate::services::marketplace_catalog::RegistryExternalPrebuiltStageRequest,
+            crate::services::marketplace_catalog::RegistryExternalPrebuiltStageResponse,
+            crate::services::marketplace_catalog::RegistryPlatformBuildStageRequest,
+            crate::services::marketplace_catalog::RegistryPlatformBuildStageResponse,
+            crate::services::marketplace_catalog::RegistryPublishArtifactOrigin,
             crate::services::marketplace_catalog::RegistryPublishModuleRequest,
             crate::services::marketplace_catalog::RegistryPublishMarketplaceRequest,
             crate::services::marketplace_catalog::RegistryPublishUiPackagesRequest,
             crate::services::marketplace_catalog::RegistryPublishUiPackageRequest,
             crate::services::marketplace_catalog::RegistryYankRequest,
+            // RBAC artifact permissions
+            crate::controllers::artifact_permissions::ArtifactRolePermissionAssignmentRequest,
+            crate::controllers::artifact_permissions::ArtifactRolePermissionAssignmentResponse,
             crate::modules::ModuleSettingSpec,
 
             // Health
@@ -123,6 +136,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
     tags(
         (name = "auth", description = "Authentication endpoints"),
         (name = "marketplace", description = "Marketplace registry and catalog endpoints"),
+        (name = "rbac", description = "Role-based access control endpoints"),
         (name = "flex", description = "Flex standalone schemas and entries endpoints"),
         (name = "health", description = "Health check endpoints"),
         (name = "observability", description = "Observability and metrics endpoints"),

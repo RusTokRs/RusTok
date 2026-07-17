@@ -540,6 +540,11 @@ pub enum DomainEvent {
         tenant_id: Uuid,
         revision: u64,
     },
+    ModuleArtifactTenantEnabled {
+        installation_id: Uuid,
+        tenant_id: Uuid,
+        revision: u64,
+    },
     ModuleArtifactDataPurged {
         tenant_id: Uuid,
         module_slug: String,
@@ -756,6 +761,7 @@ impl DomainEvent {
             }
             Self::ModuleArtifactDeactivated { .. } => "module.artifact.deactivated",
             Self::ModuleArtifactTenantDisabled { .. } => "module.artifact.tenant_disabled",
+            Self::ModuleArtifactTenantEnabled { .. } => "module.artifact.tenant_enabled",
             Self::ModuleArtifactDataPurged { .. } => "module.artifact.data_purged",
             Self::ModuleArtifactSecretBound { .. } => "module.artifact.secret_bound",
             Self::ModuleBuildQueued { .. } => "module.build.queued",
@@ -904,6 +910,7 @@ impl DomainEvent {
             Self::ModuleArtifactMigrationCheckpointed { .. } => 1,
             Self::ModuleArtifactDeactivated { .. } => 1,
             Self::ModuleArtifactTenantDisabled { .. } => 1,
+            Self::ModuleArtifactTenantEnabled { .. } => 1,
             Self::ModuleArtifactDataPurged { .. } => 1,
             Self::ModuleArtifactSecretBound { .. } => 1,
             Self::ModuleBuildQueued { .. } => 1,
@@ -1872,6 +1879,21 @@ impl ValidateEvent for DomainEvent {
                 Ok(())
             }
             Self::ModuleArtifactTenantDisabled {
+                installation_id,
+                tenant_id,
+                revision,
+            } => {
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                if *revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactTenantEnabled {
                 installation_id,
                 tenant_id,
                 revision,

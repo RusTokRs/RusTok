@@ -64,14 +64,13 @@ pub use metrics::{AiMetricBucket, AiRuntimeMetricsSnapshot};
 #[cfg(feature = "server")]
 pub use migrations::AiMigrationSource;
 pub use model::{
-    default_provider_capabilities, AiAlloyOperation, AiAlloyTaskInput, AiBlogDraftTaskInput,
-    AiImageAssetTaskInput, AiProductCopyTaskInput, AiProviderConfig, AiRunDecisionTrace,
-    AiRunRequest, ChatMessage, ChatMessageRole, DirectExecutionTarget, ExecutionMode,
-    ExecutionOverride, PendingApproval, ProviderCapability, ProviderChatRequest,
-    ProviderChatResponse, ProviderImageRequest, ProviderImageResponse, ProviderStreamEmitter,
-    ProviderStreamEvent, ProviderStructuredRequest, ProviderTestResult, ProviderUsage,
-    ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall, ToolDefinition,
-    ToolTrace,
+    default_provider_capabilities, AiAlloyTaskInput, AiBlogDraftTaskInput, AiImageAssetTaskInput,
+    AiProductCopyTaskInput, AiProviderConfig, AiRunDecisionTrace, AiRunRequest, ChatMessage,
+    ChatMessageRole, DirectExecutionTarget, ExecutionMode, ExecutionOverride, PendingApproval,
+    ProviderCapability, ProviderChatRequest, ProviderChatResponse, ProviderImageRequest,
+    ProviderImageResponse, ProviderStreamEmitter, ProviderStreamEvent, ProviderStructuredRequest,
+    ProviderTestResult, ProviderUsage, ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest,
+    TaskProfile, ToolCall, ToolDefinition, ToolTrace,
 };
 pub use policy::ToolExecutionPolicy;
 pub use router::{AiRouter, ResolvedExecutionPlan, RouterProviderProfile};
@@ -86,10 +85,10 @@ pub use service::{
     AiToolProfileRecord, CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput,
     CreateAiAgentWorkflowRunInput, CreateAiProviderProfileInput, CreateAiTaskProfileInput,
     CreateAiToolProfileInput, ResolveAiAgentWorkflowStageApprovalInput, ResumeAiApprovalInput,
-    RunAiTaskJobInput, SendAiChatMessageInput, SharedAiEgressPolicy, SharedAiProviderTargetCatalog,
-    SharedAiSecretResolverRegistry, StartAiChatSessionInput, UpdateAiAgentModelAssignmentInput,
-    UpdateAiAgentPrincipalInput, UpdateAiProviderProfileInput, UpdateAiTaskProfileInput,
-    UpdateAiToolProfileInput,
+    RunAiTaskJobInput, SendAiChatMessageInput, SharedAiEgressPolicy, SharedAiOrderStatusPort,
+    SharedAiProductCatalogReadPort, SharedAiProviderTargetCatalog, SharedAiSecretResolverRegistry,
+    StartAiChatSessionInput, UpdateAiAgentModelAssignmentInput, UpdateAiAgentPrincipalInput,
+    UpdateAiProviderProfileInput, UpdateAiTaskProfileInput, UpdateAiToolProfileInput,
 };
 #[cfg(feature = "server")]
 pub use streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub};

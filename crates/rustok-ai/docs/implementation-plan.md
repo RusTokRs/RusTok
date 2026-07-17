@@ -50,7 +50,7 @@ still requires targeted platform verification evidence.
 |---|---|---|
 | Rig-only inference cutover and provider snapshot | `completed` | Rig is the only inference path and the 0.39 inventory is pinned. The descriptor owns factory binding, target-catalog loading rejects unavailable integrations, and executable factory coverage proves feature parity. `engine::catalog::tests` passes 8/8. |
 | Deployment-owned provider targets | `completed` | `ProviderTargetId`, deployment catalog, GraphQL/native/Next selection, migration, egress guards, and safe DTOs are covered by server and GraphQL test gates. |
-| Secret boundary | `in_progress` | Resolver policy, rotation invalidation, non-resolving validation, tenant-prefix tests, and secret-safe DTOs are covered by the dedicated secrets gate and server tests. Deployment composition now supports env, mounted-file, Vault, Kubernetes, AWS Secrets Manager, GCP Secret Manager, and Azure Key Vault through server-owned resolver JSON; targeted resolver configuration coverage still remains. |
+| Secret boundary | `in_progress` | Resolver policy, rotation invalidation, non-resolving validation, tenant-prefix tests, and secret-safe DTOs are covered by the dedicated secrets gate and server tests. Deployment composition supports env, mounted-file, Vault, Kubernetes, AWS Secrets Manager, GCP Secret Manager, and Azure Key Vault through server-owned resolver JSON. Explicit-JSON precedence, duplicate-alias rejection, and offline/lazy resolver registration are covered; Kubernetes namespace and Azure endpoint validation fail before cluster or credential discovery. Live Kubernetes/Azure identity and cloud-emulator coverage remain. |
 | Agent approvals and restart | `completed` | Durable batches, CAS claims, staged outcomes, transactional finalization, recovery, and canonical-history restart are covered by the server test gate. |
 | Agent principals and owner workflows | `in_progress` | Persisted principals, model assignments, workflows, stages, approval gates, recovery, dependency promotion, and canonical task-run execution are implemented. Owner descriptors validate every stage input and workflow binding; run/stage writes use lease- and state-aware compare-and-set guards. Principal create/update derives permissions solely from catalogued `TenantRbacCatalog` roles and enforces the owner descriptor permission floor. Native and GraphQL mutations fail closed without that catalog. The module-owned Leptos editor selects an owner descriptor and tenant-RBAC role checkboxes, then calls those typed mutations; it exposes no free-form role, permission, owner, or descriptor fields. Initiator authority is persisted and constrained for stage execution and approval continuation; principals and assignments are deactivated rather than deleted. |
 | Streaming/cancellation | `completed` | Cancellation, sequence, terminal suppression, tool-call assembly, usage mapping, and cassettes are covered by server and GraphQL test gates. |
@@ -130,18 +130,18 @@ active.
 | R0. Static contract repair | `completed` | Provider events are normalized before publication; native DTO conversion is canonical. `ProviderIntegration` owns compiler-exhaustive factory capability binding and target loading rejects unavailable integrations. | `engine::catalog::tests` passes 8/8, including compiled-catalog filtering, target-load rejection, and descriptor/factory parity. |
 | R1. Approval recovery and restart | `completed` | Durable approved outcomes, transactional finalization, batch compare-and-set ownership, recovery, and canonical-history restart are implemented. | `cargo test -p rustok-ai --features server --lib` passes 59 tests with one deployment-live probe intentionally ignored. |
 | R2. Provider protocol evidence | `completed` | Offline cassettes cover OpenAI-compatible, Anthropic, Gemini, cloud-auth, and deployment-local normalized Rig streams; live probes remain opt-in. | Server and GraphQL test gates pass; `verify-ai-rig-cutover.mjs` passes. |
-| R3. Security, migration, and transport parity | `in_progress` | Migration, secret validation, target/egress policy, safe GraphQL/native DTO contracts, and deployment-owned resolver composition are implemented. Remaining work is targeted configuration/emulator coverage for every resolver family. | Run the dedicated secret resolver configuration tests, then rerun the existing secrets/server gates. |
+| R3. Security, migration, and transport parity | `in_progress` | Migration, secret validation, target/egress policy, safe GraphQL/native DTO contracts, and deployment-owned resolver composition are implemented. Explicit-JSON precedence and duplicate aliases are verified for offline/lazy resolver families; live Kubernetes/Azure identity and cloud-emulator coverage remain. | Run the dedicated secret resolver configuration tests, then rerun the existing secrets/server gates. |
 | R4. Final verification and evidence | `in_progress` | The generic runtime composition now publishes module extension values and invokes registered durable workers with no AI-specific server construction. The scheduler observes the shared stop signal before every new claim and exits cleanly while already-claimed work completes canonically. The remaining work is targeted static and later full Rust/frontend verification evidence. | Run the full requested gates in the separate verification pass. |
 
 ### Verified R4 evidence
 
 - `cargo xtask module validate ai` passes for the registered `runtime = "extension"`
   capability contract.
-- `cargo test -p rustok-secrets` passes 7 tests.
-- `cargo test -p rustok-ai --features server --lib` passes 59 tests with one
-  deployment-live probe intentionally ignored; the GraphQL variant passes 60
+- `cargo test -p rustok-secrets --lib` passes 12 tests.
+- `cargo test -p rustok-ai --features server --lib` passes 94 tests with one
+  deployment-live probe intentionally ignored; the GraphQL variant passes 95
   tests with the same ignored probe.
-- `cargo test -p rustok-ai-admin --features ssr --lib` passes 17 tests.
+- `cargo test -p rustok-ai-admin --features ssr --lib` passes 22 tests.
 - Next Admin typecheck/lint and `npm run verify:i18n:ui` pass.
 
 ### Generic platform composition

@@ -2,9 +2,9 @@ mod manifest;
 
 pub(crate) use manifest::module_setting_shape_value;
 pub use manifest::{
-    catalog_module_ui_classification, validate_registry_vs_manifest, CatalogManifestModule,
-    CatalogModuleVersion, DeploymentSurfaceContract, InstalledManifestModule, ManifestDiff,
-    ManifestError, ManifestManager, ManifestModuleSpec, ModuleSettingSpec, ModulesManifest,
+    validate_registry_vs_manifest, CatalogManifestModule, CatalogModuleVersion,
+    DeploymentSurfaceContract, InstalledManifestModule, ManifestDiff, ManifestError,
+    ManifestManager, ManifestModuleSpec, ModuleSettingSpec, ModulesManifest,
 };
 pub use rustok_distribution::build_registry;
 

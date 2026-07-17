@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, SecondsFormat, Utc};
 use futures_util::StreamExt;
 use moka::future::Cache;
-use reqwest::{Client, Response, StatusCode};
+use reqwest::{Client, Response};
 use rustok_core::ModuleRegistry;
 use semver::Version;
 use sha2::{Digest, Sha256};
@@ -15,7 +15,6 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::modules::{CatalogManifestModule, CatalogModuleVersion, ModulesManifest};
 use crate::services::marketplace_catalog::{
-    legacy_registry_catalog_module_path, legacy_registry_catalog_path,
     registry_catalog_module_path, registry_catalog_path, MarketplaceCatalogProvider,
     MarketplaceCatalogQuery, RegistryCatalogModule, RegistryCatalogResponse,
     RegistryCatalogVersion, REGISTRY_CATALOG_SCHEMA_VERSION,
@@ -158,50 +157,17 @@ impl HardenedRegistryMarketplaceProvider {
         validate_cache_key_component("registry_url", registry_url)?;
         validate_cache_key_component("slug", slug)?;
 
-        let use_catalog_fallback = {
-            let _permit =
-                try_acquire_fetch_permit(Arc::clone(&self.fetch_permits), &self.saturated_fetches)?;
-            match fetch_module_from_path(
-                &self.client,
-                registry_url,
-                registry_catalog_module_path(),
-                slug,
-                self.max_response_bytes,
-            )
-            .await
-            {
-                Ok(module) => return Ok(Some(module)),
-                Err(error) if should_fallback_to_legacy_catalog_path(&error) => {
-                    match fetch_module_from_path(
-                        &self.client,
-                        registry_url,
-                        legacy_registry_catalog_module_path(),
-                        slug,
-                        self.max_response_bytes,
-                    )
-                    .await
-                    {
-                        Ok(module) => return Ok(Some(module)),
-                        Err(error) if should_fallback_to_legacy_catalog_path(&error) => true,
-                        Err(error) => return Err(error),
-                    }
-                }
-                Err(error) => return Err(error),
-            }
-        };
-
-        if use_catalog_fallback {
-            let catalog = self
-                .load_catalog(registry_url, &MarketplaceCatalogQuery::default())
-                .await?;
-            Ok(catalog
-                .modules
-                .iter()
-                .find(|module| module.slug.eq_ignore_ascii_case(slug))
-                .cloned())
-        } else {
-            Ok(None)
-        }
+        let _permit =
+            try_acquire_fetch_permit(Arc::clone(&self.fetch_permits), &self.saturated_fetches)?;
+        fetch_module_from_path(
+            &self.client,
+            registry_url,
+            registry_catalog_module_path(),
+            slug,
+            self.max_response_bytes,
+        )
+        .await
+        .map(Some)
     }
 
     #[cfg(test)]
@@ -268,28 +234,14 @@ async fn fetch_catalog(
     query: &MarketplaceCatalogQuery,
     max_response_bytes: usize,
 ) -> anyhow::Result<Arc<CachedRegistryCatalog>> {
-    let (payload, encoded_bytes) = match fetch_catalog_from_path(
+    let (payload, encoded_bytes) = fetch_catalog_from_path(
         client,
         registry_url,
         registry_catalog_path(),
         query,
         max_response_bytes,
     )
-    .await
-    {
-        Ok(payload) => payload,
-        Err(error) if should_fallback_to_legacy_catalog_path(&error) => {
-            fetch_catalog_from_path(
-                client,
-                registry_url,
-                legacy_registry_catalog_path(),
-                query,
-                max_response_bytes,
-            )
-            .await?
-        }
-        Err(error) => return Err(error),
-    };
+    .await?;
 
     validate_registry_schema_version(payload.schema_version)?;
     let modules = payload
@@ -449,18 +401,6 @@ fn validate_registry_schema_version(schema_version: u32) -> anyhow::Result<()> {
             REGISTRY_CATALOG_SCHEMA_VERSION
         )
     }
-}
-
-fn should_fallback_to_legacy_catalog_path(error: &anyhow::Error) -> bool {
-    error
-        .downcast_ref::<reqwest::Error>()
-        .and_then(reqwest::Error::status)
-        .is_some_and(|status| {
-            matches!(
-                status,
-                StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
-            )
-        })
 }
 
 fn registry_module_into_catalog(module: RegistryCatalogModule) -> CatalogManifestModule {

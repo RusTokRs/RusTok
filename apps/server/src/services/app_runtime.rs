@@ -200,6 +200,23 @@ async fn initialize_module_work_runtime(
     } else {
         host
     };
+    let artifact_delivery_tenants: rustok_modules::SharedArtifactDeliveryTenantSource = Arc::new(
+        crate::services::artifact_delivery_tenants::ServerArtifactDeliveryTenantSource::new(
+            ctx.db_clone(),
+        ),
+    );
+    let host = host.with_shared_value(artifact_delivery_tenants);
+    let host = if ctx.shared_get::<rustok_storage::StorageService>().is_some() {
+        let executor = ctx
+            .shared_get::<rustok_modules::SharedArtifactBindingExecutor>()
+            .unwrap_or(crate::services::artifact_runtime::compose_artifact_binding_executor(ctx)?);
+        ctx.shared_insert(executor.clone());
+        host.with_shared_value(executor)
+    } else {
+        host
+    };
+    let host =
+        crate::services::commerce_provider_runtime::attach_commerce_provider_registries(host, ctx);
     #[cfg(feature = "mod-alloy")]
     let host = if let Some(alloy_runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
         host.with_shared_value(alloy_runtime)

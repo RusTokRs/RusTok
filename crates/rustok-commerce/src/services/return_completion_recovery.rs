@@ -625,7 +625,10 @@ fn completion_request_hash(payload: &Value) -> PostOrderOrchestrationResult<Stri
             "failed to hash return completion command: {error}"
         ))
     })?;
-    Ok(format!("{:x}", Sha256::digest(encoded)))
+    Ok(Sha256::digest(encoded)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn canonical_json(value: &Value) -> Value {

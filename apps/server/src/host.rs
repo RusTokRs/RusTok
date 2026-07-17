@@ -115,6 +115,8 @@ fn application_router(host_mode: crate::common::settings::RuntimeHostMode) -> Se
 
     router
         .merge(controllers::marketplace_registry::router())
+        .merge(controllers::artifact_http::router())
+        .merge(controllers::artifact_permissions::router())
         .merge(controllers::admin_events::router())
         .merge(controllers::auth::router())
         .merge(controllers::channel::router())

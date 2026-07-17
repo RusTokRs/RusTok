@@ -19,7 +19,6 @@ doc = false
 default = ["ssr"]
 csr = [
   "leptos/csr",
-  "leptos_router/csr",
   "leptos_i18n/csr",
   "dep:wasm-bindgen",
   "dep:web-sys",
@@ -33,7 +32,6 @@ csr = [
 ]
 hydrate = [
   "leptos/hydrate",
-  "leptos_router/hydrate",
   "leptos_i18n/hydrate",
   "dep:wasm-bindgen",
   "dep:web-sys",

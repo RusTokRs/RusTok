@@ -23,6 +23,8 @@ Automated platform checks integrated into the common verification workflow. Entr
 node scripts/verify/verify-flex-multilingual-contract.mjs
 node scripts/verify/verify-flex-standalone-contract.mjs
 node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
+node scripts/verify/verify-module-control-plane-write-path.mjs
+node scripts/verify/verify-module-build-worker-isolation.mjs
 node scripts/verify/verify-api-surface-contract.mjs
 node scripts/verify/verify-axum-runtime.mjs
 node scripts/verify/export-reference-artifacts.mjs artifacts/reference
@@ -663,6 +665,24 @@ What it checks:
 - JSON bundles `rustok-product/admin` and `rustok-product/storefront` are included in the common key-parity scan without exceptions.
 
 **Severity:** HIGH. Parity violation leads to i18n fragmentation and behavioral differences between surfaces.
+
+---
+### `verify-module-control-plane-write-path.mjs`
+Guardrail against direct server writes to module control-plane aggregates. The
+server may map authenticated requests and supply host adapters, but writes to
+composition, lifecycle, artifact installation, build, and registry governance
+tables must remain in `rustok-modules` owner services.
+
+---
+### `verify-module-build-worker-isolation.mjs`
+Guardrail for the isolated untrusted module build worker. It rejects direct
+tenant-database, platform-storage, and general-secret dependencies or APIs in
+the worker crate. It also requires the fixed untrusted runner to clear its
+environment, be killed on drop, and receive no database or credential values.
+It additionally rejects server-local module build worker/delivery paths and
+requires the independent dispatcher to use the mTLS remote worker after a
+readiness check. The worker must require and validate OCI job receipt evidence
+bound to the immutable build request and configured hardened runtime.
 
 ---
 ### `verify-module-lifecycle-bypass-usage.mjs`

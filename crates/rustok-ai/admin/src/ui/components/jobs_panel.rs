@@ -51,6 +51,27 @@ pub fn AiJobsPanel(
     on_run_product_attributes_job: Callback<SubmitEvent>,
     can_submit_product_attributes: Signal<bool>,
 
+    // Order Analytics
+    order_analytics_title: RwSignal<String>,
+    order_analytics_locale: RwSignal<String>,
+    order_analytics_order_ids: RwSignal<String>,
+    order_analytics_date_from: RwSignal<String>,
+    order_analytics_date_to: RwSignal<String>,
+    order_analytics_focus: RwSignal<String>,
+    order_analytics_assistant_prompt: RwSignal<String>,
+    on_run_order_analytics_job: Callback<SubmitEvent>,
+    can_submit_order_analytics: Signal<bool>,
+
+    // Order Operations Assistant
+    order_ops_title: RwSignal<String>,
+    order_ops_locale: RwSignal<String>,
+    order_ops_order_id: RwSignal<String>,
+    order_ops_recommended_action: RwSignal<String>,
+    order_ops_context: RwSignal<String>,
+    order_ops_assistant_prompt: RwSignal<String>,
+    on_run_order_ops_job: Callback<SubmitEvent>,
+    can_submit_order_ops: Signal<bool>,
+
     // Media Image
     image_title: RwSignal<String>,
     image_locale: RwSignal<String>,
@@ -88,6 +109,10 @@ pub fn AiJobsPanel(
     let ui_locale_product = ui_locale.clone();
     let ui_locale_product_attributes = ui_locale.clone();
     let ui_locale_product_attributes_hint = ui_locale.clone();
+    let ui_locale_order_analytics = ui_locale.clone();
+    let ui_locale_order_analytics_hint = ui_locale.clone();
+    let ui_locale_order_ops = ui_locale.clone();
+    let ui_locale_order_ops_hint = ui_locale.clone();
     let ui_locale_image = ui_locale.clone();
     let ui_locale_alloy = ui_locale.clone();
     let ui_locale_new_session = ui_locale.clone();
@@ -95,6 +120,8 @@ pub fn AiJobsPanel(
     let blog_transport_locale = ui_locale.clone();
     let product_transport_locale = ui_locale.clone();
     let product_attributes_transport_locale = ui_locale.clone();
+    let order_analytics_transport_locale = ui_locale.clone();
+    let order_ops_transport_locale = ui_locale.clone();
     let image_transport_locale = ui_locale.clone();
     let alloy_transport_locale = ui_locale.clone();
     let session_transport_locale = ui_locale.clone();
@@ -247,6 +274,90 @@ pub fn AiJobsPanel(
                                             disabled=move || !can_submit_product_attributes.get()
                                         >
                                             {t(ui_locale_product_attributes.as_deref(), "ai.action.generateProductAttributes", "Generate product attributes")}
+                                        </button>
+                                    </form>
+                                </Card>
+
+                                <Card title=t(ui_locale_order_analytics.as_deref(), "ai.card.orderAnalytics", "Order Analytics")>
+                                    <form class="space-y-3" on:submit=move |ev| on_run_order_analytics_job.run(ev)>
+                                        <TextField label=t(ui_locale_order_analytics.as_deref(), "ai.field.jobTitle", "Job title") value=order_analytics_title />
+                                        <TextField
+                                            label=t(ui_locale_order_analytics.as_deref(), "ai.field.locale", "Locale")
+                                            value=order_analytics_locale
+                                            placeholder=t(ui_locale_order_analytics.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
+                                        />
+                                        <TextField label=t(ui_locale_order_analytics.as_deref(), "ai.field.orderIdsCsv", "Order ids (csv)") value=order_analytics_order_ids />
+                                        <TextField
+                                            label=t(ui_locale_order_analytics.as_deref(), "ai.field.dateFrom", "Date from (RFC 3339, optional)")
+                                            value=order_analytics_date_from
+                                        />
+                                        <TextField
+                                            label=t(ui_locale_order_analytics.as_deref(), "ai.field.dateTo", "Date to (RFC 3339, optional)")
+                                            value=order_analytics_date_to
+                                        />
+                                        <TextField label=t(ui_locale_order_analytics.as_deref(), "ai.field.focus", "Analysis focus") value=order_analytics_focus />
+                                        <TextField label=t(ui_locale_order_analytics.as_deref(), "ai.field.assistantPrompt", "Assistant prompt") value=order_analytics_assistant_prompt />
+                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
+                                            {move || direct_transport_summary(
+                                                order_analytics_transport_locale.as_deref(),
+                                                selected_provider.get().as_str(),
+                                                selected_task_profile.get().as_str(),
+                                            )}
+                                        </div>
+                                        <p class="text-xs text-muted-foreground">
+                                            {t(ui_locale_order_analytics_hint.as_deref(), "ai.hint.orderAdvisory", "Advisory output only. Review generated findings before taking any order action.")}
+                                        </p>
+                                        <Show when=move || !can_submit_order_analytics.get()>
+                                            <p class="text-xs text-muted-foreground">{t(ui_locale_order_analytics_hint.as_deref(), "ai.hint.orderAnalyticsRequirements", "Select the active `order_analytics` task profile and provide at least one order id.")}</p>
+                                        </Show>
+                                        <button
+                                            type="submit"
+                                            class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                                            disabled=move || !can_submit_order_analytics.get()
+                                        >
+                                            {t(ui_locale_order_analytics.as_deref(), "ai.action.generateOrderAnalytics", "Generate order analytics")}
+                                        </button>
+                                    </form>
+                                </Card>
+
+                                <Card title=t(ui_locale_order_ops.as_deref(), "ai.card.orderOpsAssistant", "Order Operations Assistant")>
+                                    <form class="space-y-3" on:submit=move |ev| on_run_order_ops_job.run(ev)>
+                                        <TextField label=t(ui_locale_order_ops.as_deref(), "ai.field.jobTitle", "Job title") value=order_ops_title />
+                                        <TextField
+                                            label=t(ui_locale_order_ops.as_deref(), "ai.field.locale", "Locale")
+                                            value=order_ops_locale
+                                            placeholder=t(ui_locale_order_ops.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
+                                        />
+                                        <TextField label=t(ui_locale_order_ops.as_deref(), "ai.field.orderId", "Order id") value=order_ops_order_id />
+                                        <TextField label=t(ui_locale_order_ops.as_deref(), "ai.field.recommendedAction", "Requested action (optional)") value=order_ops_recommended_action />
+                                        <label class="block space-y-1">
+                                            <span class="text-sm text-muted-foreground">{t(ui_locale_order_ops.as_deref(), "ai.field.orderContext", "Operator context")}</span>
+                                            <textarea
+                                                class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                                prop:value=order_ops_context
+                                                on:input=move |ev| order_ops_context.set(event_target_value(&ev))
+                                            />
+                                        </label>
+                                        <TextField label=t(ui_locale_order_ops.as_deref(), "ai.field.assistantPrompt", "Assistant prompt") value=order_ops_assistant_prompt />
+                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
+                                            {move || direct_transport_summary(
+                                                order_ops_transport_locale.as_deref(),
+                                                selected_provider.get().as_str(),
+                                                selected_task_profile.get().as_str(),
+                                            )}
+                                        </div>
+                                        <p class="text-xs text-muted-foreground">
+                                            {t(ui_locale_order_ops_hint.as_deref(), "ai.hint.orderOpsAdvisory", "Sensitive advisory output only. It cannot modify an order and requires operator review.")}
+                                        </p>
+                                        <Show when=move || !can_submit_order_ops.get()>
+                                            <p class="text-xs text-muted-foreground">{t(ui_locale_order_ops_hint.as_deref(), "ai.hint.orderOpsRequirements", "Select the active `order_ops_assistant` task profile and provide an order id.")}</p>
+                                        </Show>
+                                        <button
+                                            type="submit"
+                                            class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                                            disabled=move || !can_submit_order_ops.get()
+                                        >
+                                            {t(ui_locale_order_ops.as_deref(), "ai.action.runOrderOpsAssistant", "Run order operations assistant")}
                                         </button>
                                     </form>
                                 </Card>

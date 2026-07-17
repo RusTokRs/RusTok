@@ -40,10 +40,11 @@ use super::components::provider_panel::AiProviderPanel;
 use super::components::task_panel::AiTaskPanel;
 use super::components::tool_panel::AiToolPanel;
 use crate::core::{
-    alloy_task_payload, blog_task_payload, image_task_payload, optional_text, parse_csv,
+    alloy_task_payload, blog_task_payload, image_task_payload, optional_text,
+    order_analytics_task_payload, order_ops_assistant_task_payload, parse_csv,
     product_attributes_task_payload, product_task_payload, summarize_recent_runs,
-    BlogTaskPayloadInput, ImageTaskPayloadInput, ProductAttributesTaskPayloadInput,
-    ProductTaskPayloadInput,
+    BlogTaskPayloadInput, ImageTaskPayloadInput, OrderAnalyticsTaskPayloadInput,
+    OrderOpsAssistantTaskPayloadInput, ProductAttributesTaskPayloadInput, ProductTaskPayloadInput,
 };
 use crate::i18n::t;
 #[cfg(target_arch = "wasm32")]
@@ -182,6 +183,27 @@ pub fn AiAdmin() -> impl IntoView {
     let product_attributes_image_urls = RwSignal::new(String::new());
     let product_attributes_copy_instructions = RwSignal::new(String::new());
     let product_attributes_assistant_prompt = RwSignal::new(String::new());
+    let order_analytics_title = RwSignal::new(t(
+        ui_locale.as_deref(),
+        "ai.job.orderAnalyticsTitle",
+        "Order Analytics",
+    ));
+    let order_analytics_locale = RwSignal::new(String::new());
+    let order_analytics_order_ids = RwSignal::new(String::new());
+    let order_analytics_date_from = RwSignal::new(String::new());
+    let order_analytics_date_to = RwSignal::new(String::new());
+    let order_analytics_focus = RwSignal::new(String::new());
+    let order_analytics_assistant_prompt = RwSignal::new(String::new());
+    let order_ops_title = RwSignal::new(t(
+        ui_locale.as_deref(),
+        "ai.job.orderOpsAssistantTitle",
+        "Order Operations Assistant",
+    ));
+    let order_ops_locale = RwSignal::new(String::new());
+    let order_ops_order_id = RwSignal::new(String::new());
+    let order_ops_recommended_action = RwSignal::new(String::new());
+    let order_ops_context = RwSignal::new(String::new());
+    let order_ops_assistant_prompt = RwSignal::new(String::new());
     let blog_title = RwSignal::new(t(ui_locale.as_deref(), "ai.job.blogTitle", "Blog Draft"));
     let blog_locale = RwSignal::new(String::new());
     let blog_post_id = RwSignal::new(String::new());
@@ -304,6 +326,16 @@ pub fn AiAdmin() -> impl IntoView {
         "ai.feedback.productAttributesCompleted",
         "Product attributes job `{title}` completed.",
     );
+    let order_analytics_completed_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.orderAnalyticsCompleted",
+        "Order analytics job `{title}` completed.",
+    );
+    let order_ops_completed_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.orderOpsAssistantCompleted",
+        "Order operations assistant job `{title}` completed.",
+    );
     let blog_completed_template = t(
         ui_locale.as_deref(),
         "ai.feedback.blogCompleted",
@@ -359,6 +391,16 @@ pub fn AiAdmin() -> impl IntoView {
         "ai.error.selectProductAttributesTaskProfile",
         "Select the `product_attributes` task profile before generating product attributes.",
     );
+    let err_select_order_analytics_task = t(
+        ui_locale.as_deref(),
+        "ai.error.selectOrderAnalyticsTaskProfile",
+        "Select the `order_analytics` task profile before generating order analytics.",
+    );
+    let err_select_order_ops_task = t(
+        ui_locale.as_deref(),
+        "ai.error.selectOrderOpsAssistantTaskProfile",
+        "Select the `order_ops_assistant` task profile before running the order operations assistant.",
+    );
     let err_select_blog_task = t(
         ui_locale.as_deref(),
         "ai.error.selectBlogTaskProfile",
@@ -383,6 +425,16 @@ pub fn AiAdmin() -> impl IntoView {
         ui_locale.as_deref(),
         "ai.error.assembleProductAttributesPayload",
         "Failed to assemble product attributes payload. Check product id and seed fields.",
+    );
+    let err_order_analytics_payload = t(
+        ui_locale.as_deref(),
+        "ai.error.assembleOrderAnalyticsPayload",
+        "Failed to assemble order analytics payload. Check order ids and RFC 3339 dates.",
+    );
+    let err_order_ops_payload = t(
+        ui_locale.as_deref(),
+        "ai.error.assembleOrderOpsAssistantPayload",
+        "Failed to assemble order operations payload. Check the order id.",
     );
     let err_blog_payload = t(
         ui_locale.as_deref(),
@@ -411,6 +463,8 @@ pub fn AiAdmin() -> impl IntoView {
     let image_session_query_writer = query_writer.clone();
     let product_session_query_writer = query_writer.clone();
     let product_attributes_session_query_writer = query_writer.clone();
+    let order_analytics_session_query_writer = query_writer.clone();
+    let order_ops_session_query_writer = query_writer.clone();
     let blog_session_query_writer = query_writer.clone();
 
     Effect::new(
@@ -1405,6 +1459,44 @@ pub fn AiAdmin() -> impl IntoView {
 
     let can_submit_product_attributes_signal = Signal::derive(can_submit_product_attributes);
 
+    let can_submit_order_analytics = move || {
+        let task_profile_id = selected_task_profile.get();
+        let has_order_ids = !parse_csv(order_analytics_order_ids.get()).is_empty();
+        let matches_order_analytics = bootstrap
+            .get()
+            .and_then(Result::ok)
+            .map(|payload| {
+                payload.task_profiles.iter().any(|profile| {
+                    profile.id == task_profile_id
+                        && profile.slug == "order_analytics"
+                        && profile.is_active
+                })
+            })
+            .unwrap_or(false);
+
+        has_order_ids && matches_order_analytics
+    };
+    let can_submit_order_analytics_signal = Signal::derive(can_submit_order_analytics);
+
+    let can_submit_order_ops = move || {
+        let task_profile_id = selected_task_profile.get();
+        let has_order_id = !order_ops_order_id.get().trim().is_empty();
+        let matches_order_ops = bootstrap
+            .get()
+            .and_then(Result::ok)
+            .map(|payload| {
+                payload.task_profiles.iter().any(|profile| {
+                    profile.id == task_profile_id
+                        && profile.slug == "order_ops_assistant"
+                        && profile.is_active
+                })
+            })
+            .unwrap_or(false);
+
+        has_order_id && matches_order_ops
+    };
+    let can_submit_order_ops_signal = Signal::derive(can_submit_order_ops);
+
     let on_run_product_attributes_job = move |ev: SubmitEvent| {
         ev.prevent_default();
         set_feedback.set(None);
@@ -1468,6 +1560,129 @@ pub fn AiAdmin() -> impl IntoView {
                         .replace_value(AdminQueryKey::SessionId.as_str(), session_id);
                     set_feedback.set(Some(
                         product_completed_template
+                            .replace("{title}", result.session.session.title.as_str()),
+                    ));
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(err) => set_error.set(Some(err.to_string())),
+            }
+        });
+    };
+
+    let on_run_order_analytics_job = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        set_feedback.set(None);
+        set_error.set(None);
+        let task_profile_id = selected_task_profile.get_untracked();
+        let selected_profile_is_order_analytics = bootstrap
+            .get_untracked()
+            .and_then(Result::ok)
+            .map(|payload| {
+                payload.task_profiles.iter().any(|profile| {
+                    profile.id == task_profile_id
+                        && profile.slug == "order_analytics"
+                        && profile.is_active
+                })
+            })
+            .unwrap_or(false);
+        if !selected_profile_is_order_analytics {
+            set_error.set(Some(err_select_order_analytics_task.clone()));
+            return;
+        }
+
+        let payload = order_analytics_task_payload(OrderAnalyticsTaskPayloadInput {
+            order_ids_csv: order_analytics_order_ids.get_untracked(),
+            date_from: optional_text(order_analytics_date_from.get_untracked()),
+            date_to: optional_text(order_analytics_date_to.get_untracked()),
+            focus: optional_text(order_analytics_focus.get_untracked()),
+            assistant_prompt: optional_text(order_analytics_assistant_prompt.get_untracked()),
+        });
+        let Ok(payload) = payload else {
+            set_error.set(Some(err_order_analytics_payload.clone()));
+            return;
+        };
+
+        let completed_template = order_analytics_completed_template.clone();
+        let session_query_writer = order_analytics_session_query_writer.clone();
+        spawn_local(async move {
+            let result = transport::run_task_job(
+                order_analytics_title.get_untracked(),
+                optional_text(selected_provider.get_untracked()),
+                task_profile_id,
+                Some("direct".to_string()),
+                optional_text(order_analytics_locale.get_untracked()),
+                payload,
+            )
+            .await;
+            match result {
+                Ok(result) => {
+                    let session_id = result.session.session.id.clone();
+                    set_selected_session.set(Some(session_id.clone()));
+                    session_query_writer
+                        .replace_value(AdminQueryKey::SessionId.as_str(), session_id);
+                    set_feedback.set(Some(
+                        completed_template
+                            .replace("{title}", result.session.session.title.as_str()),
+                    ));
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(err) => set_error.set(Some(err.to_string())),
+            }
+        });
+    };
+
+    let on_run_order_ops_job = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        set_feedback.set(None);
+        set_error.set(None);
+        let task_profile_id = selected_task_profile.get_untracked();
+        let selected_profile_is_order_ops = bootstrap
+            .get_untracked()
+            .and_then(Result::ok)
+            .map(|payload| {
+                payload.task_profiles.iter().any(|profile| {
+                    profile.id == task_profile_id
+                        && profile.slug == "order_ops_assistant"
+                        && profile.is_active
+                })
+            })
+            .unwrap_or(false);
+        if !selected_profile_is_order_ops {
+            set_error.set(Some(err_select_order_ops_task.clone()));
+            return;
+        }
+
+        let payload = order_ops_assistant_task_payload(OrderOpsAssistantTaskPayloadInput {
+            order_id: order_ops_order_id.get_untracked(),
+            recommended_action: optional_text(order_ops_recommended_action.get_untracked()),
+            context: optional_text(order_ops_context.get_untracked()),
+            assistant_prompt: optional_text(order_ops_assistant_prompt.get_untracked()),
+        });
+        let Ok(payload) = payload else {
+            set_error.set(Some(err_order_ops_payload.clone()));
+            return;
+        };
+
+        let completed_template = order_ops_completed_template.clone();
+        let session_query_writer = order_ops_session_query_writer.clone();
+        spawn_local(async move {
+            let result = transport::run_task_job(
+                order_ops_title.get_untracked(),
+                optional_text(selected_provider.get_untracked()),
+                task_profile_id,
+                Some("direct".to_string()),
+                optional_text(order_ops_locale.get_untracked()),
+                payload,
+            )
+            .await;
+            match result {
+                Ok(result) => {
+                    let session_id = result.session.session.id.clone();
+                    set_selected_session.set(Some(session_id.clone()));
+                    session_query_writer
+                        .replace_value(AdminQueryKey::SessionId.as_str(), session_id);
+                    set_feedback.set(Some(
+                        completed_template
                             .replace("{title}", result.session.session.title.as_str()),
                     ));
                     set_refresh_nonce.update(|value| *value += 1);
@@ -1726,6 +1941,8 @@ pub fn AiAdmin() -> impl IntoView {
                     let on_run_blog_job = on_run_blog_job.clone();
                     let on_run_product_job = on_run_product_job.clone();
                     let on_run_product_attributes_job = on_run_product_attributes_job.clone();
+                    let on_run_order_analytics_job = on_run_order_analytics_job.clone();
+                    let on_run_order_ops_job = on_run_order_ops_job.clone();
                     let on_run_image_job = on_run_image_job.clone();
                     let on_run_alloy_job = on_run_alloy_job.clone();
                     let on_start_session = on_start_session.clone();
@@ -1891,6 +2108,25 @@ pub fn AiAdmin() -> impl IntoView {
                                             product_attributes_assistant_prompt=product_attributes_assistant_prompt
                                             on_run_product_attributes_job=Callback::new(on_run_product_attributes_job.clone())
                                             can_submit_product_attributes=can_submit_product_attributes_signal
+
+                                            order_analytics_title=order_analytics_title
+                                            order_analytics_locale=order_analytics_locale
+                                            order_analytics_order_ids=order_analytics_order_ids
+                                            order_analytics_date_from=order_analytics_date_from
+                                            order_analytics_date_to=order_analytics_date_to
+                                            order_analytics_focus=order_analytics_focus
+                                            order_analytics_assistant_prompt=order_analytics_assistant_prompt
+                                            on_run_order_analytics_job=Callback::new(on_run_order_analytics_job.clone())
+                                            can_submit_order_analytics=can_submit_order_analytics_signal
+
+                                            order_ops_title=order_ops_title
+                                            order_ops_locale=order_ops_locale
+                                            order_ops_order_id=order_ops_order_id
+                                            order_ops_recommended_action=order_ops_recommended_action
+                                            order_ops_context=order_ops_context
+                                            order_ops_assistant_prompt=order_ops_assistant_prompt
+                                            on_run_order_ops_job=Callback::new(on_run_order_ops_job.clone())
+                                            can_submit_order_ops=can_submit_order_ops_signal
 
                                             image_title=image_title
                                             image_locale=image_locale

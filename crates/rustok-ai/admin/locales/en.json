@@ -20,6 +20,8 @@
       "sessions": "Sessions",
       "operatorChat": "Operator Chat",
       "productAttributes": "Product Attributes",
+      "orderAnalytics": "Order Analytics",
+      "orderOpsAssistant": "Order Operations Assistant",
       "agents": "Agents"
     },
     "field": {
@@ -77,6 +79,13 @@
       "initialMessage": "Initial message",
       "categorySlug": "Category slug",
       "imageUrlsCsv": "Image URLs (csv)",
+      "orderIdsCsv": "Order ids (csv)",
+      "orderId": "Order id",
+      "dateFrom": "Date from (RFC 3339, optional)",
+      "dateTo": "Date to (RFC 3339, optional)",
+      "focus": "Analysis focus",
+      "recommendedAction": "Requested action (optional)",
+      "orderContext": "Operator context",
       "agentDescriptor": "Agent descriptor",
       "modelOverride": "Model override (optional)"
     },
@@ -97,6 +106,8 @@
       "approve": "Approve",
       "reject": "Reject",
       "generateProductAttributes": "Generate product attributes",
+      "generateOrderAnalytics": "Generate order analytics",
+      "runOrderOpsAssistant": "Run order operations assistant",
       "createAgentPrincipal": "Create agent principal",
       "createModelAssignment": "Create model assignment"
     },
@@ -158,6 +169,8 @@
       "productCompleted": "Product copy job `{title}` completed.",
       "blogCompleted": "Blog draft job `{title}` completed.",
       "productAttributesCompleted": "Product attributes job `{title}` completed.",
+      "orderAnalyticsCompleted": "Order analytics job `{title}` completed.",
+      "orderOpsAssistantCompleted": "Order operations assistant job `{title}` completed.",
       "agentPrincipalCreated": "Agent principal `{slug}` created.",
       "agentPrincipalUpdated": "Agent principal `{slug}` updated.",
       "modelAssignmentCreated": "Model assignment created.",
@@ -179,7 +192,11 @@
       "assembleProductPayload": "Failed to assemble product copy payload. Check the product id.",
       "assembleBlogPayload": "Failed to assemble blog draft payload. Check post/category ids.",
       "selectProductAttributesTaskProfile": "Select the `product_attributes` task profile before generating product attributes.",
-      "assembleProductAttributesPayload": "Failed to assemble product attributes payload. Check product id and seed fields."
+      "assembleProductAttributesPayload": "Failed to assemble product attributes payload. Check product id and seed fields.",
+      "selectOrderAnalyticsTaskProfile": "Select the `order_analytics` task profile before generating order analytics.",
+      "selectOrderOpsAssistantTaskProfile": "Select the `order_ops_assistant` task profile before running the order operations assistant.",
+      "assembleOrderAnalyticsPayload": "Failed to assemble order analytics payload. Check order ids and RFC 3339 dates.",
+      "assembleOrderOpsAssistantPayload": "Failed to assemble order operations payload. Check the order id."
     },
     "summary": {
       "bucketNoData": "no data",
@@ -211,10 +228,16 @@
       "alloyTitle": "Alloy Assist",
       "imageTitle": "Media Image",
       "productTitle": "Product Copy",
-      "blogTitle": "Blog Draft"
+      "blogTitle": "Blog Draft",
+      "orderAnalyticsTitle": "Order Analytics",
+      "orderOpsAssistantTitle": "Order Operations Assistant"
     },
     "hint": {
-      "productAttributesRequirements": "Select task profile and product id to enable generation."
+      "productAttributesRequirements": "Select task profile and product id to enable generation.",
+      "orderAdvisory": "Advisory output only. Review generated findings before taking any order action.",
+      "orderAnalyticsRequirements": "Select the active `order_analytics` task profile and provide at least one order id.",
+      "orderOpsAdvisory": "Sensitive advisory output only. It cannot modify an order and requires operator review.",
+      "orderOpsRequirements": "Select the active `order_ops_assistant` task profile and provide an order id."
     },
     "agents": {
       "ownerCatalog": "Owner catalog",

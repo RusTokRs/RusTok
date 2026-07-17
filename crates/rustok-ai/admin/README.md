@@ -15,6 +15,9 @@ Large Leptos operator/admin UI package for the `rustok-ai` capability crate.
   chrome, diagnostics, operator chat, approval flows, and session history surfaces.
 - Owns the provider profile, tool policy, chat session, trace, and approval flows for the AI
   control plane.
+- Hosts the `rustok-ai-order` adapter controls for `order_analytics` and
+  `order_ops_assistant`; those forms use the standard task-job transport and keep all generated
+  output advisory and review-gated rather than placing order AI UI in an order or content package.
 - Provider profiles select deployment targets and task policy, but do not accept raw role
   slugs; typed role selection awaits the platform-owned tenant RBAC catalog.
 - Renders the owner-provided agent catalog, workflows, principals, and model assignments as a

@@ -1,14 +1,18 @@
 //! Module platform ownership: artifact identity, release lineage and lifecycle.
 
 mod artifact;
+mod artifact_capability_router;
 mod artifact_cas;
+mod binding_idempotency;
 mod build;
+mod build_surface;
 mod composition;
 mod contracts;
 mod data;
 mod definition;
 mod dependency;
 mod dispatcher;
+mod event_delivery;
 mod execution_audit;
 mod executor;
 mod governance;
@@ -21,10 +25,16 @@ mod migrations;
 mod oci;
 mod operation_store;
 mod policy;
+mod publish_validation;
 mod recovery;
 mod resolution;
 mod runtime;
+mod runtime_handles;
+mod schedule_delivery;
+mod schedule_materializer;
 mod secrets;
+mod settings;
+mod static_package;
 mod trust;
 
 use async_trait::async_trait;
@@ -32,10 +42,10 @@ use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use artifact::{
-    canonical_schema_digest, ArtifactModuleKind, ArtifactOrigin, ArtifactPayloadKind,
-    ArtifactPermissionDescriptor, ArtifactPersistenceContract, ArtifactRelease,
-    ArtifactReleaseDraft, ArtifactReleaseRef, ArtifactSchemaDocument, ArtifactSourceLineage,
-    ArtifactUiContribution, ModuleArtifactDescriptor, ModuleArtifactError,
+    canonical_schema_digest, schedule_binding_digest, ArtifactModuleKind, ArtifactOrigin,
+    ArtifactPayloadKind, ArtifactPermissionDescriptor, ArtifactPersistenceContract,
+    ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef, ArtifactSchemaDocument,
+    ArtifactSourceLineage, ArtifactUiContribution, ModuleArtifactDescriptor, ModuleArtifactError,
     ModuleBindingIdempotency, ModuleDependencyConstraint, ModuleHttpBinding, ModuleHttpMethod,
     ModuleHttpStreamingPolicy, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
     ModuleScheduleBinding, ModuleScheduleDeduplication, ModuleScheduleMisfirePolicy,
@@ -43,16 +53,32 @@ pub use artifact::{
     MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE, MODULE_ARTIFACT_SIDECAR_MEDIA_TYPE,
     MODULE_ARTIFACT_STATIC_PROMOTION_MEDIA_TYPE, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
 };
+pub use artifact_capability_router::{
+    resolve_granted_artifact_capability, ArtifactCapabilityBrokerResolver,
+    ArtifactCapabilityBrokerResolverRouter, ArtifactCapabilityExecution,
+    ResolvingArtifactCapabilityBroker,
+};
 pub use artifact_cas::StorageArtifactBlobStore;
+pub use binding_idempotency::{
+    artifact_binding_request_digest, ArtifactBindingIdempotencyClaim,
+    ArtifactBindingIdempotencyError, ArtifactBindingIdempotencyRequest,
+    SeaOrmArtifactBindingIdempotencyStore,
+};
 pub use build::{
-    ModuleBuildAuthoring, ModuleBuildComponentInterface, ModuleBuildDependencyPolicy,
-    ModuleBuildDiagnostic, ModuleBuildDiagnosticStage, ModuleBuildEvidence, ModuleBuildFailureCode,
-    ModuleBuildLimits, ModuleBuildMetrics, ModuleBuildNetworkPolicy, ModuleBuildNextAction,
-    ModuleBuildOutcome, ModuleBuildProtocolError, ModuleBuildPublicationReceipt,
-    ModuleBuildRequest, ModuleBuildResult, ModuleBuildResultRecord, ModuleBuildSignatureAuthority,
-    ModuleBuildSource, ModuleBuildSubmission, ModuleBuildToolchain, ModuleBuildValidationProfile,
-    ModuleBuildWitContract, ModuleBuildWorker, SeaOrmModuleBuildService,
-    MODULE_BUILD_PROTOCOL_VERSION,
+    ModuleBuildAuthoring, ModuleBuildCompletedResult, ModuleBuildComponentInterface,
+    ModuleBuildDependencyPolicy, ModuleBuildDiagnostic, ModuleBuildDiagnosticStage,
+    ModuleBuildEvidence, ModuleBuildFailureCode, ModuleBuildLimits, ModuleBuildMetrics,
+    ModuleBuildNetworkPolicy, ModuleBuildNextAction, ModuleBuildOutcome, ModuleBuildProtocolError,
+    ModuleBuildPublicationReceipt, ModuleBuildRequest, ModuleBuildResult, ModuleBuildResultRecord,
+    ModuleBuildSignatureAuthority, ModuleBuildSource, ModuleBuildSubmission, ModuleBuildToolchain,
+    ModuleBuildValidationOutcome, ModuleBuildValidationProfile, ModuleBuildValidationResult,
+    ModuleBuildWitContract, ModuleBuildWorker, ModuleBuildWorkerReadiness,
+    SeaOrmModuleBuildService, MODULE_BUILD_PROTOCOL_VERSION,
+};
+pub use build_surface::{
+    validate_platform_build_surface_contract, PlatformAdminBuildSurfaceContract,
+    PlatformBuildSurfaceContract, PlatformBuildSurfaceValidationError,
+    PlatformStorefrontBuildSurfaceContract,
 };
 pub use composition::{
     ModuleCompositionBuildEnqueuer, ModuleCompositionError, ModuleCompositionSnapshot,
@@ -64,14 +90,15 @@ pub use contracts::{
 };
 pub use data::{
     validate_artifact_data_key, validate_artifact_data_prefix, ArtifactBindingDataUpgradeHook,
-    ArtifactDataAccess, ArtifactDataAuthorizer, ArtifactDataBroker, ArtifactDataError,
-    ArtifactDataMigrationCheckpointStore, ArtifactDataPage, ArtifactDataPageRequest,
-    ArtifactDataPurgeAuthorizer, ArtifactDataPurgeRequest, ArtifactDataPurgeResult,
-    ArtifactDataRecord, ArtifactDataSchemaValidator, ArtifactDataScope, ArtifactDataUpgradeApplier,
-    ArtifactDataUpgradeApplyRequest, ArtifactDataUpgradeApplyResult, ArtifactDataUpgradeHook,
-    ArtifactDataUpgradeInput, ArtifactDataUpgradePlan, ArtifactDataUpgradePlanner,
-    ArtifactDataUpgradeRecord, ArtifactDataUpgradeRequest, ArtifactDataWrite,
-    SeaOrmArtifactDataBroker, SeaOrmArtifactDataCapabilityBroker, SeaOrmArtifactDataPurgeService,
+    ArtifactDataAccess, ArtifactDataAuthorizer, ArtifactDataBatchWrite, ArtifactDataBroker,
+    ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactDataPage,
+    ArtifactDataPageRequest, ArtifactDataPurgeAuthorizer, ArtifactDataPurgeRequest,
+    ArtifactDataPurgeResult, ArtifactDataRecord, ArtifactDataSchemaValidator, ArtifactDataScope,
+    ArtifactDataUpgradeApplier, ArtifactDataUpgradeApplyRequest, ArtifactDataUpgradeApplyResult,
+    ArtifactDataUpgradeHook, ArtifactDataUpgradeInput, ArtifactDataUpgradePlan,
+    ArtifactDataUpgradePlanner, ArtifactDataUpgradeRecord, ArtifactDataUpgradeRequest,
+    ArtifactDataWrite, SeaOrmArtifactDataBroker, SeaOrmArtifactDataCapabilityBroker,
+    SeaOrmArtifactDataCapabilityBrokerResolver, SeaOrmArtifactDataPurgeService,
     SeaOrmArtifactDataSchemaValidator,
 };
 pub use definition::{
@@ -82,8 +109,19 @@ pub use dependency::{
     ModuleDependencyLockError, ModuleDependencyLockGraph, ModuleDependencyLockNode,
 };
 pub use dispatcher::{
-    ArtifactBindingDispatch, ArtifactBindingExecutor, ArtifactLifecycleExecutor,
-    ModuleDispatchError, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
+    dispatch_artifact_command_binding, dispatch_artifact_http_binding,
+    find_artifact_command_binding, find_artifact_http_binding, ArtifactBindingDispatch,
+    ArtifactBindingExecutionContext, ArtifactBindingExecutor, ArtifactInstallationTarget,
+    ArtifactLifecycleExecutor, ModuleDispatchError, ModuleExecutionDispatcher,
+    ModuleLifecycleHookPhase,
+};
+pub use event_delivery::{
+    ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig, ArtifactEventDeliveryError,
+    ArtifactEventDeliveryOutcome, ArtifactEventDeliveryReceipt, ArtifactEventDeliveryRequest,
+    ArtifactEventDeliverySource, ArtifactEventDeliveryWorkAdapter, ArtifactEventDeliveryWorkItem,
+    ArtifactEventDeliveryWorkRegistration, ArtifactEventProjectionTransport,
+    SeaOrmArtifactEventDeliveryQueue, SeaOrmArtifactEventSubscriptionProjector,
+    ARTIFACT_EVENT_DELIVERY_WORKER,
 };
 pub use execution_audit::SeaOrmArtifactExecutionObserver;
 pub use executor::{
@@ -91,21 +129,25 @@ pub use executor::{
     ModuleLifecycleToggleResult,
 };
 pub use governance::{
-    ModuleBuildServiceAttestationCommand, ModuleGovernanceError, ModuleOwnerBindCommand,
-    ModuleOwnerTransferCommand, ModulePlatformAdmissionCommand, ModulePublicationEvidenceAuthority,
+    ModuleBuildServiceAttestationCommand, ModuleExternalPrebuiltStageCommand,
+    ModuleExternalPrebuiltStageResult, ModuleExternalSourceEvidence, ModuleGovernanceError,
+    ModuleOwnerBindCommand, ModuleOwnerTransferCommand, ModulePlatformAdmissionCommand,
+    ModulePublicationArtifactOrigin, ModulePublicationEvidenceAuthority,
     ModulePublicationEvidenceCommand, ModulePublicationEvidenceResult,
     ModulePublishApprovalOverride, ModulePublishArtifactAttachCommand,
-    ModulePublishArtifactAttachResult, ModulePublishRequestChangesCommand,
+    ModulePublishArtifactAttachResult, ModulePublishPlatformBuildStageCommand,
+    ModulePublishPlatformBuildStageResult, ModulePublishRequestChangesCommand,
     ModulePublishRequestCreateCommand, ModulePublishRequestHoldCommand,
     ModulePublishRequestPublicationCommand, ModulePublishRequestRejectCommand,
-    ModulePublishRequestResumeCommand, ModuleReleaseYankCommand, ModuleRemoteValidationClaim,
-    ModuleRemoteValidationClaimCommand, ModuleRemoteValidationHeartbeatCommand,
-    ModuleRemoteValidationTerminalCommand, ModuleRemoteValidationTerminalOutcome,
-    ModuleValidationJobClaimCommand, ModuleValidationJobClaimResult,
-    ModuleValidationJobEnqueueCommand, ModuleValidationJobEnqueueResult,
-    ModuleValidationJobResultCommand, ModuleValidationJobResultOutcome,
-    ModuleValidationJobRetryCommand, ModuleValidationStageReportCommand,
-    SeaOrmModuleGovernanceService, REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
+    ModulePublishRequestResumeCommand, ModulePublishValidationContract, ModuleReleaseYankCommand,
+    ModuleRemoteValidationClaim, ModuleRemoteValidationClaimCommand,
+    ModuleRemoteValidationHeartbeatCommand, ModuleRemoteValidationTerminalCommand,
+    ModuleRemoteValidationTerminalOutcome, ModuleValidationJobClaimCommand,
+    ModuleValidationJobClaimResult, ModuleValidationJobEnqueueCommand,
+    ModuleValidationJobEnqueueResult, ModuleValidationJobResultCommand,
+    ModuleValidationJobResultOutcome, ModuleValidationJobRetryCommand, ModuleValidationJobWorkItem,
+    ModuleValidationStageReportCommand, SeaOrmModuleGovernanceService,
+    REGISTRY_APPROVE_OVERRIDE_REASON_CODES, REGISTRY_EXTERNAL_SOURCE_ABSENCE_REASON_CODES,
     REGISTRY_HOLD_REASON_CODES, REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
     REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
     REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES,
@@ -118,18 +160,21 @@ pub use installation::{
     ArtifactBlobStore, ArtifactDeactivationRequest, ArtifactDeactivationResult,
     ArtifactMigrationCheckpointRequest, ArtifactMigrationRollbackMode, ArtifactPayloadSource,
     ArtifactRegistry, ArtifactRollbackRequest, ArtifactRollbackResult,
-    ArtifactTenantDisableRequest, ArtifactTenantDisableResult, ArtifactUninstallRequest,
-    ArtifactUninstallResult, ArtifactVerificationEvidence, DurableArtifactBlobStore,
-    InMemoryArtifactBlobStore, InstalledModuleArtifact, ModuleArtifactPackage,
-    ModuleInstallationError, ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
-    SeaOrmArtifactInstallationStore, SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob,
+    ArtifactTenantDisableRequest, ArtifactTenantDisableResult, ArtifactTenantEnableRequest,
+    ArtifactTenantEnableResult, ArtifactUninstallRequest, ArtifactUninstallResult,
+    ArtifactVerificationEvidence, DurableArtifactBlobStore, InMemoryArtifactBlobStore,
+    InstalledModuleArtifact, ModuleArtifactPackage, ModuleInstallationError,
+    ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
+    SeaOrmArtifactInstallationStore, SeaOrmArtifactSandboxPolicyResolver,
+    SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob,
 };
 pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
 pub use lifecycle_writer::{
     persist_module_settings, ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError,
 };
 pub use mcp::{
-    ArtifactMcpCallRequest, ArtifactMcpCapabilityBroker, ArtifactMcpError, ArtifactMcpInvoker,
+    ArtifactMcpCallRequest, ArtifactMcpCapabilityBroker, ArtifactMcpCapabilityBrokerResolver,
+    ArtifactMcpError, ArtifactMcpInvoker,
 };
 #[cfg(feature = "oci-distribution")]
 pub use oci::{
@@ -150,6 +195,11 @@ pub use policy::{
     validate_module_toggle, ModuleEffectivePolicy, ModuleEffectivePolicyQuery,
     ModuleToggleValidationError, TenantModuleOverride,
 };
+pub use publish_validation::{
+    validate_module_publish_bundle, ModulePublishBundleValidation,
+    MODULE_PUBLISH_ARTIFACT_MANIFEST_MAX_BYTES, MODULE_PUBLISH_ARTIFACT_MAX_BYTES,
+    MODULE_PUBLISH_BUNDLE_TYPE,
+};
 pub use recovery::{
     failed_module_operation_recovery_plans, module_operation_recovery_plan,
     retry_failed_post_hook_operation, ModuleOperationRecoveryError, ModuleOperationRecoveryPlan,
@@ -164,11 +214,43 @@ pub use runtime::{
     ArtifactInstallationResolver, ArtifactRuntime, ArtifactRuntimeError,
     ArtifactRuntimeLifecycleExecutor, ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,
 };
+pub use runtime_handles::{
+    ArtifactDeliveryTenantSource, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
+};
+pub use schedule_delivery::{
+    ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError, ArtifactScheduleDeliveryOutcome,
+    ArtifactScheduleDeliveryReceipt, ArtifactScheduleDeliveryRequest,
+    ArtifactScheduleDeliveryWorkAdapter, ArtifactScheduleDeliveryWorkItem,
+    ArtifactScheduleDeliveryWorkRegistration, SeaOrmArtifactScheduleDeliveryQueue,
+    ARTIFACT_SCHEDULE_DELIVERY_WORKER,
+};
+pub use schedule_materializer::{
+    ArtifactScheduleMaterializationConfig, ArtifactScheduleMaterializationError,
+    ArtifactScheduleMaterializationReport, ArtifactScheduleMaterializer,
+};
 pub use secrets::{
     ArtifactSecretAuthorizer, ArtifactSecretBindingRequest, ArtifactSecretError,
     ArtifactSecretHandle, ArtifactSecretHandleAuthorizer, ArtifactSecretHandleRequest,
     ArtifactSecretPolicy, RegistryArtifactSecretAuthorizer, SeaOrmArtifactSecretCapabilityBroker,
-    SeaOrmArtifactSecretHandleService, SeaOrmArtifactSecretService,
+    SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretHandleService,
+    SeaOrmArtifactSecretService,
+};
+pub use settings::{
+    normalize_module_settings, validate_module_settings_schema, ModuleSettingSpec,
+    ModuleSettingsValidationError,
+};
+pub use static_package::{
+    is_valid_static_module_slug, resolve_static_module_ui_classification,
+    static_module_platform_version_is_compatible, validate_static_module_catalog_contract,
+    validate_static_module_http_provides_contract, validate_static_module_package_contract,
+    validate_static_module_registry_contracts, validate_static_module_topology_contract,
+    validate_static_module_ui_i18n_contract, StaticModuleCatalogContract,
+    StaticModuleCatalogValidationError, StaticModuleHttpProvidesContract,
+    StaticModuleHttpProvidesValidationError, StaticModulePackageContract,
+    StaticModulePackageValidationError, StaticModulePlatformVersionError,
+    StaticModuleTopologyContract, StaticModuleTopologyModule, StaticModuleTopologyValidationError,
+    StaticModuleUiClassificationError, StaticModuleUiI18nContract, StaticModuleUiI18nResolved,
+    StaticModuleUiI18nValidationError,
 };
 pub use trust::{
     TrustPolicyRevision, TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
@@ -203,5 +285,16 @@ impl RusToKModule for ModulesModule {
 
     fn kind(&self) -> ModuleKind {
         ModuleKind::Core
+    }
+
+    fn register_runtime_extensions(&self, extensions: &mut rustok_core::ModuleRuntimeExtensions) {
+        let registrations = extensions
+            .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default);
+        registrations.register(std::sync::Arc::new(
+            ArtifactEventDeliveryWorkRegistration::default(),
+        ));
+        registrations.register(std::sync::Arc::new(
+            ArtifactScheduleDeliveryWorkRegistration::default(),
+        ));
     }
 }

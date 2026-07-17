@@ -195,7 +195,10 @@ fn refund_request_hash(
     let encoded = serde_json::to_vec(&payload).map_err(|error| {
         PaymentError::Validation(format!("failed to hash refund request: {error}"))
     })?;
-    Ok(format!("{:x}", Sha256::digest(encoded)))
+    Ok(Sha256::digest(encoded)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn canonical_json(value: &Value) -> Value {

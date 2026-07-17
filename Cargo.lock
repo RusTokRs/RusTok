@@ -1855,6 +1855,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono-tz"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93698b29de5e97ad0ae26447b344c482a7284c737d9ddc5f9e52b74a336671bb"
+dependencies = [
+ "chrono",
+ "chrono-tz-build",
+ "phf 0.11.3",
+]
+
+[[package]]
+name = "chrono-tz-build"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c088aee841df9c3041febbb73934cfc39708749bf96dc827e3359cd39ef11b1"
+dependencies = [
+ "parse-zoneinfo 0.3.1",
+ "phf 0.11.3",
+ "phf_codegen",
+]
+
+[[package]]
 name = "ciborium"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3770,6 +3792,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fly-browser"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "fly-leptos"
 version = "0.1.0"
 dependencies = [
@@ -5401,7 +5431,7 @@ dependencies = [
  "log",
  "ndarray",
  "num-traits",
- "parse-zoneinfo",
+ "parse-zoneinfo 0.5.0",
  "potential_utf",
  "serde",
  "serde-aux",
@@ -8002,6 +8032,15 @@ dependencies = [
 
 [[package]]
 name = "parse-zoneinfo"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f2a05b18d44e2957b88f96ba460715e295bc1d7510468a2f3d3b44535d26c24"
+dependencies = [
+ "regex",
+]
+
+[[package]]
+name = "parse-zoneinfo"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "052ff849639942444955d93311f17caa86c9d77164a3dfc3b477b066246a5a79"
@@ -8152,6 +8191,16 @@ checksum = "c1562dc717473dbaa4c1f85a36410e03c047b2e7df7f45ee938fbef64ae7fadf"
 dependencies = [
  "phf_shared 0.13.1",
  "serde",
+]
+
+[[package]]
+name = "phf_codegen"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aef8048c789fa5e851558d709946d6d79a8ff88c0440c587967f8e94bfb1216a"
+dependencies = [
+ "phf_generator",
+ "phf_shared 0.11.3",
 ]
 
 [[package]]
@@ -10246,6 +10295,7 @@ dependencies = [
 name = "rustok-admin"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "base64 0.22.1",
  "chrono",
  "console_error_panic_hook",
@@ -10288,6 +10338,7 @@ dependencies = [
  "rustok-index-admin",
  "rustok-installer",
  "rustok-inventory-admin",
+ "rustok-marketplace-seller-admin",
  "rustok-mcp-admin",
  "rustok-media",
  "rustok-media-admin",
@@ -10317,6 +10368,7 @@ dependencies = [
  "serde_urlencoded",
  "sha2 0.11.0",
  "thiserror 2.0.18",
+ "tokio",
  "toml 1.1.2+spec-1.1.0",
  "uuid",
  "wasm-bindgen",
@@ -10343,6 +10395,7 @@ dependencies = [
  "rig-fastembed",
  "rig-gemini-grpc",
  "rig-vertexai",
+ "rust_decimal",
  "rustok-ai-alloy",
  "rustok-ai-content",
  "rustok-ai-media",
@@ -10354,6 +10407,7 @@ dependencies = [
  "rustok-core",
  "rustok-mcp",
  "rustok-media",
+ "rustok-order",
  "rustok-outbox",
  "rustok-product",
  "rustok-runtime",
@@ -10418,10 +10472,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-ai-content-admin"
-version = "0.1.0"
-
-[[package]]
 name = "rustok-ai-media"
 version = "0.1.0"
 dependencies = [
@@ -10438,10 +10488,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-ai-order-admin"
-version = "0.1.0"
-
-[[package]]
 name = "rustok-ai-product"
 version = "0.1.0"
 dependencies = [
@@ -10450,10 +10496,6 @@ dependencies = [
  "serde_json",
  "uuid",
 ]
-
-[[package]]
-name = "rustok-ai-product-admin"
-version = "0.1.0"
 
 [[package]]
 name = "rustok-api"
@@ -10481,6 +10523,7 @@ dependencies = [
  "async-graphql",
  "async-trait",
  "chrono",
+ "flex",
  "hex",
  "jsonwebtoken",
  "password-hash 0.6.1",
@@ -10875,6 +10918,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "flex",
  "proptest",
  "rust_decimal",
  "rust_decimal_macros",
@@ -11144,6 +11188,8 @@ dependencies = [
  "rustok-fulfillment",
  "rustok-index",
  "rustok-inventory",
+ "rustok-marketplace",
+ "rustok-marketplace-seller",
  "rustok-media",
  "rustok-modules",
  "rustok-order",
@@ -11522,6 +11568,84 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-marketplace"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-api",
+ "rustok-core",
+ "rustok-marketplace-listing",
+ "rustok-marketplace-seller",
+ "serde",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-marketplace-listing"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-marketplace-seller",
+ "rustok-product",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "uuid",
+ "validator",
+]
+
+[[package]]
+name = "rustok-marketplace-seller"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "uuid",
+ "validator",
+]
+
+[[package]]
+name = "rustok-marketplace-seller-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.20",
+ "leptos_axum",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-marketplace-seller",
+ "rustok-ui-core",
+ "rustok-ui-i18n-leptos",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-mcp"
 version = "0.1.0"
 dependencies = [
@@ -11724,6 +11848,8 @@ dependencies = [
  "async-trait",
  "bytes",
  "chrono",
+ "chrono-tz",
+ "cron",
  "futures-util",
  "hex",
  "http 1.4.2",
@@ -11734,6 +11860,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-runtime",
  "rustok-sandbox",
  "rustok-secrets",
  "rustok-storage",
@@ -11745,6 +11872,8 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
+ "toml 1.1.2+spec-1.1.0",
+ "url",
  "uuid",
 ]
 
@@ -11863,6 +11992,7 @@ name = "rustok-page-builder-admin"
 version = "0.1.0"
 dependencies = [
  "fly",
+ "fly-browser",
  "fly-leptos",
  "fly-ui",
  "leptos 0.8.20",
@@ -11872,6 +12002,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "uuid",
 ]
 
 [[package]]
@@ -11925,6 +12056,9 @@ dependencies = [
 name = "rustok-pages-admin"
 version = "0.1.0"
 dependencies = [
+ "fly",
+ "fly-browser",
+ "fly-ui",
  "leptos 0.8.20",
  "leptos-auth",
  "leptos-ui-routing",
@@ -11938,6 +12072,7 @@ dependencies = [
  "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -11971,6 +12106,8 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "hmac 0.12.1",
+ "reqwest 0.13.4",
  "rust_decimal",
  "rustok-api",
  "rustok-core",
@@ -11978,6 +12115,7 @@ dependencies = [
  "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
+ "secrecy",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -12313,6 +12451,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-registry-validation-worker"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "rustok-modules",
+ "rustok-storage",
+ "sea-orm",
+ "serde_json",
+ "sha2 0.11.0",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "rustok-runtime"
 version = "0.1.0"
 dependencies = [
@@ -12587,6 +12739,8 @@ dependencies = [
  "rustok-installer",
  "rustok-installer-persistence",
  "rustok-inventory",
+ "rustok-marketplace",
+ "rustok-marketplace-seller",
  "rustok-mcp",
  "rustok-media",
  "rustok-migrations",
@@ -12602,7 +12756,9 @@ dependencies = [
  "rustok-rbac",
  "rustok-region",
  "rustok-runtime",
+ "rustok-sandbox",
  "rustok-search",
+ "rustok-secrets",
  "rustok-seo",
  "rustok-storage",
  "rustok-storefront",

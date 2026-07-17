@@ -242,6 +242,7 @@ impl RegistryGovernanceService {
                 .map(|request| RegistryPublishRequestSnapshot {
                     id: request.id.clone(),
                     status: request_status_label(request.status.clone()).to_string(),
+                    artifact_origin: request.artifact_origin.clone(),
                     requested_by: principal_from_json(&request.requested_by),
                     publisher: optional_principal_from_json(&request.publisher_principal),
                     approved_by: optional_principal_from_json(&request.approved_by),

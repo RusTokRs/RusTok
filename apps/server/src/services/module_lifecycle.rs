@@ -4,8 +4,8 @@ use thiserror::Error;
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
     execute_module_toggle, failed_module_operation_recovery_plans, module_operation_recovery_plan,
-    persist_module_settings, retry_failed_post_hook_operation, ModuleLifecycleExecutionError,
-    ModuleLifecycleToggleRequest, ModuleOperationIssue,
+    normalize_module_settings, persist_module_settings, retry_failed_post_hook_operation,
+    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationIssue,
     ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
     ModuleOperationStoreError, ModulePostHookRetryRequest, ModuleToggleValidationError,
     TenantModuleSettingsRequest,
@@ -14,7 +14,7 @@ use rustok_modules::{
 use crate::models::_entities::module_operations::Entity as ModuleOperationsEntity;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
 use crate::models::_entities::{module_operations, tenant_modules};
-use crate::modules::{ManifestError, ManifestManager};
+use crate::modules::{map_module_settings_validation_error, ManifestError, ManifestManager};
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 
 pub struct ModuleLifecycleService;
@@ -236,15 +236,20 @@ impl ModuleLifecycleService {
             return Err(UpdateModuleSettingsError::InvalidSettings);
         }
 
-        let settings =
-            ManifestManager::validate_module_settings(module_slug, settings).map_err(|err| {
-                match err {
-                    ManifestError::InvalidModuleSettingValue { .. } => {
-                        UpdateModuleSettingsError::Validation(err.to_string())
+        let settings_schema = ManifestManager::module_settings_schema(module_slug)?;
+        let settings = normalize_module_settings(module_slug, &settings_schema, settings).map_err(
+            |error| {
+                let message = error.to_string();
+                match error {
+                    rustok_modules::ModuleSettingsValidationError::InvalidValue { .. } => {
+                        UpdateModuleSettingsError::Validation(message)
                     }
-                    other => UpdateModuleSettingsError::Manifest(other),
+                    error => UpdateModuleSettingsError::Manifest(
+                        map_module_settings_validation_error(error),
+                    ),
                 }
-            })?;
+            },
+        )?;
 
         let is_core = registry.is_core(module_slug);
         let is_effectively_enabled =

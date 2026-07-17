@@ -11,6 +11,10 @@ use rustok_core::events::{
     EventBus, EventEnvelope, EventTransport, MemoryTransport, ReliabilityLevel,
 };
 use rustok_iggy::{IggyConfig, IggyTransport};
+use rustok_modules::{
+    ArtifactEventDeliveryConfig, ArtifactEventProjectionTransport,
+    SeaOrmArtifactEventSubscriptionProjector,
+};
 use rustok_outbox::{
     OutboxRelay, OutboxRelayPort, OutboxRelayRunOnceRequest, OutboxTransport, RelayConfig,
 };
@@ -99,6 +103,18 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
             let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
             let (relay_target, listener_bus, relay_fallback_active) =
                 resolve_relay_target(settings, channel_capacity).await?;
+            let artifact_projector = SeaOrmArtifactEventSubscriptionProjector::new(
+                ctx.db_clone(),
+                ArtifactEventDeliveryConfig::default(),
+            )
+            .map_err(|error| {
+                Error::BadRequest(format!(
+                    "Failed to initialize durable artifact event projection: {error}"
+                ))
+            })?;
+            let relay_target: Arc<dyn EventTransport> = Arc::new(
+                ArtifactEventProjectionTransport::new(artifact_projector, relay_target),
+            );
             // The relay target performs generation rotation synchronously. OutboxRelay therefore
             // cannot mark a tenant mutation dispatched until cache invalidation has been published
             // and the exact canonical local listener is ready when Redis is not configured.

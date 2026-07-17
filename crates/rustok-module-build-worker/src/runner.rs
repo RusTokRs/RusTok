@@ -1,5 +1,5 @@
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Stdio,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -10,13 +10,14 @@ use std::{
 
 use async_trait::async_trait;
 use rustok_modules::{
-    strict_oci_distribution_client, ArtifactAdmissionLimits, ModuleBuildDiagnostic,
-    ModuleBuildEvidence, ModuleBuildFailureCode, ModuleBuildMetrics, ModuleBuildNextAction,
-    ModuleBuildOutcome, ModuleBuildProtocolError, ModuleBuildPublicationReceipt,
-    ModuleBuildRequest, ModuleBuildResult, ModuleBuildSignatureAuthority, ModuleBuildWorker,
+    ArtifactAdmissionLimits, ModuleBuildDiagnostic, ModuleBuildEvidence, ModuleBuildFailureCode,
+    ModuleBuildMetrics, ModuleBuildNextAction, ModuleBuildOutcome, ModuleBuildProtocolError,
+    ModuleBuildPublicationReceipt, ModuleBuildRequest, ModuleBuildResult,
+    ModuleBuildSignatureAuthority, ModuleBuildWorker, ModuleBuildWorkerReadiness,
     OciArtifactPublicationError, OciArtifactPublicationTarget, OciArtifactPublisher,
     OciDistributionArtifactPublisher,
 };
+use sha2::{Digest, Sha256};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
     process::Command,
@@ -33,12 +34,43 @@ use crate::{
     WitContractInspector,
 };
 
-/// Fixed deployment-owned job-runner adapter. The configured executable is
-/// mounted into the hardened worker image and receives one immutable request
-/// on standard input, returning exactly one JSON `ModuleBuildResult` on
-/// standard output. It is never selected by request data.
-pub struct CommandBuildWorker {
-    runner_path: PathBuf,
+/// Deployment-owned OCI job runtime required for untrusted build execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OciJobRuntime {
+    Gvisor,
+    Kata,
+}
+
+impl OciJobRuntime {
+    fn from_env() -> Result<Self, String> {
+        match std::env::var("RUSTOK_MODULE_BUILD_JOB_RUNTIME")
+            .map_err(|_| "RUSTOK_MODULE_BUILD_JOB_RUNTIME must be configured".to_string())?
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "gvisor" => Ok(Self::Gvisor),
+            "kata" => Ok(Self::Kata),
+            _ => Err("RUSTOK_MODULE_BUILD_JOB_RUNTIME must be one of: gvisor, kata".to_string()),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Gvisor => "gvisor",
+            Self::Kata => "kata",
+        }
+    }
+}
+
+/// Fixed deployment-owned OCI-job launcher. It receives one immutable request
+/// on standard input, launches the build in the configured hardened runtime,
+/// and returns exactly one JSON `ModuleBuildResult` on standard output. It is
+/// never selected by request data.
+pub struct OciJobBuildWorker {
+    job_launcher_path: PathBuf,
+    job_runtime: OciJobRuntime,
+    job_image_digest: String,
     cargo_metadata: CargoMetadataInspector,
     source_materializer: SourceMaterializer,
     dependency_materializer: Option<OciScopedDependencyMaterializer>,
@@ -49,12 +81,18 @@ pub struct CommandBuildWorker {
     request_timeout: Duration,
 }
 
-impl CommandBuildWorker {
+impl OciJobBuildWorker {
     pub fn from_env(request_timeout: Duration) -> Result<Self, String> {
-        let runner_path = PathBuf::from(
-            std::env::var("RUSTOK_MODULE_BUILD_RUNNER")
-                .map_err(|_| "RUSTOK_MODULE_BUILD_RUNNER must be configured".to_string())?,
+        let job_launcher_path = PathBuf::from(
+            std::env::var("RUSTOK_MODULE_BUILD_JOB_LAUNCHER")
+                .map_err(|_| "RUSTOK_MODULE_BUILD_JOB_LAUNCHER must be configured".to_string())?,
         );
+        let job_runtime = OciJobRuntime::from_env()?;
+        let job_image_digest = std::env::var("RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST")
+            .map_err(|_| "RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST must be configured".to_string())?;
+        if !is_sha256_digest(&job_image_digest) {
+            return Err("RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST must be a sha256 digest".to_string());
+        }
         let workdir = PathBuf::from(
             std::env::var("RUSTOK_MODULE_BUILD_WORKDIR")
                 .map_err(|_| "RUSTOK_MODULE_BUILD_WORKDIR must be configured".to_string())?,
@@ -94,7 +132,9 @@ impl CommandBuildWorker {
         let registry_credentials = Arc::new(CommandRegistryCredentialBroker::from_env()?);
         let signer = CosignArtifactSigner::from_env()?;
         Self::new(
-            runner_path,
+            job_launcher_path,
+            job_runtime,
+            job_image_digest,
             workdir,
             source_root,
             cargo_path,
@@ -109,7 +149,9 @@ impl CommandBuildWorker {
     }
 
     pub fn new(
-        runner_path: PathBuf,
+        job_launcher_path: PathBuf,
+        job_runtime: OciJobRuntime,
+        job_image_digest: String,
         workdir: PathBuf,
         source_root: PathBuf,
         cargo_path: PathBuf,
@@ -121,13 +163,16 @@ impl CommandBuildWorker {
         signer: CosignArtifactSigner,
         request_timeout: Duration,
     ) -> Result<Self, String> {
-        if !runner_path.is_absolute() || !workdir.is_absolute() {
-            return Err("module build runner path and workdir must be absolute".to_string());
+        if !job_launcher_path.is_absolute()
+            || !workdir.is_absolute()
+            || !is_sha256_digest(&job_image_digest)
+        {
+            return Err("module build job launcher path and workdir must be absolute".to_string());
         }
-        let metadata = std::fs::symlink_metadata(&runner_path).map_err(|error| {
+        let metadata = std::fs::symlink_metadata(&job_launcher_path).map_err(|error| {
             format!(
-                "module build runner {} cannot be inspected: {error}",
-                runner_path.display()
+                "module build job launcher {} cannot be inspected: {error}",
+                job_launcher_path.display()
             )
         })?;
         let workdir_metadata = std::fs::metadata(&workdir).map_err(|error| {
@@ -141,10 +186,12 @@ impl CommandBuildWorker {
             || !workdir_metadata.is_dir()
             || request_timeout.is_zero()
         {
-            return Err("module build runner configuration is invalid".to_string());
+            return Err("module build job launcher configuration is invalid".to_string());
         }
         Ok(Self {
-            runner_path,
+            job_launcher_path,
+            job_runtime,
+            job_image_digest,
             cargo_metadata: CargoMetadataInspector::new(cargo_path, cargo_home)?,
             source_materializer: SourceMaterializer::new(source_root, workdir)?,
             dependency_materializer,
@@ -158,7 +205,7 @@ impl CommandBuildWorker {
 }
 
 #[async_trait]
-impl ModuleBuildWorker for CommandBuildWorker {
+impl ModuleBuildWorker for OciJobBuildWorker {
     async fn execute_build(
         &self,
         request: ModuleBuildRequest,
@@ -166,6 +213,7 @@ impl ModuleBuildWorker for CommandBuildWorker {
         request.validate()?;
         let request_json = serde_json::to_vec(&request)
             .map_err(|error| ModuleBuildProtocolError::Transport(error.to_string()))?;
+        let request_digest = oci_job_request_digest(&request_json);
         let output_limit = usize::try_from(request.limits.output_bytes)
             .map_err(|_| ModuleBuildProtocolError::InvalidLimits)?;
         let execution_timeout = self
@@ -326,9 +374,15 @@ impl ModuleBuildWorker for CommandBuildWorker {
         tokio::fs::create_dir_all(&home_dir)
             .await
             .map_err(|error| ModuleBuildProtocolError::Transport(error.to_string()))?;
-        let mut child = Command::new(&self.runner_path)
+        let mut child = Command::new(&self.job_launcher_path)
             .current_dir(source.job_dir())
             .env_clear()
+            .env("RUSTOK_MODULE_BUILD_OCI_RUNTIME", self.job_runtime.as_str())
+            .env(
+                "RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST",
+                &self.job_image_digest,
+            )
+            .env("RUSTOK_MODULE_BUILD_REQUEST_DIGEST", &request_digest)
             .env(
                 "RUSTOK_MODULE_BUILD_PROTOCOL_VERSION",
                 request.protocol_version.to_string(),
@@ -367,13 +421,13 @@ impl ModuleBuildWorker for CommandBuildWorker {
         })?;
         let stdout_task = tokio::spawn(read_with_budget(stdout, Arc::clone(&output_budget)));
         let stderr_task = tokio::spawn(read_with_budget(stderr, output_budget));
-        let Some(runner_timeout) = remaining_timeout(execution_deadline) else {
+        let Some(job_timeout) = remaining_timeout(execution_deadline) else {
             return Ok(failed_result(
                 &request,
                 ModuleBuildFailureCode::ResourceLimitExceeded,
             ));
         };
-        let status = match timeout(runner_timeout, child.wait()).await {
+        let status = match timeout(job_timeout, child.wait()).await {
             Ok(status) => {
                 status.map_err(|error| ModuleBuildProtocolError::Transport(error.to_string()))?
             }
@@ -382,15 +436,15 @@ impl ModuleBuildWorker for CommandBuildWorker {
                 stdout_task.abort();
                 stderr_task.abort();
                 return Err(ModuleBuildProtocolError::Transport(
-                    "module build runner timed out".to_string(),
+                    "module build OCI job launcher timed out".to_string(),
                 ));
             }
         };
-        let stdout = collect_runner_output(stdout_task).await?;
-        let _stderr = collect_runner_output(stderr_task).await?;
+        let stdout = collect_job_output(stdout_task).await?;
+        let _stderr = collect_job_output(stderr_task).await?;
         if !status.success() {
             return Err(ModuleBuildProtocolError::Transport(format!(
-                "module build runner exited with {}",
+                "module build OCI job launcher exited with {}",
                 status
             )));
         }
@@ -398,9 +452,17 @@ impl ModuleBuildWorker for CommandBuildWorker {
             .map_err(|error| ModuleBuildProtocolError::Transport(error.to_string()))?;
         if result.publication.is_some() {
             return Err(ModuleBuildProtocolError::Transport(
-                "module build runner must not supply publication identity".to_string(),
+                "module build OCI job launcher must not supply publication identity".to_string(),
             ));
         }
+        verify_oci_job_receipt(
+            &output_dir,
+            &request,
+            self.job_runtime,
+            &self.job_image_digest,
+            &request_digest,
+        )
+        .await?;
         result.validate_against(&request)?;
         if matches!(&result.outcome, ModuleBuildOutcome::Succeeded) {
             match ComponentArtifactInspector::inspect(&output_dir, &request, &result).await {
@@ -540,10 +602,9 @@ impl ModuleBuildWorker for CommandBuildWorker {
                     )));
                 }
             };
-            let publisher = OciDistributionArtifactPublisher::new(
-                strict_oci_distribution_client().map_err(ModuleBuildProtocolError::Transport)?,
-                credentials.registry_auth(),
-            );
+            let publisher =
+                OciDistributionArtifactPublisher::strict(credentials.registry_auth())
+                    .map_err(|error| ModuleBuildProtocolError::Transport(error.to_string()))?;
             let Some(remaining_publication_timeout) = remaining_timeout(publication_deadline)
             else {
                 return Ok(failed_result(
@@ -673,6 +734,132 @@ impl ModuleBuildWorker for CommandBuildWorker {
     }
 }
 
+impl ModuleBuildWorkerReadiness for OciJobBuildWorker {
+    fn is_ready(&self) -> bool {
+        std::fs::symlink_metadata(&self.job_launcher_path).is_ok_and(|metadata| {
+            metadata.is_file()
+                && !metadata.file_type().is_symlink()
+                && matches!(
+                    self.job_runtime,
+                    OciJobRuntime::Gvisor | OciJobRuntime::Kata
+                )
+                && is_sha256_digest(&self.job_image_digest)
+        })
+    }
+}
+
+async fn verify_oci_job_receipt(
+    output_dir: &Path,
+    request: &ModuleBuildRequest,
+    runtime: OciJobRuntime,
+    image_digest: &str,
+    request_digest: &str,
+) -> Result<(), ModuleBuildProtocolError> {
+    const MAX_OCI_JOB_RECEIPT_BYTES: u64 = 8 * 1024;
+    const OCI_JOB_RECEIPT_PROTOCOL_VERSION: u64 = 2;
+
+    let path = output_dir.join("oci-job-receipt.json");
+    let metadata = tokio::fs::symlink_metadata(&path)
+        .await
+        .map_err(|error| ModuleBuildProtocolError::Transport(error.to_string()))?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() == 0
+        || metadata.len() > MAX_OCI_JOB_RECEIPT_BYTES
+    {
+        return Err(ModuleBuildProtocolError::Transport(
+            "OCI job receipt is invalid".to_string(),
+        ));
+    }
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|error| ModuleBuildProtocolError::Transport(error.to_string()))?;
+    let receipt: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|error| ModuleBuildProtocolError::Transport(error.to_string()))?;
+    let request_id = request.request_id.to_string();
+    let source_digest = request.source.digest.as_str();
+    let dependency_lock_digest = request.dependency_policy.lock_digest.as_str();
+    let toolchain_digest = request.toolchain.protocol_digest();
+    let wit_digest = request.wit.protocol_digest();
+    let matches_request = receipt
+        .get("protocol_version")
+        .and_then(serde_json::Value::as_u64)
+        .is_some_and(|version| version == OCI_JOB_RECEIPT_PROTOCOL_VERSION)
+        && receipt
+            .get("request_id")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value == request_id.as_str())
+        && receipt
+            .get("source_digest")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value == source_digest)
+        && receipt
+            .get("attempt")
+            .and_then(serde_json::Value::as_u64)
+            .is_some_and(|value| value == u64::from(request.attempt))
+        && receipt
+            .get("dependency_lock_digest")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value == dependency_lock_digest)
+        && receipt
+            .get("toolchain_digest")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value == toolchain_digest)
+        && receipt
+            .get("wit_digest")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value == wit_digest)
+        && receipt
+            .get("request_digest")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value == request_digest)
+        && receipt
+            .get("runtime")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value == runtime.as_str())
+        && receipt
+            .get("image_digest")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value == image_digest)
+        && receipt
+            .get("job_id")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(is_valid_oci_job_id);
+    if !matches_request {
+        return Err(ModuleBuildProtocolError::Transport(
+            "OCI job receipt does not match the immutable build request".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Binds OCI-job evidence to the exact canonical request bytes sent to its
+/// fixed launcher, including every protocol field and future additive field.
+fn oci_job_request_digest(request_json: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rustok.module.build.oci-job-request.v1");
+    hasher.update([0]);
+    hasher.update((request_json.len() as u64).to_be_bytes());
+    hasher.update(request_json);
+    format!("sha256:{:x}", hasher.finalize())
+}
+
+fn is_sha256_digest(value: &str) -> bool {
+    value.len() == "sha256:".len() + 64
+        && value.starts_with("sha256:")
+        && value["sha256:".len()..]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn is_valid_oci_job_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'/' | b':' | b'=')
+        })
+}
+
 fn remaining_timeout(deadline: Instant) -> Option<Duration> {
     deadline.checked_duration_since(Instant::now())
 }
@@ -701,6 +888,7 @@ fn failed_result(
         evidence: ModuleBuildEvidence {
             log_reference: format!("worker://module-build/{}/log", request.request_id),
             policy_report_reference: format!("worker://module-build/{}/policy", request.request_id),
+            validation_results: Vec::new(),
             diagnostics: vec![ModuleBuildDiagnostic {
                 stage: failure.diagnostic_stage(),
                 code: failure,
@@ -763,7 +951,7 @@ where
     }
 }
 
-async fn collect_runner_output(
+async fn collect_job_output(
     task: tokio::task::JoinHandle<Result<Vec<u8>, ModuleBuildProtocolError>>,
 ) -> Result<Vec<u8>, ModuleBuildProtocolError> {
     task.await.map_err(|error| {

@@ -1,12 +1,19 @@
 //! Owner contracts for registry governance transitions.
 
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    TransactionTrait, Value,
+};
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::build::{ModuleBuildPublicationReceipt, ModuleBuildSignatureAuthority};
+use crate::build::{
+    ModuleBuildOutcome, ModuleBuildPublicationReceipt, ModuleBuildSignatureAuthority,
+    SeaOrmModuleBuildService,
+};
 use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
 
 /// Stable reason-code vocabulary for a release yank.
@@ -81,6 +88,16 @@ pub const REGISTRY_VALIDATION_STAGE_REASON_CODES: &[&str] = &[
     "other",
 ];
 
+/// Explicit reasons why an external prebuilt artifact cannot provide a
+/// reproducible source identity. Absence is a reviewable trust fact, never an
+/// implicit downgrade to a platform build.
+pub const REGISTRY_EXTERNAL_SOURCE_ABSENCE_REASON_CODES: &[&str] = &[
+    "source_unavailable",
+    "reproducibility_not_supported",
+    "license_restriction",
+    "other",
+];
+
 const REMOTE_VALIDATION_FOLLOW_UP_STAGES: &[&str] =
     &["compile_smoke", "targeted_tests", "security_policy_review"];
 const MAX_REMOTE_VALIDATION_CLAIM_CANDIDATES: u64 = 128;
@@ -89,6 +106,12 @@ const MAX_PUBLICATION_EVIDENCE_IDENTITY_BYTES: usize = 256;
 const MAX_PUBLICATION_EVIDENCE_POLICY_REVISION_BYTES: usize = 128;
 const MAX_PLATFORM_ADMISSION_MEDIA_TYPE_BYTES: usize = 256;
 const MARKETPLACE_APPROVAL_POLICY_REVISION: &str = "registry-governance-v1";
+/// A worker that has not materialized a terminal result within this interval
+/// is considered lost. A later authorized enqueue marks that attempt failed
+/// and creates a new durable attempt in the same owner transaction.
+const VALIDATION_JOB_STALE_AFTER_SECONDS: u64 = 15 * 60;
+const VALIDATION_WORK_ITEM_INVALID_ERROR: &str =
+    "Validation job delivery facts are incomplete or malformed.";
 
 /// Authenticated host input for a durable release-yank transition.
 /// Authorization is evaluated by the host authority adapter before this owner
@@ -272,10 +295,56 @@ pub struct ModuleValidationJobClaimCommand {
     pub actor_principal: serde_json::Value,
 }
 
+/// Immutable artifact-delivery facts leased to one validation worker.
+///
+/// The worker must fetch only `artifact_storage_key` and verify the exact
+/// checksum and size before parsing. This keeps delivery independent from a
+/// server-local publish-request model and prevents a later request read from
+/// silently changing the bytes that a claimed job validates.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleValidationJobWorkItem {
+    pub validation_job_id: String,
+    pub request_id: String,
+    pub slug: String,
+    pub version: String,
+    pub crate_name: String,
+    pub artifact_storage_key: String,
+    pub artifact_checksum_sha256: String,
+    pub artifact_size: u64,
+    pub artifact_content_type: String,
+    pub existing_warnings: Vec<String>,
+    /// Immutable request metadata used to validate the uploaded bundle. The
+    /// worker does not query a mutable host request model after claiming work.
+    pub contract: ModulePublishValidationContract,
+}
+
+/// Canonical publish-request facts that an uploaded registry bundle must
+/// match. This owner contract is serializable so the same validation logic can
+/// run in an isolated delivery worker without depending on `apps/server`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModulePublishValidationContract {
+    pub slug: String,
+    pub version: String,
+    pub crate_name: String,
+    pub module_name: String,
+    pub module_description: String,
+    pub ownership: String,
+    pub trust_level: String,
+    pub license: String,
+    pub entry_type: Option<String>,
+    pub marketplace_category: Option<String>,
+    pub marketplace_tags: Vec<String>,
+    pub admin_ui_crate_name: Option<String>,
+    pub storefront_ui_crate_name: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleValidationJobClaimResult {
     pub request_id: String,
     pub should_run: bool,
+    /// Present only when this invocation changed the job from `queued` to
+    /// `running`. Terminal and already-claimed redeliveries expose no work.
+    pub work_item: Option<ModuleValidationJobWorkItem>,
 }
 
 /// Immutable result emitted by the host worker after it has executed registry
@@ -322,12 +391,71 @@ pub struct ModulePublishRequestCreateCommand {
     pub trust_level: String,
     pub license: String,
     pub entry_type: Option<String>,
+    pub artifact_origin: ModulePublicationArtifactOrigin,
     pub marketplace: serde_json::Value,
     pub ui_packages: serde_json::Value,
     pub name: String,
     pub description: String,
-    pub warnings: Vec<String>,
     pub actor_principal: serde_json::Value,
+}
+
+/// The origin is immutable release provenance, not a caller-selected trust
+/// level. An unclassified durable request is intentionally not promotable.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModulePublicationArtifactOrigin {
+    PlatformBuilt,
+    ExternalPrebuilt,
+}
+
+impl ModulePublicationArtifactOrigin {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::PlatformBuilt => "platform_built",
+            Self::ExternalPrebuilt => "external_prebuilt",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "platform_built" => Some(Self::PlatformBuilt),
+            "external_prebuilt" => Some(Self::ExternalPrebuilt),
+            _ => None,
+        }
+    }
+}
+
+/// Immutable source-evidence classification for an external prebuilt
+/// artifact. `Unavailable` is explicit durable evidence, not a default.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum ModuleExternalSourceEvidence {
+    Reproducible { reference: String, digest: String },
+    Unavailable { reason_code: String },
+}
+
+/// Owner-authenticated immutable external-artifact staging. The platform
+/// records the approved provenance policy and stricter quarantine review
+/// before the request can enter ordinary final publication.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleExternalPrebuiltStageCommand {
+    pub request_id: String,
+    pub artifact_digest: String,
+    pub source_evidence: ModuleExternalSourceEvidence,
+    pub provenance_reference: String,
+    pub provenance_digest: String,
+    pub provenance_policy_revision: String,
+    pub quarantine_review_reference: String,
+    pub quarantine_policy_revision: String,
+    pub quarantine_approved_by_principal: serde_json::Value,
+    pub idempotency_key: Uuid,
+    pub actor_principal: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleExternalPrebuiltStageResult {
+    pub staging_id: String,
+    pub created: bool,
 }
 
 /// Metadata of bytes the host has durably stored before asking the owner to
@@ -413,6 +541,24 @@ pub struct ModulePlatformAdmissionCommand {
     pub reference: OciArtifactReference,
     pub evidence: ArtifactVerificationEvidence,
     pub actor_principal: serde_json::Value,
+}
+
+/// Owner-authenticated selection of one durable completed platform build for a
+/// registry request. The command carries only immutable identifiers; the build
+/// request/result are always reloaded under tenant RLS by the owner service.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModulePublishPlatformBuildStageCommand {
+    pub request_id: String,
+    pub tenant_id: Uuid,
+    pub build_request_id: Uuid,
+    pub idempotency_key: Uuid,
+    pub actor_principal: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModulePublishPlatformBuildStageResult {
+    pub staging_id: String,
+    pub created: bool,
 }
 
 impl ModuleOwnerTransferCommand {
@@ -686,20 +832,111 @@ impl ModuleValidationJobRetryCommand {
 
 impl ModulePublishRequestCreateCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
-        if self.slug.trim().is_empty()
-            || self.version.trim().is_empty()
+        let slug = self.slug.trim();
+        if slug.is_empty()
+            || !slug.chars().all(|character| {
+                character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+            })
+            || Version::parse(self.version.trim()).is_err()
             || self.crate_name.trim().is_empty()
-            || self.default_locale.trim().is_empty()
+            || rustok_api::normalize_locale_tag(&self.default_locale).is_none()
             || self.ownership.trim().is_empty()
             || self.trust_level.trim().is_empty()
             || self.license.trim().is_empty()
             || self.name.trim().is_empty()
-            || self.description.trim().is_empty()
+            || self.description.trim().len() < 20
             || !self.marketplace.is_object()
-            || !self.ui_packages.is_array()
+            || !self.ui_packages.is_object()
             || !self.actor_principal.is_object()
         {
             return Err(ModuleGovernanceError::InvalidPublishRequestCreateCommand);
+        }
+        Ok(())
+    }
+
+    /// Returns owner-derived, content-free publication warnings. Transport
+    /// adapters must not invent governance policy or persist caller-provided
+    /// warning text.
+    pub fn validation_warnings(&self) -> Result<Vec<String>, ModuleGovernanceError> {
+        self.validate()?;
+        let ui_packages = self
+            .ui_packages
+            .as_object()
+            .expect("validated publish request UI packages must be an object");
+        let has_admin = ui_packages
+            .get("admin")
+            .is_some_and(|value| !value.is_null());
+        let has_storefront = ui_packages
+            .get("storefront")
+            .is_some_and(|value| !value.is_null());
+
+        let mut warnings = Vec::new();
+        if !has_admin && !has_storefront {
+            warnings.push(
+                "No publishable admin/storefront UI packages declared; only backend contract would be published."
+                    .to_string(),
+            );
+        }
+        if !self.ownership.eq_ignore_ascii_case("first_party") {
+            warnings.push(
+                "Third-party publishing requires the configured governance and evidence gates before release."
+                    .to_string(),
+            );
+        }
+        Ok(warnings)
+    }
+}
+
+impl ModuleExternalPrebuiltStageCommand {
+    pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        if self.request_id.trim().is_empty()
+            || receipt_digest_sha256(&self.artifact_digest).is_err()
+            || receipt_digest_sha256(&self.provenance_digest).is_err()
+            || self.idempotency_key.is_nil()
+            || !self.quarantine_approved_by_principal.is_object()
+            || !self.actor_principal.is_object()
+        {
+            return Err(ModuleGovernanceError::InvalidExternalPrebuiltStageCommand);
+        }
+        for value in [
+            &self.provenance_reference,
+            &self.quarantine_review_reference,
+        ] {
+            if value.trim().is_empty()
+                || value.len() > MAX_PUBLICATION_EVIDENCE_REFERENCE_BYTES
+                || value.contains(char::is_whitespace)
+            {
+                return Err(ModuleGovernanceError::InvalidExternalPrebuiltStageCommand);
+            }
+        }
+        for value in [
+            &self.provenance_policy_revision,
+            &self.quarantine_policy_revision,
+        ] {
+            if value.trim().is_empty()
+                || value.len() > MAX_PUBLICATION_EVIDENCE_POLICY_REVISION_BYTES
+                || value.contains(char::is_whitespace)
+            {
+                return Err(ModuleGovernanceError::InvalidExternalPrebuiltStageCommand);
+            }
+        }
+        match &self.source_evidence {
+            ModuleExternalSourceEvidence::Reproducible { reference, digest } => {
+                if reference.trim().is_empty()
+                    || reference.len() > MAX_PUBLICATION_EVIDENCE_REFERENCE_BYTES
+                    || reference.contains(char::is_whitespace)
+                    || receipt_digest_sha256(digest).is_err()
+                {
+                    return Err(ModuleGovernanceError::InvalidExternalPrebuiltStageCommand);
+                }
+            }
+            ModuleExternalSourceEvidence::Unavailable { reason_code }
+                if !REGISTRY_EXTERNAL_SOURCE_ABSENCE_REASON_CODES
+                    .contains(&reason_code.as_str()) =>
+            {
+                return Err(ModuleGovernanceError::InvalidExternalPrebuiltStageCommand);
+            }
+            ModuleExternalSourceEvidence::Unavailable { .. } => {}
         }
         Ok(())
     }
@@ -841,6 +1078,20 @@ impl ModulePlatformAdmissionCommand {
     }
 }
 
+impl ModulePublishPlatformBuildStageCommand {
+    pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        if self.request_id.trim().is_empty()
+            || self.tenant_id.is_nil()
+            || self.build_request_id.is_nil()
+            || self.idempotency_key.is_nil()
+            || !self.actor_principal.is_object()
+        {
+            return Err(ModuleGovernanceError::InvalidPlatformBuildStageCommand);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone)]
 pub struct SeaOrmModuleGovernanceService {
     db: DatabaseConnection,
@@ -857,7 +1108,9 @@ impl SeaOrmModuleGovernanceService {
         &self,
         command: ModulePublishRequestCreateCommand,
     ) -> Result<String, ModuleGovernanceError> {
-        command.validate()?;
+        let warnings = command.validation_warnings()?;
+        let default_locale = rustok_api::normalize_locale_tag(&command.default_locale)
+            .ok_or(ModuleGovernanceError::InvalidPublishRequestCreateCommand)?;
         let tx = self.db.begin().await.map_err(store_error)?;
         let backend = tx.get_database_backend();
         let mark = |n| placeholder(backend, n);
@@ -880,19 +1133,23 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let request_id = format!("rpr_{}", Uuid::new_v4().simple());
-        let warnings = dedupe_validation_messages(command.warnings);
+        let warnings = dedupe_validation_messages(warnings);
         tx.execute(Statement::from_sql_and_values(
             backend,
-            format!("INSERT INTO registry_publish_requests (id, slug, version, crate_name, default_locale, ownership, trust_level, license, entry_type, marketplace, ui_packages, status, requested_by_principal, publisher_principal, approved_by_principal, rejected_by_principal, rejection_reason, changes_requested_by_principal, changes_requested_reason, changes_requested_reason_code, changes_requested_at, held_by_principal, held_reason, held_reason_code, held_at, held_from_status, validation_warnings, validation_errors, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, submitted_at, validated_at, approved_at, published_at, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'draft', {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10), mark(11), mark(12), mark(13), mark(14), mark(15)),
-            vec![request_id.clone().into(), command.slug.clone().into(), command.version.clone().into(), command.crate_name.into(), command.default_locale.clone().into(), command.ownership.into(), command.trust_level.into(), command.license.into(), command.entry_type.into(), Value::Json(Some(Box::new(command.marketplace))), Value::Json(Some(Box::new(command.ui_packages))), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([]))))],
+            format!("INSERT INTO registry_publish_requests (id, slug, version, crate_name, default_locale, ownership, trust_level, license, entry_type, artifact_origin, marketplace, ui_packages, status, requested_by_principal, publisher_principal, approved_by_principal, rejected_by_principal, rejection_reason, changes_requested_by_principal, changes_requested_reason, changes_requested_reason_code, changes_requested_at, held_by_principal, held_reason, held_reason_code, held_at, held_from_status, validation_warnings, validation_errors, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, submitted_at, validated_at, approved_at, published_at, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'draft', {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10), mark(11), mark(12), mark(13), mark(14), mark(15), mark(16)),
+            vec![request_id.clone().into(), command.slug.clone().into(), command.version.clone().into(), command.crate_name.into(), default_locale.clone().into(), command.ownership.into(), command.trust_level.into(), command.license.into(), command.entry_type.into(), command.artifact_origin.as_str().into(), Value::Json(Some(Box::new(command.marketplace))), Value::Json(Some(Box::new(command.ui_packages))), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([]))))],
         )).await.map_err(store_error)?;
         tx.execute(Statement::from_sql_and_values(
             backend,
             format!("INSERT INTO registry_publish_request_translations (request_id, locale, name, description, created_at, updated_at) VALUES ({}, {}, {}, {}, {now}, {now})", mark(1), mark(2), mark(3), mark(4)),
-            vec![request_id.clone().into(), command.default_locale.into(), command.name.trim().to_string().into(), command.description.trim().to_string().into()],
+            vec![request_id.clone().into(), default_locale.into(), command.name.trim().to_string().into(), command.description.trim().to_string().into()],
         )).await.map_err(store_error)?;
-        let details =
-            serde_json::json!({"version":command.version,"status":"draft","warnings":warnings});
+        let details = serde_json::json!({
+            "version": command.version,
+            "status": "draft",
+            "artifact_origin": command.artifact_origin.as_str(),
+            "warnings": warnings,
+        });
         tx.execute(Statement::from_sql_and_values(
             backend,
             format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'request_created', {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
@@ -996,6 +1253,378 @@ impl SeaOrmModuleGovernanceService {
             request_id: command.request_id,
             previous_storage_key,
             reuploaded_after_changes_requested: reuploaded,
+        })
+    }
+
+    /// Stages one immutable completed platform build for a submitted registry
+    /// artifact. The owner reloads the durable build pair under tenant RLS and
+    /// binds its source, payload, and OCI receipt identities to this request.
+    pub async fn stage_platform_build(
+        &self,
+        command: ModulePublishPlatformBuildStageCommand,
+    ) -> Result<ModulePublishPlatformBuildStageResult, ModuleGovernanceError> {
+        command.validate()?;
+        let completed = SeaOrmModuleBuildService::new(self.db.clone())
+            .load_completed(command.tenant_id, command.build_request_id)
+            .await
+            .map_err(|_| ModuleGovernanceError::InvalidPlatformBuildStageCommand)?;
+        let component_digest = completed
+            .result
+            .component_digest
+            .as_deref()
+            .ok_or(ModuleGovernanceError::InvalidPlatformBuildStageCommand)?;
+        let receipt = completed
+            .result
+            .publication
+            .as_ref()
+            .ok_or(ModuleGovernanceError::InvalidPlatformBuildStageCommand)?;
+        if !matches!(&completed.result.outcome, ModuleBuildOutcome::Succeeded)
+            || completed.request.expected_module_slug.trim().is_empty()
+            || completed.request.expected_version.trim().is_empty()
+            || receipt_digest_sha256(component_digest).is_err()
+            || receipt.artifact.digest != component_digest
+        {
+            return Err(ModuleGovernanceError::InvalidPlatformBuildStageCommand);
+        }
+
+        let tx = self.db.begin().await.map_err(store_error)?;
+        let backend = tx.get_database_backend();
+        let mark = |n| placeholder(backend, n);
+        let now = database_now(backend);
+        let request_lock = if backend == sea_orm::DbBackend::Postgres {
+            " FOR UPDATE"
+        } else {
+            ""
+        };
+        let request = tx
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT slug, version, status, artifact_origin, artifact_checksum_sha256 \
+                     FROM registry_publish_requests WHERE id = {}{request_lock}",
+                    mark(1),
+                ),
+                vec![command.request_id.clone().into()],
+            ))
+            .await
+            .map_err(store_error)?
+            .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        let slug: String = request.try_get("", "slug").map_err(store_error)?;
+        let version: String = request.try_get("", "version").map_err(store_error)?;
+        let status: String = request.try_get("", "status").map_err(store_error)?;
+        let artifact_origin: String = request
+            .try_get("", "artifact_origin")
+            .map_err(store_error)?;
+        let checksum: Option<String> = request
+            .try_get("", "artifact_checksum_sha256")
+            .map_err(store_error)?;
+        if artifact_origin != ModulePublicationArtifactOrigin::PlatformBuilt.as_str()
+            || !matches!(status.as_str(), "submitted" | "validating" | "approved")
+            || slug != completed.request.expected_module_slug
+            || version != completed.request.expected_version
+            || checksum.as_deref() != receipt_digest_sha256(component_digest).ok()
+        {
+            return Err(ModuleGovernanceError::InvalidPlatformBuildStageCommand);
+        }
+
+        let staging_id = format!("rpbs_{}", Uuid::new_v4().simple());
+        let inserted = tx
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO registry_publish_build_staging \
+                     (id, request_id, tenant_id, build_request_id, source_digest, component_digest, \
+                      artifact_manifest_digest, sbom_manifest_digest, provenance_manifest_digest, \
+                      signature_manifest_digest, staged_by_principal, idempotency_key, staged_at) \
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
+                     ON CONFLICT (request_id, idempotency_key) DO NOTHING",
+                    mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8),
+                    mark(9), mark(10), mark(11), mark(12),
+                ),
+                vec![
+                    staging_id.clone().into(),
+                    command.request_id.clone().into(),
+                    registry_uuid_value(command.tenant_id, backend),
+                    registry_uuid_value(command.build_request_id, backend),
+                    completed.request.source.digest.clone().into(),
+                    component_digest.to_string().into(),
+                    receipt.artifact.digest.clone().into(),
+                    receipt.sbom_referrer.digest.clone().into(),
+                    receipt.provenance_referrer.digest.clone().into(),
+                    receipt.signature_manifest.digest.clone().into(),
+                    Value::Json(Some(Box::new(command.actor_principal.clone()))),
+                    registry_uuid_value(command.idempotency_key, backend),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
+        if inserted.rows_affected() == 0 {
+            let existing = tx
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT id, CAST(build_request_id AS TEXT) AS build_request_id, \
+                         source_digest, component_digest \
+                         FROM registry_publish_build_staging \
+                         WHERE request_id = {} AND idempotency_key = {}",
+                        mark(1),
+                        mark(2),
+                    ),
+                    vec![
+                        command.request_id.clone().into(),
+                        registry_uuid_value(command.idempotency_key, backend),
+                    ],
+                ))
+                .await
+                .map_err(store_error)?
+                .ok_or_else(|| {
+                    ModuleGovernanceError::Store("build-stage conflict lost its row".to_string())
+                })?;
+            let existing_id: String = existing.try_get("", "id").map_err(store_error)?;
+            let existing_build_request_id: String = existing
+                .try_get("", "build_request_id")
+                .map_err(store_error)?;
+            let existing_source_digest: String =
+                existing.try_get("", "source_digest").map_err(store_error)?;
+            let existing_component_digest: String = existing
+                .try_get("", "component_digest")
+                .map_err(store_error)?;
+            if existing_build_request_id != command.build_request_id.to_string()
+                || existing_source_digest != completed.request.source.digest
+                || existing_component_digest != component_digest
+            {
+                return Err(ModuleGovernanceError::PlatformBuildStageIdempotencyConflict);
+            }
+            tx.rollback().await.map_err(store_error)?;
+            return Ok(ModulePublishPlatformBuildStageResult {
+                staging_id: existing_id,
+                created: false,
+            });
+        }
+        tx.execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO registry_governance_events \
+                 (id, slug, request_id, release_id, event_type, actor_principal, \
+                  publisher_principal, details, created_at) \
+                 VALUES ({}, {}, {}, NULL, 'platform_build_staged', {}, NULL, {}, {now})",
+                mark(1),
+                mark(2),
+                mark(3),
+                mark(4),
+                mark(5),
+            ),
+            vec![
+                format!("rge_{}", Uuid::new_v4().simple()).into(),
+                slug.into(),
+                command.request_id.into(),
+                Value::Json(Some(Box::new(command.actor_principal))),
+                Value::Json(Some(Box::new(serde_json::json!({
+                    "build_request_id": command.build_request_id,
+                    "source_digest": completed.request.source.digest,
+                    "component_digest": component_digest,
+                    "artifact_manifest_digest": receipt.artifact.digest,
+                })))),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+        tx.commit().await.map_err(store_error)?;
+        Ok(ModulePublishPlatformBuildStageResult {
+            staging_id,
+            created: true,
+        })
+    }
+
+    /// Stages an externally built payload only after the owner has recorded
+    /// its provenance-policy decision, source-evidence classification, and a
+    /// separate quarantine review. This is intentionally distinct from the
+    /// platform build path: it never manufactures a build-worker attestation.
+    pub async fn stage_external_prebuilt(
+        &self,
+        command: ModuleExternalPrebuiltStageCommand,
+    ) -> Result<ModuleExternalPrebuiltStageResult, ModuleGovernanceError> {
+        command.validate()?;
+        let (source_evidence_kind, source_reference, source_digest, source_absence_reason) =
+            match &command.source_evidence {
+                ModuleExternalSourceEvidence::Reproducible { reference, digest } => (
+                    "reproducible",
+                    Some(reference.clone()),
+                    Some(digest.clone()),
+                    None,
+                ),
+                ModuleExternalSourceEvidence::Unavailable { reason_code } => {
+                    ("unavailable", None, None, Some(reason_code.clone()))
+                }
+            };
+        let tx = self.db.begin().await.map_err(store_error)?;
+        let backend = tx.get_database_backend();
+        let mark = |n| placeholder(backend, n);
+        let now = database_now(backend);
+        let request_lock = if backend == sea_orm::DbBackend::Postgres {
+            " FOR UPDATE"
+        } else {
+            ""
+        };
+        let request = tx
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT slug, status, artifact_origin, artifact_checksum_sha256 \
+                     FROM registry_publish_requests WHERE id = {}{request_lock}",
+                    mark(1),
+                ),
+                vec![command.request_id.clone().into()],
+            ))
+            .await
+            .map_err(store_error)?
+            .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        let slug: String = request.try_get("", "slug").map_err(store_error)?;
+        let status: String = request.try_get("", "status").map_err(store_error)?;
+        let artifact_origin: String = request
+            .try_get("", "artifact_origin")
+            .map_err(store_error)?;
+        let checksum: Option<String> = request
+            .try_get("", "artifact_checksum_sha256")
+            .map_err(store_error)?;
+        if artifact_origin != ModulePublicationArtifactOrigin::ExternalPrebuilt.as_str()
+            || !matches!(status.as_str(), "submitted" | "validating" | "approved")
+            || checksum.as_deref() != receipt_digest_sha256(&command.artifact_digest).ok()
+        {
+            return Err(ModuleGovernanceError::InvalidExternalPrebuiltStageCommand);
+        }
+
+        let staging_id = format!("rpes_{}", Uuid::new_v4().simple());
+        let inserted = tx
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO registry_publish_external_staging \
+                     (id, request_id, artifact_digest, source_evidence_kind, source_reference, \
+                      source_digest, source_absence_reason, provenance_reference, provenance_digest, \
+                      provenance_policy_revision, quarantine_review_reference, quarantine_policy_revision, \
+                      quarantine_approved_by_principal, staged_by_principal, idempotency_key, staged_at) \
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
+                     ON CONFLICT (request_id, idempotency_key) DO NOTHING",
+                    mark(1),
+                    mark(2),
+                    mark(3),
+                    mark(4),
+                    mark(5),
+                    mark(6),
+                    mark(7),
+                    mark(8),
+                    mark(9),
+                    mark(10),
+                    mark(11),
+                    mark(12),
+                    mark(13),
+                    mark(14),
+                    mark(15),
+                ),
+                vec![
+                    staging_id.clone().into(),
+                    command.request_id.clone().into(),
+                    command.artifact_digest.clone().into(),
+                    source_evidence_kind.into(),
+                    source_reference.into(),
+                    source_digest.into(),
+                    source_absence_reason.clone().into(),
+                    command.provenance_reference.clone().into(),
+                    command.provenance_digest.clone().into(),
+                    command.provenance_policy_revision.clone().into(),
+                    command.quarantine_review_reference.clone().into(),
+                    command.quarantine_policy_revision.clone().into(),
+                    Value::Json(Some(Box::new(
+                        command.quarantine_approved_by_principal.clone(),
+                    ))),
+                    Value::Json(Some(Box::new(command.actor_principal.clone()))),
+                    registry_uuid_value(command.idempotency_key, backend),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
+        if inserted.rows_affected() == 0 {
+            let existing = tx
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT id, artifact_digest, provenance_digest, provenance_policy_revision, \
+                         quarantine_review_reference FROM registry_publish_external_staging \
+                         WHERE request_id = {} AND idempotency_key = {}",
+                        mark(1),
+                        mark(2),
+                    ),
+                    vec![
+                        command.request_id.clone().into(),
+                        registry_uuid_value(command.idempotency_key, backend),
+                    ],
+                ))
+                .await
+                .map_err(store_error)?
+                .ok_or_else(|| {
+                    ModuleGovernanceError::Store("external-stage conflict lost its row".to_string())
+                })?;
+            let existing_id: String = existing.try_get("", "id").map_err(store_error)?;
+            let existing_artifact_digest: String = existing
+                .try_get("", "artifact_digest")
+                .map_err(store_error)?;
+            let existing_provenance_digest: String = existing
+                .try_get("", "provenance_digest")
+                .map_err(store_error)?;
+            let existing_policy_revision: String = existing
+                .try_get("", "provenance_policy_revision")
+                .map_err(store_error)?;
+            let existing_quarantine_reference: String = existing
+                .try_get("", "quarantine_review_reference")
+                .map_err(store_error)?;
+            if existing_artifact_digest != command.artifact_digest
+                || existing_provenance_digest != command.provenance_digest
+                || existing_policy_revision != command.provenance_policy_revision
+                || existing_quarantine_reference != command.quarantine_review_reference
+            {
+                return Err(ModuleGovernanceError::ExternalPrebuiltStageIdempotencyConflict);
+            }
+            tx.rollback().await.map_err(store_error)?;
+            return Ok(ModuleExternalPrebuiltStageResult {
+                staging_id: existing_id,
+                created: false,
+            });
+        }
+        tx.execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO registry_governance_events \
+                 (id, slug, request_id, release_id, event_type, actor_principal, \
+                  publisher_principal, details, created_at) \
+                 VALUES ({}, {}, {}, NULL, 'external_prebuilt_staged', {}, NULL, {}, {now})",
+                mark(1),
+                mark(2),
+                mark(3),
+                mark(4),
+                mark(5),
+            ),
+            vec![
+                format!("rge_{}", Uuid::new_v4().simple()).into(),
+                slug.into(),
+                command.request_id.into(),
+                Value::Json(Some(Box::new(command.actor_principal))),
+                Value::Json(Some(Box::new(serde_json::json!({
+                    "artifact_digest": command.artifact_digest,
+                    "source_evidence_kind": source_evidence_kind,
+                    "source_absence_reason": source_absence_reason,
+                    "provenance_digest": command.provenance_digest,
+                    "provenance_policy_revision": command.provenance_policy_revision,
+                    "quarantine_policy_revision": command.quarantine_policy_revision,
+                })))),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+        tx.commit().await.map_err(store_error)?;
+        Ok(ModuleExternalPrebuiltStageResult {
+            staging_id,
+            created: true,
         })
     }
 
@@ -2240,6 +2869,65 @@ impl SeaOrmModuleGovernanceService {
             ));
         }
         let actor = validation_stage_actor_label(&command.actor_principal)?;
+        let actor_json = command.actor_principal.clone();
+        let stale_predicate = if backend == sea_orm::DbBackend::Postgres {
+            format!(
+                "started_at <= NOW() - INTERVAL '{} seconds'",
+                VALIDATION_JOB_STALE_AFTER_SECONDS
+            )
+        } else {
+            format!(
+                "datetime(started_at) <= datetime('now', '-{} seconds')",
+                VALIDATION_JOB_STALE_AFTER_SECONDS
+            )
+        };
+        let stale_job = tx.query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT id FROM registry_validation_jobs WHERE request_id = {} AND status = 'running' AND {stale_predicate} ORDER BY started_at ASC LIMIT 1",
+                mark(1)
+            ),
+            vec![request_id.clone().into()],
+        )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let recovered_stale_job = if let Some(job) = stale_job {
+            let stale_job_id: String = job
+                .try_get("", "id")
+                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            let updated = tx.execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE registry_validation_jobs SET status = 'failed', finished_at = {now}, last_error = 'validation_worker_lease_expired', updated_at = {now} WHERE id = {} AND status = 'running' AND {stale_predicate}",
+                    mark(1)
+                ),
+                vec![stale_job_id.clone().into()],
+            )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            if updated.rows_affected() == 1 {
+                let details = serde_json::json!({
+                    "job_id": stale_job_id,
+                    "reason_code": "validation_worker_lease_expired",
+                    "lease_timeout_seconds": VALIDATION_JOB_STALE_AFTER_SECONDS,
+                });
+                tx.execute(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'validation_job_recovered', {}, NULL, {}, {now})",
+                        mark(1), mark(2), mark(3), mark(4), mark(5)
+                    ),
+                    vec![
+                        format!("rge_{}", Uuid::new_v4().simple()).into(),
+                        slug.clone().into(),
+                        request_id.clone().into(),
+                        Value::Json(Some(Box::new(actor_json.clone()))),
+                        Value::Json(Some(Box::new(details))),
+                    ],
+                )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
         let active_job = tx.query_one(Statement::from_sql_and_values(
             backend,
             format!("SELECT id FROM registry_validation_jobs WHERE request_id = {} AND status IN ('queued', 'running') ORDER BY created_at DESC LIMIT 1", mark(1)),
@@ -2260,7 +2948,9 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let requeued = status == "rejected";
-        let queue_reason = if status == "validating" {
+        let queue_reason = if recovered_stale_job {
+            "requeued_after_validation_lease_expired"
+        } else if status == "validating" {
             "validation_resumed"
         } else if requeued {
             "requeued_after_validation_failed"
@@ -2285,10 +2975,11 @@ impl SeaOrmModuleGovernanceService {
             format!("INSERT INTO registry_validation_jobs (id, request_id, slug, version, status, triggered_by, queue_reason, attempt_number, started_at, finished_at, last_error, created_at, updated_at) VALUES ({}, {}, {}, {}, 'queued', {}, {}, {}, NULL, NULL, NULL, {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7)),
             vec![job_id.clone().into(), request_id.clone().into(), slug.clone().into(), version.clone().into(), actor.clone().into(), queue_reason.into(), attempt.into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        let actor_json = command.actor_principal.clone();
         let events = [
             (
-                if requeued {
+                if recovered_stale_job {
+                    "validation_recovered"
+                } else if requeued {
                     "validation_requeued"
                 } else if status == "validating" {
                     "validation_resumed"
@@ -2347,7 +3038,7 @@ impl SeaOrmModuleGovernanceService {
         };
         let Some(job) = tx.query_one(Statement::from_sql_and_values(
             backend,
-            format!("SELECT j.status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.status AS request_status FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id WHERE j.id = {}", mark(1)),
+            format!("SELECT j.status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.crate_name, r.ownership, r.trust_level, r.license, r.entry_type, r.marketplace, r.ui_packages, r.validation_warnings, r.status AS request_status, r.artifact_storage_key, r.artifact_checksum_sha256, r.artifact_size, r.artifact_content_type, t.name AS module_name, t.description AS module_description FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id LEFT JOIN registry_publish_request_translations t ON t.request_id = r.id AND t.locale = r.default_locale WHERE j.id = {}", mark(1)),
             vec![command.validation_job_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))? else {
             return Ok(None);
@@ -2365,20 +3056,7 @@ impl SeaOrmModuleGovernanceService {
             return Ok(Some(ModuleValidationJobClaimResult {
                 request_id,
                 should_run: false,
-            }));
-        }
-        let updated = tx.execute(Statement::from_sql_and_values(
-            backend,
-            format!("UPDATE registry_validation_jobs SET status = 'running', started_at = {now}, finished_at = NULL, last_error = NULL, updated_at = {now} WHERE id = {} AND status = 'queued'", mark(1)),
-            vec![command.validation_job_id.clone().into()],
-        )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        if updated.rows_affected() != 1 {
-            tx.commit()
-                .await
-                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            return Ok(Some(ModuleValidationJobClaimResult {
-                request_id,
-                should_run: false,
+                work_item: None,
             }));
         }
         let slug: String = job
@@ -2396,6 +3074,87 @@ impl SeaOrmModuleGovernanceService {
         let queue_reason: String = job
             .try_get("", "queue_reason")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let work_item_result =
+            (|| -> Result<ModuleValidationJobWorkItem, ModuleGovernanceError> {
+                let artifact_storage_key = job
+                    .try_get::<Option<String>>("", "artifact_storage_key")
+                    .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or(ModuleGovernanceError::PublishRequestMissingArtifactStorageKey)?;
+                let artifact_checksum_sha256 = job
+                    .try_get::<Option<String>>("", "artifact_checksum_sha256")
+                    .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or(ModuleGovernanceError::PublishRequestMissingArtifactChecksum)?;
+                if !is_sha256_hex(&artifact_checksum_sha256) {
+                    return Err(ModuleGovernanceError::PublishRequestInvalidArtifactChecksum);
+                }
+                let artifact_size = job
+                    .try_get::<Option<i64>>("", "artifact_size")
+                    .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
+                    .filter(|value| *value >= 0)
+                    .ok_or(ModuleGovernanceError::PublishRequestMissingArtifactSize)?;
+                let artifact_content_type = job
+                    .try_get::<Option<String>>("", "artifact_content_type")
+                    .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or(ModuleGovernanceError::InvalidPublishArtifactAttachCommand)?;
+                let crate_name: String = job
+                    .try_get("", "crate_name")
+                    .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+                Ok(ModuleValidationJobWorkItem {
+                    validation_job_id: command.validation_job_id.clone(),
+                    request_id: request_id.clone(),
+                    slug: slug.clone(),
+                    version: version.clone(),
+                    crate_name,
+                    artifact_storage_key,
+                    artifact_checksum_sha256,
+                    artifact_size: artifact_size as u64,
+                    artifact_content_type,
+                    existing_warnings: validation_warnings_from_row(&job)?,
+                    contract: module_publish_validation_contract_from_row(&job)?,
+                })
+            })();
+        let updated = tx.execute(Statement::from_sql_and_values(
+            backend,
+            format!("UPDATE registry_validation_jobs SET status = 'running', started_at = {now}, finished_at = NULL, last_error = NULL, updated_at = {now} WHERE id = {} AND status = 'queued'", mark(1)),
+            vec![command.validation_job_id.clone().into()],
+        )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if updated.rows_affected() != 1 {
+            tx.commit()
+                .await
+                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            return Ok(Some(ModuleValidationJobClaimResult {
+                request_id,
+                should_run: false,
+                work_item: None,
+            }));
+        }
+        let work_item = match work_item_result {
+            Ok(work_item) => work_item,
+            Err(_) => {
+                terminalize_invalid_validation_work_item(
+                    &tx,
+                    backend,
+                    &command,
+                    &request_id,
+                    &slug,
+                    &version,
+                    attempt_number,
+                    &queue_reason,
+                )
+                .await?;
+                tx.commit()
+                    .await
+                    .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+                return Ok(Some(ModuleValidationJobClaimResult {
+                    request_id,
+                    should_run: false,
+                    work_item: None,
+                }));
+            }
+        };
         tx.execute(Statement::from_sql_and_values(backend,
             format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'validation_job_started', {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5)),
             vec![format!("rge_{}", Uuid::new_v4().simple()).into(), slug.into(), request_id.clone().into(), Value::Json(Some(Box::new(command.actor_principal))), Value::Json(Some(Box::new(serde_json::json!({"job_id":command.validation_job_id,"attempt_number":attempt_number,"queue_reason":queue_reason,"request_status":request_status,"version":version}))))],
@@ -2406,7 +3165,56 @@ impl SeaOrmModuleGovernanceService {
         Ok(Some(ModuleValidationJobClaimResult {
             request_id,
             should_run: true,
+            work_item: Some(work_item),
         }))
+    }
+
+    /// Claims one oldest queued validation job for an independent worker.
+    ///
+    /// The initial lookup is intentionally only a candidate selection; the
+    /// existing conditional claim remains the authority. A concurrent worker
+    /// may win the candidate, in which case this method retries once before
+    /// returning no work. The worker never needs an HTTP server callback or a
+    /// synthetic tenant-scoped event to find durable queued work.
+    pub async fn claim_next_validation_job(
+        &self,
+        actor_principal: serde_json::Value,
+    ) -> Result<Option<ModuleValidationJobClaimResult>, ModuleGovernanceError> {
+        let command = ModuleValidationJobClaimCommand {
+            validation_job_id: "candidate".to_string(),
+            actor_principal: actor_principal.clone(),
+        };
+        command.validate()?;
+        for _ in 0..2 {
+            let backend = self.db.get_database_backend();
+            let candidate = self
+                .db
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    "SELECT id FROM registry_validation_jobs WHERE status = 'queued' \
+                     ORDER BY created_at ASC, id ASC LIMIT 1"
+                        .to_string(),
+                    Vec::new(),
+                ))
+                .await
+                .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+            let Some(candidate) = candidate else {
+                return Ok(None);
+            };
+            let validation_job_id: String = candidate
+                .try_get("", "id")
+                .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+            let claim = self
+                .claim_validation_job(ModuleValidationJobClaimCommand {
+                    validation_job_id,
+                    actor_principal: actor_principal.clone(),
+                })
+                .await?;
+            if claim.as_ref().is_some_and(|claim| claim.should_run) {
+                return Ok(claim);
+            }
+        }
+        Ok(None)
     }
 
     /// Applies an automated validation result atomically. A host worker may
@@ -3370,6 +4178,11 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
+        let request_lock = if backend == sea_orm::DbBackend::Postgres {
+            " FOR UPDATE"
+        } else {
+            ""
+        };
         let request = tx
             .query_one(Statement::from_sql_and_values(
                 backend,
@@ -3377,9 +4190,9 @@ impl SeaOrmModuleGovernanceService {
                     "SELECT slug, version, crate_name, default_locale, ownership, trust_level, license, \
                      entry_type, CAST(marketplace AS TEXT) AS marketplace, \
                      CAST(ui_packages AS TEXT) AS ui_packages, status, artifact_storage_key, \
-                     artifact_checksum_sha256, artifact_size \
-                     FROM registry_publish_requests WHERE id = {}",
-                    mark(1)
+                     artifact_checksum_sha256, artifact_size, artifact_origin \
+                     FROM registry_publish_requests WHERE id = {}{request_lock}",
+                    mark(1),
                 ),
                 vec![command.request_id.clone().into()],
             ))
@@ -3395,11 +4208,42 @@ impl SeaOrmModuleGovernanceService {
         let status: String = request
             .try_get("", "status")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if status == "published" {
+            let release_exists = tx
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT id FROM registry_module_releases \
+                         WHERE request_id = {} AND slug = {} AND version = {} LIMIT 1",
+                        mark(1),
+                        mark(2),
+                        mark(3),
+                    ),
+                    vec![
+                        command.request_id.clone().into(),
+                        slug.clone().into(),
+                        version.clone().into(),
+                    ],
+                ))
+                .await
+                .map_err(store_error)?
+                .is_some();
+            if !release_exists {
+                return Err(ModuleGovernanceError::PublishedRequestMissingRelease);
+            }
+            tx.rollback().await.map_err(store_error)?;
+            return Ok(());
+        }
         if status != "approved" {
             return Err(ModuleGovernanceError::PublishRequestCannotBePublished(
                 status,
             ));
         }
+        let artifact_origin: String = request
+            .try_get("", "artifact_origin")
+            .map_err(store_error)?;
+        let artifact_origin = ModulePublicationArtifactOrigin::parse(&artifact_origin)
+            .ok_or(ModuleGovernanceError::PublishRequestArtifactOriginUnclassified)?;
         let crate_name: String = request
             .try_get("", "crate_name")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -3449,13 +4293,77 @@ impl SeaOrmModuleGovernanceService {
             .filter(|value| *value >= 0)
             .ok_or(ModuleGovernanceError::PublishRequestMissingArtifactSize)?;
 
+        match artifact_origin {
+            ModulePublicationArtifactOrigin::PlatformBuilt => {
+                let platform_build_staged = tx
+                    .query_one(Statement::from_sql_and_values(
+                        backend,
+                        format!(
+                            "SELECT 1 FROM registry_publish_build_staging AS stage \
+                             WHERE stage.request_id = {} \
+                               AND stage.component_digest = {} \
+                               AND stage.staged_at >= ( \
+                                   SELECT request.submitted_at FROM registry_publish_requests AS request \
+                                   WHERE request.id = stage.request_id \
+                               ) \
+                             LIMIT 1",
+                            mark(1),
+                            mark(2),
+                        ),
+                        vec![
+                            command.request_id.clone().into(),
+                            format!("sha256:{checksum_sha256}").into(),
+                        ],
+                    ))
+                    .await
+                    .map_err(store_error)?
+                    .is_some();
+                if !platform_build_staged {
+                    return Err(ModuleGovernanceError::PublishRequestMissingPlatformBuildStage);
+                }
+            }
+            ModulePublicationArtifactOrigin::ExternalPrebuilt => {
+                let external_prebuilt_staged = tx
+                    .query_one(Statement::from_sql_and_values(
+                        backend,
+                        format!(
+                            "SELECT 1 FROM registry_publish_external_staging AS stage \
+                             WHERE stage.request_id = {} \
+                               AND stage.artifact_digest = {} \
+                               AND stage.staged_at >= ( \
+                                   SELECT request.submitted_at FROM registry_publish_requests AS request \
+                                   WHERE request.id = stage.request_id \
+                               ) \
+                             LIMIT 1",
+                            mark(1),
+                            mark(2),
+                        ),
+                        vec![
+                            command.request_id.clone().into(),
+                            format!("sha256:{checksum_sha256}").into(),
+                        ],
+                    ))
+                    .await
+                    .map_err(store_error)?
+                    .is_some();
+                if !external_prebuilt_staged {
+                    return Err(ModuleGovernanceError::PublishRequestMissingExternalPrebuiltStage);
+                }
+            }
+        }
+
         let author_signature_recorded = tx
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT 1 FROM registry_publication_evidence \
-                     WHERE request_id = {} AND authority = 'author_signature' \
-                     AND subject_digest_sha256 = {} LIMIT 1",
+                    "SELECT 1 FROM registry_publication_evidence AS author \
+                     WHERE author.request_id = {} AND author.authority = 'author_signature' \
+                     AND author.subject_digest_sha256 = {} \
+                     AND author.created_at >= ( \
+                         SELECT request.submitted_at FROM registry_publish_requests AS request \
+                         WHERE request.id = author.request_id \
+                     ) \
+                     LIMIT 1",
                     mark(1),
                     mark(2),
                 ),
@@ -3470,30 +4378,72 @@ impl SeaOrmModuleGovernanceService {
         if !author_signature_recorded {
             return Err(ModuleGovernanceError::PublishRequestMissingAuthorSignature);
         }
-        let matched_build_and_platform_evidence = tx
-            .query_one(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT build.subject_digest_sha256 \
-                     FROM registry_publication_evidence AS build \
-                     WHERE build.request_id = {} \
-                       AND build.authority = 'build_service_attestation' \
-                       AND EXISTS ( \
-                           SELECT 1 FROM registry_publication_evidence AS platform \
-                           WHERE platform.request_id = build.request_id \
-                             AND platform.authority = 'platform_admission' \
-                             AND platform.subject_digest_sha256 = build.subject_digest_sha256 \
-                       ) \
-                     LIMIT 1",
-                    mark(1),
-                ),
-                vec![command.request_id.clone().into()],
-            ))
-            .await
-            .map_err(store_error)?
-            .is_some();
-        if !matched_build_and_platform_evidence {
-            return Err(ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission);
+        match artifact_origin {
+            ModulePublicationArtifactOrigin::PlatformBuilt => {
+                let matched_build_and_platform_evidence = tx
+                    .query_one(Statement::from_sql_and_values(
+                        backend,
+                        format!(
+                            "SELECT build.subject_digest_sha256 \
+                             FROM registry_publication_evidence AS build \
+                             WHERE build.request_id = {} \
+                               AND build.authority = 'build_service_attestation' \
+                               AND build.created_at >= ( \
+                                   SELECT request.submitted_at FROM registry_publish_requests AS request \
+                                   WHERE request.id = build.request_id \
+                               ) \
+                               AND EXISTS ( \
+                                   SELECT 1 FROM registry_publication_evidence AS platform \
+                                   WHERE platform.request_id = build.request_id \
+                                     AND platform.authority = 'platform_admission' \
+                                     AND platform.subject_digest_sha256 = build.subject_digest_sha256 \
+                                     AND platform.created_at >= ( \
+                                         SELECT request.submitted_at FROM registry_publish_requests AS request \
+                                         WHERE request.id = platform.request_id \
+                                     ) \
+                               ) \
+                             LIMIT 1",
+                            mark(1),
+                        ),
+                        vec![command.request_id.clone().into()],
+                    ))
+                    .await
+                    .map_err(store_error)?
+                    .is_some();
+                if !matched_build_and_platform_evidence {
+                    return Err(
+                        ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission,
+                    );
+                }
+            }
+            ModulePublicationArtifactOrigin::ExternalPrebuilt => {
+                let platform_admission_recorded = tx
+                    .query_one(Statement::from_sql_and_values(
+                        backend,
+                        format!(
+                            "SELECT 1 FROM registry_publication_evidence AS platform \
+                             WHERE platform.request_id = {} \
+                               AND platform.authority = 'platform_admission' \
+                               AND platform.subject_digest_sha256 = {} \
+                               AND platform.created_at >= ( \
+                                   SELECT request.submitted_at FROM registry_publish_requests AS request \
+                                   WHERE request.id = platform.request_id \
+                               ) \
+                             LIMIT 1",
+                            mark(1),
+                            mark(2),
+                        ),
+                        vec![command.request_id.clone().into(), checksum_sha256.clone().into()],
+                    ))
+                    .await
+                    .map_err(store_error)?
+                    .is_some();
+                if !platform_admission_recorded {
+                    return Err(
+                        ModuleGovernanceError::PublishRequestMissingExternalPlatformAdmission,
+                    );
+                }
+            }
         }
 
         let translations = tx
@@ -3652,7 +4602,7 @@ impl SeaOrmModuleGovernanceService {
                 format!(
                     "UPDATE registry_module_releases SET request_id = {}, crate_name = {}, \
                      default_locale = {}, ownership = {}, trust_level = {}, license = {}, \
-                     entry_type = {}, marketplace = {}, ui_packages = {}, status = 'active', \
+                     entry_type = {}, artifact_origin = {}, marketplace = {}, ui_packages = {}, status = 'active', \
                      publisher_principal = {}, artifact_storage_key = {}, checksum_sha256 = {}, \
                      artifact_size = {}, yanked_reason = NULL, yanked_by_principal = NULL, \
                      yanked_at = NULL, published_at = {now}, updated_at = {now} WHERE id = {}",
@@ -3670,6 +4620,7 @@ impl SeaOrmModuleGovernanceService {
                     mark(12),
                     mark(13),
                     mark(14),
+                    mark(15),
                 ),
                 vec![
                     command.request_id.clone().into(),
@@ -3679,6 +4630,7 @@ impl SeaOrmModuleGovernanceService {
                     trust_level.into(),
                     license.into(),
                     entry_type.into(),
+                    artifact_origin.as_str().into(),
                     Value::Json(Some(Box::new(marketplace))),
                     Value::Json(Some(Box::new(ui_packages))),
                     Value::Json(Some(Box::new(command.publisher_principal.clone()))),
@@ -3696,19 +4648,19 @@ impl SeaOrmModuleGovernanceService {
                 format!(
                     "INSERT INTO registry_module_releases \
                      (id, request_id, slug, version, crate_name, default_locale, ownership, trust_level, \
-                      license, entry_type, marketplace, ui_packages, status, publisher_principal, \
+                      license, entry_type, artifact_origin, marketplace, ui_packages, status, publisher_principal, \
                       artifact_storage_key, checksum_sha256, artifact_size, yanked_reason, \
                       yanked_by_principal, yanked_at, published_at, created_at, updated_at) \
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'active', {}, {}, {}, {}, \
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'active', {}, {}, {}, {}, \
                              NULL, NULL, NULL, {now}, {now}, {now})",
                     mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8),
-                    mark(9), mark(10), mark(11), mark(12), mark(13), mark(14), mark(15), mark(16),
+                    mark(9), mark(10), mark(11), mark(12), mark(13), mark(14), mark(15), mark(16), mark(17),
                 ),
                 vec![
                     release_id.clone().into(), command.request_id.clone().into(), slug.clone().into(),
                     version.clone().into(), crate_name.into(), default_locale.into(), ownership.into(),
                     trust_level.into(), license.into(), entry_type.into(),
-                    Value::Json(Some(Box::new(marketplace))), Value::Json(Some(Box::new(ui_packages))),
+                    artifact_origin.as_str().into(), Value::Json(Some(Box::new(marketplace))), Value::Json(Some(Box::new(ui_packages))),
                     Value::Json(Some(Box::new(command.publisher_principal.clone()))),
                     artifact_storage_key.into(), checksum_sha256.clone().into(), artifact_size.into(),
                 ],
@@ -3912,6 +4864,7 @@ impl SeaOrmModuleGovernanceService {
                 Value::Json(Some(Box::new(serde_json::json!({
                     "version": version,
                     "status": "published",
+                    "artifact_origin": artifact_origin.as_str(),
                     "checksum_sha256": checksum_sha256,
                     "release_status": "active",
                 })))),
@@ -3957,6 +4910,232 @@ fn validation_stage_actor_label(
         .ok_or(ModuleGovernanceError::InvalidValidationStageReportCommand)
 }
 
+async fn terminalize_invalid_validation_work_item(
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    command: &ModuleValidationJobClaimCommand,
+    request_id: &str,
+    slug: &str,
+    version: &str,
+    attempt_number: i32,
+    queue_reason: &str,
+) -> Result<(), ModuleGovernanceError> {
+    let mark = |n| {
+        if backend == DbBackend::Postgres {
+            format!("${n}")
+        } else {
+            format!("?{n}")
+        }
+    };
+    let now = if backend == DbBackend::Postgres {
+        "NOW()"
+    } else {
+        "datetime('now')"
+    };
+    let errors = serde_json::json!([VALIDATION_WORK_ITEM_INVALID_ERROR]);
+    let request_updated = tx
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "UPDATE registry_publish_requests \
+                 SET status = 'rejected', validation_errors = {}, \
+                     rejected_by_principal = {}, rejection_reason = {}, \
+                     validated_at = {now}, approved_by_principal = NULL, \
+                     approved_at = NULL, published_at = NULL, updated_at = {now} \
+                 WHERE id = {} AND status = 'validating'",
+                mark(1),
+                mark(2),
+                mark(3),
+                mark(4),
+            ),
+            vec![
+                Value::Json(Some(Box::new(errors.clone()))).into(),
+                Value::Json(Some(Box::new(command.actor_principal.clone()))).into(),
+                VALIDATION_WORK_ITEM_INVALID_ERROR.to_string().into(),
+                request_id.to_string().into(),
+            ],
+        ))
+        .await
+        .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+    if request_updated.rows_affected() != 1 {
+        return Err(ModuleGovernanceError::ValidationJobRequestStateMismatch(
+            "concurrently changed".to_string(),
+        ));
+    }
+    let job_updated = tx
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "UPDATE registry_validation_jobs \
+                 SET status = 'failed', finished_at = {now}, last_error = {}, \
+                     updated_at = {now} \
+                 WHERE id = {} AND status = 'running'",
+                mark(1),
+                mark(2),
+            ),
+            vec![
+                VALIDATION_WORK_ITEM_INVALID_ERROR.to_string().into(),
+                command.validation_job_id.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+    if job_updated.rows_affected() != 1 {
+        return Err(ModuleGovernanceError::ValidationJobNotRunning(
+            "concurrently changed".to_string(),
+        ));
+    }
+
+    let events = [
+        (
+            "validation_failed",
+            serde_json::json!({
+                "version": version,
+                "status": "rejected",
+                "reason": VALIDATION_WORK_ITEM_INVALID_ERROR,
+                "errors": errors,
+                "automated_checks": [{"check":"delivery_work_item","status":"failed"}],
+            }),
+        ),
+        (
+            "validation_job_failed",
+            serde_json::json!({
+                "job_id": command.validation_job_id.clone(),
+                "attempt_number": attempt_number,
+                "queue_reason": queue_reason,
+                "request_status": "rejected",
+                "version": version,
+                "error": VALIDATION_WORK_ITEM_INVALID_ERROR,
+            }),
+        ),
+    ];
+    for (event_type, details) in events {
+        tx.execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO registry_governance_events \
+                 (id, slug, request_id, release_id, event_type, actor_principal, \
+                  publisher_principal, details, created_at) \
+                 VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})",
+                mark(1),
+                mark(2),
+                mark(3),
+                mark(4),
+                mark(5),
+                mark(6),
+            ),
+            vec![
+                format!("rge_{}", Uuid::new_v4().simple()).into(),
+                slug.to_string().into(),
+                request_id.to_string().into(),
+                event_type.into(),
+                Value::Json(Some(Box::new(command.actor_principal.clone()))).into(),
+                Value::Json(Some(Box::new(details))).into(),
+            ],
+        ))
+        .await
+        .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+    }
+    Ok(())
+}
+
+fn module_publish_validation_contract_from_row(
+    row: &QueryResult,
+) -> Result<ModulePublishValidationContract, ModuleGovernanceError> {
+    let marketplace: serde_json::Value = serde_json::from_str(
+        &row.try_get::<String>("", "marketplace")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
+    )
+    .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+    let ui_packages: serde_json::Value = serde_json::from_str(
+        &row.try_get::<String>("", "ui_packages")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
+    )
+    .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+    let marketplace_category = marketplace
+        .get("category")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let marketplace_tags = marketplace
+        .get("tags")
+        .and_then(serde_json::Value::as_array)
+        .map(|tags| {
+            tags.iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let ui_crate_name = |surface: &str| {
+        ui_packages
+            .get(surface)
+            .and_then(|package| package.get("crate_name"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    };
+    Ok(ModulePublishValidationContract {
+        slug: row
+            .try_get("", "slug")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
+        version: row
+            .try_get("", "version")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
+        crate_name: row
+            .try_get("", "crate_name")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
+        module_name: row
+            .try_get("", "module_name")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
+        module_description: row
+            .try_get("", "module_description")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
+        ownership: row
+            .try_get("", "ownership")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
+        trust_level: row
+            .try_get("", "trust_level")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
+        license: row
+            .try_get("", "license")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
+        entry_type: row
+            .try_get::<Option<String>>("", "entry_type")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
+        marketplace_category,
+        marketplace_tags,
+        admin_ui_crate_name: ui_crate_name("admin"),
+        storefront_ui_crate_name: ui_crate_name("storefront"),
+    })
+}
+
+fn validation_warnings_from_row(row: &QueryResult) -> Result<Vec<String>, ModuleGovernanceError> {
+    let warnings: serde_json::Value = serde_json::from_str(
+        &row.try_get::<String>("", "validation_warnings")
+            .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
+    )
+    .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+    let mut warnings = warnings
+        .as_array()
+        .ok_or_else(|| {
+            ModuleGovernanceError::Store("validation warnings must be an array".to_string())
+        })?
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|warning| !warning.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    warnings.sort();
+    warnings.dedup();
+    Ok(warnings)
+}
+
 fn placeholder(backend: sea_orm::DbBackend, position: usize) -> String {
     if backend == sea_orm::DbBackend::Postgres {
         format!("${position}")
@@ -3970,6 +5149,14 @@ fn database_now(backend: sea_orm::DbBackend) -> &'static str {
         "NOW()"
     } else {
         "datetime('now')"
+    }
+}
+
+fn registry_uuid_value(value: Uuid, backend: sea_orm::DbBackend) -> Value {
+    if backend == sea_orm::DbBackend::Postgres {
+        Value::Uuid(Some(Box::new(value)))
+    } else {
+        value.to_string().into()
     }
 }
 
@@ -4199,6 +5386,18 @@ pub enum ModuleGovernanceError {
     InvalidBuildServiceAttestationCommand,
     #[error("platform admission requires one admitted immutable verification decision")]
     InvalidPlatformAdmissionCommand,
+    #[error(
+        "platform build staging requires one matching completed build result and submitted artifact"
+    )]
+    InvalidPlatformBuildStageCommand,
+    #[error("platform build stage idempotency key was reused for different immutable input")]
+    PlatformBuildStageIdempotencyConflict,
+    #[error(
+        "external prebuilt staging requires an approved provenance policy, quarantine review, and explicit source evidence"
+    )]
+    InvalidExternalPrebuiltStageCommand,
+    #[error("external prebuilt stage idempotency key was reused for different immutable input")]
+    ExternalPrebuiltStageIdempotencyConflict,
     #[error("unsupported remote validation claim stage `{0}`")]
     InvalidRemoteValidationClaimStage(String),
     #[error("unsupported owner-transfer reason code `{0}`")]
@@ -4237,6 +5436,8 @@ pub enum ModuleGovernanceError {
     PublishRequestCannotBeResumed(String),
     #[error("registry publish request in status `{0}` cannot be published")]
     PublishRequestCannotBePublished(String),
+    #[error("published registry request has no matching durable release")]
+    PublishedRequestMissingRelease,
     #[error("registry publish request in status `{0}` cannot accept an artifact")]
     PublishRequestCannotAttachArtifact(String),
     #[error("registry publish request in status `{0}` cannot accept publication evidence")]
@@ -4259,6 +5460,12 @@ pub enum ModuleGovernanceError {
     PublishRequestInvalidArtifactChecksum,
     #[error("registry publish request is missing a valid artifact size")]
     PublishRequestMissingArtifactSize,
+    #[error("registry publish request is missing a current platform build stage")]
+    PublishRequestMissingPlatformBuildStage,
+    #[error("registry publish request is missing a current external prebuilt stage")]
+    PublishRequestMissingExternalPrebuiltStage,
+    #[error("registry publish request artifact origin is unclassified")]
+    PublishRequestArtifactOriginUnclassified,
     #[error(
         "registry publish request is missing author signature evidence for its staged artifact"
     )]
@@ -4267,6 +5474,10 @@ pub enum ModuleGovernanceError {
         "registry publish request is missing matching build-service and platform-admission evidence"
     )]
     PublishRequestMissingBuildOrPlatformAdmission,
+    #[error(
+        "registry publish request is missing matching platform-admission evidence for its external prebuilt artifact"
+    )]
+    PublishRequestMissingExternalPlatformAdmission,
     #[error("registry publish request has no localized metadata")]
     PublishRequestMissingTranslations,
     #[error("registry validation stage was not found")]
@@ -4298,6 +5509,58 @@ mod tests {
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TryGetable};
 
     use super::*;
+
+    fn publish_request_create_command() -> ModulePublishRequestCreateCommand {
+        ModulePublishRequestCreateCommand {
+            slug: "sample-module".to_string(),
+            version: "1.0.0".to_string(),
+            crate_name: "sample-module".to_string(),
+            default_locale: "en-US".to_string(),
+            ownership: "third_party".to_string(),
+            trust_level: "reviewed".to_string(),
+            license: "MIT".to_string(),
+            entry_type: Some("sandboxed".to_string()),
+            artifact_origin: ModulePublicationArtifactOrigin::ExternalPrebuilt,
+            marketplace: serde_json::json!({ "category": "utilities", "tags": [] }),
+            ui_packages: serde_json::json!({ "admin": null, "storefront": null }),
+            name: "Sample module".to_string(),
+            description: "A publish request description long enough for policy.".to_string(),
+            actor_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
+        }
+    }
+
+    #[test]
+    fn publish_request_contract_accepts_transport_ui_object_and_derives_warnings() {
+        let command = publish_request_create_command();
+
+        assert!(command.validate().is_ok());
+        assert_eq!(
+            command.validation_warnings().expect("owner warnings"),
+            vec![
+                "No publishable admin/storefront UI packages declared; only backend contract would be published."
+                    .to_string(),
+                "Third-party publishing requires the configured governance and evidence gates before release."
+                    .to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn publish_request_contract_rejects_noncanonical_locale_and_ui_array() {
+        let mut command = publish_request_create_command();
+        command.default_locale = "not a locale".to_string();
+        assert!(matches!(
+            command.validate(),
+            Err(ModuleGovernanceError::InvalidPublishRequestCreateCommand)
+        ));
+
+        let mut command = publish_request_create_command();
+        command.ui_packages = serde_json::json!([]);
+        assert!(matches!(
+            command.validate(),
+            Err(ModuleGovernanceError::InvalidPublishRequestCreateCommand)
+        ));
+    }
 
     #[test]
     fn release_yank_contract_rejects_unrecognized_reason_codes() {
@@ -4371,6 +5634,38 @@ mod tests {
             }
             .validate(),
             Err(ModuleGovernanceError::InvalidPublishArtifactAttachCommand)
+        ));
+    }
+
+    #[test]
+    fn external_prebuilt_stage_requires_explicit_source_evidence() {
+        let command = ModuleExternalPrebuiltStageCommand {
+            request_id: "request-1".to_string(),
+            artifact_digest: format!("sha256:{}", "a".repeat(64)),
+            source_evidence: ModuleExternalSourceEvidence::Unavailable {
+                reason_code: "source_unavailable".to_string(),
+            },
+            provenance_reference: "https://evidence.example/provenance.json".to_string(),
+            provenance_digest: format!("sha256:{}", "b".repeat(64)),
+            provenance_policy_revision: "external-provenance-v1".to_string(),
+            quarantine_review_reference: "https://reviews.example/quarantine/1".to_string(),
+            quarantine_policy_revision: "external-quarantine-v1".to_string(),
+            quarantine_approved_by_principal: serde_json::json!({
+                "kind": "reviewer",
+                "id": "security-operator",
+            }),
+            idempotency_key: Uuid::new_v4(),
+            actor_principal: serde_json::json!({ "kind": "operator", "id": "publisher" }),
+        };
+        assert!(command.validate().is_ok());
+
+        let mut unclassified_absence = command;
+        unclassified_absence.source_evidence = ModuleExternalSourceEvidence::Unavailable {
+            reason_code: "not_recorded".to_string(),
+        };
+        assert!(matches!(
+            unclassified_absence.validate(),
+            Err(ModuleGovernanceError::InvalidExternalPrebuiltStageCommand)
         ));
     }
 
@@ -4458,7 +5753,8 @@ mod tests {
             "CREATE TABLE registry_module_releases (\
                 id TEXT PRIMARY KEY, request_id TEXT NULL, slug TEXT NOT NULL, version TEXT NOT NULL,\
                 publisher_principal TEXT NOT NULL, status TEXT NOT NULL, yanked_reason TEXT NULL,\
-                yanked_by_principal TEXT NULL, yanked_at TEXT NULL, updated_at TEXT NOT NULL\
+                yanked_by_principal TEXT NULL, yanked_at TEXT NULL, artifact_storage_key TEXT NULL,\
+                checksum_sha256 TEXT NULL, artifact_size INTEGER NULL, updated_at TEXT NOT NULL\
              )",
             "CREATE TABLE registry_governance_events (\
                 id TEXT PRIMARY KEY, slug TEXT NOT NULL, request_id TEXT NULL, release_id TEXT NULL,\
@@ -4466,9 +5762,11 @@ mod tests {
                 details TEXT NOT NULL, created_at TEXT NOT NULL\
              )",
             "INSERT INTO registry_module_releases (\
-                id, request_id, slug, version, publisher_principal, status, updated_at\
+                id, request_id, slug, version, publisher_principal, status, artifact_storage_key,\
+                checksum_sha256, artifact_size, updated_at\
              ) VALUES (\
-                'release-1', 'request-1', 'sample_module', '1.0.0', '{\"subject\":\"publisher\"}', 'active', datetime('now')\
+                'release-1', 'request-1', 'sample_module', '1.0.0', '{\"subject\":\"publisher\"}', 'active',\
+                'registry/sample-1.0.0', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 42, datetime('now')\
              )",
         ] {
             database
@@ -4489,7 +5787,9 @@ mod tests {
         let release = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,
-                "SELECT status, yanked_reason FROM registry_module_releases".to_string(),
+                "SELECT status, yanked_reason, artifact_storage_key, checksum_sha256, artifact_size \
+                 FROM registry_module_releases"
+                    .to_string(),
             ))
             .await
             .expect("release query")
@@ -4503,6 +5803,24 @@ mod tests {
                 .try_get::<String>("", "yanked_reason")
                 .expect("reason"),
             "critical regression"
+        );
+        assert_eq!(
+            release
+                .try_get::<String>("", "artifact_storage_key")
+                .expect("artifact storage key"),
+            "registry/sample-1.0.0"
+        );
+        assert_eq!(
+            release
+                .try_get::<String>("", "checksum_sha256")
+                .expect("artifact checksum"),
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        );
+        assert_eq!(
+            release
+                .try_get::<i64>("", "artifact_size")
+                .expect("artifact size"),
+            42
         );
         let event = database
             .query_one(Statement::from_string(
@@ -4718,10 +6036,10 @@ mod tests {
             "CREATE TABLE registry_publish_requests (\
                 id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, crate_name TEXT NOT NULL,\
                 default_locale TEXT NOT NULL, ownership TEXT NOT NULL, trust_level TEXT NOT NULL,\
-                license TEXT NOT NULL, entry_type TEXT NULL, marketplace TEXT NOT NULL, ui_packages TEXT NOT NULL,\
+                license TEXT NOT NULL, entry_type TEXT NULL, artifact_origin TEXT NOT NULL, marketplace TEXT NOT NULL, ui_packages TEXT NOT NULL,\
                 status TEXT NOT NULL, artifact_storage_key TEXT NULL, artifact_checksum_sha256 TEXT NULL,\
                 artifact_size INTEGER NULL, approved_by_principal TEXT NULL, approved_at TEXT NULL,\
-                published_at TEXT NULL, updated_at TEXT NOT NULL\
+                submitted_at TEXT NULL, published_at TEXT NULL, updated_at TEXT NOT NULL\
              )",
             "CREATE TABLE registry_publish_request_translations (\
                 request_id TEXT NOT NULL, locale TEXT NOT NULL, name TEXT NOT NULL, description TEXT NOT NULL,\
@@ -4730,7 +6048,7 @@ mod tests {
             "CREATE TABLE registry_module_releases (\
                 id TEXT PRIMARY KEY, request_id TEXT NULL, slug TEXT NOT NULL, version TEXT NOT NULL,\
                 crate_name TEXT NOT NULL, default_locale TEXT NOT NULL, ownership TEXT NOT NULL,\
-                trust_level TEXT NOT NULL, license TEXT NOT NULL, entry_type TEXT NULL, marketplace TEXT NOT NULL,\
+                trust_level TEXT NOT NULL, license TEXT NOT NULL, entry_type TEXT NULL, artifact_origin TEXT NOT NULL, marketplace TEXT NOT NULL,\
                 ui_packages TEXT NOT NULL, status TEXT NOT NULL, publisher_principal TEXT NOT NULL,\
                 artifact_storage_key TEXT NULL, checksum_sha256 TEXT NULL, artifact_size INTEGER NULL,\
                 yanked_reason TEXT NULL, yanked_by_principal TEXT NULL, yanked_at TEXT NULL,\
@@ -4757,12 +6075,16 @@ mod tests {
                 evidence_digest_sha256 TEXT NOT NULL, recorded_by_principal TEXT NOT NULL,\
                 created_at TEXT NOT NULL, UNIQUE (request_id, evidence_digest_sha256)\
              )",
+            "CREATE TABLE registry_publish_build_staging (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, component_digest TEXT NOT NULL,\
+                staged_at TEXT NOT NULL\
+             )",
             "INSERT INTO registry_publish_requests (\
                 id, slug, version, crate_name, default_locale, ownership, trust_level, license, entry_type,\
-                marketplace, ui_packages, status, artifact_storage_key, artifact_checksum_sha256, artifact_size, updated_at\
+                artifact_origin, marketplace, ui_packages, status, artifact_storage_key, artifact_checksum_sha256, artifact_size, submitted_at, updated_at\
              ) VALUES (\
                 'request-1', 'sample_module', '1.0.0', 'sample_crate', 'en', 'platform', 'verified', 'MIT',\
-                NULL, '{}', '[]', 'approved', 'registry/request-1', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 42, datetime('now')\
+                NULL, 'platform_built', '{}', '[]', 'approved', 'registry/request-1', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 42, datetime('now'), datetime('now')\
              )",
             "INSERT INTO registry_publish_request_translations (request_id, locale, name, description) VALUES (\
                 'request-1', 'en', 'Sample module', 'Sample module description'\
@@ -4785,6 +6107,26 @@ mod tests {
         let blocked = service
             .publish_request(command.clone())
             .await
+            .expect_err("publication without a current platform build stage must fail");
+        assert!(matches!(
+            blocked,
+            ModuleGovernanceError::PublishRequestMissingPlatformBuildStage
+        ));
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_publish_build_staging \
+                 (id, request_id, component_digest, staged_at) VALUES (\
+                 'stage-1', 'request-1', \
+                 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
+                 datetime('now'))"
+                    .to_string(),
+            ))
+            .await
+            .expect("platform build stage fixture");
+        let blocked = service
+            .publish_request(command.clone())
+            .await
             .expect_err("publication without author evidence must fail");
         assert!(matches!(
             blocked,
@@ -4792,41 +6134,134 @@ mod tests {
         ));
 
         let staged_subject = "a".repeat(64);
-        let oci_subject = "b".repeat(64);
-        for (id, authority, subject) in [
-            ("rpe_author", "author_signature", staged_subject.as_str()),
-            (
-                "rpe_build",
-                "build_service_attestation",
-                oci_subject.as_str(),
-            ),
-            ("rpe_platform", "platform_admission", oci_subject.as_str()),
+        let oci_subject = staged_subject.clone();
+        let evidence_fixture = |id: &str, authority: &str, subject: &str, created_at: &str| {
+            Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                format!(
+                    "INSERT INTO registry_publication_evidence \
+                 (id, request_id, authority, subject_digest_sha256, evidence_reference, \
+                  issuer_identity, policy_revision, evidence_digest_sha256, \
+                  recorded_by_principal, created_at) \
+                 VALUES (?, 'request-1', ?, ?, 'evidence://fixture', 'fixture', \
+                         'fixture-v1', ?, '{{}}', {created_at})"
+                ),
+                vec![
+                    id.to_string().into(),
+                    authority.to_string().into(),
+                    subject.to_string().into(),
+                    format!("digest-{id}").into(),
+                ],
+            )
+        };
+        database
+            .execute(evidence_fixture(
+                "rpe_author",
+                "author_signature",
+                staged_subject.as_str(),
+                "datetime('now')",
+            ))
+            .await
+            .expect("author evidence fixture");
+        let blocked = service
+            .publish_request(command.clone())
+            .await
+            .expect_err("publication without matching build and platform evidence must fail");
+        assert!(matches!(
+            blocked,
+            ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission
+        ));
+        for (id, authority) in [
+            ("rpe_build", "build_service_attestation"),
+            ("rpe_platform", "platform_admission"),
         ] {
             database
-                .execute(Statement::from_sql_and_values(
-                    DbBackend::Sqlite,
-                    "INSERT INTO registry_publication_evidence \
-                     (id, request_id, authority, subject_digest_sha256, evidence_reference, \
-                      issuer_identity, policy_revision, evidence_digest_sha256, \
-                      recorded_by_principal, created_at) \
-                     VALUES (?, 'request-1', ?, ?, 'evidence://fixture', 'fixture', \
-                             'fixture-v1', ?, '{}', datetime('now'))"
-                        .to_string(),
-                    vec![
-                        id.to_string().into(),
-                        authority.to_string().into(),
-                        subject.to_string().into(),
-                        format!("digest-{id}").into(),
-                    ],
+                .execute(evidence_fixture(
+                    id,
+                    authority,
+                    oci_subject.as_str(),
+                    "datetime('now')",
                 ))
                 .await
                 .expect("publication evidence fixture");
         }
 
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE registry_publish_requests \
+                 SET submitted_at = datetime('now', '+1 second') WHERE id = 'request-1'"
+                    .to_string(),
+            ))
+            .await
+            .expect("reupload stage fixture");
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_publish_build_staging \
+                 (id, request_id, component_digest, staged_at) VALUES (\
+                 'stage-2', 'request-1', \
+                 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
+                 datetime('now', '+2 seconds'))"
+                    .to_string(),
+            ))
+            .await
+            .expect("current platform build stage fixture");
+        let blocked = service
+            .publish_request(command.clone())
+            .await
+            .expect_err("stale publication evidence must not survive a reupload");
+        assert!(matches!(
+            blocked,
+            ModuleGovernanceError::PublishRequestMissingAuthorSignature
+        ));
+        database
+            .execute(evidence_fixture(
+                "rpe_author_current",
+                "author_signature",
+                staged_subject.as_str(),
+                "datetime('now', '+2 seconds')",
+            ))
+            .await
+            .expect("current author evidence fixture");
+        for (id, authority) in [
+            ("rpe_build_current", "build_service_attestation"),
+            ("rpe_platform_current", "platform_admission"),
+        ] {
+            database
+                .execute(evidence_fixture(
+                    id,
+                    authority,
+                    oci_subject.as_str(),
+                    "datetime('now', '+2 seconds')",
+                ))
+                .await
+                .expect("current publication evidence fixture");
+        }
+
+        service
+            .publish_request(command.clone())
+            .await
+            .expect("publish request");
         service
             .publish_request(command)
             .await
-            .expect("publish request");
+            .expect("published request replay");
+
+        let release_count = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM registry_module_releases".to_string(),
+            ))
+            .await
+            .expect("release count query")
+            .expect("release count row");
+        assert_eq!(
+            release_count
+                .try_get::<i64>("", "count")
+                .expect("release count"),
+            1
+        );
 
         let request = database
             .query_one(Statement::from_string(
@@ -5003,7 +6438,7 @@ mod tests {
             .record_publication_evidence(command)
             .await
             .expect("repeat evidence");
-        let reference = |digest| crate::installation::OciArtifactReference {
+        let reference = |digest: char| crate::installation::OciArtifactReference {
             registry: "registry.example".to_string(),
             repository: "modules/sample".to_string(),
             digest: format!("sha256:{}", digest.to_string().repeat(64)),

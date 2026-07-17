@@ -10,6 +10,8 @@
 - Resolve effective permissions from relation data.
 - Evaluate permission checks through the single live policy engine.
 - Publish the typed `settings:*` and `logs:*` platform-admin surface used by server adapters.
+- Own explicit tenant-role grants for immutable artifact permission keys without
+  extending the static `Permission` enum or writing `role_permissions`.
 
 ## Interactions
 
@@ -32,6 +34,8 @@
 - `authorize_any_permission`
 - `authorize_all_permissions`
 - `has_effective_permission_in_set`
+- `RbacArtifactPermissionAssignmentService`
+- `SeaOrmArtifactPermissionAuthorizer`
 - `graphql::RbacQuery` / `graphql::RbacMutation` (feature `graphql`)
 
 ## Docs

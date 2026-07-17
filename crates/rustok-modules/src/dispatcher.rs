@@ -9,6 +9,7 @@ use rustok_core::{ModuleContext, ModuleRegistry};
 use rustok_sandbox::ExecutionPhase;
 
 use crate::{
+    artifact::{event_topic_matches, valid_event_topic},
     ArtifactReleaseRef, ModuleDefinitionCatalog, ModuleDefinitionSource, ModuleHttpMethod,
     ModuleRuntimeBinding, ModuleRuntimeBindingKind,
 };
@@ -30,6 +31,32 @@ pub struct ModuleExecutionDispatcher<'a> {
     catalog: &'a ModuleDefinitionCatalog,
     static_registry: Option<&'a ModuleRegistry>,
     artifact_executor: Option<&'a dyn ArtifactLifecycleExecutor>,
+}
+
+/// Host-supplied, redacted execution identity for one artifact binding.
+///
+/// The descriptor never controls these fields. They let a transport preserve
+/// its authenticated actor and correlation trace through sandbox capability
+/// calls and durable audit evidence without exposing headers or credentials to
+/// an artifact.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactBindingExecutionContext {
+    pub actor_id: Option<String>,
+    pub trace_id: Option<String>,
+}
+
+impl ArtifactBindingExecutionContext {
+    const MAX_IDENTITY_BYTES: usize = 256;
+
+    pub fn is_valid(&self) -> bool {
+        self.actor_id
+            .as_ref()
+            .is_none_or(|value| !value.is_empty() && value.len() <= Self::MAX_IDENTITY_BYTES)
+            && self
+                .trace_id
+                .as_ref()
+                .is_none_or(|value| !value.is_empty() && value.len() <= Self::MAX_IDENTITY_BYTES)
+    }
 }
 
 impl<'a> ModuleExecutionDispatcher<'a> {
@@ -126,7 +153,11 @@ impl<'a> ModuleExecutionDispatcher<'a> {
         binding_id: &str,
         input: serde_json::Value,
         phase: ExecutionPhase,
+        context: ArtifactBindingExecutionContext,
     ) -> Result<serde_json::Value, ModuleDispatchError> {
+        if !context.is_valid() {
+            return Err(ModuleDispatchError::InvalidArtifactExecutionContext);
+        }
         let definition = self
             .catalog
             .get(module_slug)
@@ -152,9 +183,11 @@ impl<'a> ModuleExecutionDispatcher<'a> {
             .dispatch_binding(ArtifactBindingDispatch {
                 release,
                 binding,
+                target: ArtifactInstallationTarget::CurrentRelease,
                 tenant_id,
                 input,
                 phase,
+                context,
             })
             .await
             .map_err(ModuleDispatchError::ArtifactHook)
@@ -169,11 +202,16 @@ impl<'a> ModuleExecutionDispatcher<'a> {
         event_type: &str,
         payload: serde_json::Value,
     ) -> Result<Vec<serde_json::Value>, ModuleDispatchError> {
+        if !valid_delivered_event_type(event_type) {
+            return Err(ModuleDispatchError::InvalidArtifactEventType(
+                event_type.to_string(),
+            ));
+        }
         let definition = self
             .catalog
             .get(module_slug)
             .ok_or_else(|| ModuleDispatchError::UnknownDefinition(module_slug.to_string()))?;
-        let ModuleDefinitionSource::Artifact { .. } = &definition.source else {
+        let ModuleDefinitionSource::Artifact { release } = &definition.source else {
             return Err(ModuleDispatchError::StaticDynamicBindingUnavailable(
                 module_slug.to_string(),
             ));
@@ -203,6 +241,7 @@ impl<'a> ModuleExecutionDispatcher<'a> {
                         "payload": payload.clone(),
                     }),
                     ExecutionPhase::Event,
+                    ArtifactBindingExecutionContext::default(),
                 )
                 .await?,
             );
@@ -221,65 +260,164 @@ impl<'a> ModuleExecutionDispatcher<'a> {
         method: ModuleHttpMethod,
         path: &str,
         body: serde_json::Value,
+        context: ArtifactBindingExecutionContext,
     ) -> Result<serde_json::Value, ModuleDispatchError> {
+        if !context.is_valid() {
+            return Err(ModuleDispatchError::InvalidArtifactExecutionContext);
+        }
         let definition = self
             .catalog
             .get(module_slug)
             .ok_or_else(|| ModuleDispatchError::UnknownDefinition(module_slug.to_string()))?;
-        let ModuleDefinitionSource::Artifact { .. } = &definition.source else {
+        let ModuleDefinitionSource::Artifact { release } = &definition.source else {
             return Err(ModuleDispatchError::StaticDynamicBindingUnavailable(
                 module_slug.to_string(),
             ));
         };
-        let binding = definition
-            .bindings
-            .iter()
-            .find(|binding| {
-                binding.kind == ModuleRuntimeBindingKind::Http
-                    && binding
-                        .http
-                        .as_ref()
-                        .is_some_and(|http| http.method == method && http.path == path)
-            })
-            .ok_or_else(|| ModuleDispatchError::ArtifactHttpRouteUnavailable {
-                module_slug: module_slug.to_string(),
-                path: path.to_string(),
-            })?;
-        let http = binding
-            .http
-            .as_ref()
-            .expect("HTTP binding was selected only when it has an HTTP contract");
-        let body_bytes = serde_json::to_vec(&body)
-            .map_err(|error| ModuleDispatchError::ArtifactHttpEnvelope(error.to_string()))?;
-        if body_bytes.len() as u64 > http.max_body_bytes {
-            return Err(ModuleDispatchError::ArtifactHttpRequestTooLarge {
-                limit: http.max_body_bytes,
-            });
-        }
-        let binding_id = binding.id.clone();
-        let output = self
-            .dispatch_artifact_binding(
-                tenant_id,
-                module_slug,
-                &binding_id,
-                serde_json::json!({
-                    "binding_id": binding_id,
-                    "method": method,
-                    "path": path,
-                    "body": body,
-                }),
-                ExecutionPhase::Http,
-            )
-            .await?;
-        let output_bytes = serde_json::to_vec(&output)
-            .map_err(|error| ModuleDispatchError::ArtifactHttpEnvelope(error.to_string()))?;
-        if output_bytes.len() as u64 > http.max_output_bytes {
-            return Err(ModuleDispatchError::ArtifactHttpResponseTooLarge {
-                limit: http.max_output_bytes,
-            });
-        }
-        Ok(output)
+        dispatch_artifact_http_binding(
+            self.artifact_executor.ok_or_else(|| {
+                ModuleDispatchError::ArtifactExecutorUnavailable(module_slug.to_string())
+            })?,
+            release,
+            &definition.bindings,
+            ArtifactInstallationTarget::CurrentRelease,
+            tenant_id,
+            method,
+            path,
+            body,
+            context,
+        )
+        .await
     }
+}
+
+/// Finds the sole admitted HTTP binding for a literal method/path pair.
+pub fn find_artifact_http_binding<'a>(
+    bindings: &'a [ModuleRuntimeBinding],
+    method: ModuleHttpMethod,
+    path: &str,
+) -> Option<&'a ModuleRuntimeBinding> {
+    bindings.iter().find(|binding| {
+        binding.kind == ModuleRuntimeBindingKind::Http
+            && binding
+                .http
+                .as_ref()
+                .is_some_and(|http| http.method == method && http.path == path)
+    })
+}
+
+/// Finds the sole admitted command binding for an exact platform binding ID.
+pub fn find_artifact_command_binding<'a>(
+    bindings: &'a [ModuleRuntimeBinding],
+    binding_id: &str,
+) -> Option<&'a ModuleRuntimeBinding> {
+    bindings.iter().find(|binding| {
+        binding.kind == ModuleRuntimeBindingKind::Command && binding.id == binding_id
+    })
+}
+
+/// Dispatches one admitted command binding through an explicit immutable
+/// installation target. The host selects the binding and actor context; an
+/// artifact cannot create a command route or select another installation.
+pub async fn dispatch_artifact_command_binding<E>(
+    executor: &E,
+    release: &ArtifactReleaseRef,
+    bindings: &[ModuleRuntimeBinding],
+    target: ArtifactInstallationTarget,
+    tenant_id: uuid::Uuid,
+    binding_id: &str,
+    input: serde_json::Value,
+    context: ArtifactBindingExecutionContext,
+) -> Result<serde_json::Value, ModuleDispatchError>
+where
+    E: ArtifactBindingExecutor + ?Sized,
+{
+    if !context.is_valid() {
+        return Err(ModuleDispatchError::InvalidArtifactExecutionContext);
+    }
+    let binding = find_artifact_command_binding(bindings, binding_id).ok_or_else(|| {
+        ModuleDispatchError::ArtifactCommandUnavailable {
+            module_slug: release.slug.clone(),
+            binding_id: binding_id.to_string(),
+        }
+    })?;
+    executor
+        .dispatch_binding(ArtifactBindingDispatch {
+            release,
+            binding,
+            target,
+            tenant_id,
+            input,
+            phase: ExecutionPhase::Manual,
+            context,
+        })
+        .await
+        .map_err(ModuleDispatchError::ArtifactHook)
+}
+
+/// Dispatches one literal admitted HTTP binding through an explicit immutable
+/// installation target. Both the generic dispatcher and platform HTTP hosts
+/// use this owner helper so JSON limits and envelope shape stay identical.
+pub async fn dispatch_artifact_http_binding<E>(
+    executor: &E,
+    release: &ArtifactReleaseRef,
+    bindings: &[ModuleRuntimeBinding],
+    target: ArtifactInstallationTarget,
+    tenant_id: uuid::Uuid,
+    method: ModuleHttpMethod,
+    path: &str,
+    body: serde_json::Value,
+    context: ArtifactBindingExecutionContext,
+) -> Result<serde_json::Value, ModuleDispatchError>
+where
+    E: ArtifactBindingExecutor + ?Sized,
+{
+    if !context.is_valid() {
+        return Err(ModuleDispatchError::InvalidArtifactExecutionContext);
+    }
+    let binding = find_artifact_http_binding(bindings, method, path).ok_or_else(|| {
+        ModuleDispatchError::ArtifactHttpRouteUnavailable {
+            module_slug: release.slug.clone(),
+            path: path.to_string(),
+        }
+    })?;
+    let http = binding
+        .http
+        .as_ref()
+        .expect("HTTP binding was selected only when it has an HTTP contract");
+    let body_bytes = serde_json::to_vec(&body)
+        .map_err(|error| ModuleDispatchError::ArtifactHttpEnvelope(error.to_string()))?;
+    if body_bytes.len() as u64 > http.max_body_bytes {
+        return Err(ModuleDispatchError::ArtifactHttpRequestTooLarge {
+            limit: http.max_body_bytes,
+        });
+    }
+    let binding_id = binding.id.clone();
+    let output = executor
+        .dispatch_binding(ArtifactBindingDispatch {
+            release,
+            binding,
+            target,
+            tenant_id,
+            input: serde_json::json!({
+                "binding_id": binding_id,
+                "method": method,
+                "path": path,
+                "body": body,
+            }),
+            phase: ExecutionPhase::Http,
+            context,
+        })
+        .await
+        .map_err(ModuleDispatchError::ArtifactHook)?;
+    let output_bytes = serde_json::to_vec(&output)
+        .map_err(|error| ModuleDispatchError::ArtifactHttpEnvelope(error.to_string()))?;
+    if output_bytes.len() as u64 > http.max_output_bytes {
+        return Err(ModuleDispatchError::ArtifactHttpResponseTooLarge {
+            limit: http.max_output_bytes,
+        });
+    }
+    Ok(output)
 }
 
 /// Narrow adapter owned by the artifact runtime integration. It must resolve an
@@ -308,6 +446,7 @@ pub trait ArtifactLifecycleExecutor: ArtifactBindingExecutor {
         self.dispatch_binding(ArtifactBindingDispatch {
             release,
             binding,
+            target: ArtifactInstallationTarget::CurrentRelease,
             tenant_id,
             input: serde_json::json!({
                 "binding_id": binding.id,
@@ -315,6 +454,7 @@ pub trait ArtifactLifecycleExecutor: ArtifactBindingExecutor {
                 "config": config,
             }),
             phase: ExecutionPhase::Lifecycle,
+            context: ArtifactBindingExecutionContext::default(),
         })
         .await
         .map(|_| ())
@@ -326,9 +466,25 @@ impl<T> ArtifactLifecycleExecutor for T where T: ArtifactBindingExecutor + ?Size
 pub struct ArtifactBindingDispatch<'a> {
     pub release: &'a ArtifactReleaseRef,
     pub binding: &'a ModuleRuntimeBinding,
+    /// Current interactive dispatch resolves the effective release. Durable
+    /// delivery workers must pin one immutable installation identity so a later
+    /// composition change cannot execute a different artifact.
+    pub target: ArtifactInstallationTarget,
     pub tenant_id: uuid::Uuid,
     pub input: serde_json::Value,
     pub phase: ExecutionPhase,
+    /// Authenticated transport identity supplied by the host, never by the
+    /// descriptor or artifact payload.
+    pub context: ArtifactBindingExecutionContext,
+}
+
+/// Selects whether a binding may use the current effective artifact release or
+/// must execute one exact immutable installation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ArtifactInstallationTarget {
+    CurrentRelease,
+    ExactInstallation { installation_id: uuid::Uuid },
 }
 
 fn lifecycle_binding_kind(phase: ModuleLifecycleHookPhase) -> ModuleRuntimeBindingKind {
@@ -372,11 +528,8 @@ fn binding_allows_phase(kind: ModuleRuntimeBindingKind, phase: ExecutionPhase) -
     )
 }
 
-fn event_topic_matches(subscription: &str, event_type: &str) -> bool {
-    subscription == event_type
-        || subscription
-            .strip_suffix(".*")
-            .is_some_and(|prefix| event_type.starts_with(&format!("{}.", prefix)))
+fn valid_delivered_event_type(value: &str) -> bool {
+    valid_event_topic(value) && !value.ends_with(".*")
 }
 
 #[derive(Debug, Error)]
@@ -398,14 +551,23 @@ pub enum ModuleDispatchError {
         binding_id: String,
         phase: ExecutionPhase,
     },
+    #[error("artifact event type `{0}` is not a valid exact platform event type")]
+    InvalidArtifactEventType(String),
     #[error("artifact module `{module_slug}` has no admitted HTTP route for `{path}")]
     ArtifactHttpRouteUnavailable { module_slug: String, path: String },
+    #[error("artifact module `{module_slug}` has no admitted command binding `{binding_id}")]
+    ArtifactCommandUnavailable {
+        module_slug: String,
+        binding_id: String,
+    },
     #[error("artifact HTTP request exceeds the declared {limit}-byte body limit")]
     ArtifactHttpRequestTooLarge { limit: u64 },
     #[error("artifact HTTP response exceeds the declared {limit}-byte output limit")]
     ArtifactHttpResponseTooLarge { limit: u64 },
     #[error("artifact HTTP JSON envelope could not be encoded: {0}")]
     ArtifactHttpEnvelope(String),
+    #[error("artifact binding execution context is invalid")]
+    InvalidArtifactExecutionContext,
     #[error("module lifecycle binding failed: {0}")]
     StaticHook(String),
 }
@@ -464,6 +626,9 @@ mod tests {
         assert!(event_topic_matches("order.*", "order.completed"));
         assert!(!event_topic_matches("order.*", "orders.completed"));
         assert!(!event_topic_matches("*", "order.completed"));
+        assert!(valid_delivered_event_type("order.completed"));
+        assert!(!valid_delivered_event_type("order.*"));
+        assert!(!valid_delivered_event_type("order..completed"));
         assert!(binding_allows_phase(
             ModuleRuntimeBindingKind::Event,
             ExecutionPhase::Event
@@ -536,6 +701,10 @@ mod tests {
                 ModuleHttpMethod::Post,
                 "status/query",
                 body.clone(),
+                ArtifactBindingExecutionContext {
+                    actor_id: Some("user-42".to_string()),
+                    trace_id: Some("trace-42".to_string()),
+                },
             )
             .await
             .expect("admitted HTTP route");
@@ -550,9 +719,34 @@ mod tests {
                     ModuleHttpMethod::Get,
                     "status/query",
                     serde_json::json!({}),
+                    ArtifactBindingExecutionContext::default(),
                 )
                 .await,
             Err(ModuleDispatchError::ArtifactHttpRouteUnavailable { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn artifact_http_dispatch_rejects_invalid_execution_identity() {
+        let catalog = ModuleDefinitionCatalog::default();
+        let executor = EchoArtifactExecutor;
+        let dispatcher = ModuleExecutionDispatcher::artifact_only(&catalog, &executor);
+
+        assert!(matches!(
+            dispatcher
+                .dispatch_artifact_http(
+                    uuid::Uuid::new_v4(),
+                    "artifact_module",
+                    ModuleHttpMethod::Post,
+                    "status/query",
+                    serde_json::json!({}),
+                    ArtifactBindingExecutionContext {
+                        actor_id: Some(String::new()),
+                        trace_id: None,
+                    },
+                )
+                .await,
+            Err(ModuleDispatchError::InvalidArtifactExecutionContext)
         ));
     }
 

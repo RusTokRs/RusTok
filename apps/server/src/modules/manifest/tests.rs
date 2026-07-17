@@ -48,10 +48,10 @@ fn write_locale_bundle(dir: &std::path::Path, locale: &str, value: &str) {
 
 #[test]
 fn module_slug_accepts_canonical_underscore_format() {
-    assert!(super::is_valid_module_slug("page_builder"));
-    assert!(super::is_valid_module_slug("ai-alloy"));
-    assert!(!super::is_valid_module_slug("PageBuilder"));
-    assert!(!super::is_valid_module_slug("page.builder"));
+    assert!(rustok_modules::is_valid_static_module_slug("page_builder"));
+    assert!(rustok_modules::is_valid_static_module_slug("ai-alloy"));
+    assert!(!rustok_modules::is_valid_static_module_slug("PageBuilder"));
+    assert!(!rustok_modules::is_valid_static_module_slug("page.builder"));
 }
 
 #[test]

@@ -153,6 +153,7 @@ mod tests {
     fn request() -> SandboxRequest {
         SandboxRequest {
             subject: SandboxSubject::ModuleArtifact {
+                installation_id: Uuid::new_v4(),
                 slug: "sample".to_string(),
                 version: "1.0.0".to_string(),
                 digest: "sha256:sample".to_string(),
@@ -175,6 +176,7 @@ mod tests {
         let mut request = request();
         request.context.tenant_id = tenant_id;
         request.subject = SandboxSubject::ModuleArtifact {
+            installation_id: Uuid::new_v4(),
             slug: "sample".to_string(),
             version: "1.0.0".to_string(),
             digest: digest.to_string(),

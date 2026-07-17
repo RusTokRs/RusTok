@@ -458,12 +458,14 @@ impl DataCapabilityConstraints {
         }
         let mut operations = std::collections::BTreeSet::new();
         if constraints.operations.iter().any(|operation| {
-            !matches!(operation.as_str(), "get" | "put" | "list") || !operations.insert(operation)
+            !matches!(operation.as_str(), "get" | "put" | "put_batch" | "list")
+                || !operations.insert(operation)
         }) {
             return Err(SandboxError::CapabilityConstraintDenied {
                 capability: grant.name.clone(),
-                reason: "data operations must be unique and limited to get, put, or list"
-                    .to_string(),
+                reason:
+                    "data operations must be unique and limited to get, put, put_batch, or list"
+                        .to_string(),
             });
         }
         Ok(constraints)
@@ -487,28 +489,32 @@ impl DataCapabilityConstraints {
                 self.validate_key(call, required_data_string(call, input, "key")?)
             }
             "put" => {
-                reject_unexpected_data_fields(
-                    call,
-                    input,
-                    &["key", "value", "expected_revision", "idempotency_key"],
-                )?;
-                if !input.contains_key("value") {
-                    return Err(data_constraint_error(call, "data put input requires value"));
-                }
-                let key = required_data_string(call, input, "key")?;
-                self.validate_key(call, key)?;
-                let idempotency_key = required_data_string(call, input, "idempotency_key")?;
-                if Uuid::parse_str(idempotency_key).is_err() {
+                self.validate_write(call, input)?;
+                Ok(())
+            }
+            "put_batch" => {
+                reject_unexpected_data_fields(call, input, &["writes"])?;
+                let writes = input
+                    .get("writes")
+                    .and_then(Value::as_array)
+                    .ok_or_else(|| data_constraint_error(call, "data writes must be an array"))?;
+                if writes.is_empty() || writes.len() > 32 {
                     return Err(data_constraint_error(
                         call,
-                        "data idempotency_key must be a UUID",
+                        "data batch must contain between 1 and 32 writes",
                     ));
                 }
-                if let Some(revision) = input.get("expected_revision") {
-                    if revision.as_u64().filter(|revision| *revision > 0).is_none() {
+                let mut keys = std::collections::BTreeSet::new();
+                let mut idempotency_keys = std::collections::BTreeSet::new();
+                for write in writes {
+                    let write = write.as_object().ok_or_else(|| {
+                        data_constraint_error(call, "data batch entry must be an object")
+                    })?;
+                    let (key, idempotency_key) = self.validate_write(call, write)?;
+                    if !keys.insert(key) || !idempotency_keys.insert(idempotency_key) {
                         return Err(data_constraint_error(
                             call,
-                            "data expected_revision must be a positive integer",
+                            "data batch keys and idempotency keys must be distinct",
                         ));
                     }
                 }
@@ -554,6 +560,39 @@ impl DataCapabilityConstraints {
             return Err(data_constraint_error(call, "data key is not allowed"));
         }
         Ok(())
+    }
+
+    fn validate_write<'a>(
+        &self,
+        call: &CapabilityCall,
+        input: &'a serde_json::Map<String, Value>,
+    ) -> SandboxResult<(&'a str, &'a str)> {
+        reject_unexpected_data_fields(
+            call,
+            input,
+            &["key", "value", "expected_revision", "idempotency_key"],
+        )?;
+        if !input.contains_key("value") {
+            return Err(data_constraint_error(call, "data put input requires value"));
+        }
+        let key = required_data_string(call, input, "key")?;
+        self.validate_key(call, key)?;
+        let idempotency_key = required_data_string(call, input, "idempotency_key")?;
+        if Uuid::parse_str(idempotency_key).is_err() {
+            return Err(data_constraint_error(
+                call,
+                "data idempotency_key must be a UUID",
+            ));
+        }
+        if let Some(revision) = input.get("expected_revision") {
+            if revision.as_u64().filter(|revision| *revision > 0).is_none() {
+                return Err(data_constraint_error(
+                    call,
+                    "data expected_revision must be a positive integer",
+                ));
+            }
+        }
+        Ok((key, idempotency_key))
     }
 }
 
@@ -1122,6 +1161,7 @@ mod tests {
         CapabilityCall {
             execution_id: Uuid::nil(),
             subject: SandboxSubject::ModuleArtifact {
+                installation_id: Uuid::new_v4(),
                 slug: "sample_module".to_string(),
                 version: "1.0.0".to_string(),
                 digest: "sha256:sample".to_string(),
@@ -1200,7 +1240,7 @@ mod tests {
             name: CapabilityName::new("platform.data").expect("capability name"),
             constraints: json!({
                 "key_prefixes": ["state/"],
-                "operations": ["get", "put", "list"]
+                "operations": ["get", "put", "put_batch", "list"]
             }),
         };
         let constraints =
@@ -1221,6 +1261,32 @@ mod tests {
         assert!(constraints.validate(&data_call).is_err());
         data_call.input = json!({ "prefix": "state/", "table": "module_artifact_data" });
         data_call.operation = "list".to_string();
+        assert!(constraints.validate(&data_call).is_err());
+
+        data_call.operation = "put_batch".to_string();
+        data_call.input = json!({
+            "writes": [
+                {
+                    "key": "state/one",
+                    "value": 1,
+                    "idempotency_key": Uuid::new_v4().to_string()
+                },
+                {
+                    "key": "state/two",
+                    "value": 2,
+                    "idempotency_key": Uuid::new_v4().to_string()
+                }
+            ]
+        });
+        assert!(constraints.validate(&data_call).is_ok());
+
+        data_call.input = json!({
+            "writes": [{
+                "key": "other/one",
+                "value": 1,
+                "idempotency_key": Uuid::new_v4().to_string()
+            }]
+        });
         assert!(constraints.validate(&data_call).is_err());
     }
 

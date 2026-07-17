@@ -10,7 +10,8 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 use rustok_sandbox::{
-    RhaiBindingOutput, SandboxContext, SandboxOutcome, SandboxPolicy, SandboxRuntime,
+    ExecutionPhase, RhaiBindingOutput, SandboxContext, SandboxOutcome, SandboxPolicy,
+    SandboxRuntime,
 };
 
 use crate::{
@@ -297,6 +298,25 @@ pub trait ArtifactInstallationResolver: Send + Sync {
         release: &ArtifactReleaseRef,
         tenant_id: uuid::Uuid,
     ) -> Result<InstalledModuleArtifact, String>;
+
+    /// Resolves the immutable installation carried by a durable work item.
+    /// Implementations may override this with a direct installation lookup.
+    /// The default is deliberately fail-closed: it permits execution only when
+    /// the current effective selection still names the requested installation.
+    async fn resolve_exact(
+        &self,
+        installation_id: uuid::Uuid,
+        release: &ArtifactReleaseRef,
+        tenant_id: uuid::Uuid,
+    ) -> Result<InstalledModuleArtifact, String> {
+        let artifact = self.resolve(release, tenant_id).await?;
+        if artifact.installation_id != installation_id {
+            return Err(
+                "requested artifact installation is no longer the active tenant selection".into(),
+            );
+        }
+        Ok(artifact)
+    }
 }
 
 /// Supplies the effective capability grants and limits for the selected
@@ -330,6 +350,22 @@ where
     }
 }
 
+fn effective_binding_policy(
+    binding: &ModuleRuntimeBinding,
+    phase: ExecutionPhase,
+    mut policy: SandboxPolicy,
+) -> Result<SandboxPolicy, String> {
+    if phase == ExecutionPhase::Http {
+        let timeout_ms = binding
+            .http
+            .as_ref()
+            .ok_or_else(|| "HTTP dispatch requires an admitted HTTP binding".to_string())?
+            .timeout_ms;
+        policy.limits.wall_clock_ms = policy.limits.wall_clock_ms.min(timeout_ms);
+    }
+    Ok(policy)
+}
+
 #[async_trait]
 impl<B, I, P> ArtifactBindingExecutor for ArtifactRuntimeLifecycleExecutor<B, I, P>
 where
@@ -341,13 +377,30 @@ where
         &self,
         dispatch: ArtifactBindingDispatch<'_>,
     ) -> Result<Value, String> {
-        let artifact = self
-            .installations
-            .resolve(dispatch.release, dispatch.tenant_id)
-            .await?;
-        let policy = self.policies.resolve(&artifact, dispatch.tenant_id).await?;
+        if !dispatch.context.is_valid() {
+            return Err("artifact binding execution context is invalid".to_string());
+        }
+        let artifact = match dispatch.target {
+            crate::ArtifactInstallationTarget::CurrentRelease => {
+                self.installations
+                    .resolve(dispatch.release, dispatch.tenant_id)
+                    .await?
+            }
+            crate::ArtifactInstallationTarget::ExactInstallation { installation_id } => {
+                self.installations
+                    .resolve_exact(installation_id, dispatch.release, dispatch.tenant_id)
+                    .await?
+            }
+        };
+        let policy = effective_binding_policy(
+            dispatch.binding,
+            dispatch.phase,
+            self.policies.resolve(&artifact, dispatch.tenant_id).await?,
+        )?;
         let mut context = SandboxContext::new(dispatch.phase);
         context.tenant_id = Some(dispatch.tenant_id);
+        context.actor_id = dispatch.context.actor_id.clone();
+        context.trace_id = dispatch.context.trace_id.clone();
         self.runtime
             .execute_binding(&artifact, dispatch.binding, context, dispatch.input, policy)
             .await
@@ -399,17 +452,18 @@ mod tests {
 
     use rustok_sandbox::{
         CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutionMetrics,
-        ExecutionPhase, ExecutorRegistry, SandboxContext, SandboxExecutor, SandboxExecutorKind,
-        SandboxHost, SandboxOutcome, SandboxRequest, SandboxResult,
+        ExecutionPhase, ExecutorRegistry, RhaiBindingInput, SandboxContext, SandboxError,
+        SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxRequest,
+        SandboxResult,
     };
 
     use super::*;
     use crate::{
         canonical_schema_digest, ArtifactModuleKind, ArtifactPayloadKind,
         ArtifactPermissionDescriptor, ArtifactReleaseRef, ArtifactSchemaDocument,
-        InMemoryArtifactBlobStore, ModuleArtifactPackage, ModuleDependencyLockGraph,
-        ModuleInstallationScope, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
-        OciArtifactReference,
+        InMemoryArtifactBlobStore, ModuleArtifactDescriptor, ModuleArtifactPackage,
+        ModuleDependencyLockGraph, ModuleInstallationScope, ModuleRuntimeBinding,
+        ModuleRuntimeBindingKind, OciArtifactReference,
     };
 
     struct DenyBroker;
@@ -552,6 +606,45 @@ mod tests {
             capability_grant_revision: 1,
             installed_at: Utc::now(),
         }
+    }
+
+    #[test]
+    fn http_binding_clamps_the_effective_sandbox_wall_clock_limit() {
+        let binding = ModuleRuntimeBinding {
+            id: "http_status".to_string(),
+            kind: ModuleRuntimeBindingKind::Http,
+            entrypoint: "status".to_string(),
+            input_schema_digest: format!("sha256:{}", "a".repeat(64)),
+            output_schema_digest: format!("sha256:{}", "b".repeat(64)),
+            permission: "sample_module.http.status.read".to_string(),
+            idempotency: crate::ModuleBindingIdempotency::Required,
+            limit_profile: "http_json".to_string(),
+            capabilities: Vec::new(),
+            event_topics: Vec::new(),
+            schedule: None,
+            http: Some(crate::ModuleHttpBinding {
+                method: crate::ModuleHttpMethod::Get,
+                path: "status".to_string(),
+                request_media_type: "application/json".to_string(),
+                response_media_type: "application/json".to_string(),
+                max_body_bytes: 1_024,
+                max_output_bytes: 1_024,
+                timeout_ms: 500,
+                streaming: crate::ModuleHttpStreamingPolicy::Forbidden,
+            }),
+        };
+        let mut policy = SandboxPolicy::default();
+        policy.limits.wall_clock_ms = 2_000;
+
+        let effective = effective_binding_policy(&binding, ExecutionPhase::Http, policy)
+            .expect("HTTP binding has a timeout");
+        assert_eq!(effective.limits.wall_clock_ms, 500);
+
+        let mut stricter_policy = SandboxPolicy::default();
+        stricter_policy.limits.wall_clock_ms = 100;
+        let effective = effective_binding_policy(&binding, ExecutionPhase::Http, stricter_policy)
+            .expect("HTTP binding has a timeout");
+        assert_eq!(effective.limits.wall_clock_ms, 100);
     }
 
     #[tokio::test]

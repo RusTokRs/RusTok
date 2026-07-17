@@ -30,6 +30,7 @@ mod tests {
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
         QueryFilter, QueryOrder, Set, Statement,
     };
+    use sha2::Digest;
 
     const SAMPLE_DEFAULT_LOCALE: &str = "en";
     const SAMPLE_MODULE_NAME: &str = "Blog";
@@ -167,6 +168,62 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn artifact_bundle_validation_rejects_oversized_bundle_before_parsing() {
+        let db = setup_registry_metadata_db().await;
+        let request = sample_publish_request_model();
+        let artifact = RegistryArtifactUpload {
+            content_type: "application/json".to_string(),
+            bytes: bytes::Bytes::from(vec![b'x'; MODULE_PUBLISH_ARTIFACT_MAX_BYTES + 1]),
+        };
+
+        let validation = validate_registry_artifact_bundle(&db, &request, &artifact)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            validation.errors,
+            vec![format!(
+                "Artifact bundle exceeds the {} byte validation limit.",
+                MODULE_PUBLISH_ARTIFACT_MAX_BYTES
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn artifact_bundle_validation_keeps_unsupported_type_content_free() {
+        let db = setup_registry_metadata_db().await;
+        let request = sample_publish_request_model();
+        insert_publish_request_translation(
+            &db,
+            &request.id,
+            SAMPLE_DEFAULT_LOCALE,
+            SAMPLE_MODULE_NAME,
+            SAMPLE_MODULE_DESCRIPTION,
+        )
+        .await;
+        let artifact = RegistryArtifactUpload {
+            content_type: "application/json".to_string(),
+            bytes: bytes::Bytes::from(sample_publish_artifact_json("blog", true).replace(
+                rustok_modules::MODULE_PUBLISH_BUNDLE_TYPE,
+                "untrusted-artifact-type",
+            )),
+        };
+
+        let validation = validate_registry_artifact_bundle(&db, &request, &artifact)
+            .await
+            .unwrap();
+
+        assert!(validation
+            .errors
+            .iter()
+            .any(|error| error == "Artifact bundle type is unsupported."));
+        assert!(validation
+            .errors
+            .iter()
+            .all(|error| !error.contains("untrusted-artifact-type")));
+    }
+
     #[test]
     fn rejected_publish_request_can_retry_after_validation_failure() {
         assert!(rejected_publish_request_can_retry(
@@ -204,14 +261,6 @@ mod tests {
                 .expect("non-empty reason should normalize");
 
         assert_eq!(reason, "Needs manual review");
-    }
-
-    #[test]
-    fn validation_retry_delay_schedule_uses_backoff() {
-        assert_eq!(validation_retry_delay_seconds(1), Some(1));
-        assert_eq!(validation_retry_delay_seconds(2), Some(3));
-        assert_eq!(validation_retry_delay_seconds(3), Some(5));
-        assert_eq!(validation_retry_delay_seconds(4), None);
     }
 
     #[test]
@@ -364,17 +413,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_publish_validation_job_materializes_follow_up_validation_stages() {
+    async fn validate_publish_request_recovers_a_stale_running_job() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        let storage = temp_storage_service();
-        let request = insert_publish_request_with_artifact(
-            &db,
-            &storage,
-            RegistryPublishRequestStatus::Submitted,
-            sample_publish_artifact_json("blog", true),
-        )
-        .await;
-        let service = RegistryGovernanceService::new(db.clone()).with_storage(storage);
+        let request = insert_publish_request(&db, RegistryPublishRequestStatus::Validating).await;
+        insert_stale_running_validation_job(&db, &request).await;
+        let service = RegistryGovernanceService::new(db.clone());
         let actor = request_actor_label(&request);
         let authority = authority_from_actor(&actor);
 
@@ -382,25 +425,26 @@ mod tests {
             .validate_publish_request(&request.id, &authority)
             .await
             .unwrap();
-        let job_id = queued.validation_job_id.expect("validation job id");
-        let validated = service
-            .run_publish_validation_job(&job_id, &actor)
-            .await
-            .unwrap();
 
-        assert_eq!(validated.status, RegistryPublishRequestStatus::Approved);
-
-        let stages = RegistryValidationStageEntity::find()
-            .filter(registry_validation_stage::Column::RequestId.eq(request.id))
-            .order_by_asc(registry_validation_stage::Column::StageKey)
+        assert!(queued.queued);
+        let jobs = RegistryValidationJobEntity::find()
+            .filter(registry_validation_job::Column::RequestId.eq(request.id))
+            .order_by_asc(registry_validation_job::Column::AttemptNumber)
             .all(&db)
             .await
             .unwrap();
-        assert_eq!(stages.len(), 3);
-        assert!(stages
-            .iter()
-            .all(|stage| stage.status == RegistryValidationStageStatus::Queued));
-        assert!(stages.iter().all(|stage| stage.attempt_number == 1));
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(jobs[0].status, RegistryValidationJobStatus::Failed);
+        assert_eq!(
+            jobs[0].last_error.as_deref(),
+            Some("validation_worker_lease_expired")
+        );
+        assert_eq!(jobs[1].status, RegistryValidationJobStatus::Queued);
+        assert_eq!(jobs[1].attempt_number, 2);
+        assert_eq!(
+            jobs[1].queue_reason,
+            "requeued_after_validation_lease_expired"
+        );
     }
 
     #[tokio::test]
@@ -682,6 +726,7 @@ mod tests {
             trust_level: "core".to_string(),
             license: "MIT".to_string(),
             entry_type: Some("backend".to_string()),
+            artifact_origin: "platform_built".to_string(),
             marketplace: serde_json::json!({
                 "category": "content",
                 "tags": ["blog", "content"]
@@ -772,17 +817,15 @@ mod tests {
         let mut request = insert_publish_request(db, status).await;
         let artifact_storage_key =
             registry_artifact_storage_key(&request.id, &request.slug, &request.version);
+        let artifact_bytes = bytes::Bytes::from(artifact_json.into_bytes());
+        let artifact_checksum_sha256 = hex::encode(sha2::Sha256::digest(&artifact_bytes));
         let uploaded = storage
-            .store(
-                &artifact_storage_key,
-                bytes::Bytes::from(artifact_json.into_bytes()),
-                "application/json",
-            )
+            .store(&artifact_storage_key, artifact_bytes, "application/json")
             .await
             .unwrap();
         let mut active: RegistryPublishRequestActiveModel = request.clone().into();
         active.artifact_storage_key = Set(Some(uploaded.path));
-        active.artifact_checksum_sha256 = Set(Some("checksum".to_string()));
+        active.artifact_checksum_sha256 = Set(Some(artifact_checksum_sha256));
         active.artifact_size = Set(Some(uploaded.size as i64));
         active.artifact_content_type = Set(Some("application/json".to_string()));
         active.updated_at = Set(Utc::now());
@@ -809,6 +852,30 @@ mod tests {
             last_error: Set(Some("Validation failed".to_string())),
             created_at: Set(now),
             updated_at: Set(now),
+        };
+        active.insert(db).await.unwrap();
+    }
+
+    async fn insert_stale_running_validation_job(
+        db: &DatabaseConnection,
+        request: &registry_publish_request::Model,
+    ) {
+        let now = Utc::now();
+        let started_at = now - Duration::minutes(16);
+        let active = RegistryValidationJobActiveModel {
+            id: Set(format!("rvj_{}", uuid::Uuid::new_v4().simple())),
+            request_id: Set(request.id.clone()),
+            slug: Set(request.slug.clone()),
+            version: Set(request.version.clone()),
+            status: Set(RegistryValidationJobStatus::Running),
+            triggered_by: Set(request_actor_label(request)),
+            queue_reason: Set("initial_validation".to_string()),
+            attempt_number: Set(1),
+            started_at: Set(Some(started_at)),
+            finished_at: Set(None),
+            last_error: Set(None),
+            created_at: Set(started_at),
+            updated_at: Set(started_at),
         };
         active.insert(db).await.unwrap();
     }
@@ -1080,7 +1147,7 @@ version = "0.1.0"
 
         serde_json::json!({
             "schema_version": REGISTRY_MUTATION_SCHEMA_VERSION,
-            "artifact_type": REGISTRY_ARTIFACT_BUNDLE_TYPE,
+            "artifact_type": rustok_modules::MODULE_PUBLISH_BUNDLE_TYPE,
             "module": {
                 "slug": slug,
                 "version": "0.1.0",

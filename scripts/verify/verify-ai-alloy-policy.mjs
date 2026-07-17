@@ -33,6 +33,8 @@ const source = read(registry.support_adapter.source);
 hasAll(source, [
   'ALLOY_CODE_TASK_SLUG: &str = "alloy_code"',
   'ALLOY_CODE_TOOL_NAME: &str = "direct.alloy.run_script"',
+  'pub enum AlloyOperation',
+  'pub const fn slug(self)',
   'register_alloy_ai_vertical_handlers',
   'validate_runtime_payload',
   'AlloyScriptExecutionPolicy',
@@ -58,6 +60,16 @@ hasAll(source, [
   'slug: "alloy_change_review"',
   '!parsed.is_object()'
 ], 'support adapter source');
+
+const directSource = read('crates/rustok-ai/src/direct.rs');
+hasAll(directSource, [
+  'use rustok_ai_alloy::AlloyOperation;',
+  'AlloyOperation::ListScripts',
+  'AlloyOperation::GetScript',
+  'AlloyOperation::ValidateScript',
+  'AlloyOperation::RunScript',
+], 'Alloy direct runtime dispatch');
+if (directSource.includes('AiAlloyOperation')) fail('Alloy direct runtime must consume the adapter operation catalog');
 
 const runtimeSource = read('crates/rustok-ai/src/service.rs');
 hasAll(runtimeSource, [

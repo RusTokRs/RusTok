@@ -162,6 +162,7 @@ mod tests {
     fn request() -> SandboxRequest {
         SandboxRequest {
             subject: SandboxSubject::ModuleArtifact {
+                installation_id: uuid::Uuid::new_v4(),
                 slug: "sample_module".to_string(),
                 version: "1.0.0".to_string(),
                 digest: "sha256:sample".to_string(),

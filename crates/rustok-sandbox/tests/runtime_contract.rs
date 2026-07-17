@@ -470,6 +470,7 @@ async fn alloy_draft_and_module_artifact_share_execution_contract() {
 
     let mut installed = request(true);
     installed.subject = SandboxSubject::ModuleArtifact {
+        installation_id: Uuid::new_v4(),
         slug: "example".to_string(),
         version: "1.0.0".to_string(),
         digest: "sha256:release".to_string(),

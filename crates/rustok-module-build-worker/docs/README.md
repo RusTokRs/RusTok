@@ -7,7 +7,12 @@ The worker requires a mutually authenticated listener configured with the
 - `RUSTOK_MODULE_BUILD_SERVER_CERT_PEM`;
 - `RUSTOK_MODULE_BUILD_SERVER_KEY_PEM`;
 - `RUSTOK_MODULE_BUILD_CLIENT_CA_PEM`;
-- `RUSTOK_MODULE_BUILD_RUNNER`.
+- `RUSTOK_MODULE_BUILD_JOB_LAUNCHER` (an absolute non-symlink,
+  deployment-owned executable that launches exactly one OCI build job).
+- `RUSTOK_MODULE_BUILD_JOB_RUNTIME` (`gvisor` or `kata`; no permissive
+  runtime is accepted).
+- `RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST` (the exact `sha256:<hex>` OCI image
+  identity permitted for every launched build job).
 - `RUSTOK_MODULE_BUILD_WORKDIR` (an existing absolute image-owned directory).
 - `RUSTOK_MODULE_BUILD_SOURCE_ROOT` (an existing absolute read-only CAS archive mount).
 - `RUSTOK_MODULE_BUILD_CARGO` (an absolute non-symlink Cargo executable owned by the image).
@@ -34,6 +39,15 @@ valid for the complete publication/signing window, is capped at 15 minutes, and
 is kept only in worker memory. Broker stdout is limited to 16 KiB; stderr is
 discarded. The broker runs with a cleared environment and must use its own
 deployment-managed workload identity or local provider channel.
+
+`scripts/verify/verify-module-build-worker-isolation.mjs` guards this boundary
+in source: the worker cannot add tenant-database, platform-storage, or general
+secret dependencies, and the untrusted OCI job launcher must remain
+environment-cleared without database or credential forwarding. It also prevents `apps/server` from
+adding a module-build worker or delivery path and requires the separate
+dispatcher to use the mTLS remote worker after readiness verification. The
+transport readiness response must use the worker-owned hardened OCI-job probe,
+not an unconditional success.
 
 Cosign receives the verified, digest-pinned artifact reference only after OCI
 publication. Its KMS-provider identity is deployment-owned and must be scoped
@@ -66,22 +80,39 @@ are deployment-owned enforcement points, not source-controlled configuration.
 Optional listener limits are `RUSTOK_MODULE_BUILD_REQUEST_TIMEOUT_MS`,
 `RUSTOK_MODULE_BUILD_CONCURRENCY_LIMIT`, and
 `RUSTOK_MODULE_BUILD_MAX_MESSAGE_SIZE` (at most 1 MiB). Startup fails if the
-mounted runner, Cargo executable/cache, or `wasm-tools` executable is absent or
-invalid, or the mTLS configuration is incomplete. There is no plaintext or
-server-local fallback.
+mounted OCI job launcher, Cargo executable/cache, or `wasm-tools` executable is
+absent or invalid, if the hardened OCI runtime is not explicitly selected, or
+if the mTLS configuration is incomplete. There is no plaintext,
+permissive-runtime, or server-local fallback.
 
-The fixed runner receives canonical request JSON on standard input and must
-write exactly one canonical `ModuleBuildResult` JSON value to standard output.
-It is an image-owned entrypoint, not request-selected input. The worker clears
-the runner environment and supplies only request-scoped source/output/target/
-home paths, the fixed `RUSTOK_MODULE_BUILD_CARGO` executable, a verified
-`CARGO_HOME`, and `CARGO_NET_OFFLINE=true`. The runner must invoke that fixed
-Cargo path and must not clear or override offline mode. Cargo homes containing
-config or credential files are rejected. The worker uses a fixed image-owned
-workdir, caps aggregate stdout/stderr by the request output limit while reading
-it, derives execution timeout from both deployment and request limits, kills
-the runner on timeout, and validates the terminal result against the immutable
-request before it crosses gRPC. The runner path cannot be a symlink.
+The fixed OCI job launcher receives canonical request JSON on standard input
+and must launch one job with the supplied `RUSTOK_MODULE_BUILD_OCI_RUNTIME` and
+digest-pinned `RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST`. It also receives
+`RUSTOK_MODULE_BUILD_REQUEST_DIGEST`: a domain-separated SHA-256 digest of the
+exact request JSON bytes on standard input.
+The job returns exactly one canonical `ModuleBuildResult` JSON value on the
+launcher standard output. The launcher is an image-owned entrypoint, not
+request-selected input. The worker clears its environment and supplies only
+request-scoped source/output/target/home paths, the fixed
+`RUSTOK_MODULE_BUILD_CARGO` executable, a verified `CARGO_HOME`, and
+`CARGO_NET_OFFLINE=true`. The launched job must invoke that fixed Cargo path and
+must not clear or override offline mode. Cargo homes containing config or
+credential files are rejected. The worker uses a fixed image-owned workdir,
+caps aggregate stdout/stderr by the request output limit while reading it,
+derives execution timeout from both deployment and request limits, kills the
+launcher on timeout, and validates the terminal result against the immutable
+request before it crosses gRPC. The launcher path cannot be a symlink.
+
+Before the worker accepts any terminal result, the launched job must write the
+regular non-symlink `oci-job-receipt.json` file in its output directory. Its
+bounded JSON object contains `protocol_version: 2`, `request_id`,
+`source_digest`, `attempt`, `dependency_lock_digest`, `toolchain_digest`,
+`wit_digest`, `request_digest`, `runtime`, `image_digest`, and a bounded opaque
+`job_id`. The worker requires those values to equal the immutable request, its
+exact canonical request JSON, and its fixed
+gVisor/Kata and image-digest configuration; a missing, oversized, symlinked,
+malformed, or mismatched receipt is a transport failure and is never accepted
+as build evidence.
 
 For a successful result, the runner must also write its only executable payload
 to `RUSTOK_MODULE_BUILD_OUTPUT_DIR/component.wasm`. The worker rejects a
@@ -117,9 +148,13 @@ SBOM must be bounded CycloneDX JSON with a metadata component. Provenance must
 be a bounded SLSA in-toto Statement whose subject carries the component SHA-256
 and whose `predicate.buildDefinition.externalParameters.rustok` object binds
 the immutable source, dependency-lock, toolchain, and WIT digests plus exact
-independently versioned author SDK and template inputs. This checks
-production evidence before the worker publishes OCI referrers and signs the
-artifact; admission trust policy remains a separate stage.
+independently versioned author SDK and template inputs, expected module
+slug/version, runtime ABI, build attempt, and exact ordered validation-profile
+identities and outcomes. A successful JSON result must report every requested
+profile as `passed`; `validation_failed` must identify an ordered requested
+profile with outcome `failed`. This checks production evidence before the
+worker publishes OCI referrers and signs the artifact; admission trust policy
+remains a separate stage.
 
 For v1, source reference must exactly be `cas://sha256/<hex>` and its matching
 `<hex>.tar` file must exist in `RUSTOK_MODULE_BUILD_SOURCE_ROOT`. The worker
@@ -150,7 +185,7 @@ must still run `cargo metadata --locked` after controlled dependency
 materialization to produce resolved-graph evidence; this preflight does not
 replace that pipeline stage.
 
-The worker now performs that metadata step itself before the fixed runner. It
+The worker now performs that metadata step itself before the fixed OCI job. It
 clears Cargo's environment, uses only the image-owned Cargo executable and
 deployment-owned cache, forces `--locked --offline`, caps combined metadata
 stdout/stderr with the request output limit, applies the request deadline, and
@@ -166,12 +201,13 @@ configuration, a receipt mismatch, or endpoint denial becomes
 with its own network namespace and allowlist proxy; this worker never broadens
 its own egress.
 
-Production deployment supplies the runner and `wasm-tools` in an unprivileged
-OCI image through the absolute, regular, non-symlink
-`RUSTOK_MODULE_BUILD_RUNNER` and `RUSTOK_MODULE_BUILD_WASM_TOOLS` paths. It
-also provides the deployment-owned `RUSTOK_MODULE_BUILD_CARGO` and
-`RUSTOK_MODULE_BUILD_CARGO_HOME` paths. The worker uses ephemeral
-source/target/cache volumes, no host mounts or container socket, and the
-resource/network controls specified in the module control-plane plan. The
-runner pipeline still needs evidence generation tools, signature publication,
-and admission trust stages.
+Production deployment supplies the OCI job launcher and `wasm-tools` in an
+unprivileged OCI image through the absolute, regular, non-symlink
+`RUSTOK_MODULE_BUILD_JOB_LAUNCHER` and `RUSTOK_MODULE_BUILD_WASM_TOOLS` paths.
+The launcher must create an ephemeral OCI job with the selected gVisor or Kata
+runtime, no host mounts or container socket, request-scoped source/target/cache
+volumes, and the resource/network controls specified in the module
+control-plane plan. It also provides the deployment-owned
+`RUSTOK_MODULE_BUILD_CARGO` and `RUSTOK_MODULE_BUILD_CARGO_HOME` paths. The
+job pipeline still needs evidence generation tools, signature publication, and
+admission trust stages.

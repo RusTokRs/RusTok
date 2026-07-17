@@ -12,6 +12,7 @@ or an Alloy transport implementation.
 - Define code-agent roles (`planner`, `implementer`, `reviewer`, `verifier`)
   and the owner-owned `alloy_change_review` workflow.
 - Define the allowed Alloy script operations and payload shape.
+- Own the typed `AlloyOperation` catalog consumed by the AI runtime transport.
 - Validate the optional runtime payload before the orchestrator executes the
   registered direct handler.
 

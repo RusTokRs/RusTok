@@ -5,7 +5,7 @@ use rustok_api::{
     ArtifactPermissionRegistrationPort, ArtifactPermissionRegistrationRequest,
     ArtifactPermissionScope, PortError,
 };
-use sea_orm::{DatabaseConnection, DbBackend, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 
 /// RBAC-owned durable adapter for admitted artifact permission vocabulary.
 ///
