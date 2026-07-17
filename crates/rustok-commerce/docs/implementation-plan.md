@@ -16,6 +16,7 @@ Rules:
   contradict this plan.
 - No FBA or FFA status is promoted from source inspection alone.
 - Newly discovered work is recorded here before or with implementation.
+- Legacy migrations must not invent actor, locale, provider, or financial facts.
 
 `rustok-commerce` owns cross-domain ecommerce orchestration. Product, cart,
 customer, region, pricing, inventory, order, payment, fulfillment, tax, promotion,
@@ -36,9 +37,9 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - Marketplace seller FBA: `in_progress`.
 - Marketplace listing FFA: `not_started`.
 - Marketplace listing FBA: `in_progress`.
-- Marketplace production promotion gate: `closed` until compiled contracts,
-  clean/upgraded migrations, tenant isolation, contention, restart, mounted
-  transports, remote profiles, and financial reconciliation evidence are retained.
+- Marketplace production gate: `closed` until compiled contracts, clean/upgraded
+  migrations, tenant isolation, contention, restart, mounted transports, remote
+  profiles, and financial reconciliation evidence are retained.
 
 ## FBA/FFA architecture invariants
 
@@ -47,16 +48,16 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - [x] Use typed FBA ports rather than foreign entities or cross-module DB access.
 - [x] Carry tenant, actor, effective locale, channel, correlation, deadline, and
   idempotency context across owner calls.
-- [x] Keep in-process providers behind the same contracts expected by remote
-  adapters.
+- [x] Keep in-process providers behind the same contracts expected by remote adapters.
 - [x] Build FFA as module-owned core/model/transport/i18n/thin-UI packages; hosts only
   compose them.
 - [x] Require explicit native/GraphQL transport selection; silent fallback is
   forbidden unless explicitly contracted and verified.
-- [x] Use `core_only -> core_transport -> core_transport_ui` as the structural
-  sequence.
+- [x] Use `core_only -> core_transport -> core_transport_ui`.
 - [x] Keep provider raw payloads, signatures, SQL errors, SDK errors, and KYC raw
   payloads out of owner persistence and public errors.
+- [x] Preserve unknown historical attribution as typed unknown provenance rather than
+  sentinel UUIDs or guessed locales.
 - [ ] Retain compiled remote-profile evidence before FBA `transport_verified`.
 - [ ] Retain mounted native/GraphQL parity before FFA `phase_b_ready`.
 
@@ -94,14 +95,13 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 ### Naming and composition
 
 - [x] Use mandatory `rustok-marketplace-*` crate names and `marketplace_*` slugs.
-- [x] Publish `rustok-marketplace` as a composition/orchestration root with no seller,
-  listing, allocation, commission, ledger, or payout tables.
+- [x] Publish `rustok-marketplace` as a composition/orchestration root with no owner
+  tables.
 - [x] Publish `rustok-marketplace-seller` and `rustok-marketplace-listing` as owner
   modules.
 - [x] Keep Marketplace modules opt-in and outside default module/server sets.
-- [x] Keep catalog in product, prices in pricing, stock in inventory, customer order
-  lifecycle in order, payment/refund state in payment, and generic orchestration in
-  commerce.
+- [x] Keep catalog, prices, stock, orders, payments, and generic orchestration in their
+  existing owner modules.
 - [ ] Create future owners as `rustok-marketplace-commission`,
   `rustok-marketplace-ledger`, and `rustok-marketplace-payout`.
 
@@ -120,32 +120,29 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - [x] Own seller identity, legal profile, onboarding/lifecycle, memberships, roles,
   and seller policy.
 - [x] Keep platform RBAC separate from seller membership policy.
-- [x] Keep `marketplace_sellers` language-agnostic and localized `display_name` in
-  normalized `marketplace_seller_translations`.
-- [x] Enforce `(tenant_id, seller_id, locale)`, normalized locale tags, and
+- [x] Keep base seller rows language-agnostic and localized `display_name` in
+  normalized translation rows.
+- [x] Enforce tenant/seller/locale identity, normalized locale tags, and
   `VARCHAR(32)` storage.
 - [x] Use exact effective locale from `PortContext`; owner-side fallback is forbidden.
 - [x] Return `resolved_locale` through FBA and FFA projections.
 - [x] Create seller, translation, and initial owner membership atomically.
 - [x] Persist durable actor-bound command receipts and reject idempotency conflicts.
 - [x] Use SQL `ON CONFLICT` for concurrent translation upsert.
-- [x] Route all seller FBA writes through the receipt executor; non-receipted write
-  bypasses are removed.
+- [x] Route all seller FBA writes through the receipt executor.
 
 ### Seller FFA completed
 
 - [x] Publish module-owned seller admin core/model/transport/i18n/Leptos package.
-- [x] Implement native and GraphQL source workflows over the same typed ports and
-  command envelope.
+- [x] Implement native and GraphQL source workflows over the same ports/envelope.
 - [x] Use canonical request effective locale and return `resolved_locale`.
-- [x] Preserve idempotency key for explicit retries and forbid implicit transport
-  fallback.
+- [x] Preserve idempotency key for retries and forbid implicit transport fallback.
 
 ### Seller remaining
 
 - [ ] Replace mutable onboarding/suspension prose with immutable locale-tagged seller
   lifecycle/moderation events and bounded timeline reads.
-- [ ] Backfill/remove mutable compatibility snapshots after complete event coverage.
+- [ ] Backfill/remove seller compatibility snapshots without fabricating attribution.
 - [ ] Publish seller events through the transactional outbox.
 - [ ] Add normalized verification facts and KYC provider SPI without raw payloads.
 - [ ] Compile seller/core/GraphQL/admin packages, apply migrations, and execute locale,
@@ -163,30 +160,31 @@ the explicit `rustok-marketplace-*` family and must never be folded into
   rules.
 - [x] Resolve seller/product facts through seller and product FBA ports.
 - [x] Persist durable listing command receipts and normalized result snapshots.
-- [x] Persist append-only `marketplace_listing_events` with actor, effective locale,
-  typed event kind, metadata, and bounded newest-first timeline reads.
-- [x] Route create, terms update, submit, review, publish, suspend, reactivate, and
-  archive through atomic owner state/terms + event + receipt executors.
+- [x] Persist append-only listing events with typed provenance and bounded newest-first
+  timeline reads.
+- [x] Route all eight listing commands through atomic owner state/terms + event +
+  receipt executors.
 - [x] Check completed receipt replay before provider reads for create, publish, and
   reactivate, then re-check admission after provider preflight.
-- [x] Include effective locale in every listing command identity.
+- [x] Require actor/effective locale for command events.
 - [x] Keep `MarketplaceListingService` read-only; direct write bypasses are removed.
+- [x] Import legacy approval/suspension notes as `legacy_snapshot` events with null
+  actor/locale and source-column metadata.
+- [x] Remove mutable `approval_note` and `suspension_reason` from final entity, DTO,
+  write paths, and post-cutover schema.
 - [x] Register listing in modules, distribution, and server as opt-in backend owner.
 
 ### Listing remaining
 
-- [ ] Define a truthful legacy backfill strategy for `approval_note` and
-  `suspension_reason` without fabricating actor or locale facts.
-- [ ] Backfill immutable events and drop compatibility columns only after the legacy
-  attribution contract is explicit and migration evidence is retained.
-- [ ] Publish listing events through transactional outbox ownership.
+- [ ] Publish listing events through transactional outbox ownership with versioned
+  payload contracts.
 - [ ] Add product matching/approval before automated EAN/GTIN matching,
   deduplication, or buy-box ranking.
 - [ ] Publish `rustok-marketplace-listing-admin` using the FFA
   core/model/transport/i18n/Leptos structure.
-- [ ] Compile listing/root/provider contracts and execute migrations, replay,
-  provider-preflight races, locale, tenant, event atomicity, contention, rollback,
-  restart, and mounted transport evidence.
+- [ ] Compile listing/root/provider contracts and execute clean/upgraded migrations,
+  replay, provider-preflight races, locale/provenance constraints, tenant isolation,
+  event atomicity, contention, rollback, restart, and mounted transport evidence.
 
 ### Marketplace order allocation and finance
 
@@ -228,7 +226,7 @@ Source inspection is not execution evidence.
 - [ ] `cargo fmt --all -- --check`
 - [ ] `npm run verify:ecommerce:fba`
 - [ ] `npm run verify:marketplace`
-- [ ] `node scripts/verify/verify-marketplace-listing-lifecycle-events.mjs`
+- [ ] `node scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate payment`
 - [ ] `cargo xtask module validate marketplace`
@@ -245,13 +243,15 @@ Source inspection is not execution evidence.
 - [ ] `cargo check -p rustok-marketplace-listing --lib`
 - [ ] `cargo check -p rustok-server --features mod-marketplace`
 - [ ] Targeted checkout, return-completion, payment, seller/listing lifecycle,
-  localization, event timeline, replay, recovery, and tenant-isolation tests.
+  localization, event provenance/timeline, replay, recovery, and tenant-isolation
+  tests.
 
 ### Database/runtime
 
-- [ ] Apply clean/upgraded SQLite/PostgreSQL and rollback/reapply paths.
+- [ ] Apply clean/upgraded SQLite/PostgreSQL and rollback/reapply paths, respecting the
+  intentionally irreversible listing provenance cutover.
 - [ ] Execute receipt/event/provider-operation contention and restart scenarios.
-- [ ] Execute seller/listing tenant isolation and cross-locale scenarios.
+- [ ] Execute seller/listing tenant isolation and cross-locale/provenance scenarios.
 - [ ] Prove declared routers and module-owned UI packages are mounted.
 - [ ] Exercise authenticated checkout, recovery, seller admin, future listing admin,
   reconciliation, and replay.
@@ -259,27 +259,24 @@ Source inspection is not execution evidence.
 
 ## Immediate execution order
 
-1. [x] Complete durable return-completion command admission and operator recovery
-   source.
+1. [x] Complete durable return-completion admission and operator recovery source.
 2. [x] Create Marketplace root, seller owner, and seller FFA source.
-3. [x] Add seller durable receipts and exact-locale multilingual storage.
-4. [x] Create listing owner with versioned terms, receipts, eligibility, and opt-in
-   composition.
-5. [x] Add complete immutable listing lifecycle-event coverage and remove direct
-   service write bypasses.
-6. [ ] Define legacy listing note attribution/backfill contract; then backfill and
-   drop compatibility columns.
-7. [ ] Add immutable seller lifecycle/moderation events and timeline reads.
-8. [ ] Create listing FFA package and explicit native/GraphQL transports.
-9. [ ] Run static verifiers and fix source drift.
-10. [ ] Compile commerce/payment/Marketplace packages and server features.
-11. [ ] Apply clean/upgraded migrations and targeted regression tests.
-12. [ ] Run contention, restart, kill-point, tenant, locale, and mounted transport
-    scenarios.
-13. [ ] Introduce seller order allocations, commission snapshots, double-entry ledger,
-    and payout journals in that order.
-14. [ ] Execute production-like payment provider and mounted worker evidence.
-15. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
+3. [x] Add seller receipts and exact-locale multilingual storage.
+4. [x] Create listing owner with terms, receipts, eligibility, and opt-in composition.
+5. [x] Add complete listing lifecycle events and remove direct write bypasses.
+6. [x] Backfill truthful legacy listing snapshots and remove mutable note columns.
+7. [ ] Publish listing lifecycle events through transactional outbox ownership.
+8. [ ] Add immutable seller lifecycle/moderation events and timeline reads.
+9. [ ] Create listing FFA package and explicit native/GraphQL transports.
+10. [ ] Run static verifiers and fix source drift.
+11. [ ] Compile commerce/payment/Marketplace packages and server features.
+12. [ ] Apply clean/upgraded migrations and targeted regression tests.
+13. [ ] Run contention, restart, kill-point, tenant, locale, provenance, and mounted
+    transport scenarios.
+14. [ ] Introduce seller allocations, commission snapshots, double-entry ledger, and
+    payout journals in that order.
+15. [ ] Execute production-like payment provider and mounted worker evidence.
+16. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
 
 ## Change rules
 
