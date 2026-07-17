@@ -12,10 +12,10 @@ use fly::{LandingReadinessPolicy, RegistrySet, RenderPolicy, ValidationLimits};
 use rustok_api::PortContext;
 use serde_json::Value;
 
-/// Service decorator for the stable landing pipeline.
+/// Service decorator for the current landing pipeline.
 ///
-/// Preview accepts both `grapesjs_v1` and `fly_landing_v1`, but always decodes them into the same
-/// typed landing contract. Publish additionally requires landing readiness and a deterministic
+/// Preview decodes the browser adapter payload into Fly's domain model and validates structure plus
+/// registry compatibility. Publish additionally requires landing readiness and a deterministic
 /// static artifact to be buildable before the wrapped persistence/provider service is called.
 pub struct LandingValidatedPageBuilderService<S> {
     inner: S,
