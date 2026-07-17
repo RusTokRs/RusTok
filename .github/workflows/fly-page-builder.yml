@@ -10,6 +10,9 @@ on:
       - "crates/fly-leptos/**"
       - "crates/rustok-page-builder/**"
       - "crates/rustok-page-builder-storefront/**"
+      - "crates/rustok-pages/**"
+      - "apps/admin/src/main.rs"
+      - "apps/admin/Cargo.toml"
       - "scripts/verify/verify-fly-*.mjs"
       - ".github/workflows/fly-page-builder.yml"
   pull_request:
@@ -20,6 +23,9 @@ on:
       - "crates/fly-leptos/**"
       - "crates/rustok-page-builder/**"
       - "crates/rustok-page-builder-storefront/**"
+      - "crates/rustok-pages/**"
+      - "apps/admin/src/main.rs"
+      - "apps/admin/Cargo.toml"
       - "scripts/verify/verify-fly-*.mjs"
       - ".github/workflows/fly-page-builder.yml"
   workflow_dispatch:
@@ -48,7 +54,14 @@ jobs:
           node-version: 22
 
       - name: Check focused formatting
-        run: cargo fmt -p fly -p fly-browser -p rustok-page-builder-admin -- --check
+        run: >-
+          cargo fmt
+          -p fly
+          -p fly-browser
+          -p rustok-page-builder-admin
+          -p rustok-pages-admin
+          -p rustok-admin
+          -- --check
 
       - name: Run Fly unit tests
         run: cargo test -p fly --lib
@@ -59,14 +72,25 @@ jobs:
       - name: Run Page Builder admin unit tests
         run: cargo test -p rustok-page-builder-admin --lib
 
+      - name: Run Pages integration unit tests
+        run: cargo test -p rustok-pages-admin --lib
+
       - name: Check Page Builder storefront
         run: cargo check -p rustok-page-builder-storefront --lib
+
+      - name: Check admin SSR Page Builder endpoint
+        run: cargo check -p rustok-admin --bin rustok-admin-app --no-default-features --features ssr
 
       - name: Lint Fly
         run: cargo clippy -p fly --lib -- -D warnings
 
-      - name: Lint Fly browser and Page Builder admin
-        run: cargo clippy -p fly-browser -p rustok-page-builder-admin --lib -- -D warnings
+      - name: Lint Fly browser and Page Builder integrations
+        run: >-
+          cargo clippy
+          -p fly-browser
+          -p rustok-page-builder-admin
+          -p rustok-pages-admin
+          --lib -- -D warnings
 
       - name: Verify landing readiness wiring
         run: node scripts/verify/verify-fly-landing-readiness.mjs
@@ -76,3 +100,9 @@ jobs:
 
       - name: Verify actions forms and fields end to end
         run: node scripts/verify/verify-fly-actions-forms.mjs
+
+      - name: Verify editor capability policy
+        run: node scripts/verify/verify-fly-ui-capability-policy.mjs
+
+      - name: Verify capability denial response
+        run: node scripts/verify/verify-fly-capability-denial-response.mjs
