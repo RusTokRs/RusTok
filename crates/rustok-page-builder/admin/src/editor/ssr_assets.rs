@@ -2,7 +2,8 @@ use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
 use crate::AdminCanvasController;
 use fly::{
-    source_allowed, AssetCatalog, AssetCommand, AssetDescriptor, AssetPolicy, EditorCommand,
+    source_allowed, visit_project_components, AssetCatalog, AssetCommand, AssetDescriptor,
+    AssetPolicy, EditorCommand,
 };
 use fly_ui::{EditorCapability, UiIntent};
 use leptos::prelude::*;
@@ -105,6 +106,13 @@ impl AdminCanvasController {
             .is_none()
         {
             return Err(format!("asset `{asset_id}` does not exist"));
+        }
+        let references = asset_reference_component_ids(self, asset_id);
+        if !references.is_empty() {
+            return Err(format!(
+                "asset `{asset_id}` is still referenced by component(s): {}",
+                references.join(", ")
+            ));
         }
         Ok(UiIntent::execute(EditorCommand::Asset {
             command: AssetCommand::Remove {
@@ -315,13 +323,36 @@ fn normalize_asset_source_attribute(value: &str) -> Result<&'static str, String>
     let value = required(value, "source attribute")?.to_ascii_lowercase();
     ALLOWED_ASSET_SOURCE_ATTRIBUTES
         .into_iter()
-        .find(|allowed| *allowed == value)
+        .find(|allowed| *allowed == value.as_str())
         .ok_or_else(|| {
             format!(
                 "source attribute `{value}` is not supported; expected one of {}",
                 ALLOWED_ASSET_SOURCE_ATTRIBUTES.join(", ")
             )
         })
+}
+
+fn asset_reference_component_ids(
+    controller: &AdminCanvasController,
+    asset_id: &str,
+) -> Vec<String> {
+    let mut references = Vec::new();
+    visit_project_components(&controller.editor().document().project, |component, visit| {
+        if component
+            .attributes
+            .get("data-fly-asset-id")
+            .and_then(Value::as_str)
+            == Some(asset_id)
+        {
+            references.push(
+                component
+                    .id
+                    .clone()
+                    .unwrap_or_else(|| visit.path().to_string()),
+            );
+        }
+    });
+    references
 }
 
 fn required<'a>(value: &'a str, label: &str) -> Result<&'a str, String> {
@@ -429,6 +460,25 @@ mod tests {
                 source_attribute: "onerror".to_string(),
             })
             .is_err());
+    }
+
+    #[test]
+    fn referenced_asset_cannot_be_removed() {
+        let mut controller = controller();
+        let apply = controller
+            .ssr_asset_apply_intent(SsrAssetApplyRequest {
+                component_id: "image".to_string(),
+                asset_id: "hero".to_string(),
+                source_attribute: "src".to_string(),
+            })
+            .expect("apply intent");
+        controller.dispatch(apply).expect("apply asset");
+        let error = controller
+            .ssr_asset_remove_intent(SsrAssetRemoveRequest {
+                asset_id: "hero".to_string(),
+            })
+            .expect_err("referenced asset removal");
+        assert!(error.contains("image"));
     }
 
     #[test]
