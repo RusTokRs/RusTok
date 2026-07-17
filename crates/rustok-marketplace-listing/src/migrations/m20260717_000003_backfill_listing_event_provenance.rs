@@ -75,7 +75,7 @@ impl MigrationTrait for Migration {
                         "original_actor_known": false,
                         "original_locale_known": false
                     }),
-                    imported_at,
+                    imported_at.clone(),
                 )
                 .await?;
             }
@@ -93,27 +93,18 @@ impl MigrationTrait for Migration {
                         "original_actor_known": false,
                         "original_locale_known": false
                     }),
-                    imported_at,
+                    imported_at.clone(),
                 )
                 .await?;
             }
         }
 
-        match backend {
-            DbBackend::Postgres | DbBackend::Sqlite => {
-                connection
-                    .execute_unprepared(
-                        "ALTER TABLE marketplace_listings DROP COLUMN approval_note",
-                    )
-                    .await?;
-                connection
-                    .execute_unprepared(
-                        "ALTER TABLE marketplace_listings DROP COLUMN suspension_reason",
-                    )
-                    .await?;
-            }
-            _ => unreachable!(),
-        }
+        connection
+            .execute_unprepared("ALTER TABLE marketplace_listings DROP COLUMN approval_note")
+            .await?;
+        connection
+            .execute_unprepared("ALTER TABLE marketplace_listings DROP COLUMN suspension_reason")
+            .await?;
 
         Ok(())
     }
@@ -137,32 +128,25 @@ async fn insert_legacy_snapshot<C: ConnectionTrait>(
     metadata: serde_json::Value,
     imported_at: chrono::DateTime<chrono::FixedOffset>,
 ) -> Result<(), DbErr> {
+    let values = [
+        generate_id().into(),
+        tenant_id.into(),
+        listing_id.into(),
+        event_kind.into(),
+        note.into(),
+        metadata.to_string().into(),
+        imported_at.into(),
+    ];
     let statement = match backend {
         DbBackend::Postgres => Statement::from_sql_and_values(
             backend,
             "INSERT INTO marketplace_listing_events (id, tenant_id, listing_id, actor_id, event_kind, locale, provenance, note, metadata, created_at) VALUES ($1, $2, $3, NULL, $4, NULL, 'legacy_snapshot', $5, $6::jsonb, $7)",
-            [
-                generate_id().into(),
-                tenant_id.into(),
-                listing_id.into(),
-                event_kind.into(),
-                note.into(),
-                metadata.to_string().into(),
-                imported_at.into(),
-            ],
+            values,
         ),
         DbBackend::Sqlite => Statement::from_sql_and_values(
             backend,
             "INSERT INTO marketplace_listing_events (id, tenant_id, listing_id, actor_id, event_kind, locale, provenance, note, metadata, created_at) VALUES (?, ?, ?, NULL, ?, NULL, 'legacy_snapshot', ?, json(?), ?)",
-            [
-                generate_id().into(),
-                tenant_id.into(),
-                listing_id.into(),
-                event_kind.into(),
-                note.into(),
-                metadata.to_string().into(),
-                imported_at.into(),
-            ],
+            values,
         ),
         _ => unreachable!(),
     };
