@@ -132,7 +132,7 @@ mod tests {
         let owner = Owner::new();
         let html = owner.with(|| {
             provide_context(nonce.clone());
-            AuthCookieBootstrap().to_html()
+            view! { <AuthCookieBootstrap/> }.to_html()
         });
 
         assert!(html.contains(format!(r#"nonce="{}""#, nonce.as_str()).as_str()));
