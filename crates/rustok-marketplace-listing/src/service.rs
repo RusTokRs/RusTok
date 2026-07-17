@@ -269,8 +269,6 @@ pub(crate) fn map_listing(
         channel_slug: model.channel_slug,
         status,
         approval_status,
-        approval_note: model.approval_note,
-        suspension_reason: model.suspension_reason,
         current_terms_version: model.current_terms_version,
         current_terms: MarketplaceListingTermsResponse {
             id: terms.id,
