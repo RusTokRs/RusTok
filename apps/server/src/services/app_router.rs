@@ -73,21 +73,25 @@ fn admin_asset_response(
     csp_nonce: Option<&CspNonce>,
 ) -> AxumResponse {
     let is_document = path.ends_with("index.html");
+    let raw_bytes = bytes.into_owned();
     let response_bytes = if is_document {
-        match (std::str::from_utf8(bytes.as_ref()), csp_nonce) {
-            (Ok(html), Some(nonce)) => nonce_trusted_admin_scripts(html, nonce).into_bytes(),
-            (Ok(_), None) => bytes.into_owned(),
-            (Err(error), _) => {
-                tracing::error!(%error, path, "Embedded admin document is not valid UTF-8");
-                return (
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    "Admin UI document is invalid",
-                )
-                    .into_response();
+        if let Some(nonce) = csp_nonce {
+            match std::str::from_utf8(raw_bytes.as_slice()) {
+                Ok(html) => nonce_trusted_admin_scripts(html, nonce).into_bytes(),
+                Err(error) => {
+                    tracing::error!(%error, path, "Embedded admin document is not valid UTF-8");
+                    return (
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        "Admin UI document is invalid",
+                    )
+                        .into_response();
+                }
             }
+        } else {
+            raw_bytes
         }
     } else {
-        bytes.into_owned()
+        raw_bytes
     };
 
     let mime = mime_guess::from_path(path).first_or_octet_stream();
