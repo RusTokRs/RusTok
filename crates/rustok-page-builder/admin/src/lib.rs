@@ -4,6 +4,8 @@
 mod context_contract;
 #[cfg(test)]
 mod ssr_actions_forms_browser_tests;
+#[cfg(test)]
+mod ssr_assets_browser_tests;
 
 pub mod browser_intent;
 mod capability_access;
