@@ -1,1 +1,1 @@
-Start the observable tenant hardening completion through the registered Hardening Gates workflow.
+Run the split tenant hardening checks and publish the validated result branch.
