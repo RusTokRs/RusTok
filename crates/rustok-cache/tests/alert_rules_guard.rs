@@ -137,3 +137,45 @@ fn permanent_gate_executes_expiry_eviction_and_concurrent_local_cas() {
         "cargo test -p rustok-cache --test atomic_cas concurrent_local_compare_and_set_has_exactly_one_winner"
     ));
 }
+
+#[test]
+fn live_fallback_cas_outage_evidence_remains_wired() {
+    let evidence = include_str!("fallback_cas_live.rs");
+    let fallback = include_str!("../src/fallback.rs");
+    let workflow = include_str!("../../../.github/workflows/cache-hardening.yml");
+
+    for required in [
+        "fallback_cas_fails_closed_during_redis_outage_and_recovers",
+        "CacheService::from_url_with_options(Some(&url), fast_recovery_options())",
+        "CAS must fail while the shared primary is unavailable",
+        "failed shared CAS must not mutate the local mirror",
+        "bounded degraded write should remain locally available",
+        "CAS must reject unsynchronized local and shared state",
+        "local and shared state are unsynchronized",
+        "wait_for_backend_health(backend.as_ref()).await",
+        "CacheCompareAndSetOutcome::Applied",
+        "recovered CAS value should be readable",
+    ] {
+        assert!(
+            evidence.contains(required),
+            "live fallback CAS evidence must retain {required}"
+        );
+    }
+
+    for required in [
+        "if self.has_unsynchronized_mutation(key).await",
+        "cache compare-and-set rejected while local and shared state are unsynchronized",
+        ".primary\n            .compare_and_set(key, expected, value.clone(), ttl)",
+        "self.mirror_primary_cas(key, value, ttl).await",
+        "Failed to discard local mirror after CAS mismatch",
+    ] {
+        assert!(
+            fallback.contains(required),
+            "fallback CAS implementation must retain {required}"
+        );
+    }
+
+    assert!(workflow.contains(
+        "cargo test -p rustok-cache --test fallback_cas_live -- --ignored --nocapture --test-threads=1"
+    ));
+}
