@@ -1,14 +1,13 @@
-use crate::browser_intent::{
-    self, PagesBrowserIntentError, PagesBrowserIntentResponse,
-};
+use crate::browser_intent::{self, PagesBrowserIntentError, PagesBrowserIntentResponse};
 use crate::builder::PagesBuilderSaveSnapshot;
 use crate::contributions::{
     build_pages_admin_contribution_registry, pages_admin_contribution_policy,
 };
 use fly_browser::BrowserIntentEnvelope;
-use fly_ui::PaletteBlockAccess;
+use fly_ui::{CapabilityState, PaletteBlockAccess};
 use rustok_page_builder_admin::{
-    validate_browser_palette_access, BrowserIntentDispatchError, SsrDraftSessionStore,
+    validate_browser_capability_access, validate_browser_palette_access,
+    BrowserIntentDispatchError, SsrDraftSessionStore,
 };
 
 pub fn pages_palette_block_access() -> PaletteBlockAccess {
@@ -20,7 +19,20 @@ pub async fn dispatch_pages_browser_intent(
     snapshot: PagesBuilderSaveSnapshot,
     envelope: BrowserIntentEnvelope,
 ) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
-    let envelope = preflight_pages_palette_intent(envelope)?;
+    dispatch_pages_browser_intent_with_capabilities(
+        snapshot,
+        envelope,
+        CapabilityState::full(),
+    )
+    .await
+}
+
+pub async fn dispatch_pages_browser_intent_with_capabilities(
+    snapshot: PagesBuilderSaveSnapshot,
+    envelope: BrowserIntentEnvelope,
+    capabilities: CapabilityState,
+) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
+    let envelope = preflight_pages_intent(envelope, capabilities)?;
     browser_intent::dispatch_pages_browser_intent(snapshot, envelope).await
 }
 
@@ -29,17 +41,34 @@ pub async fn dispatch_pages_browser_intent_with_store(
     envelope: BrowserIntentEnvelope,
     draft_store: &dyn SsrDraftSessionStore,
 ) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
-    let envelope = preflight_pages_palette_intent(envelope)?;
+    dispatch_pages_browser_intent_with_store_and_capabilities(
+        snapshot,
+        envelope,
+        draft_store,
+        CapabilityState::full(),
+    )
+    .await
+}
+
+pub async fn dispatch_pages_browser_intent_with_store_and_capabilities(
+    snapshot: PagesBuilderSaveSnapshot,
+    envelope: BrowserIntentEnvelope,
+    draft_store: &dyn SsrDraftSessionStore,
+    capabilities: CapabilityState,
+) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
+    let envelope = preflight_pages_intent(envelope, capabilities)?;
     browser_intent::dispatch_pages_browser_intent_with_store(snapshot, envelope, draft_store).await
 }
 
-fn preflight_pages_palette_intent(
+fn preflight_pages_intent(
     envelope: BrowserIntentEnvelope,
+    capabilities: CapabilityState,
 ) -> Result<BrowserIntentEnvelope, PagesBrowserIntentError> {
     let envelope = envelope
         .normalized()
         .map_err(BrowserIntentDispatchError::from)?;
     validate_browser_palette_access(&envelope, &pages_palette_block_access())?;
+    validate_browser_capability_access(&envelope, capabilities)?;
     Ok(envelope)
 }
 
@@ -66,24 +95,24 @@ mod tests {
 
     #[test]
     fn pages_preflight_allows_primitives_and_declared_templates() {
-        assert!(preflight_pages_palette_intent(envelope(
-            "insert_block",
-            json!({ "block_id": "text" }),
-        ))
+        assert!(preflight_pages_intent(
+            envelope("insert_block", json!({ "block_id": "text" })),
+            CapabilityState::full(),
+        )
         .is_ok());
-        assert!(preflight_pages_palette_intent(envelope(
-            "insert_block",
-            json!({ "block_id": "fly.hero" }),
-        ))
+        assert!(preflight_pages_intent(
+            envelope("insert_block", json!({ "block_id": "fly.hero" })),
+            CapabilityState::full(),
+        )
         .is_ok());
     }
 
     #[test]
     fn pages_preflight_rejects_uncontributed_namespaced_templates() {
-        let error = preflight_pages_palette_intent(envelope(
-            "insert_block",
-            json!({ "block_id": "plugin.secret" }),
-        ))
+        let error = preflight_pages_intent(
+            envelope("insert_block", json!({ "block_id": "plugin.secret" })),
+            CapabilityState::full(),
+        )
         .expect_err("uncontributed block");
         assert!(matches!(
             error,
@@ -93,14 +122,31 @@ mod tests {
 
     #[test]
     fn pages_preflight_rejects_block_drop_bypass() {
-        assert!(preflight_pages_palette_intent(envelope(
-            "drop",
-            json!({
-                "source": { "kind": "block", "block_id": "fly.pricing" },
-                "target_component_id": "root",
-                "position": "inside"
-            }),
-        ))
+        assert!(preflight_pages_intent(
+            envelope(
+                "drop",
+                json!({
+                    "source": { "kind": "block", "block_id": "fly.pricing" },
+                    "target_component_id": "root",
+                    "position": "inside"
+                }),
+            ),
+            CapabilityState::full(),
+        )
         .is_err());
+    }
+
+    #[test]
+    fn pages_preflight_rejects_capability_bypass() {
+        let capabilities = CapabilityState {
+            publish: false,
+            ..CapabilityState::full()
+        };
+        assert!(preflight_pages_intent(envelope("save", json!({})), capabilities).is_err());
+        assert!(preflight_pages_intent(
+            envelope("select", json!({ "component_id": "hero" })),
+            capabilities,
+        )
+        .is_ok());
     }
 }
