@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tokio::process::{Child, Command};
 
-use crate::{CacheBackendOptions, CacheService};
+use crate::{cache_backend_generation_snapshot, CacheService};
 
 fn reserve_loopback_port() -> u16 {
     TcpListener::bind(("127.0.0.1", 0))
@@ -53,24 +53,26 @@ async fn spawn_redis(binary: &str, port: u16) -> Child {
 }
 
 async fn stop_redis(child: &mut Child) {
-    child.kill().await.expect("redis-server should stop");
+    child
+        .start_kill()
+        .expect("redis-server shutdown should start");
     child.wait().await.expect("redis-server should be reaped");
 }
 
 #[tokio::test]
 #[ignore = "requires redis-server via RUSTOK_CACHE_REDIS_SERVER_BIN"]
-async fn raw_backend_created_during_startup_outage_connects_after_redis_recovers() {
+async fn backend_created_during_startup_outage_recovers_shared_generation() {
     let binary = std::env::var("RUSTOK_CACHE_REDIS_SERVER_BIN")
         .expect("RUSTOK_CACHE_REDIS_SERVER_BIN must point to redis-server");
     let port = reserve_loopback_port();
     let url = format!("redis://127.0.0.1:{port}/");
     let prefix = format!("startup-recovery:{}", uuid::Uuid::new_v4().simple());
     let service = CacheService::from_url(Some(&url));
-    let options = CacheBackendOptions::default();
     let backend = service
-        .raw_shared_client_backend(&prefix, Duration::from_secs(30), 16, &options)
+        .backend(&prefix, Duration::from_secs(30), 16)
         .await;
 
+    assert!(!cache_backend_generation_snapshot(&prefix).unwrap().trusted);
     assert!(backend.health().await.is_err());
     backend
         .set("local".to_string(), b"bounded".to_vec())
@@ -91,7 +93,11 @@ async fn raw_backend_created_during_startup_outage_connects_after_redis_recovers
         }
     })
     .await
-    .expect("existing backend did not connect after Redis startup");
+    .expect("existing backend did not recover Redis and shared generation after startup");
+
+    let snapshot = cache_backend_generation_snapshot(&prefix).unwrap();
+    assert!(snapshot.trusted);
+    assert_eq!(snapshot.generation, 0);
 
     backend
         .set("shared".to_string(), b"redis".to_vec())
@@ -101,7 +107,7 @@ async fn raw_backend_created_during_startup_outage_connects_after_redis_recovers
     let client = redis::Client::open(url.as_str()).unwrap();
     let mut connection = client.get_multiplexed_async_connection().await.unwrap();
     let stored = redis::cmd("GET")
-        .arg(format!("{prefix}:shared"))
+        .arg(format!("{prefix}:g-0:shared"))
         .query_async::<Option<Vec<u8>>>(&mut connection)
         .await
         .unwrap();
