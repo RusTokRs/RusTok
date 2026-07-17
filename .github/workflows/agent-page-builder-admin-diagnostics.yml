@@ -12,17 +12,20 @@ jobs:
   diagnose:
     if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-page-builder-diagnostics' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
       - uses: dtolnay/rust-toolchain@1.93.1
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: agent-baseline-failure-diagnostics
-      - name: Capture current baseline failures
+      - name: Install typos CLI
+        uses: crate-ci/typos@master
+        continue-on-error: true
+      - name: Capture all current baseline failures
         shell: bash
         run: |
           mkdir -p /tmp/baseline-failures
@@ -32,12 +35,20 @@ jobs:
           cargo +stable check --workspace --all-targets --all-features \
             > /tmp/baseline-failures/check.log 2>&1
           echo $? > /tmp/baseline-failures/check.status
+          cargo +stable clippy --workspace --all-targets --no-deps -- -D warnings \
+            > /tmp/baseline-failures/clippy.log 2>&1
+          echo $? > /tmp/baseline-failures/clippy.status
+          cargo +stable doc --no-deps --all-features --workspace \
+            > /tmp/baseline-failures/doc.log 2>&1
+          echo $? > /tmp/baseline-failures/doc.status
           cargo +1.93.1 test -p rustok-page-builder-admin --lib -- --nocapture \
             > /tmp/baseline-failures/page-builder.log 2>&1
           echo $? > /tmp/baseline-failures/page-builder.status
           cargo +stable test -p rustok-cache --no-default-features -- --nocapture \
             > /tmp/baseline-failures/cache-memory.log 2>&1
           echo $? > /tmp/baseline-failures/cache-memory.status
+          "$RUNNER_TEMP/typos" . > /tmp/baseline-failures/typos.log 2>&1
+          echo $? > /tmp/baseline-failures/typos.status
           exit 0
       - uses: actions/upload-artifact@v7
         with:
