@@ -8,6 +8,9 @@ const paths = {
   snapshotCatalog: 'crates/fly/src/snapshot/catalog.rs',
   snapshotDiff: 'crates/fly/src/snapshot/diff.rs',
   snapshotTests: 'crates/fly/src/snapshot/tests.rs',
+  commandModel: 'crates/fly/src/command/model.rs',
+  commandEditor: 'crates/fly/src/command/editor.rs',
+  commandTests: 'crates/fly/src/command/tests.rs',
 };
 
 const source = Object.fromEntries(await Promise.all(
@@ -45,6 +48,7 @@ requireMarkers('snapshotFacade', [
 requireMarkers('snapshotModel', [
   'pub struct ProjectSnapshot',
   'pub fn restore(&self)',
+  'FlyError::SnapshotHashMismatch',
   'pub struct ProjectDiffSummary',
   'pub fn change_count(&self)',
 ], 'snapshot models');
@@ -80,14 +84,30 @@ requireMarkers('snapshotTests', [
   'anonymous_components_use_canonical_paths_in_diffs',
   'missing_snapshot_is_explicit',
 ], 'snapshot regression coverage');
+requireMarkers('commandModel', [
+  'RestoreSnapshot',
+  'pub fn restore_snapshot(snapshot: ProjectSnapshot)',
+], 'snapshot command schema');
+requireMarkers('commandEditor', [
+  'pub fn restore_snapshot(',
+  'self.apply(EditorCommand::restore_snapshot(snapshot.clone()))',
+  'EditorCommand::RestoreSnapshot { snapshot }',
+  '*document = snapshot.restore()?;',
+], 'history-safe snapshot restore');
+requireMarkers('commandTests', [
+  'snapshot_restore_is_hash_verified_and_participates_in_history',
+  'tampered_snapshot_does_not_change_document_or_history',
+  'editor.undo().expect("undo restore")',
+  'editor.redo().expect("redo restore")',
+], 'snapshot transaction regression coverage');
 
 try {
   await access('crates/rustok-page-builder/admin/src/editor/snapshot_panel.rs');
   failures.push(
-    'orphan hydrated snapshot_panel.rs must not exist; restore UI requires a command/history-safe SSR design',
+    'orphan hydrated snapshot_panel.rs must not exist; restore UI must call the history-safe snapshot command',
   );
 } catch {
-  // Expected: the old panel was not registered and bypassed editor history/revision semantics.
+  // Expected: a future SSR panel must be built on FlyEditor::restore_snapshot.
 }
 
 if (failures.length > 0) {
