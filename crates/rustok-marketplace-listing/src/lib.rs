@@ -4,6 +4,7 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 mod command_receipts;
+mod listing_events;
 mod replay_safe_commands;
 
 pub mod dto;
