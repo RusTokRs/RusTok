@@ -83,6 +83,7 @@ fn marketplace_listing_external_events_use_a_sealed_typed_contract() {
     for marker in [
         "completed_receipt_commits_one_contract_event_and_replay_adds_none",
         "missing_outbox_storage_rolls_back_the_pending_receipt",
+        "receipt_completion_failure_rolls_back_the_inserted_outbox_event",
     ] {
         assert!(
             owner_tests.contains(marker),
