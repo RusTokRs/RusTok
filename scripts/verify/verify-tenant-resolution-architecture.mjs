@@ -20,7 +20,7 @@ requireMatch(settings, /pub resolution: TenantResolutionMode/, "TenantSettings.r
 forbidMatch(settings, /pub resolution: String/, "stringly typed tenant resolution is forbidden");
 requireMatch(resolution, /match settings\.tenant\.resolution\s*\{/, "canonical resolver must exhaustively match the typed mode");
 forbidMatch(resolution, /_\s*=>/, "canonical tenant resolution must not contain catch-all branches");
-requireMatch(resolution, /pub enum TenantResolutionSource/, "resolution results must expose a typed source");
+requireMatch(resolution, /pub\(crate\) enum TenantResolutionSource/, "resolution source must be typed and crate-private");
 requireMatch(resolution, /SelfResolvingHandshake/, "self-resolving handshakes must be explicit in route policy");
 requireMatch(resolution, /path_is_or_descendant/, "global routes must use segment-safe matching");
 requireMatch(resolution, /asserted_slug/, "dual tenant headers must be correlated against the resolved tenant");
