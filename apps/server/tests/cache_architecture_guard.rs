@@ -191,13 +191,14 @@ fn shared_fallback_health_does_not_mask_primary_degradation() {
 #[test]
 fn stale_refresh_is_bounded_deduplicated_and_atomic() {
     let core_context = source("crates/rustok-core/src/context.rs");
-    let core_cache = source("crates/rustok-core/src/cache.rs");
+    let core_atomic = source("crates/rustok-core/src/cache_atomic.rs");
     let refresh = source("crates/rustok-cache/src/refresh.rs");
     let observability = source("crates/rustok-cache/src/observability.rs");
     let shared = source("crates/rustok-cache/src/shared_backend.rs");
     let fallback = source("crates/rustok-cache/src/fallback.rs");
     let weighted = source("crates/rustok-cache/src/weighted.rs");
     let service = source("crates/rustok-cache/src/service.rs");
+    let atomic_cas = source("crates/rustok-cache/tests/atomic_cas.rs");
 
     for required in [
         "MAX_CACHE_REFRESH_KEY_BYTES",
@@ -228,14 +229,12 @@ fn stale_refresh_is_bounded_deduplicated_and_atomic() {
         "unsupported CAS backends must fail closed instead of emulating GET plus SET"
     );
     assert!(
-        core_cache.contains("IN_MEMORY_WRITE_LOCK_STRIPES"),
+        core_atomic.contains("IN_MEMORY_WRITE_LOCK_STRIPES"),
         "in-memory CAS and ordinary writes must share bounded striped locks"
     );
     assert!(
-        core_cache.contains("REDIS_COMPARE_AND_SET_SCRIPT")
-            && core_cache.contains("current ~= ARGV[1]")
-            && core_cache.contains("PSETEX"),
-        "legacy Redis CAS must use one binary-safe conditional Lua operation"
+        core_atomic.contains(".and_compute_with(move |current|"),
+        "local CAS must couple comparison and mutation in one Moka entry operation"
     );
     assert!(
         shared.contains("SHARED_REDIS_COMPARE_AND_SET_SCRIPT")
@@ -271,7 +270,7 @@ fn stale_refresh_is_bounded_deduplicated_and_atomic() {
         "SWR must retain regression coverage for superseded refresh writes"
     );
     assert!(
-        core_cache.contains("real_redis_compare_and_set_is_atomic_and_preserves_mismatch"),
+        atomic_cas.contains("real_redis_compare_and_set_is_binary_safe_and_conditionally_deletes"),
         "atomic Redis CAS must retain live integration coverage"
     );
 }
