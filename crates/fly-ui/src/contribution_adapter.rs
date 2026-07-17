@@ -244,31 +244,25 @@ mod tests {
         let registry = registry();
         let capabilities = BTreeSet::from(["mock.render".to_string()]);
         let component = json!({ "id": "card" });
-        let request = |presentation| PropertyEditorRequest {
+        let full = PropertyEditorRequest {
             component_id: "card",
             provider: "mock.provider",
             component_type: "mock-card",
             schema_version: "1",
-            presentation,
+            presentation: Presentation::Full,
             component: &component,
         };
+        let preview = PropertyEditorRequest {
+            presentation: Presentation::Preview,
+            ..full
+        };
         assert_eq!(
-            edit_contribution_properties(
-                &registry,
-                &MockAdapter,
-                &request(Presentation::Full),
-                &capabilities,
-            )
-            .expect("editor"),
+            edit_contribution_properties(&registry, &MockAdapter, &full, &capabilities)
+                .expect("editor"),
             "mock.properties:card"
         );
         assert_eq!(
-            edit_contribution_properties(
-                &registry,
-                &MockAdapter,
-                &request(Presentation::Preview),
-                &capabilities,
-            ),
+            edit_contribution_properties(&registry, &MockAdapter, &preview, &capabilities),
             Err(UiError::ReadOnly)
         );
     }
