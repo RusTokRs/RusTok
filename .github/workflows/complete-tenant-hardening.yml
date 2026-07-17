@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - scripts/migrations/complete_tenant_hardening.trigger
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/migrations/complete_tenant_hardening.trigger
   workflow_dispatch:
 
 permissions:
@@ -16,6 +20,7 @@ concurrency:
 
 jobs:
   apply:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'agent/finalize-tenant-hardening')
     runs-on: ubuntu-latest
     steps:
       - name: Check out latest main
