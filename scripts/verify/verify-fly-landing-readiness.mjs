@@ -111,6 +111,14 @@ requireText(
 );
 requireText(
   "crates/rustok-page-builder/admin/src/editor/runtime.rs",
+  "pub runtime_context_configured: RwSignal<bool>",
+);
+requireText(
+  "crates/rustok-page-builder/admin/src/editor/runtime.rs",
+  "configured.then_some(&context)",
+);
+requireText(
+  "crates/rustok-page-builder/admin/src/editor/runtime.rs",
   "if matches!(&intent, UiIntent::RequestSave)",
 );
 rejectText(
