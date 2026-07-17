@@ -1,0 +1,60 @@
+name: Refine typed tenant resolution
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/migrations/refine_typed_tenant_resolution.py
+      - .github/workflows/refine-typed-tenant-resolution.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refine-typed-tenant-resolution-main
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply tenant resolution refinements
+        run: python3 scripts/migrations/refine_typed_tenant_resolution.py
+
+      - name: Format touched Rust files
+        run: |
+          rustfmt --edition 2021 \
+            apps/server/src/common/settings.rs \
+            apps/server/src/middleware/tenant_resolution.rs \
+            apps/server/src/middleware/tenant.rs \
+            apps/server/tests/tenant_resolver_invariants_test.rs
+
+      - name: Verify architecture and patch integrity
+        run: |
+          node scripts/verify/verify-tenant-resolution-architecture.mjs
+          git diff --check
+
+      - name: Commit atomically to main
+        shell: bash
+        run: |
+          rm scripts/migrations/refine_typed_tenant_resolution.py
+          rm .github/workflows/refine-typed-tenant-resolution.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "security(tenant): enforce canonical route and header assertions"
+          git pull --rebase origin main
+          git push origin HEAD:main
