@@ -1,4 +1,7 @@
-mod backend_generation;
+mod backend_generation {
+    include!("backend_generation.rs");
+    include!("backend_generation_recovery.rs");
+}
 mod bounded_invalidation;
 mod cas_observability;
 mod durable_invalidation;
