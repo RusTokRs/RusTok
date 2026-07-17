@@ -1,6 +1,7 @@
 //! Framework-neutral visual-editor state, intents, policies, and contribution contracts.
 
 mod contribution;
+mod contribution_factory;
 mod dnd;
 mod error;
 mod keyboard;
@@ -11,6 +12,7 @@ mod style;
 mod viewport;
 
 pub use contribution::*;
+pub use contribution_factory::*;
 pub use dnd::*;
 pub use error::*;
 pub use keyboard::*;
