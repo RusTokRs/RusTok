@@ -216,7 +216,7 @@ mod tests {
         );
         assert!(forum_storefront_category_card_class(true).contains("border-primary/40"));
         assert!(forum_storefront_topic_card_class(false).contains("hover:shadow-sm"));
-        assert_eq!(forum_storefront_accent_class(Some("#0ea5e9")), "bg-cyan-500");
+        assert_eq!(forum_storefront_accent_class(Some("#0ea5e9")), "bg-sky-500");
         assert!(forum_storefront_accent_class(Some(" ")).contains("from-sky-500"));
         assert!(forum_storefront_status_badge_class("success").contains("emerald"));
         assert!(forum_storefront_status_badge_class("warning").contains("amber"));
