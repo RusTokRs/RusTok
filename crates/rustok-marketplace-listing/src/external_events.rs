@@ -79,12 +79,12 @@ mod tests {
                 inventory_reference: Some("inventory-item".to_string()),
                 fulfillment_profile_slug: Some("standard".to_string()),
                 metadata: serde_json::json!({"owner_private": true}),
-                created_at: now,
+                created_at: now.clone(),
             },
             metadata: serde_json::json!({"owner_private": true}),
             published_at: None,
             approved_at: None,
-            created_at: now,
+            created_at: now.clone(),
             updated_at: now,
         }
     }
