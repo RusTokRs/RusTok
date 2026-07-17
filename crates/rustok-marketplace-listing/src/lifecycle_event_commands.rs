@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rustok_core::generate_id;
-use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, Set};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -10,12 +10,13 @@ use crate::command_receipts::{
 };
 use crate::dto::{
     MarketplaceListingApprovalStatus, MarketplaceListingEventKind,
-    MarketplaceListingResponse, MarketplaceListingStatus, MarketplaceListingTermsResponse,
+    MarketplaceListingResponse, MarketplaceListingStatus,
     UpdateMarketplaceListingTermsInput,
 };
 use crate::entities::{listing, listing_terms};
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
 use crate::listing_events::{append_listing_event, normalize_listing_event_locale};
+use crate::service::{find_listing, load_response_for_model, map_listing};
 use crate::MarketplaceListingService;
 
 impl MarketplaceListingService {
@@ -192,10 +193,9 @@ async fn update_terms_in_transaction(
             to: "terms_updated".to_string(),
         });
     }
-    let next_version = current
-        .current_terms_version
-        .checked_add(1)
-        .ok_or_else(|| MarketplaceListingError::Validation("listing terms version overflow".to_string()))?;
+    let next_version = current.current_terms_version.checked_add(1).ok_or_else(|| {
+        MarketplaceListingError::Validation("listing terms version overflow".to_string())
+    })?;
     let terms = listing_terms::ActiveModel {
         id: Set(generate_id()),
         tenant_id: Set(tenant_id),
@@ -205,13 +205,11 @@ async fn update_terms_in_transaction(
         inventory_reference: Set(inventory_reference),
         fulfillment_profile_slug: Set(fulfillment_profile_slug),
         metadata: Set(metadata),
-        created_by_actor_id: Set(actor_id),
         created_at: Set(Utc::now().into()),
     }
     .insert(&receipt.transaction)
     .await?;
 
-    let now = Utc::now();
     let mut active: listing::ActiveModel = current.into();
     active.current_terms_version = Set(next_version);
     active.status = Set(MarketplaceListingStatus::Draft.as_str().to_string());
@@ -220,7 +218,7 @@ async fn update_terms_in_transaction(
     active.suspension_reason = Set(None);
     active.approved_at = Set(None);
     active.published_at = Set(None);
-    active.updated_at = Set(now.into());
+    active.updated_at = Set(Utc::now().into());
     let model = active.update(&receipt.transaction).await?;
 
     append_listing_event(
@@ -296,6 +294,7 @@ async fn archive_in_transaction(
     }
     let mut active: listing::ActiveModel = current.into();
     active.status = Set(MarketplaceListingStatus::Archived.as_str().to_string());
+    active.published_at = Set(None);
     active.updated_at = Set(Utc::now().into());
     let model = active.update(&receipt.transaction).await?;
     append_listing_event(
@@ -320,84 +319,6 @@ async fn finish(
         Ok(response) => complete(receipt, &response).await,
         Err(error) => rollback(receipt, error).await,
     }
-}
-
-async fn find_listing<C: ConnectionTrait>(
-    connection: &C,
-    tenant_id: Uuid,
-    listing_id: Uuid,
-) -> MarketplaceListingResult<listing::Model> {
-    listing::Entity::find_by_id(listing_id)
-        .filter(listing::Column::TenantId.eq(tenant_id))
-        .one(connection)
-        .await?
-        .ok_or(MarketplaceListingError::ListingNotFound(listing_id))
-}
-
-async fn load_response_for_model<C: ConnectionTrait>(
-    connection: &C,
-    model: listing::Model,
-) -> MarketplaceListingResult<MarketplaceListingResponse> {
-    let terms = listing_terms::Entity::find()
-        .filter(listing_terms::Column::TenantId.eq(model.tenant_id))
-        .filter(listing_terms::Column::ListingId.eq(model.id))
-        .filter(listing_terms::Column::Version.eq(model.current_terms_version))
-        .one(connection)
-        .await?
-        .ok_or(MarketplaceListingError::TermsNotFound {
-            listing_id: model.id,
-            version: model.current_terms_version,
-        })?;
-    map_listing(model, terms)
-}
-
-fn map_listing(
-    model: listing::Model,
-    terms: listing_terms::Model,
-) -> MarketplaceListingResult<MarketplaceListingResponse> {
-    let status = MarketplaceListingStatus::parse(model.status.as_str()).ok_or_else(|| {
-        MarketplaceListingError::Validation(format!(
-            "unknown marketplace listing status `{}`",
-            model.status
-        ))
-    })?;
-    let approval_status = MarketplaceListingApprovalStatus::parse(model.approval_status.as_str())
-        .ok_or_else(|| {
-            MarketplaceListingError::Validation(format!(
-                "unknown marketplace listing approval status `{}`",
-                model.approval_status
-            ))
-        })?;
-    Ok(MarketplaceListingResponse {
-        id: model.id,
-        tenant_id: model.tenant_id,
-        seller_id: model.seller_id,
-        master_product_id: model.master_product_id,
-        master_variant_id: model.master_variant_id,
-        seller_sku: model.seller_sku,
-        market_slug: model.market_slug,
-        channel_slug: model.channel_slug,
-        status,
-        approval_status,
-        approval_note: model.approval_note,
-        suspension_reason: model.suspension_reason,
-        current_terms_version: model.current_terms_version,
-        current_terms: MarketplaceListingTermsResponse {
-            id: terms.id,
-            listing_id: terms.listing_id,
-            version: terms.version,
-            pricing_reference: terms.pricing_reference,
-            inventory_reference: terms.inventory_reference,
-            fulfillment_profile_slug: terms.fulfillment_profile_slug,
-            metadata: terms.metadata,
-            created_at: terms.created_at,
-        },
-        metadata: model.metadata,
-        published_at: model.published_at,
-        approved_at: model.approved_at,
-        created_at: model.created_at,
-        updated_at: model.updated_at,
-    })
 }
 
 fn parse_tenant_id(context: &rustok_api::PortContext) -> MarketplaceListingResult<Uuid> {
