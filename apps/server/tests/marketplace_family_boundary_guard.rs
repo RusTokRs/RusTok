@@ -64,7 +64,14 @@ fn marketplace_seller_owner_and_ports_preserve_contracts() {
     let receipt_migration = include_str!(
         "../../../crates/rustok-marketplace-seller/src/migrations/m20260716_000002_create_seller_command_receipts.rs"
     );
+    let seller_entity = include_str!(
+        "../../../crates/rustok-marketplace-seller/src/entities/seller.rs"
+    );
+    let translation_entity = include_str!(
+        "../../../crates/rustok-marketplace-seller/src/entities/seller_translation.rs"
+    );
     let service = include_str!("../../../crates/rustok-marketplace-seller/src/service.rs");
+    let dto = include_str!("../../../crates/rustok-marketplace-seller/src/dto.rs");
     let ports = include_str!("../../../crates/rustok-marketplace-seller/src/ports.rs");
     let receipt_entity = include_str!(
         "../../../crates/rustok-marketplace-seller/src/entities/seller_command_receipt.rs"
@@ -90,16 +97,29 @@ fn marketplace_seller_owner_and_ports_preserve_contracts() {
 
     for marker in [
         "marketplace_sellers",
+        "marketplace_seller_translations",
         "marketplace_seller_members",
         "ux_marketplace_sellers_tenant_handle",
+        "ux_marketplace_seller_translations_locale",
+        "idx_marketplace_seller_translations_search",
+        "fk_marketplace_seller_translations_tenant_seller",
         "ux_marketplace_seller_members_scope_user",
         "fk_marketplace_seller_members_tenant_seller",
+        "MarketplaceSellerTranslations::Locale",
+        ".string_len(32)",
     ] {
         assert!(
             owner_migration.contains(marker),
-            "seller schema is missing {marker}"
+            "seller multilingual schema is missing {marker}"
         );
     }
+    assert!(translation_entity.contains("table_name = \"marketplace_seller_translations\""));
+    assert!(translation_entity.contains("pub locale: String"));
+    assert!(translation_entity.contains("pub display_name: String"));
+    assert!(!seller_entity.contains("pub display_name:"));
+    assert!(!owner_migration.contains("MarketplaceSellers::DisplayName"));
+    assert!(!owner_migration.contains("json_binary().not_null().default(\"{}\") // localized"));
+
     for marker in [
         "marketplace_seller_command_receipts",
         "uq_marketplace_seller_command_receipt_key",
@@ -112,23 +132,41 @@ fn marketplace_seller_owner_and_ports_preserve_contracts() {
             "seller receipt schema is missing {marker}"
         );
     }
+
     for marker in [
-        "self.db.begin().await?",
-        "MarketplaceSellerMemberRole::Owner",
-        "MarketplaceSellerMemberStatus::Active",
+        "normalize_locale_tag",
+        "build_locale_candidates",
+        "PLATFORM_FALLBACK_LOCALE",
+        "upsert_translation",
+        "MISSING_TRANSLATION_PREFIX",
+        "resolved_locale: translation.locale",
         "owner membership role cannot be changed",
         "owner membership cannot be disabled",
-        "MarketplaceSellerOnboardingStatus::Submitted",
-        "MarketplaceSellerStatus::Suspended",
     ] {
-        assert!(service.contains(marker), "seller service is missing {marker}");
+        assert!(service.contains(marker), "seller localized read service is missing {marker}");
     }
+    for forbidden in [
+        "pub async fn create_seller(",
+        "pub async fn update_profile(",
+        "pub async fn submit_onboarding(",
+        "pub async fn review_onboarding(",
+        "pub async fn suspend_seller(",
+        "pub async fn reactivate_seller(",
+    ] {
+        assert!(
+            !service.contains(forbidden),
+            "seller service must not expose a non-receipted write bypass: {forbidden}"
+        );
+    }
+    assert!(dto.contains("pub resolved_locale: String"));
+
     for marker in [
         "pub trait MarketplaceSellerReadPort",
         "pub trait MarketplaceSellerCommandPort",
         "PortCallPolicy::read()",
         "PortCallPolicy::write()",
         "port.idempotency_key_required",
+        "context.locale.as_str()",
         "create_seller_with_receipt",
         "update_profile_with_receipt",
         "submit_onboarding_with_receipt",
@@ -137,6 +175,7 @@ fn marketplace_seller_owner_and_ports_preserve_contracts() {
         "reactivate_seller_with_receipt",
         "add_member_with_receipt",
         "update_member_with_receipt",
+        "marketplace_seller.translation_missing",
         "marketplace seller storage is temporarily unavailable",
     ] {
         assert!(ports.contains(marker), "seller FBA port is missing {marker}");
@@ -168,12 +207,15 @@ fn marketplace_seller_owner_and_ports_preserve_contracts() {
         "reactivate_seller_with_receipt",
         "add_member_with_receipt",
         "update_member_with_receipt",
+        "\"locale\": locale",
+        "upsert_translation(",
         "complete_command(receipt",
         "rollback_command(receipt",
+        "let policy_input = input.clone()",
     ] {
         assert!(
             receipted_commands.contains(marker),
-            "seller receipted commands are missing {marker}"
+            "seller localized receipted commands are missing {marker}"
         );
     }
     assert!(registry.contains("\"status\": \"in_progress\""));
