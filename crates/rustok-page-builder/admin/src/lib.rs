@@ -6,6 +6,7 @@ mod context_contract;
 mod ssr_actions_forms_browser_tests;
 
 pub mod browser_intent;
+mod capability_access;
 pub mod draft_session;
 pub mod editor;
 mod i18n;
@@ -18,6 +19,7 @@ pub use browser_intent::{
     dispatch_browser_intent, BrowserIntentDispatchError, BrowserIntentDispatchResult,
     BrowserIntentEffect,
 };
+pub use capability_access::validate_browser_capability_access;
 pub use draft_session::{
     InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,
     SsrDraftSessionStore,
