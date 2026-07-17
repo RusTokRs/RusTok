@@ -17,6 +17,21 @@ The crate defines:
 - a framework-neutral contribution adapter contract;
 - a deterministic state machine suitable for mock-adapter tests.
 
+## Capability policy
+
+`EditorCapabilityPolicy` evaluates the intersection of requested product features, tenant policy,
+user permissions, and provider health. Its result is the editable capability ceiling for a
+`FlyUiStateMachine`.
+
+Presentation modes only mask that ceiling. Switching to preview or read-only temporarily exposes a
+read-only effective profile; switching back to full or inline restores the previously evaluated
+ceiling rather than `CapabilityState::full()`. Revoking edit or drag-and-drop capabilities also
+cleans up transient drag, insertion, and resize state immediately.
+
+Framework and host packages may resolve authentication, RBAC, tenant rollout, and provider health,
+but they pass only the evaluated `CapabilityState` into `fly-ui`. Browser/SSR adapters must apply the
+same profile before accepting remote authoring intents.
+
 ## Contribution ownership
 
 `ContributionDescriptor.provider` identifies the provider of the component contract being extended.
