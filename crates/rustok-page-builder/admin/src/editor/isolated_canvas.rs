@@ -12,6 +12,15 @@ use leptos::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use std::collections::BTreeMap;
 
+#[derive(Debug, Clone, PartialEq)]
+struct ViewportSvgGeometry {
+    source_width: u32,
+    source_height: u32,
+    rendered_width: f64,
+    rendered_height: f64,
+    view_box: String,
+}
+
 #[component]
 pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
     let instance_seed = runtime.controller.with(|controller| {
@@ -85,8 +94,12 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
         }
     };
 
-    let frame_runtime = runtime.clone();
-    let iframe_runtime = runtime.clone();
+    let viewport_runtime = runtime.clone();
+    let viewport_geometry = Memo::new(move |_| {
+        viewport_runtime.controller.with(|controller| {
+            viewport_svg_geometry(controller.ui().state.viewport)
+        })
+    });
     let hovered_runtime = runtime.clone();
     let selected_runtime = runtime.clone();
     let insertion_runtime = runtime.clone();
@@ -98,34 +111,36 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                 <span>{move || if ready.get() { "Canvas connected" } else { "Connecting canvas" }}</span>
                 <span>{move || pointer.get().unwrap_or_default()}</span>
             </div>
-            <div
-                class="relative mx-auto origin-top overflow-hidden bg-white shadow-lg"
-                style=move || frame_runtime.controller.with(|controller| {
-                    let viewport = controller.ui().state.viewport;
-                    format!(
-                        "width:{}px;height:{}px",
-                        f64::from(viewport.width) * f64::from(viewport.zoom),
-                        f64::from(viewport.height) * f64::from(viewport.zoom),
-                    )
-                })
-            >
-                <iframe
-                    id=iframe_id
-                    title="Fly page canvas"
-                    sandbox="allow-scripts"
-                    srcdoc=move || canvas_srcdoc.get()
-                    data-fly-iframe-canvas="true"
-                    on:load=on_iframe_load
-                    style=move || iframe_runtime.controller.with(|controller| {
-                        let viewport = controller.ui().state.viewport;
-                        format!(
-                            "display:block;width:{}px;height:{}px;border:0;background:#fff;transform:scale({});transform-origin:0 0",
-                            viewport.width,
-                            viewport.height,
-                            viewport.zoom,
-                        )
-                    })
-                ></iframe>
+            <div class="relative mx-auto w-fit overflow-hidden bg-white shadow-lg">
+                <svg
+                    class="block overflow-visible"
+                    width=move || viewport_geometry.get().rendered_width
+                    height=move || viewport_geometry.get().rendered_height
+                    viewBox=move || viewport_geometry.get().view_box
+                    preserveAspectRatio="none"
+                    data-fly-svg-viewport="true"
+                >
+                    <foreignObject
+                        x="0"
+                        y="0"
+                        width=move || viewport_geometry.get().source_width
+                        height=move || viewport_geometry.get().source_height
+                    >
+                        <div xmlns="http://www.w3.org/1999/xhtml" class="h-full w-full overflow-hidden bg-white">
+                            <iframe
+                                id=iframe_id
+                                title="Fly page canvas"
+                                sandbox="allow-scripts"
+                                srcdoc=move || canvas_srcdoc.get()
+                                data-fly-iframe-canvas="true"
+                                width=move || viewport_geometry.get().source_width
+                                height=move || viewport_geometry.get().source_height
+                                class="block border-0 bg-white"
+                                on:load=on_iframe_load
+                            ></iframe>
+                        </div>
+                    </foreignObject>
+                </svg>
                 <OverlayLayer runtime=hovered_runtime kind=OverlayKind::Hovered />
                 <OverlayLayer runtime=selected_runtime kind=OverlayKind::Selected />
                 <OverlayLayer runtime=insertion_runtime kind=OverlayKind::Insertion />
@@ -341,6 +356,17 @@ fn canvas_rect(rect: fly_leptos::BrowserRect) -> CanvasRect {
     }
 }
 
+fn viewport_svg_geometry(viewport: ViewportState) -> ViewportSvgGeometry {
+    let zoom = f64::from(viewport.zoom.max(0.01));
+    ViewportSvgGeometry {
+        source_width: viewport.width,
+        source_height: viewport.height,
+        rendered_width: f64::from(viewport.width) * zoom,
+        rendered_height: f64::from(viewport.height) * zoom,
+        view_box: format!("0 0 {} {}", viewport.width, viewport.height),
+    }
+}
+
 fn overlay_geometry(rect: Option<CanvasRect>, viewport: ViewportState) -> Option<OverlayGeometry> {
     let rect = rect?;
     let zoom = f64::from(viewport.zoom.max(0.01));
@@ -368,6 +394,22 @@ fn dom_id(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn viewport_geometry_preserves_source_dimensions_and_applies_zoom() {
+        let geometry = viewport_svg_geometry(ViewportState {
+            width: 390,
+            height: 844,
+            zoom: 0.8,
+            ..ViewportState::default()
+        });
+
+        assert_eq!(geometry.source_width, 390);
+        assert_eq!(geometry.source_height, 844);
+        assert_eq!(geometry.rendered_width, 312.0);
+        assert_eq!(geometry.rendered_height, 675.2);
+        assert_eq!(geometry.view_box, "0 0 390 844");
+    }
 
     #[test]
     fn overlay_geometry_uses_svg_coordinates_without_css_text() {
