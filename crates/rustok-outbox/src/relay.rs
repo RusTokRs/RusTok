@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use rustok_core::events::EventTransport;
 use rustok_core::{Error, Result};
-use rustok_events::EventEnvelope;
+use rustok_events::{ContractEventEnvelope, EventEnvelope};
 
 use crate::entity;
 use crate::entity::SysEventStatus;
@@ -73,6 +73,27 @@ impl RelayMetrics {
             dlq_total: self.dlq_total.load(Ordering::Relaxed),
             latency_ms_total: self.latency_ms_total.load(Ordering::Relaxed),
             processed_total: self.processed_total.load(Ordering::Relaxed),
+        }
+    }
+}
+
+enum RelayEnvelope {
+    Root(EventEnvelope),
+    Contract(ContractEventEnvelope),
+}
+
+impl RelayEnvelope {
+    fn event_type(&self) -> &str {
+        match self {
+            Self::Root(envelope) => envelope.event_type.as_str(),
+            Self::Contract(envelope) => envelope.event_type(),
+        }
+    }
+
+    fn schema_version(&self) -> u16 {
+        match self {
+            Self::Root(envelope) => envelope.schema_version,
+            Self::Contract(envelope) => envelope.schema_version(),
         }
     }
 }
@@ -288,7 +309,7 @@ impl OutboxRelay {
     async fn process_claimed_event(&self, model: &entity::Model) -> Result<()> {
         let started = Instant::now();
         let event_id = model.id;
-        let envelope: EventEnvelope = match from_value(model.payload.clone()) {
+        let envelope = match Self::decode_envelope(model) {
             Ok(envelope) => envelope,
             Err(error) => {
                 let elapsed_ms = started.elapsed().as_millis() as u64;
@@ -298,13 +319,14 @@ impl OutboxRelay {
                     error = %error,
                     "Outbox event payload is invalid"
                 );
-                return self
-                    .mark_failed_attempt(model, Error::Serialization(error))
-                    .await;
+                return self.mark_failed_attempt(model, error).await;
             }
         };
 
-        let publish_result = self.target.publish(envelope).await;
+        let publish_result = match envelope {
+            RelayEnvelope::Root(envelope) => self.target.publish(envelope).await,
+            RelayEnvelope::Contract(envelope) => self.target.publish_contract(envelope).await,
+        };
         let elapsed_ms = started.elapsed().as_millis() as u64;
 
         match publish_result {
@@ -320,6 +342,63 @@ impl OutboxRelay {
                 self.mark_failed_attempt(model, err).await
             }
         }
+    }
+
+    fn decode_envelope(model: &entity::Model) -> Result<RelayEnvelope> {
+        let envelope = match from_value::<ContractEventEnvelope>(model.payload.clone()) {
+            Ok(envelope) => {
+                envelope
+                    .validate_registered_schema()
+                    .map_err(|error| Error::Validation(error.to_string()))?;
+                RelayEnvelope::Contract(envelope)
+            }
+            Err(contract_error) => match from_value::<EventEnvelope>(model.payload.clone()) {
+                Ok(envelope) => {
+                    let expected_event_type = envelope.event.event_type();
+                    if envelope.event_type != expected_event_type {
+                        return Err(Error::Validation(format!(
+                            "outbox root envelope event_type mismatch: envelope=`{}`, event=`{expected_event_type}`",
+                            envelope.event_type
+                        )));
+                    }
+                    let expected_schema_version = envelope.event.schema_version();
+                    if envelope.schema_version != expected_schema_version {
+                        return Err(Error::Validation(format!(
+                            "outbox root envelope schema_version mismatch: envelope={}, event={expected_schema_version}",
+                            envelope.schema_version
+                        )));
+                    }
+                    RelayEnvelope::Root(envelope)
+                }
+                Err(root_error) => {
+                    tracing::debug!(
+                        contract_error = %contract_error,
+                        root_error = %root_error,
+                        "Outbox payload matched neither contract nor root envelope"
+                    );
+                    return Err(Error::Serialization(root_error));
+                }
+            },
+        };
+
+        let envelope_schema_version = i16::try_from(envelope.schema_version()).map_err(|_| {
+            Error::Validation(format!(
+                "outbox envelope schema version {} exceeds database SMALLINT range",
+                envelope.schema_version()
+            ))
+        })?;
+        if model.event_type != envelope.event_type()
+            || model.schema_version != envelope_schema_version
+        {
+            return Err(Error::Validation(format!(
+                "outbox row metadata does not match envelope: row=`{}`/{} envelope=`{}`/{}",
+                model.event_type,
+                model.schema_version,
+                envelope.event_type(),
+                envelope.schema_version()
+            )));
+        }
+        Ok(envelope)
     }
 
     fn record_processed(&self, elapsed_ms: u64, succeeded: bool) {
@@ -422,12 +501,14 @@ impl OutboxRelay {
 #[cfg(test)]
 mod tests {
     use std::any::Any;
+    use std::sync::Mutex;
 
     use async_trait::async_trait;
     use sea_orm::{ActiveModelTrait, Database, EntityTrait, Set};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
 
     use rustok_core::events::{EventTransport, ReliabilityLevel};
+    use rustok_events::MarketplaceListingEvent;
 
     use super::*;
     use crate::migration::SysEventsMigration;
@@ -440,6 +521,35 @@ mod tests {
             Err(Error::External(
                 "invalid payload must not reach transport".to_string(),
             ))
+        }
+
+        fn reliability_level(&self) -> ReliabilityLevel {
+            ReliabilityLevel::InMemory
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    struct CaptureContractPublish {
+        event_types: Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl EventTransport for CaptureContractPublish {
+        async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
+            Err(Error::External(
+                "contract event must not use root publish".to_string(),
+            ))
+        }
+
+        async fn publish_contract(&self, envelope: ContractEventEnvelope) -> Result<()> {
+            self.event_types
+                .lock()
+                .expect("capture lock")
+                .push(envelope.event_type().to_string());
+            Ok(())
         }
 
         fn reliability_level(&self) -> ReliabilityLevel {
@@ -507,6 +617,64 @@ mod tests {
             .last_error
             .as_deref()
             .is_some_and(|message| message.contains("Serialization error")));
+    }
+
+    #[tokio::test]
+    async fn sealed_contract_envelope_is_dispatched_without_root_deserialization() {
+        let db = database().await;
+        let envelope = ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            MarketplaceListingEvent::MarketplaceListingPublished {
+                listing_id: Uuid::new_v4(),
+                seller_id: Uuid::new_v4(),
+                master_product_id: Uuid::new_v4(),
+                master_variant_id: Uuid::new_v4(),
+                market_slug: "us-market".to_string(),
+                channel_slug: "web-store".to_string(),
+                terms_version: 2,
+            },
+        )
+        .expect("valid contract envelope");
+        let event_id = envelope.id();
+        entity::ActiveModel {
+            id: Set(event_id),
+            event_type: Set(envelope.event_type().to_string()),
+            schema_version: Set(i16::try_from(envelope.schema_version()).unwrap()),
+            payload: Set(serde_json::to_value(&envelope).unwrap()),
+            status: Set(SysEventStatus::Pending),
+            retry_count: Set(0),
+            next_attempt_at: Set(None),
+            last_error: Set(None),
+            claimed_by: Set(None),
+            claimed_at: Set(None),
+            created_at: Set(Utc::now()),
+            dispatched_at: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert contract event");
+
+        let target = Arc::new(CaptureContractPublish {
+            event_types: Mutex::new(Vec::new()),
+        });
+        let relay = OutboxRelay::new(db.clone(), target.clone()).with_config(RelayConfig {
+            worker_id: "contract-test".to_string(),
+            ..RelayConfig::default()
+        });
+        assert_eq!(relay.process_pending_once(Some(1)).await.expect("relay"), 1);
+
+        let event = entity::Entity::find_by_id(event_id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("event");
+        assert_eq!(event.status, SysEventStatus::Dispatched);
+        let event_types = target.event_types.lock().expect("capture lock").clone();
+        assert_eq!(
+            event_types,
+            vec!["marketplace.listing.published".to_string()]
+        );
     }
 
     #[tokio::test]

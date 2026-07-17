@@ -1,5 +1,5 @@
 use rustok_core::Result;
-use rustok_events::EventEnvelope;
+use rustok_events::{ContractEventEnvelope, EventEnvelope};
 
 use crate::config::SerializationFormat;
 
@@ -7,6 +7,8 @@ pub trait EventSerializer: Send + Sync {
     fn format(&self) -> SerializationFormat;
     fn serialize(&self, envelope: &EventEnvelope) -> Result<Vec<u8>>;
     fn deserialize(&self, payload: &[u8]) -> Result<EventEnvelope>;
+    fn serialize_contract(&self, envelope: &ContractEventEnvelope) -> Result<Vec<u8>>;
+    fn deserialize_contract(&self, payload: &[u8]) -> Result<ContractEventEnvelope>;
 }
 
 #[derive(Debug, Default)]
@@ -22,6 +24,14 @@ impl EventSerializer for JsonSerializer {
     }
 
     fn deserialize(&self, payload: &[u8]) -> Result<EventEnvelope> {
+        Ok(serde_json::from_slice(payload)?)
+    }
+
+    fn serialize_contract(&self, envelope: &ContractEventEnvelope) -> Result<Vec<u8>> {
+        Ok(serde_json::to_vec(envelope)?)
+    }
+
+    fn deserialize_contract(&self, payload: &[u8]) -> Result<ContractEventEnvelope> {
         Ok(serde_json::from_slice(payload)?)
     }
 }
@@ -41,12 +51,21 @@ impl EventSerializer for PostcardSerializer {
     fn deserialize(&self, payload: &[u8]) -> Result<EventEnvelope> {
         postcard::from_bytes(payload).map_err(|err| rustok_core::Error::External(err.to_string()))
     }
+
+    fn serialize_contract(&self, envelope: &ContractEventEnvelope) -> Result<Vec<u8>> {
+        postcard::to_stdvec(envelope).map_err(|err| rustok_core::Error::External(err.to_string()))
+    }
+
+    fn deserialize_contract(&self, payload: &[u8]) -> Result<ContractEventEnvelope> {
+        postcard::from_bytes(payload).map_err(|err| rustok_core::Error::External(err.to_string()))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rustok_core::events::{DomainEvent, EventEnvelope};
+    use rustok_events::MarketplaceListingEvent;
     use uuid::Uuid;
 
     fn create_test_envelope() -> EventEnvelope {
@@ -59,6 +78,23 @@ mod tests {
                 author_id: None,
             },
         )
+    }
+
+    fn create_contract_envelope() -> ContractEventEnvelope {
+        ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            MarketplaceListingEvent::MarketplaceListingCreated {
+                listing_id: Uuid::new_v4(),
+                seller_id: Uuid::new_v4(),
+                master_product_id: Uuid::new_v4(),
+                master_variant_id: Uuid::new_v4(),
+                market_slug: "us-market".to_string(),
+                channel_slug: "web-store".to_string(),
+                terms_version: 1,
+            },
+        )
+        .expect("valid contract envelope")
     }
 
     #[test]
@@ -122,5 +158,21 @@ mod tests {
 
         assert_eq!(envelope.id, deserialized.id);
         assert_eq!(envelope.tenant_id, deserialized.tenant_id);
+    }
+
+    #[test]
+    fn contract_envelope_roundtrips_in_both_formats() {
+        let envelope = create_contract_envelope();
+        let json = JsonSerializer;
+        let json_bytes = json.serialize_contract(&envelope).unwrap();
+        let json_roundtrip = json.deserialize_contract(&json_bytes).unwrap();
+        assert_eq!(json_roundtrip.id(), envelope.id());
+        assert_eq!(json_roundtrip.event_type(), envelope.event_type());
+
+        let postcard = PostcardSerializer;
+        let postcard_bytes = postcard.serialize_contract(&envelope).unwrap();
+        let postcard_roundtrip = postcard.deserialize_contract(&postcard_bytes).unwrap();
+        assert_eq!(postcard_roundtrip.id(), envelope.id());
+        assert_eq!(postcard_roundtrip.event_type(), envelope.event_type());
     }
 }

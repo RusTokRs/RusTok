@@ -4,9 +4,19 @@ import process from "node:process";
 
 const root = process.cwd();
 const files = {
-  types: "crates/rustok-events/src/types.rs",
-  schema: "crates/rustok-events/src/schema.rs",
-  tests: "crates/rustok-events/tests/canonical_contracts.rs",
+  contract: "crates/rustok-events/src/contract.rs",
+  listing: "crates/rustok-events/src/marketplace_listing.rs",
+  exports: "crates/rustok-events/src/lib.rs",
+  coreTransport: "crates/rustok-core/src/events/transport.rs",
+  outboxBus: "crates/rustok-outbox/src/transactional.rs",
+  outboxTransport: "crates/rustok-outbox/src/transport.rs",
+  outboxRelay: "crates/rustok-outbox/src/relay.rs",
+  iggySerializer: "crates/rustok-iggy/src/serialization.rs",
+  iggyProducer: "crates/rustok-iggy/src/producer.rs",
+  iggyTransport: "crates/rustok-iggy/src/transport.rs",
+  iggyContractConsumer: "crates/rustok-iggy/src/contract_consumer.rs",
+  iggyExports: "crates/rustok-iggy/src/lib.rs",
+  tests: "crates/rustok-events/tests/marketplace_listing_contracts.rs",
   registry: "crates/rustok-marketplace-listing/contracts/marketplace-listing-fba-registry.json",
 };
 
@@ -38,46 +48,136 @@ const forbidMarker = (source, marker, file) => {
   if (source.includes(marker)) failures.push(`${file}: forbidden ${marker}`);
 };
 
-const types = read(files.types);
-const schema = read(files.schema);
-const tests = read(files.tests);
-const registrySource = read(files.registry);
+const sources = Object.fromEntries(
+  Object.entries(files).map(([key, file]) => [key, read(file)]),
+);
+
+for (const marker of [
+  "pub(crate) mod sealed",
+  "pub trait EventContract:",
+  "sealed::Sealed",
+  "pub enum ContractEventPayload",
+  "MarketplaceListing(MarketplaceListingEvent)",
+  "pub struct ContractEventEnvelope",
+  "event.validate()?",
+  "event.into_contract_payload()",
+  "pub fn payload(&self) -> Result<&ContractEventPayload",
+  "pub fn into_payload(self) -> Result<ContractEventPayload",
+  "self.event.validate()?",
+  "validate_registered_schema",
+  "into_root_envelope",
+]) requireMarker(sources.contract, marker, files.contract);
+for (const forbidden of ["event: Value", "serde_json::Value"]) {
+  forbidMarker(sources.contract, forbidden, files.contract);
+}
+
+requireMarker(sources.exports, "pub use contract::", files.exports);
+requireMarker(sources.exports, "ContractEventPayload", files.exports);
+requireMarker(sources.exports, "MarketplaceListingEvent", files.exports);
+requireMarker(sources.exports, "pub fn event_schema", files.exports);
+requireMarker(sources.exports, "pub fn event_schemas", files.exports);
 
 for (const [variant, eventType] of events) {
-  requireMarker(types, `${variant} {`, files.types);
-  requireMarker(types, `Self::${variant} { .. }`, files.types);
-  requireMarker(types, `"${eventType}"`, files.types);
-  requireMarker(types, `Self::${variant} { .. } => 1`, files.types);
-  requireMarker(schema, `event_type: "${eventType}"`, files.schema);
-  requireMarker(tests, `DomainEvent::${variant} {`, files.tests);
-  requireMarker(registrySource, `"${eventType}"`, files.registry);
+  requireMarker(sources.listing, `${variant} => "${eventType}"`, files.listing);
+  requireMarker(sources.listing, "Self::$variant", files.listing);
+  requireMarker(sources.registry, `"${eventType}"`, files.registry);
 }
 
 for (const marker of [
-  "validate_marketplace_listing_slug(\"market_slug\", market_slug)?",
-  "validate_marketplace_listing_slug(\"channel_slug\", channel_slug)?",
-  "validators::validate_not_nil_uuid(\"listing_id\", listing_id)?",
-  "validators::validate_not_nil_uuid(\"seller_id\", seller_id)?",
-  "validators::validate_not_nil_uuid(\"master_product_id\", master_product_id)?",
-  "validators::validate_not_nil_uuid(\"master_variant_id\", master_variant_id)?",
-  '"terms_version"',
-]) requireMarker(types, marker, files.types);
+  "impl sealed::Sealed for MarketplaceListingEvent",
+  "impl EventContract for MarketplaceListingEvent",
+  "ContractEventPayload::MarketplaceListing(self)",
+  "impl ValidateEvent for MarketplaceListingEvent",
+  'validate_scope_slug("market_slug", market_slug)?',
+  'validate_scope_slug("channel_slug", channel_slug)?',
+  'validators::validate_not_nil_uuid("listing_id", listing_id)?',
+  'validators::validate_not_nil_uuid("seller_id", seller_id)?',
+  'validators::validate_not_nil_uuid("master_product_id", master_product_id)?',
+  'validators::validate_not_nil_uuid("master_variant_id", master_variant_id)?',
+  'validators::validate_range("terms_version"',
+  "MARKETPLACE_LISTING_EVENT_SCHEMAS",
+]) requireMarker(sources.listing, marker, files.listing);
 
-for (const forbidden of ["note:", "reason:", "metadata:", "approval_note:", "suspension_reason:"]) {
-  const marketplaceSection = types.slice(
-    types.indexOf("// MARKETPLACE LISTING EVENTS"),
-    types.indexOf("// INDEX EVENTS (CQRS)"),
-  );
-  forbidMarker(marketplaceSection, forbidden, files.types);
-}
+for (const forbidden of [
+  "note:",
+  "reason:",
+  "metadata:",
+  "approval_note:",
+  "suspension_reason:",
+]) forbidMarker(sources.listing, forbidden, files.listing);
 
 for (const marker of [
-  "marketplace_listing_events_reject_noncanonical_scope_and_invalid_terms_version",
-  "marketplace_listing_external_payload_excludes_owner_notes_and_metadata",
-  '"note"',
-  '"reason"',
-  '"metadata"',
-]) requireMarker(tests, marker, files.tests);
+  "async fn publish_contract",
+  "ContractEventEnvelope",
+  "into_root_envelope",
+]) requireMarker(sources.coreTransport, marker, files.coreTransport);
+
+for (const marker of [
+  "pub async fn publish_contract_in_tx",
+  "E: EventContract",
+  "ContractEventEnvelope::new",
+  "write_contract_to_outbox",
+]) requireMarker(sources.outboxBus, marker, files.outboxBus);
+requireMarker(
+  sources.outboxTransport,
+  "pub async fn write_contract_to_outbox",
+  files.outboxTransport,
+);
+requireMarker(
+  sources.outboxTransport,
+  "model_from_contract_envelope",
+  files.outboxTransport,
+);
+for (const marker of [
+  "enum RelayEnvelope",
+  "from_value::<ContractEventEnvelope>",
+  "from_value::<EventEnvelope>",
+  "self.target.publish_contract(envelope)",
+  "sealed_contract_envelope_is_dispatched_without_root_deserialization",
+]) requireMarker(sources.outboxRelay, marker, files.outboxRelay);
+
+for (const marker of [
+  "serialize_contract",
+  "deserialize_contract",
+  "contract_envelope_roundtrips_in_both_formats",
+]) requireMarker(sources.iggySerializer, marker, files.iggySerializer);
+for (const marker of [
+  "build_contract_publish_request",
+  "serializer.serialize_contract",
+  "contract_event_routes_to_domain_without_root_event_deserialization",
+]) requireMarker(sources.iggyProducer, marker, files.iggyProducer);
+for (const marker of [
+  "async fn publish_contract",
+  "producer::build_contract_publish_request",
+  "open_persistent_contract_consumer_group",
+  "PersistentContractConsumerGroup::new",
+]) requireMarker(sources.iggyTransport, marker, files.iggyTransport);
+for (const marker of [
+  "pub struct ConsumedContractEvent",
+  "pub struct PersistentContractConsumerGroup",
+  "deserialize_contract",
+  "validate_registered_schema",
+  "pub async fn acknowledge",
+]) requireMarker(
+  sources.iggyContractConsumer,
+  marker,
+  files.iggyContractConsumer,
+);
+for (const marker of [
+  "pub mod contract_consumer;",
+  "ConsumedContractEvent",
+  "PersistentContractConsumerGroup",
+]) requireMarker(sources.iggyExports, marker, files.iggyExports);
+
+forbidMarker(sources.outboxBus, "event_type: String", files.outboxBus);
+forbidMarker(sources.outboxBus, "payload: serde_json::Value", files.outboxBus);
+
+for (const marker of [
+  "listing_event_family_has_nine_registered_versioned_contracts",
+  "listing_event_rejects_noncanonical_scope_and_invalid_version",
+  "decoded_listing_envelope_revalidates_payload_fields",
+  "listing_external_payload_excludes_owner_private_prose_and_metadata",
+]) requireMarker(sources.tests, marker, files.tests);
 
 if (failures.length > 0) {
   console.error("marketplace listing event contract verification failed:");

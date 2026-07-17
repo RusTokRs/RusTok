@@ -1,37 +1,60 @@
 # Documentation `rustok-events`
 
 `rustok-events` is the canonical shared import surface for platform event
-contracts. It owns `DomainEvent`, `EventEnvelope`, schema metadata and
-validation rules, while `rustok-core` retains only a compatibility re-export path.
+contracts. It owns root events, sealed module event families, typed envelope
+shapes, schema metadata, and validation rules.
 
 ## Purpose
 
 - publish a unified event-contract layer for the platform;
-- keep schema metadata, envelope shape and validation rules inside a separate module;
-- decouple event consumers from a direct dependency on `rustok-core::events`.
+- keep schema metadata, envelope shape, validation, and event-type versioning in one crate;
+- allow bounded modules to publish typed event families without reopening a platform-wide lifecycle enum;
+- prevent arbitrary string event names and unregistered payloads from reaching durable transports.
 
 ## Responsibilities
 
-- `DomainEvent`, `EventEnvelope`, `EventSchema`, `FieldSchema` and schema registry;
-- validation rules and versioning policy for event payloads;
-- compatibility aliases and non-breaking migration path for consumers;
-- contract tests and release-gate expectations for event-schema changes;
-- absence of transport-specific event delivery logic.
+- `DomainEvent` and `EventEnvelope` for the established root event family;
+- sealed `EventContract` implementations for module event families;
+- `ContractEventPayload` as the typed family wrapper used by durable and streaming transports;
+- `ContractEventEnvelope` with validation of payload, registered schema, and envelope metadata;
+- `EventSchema`, `FieldSchema`, schema lookup, and combined schema iteration;
+- validation and versioning policy for every public event payload;
+- transport-independent contracts only; persistence and delivery remain owned by `rustok-outbox` and streaming adapters.
+
+## Sealed event-family contract
+
+`EventContract` is sealed inside this crate. A domain module cannot implement it
+locally and cannot publish an arbitrary `(event_type, payload)` pair. New event
+families are defined and reviewed in `rustok-events`, then published through the
+typed transactional API in `rustok-outbox`.
+
+One `ContractEventPayload` variant is added per bounded event family, not per
+lifecycle event. The family enum owns its lifecycle variants and schema evolution.
+This keeps transport serialization typed while avoiding continuous growth of the
+legacy platform-wide `DomainEvent` enum.
+
+`MarketplaceListingEvent` is the first module family using this boundary. It
+contains nine explicit versioned variants and exposes only stable listing
+identity, seller/product references, market/channel scope, and terms version.
+Moderation prose and arbitrary owner metadata remain private to the listing
+timeline and are not part of the external contract.
 
 ## Integration
 
-- `rustok-core::events` remains a compatibility adapter over the canonical surface from `rustok-events`;
-- domain modules, outbox/runtime crates and test utilities must import event contracts directly from `rustok-events`;
-- changes to event contracts must be synchronized with outbox, replay, DLQ and reindex guidance;
-- tenant lifecycle contracts (`tenant.created`, `tenant.updated`, `tenant.module.toggled`) must remain synchronized with tenancy modules and their outbox mutation paths;
-- marketplace listing lifecycle contracts use nine explicit versioned event types and expose only stable listing identity/scope fields; moderation prose and arbitrary metadata remain owner-private;
-- breaking payload changes require a version bump and an explicit dual-read/migration plan.
+- `rustok-core::events` remains a compatibility adapter for the established root family;
+- domain modules, outbox/runtime crates, and tests import canonical contracts from `rustok-events`;
+- `rustok-outbox::TransactionalEventBus::publish_contract_in_tx` accepts only sealed typed contracts;
+- the outbox relay supports both root and typed-family envelopes and validates row/envelope metadata;
+- streaming adapters preserve the configured JSON or Postcard profile;
+- bounded-family consumers use an explicit typed contract consumer cursor rather than a root-event fallback;
+- breaking payload changes require a version bump and an explicit consumer migration plan.
 
 ## Verification
 
 - `cargo xtask module validate events`
 - `cargo xtask module test events`
-- targeted tests for schema coverage, validation, versioning and envelope JSON roundtrip
+- `node scripts/verify/verify-marketplace-listing-event-contract.mjs`
+- targeted schema, validation, relay, streaming, consumer, and serialization tests
 
 ## Related documents
 
@@ -39,3 +62,4 @@ validation rules, while `rustok-core` retains only a compatibility re-export pat
 - [Implementation plan](./implementation-plan.md)
 - [Platform documentation map](../../../docs/index.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
+- [Sealed typed event-family ADR](../../../DECISIONS/2026-07-17-sealed-typed-event-families.md)

@@ -79,8 +79,8 @@ migration, contention, mounted-transport, and remote-profile evidence.
 ## Ownership remaining
 
 - [ ] Publish listing lifecycle/moderation events through the transactional outbox.
-- [x] Define nine explicit versioned `marketplace.listing.*` payload variants in the
-  platform event contract before external Marketplace consumers subscribe.
+- [x] Define the sealed, typed nine-variant `MarketplaceListingEvent` family in
+  `rustok-events` before external Marketplace consumers subscribe.
 - [x] Keep moderation notes and arbitrary owner metadata out of the external event;
   consumers refresh through `MarketplaceListingReadPort`.
 - [ ] Add product matching/approval workflow before automated EAN/GTIN matching,
@@ -106,17 +106,19 @@ migration, contention, mounted-transport, and remote-profile evidence.
   opt-in owner module; Marketplace remains excluded from default module sets.
 - [x] Add source guards for schema ownership, absence of localized catalog copy,
   versioned terms, durable receipts, provider-preflight replay, complete immutable
-  events, truthful provenance cutover, read-service non-bypass, deterministic
-  eligibility, and module composition.
+  events, truthful provenance cutover, sealed external event contracts, read-service
+  non-bypass, deterministic eligibility, and module composition.
 - [x] Restore evented module registration and command-port routing after parallel
   source drift; compatibility write methods are not an FBA path.
 
 ## FBA remaining
 
-- [x] Add the versioned listing event family to `rustok-events`, including validation,
-  schema registry coverage, serialization safety tests, and source guards.
-- [ ] Publish the event family through `TransactionalEventBus::publish_in_tx` in the
-  same owner transaction as listing event/state/receipt completion.
+- [x] Add the sealed versioned listing event family to `rustok-events`, including
+  validation, schema registry coverage, serialization safety tests, source guards,
+  and the generic transactional outbox publication boundary.
+- [ ] Publish the event family through
+  `TransactionalEventBus::publish_contract_in_tx` in the same owner transaction as
+  listing event/state/receipt completion.
 - [ ] Do not relay imported legacy snapshots as new live business commands.
 - [ ] Compile owner/provider/root consumer contracts.
 - [ ] Apply clean and upgraded SQLite/PostgreSQL migrations, including the
@@ -216,8 +218,12 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `../../scripts/verify/verify-marketplace-listing-boundary.mjs`
 - `../../scripts/verify/verify-marketplace-listing-lifecycle-events.mjs`
 - `../../scripts/verify/verify-marketplace-listing-event-contract.mjs`
-- `../../rustok-events/src/types.rs`
-- `../../rustok-events/src/schema.rs`
+- `../../rustok-events/src/contract.rs`
+- `../../rustok-events/src/marketplace_listing.rs`
+- `../../rustok-events/tests/marketplace_listing_contracts.rs`
+- `../../rustok-outbox/src/transactional.rs`
+- `../../rustok-outbox/src/transport.rs`
+- `../../DECISIONS/2026-07-17-sealed-typed-event-families.md`
 - `../../scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
 - `../../scripts/verify/verify-marketplace-listing-admin-ffa.mjs`
 

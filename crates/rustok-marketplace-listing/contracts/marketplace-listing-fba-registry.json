@@ -39,7 +39,10 @@
       "deadline_required": true,
       "durable_receipt": {
         "table": "marketplace_listing_command_receipts",
-        "identity_scope": ["tenant_id", "idempotency_key"],
+        "identity_scope": [
+          "tenant_id",
+          "idempotency_key"
+        ],
         "request_identity": "canonical_sha256_v1",
         "request_identity_includes": [
           "command_kind",
@@ -73,7 +76,9 @@
     {
       "module": "product",
       "port": "ProductCatalogReadPort",
-      "usage": ["resolve_master_product_from_variant"],
+      "usage": [
+        "resolve_master_product_from_variant"
+      ],
       "foreign_entities_imported": false
     }
   ],
@@ -98,7 +103,10 @@
     "event_storage": {
       "append_only": true,
       "identity": "uuid",
-      "scope": ["tenant_id", "listing_id"],
+      "scope": [
+        "tenant_id",
+        "listing_id"
+      ],
       "audit_fields": [
         "actor_id",
         "event_kind",
@@ -124,7 +132,10 @@
       },
       "locale_normalizer": "rustok_api::normalize_locale_tag",
       "locale_max_bytes": 32,
-      "timeline_order": ["created_at_desc", "id_desc"],
+      "timeline_order": [
+        "created_at_desc",
+        "id_desc"
+      ],
       "atomic_commands": [
         "create_listing",
         "update_listing_terms",
@@ -204,16 +215,30 @@
     "archive_remains_owner_command": true
   },
   "outbox": {
-    "status": "planned_contract_required",
+    "status": "event_contract_source_ready_owner_publication_pending",
     "transport": "rustok_outbox::TransactionalEventBus",
-    "required_api": "publish_in_tx",
-    "planned_event_type": "marketplace.listing.changed",
-    "planned_schema_version": 1,
+    "required_api": "publish_contract_in_tx",
+    "contract_type": "rustok_events::MarketplaceListingEvent",
+    "contract_sealed": true,
     "same_transaction_as_owner_event_and_receipt": true,
     "moderation_note_exposed": false,
     "arbitrary_metadata_exposed": false,
     "legacy_snapshot_relayed_as_live_command": false,
-    "consumer_refresh_port": "MarketplaceListingReadPort"
+    "consumer_refresh_port": "MarketplaceListingReadPort",
+    "event_family": {
+      "schema_version": 1,
+      "types": [
+        "marketplace.listing.created",
+        "marketplace.listing.terms_updated",
+        "marketplace.listing.submitted_for_review",
+        "marketplace.listing.approved",
+        "marketplace.listing.rejected",
+        "marketplace.listing.published",
+        "marketplace.listing.suspended",
+        "marketplace.listing.reactivated",
+        "marketplace.listing.archived"
+      ]
+    }
   },
   "composition": {
     "module_manifest": "modules.toml",
@@ -252,11 +277,17 @@
     "ffa_native_runtime": "crates/rustok-marketplace-listing/admin/src/transport/native_server_adapter.rs",
     "ffa_graphql_boundary": "crates/rustok-marketplace-listing/admin/src/transport/graphql_adapter.rs",
     "ffa_ui": "crates/rustok-marketplace-listing/admin/src/ui/leptos.rs",
-    "ffa_guard": "apps/server/tests/marketplace_listing_admin_ffa_guard.rs"
+    "ffa_guard": "apps/server/tests/marketplace_listing_admin_ffa_guard.rs",
+    "external_event_contract": "crates/rustok-events/src/marketplace_listing.rs",
+    "external_event_envelope": "crates/rustok-events/src/contract.rs",
+    "external_event_guard": "scripts/verify/verify-marketplace-listing-event-contract.mjs"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
-    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
     "cases": [
       {
         "operation": "all_listing_commands",
@@ -318,6 +349,6 @@
         ]
       }
     ],
-    "known_gap": "transactional outbox publication, authenticated native runtime provider composition, real GraphQL schema, readiness-board synchronization, compiled migrations, contention/replay, remote-profile, mounted transport, and FFA parity evidence are not yet retained"
+    "known_gap": "owner transactional outbox publication, authenticated native runtime provider composition, real GraphQL schema, readiness-board synchronization, compiled migrations, contention/replay, remote-profile, mounted transport, and FFA parity evidence are not yet retained"
   }
 }

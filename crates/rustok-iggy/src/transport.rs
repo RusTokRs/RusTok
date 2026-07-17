@@ -5,12 +5,13 @@ use tracing::{error, info};
 
 use crate::config::{IggyConfig, IggyMode};
 use crate::consumer::{ConsumerGroupManager, PersistentConsumerGroup};
+use crate::contract_consumer::PersistentContractConsumerGroup;
 use crate::producer;
 use crate::serialization::{EventSerializer, JsonSerializer, PostcardSerializer};
 use crate::topology::TopologyManager;
 use rustok_core::events::{EventTransport, ReliabilityLevel};
 use rustok_core::Result;
-use rustok_events::EventEnvelope;
+use rustok_events::{ContractEventEnvelope, EventEnvelope};
 use rustok_iggy_connector::{ConnectorConfig, EmbeddedConnector, IggyConnector, RemoteConnector};
 
 pub struct IggyTransport {
@@ -27,7 +28,6 @@ impl IggyTransport {
             IggyMode::Remote => Arc::new(RemoteConnector::new()),
             IggyMode::Embedded => Arc::new(EmbeddedConnector::new()),
         };
-
         let connector_config = ConnectorConfig::from(&config);
 
         connector
@@ -111,6 +111,26 @@ impl IggyTransport {
         ))
     }
 
+    /// Opens a persistent cursor for sealed typed event-family envelopes.
+    pub async fn open_persistent_contract_consumer_group(
+        &self,
+        group_name: &str,
+        topic: &str,
+    ) -> Result<PersistentContractConsumerGroup> {
+        let stream = self.config.topology.stream_name.clone();
+        let cursor = self
+            .connector
+            .open_consumer_group(&stream, topic, group_name)
+            .await
+            .map_err(|error| rustok_core::Error::External(error.to_string()))?;
+        Ok(PersistentContractConsumerGroup::new(
+            stream,
+            topic.to_string(),
+            Arc::clone(&self.serializer),
+            cursor,
+        ))
+    }
+
     pub async fn consume_next_as_group(
         &self,
         group: &str,
@@ -171,6 +191,19 @@ impl EventTransport for IggyTransport {
 
         self.connector.publish(request).await.map_err(|error| {
             error!(error = %error, "Failed to publish event to Iggy");
+            rustok_core::Error::External(error.to_string())
+        })?;
+
+        Ok(())
+    }
+
+    async fn publish_contract(&self, envelope: ContractEventEnvelope) -> Result<()> {
+        let event_type = envelope.event_type().to_string();
+        let request =
+            producer::build_contract_publish_request(&self.config, &*self.serializer, envelope)?;
+
+        self.connector.publish(request).await.map_err(|error| {
+            error!(event_type, error = %error, "Failed to publish contract event to Iggy");
             rustok_core::Error::External(error.to_string())
         })?;
 
