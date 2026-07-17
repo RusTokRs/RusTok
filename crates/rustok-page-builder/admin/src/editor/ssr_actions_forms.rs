@@ -123,7 +123,7 @@ impl AdminCanvasController {
                 "component `{component_id}` already defines `{FLY_PAGE_LINK_FIELD}`; remove the internal link before adding an action"
             ));
         }
-        let value = serde_json::to_value(action_from_request(request)?)
+        let value = serde_json::to_value(action_from_request(request.clone())?)
             .map_err(|error| format!("component action cannot be encoded: {error}"))?;
         let patch = validated_contract_patch(self, component_id, FLY_ACTION_FIELD, value)?;
         Ok(UiIntent::execute(EditorCommand::Patch {
@@ -156,7 +156,7 @@ impl AdminCanvasController {
             .and_then(|value| serde_json::from_value::<ComponentForm>(value).ok())
             .map(|form| form.extensions)
             .unwrap_or_default();
-        let value = serde_json::to_value(form_from_request(request, extensions)?)
+        let value = serde_json::to_value(form_from_request(request.clone(), extensions)?)
             .map_err(|error| format!("component form cannot be encoded: {error}"))?;
         let patch = validated_contract_patch(self, component_id, FLY_FORM_FIELD, value)?;
         Ok(UiIntent::execute(EditorCommand::Patch {
@@ -472,7 +472,13 @@ impl ActionValues {
             ..Self::default()
         };
         match action {
-            Some(ComponentAction::NavigatePage { page_id, base_path, query, fragment, fallback_href }) => {
+            Some(ComponentAction::NavigatePage {
+                page_id,
+                base_path,
+                query,
+                fragment,
+                fallback_href,
+            }) => {
                 values.page_id = page_id.clone();
                 values.base_path = base_path.clone().unwrap_or_default();
                 values.query = query.clone().unwrap_or_default();
@@ -493,7 +499,11 @@ impl ActionValues {
                 values.event = event.clone();
                 values.payload_json = pretty_json(payload);
             }
-            Some(ComponentAction::ProviderAction { provider, action, input }) => {
+            Some(ComponentAction::ProviderAction {
+                provider,
+                action,
+                input,
+            }) => {
                 values.kind = "provider_action".to_string();
                 values.provider = provider.clone();
                 values.action = action.clone();
@@ -708,11 +718,34 @@ fn set_boolean_attribute(patch: &mut ComponentPatch, name: &str, enabled: bool) 
 
 fn validate_input_type(value: &str) -> Result<Option<String>, String> {
     let value = value.trim().to_ascii_lowercase();
-    let value = if value.is_empty() { "text" } else { value.as_str() };
+    let value = if value.is_empty() {
+        "text"
+    } else {
+        value.as_str()
+    };
     const ALLOWED: &[&str] = &[
-        "button", "checkbox", "color", "date", "datetime-local", "email", "file", "hidden",
-        "image", "month", "number", "password", "radio", "range", "reset", "search", "submit",
-        "tel", "text", "time", "url", "week",
+        "button",
+        "checkbox",
+        "color",
+        "date",
+        "datetime-local",
+        "email",
+        "file",
+        "hidden",
+        "image",
+        "month",
+        "number",
+        "password",
+        "radio",
+        "range",
+        "reset",
+        "search",
+        "submit",
+        "tel",
+        "text",
+        "time",
+        "url",
+        "week",
     ];
     ALLOWED
         .contains(&value)
@@ -723,7 +756,8 @@ fn validate_input_type(value: &str) -> Result<Option<String>, String> {
 fn validate_token(value: &str, label: &str) -> Result<String, String> {
     let value = required(value, label)?;
     if !value.chars().all(|character| {
-        character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':' | '[' | ']')
+        character.is_ascii_alphanumeric()
+            || matches!(character, '-' | '_' | '.' | ':' | '[' | ']')
     }) {
         return Err(format!("{label} `{value}` contains unsupported characters"));
     }
@@ -862,8 +896,12 @@ mod tests {
             .expect("action intent");
         controller.dispatch(intent).expect("action patch");
         assert_eq!(
-            controller.editor().document().component("cta").unwrap().extensions[FLY_ACTION_FIELD]
-                ["page_id"],
+            controller
+                .editor()
+                .document()
+                .component("cta")
+                .unwrap()
+                .extensions[FLY_ACTION_FIELD]["page_id"],
             "about"
         );
         controller.dispatch(UiIntent::Undo).expect("undo action");
@@ -891,8 +929,12 @@ mod tests {
             })
             .expect("form intent");
         controller.dispatch(intent).expect("form patch");
-        let form = &controller.editor().document().component("form").unwrap().extensions
-            [FLY_FORM_FIELD];
+        let form = &controller
+            .editor()
+            .document()
+            .component("form")
+            .unwrap()
+            .extensions[FLY_FORM_FIELD];
         assert_eq!(form["id"], "contact");
         assert_eq!(form["providerFuture"]["enabled"], true);
     }
