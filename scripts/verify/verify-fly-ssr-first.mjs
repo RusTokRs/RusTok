@@ -17,6 +17,7 @@ const paths = {
   browserIntent: 'crates/rustok-page-builder/admin/src/browser_intent.rs',
   capabilityAccess: 'crates/rustok-page-builder/admin/src/capability_access.rs',
   draftSession: 'crates/rustok-page-builder/admin/src/draft_session.rs',
+  ssrAssets: 'crates/rustok-page-builder/admin/src/editor/ssr_assets.rs',
   pagesCargo: 'crates/rustok-pages/admin/Cargo.toml',
   pagesContributionBrowser: 'crates/rustok-pages/admin/src/contribution_browser_intent.rs',
   pagesProblem: 'crates/rustok-pages/admin/src/browser_problem.rs',
@@ -98,11 +99,16 @@ for (const forbidden of ['wasm-bindgen', 'wasm_bindgen', 'web-sys', 'web_sys']) 
 }
 requireMarkers('flyBrowserLib', [
   'FLY_BROWSER_ADAPTER_JS',
+  'pub enum BrowserIntentKind',
+  'pub const ALL: [Self; 48]',
   'pub struct BrowserIntentEnvelope',
-  'pub draft_token: Option<String>',
-  'pub draft_generation: Option<u64>',
+  'pub fn kind(&self) -> Option<BrowserIntentKind>',
   'pub fn is_mutating(&self)',
-], 'framework-neutral browser protocol');
+  'Self::UpsertAsset => "upsert_asset"',
+  'Self::RemoveAsset => "remove_asset"',
+  'Self::SelectAsset => "select_asset"',
+  'intent_kind_names_are_unique_and_round_trip',
+], 'framework-neutral typed browser protocol');
 requireMarkers('flyBrowserJs', [
   'export class FlyBrowserAdapter',
   'event.source !== this.iframe.contentWindow',
@@ -143,6 +149,7 @@ requireMarkers('adminAdapter', [
   'data-fly-browser-adapter="fly_browser_v1"',
   'data-fly-intent-form',
   '__flyFormPayload',
+  'delete payload[number.name]',
   'history.replaceState',
 ], 'SSR browser adapter component');
 requireMarkers('adminCanvas', [
@@ -152,14 +159,26 @@ requireMarkers('adminCanvas', [
   '<CapabilityPolicyPanel runtime=capability_runtime />',
   '<SsrInternalPageLinkPanel runtime=ssr_internal_link_runtime />',
   '<SsrActionsFormsPanel runtime=ssr_actions_forms_runtime />',
+  '<SsrAssetPanel runtime=ssr_assets_runtime />',
 ], 'SSR authoring canvas');
 requireMarkers('adminEditorMod', [
   'mod ssr_forms;',
   'mod ssr_internal_link;',
   'mod ssr_actions_forms;',
+  'mod ssr_assets;',
   'SsrInternalPageLinkPanel',
   'SsrActionsFormsPanel',
+  'SsrAssetApplyRequest, SsrAssetPanel, SsrAssetRemoveRequest, SsrAssetUpsertRequest,',
 ], 'SSR editor module graph');
+requireMarkers('ssrAssets', [
+  'pub fn ssr_asset_upsert_intent(',
+  'pub fn ssr_asset_remove_intent(',
+  'pub fn ssr_asset_apply_intent(',
+  'source_allowed(&descriptor.source, descriptor.kind, &AssetPolicy::default())',
+  'data-fly-intent-form="upsert_asset"',
+  'data-fly-intent-form="select_asset"',
+  'data-fly-intent-form="remove_asset"',
+], 'SSR asset authoring module');
 requireMarkers('browserIntent', [
   'pub fn dispatch_browser_intent(',
   'RevisionConflict',
@@ -168,16 +187,17 @@ requireMarkers('browserIntent', [
   'GrapesJsV1Codec::encode_value',
 ], 'classic SSR intent dispatcher');
 requireMarkers('capabilityAccess', [
+  'use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};',
   'pub enum BrowserCapabilityAccessError',
   'Denied(#[from] BrowserCapabilityDenial)',
   'Dispatch(#[from] BrowserIntentDispatchError)',
   'Result<(), BrowserCapabilityAccessError>',
+  'let Some(kind) = envelope.kind()',
+  'BrowserIntentKind::SelectAsset =>',
 ], 'typed SSR capability preflight');
-rejectMarker(
-  'capabilityAccess',
-  'CAPABILITY_DENIAL_PREFIX',
-  'capability denial must not be encoded into authoring error strings',
-);
+for (const forbidden of ['CAPABILITY_DENIAL_PREFIX', 'match envelope.intent.as_str()']) {
+  rejectMarker('capabilityAccess', forbidden, `capability preflight must not contain ${forbidden}`);
+}
 requireMarkers('draftSession', [
   'pub runtime_context: Value',
   'commit_with_context',
@@ -243,7 +263,7 @@ requireMarkers('pagesProblem', [
 ], 'framework-neutral Pages problem mapping');
 requireMarkers('pagesLib', [
   'mod browser_problem;',
-  'PagesBrowserIntentProblem,',
+  'pub use browser_problem::PagesBrowserIntentProblem;',
   'PagesBrowserIntentAccessError,',
 ], 'Pages typed browser exports');
 
