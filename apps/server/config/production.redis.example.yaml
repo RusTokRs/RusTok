@@ -20,14 +20,18 @@ database:
 
 auth:
   jwt:
-    secret: CHANGE_ME_WITH_A_REAL_PRODUCTION_SECRET
+    # Replace through the deployment secret manager. Production HS256 requires
+    # at least 64 bytes and rejects common placeholder/low-diversity values.
+    secret: CHANGE_ME_WITH_64_PLUS_RANDOM_BYTES_FROM_SECRET_MANAGER
     expiration: 3600
 
 settings:
   auth:
     refresh_expiration: 1209600
-    issuer: rustok
-    audience: rustok-admin
+    # Production startup rejects the framework defaults `rustok` and
+    # `rustok-admin`; use deployment-specific claim namespaces.
+    issuer: https://api.example.com
+    audience: rustok-production-admin
   rustok:
     tenant:
       enabled: true
@@ -86,6 +90,7 @@ settings:
         warning_threshold: 0.7
         critical_threshold: 0.9
 
+# Production startup also requires RUSTOK_HTTPS=true so HSTS is emitted.
 # Redis runtime is resolved from environment, not from this YAML.
 # Set one of:
 # - RUSTOK_REDIS_URL=redis://redis.example.com:6379/0
