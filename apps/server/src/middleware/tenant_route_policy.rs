@@ -36,13 +36,22 @@ mod tests {
 
     #[test]
     fn route_policy_distinguishes_global_and_self_resolving_surfaces() {
-        assert_eq!(tenant_route_scope("/metrics"), TenantRouteScope::GlobalOperator);
-        assert_eq!(tenant_route_scope("/healthcare"), TenantRouteScope::TenantBound);
+        assert_eq!(
+            tenant_route_scope("/metrics"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/healthcare"),
+            TenantRouteScope::TenantBound
+        );
         assert_eq!(
             tenant_route_scope("/api/graphql/ws"),
             TenantRouteScope::SelfResolvingHandshake
         );
-        assert_eq!(tenant_route_scope("/api/graphql"), TenantRouteScope::TenantBound);
+        assert_eq!(
+            tenant_route_scope("/api/graphql"),
+            TenantRouteScope::TenantBound
+        );
         assert_eq!(
             tenant_route_scope("/v1/catalog/modules"),
             TenantRouteScope::GlobalOperator

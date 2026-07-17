@@ -9,14 +9,9 @@ Tenant resolution is a typed domain boundary, not a string switch in HTTP middle
 
 `TenantSettings.resolution` uses `TenantResolutionMode`. Unknown configuration values fail during deserialization. Structural combinations are validated once by `TenantSettings`, including subdomain base domains and development-only fallback policy.
 
-`middleware/tenant_resolution.rs` is the single owner of:
+`middleware/tenant_resolution.rs` is the single owner of tenant identifier extraction, validation, source classification and typed resolution failures. `middleware/tenant_route_policy.rs` separately owns route-scope classification so transport exposure cannot become resolver logic.
 
-- request route classification;
-- tenant identifier extraction and validation;
-- resolution source classification;
-- typed resolution failures.
-
-The runtime middleware consumes `TenantResolution` and records telemetry from the actual result. It does not predict fallback behavior and contains no catch-all branch. When both the configured tenant header and `X-Tenant-Slug` are supplied, the slug is treated as a correlated assertion and must match the tenant loaded by the primary identifier.
+Every tenant-bound transport consumes a `TenantResolution` and records telemetry from its typed source. HTTP derives the resolution from the request; self-resolving handshakes create an explicit typed slug resolution before using the same cache-aware context loader. No transport invents source labels or predicts fallback behavior. When both the configured tenant header and `X-Tenant-Slug` are supplied, the slug is treated as a correlated assertion and must match the tenant loaded by the primary identifier.
 
 ## Route scopes
 

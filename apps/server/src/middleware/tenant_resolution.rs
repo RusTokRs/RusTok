@@ -13,38 +13,6 @@ use crate::common::{
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub(crate) enum TenantRouteScope {
-    TenantBound,
-    GlobalOperator,
-    SelfResolvingHandshake,
-}
-
-fn path_is_or_descendant(path: &str, root: &str) -> bool {
-    path == root
-        || path
-            .strip_prefix(root)
-            .is_some_and(|suffix| suffix.starts_with('/'))
-}
-
-pub(crate) fn tenant_route_scope(path: &str) -> TenantRouteScope {
-    if path == "/api/graphql/ws" {
-        return TenantRouteScope::SelfResolvingHandshake;
-    }
-
-    if matches!(path, "/metrics" | "/api/openapi.json" | "/api/openapi.yaml")
-        || path == "/api/graphql/schema.graphql"
-        || path_is_or_descendant(path, "/api/install")
-        || path_is_or_descendant(path, "/v1/catalog")
-        || path_is_or_descendant(path, "/catalog")
-        || path_is_or_descendant(path, "/health")
-    {
-        TenantRouteScope::GlobalOperator
-    } else {
-        TenantRouteScope::TenantBound
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum TenantIdentifierKind {
     Uuid,
     Slug,
@@ -90,6 +58,7 @@ pub(crate) enum TenantResolutionSource {
     SingleTenantDefault,
     Header,
     CompatibilitySlugHeader,
+    SelfResolvingHandshake,
     Host,
     Domain,
     Subdomain,
@@ -102,6 +71,7 @@ impl TenantResolutionSource {
             Self::SingleTenantDefault => "single_tenant_default",
             Self::Header => "header",
             Self::CompatibilitySlugHeader => "compatibility_slug_header",
+            Self::SelfResolvingHandshake => "self_resolving_handshake",
             Self::Host => "host",
             Self::Domain => "domain",
             Self::Subdomain => "subdomain",
@@ -392,10 +362,14 @@ pub(crate) fn subdomain_identifier(
     })
 }
 
-pub(crate) fn validated_slug_identifier(
+pub(crate) fn resolve_explicit_slug(
     value: &str,
-) -> Result<ResolvedTenantIdentifier, TenantResolutionError> {
-    validate_slug(value).map(ResolvedTenantIdentifier::Slug)
+) -> Result<TenantResolution, TenantResolutionError> {
+    Ok(TenantResolution {
+        identifier: ResolvedTenantIdentifier::Slug(validate_slug(value)?),
+        source: TenantResolutionSource::SelfResolvingHandshake,
+        asserted_slug: None,
+    })
 }
 
 fn validate_slug(value: &str) -> Result<String, TenantResolutionError> {
@@ -427,27 +401,17 @@ mod tests {
     }
 
     #[test]
-    fn route_policy_distinguishes_global_and_self_resolving_surfaces() {
+    fn explicit_slug_resolution_has_typed_handshake_source() {
+        let resolution = resolve_explicit_slug("demo").expect("explicit slug resolution");
         assert_eq!(
-            tenant_route_scope("/metrics"),
-            TenantRouteScope::GlobalOperator
+            resolution.identifier,
+            ResolvedTenantIdentifier::Slug("demo".to_string())
         );
         assert_eq!(
-            tenant_route_scope("/healthcare"),
-            TenantRouteScope::TenantBound
+            resolution.source,
+            TenantResolutionSource::SelfResolvingHandshake
         );
-        assert_eq!(
-            tenant_route_scope("/api/graphql/ws"),
-            TenantRouteScope::SelfResolvingHandshake
-        );
-        assert_eq!(
-            tenant_route_scope("/api/graphql"),
-            TenantRouteScope::TenantBound
-        );
-        assert_eq!(
-            tenant_route_scope("/v2/catalog/publish"),
-            TenantRouteScope::TenantBound
-        );
+        assert_eq!(resolution.asserted_slug, None);
     }
 
     #[test]

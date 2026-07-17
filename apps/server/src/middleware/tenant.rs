@@ -19,9 +19,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{fmt, sync::Arc};
 use uuid::Uuid;
 
-use super::tenant_resolution::{
-    resolve_request, tenant_route_scope, validated_slug_identifier, ResolvedTenantIdentifier,
-    TenantIdentifierKind, TenantResolutionSource, TenantRouteScope,
+use super::{
+    tenant_resolution::{
+        resolve_explicit_slug, resolve_request, ResolvedTenantIdentifier, TenantIdentifierKind,
+        TenantResolution, TenantResolutionSource,
+    },
+    tenant_route_policy::{tenant_route_scope, TenantRouteScope},
 };
 use crate::context::{TenantContext, TenantContextExtension};
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -48,6 +51,7 @@ enum CachedTenantMiss {
 #[derive(Debug)]
 pub(crate) enum TenantContextLoadError {
     InvalidIdentifier(String),
+    InvalidAssertion(String),
     InfrastructureUnavailable,
     NotFound,
     Disabled,
@@ -59,7 +63,7 @@ pub(crate) enum TenantContextLoadError {
 impl TenantContextLoadError {
     pub(crate) const fn status_code(&self) -> StatusCode {
         match self {
-            Self::InvalidIdentifier(_) => StatusCode::BAD_REQUEST,
+            Self::InvalidIdentifier(_) | Self::InvalidAssertion(_) => StatusCode::BAD_REQUEST,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Disabled => StatusCode::FORBIDDEN,
             Self::InfrastructureUnavailable
@@ -72,6 +76,7 @@ impl TenantContextLoadError {
     pub(crate) const fn client_message(&self) -> &'static str {
         match self {
             Self::InvalidIdentifier(_) => "Invalid tenant identifier",
+            Self::InvalidAssertion(_) => "Conflicting tenant assertions",
             Self::NotFound => "Tenant not found",
             Self::Disabled => "Tenant is disabled",
             Self::InfrastructureUnavailable
@@ -87,6 +92,9 @@ impl fmt::Display for TenantContextLoadError {
         match self {
             Self::InvalidIdentifier(reason) => {
                 write!(formatter, "invalid tenant identifier: {reason}")
+            }
+            Self::InvalidAssertion(reason) => {
+                write!(formatter, "invalid tenant assertion: {reason}")
             }
             Self::InfrastructureUnavailable => {
                 formatter.write_str("tenant cache infrastructure is unavailable")
@@ -605,13 +613,33 @@ pub(crate) async fn load_tenant_context(
         .await
 }
 
-pub(crate) async fn load_tenant_context_by_slug(
+fn record_resolution_source(source: TenantResolutionSource) {
+    rustok_telemetry::metrics::record_cache_operation(
+        "tenant_resolution",
+        "resolve",
+        source.as_str(),
+    );
+}
+
+async fn load_resolved_tenant_context(
+    ctx: &ServerRuntimeContext,
+    resolution: &TenantResolution,
+) -> Result<TenantContext, TenantContextLoadError> {
+    let context = load_tenant_context(ctx, &resolution.identifier).await?;
+    resolution
+        .validate_resolved_slug(&context.slug)
+        .map_err(|error| TenantContextLoadError::InvalidAssertion(error.to_string()))?;
+    Ok(context)
+}
+
+pub(crate) async fn resolve_tenant_context_by_slug(
     ctx: &ServerRuntimeContext,
     slug: &str,
 ) -> Result<TenantContext, TenantContextLoadError> {
-    let identifier = validated_slug_identifier(slug)
+    let resolution = resolve_explicit_slug(slug)
         .map_err(|error| TenantContextLoadError::InvalidIdentifier(error.to_string()))?;
-    load_tenant_context(ctx, &identifier).await
+    record_resolution_source(resolution.source);
+    load_resolved_tenant_context(ctx, &resolution).await
 }
 
 pub async fn resolve(
@@ -636,11 +664,7 @@ pub async fn resolve(
         error.status_code()
     })?;
 
-    rustok_telemetry::metrics::record_cache_operation(
-        "tenant_resolution",
-        "resolve",
-        resolution.source.as_str(),
-    );
+    record_resolution_source(resolution.source);
     if resolution.source == TenantResolutionSource::DevelopmentFallback {
         rustok_telemetry::metrics::record_cache_operation(
             "tenant_resolution",
@@ -655,25 +679,13 @@ pub async fn resolve(
         );
     }
 
-    let context = load_tenant_context(&ctx, &resolution.identifier)
+    let context = load_resolved_tenant_context(&ctx, &resolution)
         .await
         .map_err(|error| {
             tracing::warn!(
                 path = req.uri().path(),
                 error = %error,
                 "Tenant context loading failed"
-            );
-            error.status_code()
-        })?;
-
-    resolution
-        .validate_resolved_slug(&context.slug)
-        .map_err(|error| {
-            tracing::warn!(
-                tenant_id = %context.id,
-                resolved_slug = %context.slug,
-                error = %error,
-                "Conflicting tenant assertions rejected"
             );
             error.status_code()
         })?;

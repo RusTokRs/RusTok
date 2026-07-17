@@ -11,7 +11,7 @@ status: active
 
 This document is the execution plan for moving RusToK from an ambitious development platform to a reproducible, production-ready platform with explicit security, tenancy, compatibility, release and scale contracts.
 
-The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5f1b443d7fc0fa1dae8ee9b09a29d2edfb67`. The progress ledger was refreshed on 2026-07-17 after the security and tenant hardening batches through commit `5cbab58823b8cf1edb3698b7b549ddaa5645cc90`.
+The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5f1b443d7fc0fa1dae8ee9b09a29d2edfb67`. The progress ledger was refreshed on 2026-07-17 after the canonical tenant-resolution and transport-unification work through commit `cead00ec16522257b7b3d0689aaf14238a160558`.
 
 ## Current Revalidation Summary
 
@@ -22,15 +22,15 @@ The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5
 3. Browser E2E runs in a dedicated workflow, but repository branch protection has not yet been verified to require that workflow.
 4. Five dependency waivers are now registered and time-bounded, but their exact reverse dependency paths and reachability evidence must be captured before the 2026-07-24 expiry.
 5. Production JWT bootstrap policy now validates algorithm-specific key material, issuer, audience and HS256 secret quality; operational key rotation and emergency revocation remain separate production-readiness work.
-6. The private legacy resolver still contains an `unwrap_or_default()` timestamp helper. Public tenant-bound requests and durable generation publication now fail closed on a pre-epoch clock, but the private helper should be removed during resolver decomposition.
 
 ### Findings closed or materially reduced
 
 1. Plaintext `http:` was removed from the enforced UI CSP `connect-src`, and object/plugin content is blocked.
 2. A strict CSP report-only policy contains no `unsafe-inline`, `unsafe-eval`, plaintext HTTP or plaintext WebSocket source.
-3. Unknown tenant resolution modes now fail executable bootstrap and the public request-time tenant boundary.
-4. `DefaultTenant` fallback is forbidden in production, rejected outside header mode and emits telemetry plus a warning whenever it is used on a tenant-bound development request.
-5. Operator routes and the global read-only registry catalog are excluded from fallback telemetry and tenant clock checks.
+3. Tenant resolution is a typed enum with an exhaustive canonical resolver; unknown modes fail configuration deserialization and cannot reach a default-tenant catch-all.
+4. `DefaultTenant` fallback is forbidden in production, rejected outside header mode and emits telemetry plus a warning only when it is actually selected.
+5. HTTP and GraphQL WebSocket use one cache-aware tenant read-port loader with typed errors; transport code no longer queries tenant persistence or reconstructs `TenantContext` independently.
+6. Operator routes, self-resolving handshakes and the global read-only registry catalog are represented by one segment-safe route policy rather than duplicated bypass lists.
 6. Subdomain tenant resolution requires at least one configured base domain at bootstrap.
 7. Production startup requires an explicit HTTPS deployment declaration, and HSTS flag parsing is normalized.
 8. The `/v1/catalog*` bypass was reviewed and documented as a global read-only registry boundary; `/v2/catalog/*` mutation routes remain tenant-bound.
@@ -170,7 +170,7 @@ The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5
 2. Complete `HARD-101` with nonce/hash CSP and remove `unsafe-eval` from enforcement.
 3. Complete `HARD-102` with violation collection, telemetry and an allowlist inventory.
 4. Capture exact dependency paths and reachability evidence before advisory exceptions expire on 2026-07-24.
-5. Complete `HARD-109` by removing the private legacy timestamp fallback and adding clock-skew cache tests.
+5. Add required negative tenant-isolation integration coverage for malformed and conflicting assertions across all transports.
 6. Complete `HARD-105` with an explicitly named development/single-tenant profile contract.
 7. Make `HARD-201` a required branch-protection check.
 8. `HARD-204` API compatibility diff gates.
@@ -196,6 +196,8 @@ cargo fmt --all -- --check
 cargo test -p rustok-server host::tests
 cargo test -p rustok-server middleware::security_headers
 cargo test -p rustok-server middleware::tenant
+cargo test -p rustok-server --test tenant_resolver_invariants_test
+node scripts/verify/verify-tenant-resolution-architecture.mjs
 node scripts/verify/verify-module-manifest-docs-drift.mjs
 node scripts/verify/verify-advisory-exceptions.mjs
 cargo tree -i rsa --workspace --all-features
@@ -228,10 +230,11 @@ npm --prefix apps/next-frontend run test:e2e
 | `HARD-101` CSP enforcement hardening | In progress | Safe directives `34a508a`; strict report-only target `5cbab58`; nonce/hash enforcement remains |
 | `HARD-102` CSP report-only and telemetry | In progress | Strict report-only policy `5cbab58`; collection/telemetry and allowlist inventory remain |
 | `HARD-103` Production HSTS contract | Completed | `822430e`, `3a9f936` |
-| `HARD-104` Tenant resolution fail-closed | Completed at public boundaries | Bootstrap `47c8003`; request-time boundary `ce315be`; legacy private cleanup remains |
+| `HARD-104` Tenant resolution fail-closed | Completed | Typed configuration and canonical resolver `adca4014`; route/header hardening `f3b475e0`; unified HTTP/WS loader `21ad3a99` |
 | `HARD-105` Default-tenant fallback restriction | In progress | Production restriction `47c8003`; usage telemetry `ce315be`; named profile contract remains |
 | `HARD-106` Global catalog isolation review | Completed | Boundary test `f1ae6e1`; accepted decision `4d9cbb0`; wrapper parity `8965919` |
-| `HARD-109` Clock anomaly handling | Materially mitigated | Durable generation `07ed2ab`; tenant request guard `8965919`; private helper cleanup and skew tests remain |
+| `HARD-109` Clock anomaly handling | Implemented; runtime tests pending local execution | Durable generation `07ed2ab`; request/cache timestamps return errors; canonical loader `21ad3a99` |
+| Canonical tenant context loading | Completed | Shared HTTP/GraphQL WebSocket read-port pipeline `21ad3a99`; negative-cache degradation and WS source telemetry `cead00ec` |
 | `HARD-110` Production JWT bootstrap policy | Implemented; rotation remains operational work | Bootstrap policy `ec5111b`; production example `c6cb4a3` |
 | `HARD-201` Browser E2E CI | Implemented, not yet required | Workflow `8982982`; branch-protection requirement unverified |
 | Quick-xml advisory debt | Closed | Waivers removed and register entries closed in `0b4d003`, `b988167`, `a6682fc` |

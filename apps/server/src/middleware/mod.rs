@@ -15,13 +15,16 @@ pub mod registry_remote_claim;
 pub mod security_headers;
 
 mod tenant_resolution;
+mod tenant_route_policy;
 #[path = "tenant.rs"]
 mod tenant_runtime;
 
 /// Public tenant middleware surface backed by durable cache generations.
 pub mod tenant {
-    pub(crate) use super::tenant_runtime::{load_tenant_context_by_slug, TenantContextLoadError};
     pub use super::tenant_runtime::{resolve, TenantCacheInfrastructure, TenantCacheStats};
+    pub(crate) use super::tenant_runtime::{
+        resolve_tenant_context_by_slug, TenantContextLoadError,
+    };
     pub use crate::services::tenant_cache_generation_status::{
         TenantCacheGenerationListenerSnapshot as TenantInvalidationListenerSnapshot,
         TenantCacheGenerationListenerStatus as TenantInvalidationListenerStatus,

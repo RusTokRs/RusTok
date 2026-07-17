@@ -333,18 +333,12 @@ async fn build_ws_connection_data(
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| async_graphql::Error::new("connection_init.token is required"))?;
 
-    let tenant_ctx = tenant::load_tenant_context_by_slug(&runtime_ctx, &tenant_slug)
+    let tenant_ctx = tenant::resolve_tenant_context_by_slug(&runtime_ctx, &tenant_slug)
         .await
         .map_err(|error| {
             tracing::warn!(tenant_slug, error = %error, "GraphQL WebSocket tenant resolution failed");
             async_graphql::Error::new(error.client_message())
         })?;
-    rustok_telemetry::metrics::record_cache_operation(
-        "tenant_resolution",
-        "resolve",
-        "graphql_ws_payload",
-    );
-
     let access_token = token
         .trim()
         .strip_prefix("Bearer ")
