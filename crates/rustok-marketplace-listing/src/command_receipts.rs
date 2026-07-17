@@ -178,8 +178,16 @@ pub(crate) async fn complete(
         .publish_contract_in_tx(&transaction, tenant_id, Some(actor_id), event)
         .await
     {
+        tracing::error!(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            receipt_id = %receipt_id,
+            command_kind = command_kind.as_str(),
+            error = %error,
+            "Marketplace listing transactional event publication failed"
+        );
         transaction.rollback().await?;
-        return Err(MarketplaceListingError::EventPublication(error.to_string()));
+        return Err(MarketplaceListingError::EventPublicationUnavailable);
     }
     let result = listing_command_receipt::Entity::update_many()
         .col_expr(
