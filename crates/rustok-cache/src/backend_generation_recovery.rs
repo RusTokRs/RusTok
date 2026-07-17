@@ -235,6 +235,13 @@ impl GenerationRecoveryHealthBackend {
         rustok_core::Error::Cache(error.to_string())
     }
 
+    fn ensure_owner(&self) -> rustok_core::Result<()> {
+        match &self.owner_error {
+            Some(error) => Err(Self::error(error)),
+            None => Ok(()),
+        }
+    }
+
     async fn recover_if_needed(&self) -> rustok_core::Result<()> {
         if self.state.snapshot().trusted {
             return Ok(());
@@ -268,9 +275,7 @@ impl GenerationRecoveryHealthBackend {
 #[async_trait]
 impl CacheBackend for GenerationRecoveryHealthBackend {
     async fn health(&self) -> rustok_core::Result<()> {
-        if let Some(error) = &self.owner_error {
-            return Err(Self::error(error));
-        }
+        self.ensure_owner()?;
         if !self.redis_client_initialized {
             return Err(rustok_core::Error::Cache(
                 "Redis is configured but its client is unavailable for cache generation recovery"
@@ -282,10 +287,12 @@ impl CacheBackend for GenerationRecoveryHealthBackend {
     }
 
     async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+        self.ensure_owner()?;
         self.inner.get(key).await
     }
 
     async fn set(&self, key: String, value: Vec<u8>) -> rustok_core::Result<()> {
+        self.ensure_owner()?;
         self.inner.set(key, value).await
     }
 
@@ -295,6 +302,7 @@ impl CacheBackend for GenerationRecoveryHealthBackend {
         value: Vec<u8>,
         ttl: Duration,
     ) -> rustok_core::Result<()> {
+        self.ensure_owner()?;
         self.inner.set_with_ttl(key, value, ttl).await
     }
 
@@ -305,10 +313,12 @@ impl CacheBackend for GenerationRecoveryHealthBackend {
         value: Vec<u8>,
         ttl: Option<Duration>,
     ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
+        self.ensure_owner()?;
         self.inner.compare_and_set(key, expected, value, ttl).await
     }
 
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
+        self.ensure_owner()?;
         self.inner.invalidate(key).await
     }
 
@@ -361,6 +371,11 @@ mod recovery_tests {
         let error = second.health().await.unwrap_err().to_string();
 
         assert!(error.contains("another CacheService"));
+        assert!(second.get("key").await.is_err());
+        assert!(second
+            .set("key".to_string(), b"value".to_vec())
+            .await
+            .is_err());
     }
 
     #[cfg(feature = "redis-cache")]
