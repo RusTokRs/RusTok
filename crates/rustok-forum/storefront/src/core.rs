@@ -1,8 +1,5 @@
 use crate::i18n::t;
-use rustok_ui_core::normalize_css_hex_color;
-
-const DEFAULT_CATEGORY_ACCENT_STYLE: &str =
-    "background:linear-gradient(180deg,#0ea5e9 0%,#f59e0b 100%);";
+use rustok_ui_core::css_hex_accent_class;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ForumStorefrontCategoryRailLabels {
@@ -15,7 +12,7 @@ pub struct ForumStorefrontCategoryCardViewModel {
     pub href: String,
     pub is_active: bool,
     pub container_class: &'static str,
-    pub accent_style: String,
+    pub accent_class: &'static str,
     pub name: String,
     pub slug_badge: String,
     pub topic_count: i32,
@@ -62,11 +59,8 @@ pub fn forum_storefront_topic_card_class(is_active: bool) -> &'static str {
     }
 }
 
-pub fn forum_storefront_accent_style(color: Option<&str>) -> String {
-    color
-        .and_then(normalize_css_hex_color)
-        .map(|value| format!("background:{value};"))
-        .unwrap_or_else(|| DEFAULT_CATEGORY_ACCENT_STYLE.to_string())
+pub fn forum_storefront_accent_class(color: Option<&str>) -> &'static str {
+    css_hex_accent_class(color)
 }
 
 pub fn forum_storefront_status_badge_class(status_class: &'static str) -> &'static str {
@@ -97,7 +91,7 @@ pub fn forum_storefront_category_card_view_model(
         href: category_href(module_route_base, item.id.as_str()),
         is_active,
         container_class: forum_storefront_category_card_class(is_active),
-        accent_style: forum_storefront_accent_style(item.color.as_deref()),
+        accent_class: forum_storefront_accent_class(item.color.as_deref()),
         name: item.name.clone(),
         slug_badge: forum_storefront_slug_label("#{slug}", item.slug.as_str()),
         topic_count: item.topic_count,
@@ -222,11 +216,8 @@ mod tests {
         );
         assert!(forum_storefront_category_card_class(true).contains("border-primary/40"));
         assert!(forum_storefront_topic_card_class(false).contains("hover:shadow-sm"));
-        assert_eq!(
-            forum_storefront_accent_style(Some(" #fff ")),
-            "background:#fff;"
-        );
-        assert!(forum_storefront_accent_style(Some(" ")).contains("linear-gradient"));
+        assert_eq!(forum_storefront_accent_class(Some("#0ea5e9")), "bg-cyan-500");
+        assert!(forum_storefront_accent_class(Some(" ")).contains("from-sky-500"));
         assert!(forum_storefront_status_badge_class("success").contains("emerald"));
         assert!(forum_storefront_status_badge_class("warning").contains("amber"));
         assert!(forum_storefront_status_badge_class("muted").contains("bg-muted"));
@@ -235,9 +226,9 @@ mod tests {
 
     #[test]
     fn rejects_persisted_css_declaration_injection() {
-        let style = forum_storefront_accent_style(Some(
+        let class = forum_storefront_accent_class(Some(
             "#fff;background:url(https://attacker.invalid/x)",
         ));
-        assert_eq!(style, DEFAULT_CATEGORY_ACCENT_STYLE);
+        assert!(class.contains("from-sky-500"));
     }
 }
