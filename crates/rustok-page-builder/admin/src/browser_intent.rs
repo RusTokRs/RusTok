@@ -1,5 +1,6 @@
 use crate::editor::{
-    SsrDropRequest, SsrLocalePolicyRequest, SsrLocalizedPageMetadataRequest,
+    SsrDropRequest, SsrInternalPageLinkRemoveRequest, SsrInternalPageLinkRequest,
+    SsrLocalePolicyRequest, SsrLocalizedPageMetadataRequest,
 };
 use crate::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
 use fly::{GrapesJsV1Codec, ProjectHash};
@@ -31,7 +32,9 @@ pub enum BrowserIntentEffect {
         expected_hash: Option<String>,
         command_sequence: u64,
     },
-    Announce { message: String },
+    Announce {
+        message: String,
+    },
 }
 
 pub fn dispatch_browser_intent(
@@ -89,6 +92,23 @@ fn dispatch_named_intent(
                 .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
             let intent = controller
                 .ssr_localized_page_metadata_intent(request)
+                .map_err(BrowserIntentDispatchError::Authoring)?;
+            controller.dispatch(intent)?
+        }
+        "set_internal_page_link" => {
+            let request = serde_json::from_value::<SsrInternalPageLinkRequest>(payload.clone())
+                .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
+            let intent = controller
+                .ssr_internal_page_link_intent(request)
+                .map_err(BrowserIntentDispatchError::Authoring)?;
+            controller.dispatch(intent)?
+        }
+        "remove_internal_page_link" => {
+            let request =
+                serde_json::from_value::<SsrInternalPageLinkRemoveRequest>(payload.clone())
+                    .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
+            let intent = controller
+                .ssr_remove_internal_page_link_intent(request)
                 .map_err(BrowserIntentDispatchError::Authoring)?;
             controller.dispatch(intent)?
         }
@@ -247,6 +267,8 @@ fn is_mutating_intent(envelope: &BrowserIntentEnvelope) -> bool {
                 | "set_locale_policy"
                 | "clear_locale_policy"
                 | "upsert_localized_page_metadata"
+                | "set_internal_page_link"
+                | "remove_internal_page_link"
                 | "create_page"
                 | "rename_page"
                 | "remove_page"
@@ -371,8 +393,15 @@ mod tests {
                     "component": {
                         "id": "root",
                         "type": "wrapper",
-                        "components": [{ "id": "hero", "type": "section" }]
+                        "components": [
+                            { "id": "hero", "type": "section" },
+                            { "id": "link", "type": "link" }
+                        ]
                     }
+                }, {
+                    "id": "about",
+                    "flyPageMeta": { "slug": "about" },
+                    "component": { "id": "about-root", "type": "wrapper" }
                 }]
             }),
         )
@@ -524,6 +553,43 @@ mod tests {
         assert!(controller.editor().document().project.pages[0].extensions["flyPageMeta"]
             ["title"]["$localized"]
             .is_object());
+    }
+
+    #[test]
+    fn internal_page_link_form_uses_revision_protected_patch_history() {
+        let mut controller = controller();
+        let result = dispatch_browser_intent(
+            &mut controller,
+            intent(
+                "set_internal_page_link",
+                json!({
+                    "component_id": "link",
+                    "page_id": "about",
+                    "base_path": "/site",
+                    "query": "source=hero",
+                    "fragment": "team",
+                    "fallback_href": "/fallback"
+                }),
+            ),
+        )
+        .expect("internal page link");
+        assert!(result.dirty);
+        let link = &controller
+            .editor()
+            .document()
+            .component("link")
+            .unwrap()
+            .extensions["flyPageLink"];
+        assert_eq!(link["page_id"], "about");
+        assert_eq!(link["base_path"], "/site");
+        controller.dispatch(UiIntent::Undo).expect("undo link");
+        assert!(!controller
+            .editor()
+            .document()
+            .component("link")
+            .unwrap()
+            .extensions
+            .contains_key("flyPageLink"));
     }
 
     #[test]
