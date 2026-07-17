@@ -1,6 +1,6 @@
 # RusToK Module Manifest (example)
-# Пример синхронизирован с текущей platform topology.
-# Канонический источник истины по активной конфигурации — `modules.toml`.
+# This example mirrors the current platform topology and dependency graph.
+# The canonical source of truth for active composition is `modules.toml`.
 
 schema = 2
 app = "rustok-server"
@@ -25,7 +25,8 @@ public_url = "http://localhost:3000"
 redirect_uris = ["http://localhost:3000/auth/callback"]
 
 [modules]
-# Core modules
+# Core modules (required and always active)
+modules = { crate = "rustok-modules", source = "path", path = "crates/rustok-modules", required = true }
 auth = { crate = "rustok-auth", source = "path", path = "crates/rustok-auth", required = true }
 cache = { crate = "rustok-cache", source = "path", path = "crates/rustok-cache", required = true }
 channel = { crate = "rustok-channel", source = "path", path = "crates/rustok-channel", required = true }
@@ -36,12 +37,12 @@ outbox = { crate = "rustok-outbox", source = "path", path = "crates/rustok-outbo
 tenant = { crate = "rustok-tenant", source = "path", path = "crates/rustok-tenant", required = true }
 rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true }
 
-# Optional modules
+# Domain modules (optional)
 content = { crate = "rustok-content", source = "path", path = "crates/rustok-content" }
 cart = { crate = "rustok-cart", source = "path", path = "crates/rustok-cart" }
 customer = { crate = "rustok-customer", source = "path", path = "crates/rustok-customer" }
-product = { crate = "rustok-product", source = "path", path = "crates/rustok-product" }
-profiles = { crate = "rustok-profiles", source = "path", path = "crates/rustok-profiles" }
+product = { crate = "rustok-product", source = "path", path = "crates/rustok-product", depends_on = ["taxonomy"] }
+profiles = { crate = "rustok-profiles", source = "path", path = "crates/rustok-profiles", depends_on = ["taxonomy"] }
 region = { crate = "rustok-region", source = "path", path = "crates/rustok-region" }
 pricing = { crate = "rustok-pricing", source = "path", path = "crates/rustok-pricing", depends_on = ["product"] }
 inventory = { crate = "rustok-inventory", source = "path", path = "crates/rustok-inventory", depends_on = ["product"] }
@@ -49,11 +50,23 @@ order = { crate = "rustok-order", source = "path", path = "crates/rustok-order" 
 payment = { crate = "rustok-payment", source = "path", path = "crates/rustok-payment" }
 fulfillment = { crate = "rustok-fulfillment", source = "path", path = "crates/rustok-fulfillment" }
 commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce", depends_on = ["cart", "customer", "product", "region", "pricing", "inventory", "order", "payment", "fulfillment"] }
-blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content"] }
-forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content"] }
-pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages" }
+marketplace_seller = { crate = "rustok-marketplace-seller", source = "path", path = "crates/rustok-marketplace-seller" }
+marketplace_listing = { crate = "rustok-marketplace-listing", source = "path", path = "crates/rustok-marketplace-listing", depends_on = ["marketplace_seller", "product"] }
+marketplace = { crate = "rustok-marketplace", source = "path", path = "crates/rustok-marketplace", depends_on = ["marketplace_seller", "marketplace_listing"] }
+blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content", "comments", "taxonomy"] }
+forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content", "taxonomy", "page_builder"] }
+comments = { crate = "rustok-comments", source = "path", path = "crates/rustok-comments" }
+pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages", depends_on = ["content", "page_builder"] }
+page_builder = { crate = "rustok-page-builder", source = "path", path = "crates/rustok-page-builder" }
+taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/rustok-taxonomy", depends_on = ["content"] }
 media = { crate = "rustok-media", source = "path", path = "crates/rustok-media" }
+seo = { crate = "rustok-seo", source = "path", path = "crates/rustok-seo", depends_on = ["content"] }
 workflow = { crate = "rustok-workflow", source = "path", path = "crates/rustok-workflow" }
+alloy = { crate = "alloy", source = "path", path = "crates/alloy" }
+flex = { crate = "flex", source = "path", path = "crates/flex" }
+
+# Capability extensions are deployment-scoped and globally active when compiled.
+ai = { crate = "rustok-ai", source = "path", path = "crates/rustok-ai", runtime = "extension" }
 
 [settings]
-default_enabled = ["content", "cart", "customer", "product", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages"]
+default_enabled = ["content", "cart", "customer", "product", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "page_builder"]

@@ -30,9 +30,14 @@ fn tenant_locale_cache_uses_the_durable_tenant_generation_channel() {
         "listener.health.mark_failed();",
         "run_periodic_reconciliation_with_interval",
         "#[path = \"tenant_locale_generation_tests.rs\"]",
+        "#[path = \"tenant_locale_generation_durable_ahead_tests.rs\"]",
         "let durable = self.current_generation().await?;",
         "if durable < event.generation",
         "self.handle_event(event, durable).await",
+        "if durable > generation",
+        "CacheInvalidationObservation::Duplicate { generation }",
+        "if durable > last",
+        "acknowledge_locale_recovery(&self.tracker, durable)?;",
     ] {
         assert!(
             listener.contains(required),
@@ -87,6 +92,8 @@ fn tenant_locale_cache_uses_the_durable_tenant_generation_channel() {
 #[test]
 fn permanent_gate_retains_multi_replica_tenant_locale_evidence() {
     let evidence = include_str!("../src/services/tenant_locale_generation_tests.rs");
+    let durable_ahead =
+        include_str!("../src/services/tenant_locale_generation_durable_ahead_tests.rs");
     let workflow = include_str!("../../../.github/workflows/cache-hardening.yml");
 
     for required in [
@@ -110,6 +117,22 @@ fn permanent_gate_retains_multi_replica_tenant_locale_evidence() {
         assert!(
             evidence.contains(required),
             "tenant locale recovery evidence must retain {required}"
+        );
+    }
+
+    for required in [
+        "durable_generation_ahead_of_exact_event_forces_full_clear",
+        "let durable_generation = cache",
+        "assert_eq!(durable_generation, received_generation + 1);",
+        "Although the received key targets tenant A",
+        "request_locale(&app, &tenant_a_context).await, \"fr\"",
+        "request_locale(&app, &tenant_b_context).await, \"de\"",
+        "Some(durable_generation)",
+        "assert!(health.is_ready());",
+    ] {
+        assert!(
+            durable_ahead.contains(required),
+            "durable-ahead locale evidence must retain {required}"
         );
     }
 

@@ -20,6 +20,16 @@ pub struct RuntimeScenarioRenderCase {
     pub computed_fallbacks: usize,
     pub unresolved_computed: usize,
     pub context_type_mismatches: usize,
+    #[serde(default)]
+    pub materialized_forms: usize,
+    #[serde(default)]
+    pub native_actions: usize,
+    #[serde(default)]
+    pub custom_actions: usize,
+    #[serde(default)]
+    pub fallback_actions: usize,
+    #[serde(default)]
+    pub unresolved_actions: usize,
     pub applied_bindings: usize,
     pub fallback_bindings: usize,
     pub unresolved_bindings: usize,
@@ -128,6 +138,11 @@ fn render_case(
             computed_fallbacks: 0,
             unresolved_computed: 0,
             context_type_mismatches: 0,
+            materialized_forms: 0,
+            native_actions: 0,
+            custom_actions: 0,
+            fallback_actions: 0,
+            unresolved_actions: 0,
             applied_bindings: 0,
             fallback_bindings: 0,
             unresolved_bindings: 0,
@@ -158,6 +173,11 @@ fn successful_case(
         computed_fallbacks: result.computed_fallbacks,
         unresolved_computed: result.unresolved_computed,
         context_type_mismatches: result.context_type_mismatches,
+        materialized_forms: result.materialized_forms,
+        native_actions: result.native_actions,
+        custom_actions: result.custom_actions,
+        fallback_actions: result.fallback_actions,
+        unresolved_actions: result.unresolved_actions,
         applied_bindings: result.applied_bindings,
         fallback_bindings: result.fallback_bindings,
         unresolved_bindings: result.unresolved_bindings,
@@ -232,6 +252,39 @@ mod tests {
             matrix.case("one").and_then(|case| case.html_hash.as_ref()),
             matrix.case("two").and_then(|case| case.html_hash.as_ref())
         );
+    }
+
+    #[test]
+    fn matrix_carries_action_and_form_materialization_counters() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "form",
+                        "type": "wrapper",
+                        "flyForm": { "id": "contact", "action_url": "/contact" }
+                    }, {
+                        "id": "submit",
+                        "type": "button",
+                        "flyAction": { "kind": "submit_form", "form_id": "contact" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let matrix = render_runtime_scenario_matrix(
+            &document,
+            &PageSelection::Id("home".to_string()),
+            &RenderPolicy::default(),
+            &[RuntimeContextScenario::new("default", "Default", json!({}))],
+        );
+        let case = matrix.case("default").expect("scenario case");
+        assert_eq!(case.materialized_forms, 1);
+        assert_eq!(case.native_actions, 1);
+        assert_eq!(case.unresolved_actions, 0);
     }
 
     #[test]

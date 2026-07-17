@@ -68,6 +68,81 @@ impl MarketplaceListingApprovalStatus {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketplaceListingEventKind {
+    Created,
+    TermsUpdated,
+    SubmittedForReview,
+    Approved,
+    Rejected,
+    Published,
+    Suspended,
+    Reactivated,
+    Archived,
+    LegacyApprovalSnapshot,
+    LegacySuspensionSnapshot,
+}
+
+impl MarketplaceListingEventKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::TermsUpdated => "terms_updated",
+            Self::SubmittedForReview => "submitted_for_review",
+            Self::Approved => "approved",
+            Self::Rejected => "rejected",
+            Self::Published => "published",
+            Self::Suspended => "suspended",
+            Self::Reactivated => "reactivated",
+            Self::Archived => "archived",
+            Self::LegacyApprovalSnapshot => "legacy_approval_snapshot",
+            Self::LegacySuspensionSnapshot => "legacy_suspension_snapshot",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "created" => Some(Self::Created),
+            "terms_updated" => Some(Self::TermsUpdated),
+            "submitted_for_review" => Some(Self::SubmittedForReview),
+            "approved" => Some(Self::Approved),
+            "rejected" => Some(Self::Rejected),
+            "published" => Some(Self::Published),
+            "suspended" => Some(Self::Suspended),
+            "reactivated" => Some(Self::Reactivated),
+            "archived" => Some(Self::Archived),
+            "legacy_approval_snapshot" => Some(Self::LegacyApprovalSnapshot),
+            "legacy_suspension_snapshot" => Some(Self::LegacySuspensionSnapshot),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketplaceListingEventProvenance {
+    Command,
+    LegacySnapshot,
+}
+
+impl MarketplaceListingEventProvenance {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Command => "command",
+            Self::LegacySnapshot => "legacy_snapshot",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "command" => Some(Self::Command),
+            "legacy_snapshot" => Some(Self::LegacySnapshot),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateMarketplaceListingInput {
     pub seller_id: Uuid,
@@ -129,6 +204,20 @@ pub struct MarketplaceListingTermsResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MarketplaceListingEventResponse {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub listing_id: Uuid,
+    pub actor_id: Option<Uuid>,
+    pub event_kind: MarketplaceListingEventKind,
+    pub locale: Option<String>,
+    pub provenance: MarketplaceListingEventProvenance,
+    pub note: Option<String>,
+    pub metadata: Value,
+    pub created_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct MarketplaceListingResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -140,8 +229,6 @@ pub struct MarketplaceListingResponse {
     pub channel_slug: String,
     pub status: MarketplaceListingStatus,
     pub approval_status: MarketplaceListingApprovalStatus,
-    pub approval_note: Option<String>,
-    pub suspension_reason: Option<String>,
     pub current_terms_version: i32,
     pub current_terms: MarketplaceListingTermsResponse,
     pub metadata: Value,
@@ -167,6 +254,12 @@ pub struct ListMarketplaceListingsInput {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReadMarketplaceListingRequest {
     pub listing_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListMarketplaceListingEventsRequest {
+    pub listing_id: Uuid,
+    pub limit: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

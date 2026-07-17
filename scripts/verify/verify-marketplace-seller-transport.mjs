@@ -68,31 +68,44 @@ for (const marker of [
 for (const marker of [
   "async fn list_members",
   "ListMarketplaceSellerMembersRequest",
+  "context.locale.as_str()",
   "create_seller_with_receipt",
   "update_member_with_receipt",
 ]) contains(ports, marker, files.ports);
 
 for (const marker of [
   "MarketplaceSellerReadPort::list_sellers",
+  "MarketplaceSellerReadPort::list_members",
   "MarketplaceSellerCommandPort::create_seller",
   "MarketplaceSellerCommandPort::update_seller_member",
+  "request::RequestContext",
+  "request.locale.clone()",
+  "resolved_locale: String",
+  "resolved_locale: value.resolved_locale",
   "Permission::MARKETPLACE_SELLERS_MANAGE",
   "with_idempotency_key",
   "marketplace seller service is temporarily unavailable",
 ]) contains(graphql, marker, files.graphql);
 forbids(graphql, "entities::", files.graphql);
+forbids(graphql, "MarketplaceSellerService::list_members", files.graphql);
 forbids(graphql, "storage unavailable: {error}", files.graphql);
 
 for (const marker of [
   "marketplace_seller_directory_native",
   "marketplace_seller_detail_native",
   "marketplace_seller_command_native",
+  "request::RequestContext",
+  "request.locale.clone()",
+  "request.channel_slug.clone()",
+  "resolved_locale: seller.resolved_locale",
+  "resolved_locale: value.resolved_locale",
   "MarketplaceSellerReadPort::list_members",
   "MarketplaceSellerCommandPort::create_seller",
   "ensure_permission",
   "ensure_tenant",
   "idempotency_key",
 ]) contains(nativeAdapter, marker, files.nativeAdapter);
+forbids(nativeAdapter, "tenant.default_locale.clone()", files.nativeAdapter);
 forbids(nativeAdapter, "entities::", files.nativeAdapter);
 
 for (const marker of [
@@ -106,10 +119,15 @@ for (const marker of [
   "reactivateMarketplaceSeller",
   "addMarketplaceSellerMember",
   "updateMarketplaceSellerMember",
+  "resolved_locale: resolvedLocale",
+  "resolved_locale: String",
+  "resolved_locale: item.resolved_locale",
+  "resolved_locale: value.resolved_locale",
   "idempotencyKey",
 ]) contains(graphqlAdapter, marker, files.graphqlAdapter);
 
 for (const marker of [
+  "pub resolved_locale: String",
   "pub enum MarketplaceSellerAdminCommand",
   "ReviewOnboarding",
   "UpdateMember",

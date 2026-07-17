@@ -1,6 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -24,7 +23,6 @@ enum InMemoryCacheCapacity {
 pub struct InMemoryCacheBackend {
     cache: Cache<String, InMemoryCacheValue>,
     default_ttl: Duration,
-    capacity: InMemoryCacheCapacity,
     write_locks: [AsyncMutex<()>; IN_MEMORY_WRITE_LOCK_STRIPES],
 }
 
@@ -89,7 +87,6 @@ impl InMemoryCacheBackend {
         Self {
             cache,
             default_ttl: ttl,
-            capacity,
             write_locks: std::array::from_fn(|_| AsyncMutex::new(())),
         }
     }
@@ -197,162 +194,29 @@ impl CacheBackend for InMemoryCacheBackend {
     }
 }
 
-pub struct FallbackCacheBackend {
-    primary: Arc<dyn CacheBackend>,
-    fallback: Arc<InMemoryCacheBackend>,
-    degraded_writes: InMemoryCacheBackend,
-}
-
-impl FallbackCacheBackend {
-    pub fn new(primary: Arc<dyn CacheBackend>, fallback: Arc<InMemoryCacheBackend>) -> Self {
-        let degraded_writes =
-            InMemoryCacheBackend::with_capacity(fallback.default_ttl, fallback.capacity);
-        Self {
-            primary,
-            fallback,
-            degraded_writes,
-        }
-    }
-
-    async fn mark_degraded_write(&self, key: String, ttl: Duration) {
-        let _ = self
-            .degraded_writes
-            .set_with_ttl(key, Vec::new(), ttl)
-            .await;
-    }
-
-    async fn clear_degraded_write(&self, key: &str) {
-        let _ = self.degraded_writes.invalidate(key).await;
-    }
-
-    async fn has_degraded_write(&self, key: &str) -> bool {
-        self.degraded_writes.get(key).await.ok().flatten().is_some()
-    }
-
-    async fn mirror_primary_cas(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) {
-        let result = match ttl {
-            Some(ttl) => {
-                self.fallback
-                    .set_with_ttl(key.to_string(), value, ttl)
-                    .await
-            }
-            None => self.fallback.set(key.to_string(), value).await,
-        };
-        if let Err(error) = result {
-            tracing::warn!(%error, key, "Primary cache CAS applied but local mirror update failed");
-        }
-    }
-}
-
-#[async_trait]
-impl CacheBackend for FallbackCacheBackend {
-    async fn health(&self) -> Result<()> {
-        match self.primary.health().await {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                tracing::warn!(%error, "Primary cache unhealthy, using in-memory fallback");
-                self.fallback.health().await
-            }
-        }
-    }
-
-    async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
-        match self.primary.get(key).await {
-            Ok(Some(value)) => {
-                self.clear_degraded_write(key).await;
-                Ok(Some(value))
-            }
-            Ok(None) if self.has_degraded_write(key).await => self.fallback.get(key).await,
-            Ok(None) => Ok(None),
-            Err(error) => {
-                tracing::debug!(%error, key, "Primary cache GET failed, falling back to in-memory");
-                self.fallback.get(key).await
-            }
-        }
-    }
-
-    async fn set(&self, key: String, value: Vec<u8>) -> Result<()> {
-        let _ = self.fallback.set(key.clone(), value.clone()).await;
-        match self.primary.set(key.clone(), value).await {
-            Ok(()) => {
-                self.clear_degraded_write(&key).await;
-                Ok(())
-            }
-            Err(error) => {
-                self.mark_degraded_write(key, self.fallback.default_ttl)
-                    .await;
-                tracing::debug!(%error, "Primary cache SET failed, retained bounded in-memory value");
-                Ok(())
-            }
-        }
-    }
-
-    async fn set_with_ttl(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<()> {
-        let _ = self
-            .fallback
-            .set_with_ttl(key.clone(), value.clone(), ttl)
-            .await;
-        match self.primary.set_with_ttl(key.clone(), value, ttl).await {
-            Ok(()) => {
-                self.clear_degraded_write(&key).await;
-                Ok(())
-            }
-            Err(error) => {
-                self.mark_degraded_write(key, ttl).await;
-                tracing::debug!(%error, "Primary cache SET_TTL failed, retained bounded in-memory value");
-                Ok(())
-            }
-        }
-    }
-
-    async fn compare_and_set(
-        &self,
-        key: &str,
-        expected: &[u8],
-        value: Vec<u8>,
-        ttl: Option<Duration>,
-    ) -> Result<CacheCompareAndSetOutcome> {
-        let outcome = self
-            .primary
-            .compare_and_set(key, expected, value.clone(), ttl)
-            .await?;
-        match outcome {
-            CacheCompareAndSetOutcome::Applied => {
-                self.clear_degraded_write(key).await;
-                self.mirror_primary_cas(key, value, ttl).await;
-            }
-            CacheCompareAndSetOutcome::Mismatch => {
-                self.clear_degraded_write(key).await;
-                let _ = self.fallback.invalidate(key).await;
-            }
-        }
-        Ok(outcome)
-    }
-
-    async fn invalidate(&self, key: &str) -> Result<()> {
-        let _ = self.fallback.invalidate(key).await;
-        self.clear_degraded_write(key).await;
-        self.primary.invalidate(key).await.map_err(|error| {
-            tracing::warn!(%error, key, "Primary cache invalidation failed; stale shared data may remain");
-            error
-        })
-    }
-
-    fn stats(&self) -> CacheStats {
-        let primary = self.primary.stats();
-        let fallback = self.fallback.stats();
-        CacheStats {
-            hits: primary.hits.saturating_add(fallback.hits),
-            misses: primary.misses.saturating_add(fallback.misses),
-            evictions: primary.evictions.saturating_add(fallback.evictions),
-            entries: primary.entries.max(fallback.entries),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn entry_weight_accounts_for_key_payload_and_value_metadata() {
+        let key = "tenant:key".to_string();
+        let value = InMemoryCacheValue {
+            payload: vec![0; 128],
+            ttl: Duration::from_secs(1),
+        };
+
+        assert!(in_memory_entry_weight(&key, &value) >= (key.len() + 128) as u32);
+    }
+
+    #[tokio::test]
+    async fn weighted_cache_does_not_retain_entry_larger_than_its_budget() {
+        let cache = InMemoryCacheBackend::new_weighted(Duration::from_secs(60), 64);
+        cache.set("large".to_string(), vec![0; 256]).await.unwrap();
+        cache.cache.run_pending_tasks().await;
+
+        assert_eq!(cache.get("large").await.unwrap(), None);
+    }
 
     #[tokio::test]
     async fn compare_and_set_does_not_insert_a_missing_or_expired_entry() {

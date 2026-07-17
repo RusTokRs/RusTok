@@ -23,6 +23,7 @@ pub enum Resource {
     Inventory,
     Discounts,
     MarketplaceSellers,
+    MarketplaceListings,
     Posts,
     Pages,
     Nodes,
@@ -79,6 +80,7 @@ impl fmt::Display for Resource {
             Self::Inventory => "inventory",
             Self::Discounts => "discounts",
             Self::MarketplaceSellers => "marketplace_sellers",
+            Self::MarketplaceListings => "marketplace_listings",
             Self::Posts => "posts",
             Self::Pages => "pages",
             Self::Nodes => "nodes",
@@ -136,6 +138,7 @@ impl FromStr for Resource {
             "inventory" => Ok(Self::Inventory),
             "discounts" => Ok(Self::Discounts),
             "marketplace_sellers" => Ok(Self::MarketplaceSellers),
+            "marketplace_listings" => Ok(Self::MarketplaceListings),
             "posts" => Ok(Self::Posts),
             "pages" => Ok(Self::Pages),
             "nodes" => Ok(Self::Nodes),
@@ -361,6 +364,23 @@ impl Permission {
         Self::new(Resource::MarketplaceSellers, Action::List);
     pub const MARKETPLACE_SELLERS_MANAGE: Self =
         Self::new(Resource::MarketplaceSellers, Action::Manage);
+
+    pub const MARKETPLACE_LISTINGS_CREATE: Self =
+        Self::new(Resource::MarketplaceListings, Action::Create);
+    pub const MARKETPLACE_LISTINGS_READ: Self =
+        Self::new(Resource::MarketplaceListings, Action::Read);
+    pub const MARKETPLACE_LISTINGS_UPDATE: Self =
+        Self::new(Resource::MarketplaceListings, Action::Update);
+    pub const MARKETPLACE_LISTINGS_DELETE: Self =
+        Self::new(Resource::MarketplaceListings, Action::Delete);
+    pub const MARKETPLACE_LISTINGS_LIST: Self =
+        Self::new(Resource::MarketplaceListings, Action::List);
+    pub const MARKETPLACE_LISTINGS_MANAGE: Self =
+        Self::new(Resource::MarketplaceListings, Action::Manage);
+    pub const MARKETPLACE_LISTINGS_PUBLISH: Self =
+        Self::new(Resource::MarketplaceListings, Action::Publish);
+    pub const MARKETPLACE_LISTINGS_MODERATE: Self =
+        Self::new(Resource::MarketplaceListings, Action::Moderate);
 
     pub const POSTS_CREATE: Self = Self::new(Resource::Posts, Action::Create);
     pub const POSTS_READ: Self = Self::new(Resource::Posts, Action::Read);

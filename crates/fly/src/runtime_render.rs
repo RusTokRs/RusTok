@@ -18,6 +18,16 @@ pub struct RuntimeRenderResult {
     pub resolved_internal_links: usize,
     pub fallback_internal_links: usize,
     pub unresolved_internal_links: usize,
+    #[serde(default)]
+    pub materialized_forms: usize,
+    #[serde(default)]
+    pub native_actions: usize,
+    #[serde(default)]
+    pub custom_actions: usize,
+    #[serde(default)]
+    pub fallback_actions: usize,
+    #[serde(default)]
+    pub unresolved_actions: usize,
     pub applied_bindings: usize,
     pub fallback_bindings: usize,
     pub unresolved_bindings: usize,
@@ -50,6 +60,11 @@ pub fn render_page_with_runtime_context(
         resolved_internal_links,
         fallback_internal_links,
         unresolved_internal_links,
+        materialized_forms,
+        native_actions,
+        custom_actions,
+        fallback_actions,
+        unresolved_actions,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
@@ -69,6 +84,11 @@ pub fn render_page_with_runtime_context(
         resolved_internal_links,
         fallback_internal_links,
         unresolved_internal_links,
+        materialized_forms,
+        native_actions,
+        custom_actions,
+        fallback_actions,
+        unresolved_actions,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
@@ -144,11 +164,70 @@ mod tests {
         assert_eq!(result.defaults_applied, 1);
         assert_eq!(result.computed_applied, 1);
         assert_eq!(result.resolved_internal_links, 0);
+        assert_eq!(result.materialized_forms, 0);
+        assert_eq!(result.native_actions, 0);
         assert_eq!(result.applied_bindings, 1);
         assert_eq!(result.repeated_nodes, 2);
         assert!(result.page.html.contains("FEATURED PRODUCTS"));
         assert!(result.page.html.contains("One"));
         assert!(result.page.html.contains("Two"));
         assert!(!result.page.html.contains("{{item.name}}"));
+    }
+
+    #[test]
+    fn runtime_renderer_emits_native_forms_and_locale_aware_actions() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "flyLocales": {
+                "default_locale": "ru",
+                "supported_locales": ["ru", "en"]
+            },
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "slug": { "$localized": { "en": "home", "ru": "glavnaya" } } },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "contact-form",
+                        "type": "wrapper",
+                        "flyForm": {
+                            "id": "contact",
+                            "method": "post",
+                            "action_url": "/contact"
+                        },
+                        "components": [{
+                            "id": "submit",
+                            "type": "button",
+                            "content": "Send",
+                            "flyAction": { "kind": "submit_form", "form_id": "contact" }
+                        }]
+                    }, {
+                        "id": "about",
+                        "type": "button",
+                        "content": "About",
+                        "flyAction": { "kind": "navigate_page", "page_id": "about-page" }
+                    }]
+                }
+            }, {
+                "id": "about-page",
+                "flyPageMeta": { "slug": { "$localized": { "en": "about", "ru": "o-nas" } } },
+                "component": { "id": "about-root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+
+        let result = render_page_with_runtime_context(
+            &document,
+            &PageSelection::Id("home".to_string()),
+            &RenderPolicy::default(),
+            &json!({ "$locale": "ru" }),
+        )
+        .expect("runtime render");
+        assert_eq!(result.materialized_forms, 1);
+        assert_eq!(result.native_actions, 2);
+        assert!(result.page.html.contains("<form"));
+        assert!(result.page.html.contains("action=\"/contact\""));
+        assert!(result.page.html.contains("form=\"contact\""));
+        assert!(result.page.html.contains("href=\"/o-nas\""));
     }
 }

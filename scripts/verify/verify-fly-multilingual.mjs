@@ -6,7 +6,8 @@ const paths = {
   localeCoverage: 'crates/fly/src/locale_coverage.rs',
   localizedRoute: 'crates/fly/src/localized_route.rs',
   translations: 'crates/fly/src/translation.rs',
-  command: 'crates/fly/src/command.rs',
+  commandEditor: 'crates/fly/src/command/editor.rs',
+  commandTests: 'crates/fly/src/command/tests.rs',
   pageMetadataLocale: 'crates/fly/src/page_metadata_locale.rs',
   runtimePipeline: 'crates/fly/src/runtime_pipeline.rs',
   runtimeValidation: 'crates/fly/src/runtime_validation.rs',
@@ -106,13 +107,15 @@ requireMarkers('translations', [
   'pub fn validate_translation_definitions',
   'locale_policy_commands_share_translation_transaction_surface',
 ], 'Fly project translation catalog');
-requireMarkers('command', [
+requireMarkers('commandEditor', [
   'EditorCommand::Translation',
   'apply_translation_command(document, command)',
+], 'undoable translation command dispatch');
+requireMarkers('commandTests', [
   'translation_commands_participate_in_history',
   'editor.undo().expect("undo translation command")',
   'editor.redo().expect("redo translation command")',
-], 'undoable translation commands');
+], 'translation command history coverage');
 requireMarkers('pageMetadataLocale', [
   'pub struct LocalizedPageMetadataMaterialization',
   'pub fn materialize_localized_page_metadata',

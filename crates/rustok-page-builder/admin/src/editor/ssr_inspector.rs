@@ -194,10 +194,9 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             (components, pages)
         });
         let default_component = components.first().map(|component| component.id.clone());
-        let runtime_context_json = serde_json::to_string_pretty(
-            &runtime.runtime_context.get_untracked(),
-        )
-        .unwrap_or_else(|_| "{}".to_string());
+        let runtime_context_json =
+            serde_json::to_string_pretty(&runtime.runtime_context.get_untracked())
+                .unwrap_or_else(|_| "{}".to_string());
         let metadata_page_fallback = page_fallback.clone();
 
         view! {
@@ -306,9 +305,9 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                     <input class="rounded border border-input bg-background px-2 py-1 text-xs" name="slug" placeholder=slug.clone() value=metadata.slug.unwrap_or_default()/>
                                     <textarea class="min-h-16 rounded border border-input bg-background px-2 py-1 text-xs" name="description" placeholder=seo_description.clone()>{metadata.description.unwrap_or_default()}</textarea>
                                     <input class="rounded border border-input bg-background px-2 py-1 text-xs" name="canonical_url" placeholder=canonical_url.clone() value=metadata.canonical_url.unwrap_or_default()/>
-                                    <input class="rounded border border-input bg-background px-2 py-1 text-xs" name="og_title" placeholder=open_graph_title.clone() value=metadata.og_title.unwrap_or_default()/>
-                                    <textarea class="min-h-14 rounded border border-input bg-background px-2 py-1 text-xs" name="og_description" placeholder=open_graph_description.clone()>{metadata.og_description.unwrap_or_default()}</textarea>
-                                    <input class="rounded border border-input bg-background px-2 py-1 text-xs" name="og_image" placeholder=open_graph_image.clone() value=metadata.og_image.unwrap_or_default()/>
+                                    <input class="rounded border border-input bg-background px-2 py-1 text-xs" name="og_title" placeholder=open_graph_title.clone() value=metadata.open_graph_title.unwrap_or_default()/>
+                                    <textarea class="min-h-14 rounded border border-input bg-background px-2 py-1 text-xs" name="og_description" placeholder=open_graph_description.clone()>{metadata.open_graph_description.unwrap_or_default()}</textarea>
+                                    <input class="rounded border border-input bg-background px-2 py-1 text-xs" name="og_image" placeholder=open_graph_image.clone() value=metadata.open_graph_image.unwrap_or_default()/>
                                     <label class="flex items-center gap-2 text-xs">
                                         <input type="checkbox" name="no_index" value="true" checked=metadata.no_index/>
                                         <span>{no_index.clone()}</span>

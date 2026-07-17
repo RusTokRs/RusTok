@@ -3,9 +3,9 @@ use crate::editor::{
     ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel, DynamicRuntimePanel,
     IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
     ResponsiveStylePanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
-    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, SsrInspectorPanel, SsrLocaleCoveragePanel,
-    SsrLocalePanel, SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel,
-    TraitPanel,
+    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, SsrActionsFormsPanel, SsrInspectorPanel,
+    SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel, SsrLocalePolicyPanel,
+    SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
@@ -14,6 +14,7 @@ use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
 };
+use fly_ui::{CapabilityState, ContributionAssemblyResult, UiIntent};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
@@ -26,6 +27,8 @@ pub fn AdminCanvas(
     controller: AdminCanvasController,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     trait_schemas: Option<Arc<TraitSchemaRegistry>>,
+    #[prop(optional)] contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
+    #[prop(optional)] editor_capabilities: Option<CapabilityState>,
     runtime_context: Option<Value>,
     runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
@@ -70,6 +73,9 @@ pub fn AdminCanvas(
         Some(policy) => runtime.with_runtime_publish_gate_policy(policy),
         None => runtime,
     };
+    if let Some(capabilities) = editor_capabilities {
+        runtime.dispatch(UiIntent::SetEditableCapabilities(capabilities));
+    }
     let browser_page_id = runtime
         .controller
         .with(|controller| controller.page_id().to_string());
@@ -104,6 +110,8 @@ pub fn AdminCanvas(
     let ssr_locale_coverage_runtime = runtime.clone();
     let ssr_translations_runtime = runtime.clone();
     let ssr_localized_metadata_runtime = runtime.clone();
+    let ssr_internal_link_runtime = runtime.clone();
+    let ssr_actions_forms_runtime = runtime.clone();
     let ssr_inspector_runtime = runtime.clone();
     let announcement_runtime = runtime.clone();
     let error_runtime = runtime;
@@ -130,7 +138,10 @@ pub fn AdminCanvas(
             >
                 <div class="space-y-3 overflow-auto">
                     <PageManagerPanel runtime=page_runtime />
-                    <PaletteLayersPanel runtime=palette_runtime />
+                    <PaletteLayersPanel
+                        runtime=palette_runtime
+                        contribution_assembly
+                    />
                 </div>
                 <IsolatedAuthoringCanvas runtime=canvas_runtime />
                 <div class="space-y-3 overflow-auto">
@@ -139,6 +150,8 @@ pub fn AdminCanvas(
                     <SsrLocaleCoveragePanel runtime=ssr_locale_coverage_runtime />
                     <SsrTranslationsPanel runtime=ssr_translations_runtime />
                     <SsrLocalizedMetadataPanel runtime=ssr_localized_metadata_runtime />
+                    <SsrInternalPageLinkPanel runtime=ssr_internal_link_runtime />
+                    <SsrActionsFormsPanel runtime=ssr_actions_forms_runtime />
                     <SsrInspectorPanel runtime=ssr_inspector_runtime />
                     <AuditPanel runtime=audit_runtime />
                     <RuntimePublishGatePanel runtime=gate_runtime />

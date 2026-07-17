@@ -47,6 +47,7 @@ members = [
     "crates/rustok-rbac/admin",
     "crates/rustok-workflow/admin",
     "crates/rustok-marketplace-seller/admin",
+    "crates/rustok-marketplace-listing/admin",
     "crates/*",
     "tests/e2e-rust",
     "UI/leptos",
@@ -211,6 +212,8 @@ rustok-commerce = { path = "crates/rustok-commerce" }
 rustok-marketplace = { path = "crates/rustok-marketplace" }
 rustok-marketplace-seller = { path = "crates/rustok-marketplace-seller" }
 rustok-marketplace-seller-admin = { path = "crates/rustok-marketplace-seller/admin" }
+rustok-marketplace-listing = { path = "crates/rustok-marketplace-listing" }
+rustok-marketplace-listing-admin = { path = "crates/rustok-marketplace-listing/admin" }
 rustok-cart = { path = "crates/rustok-cart" }
 rustok-cart-storefront = { path = "crates/rustok-cart/storefront" }
 rustok-customer = { path = "crates/rustok-customer" }

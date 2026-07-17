@@ -17,7 +17,12 @@ use axum::{extract::Request, middleware::Next, response::Response};
 const API_CSP: &str =
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 /// UI-compatible CSP for embedded admin/storefront shells.
-const UI_CSP: &str = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: http: ws: wss:; frame-ancestors 'none'; base-uri 'self'";
+///
+/// Inline script/style allowances remain temporarily for the current SSR/bootstrap
+/// path and must be replaced with nonce/hash-based directives before the platform
+/// is declared production-ready. Plaintext browser connections and plugin/object
+/// content are intentionally prohibited now.
+const UI_CSP: &str = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: ws: wss:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 /// HSTS: 1 year, include subdomains.
 /// Only injected when `RUSTOK_HTTPS=true` env var is set to avoid breaking local dev.
@@ -100,5 +105,12 @@ mod tests {
         assert_eq!(select_csp("/admin"), UI_CSP);
         assert_eq!(select_csp("/"), UI_CSP);
         assert_eq!(select_csp("/assets/app.js"), UI_CSP);
+    }
+
+    #[test]
+    fn ui_csp_blocks_plaintext_connections_and_plugin_content() {
+        assert!(!UI_CSP.contains(" http:"));
+        assert!(UI_CSP.contains("object-src 'none'"));
+        assert!(UI_CSP.contains("form-action 'self'"));
     }
 }

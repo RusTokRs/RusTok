@@ -119,12 +119,19 @@ impl CacheService {
             )
             .await
             {
-                Ok(Ok(response)) if response == "PONG" => RedisCacheStatus {
-                    url_present: true,
-                    client_initialized: true,
-                    connectivity_healthy: true,
-                    last_error: None,
-                },
+                Ok(Ok(response)) if response == "PONG" => {
+                    match self.recover_registered_backend_generations().await {
+                        Ok(_) => RedisCacheStatus {
+                            url_present: true,
+                            client_initialized: true,
+                            connectivity_healthy: true,
+                            last_error: None,
+                        },
+                        Err(error) => degraded_status(format!(
+                            "Redis connected but cache generation recovery failed: {error}"
+                        )),
+                    }
+                }
                 Ok(Ok(response)) => degraded_status(format!(
                     "Redis PING returned an unexpected response: {}",
                     bounded_error(response)

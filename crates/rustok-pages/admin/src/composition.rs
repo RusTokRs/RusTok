@@ -1,5 +1,8 @@
 use crate::browser_intent::pages_browser_draft_store;
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
+use crate::contributions::{
+    build_pages_admin_contribution_registry, pages_admin_contribution_policy,
+};
 use crate::core;
 use crate::i18n::t;
 use crate::model::{PageBuilderScenarioReleaseStatus, PageDetail};
@@ -150,6 +153,9 @@ fn PagesFlyBuilder(
         RuntimeContextScenario::new("empty", "Empty", json!({})),
         RuntimeContextScenario::new("generated", "Generated example", generated_context.clone()),
     ]);
+    let contribution_assembly = Arc::new(build_pages_admin_contribution_registry(
+        &pages_admin_contribution_policy(),
+    ));
     let restored_draft = draft_token
         .as_deref()
         .and_then(|token| pages_browser_draft_store().load(token, &page.id).ok().flatten())
@@ -240,6 +246,7 @@ fn PagesFlyBuilder(
 
             let mut host = PageBuilderAdminHostContext::new(controller)
                 .with_facade(facade)
+                .with_contribution_assembly(contribution_assembly)
                 .with_runtime_context(runtime_context)
                 .with_runtime_scenarios(scenarios)
                 .with_browser_intent_endpoint(browser_endpoint)

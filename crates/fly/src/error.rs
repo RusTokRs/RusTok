@@ -43,6 +43,8 @@ pub enum FlyError {
     DuplicateRegistryItem(String),
     #[error("registry item id `{0}` must be namespaced or one of the built-in ids")]
     InvalidRegistryId(String),
+    #[error("interaction capability contract is invalid: {0}")]
+    InvalidInteractionCapability(String),
     #[error("plugin dependency `{dependency}` required by `{plugin}` is missing")]
     MissingPluginDependency { plugin: String, dependency: String },
     #[error("plugin dependency cycle contains `{0}`")]
@@ -51,6 +53,16 @@ pub enum FlyError {
     RecursiveMove { component: String, parent: String },
     #[error("project validation failed")]
     Validation(Vec<ValidationDiagnostic>),
+    #[error("snapshot `{0}` was not found")]
+    SnapshotNotFound(String),
+    #[error(
+        "snapshot `{snapshot_id}` hash mismatch: declared `{declared}`, restored `{actual}`"
+    )]
+    SnapshotHashMismatch {
+        snapshot_id: String,
+        declared: String,
+        actual: String,
+    },
     #[error("undo history is empty")]
     UndoHistoryEmpty,
     #[error("redo history is empty")]

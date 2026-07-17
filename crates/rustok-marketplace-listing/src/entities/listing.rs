@@ -15,8 +15,6 @@ pub struct Model {
     pub channel_slug: String,
     pub status: String,
     pub approval_status: String,
-    pub approval_note: Option<String>,
-    pub suspension_reason: Option<String>,
     pub current_terms_version: i32,
     pub metadata: Json,
     pub published_at: Option<DateTimeWithTimeZone>,
@@ -29,11 +27,19 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::listing_terms::Entity")]
     Terms,
+    #[sea_orm(has_many = "super::listing_event::Entity")]
+    Events,
 }
 
 impl Related<super::listing_terms::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Terms.def()
+    }
+}
+
+impl Related<super::listing_event::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Events.def()
     }
 }
 

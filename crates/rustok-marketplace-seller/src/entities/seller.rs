@@ -8,7 +8,6 @@ pub struct Model {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub handle: String,
-    pub display_name: String,
     pub legal_name: Option<String>,
     pub status: String,
     pub onboarding_status: String,
@@ -25,11 +24,19 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::seller_member::Entity")]
     Members,
+    #[sea_orm(has_many = "super::seller_translation::Entity")]
+    Translations,
 }
 
 impl Related<super::seller_member::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Members.def()
+    }
+}
+
+impl Related<super::seller_translation::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Translations.def()
     }
 }
 

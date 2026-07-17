@@ -5,6 +5,7 @@ use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
 };
+use fly_ui::{CapabilityState, ContributionAssemblyResult};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
@@ -16,14 +17,17 @@ use std::sync::Arc;
 ///
 /// Generated module composition mounts [`PageBuilderAdmin`] without props. Consumer routes such as
 /// Pages may provide this context to activate a concrete document, persistence facade,
-/// provider-contributed authoring schemas, preview-only runtime data, named preview scenarios,
-/// runtime publish policy, a separately persisted scenario release baseline, and an optional
-/// classic SSR intent endpoint consumed by the standalone `fly-browser` adapter.
+/// provider-contributed authoring schemas and registries, an evaluated tenant/RBAC/provider-health
+/// capability profile, preview-only runtime data, named preview scenarios, runtime publish policy,
+/// a separately persisted scenario release baseline, and an optional classic SSR intent endpoint
+/// consumed by the standalone `fly-browser` adapter.
 #[derive(Clone)]
 pub struct PageBuilderAdminHostContext {
     pub controller: AdminCanvasController,
     pub facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     pub trait_schemas: Option<Arc<TraitSchemaRegistry>>,
+    pub contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
+    pub editor_capabilities: Option<CapabilityState>,
     pub runtime_context: Option<Value>,
     pub runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
@@ -39,6 +43,8 @@ impl PageBuilderAdminHostContext {
             controller,
             facade: None,
             trait_schemas: None,
+            contribution_assembly: None,
+            editor_capabilities: None,
             runtime_context: None,
             runtime_scenarios: None,
             runtime_publish_gate_policy: None,
@@ -56,6 +62,19 @@ impl PageBuilderAdminHostContext {
 
     pub fn with_trait_schemas(mut self, trait_schemas: Arc<TraitSchemaRegistry>) -> Self {
         self.trait_schemas = Some(trait_schemas);
+        self
+    }
+
+    pub fn with_contribution_assembly(
+        mut self,
+        contribution_assembly: Arc<ContributionAssemblyResult>,
+    ) -> Self {
+        self.contribution_assembly = Some(contribution_assembly);
+        self
+    }
+
+    pub fn with_editor_capabilities(mut self, capabilities: CapabilityState) -> Self {
+        self.editor_capabilities = Some(capabilities.normalized());
         self
     }
 
@@ -125,6 +144,8 @@ pub fn PageBuilderAdmin() -> impl IntoView {
                 controller=context.controller
                 facade=context.facade
                 trait_schemas=context.trait_schemas
+                contribution_assembly=context.contribution_assembly
+                editor_capabilities=context.editor_capabilities
                 runtime_context=context.runtime_context
                 runtime_scenarios=context.runtime_scenarios
                 runtime_publish_gate_policy=context.runtime_publish_gate_policy
@@ -172,6 +193,8 @@ pub fn PageBuilderAdminWithController(
     controller: AdminCanvasController,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     trait_schemas: Option<Arc<TraitSchemaRegistry>>,
+    #[prop(optional)] contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
+    #[prop(optional)] editor_capabilities: Option<CapabilityState>,
     runtime_context: Option<Value>,
     runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
@@ -197,6 +220,8 @@ pub fn PageBuilderAdminWithController(
                 controller
                 facade
                 trait_schemas
+                contribution_assembly
+                editor_capabilities
                 runtime_context
                 runtime_scenarios
                 runtime_publish_gate_policy

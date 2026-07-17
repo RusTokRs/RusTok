@@ -27,7 +27,7 @@ It is important to distinguish:
 
 - Platform module — a crate declared in `modules.toml` that belongs to the `Core` or `Optional` runtime taxonomy;
 - Support/library crate — a shared dependency or infrastructure layer that lives in `crates/` but is not a platform module;
-- Capability crate — a separate runtime capability layer that can be connected to the platform, but is not required to belong to the `Core/Optional` taxonomy.
+- Capability extension — a deployment-scoped runtime capability declared with `runtime = "extension"` and composed globally when compiled.
 
 ## Documentation Sources of Truth
 
@@ -79,14 +79,29 @@ It is important to distinguish:
 | `payment` | `rustok-payment` | — |
 | `fulfillment` | `rustok-fulfillment` | — |
 | `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` |
+| `marketplace_seller` | `rustok-marketplace-seller` | — |
+| `marketplace_listing` | `rustok-marketplace-listing` | `marketplace_seller`, `product` |
+| `marketplace` | `rustok-marketplace` | `marketplace_seller`, `marketplace_listing` |
 | `blog` | `rustok-blog` | `content`, `comments`, `taxonomy` |
-| `forum` | `rustok-forum` | `content`, `taxonomy` |
+| `forum` | `rustok-forum` | `content`, `taxonomy`, `page_builder` |
 | `comments` | `rustok-comments` | — |
-| `pages` | `rustok-pages` | `content` |
+| `pages` | `rustok-pages` | `content`, `page_builder` |
+| `page_builder` | `rustok-page-builder` | — |
 | `taxonomy` | `rustok-taxonomy` | `content` |
 | `media` | `rustok-media` | — |
+| `seo` | `rustok-seo` | `content` |
 | `workflow` | `rustok-workflow` | — |
 | `alloy` | `alloy` | — |
+| `flex` | `flex` | — |
+
+### Capability Extensions
+
+| Slug | Crate | Runtime |
+|---|---|---|
+| `ai` | `rustok-ai` | `extension` |
+
+Capability extensions are deployment-scoped, globally active when compiled and are
+not tenant-toggled through the regular `Core` / `Optional` module lifecycle.
 
 ## What Lives Next to Modules
 
@@ -101,15 +116,12 @@ Not every crate in `crates/` is a platform module.
 - `rustok-test-utils`
 - `rustok-commerce-foundation`
 
-### Infrastructure / Capability Crates
+### Infrastructure and Support Crates
 
 - `rustok-iggy`
 - `rustok-iggy-connector`
 - `rustok-telemetry`
 - `rustok-mcp`
-- `rustok-ai` with large operator/admin UI surfaces in `crates/rustok-ai/admin` and
-  `apps/next-admin/packages/rustok-ai`
-- `flex`
 
 This is why "any crate in `crates/`" cannot be automatically equated with a platform module.
 
@@ -127,23 +139,17 @@ If a module provides UI, that UI must remain module-owned:
 - Host applications mount these UI surfaces through manifest-driven wiring, not
   through hard-coded module-specific branches.
 
-## Alloy and Capability Crates
+## Alloy, Flex and Capability Extensions
 
-`rustok-ai`, `rustok-mcp` and `flex` do not belong to the `Core/Optional` taxonomy
-as regular platform modules.
+`alloy` and `flex` are capability-oriented in product meaning, but both are declared
+in `modules.toml` and participate in `ModuleRegistry` as regular optional modules.
 
-This means:
+`rustok-ai` is different: it is declared with `runtime = "extension"`. It may publish
+operator/admin UI surfaces and runtime workers, but it is composed as a deployment
+capability rather than as a tenant-toggled optional module.
 
-- They may be part of runtime composition;
-- They may have their own docs, UI and capability surface;
-- `rustok-ai` remains a capability crate, but already publishes large
-  operator/admin UI surfaces for both Leptos host and Next.js host;
-- But their role is described as a support/capability layer, not as a tenant-toggled
-  module category.
-
-`alloy` is a separate case here: it remains capability-oriented in meaning, but
-is declared in `modules.toml` and participates in `ModuleRegistry` as a regular
-optional module.
+`rustok-mcp` remains an infrastructure/support capability and is not declared as a
+platform module in `modules.toml`.
 
 ## Related Documents
 

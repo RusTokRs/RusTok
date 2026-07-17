@@ -24,9 +24,11 @@ mod runtime_scenario_regression;
 mod runtime_scenarios;
 mod selection_commands;
 mod shortcut_dispatch;
+mod ssr_actions_forms;
 mod ssr_drop;
 mod ssr_forms;
 mod ssr_inspector;
+mod ssr_internal_link;
 mod ssr_locale;
 mod ssr_locale_coverage;
 mod ssr_locale_policy;
@@ -64,6 +66,10 @@ pub(crate) use runtime_scenario_matrix::RuntimeScenarioMatrixPanel;
 pub(crate) use runtime_scenario_regression::RuntimeScenarioRegressionPanel;
 pub(crate) use runtime_scenarios::RuntimeScenarioPanel;
 pub(crate) use shortcut_dispatch::dispatch_shortcut;
+pub(crate) use ssr_actions_forms::{
+    SsrActionsFormsPanel, SsrComponentActionRemoveRequest, SsrComponentActionRequest,
+    SsrComponentFormRemoveRequest, SsrComponentFormRequest, SsrNativeFormFieldRequest,
+};
 pub(crate) use ssr_drop::{SsrDropRequest, SsrDropSource};
 pub(crate) use ssr_forms::{
     SsrComponentPropertyKind, SsrComponentPropertyRequest, SsrPageCreateRequest,
@@ -71,6 +77,9 @@ pub(crate) use ssr_forms::{
     SsrTranslationUpsertRequest,
 };
 pub(crate) use ssr_inspector::SsrInspectorPanel;
+pub(crate) use ssr_internal_link::{
+    SsrInternalPageLinkPanel, SsrInternalPageLinkRemoveRequest, SsrInternalPageLinkRequest,
+};
 pub(crate) use ssr_locale::SsrLocalePanel;
 pub(crate) use ssr_locale_coverage::SsrLocaleCoveragePanel;
 pub(crate) use ssr_locale_policy::{SsrLocalePolicyPanel, SsrLocalePolicyRequest};

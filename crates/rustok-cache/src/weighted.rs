@@ -5,6 +5,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend};
 
+#[cfg(feature = "redis-cache")]
 use crate::fallback::DegradationAwareFallbackBackend;
 #[cfg(feature = "redis-cache")]
 use crate::shared_backend::SharedClientRedisCacheBackend;
@@ -45,6 +46,7 @@ impl CacheService {
             .raw_weighted_backend(prefix, ttl, max_weight_bytes, &options)
             .await;
         let backend = self.wrap_generation_aware_backend(prefix, backend).await;
+        let backend = self.wrap_generation_recovery_health(prefix, backend);
         if options.metrics_enabled {
             Arc::new(InstrumentedWeightedCacheBackend::new(prefix, backend))
         } else {
@@ -76,6 +78,9 @@ impl CacheService {
         max_weight_bytes: u64,
         options: &CacheBackendOptions,
     ) -> Arc<dyn CacheBackend> {
+        #[cfg(not(feature = "redis-cache"))]
+        let _ = (prefix, options);
+
         #[cfg(feature = "redis-cache")]
         if let Some(client) = self.redis_client().cloned() {
             match SharedClientRedisCacheBackend::new(

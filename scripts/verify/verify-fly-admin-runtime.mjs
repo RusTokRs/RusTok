@@ -4,7 +4,9 @@ import { readFile } from 'node:fs/promises';
 
 const files = {
   flyCodec: 'crates/fly/src/codec.rs',
-  flyCommand: 'crates/fly/src/command.rs',
+  flyCommandFacade: 'crates/fly/src/command.rs',
+  flyCommandModel: 'crates/fly/src/command/model.rs',
+  flyCommandEditor: 'crates/fly/src/command/editor.rs',
   manifest: 'crates/rustok-page-builder/rustok-module.toml',
   canvasDocument: 'crates/rustok-page-builder/admin/src/editor/canvas_document.rs',
   canvasRuntime: 'crates/rustok-page-builder/admin/src/editor/canvas_runtime.js',
@@ -40,10 +42,28 @@ for (const marker of [
   requireMarker('flyCodec', marker, `Fly GrapesJS codec is missing ${marker}`);
 }
 for (const marker of [
+  'mod editor;',
+  'mod model;',
+  'mod patch;',
+  'pub use editor::*;',
+  'pub use model::*;',
+  'pub use patch::*;',
+]) {
+  requireMarker('flyCommandFacade', marker, `Fly command facade is missing ${marker}`);
+}
+for (const marker of [
   'GrapesJsV1Codec::encode_vec(document)',
   'pub fn from_bytes(bytes: &[u8])',
+  'RestoreSnapshot',
 ]) {
-  requireMarker('flyCommand', marker, `Fly canonical hashing is missing ${marker}`);
+  requireMarker('flyCommandModel', marker, `Fly command model is missing ${marker}`);
+}
+for (const marker of [
+  'pub struct FlyEditor',
+  'pub fn restore_snapshot(',
+  'EditorCommand::RestoreSnapshot { snapshot }',
+]) {
+  requireMarker('flyCommandEditor', marker, `Fly transaction engine is missing ${marker}`);
 }
 for (const marker of [
   'ui_classification = "admin_only"',

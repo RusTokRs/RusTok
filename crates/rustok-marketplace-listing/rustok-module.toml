@@ -5,11 +5,12 @@ version = "0.1.0"
 description = "Marketplace Family listing identity, versioned terms, lifecycle, approval, and eligibility owner"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "none"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
 
 [marketplace]
 category = "commerce"
-tags = ["marketplace", "listing", "offer", "eligibility"]
+tags = ["marketplace", "listing", "eligibility", "moderation"]
 
 [dependencies]
 marketplace_seller = { version_req = ">=0.1.0" }
@@ -17,6 +18,16 @@ product = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "MarketplaceListingModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-marketplace-listing-admin"
+route_segment = "marketplace-listings"
+nav_label = "Marketplace Listings"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
 
 [fba.provider]
 status = "in_progress"

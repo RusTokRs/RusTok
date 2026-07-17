@@ -1,10 +1,12 @@
 use crate::{
-    extract_runtime_context_contract, materialize_bindings, materialize_context,
-    materialize_internal_page_links, materialize_localized_page_metadata,
+    extract_runtime_context_contract, materialize_bindings, materialize_component_actions,
+    materialize_context, materialize_internal_page_links, materialize_localized_page_metadata,
     materialize_project_locale_context, materialize_project_translations, materialize_runtime,
-    materialize_runtime_locale_context, BindingMaterialization, ContextMaterialization,
-    InternalLinkMaterialization, LocalePolicyMaterialization, LocalizedPageMetadataMaterialization,
-    ProjectDocument, RuntimeMaterialization, TranslationMaterialization, ValidationDiagnostic,
+    materialize_runtime_locale_context, validate_component_actions, validate_internal_page_links,
+    ActionMaterialization, BindingMaterialization, ContextMaterialization,
+    InternalLinkMaterialization, LocalePolicyMaterialization,
+    LocalizedPageMetadataMaterialization, ProjectDocument, RuntimeMaterialization,
+    TranslationMaterialization, ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,6 +24,16 @@ pub struct RuntimeProjectMaterialization {
     pub resolved_internal_links: usize,
     pub fallback_internal_links: usize,
     pub unresolved_internal_links: usize,
+    #[serde(default)]
+    pub materialized_forms: usize,
+    #[serde(default)]
+    pub native_actions: usize,
+    #[serde(default)]
+    pub custom_actions: usize,
+    #[serde(default)]
+    pub fallback_actions: usize,
+    #[serde(default)]
+    pub unresolved_actions: usize,
     pub applied_bindings: usize,
     pub fallback_bindings: usize,
     pub unresolved_bindings: usize,
@@ -46,26 +58,20 @@ pub fn materialize_project_with_runtime_context(
     } = materialize_project_translations(document, &locale_policy_context);
     let locale_materialization = materialize_runtime_locale_context(&translation_context);
     let localized_input_context = locale_materialization.context;
-    let InternalLinkMaterialization {
-        document: linked_document,
-        diagnostics: link_diagnostics,
-        resolved_links: resolved_internal_links,
-        fallback_links: fallback_internal_links,
-        unresolved_links: unresolved_internal_links,
-    } = materialize_internal_page_links(document, &localized_input_context);
+
     let LocalizedPageMetadataMaterialization {
         document: localized_document,
         diagnostics: metadata_diagnostics,
         ..
-    } = materialize_localized_page_metadata(&linked_document, &localized_input_context);
+    } = materialize_localized_page_metadata(document, &localized_input_context);
     let contract = extract_runtime_context_contract(&localized_document);
     let contract_is_valid = contract.is_valid();
     let mut diagnostics = locale_policy_diagnostics;
     diagnostics.extend(translation_diagnostics);
     diagnostics.extend(locale_materialization.diagnostics);
-    diagnostics.extend(link_diagnostics);
     diagnostics.extend(metadata_diagnostics);
     diagnostics.extend(contract.definition_diagnostics);
+
     let (
         effective_context,
         defaults_applied,
@@ -96,22 +102,54 @@ pub fn materialize_project_with_runtime_context(
         (localized_input_context.clone(), 0, 0, 0, 0, 0)
     };
 
+    // Runtime bindings are allowed to target component fields such as flyPageLink, flyAction,
+    // flyForm, and tagName. Apply them before structural runtime expansion so repeaters clone the
+    // bound contract rather than the authoring template.
     let BindingMaterialization {
-        document,
+        document: bound_document,
         diagnostics: binding_diagnostics,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
     } = materialize_bindings(&localized_document, &effective_context);
     diagnostics.extend(binding_diagnostics);
+
     let RuntimeMaterialization {
-        document,
+        document: dynamic_document,
         diagnostics: dynamic_diagnostics,
         evaluated_conditions,
         hidden_components,
         repeated_nodes,
-    } = materialize_runtime(&document, &effective_context);
+    } = materialize_runtime(&bound_document, &effective_context);
     diagnostics.extend(dynamic_diagnostics);
+
+    // Bindings and repeaters may introduce or duplicate runtime navigation, action, and form
+    // contracts. Validate the effective document before lowering those contracts to native HTML.
+    diagnostics.extend(validate_internal_page_links(&dynamic_document));
+    diagnostics.extend(validate_component_actions(&dynamic_document));
+
+    // Resolve navigation and action contracts only after conditions/repeaters. This guarantees
+    // that generated nodes receive native href/form/button attributes and hidden nodes do not
+    // contribute stale runtime diagnostics or counters.
+    let InternalLinkMaterialization {
+        document: linked_document,
+        diagnostics: link_diagnostics,
+        resolved_links: resolved_internal_links,
+        fallback_links: fallback_internal_links,
+        unresolved_links: unresolved_internal_links,
+    } = materialize_internal_page_links(&dynamic_document, &effective_context);
+    diagnostics.extend(link_diagnostics);
+
+    let ActionMaterialization {
+        document,
+        diagnostics: action_diagnostics,
+        materialized_forms,
+        native_actions,
+        custom_actions,
+        fallback_actions,
+        unresolved_actions,
+    } = materialize_component_actions(&linked_document, &effective_context);
+    diagnostics.extend(action_diagnostics);
 
     RuntimeProjectMaterialization {
         document,
@@ -125,6 +163,11 @@ pub fn materialize_project_with_runtime_context(
         resolved_internal_links,
         fallback_internal_links,
         unresolved_internal_links,
+        materialized_forms,
+        native_actions,
+        custom_actions,
+        fallback_actions,
+        unresolved_actions,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
@@ -137,7 +180,7 @@ pub fn materialize_project_with_runtime_context(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsV1Codec, PageMetadata};
+    use crate::{GrapesJsV1Codec, PageMetadata, ValidationSeverity};
     use serde_json::json;
 
     #[test]
@@ -251,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn internal_page_links_materialize_after_locale_selection_and_before_bindings() {
+    fn internal_page_links_materialize_after_bindings_and_repeaters() {
         let document = GrapesJsV1Codec::decode_value(json!({
             "flyLocales": {
                 "default_locale": "ru",
@@ -293,6 +336,168 @@ mod tests {
             .attributes
             .get("href")
             .is_none());
+    }
+
+    #[test]
+    fn actions_and_forms_materialize_in_the_canonical_runtime_pipeline() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "flyLocales": {
+                "default_locale": "ru",
+                "supported_locales": ["ru", "en"]
+            },
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "slug": { "$localized": { "en": "home", "ru": "glavnaya" } } },
+                "component": {
+                    "id": "home-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "contact-form",
+                        "type": "wrapper",
+                        "flyForm": {
+                            "id": "contact",
+                            "method": "post",
+                            "provider": "crm",
+                            "action": "create_lead"
+                        }
+                    }, {
+                        "id": "submit",
+                        "type": "button",
+                        "flyAction": { "kind": "submit_form", "form_id": "contact" }
+                    }, {
+                        "id": "about",
+                        "type": "button",
+                        "flyAction": { "kind": "navigate_page", "page_id": "about-page" }
+                    }]
+                }
+            }, {
+                "id": "about-page",
+                "flyPageMeta": { "slug": { "$localized": { "en": "about", "ru": "o-nas" } } },
+                "component": { "id": "about-root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+
+        let materialized = materialize_project_with_runtime_context(&document, &json!({}));
+        assert_eq!(materialized.materialized_forms, 1);
+        assert_eq!(materialized.native_actions, 2);
+        assert_eq!(materialized.custom_actions, 0);
+        assert_eq!(materialized.unresolved_actions, 0);
+        assert_eq!(
+            materialized
+                .document
+                .component("contact-form")
+                .unwrap()
+                .tag_name
+                .as_deref(),
+            Some("form")
+        );
+        assert_eq!(
+            materialized.document.component("submit").unwrap().attributes["form"],
+            "contact"
+        );
+        assert_eq!(
+            materialized.document.component("about").unwrap().attributes["href"],
+            "/o-nas"
+        );
+        assert!(document
+            .component("contact-form")
+            .unwrap()
+            .attributes
+            .get("data-fly-form-provider")
+            .is_none());
+    }
+
+    #[test]
+    fn runtime_binding_can_supply_action_before_native_materialization() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "slug": "home" },
+                "component": {
+                    "id": "home-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "cta",
+                        "type": "button",
+                        "content": "About"
+                    }]
+                }
+            }, {
+                "id": "about",
+                "flyPageMeta": { "slug": "about" },
+                "component": { "id": "about-root", "type": "wrapper" }
+            }],
+            "flyRuntimeBindings": [{
+                "id": "cta-action",
+                "component_id": "cta",
+                "path": "cta.action",
+                "target": "field",
+                "name": "flyAction"
+            }]
+        }))
+        .expect("document");
+
+        let materialized = materialize_project_with_runtime_context(
+            &document,
+            &json!({
+                "cta": {
+                    "action": { "kind": "navigate_page", "page_id": "about" }
+                }
+            }),
+        );
+        assert_eq!(materialized.applied_bindings, 1);
+        assert_eq!(materialized.native_actions, 1);
+        assert_eq!(materialized.unresolved_actions, 0);
+        assert_eq!(
+            materialized.document.component("cta").unwrap().attributes["href"],
+            "/about"
+        );
+    }
+
+    #[test]
+    fn runtime_bound_navigation_conflict_is_validated_before_materialization() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "slug": "home" },
+                "component": {
+                    "id": "home-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "cta",
+                        "type": "link",
+                        "content": "About",
+                        "flyPageLink": { "page_id": "about" }
+                    }]
+                }
+            }, {
+                "id": "about",
+                "flyPageMeta": { "slug": "about" },
+                "component": { "id": "about-root", "type": "wrapper" }
+            }],
+            "flyRuntimeBindings": [{
+                "id": "cta-action",
+                "component_id": "cta",
+                "path": "cta.action",
+                "target": "field",
+                "name": "flyAction"
+            }]
+        }))
+        .expect("document");
+
+        let materialized = materialize_project_with_runtime_context(
+            &document,
+            &json!({
+                "cta": {
+                    "action": { "kind": "navigate_page", "page_id": "about" }
+                }
+            }),
+        );
+        assert!(materialized.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "component_navigation_contract_conflict"
+                && diagnostic.severity == ValidationSeverity::Error
+        }));
     }
 
     #[test]

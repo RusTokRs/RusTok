@@ -27,7 +27,9 @@ pub(crate) enum ListingCommandAdmission {
     New(NewListingCommandReceipt),
 }
 
-pub(crate) fn normalize_idempotency_key(value: impl Into<String>) -> MarketplaceListingResult<String> {
+pub(crate) fn normalize_idempotency_key(
+    value: impl Into<String>,
+) -> MarketplaceListingResult<String> {
     let value = value.into().trim().to_string();
     if value.is_empty() || value.len() > MAX_IDEMPOTENCY_KEY_LENGTH {
         return Err(MarketplaceListingError::Validation(format!(
@@ -59,6 +61,19 @@ pub(crate) fn request_hash<T: Serialize>(
         )
     })?;
     Ok(format!("{:x}", Sha256::digest(encoded)))
+}
+
+pub(crate) async fn replay_existing<R: DeserializeOwned>(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    idempotency_key: &str,
+    expected_command_kind: &str,
+    expected_hash: &str,
+) -> MarketplaceListingResult<Option<R>> {
+    match find_receipt(db, tenant_id, idempotency_key).await? {
+        Some(receipt) => replay(receipt, expected_command_kind, expected_hash).map(Some),
+        None => Ok(None),
+    }
 }
 
 pub(crate) async fn admit(

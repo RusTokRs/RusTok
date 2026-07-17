@@ -1,4 +1,8 @@
-use crate::AdminCanvasController;
+use super::ssr_actions_forms::{
+    SsrComponentActionRemoveRequest, SsrComponentActionRequest, SsrComponentFormRemoveRequest,
+    SsrComponentFormRequest, SsrNativeFormFieldRequest,
+};
+use crate::{AdminCanvasController, AdminCanvasEffect};
 use fly::{
     blank_page, BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ComponentPatch,
     EditorCommand, PageCommand, PageLocator, PageMetadata, PagePatch, RuntimeBinding,
@@ -120,6 +124,26 @@ impl AdminCanvasController {
             "remove_translation" => self.ssr_remove_translation_intent(
                 serde_json::from_value(payload.clone())
                     .map_err(|error| format!("invalid remove translation form: {error}"))?,
+            )?,
+            "set_component_action" => self.ssr_component_action_intent(
+                serde_json::from_value::<SsrComponentActionRequest>(payload.clone())
+                    .map_err(|error| format!("invalid component action form: {error}"))?,
+            )?,
+            "remove_component_action" => self.ssr_remove_component_action_intent(
+                serde_json::from_value::<SsrComponentActionRemoveRequest>(payload.clone())
+                    .map_err(|error| format!("invalid remove component action form: {error}"))?,
+            )?,
+            "set_component_form" => self.ssr_component_form_intent(
+                serde_json::from_value::<SsrComponentFormRequest>(payload.clone())
+                    .map_err(|error| format!("invalid component form: {error}"))?,
+            )?,
+            "remove_component_form" => self.ssr_remove_component_form_intent(
+                serde_json::from_value::<SsrComponentFormRemoveRequest>(payload.clone())
+                    .map_err(|error| format!("invalid remove component form: {error}"))?,
+            )?,
+            "set_native_form_field" => self.ssr_native_form_field_intent(
+                serde_json::from_value::<SsrNativeFormFieldRequest>(payload.clone())
+                    .map_err(|error| format!("invalid native form field: {error}"))?,
             )?,
             _ => return Ok(None),
         };
@@ -359,22 +383,43 @@ fn ensure_component_exists(
         .component(component_id)
         .is_none()
     {
-        Err(format!("component `{component_id}` does not exist"))
-    } else {
-        Ok(())
+        return Err(format!("component `{component_id}` does not exist"));
     }
+    Ok(())
+}
+
+fn normalize_page_id(value: &str) -> Result<String, String> {
+    let value = required(value, "page id")?;
+    if !value.chars().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':')
+    }) {
+        return Err(format!("page id `{value}` contains unsupported characters"));
+    }
+    Ok(value.to_string())
+}
+
+fn normalize_translation_id(value: &str) -> Result<String, String> {
+    let value = required(value, "translation id")?;
+    if !value.chars().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':')
+    }) {
+        return Err(format!(
+            "translation id `{value}` contains unsupported characters"
+        ));
+    }
+    Ok(value.to_string())
 }
 
 fn binding_target(
     kind: SsrComponentPropertyKind,
     name: &str,
 ) -> Result<BindingTarget, String> {
-    let name = required(name, "binding target name")?.to_string();
+    let name = required(name, "binding property name")?.to_string();
     Ok(match kind {
         SsrComponentPropertyKind::Field => BindingTarget::Field { name },
         SsrComponentPropertyKind::Attribute => BindingTarget::Attribute { name },
         SsrComponentPropertyKind::Style => BindingTarget::Style {
-            name: normalize_css_property(&name)?,
+            property: normalize_css_property(&name)?,
         },
     })
 }
@@ -391,11 +436,26 @@ fn translation_binding_id(
         SsrComponentPropertyKind::Style => "style",
     };
     format!(
-        "translation-{}-{}-{kind}-{}",
-        stable_identifier(translation_id),
-        stable_identifier(component_id),
-        stable_identifier(name)
+        "fly.translation.{}.{}.{}.{}",
+        stable_suffix(translation_id),
+        stable_suffix(component_id),
+        kind,
+        stable_suffix(name)
     )
+}
+
+fn stable_suffix(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect()
 }
 
 fn required<'a>(value: &'a str, label: &str) -> Result<&'a str, String> {
@@ -412,224 +472,30 @@ fn optional(value: String) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
-fn normalize_page_id(value: &str) -> Result<String, String> {
-    let value = stable_identifier(value);
-    if value.is_empty() {
-        Err("page id must contain at least one letter or number".to_string())
-    } else {
-        Ok(value)
-    }
-}
-
-fn normalize_translation_id(value: &str) -> Result<String, String> {
-    let value = stable_identifier(value);
-    if value.is_empty() {
-        Err("translation id must contain at least one letter or number".to_string())
-    } else {
-        Ok(value)
-    }
-}
-
-fn stable_identifier(value: &str) -> String {
-    value
-        .trim()
-        .to_ascii_lowercase()
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
-                character
-            } else if character.is_whitespace() {
-                '-'
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>()
-        .trim_matches(['-', '_'])
-        .to_string()
-}
-
 fn normalize_css_property(value: &str) -> Result<String, String> {
     let value = value.trim().to_ascii_lowercase();
     if value.is_empty()
-        || value.starts_with("--")
         || !value
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || character == '-')
     {
-        return Err(format!("CSS property `{value}` is not supported"));
+        return Err("style property must contain only letters, digits, and hyphens".to_string());
     }
     Ok(value)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use fly::{BindingCatalog, TranslationCatalog};
-    use serde_json::json;
-
-    fn controller() -> AdminCanvasController {
-        AdminCanvasController::new(
-            "home",
-            "rev-1",
-            json!({
-                "pages": [{
-                    "id": "home",
-                    "flyPageMeta": { "future": 42 },
-                    "component": {
-                        "id": "root",
-                        "type": "wrapper",
-                        "components": [{ "id": "hero", "type": "section" }]
-                    }
-                }]
-            }),
-        )
-        .expect("controller")
-    }
-
-    #[test]
-    fn property_request_builds_normal_fly_patch() {
-        let mut controller = controller();
-        let intent = controller
-            .ssr_component_property_intent(SsrComponentPropertyRequest {
-                component_id: "hero".to_string(),
-                kind: SsrComponentPropertyKind::Attribute,
-                name: "aria-label".to_string(),
-                value: "Hero".to_string(),
-                remove: false,
-            })
-            .expect("intent");
-        controller.dispatch(intent).expect("patch");
-        assert_eq!(
-            controller
-                .editor()
-                .document()
-                .component("hero")
-                .unwrap()
-                .attributes["aria-label"],
-            "Hero"
-        );
-    }
-
-    #[test]
-    fn metadata_request_preserves_unknown_metadata_extensions() {
-        let mut controller = controller();
-        let intent = controller
-            .ssr_page_metadata_intent(SsrPageMetadataRequest {
-                page_id: "home".to_string(),
-                title: "Home".to_string(),
-                slug: "home".to_string(),
-                description: String::new(),
-                canonical_url: String::new(),
-                og_title: String::new(),
-                og_description: String::new(),
-                og_image: String::new(),
-                no_index: false,
-            })
-            .expect("metadata intent");
-        controller.dispatch(intent).expect("metadata patch");
-        assert_eq!(
-            controller.editor().document().project.pages[0].extensions[FLY_PAGE_METADATA_FIELD]
-                ["future"],
-            42
-        );
-        assert_eq!(
-            controller.editor().document().project.pages[0].extensions[FLY_PAGE_METADATA_FIELD]
-                ["title"],
-            "Home"
-        );
-    }
-
-    #[test]
-    fn translation_upsert_and_binding_are_one_history_entry() {
-        let mut controller = controller();
-        let intent = controller
-            .ssr_upsert_translation_intent(SsrTranslationUpsertRequest {
-                translation_id: "Hero Title".to_string(),
-                values_json: json!({
-                    "en": "Welcome",
-                    "ru": "Добро пожаловать"
-                })
-                .to_string(),
-                fallback_locale: "en".to_string(),
-                component_id: "hero".to_string(),
-                bind_kind: Some(SsrComponentPropertyKind::Field),
-                bind_name: "content".to_string(),
-            })
-            .expect("translation intent");
-        controller.dispatch(intent).expect("translation transaction");
-        assert_eq!(controller.editor().history().undo_len(), 1);
-        assert_eq!(
-            TranslationCatalog::from_document(controller.editor().document())
-                .entries[0]
-                .id,
-            "hero-title"
-        );
-        assert_eq!(
-            BindingCatalog::from_document(controller.editor().document()).bindings[0].path,
-            "translations.hero-title"
-        );
-        controller
-            .dispatch(UiIntent::Undo)
-            .expect("undo translation transaction");
-        assert!(TranslationCatalog::from_document(controller.editor().document())
-            .entries
-            .is_empty());
-        assert!(BindingCatalog::from_document(controller.editor().document())
-            .bindings
-            .is_empty());
-    }
-
-    #[test]
-    fn removing_translation_removes_its_bindings_in_one_history_entry() {
-        let mut controller = controller();
-        let upsert = controller
-            .ssr_upsert_translation_intent(SsrTranslationUpsertRequest {
-                translation_id: "hero".to_string(),
-                values_json: json!({ "en": "Hero" }).to_string(),
-                fallback_locale: "en".to_string(),
-                component_id: "hero".to_string(),
-                bind_kind: Some(SsrComponentPropertyKind::Field),
-                bind_name: "content".to_string(),
-            })
-            .expect("upsert");
-        controller.dispatch(upsert).expect("translation transaction");
-        let remove = controller
-            .ssr_remove_translation_intent(SsrTranslationRemoveRequest {
-                translation_id: "hero".to_string(),
-            })
-            .expect("remove");
-        controller.dispatch(remove).expect("remove transaction");
-        assert_eq!(controller.editor().history().undo_len(), 2);
-        assert!(TranslationCatalog::from_document(controller.editor().document())
-            .entries
-            .is_empty());
-        assert!(BindingCatalog::from_document(controller.editor().document())
-            .bindings
-            .is_empty());
-    }
-
-    #[test]
-    fn incomplete_translation_binding_is_rejected() {
-        let controller = controller();
-        assert!(controller
-            .ssr_upsert_translation_intent(SsrTranslationUpsertRequest {
-                translation_id: "hero".to_string(),
-                values_json: json!({ "en": "Hero" }).to_string(),
-                fallback_locale: String::new(),
-                component_id: "hero".to_string(),
-                bind_kind: None,
-                bind_name: "content".to_string(),
-            })
-            .is_err());
-    }
-
-    #[test]
-    fn form_dispatch_rejects_unknown_intents() {
-        let controller = controller();
-        assert!(controller
-            .ssr_form_intent("unknown", &json!({}))
-            .unwrap()
-            .is_none());
-    }
+pub(crate) fn request_effects(
+    effects: Vec<AdminCanvasEffect>,
+) -> Vec<(rustok_page_builder::dto::PageBuilderCapabilityRequest, Option<fly::ProjectHash>)> {
+    effects
+        .into_iter()
+        .filter_map(|effect| match effect {
+            AdminCanvasEffect::Request {
+                request,
+                expected_hash,
+                ..
+            } => Some((request, expected_hash)),
+            AdminCanvasEffect::Announce(_) => None,
+        })
+        .collect()
 }

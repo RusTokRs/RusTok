@@ -258,6 +258,7 @@ async fn seo_redirect_cache_reconciliation_recovers_two_replicas_across_cursor_f
 
     handle_a.abort();
     wait_for_stopped(&handle_a).await;
+    assert!(!handle_a.is_running());
     assert!(!handle_a.is_ready());
     assert!(handle_b.is_running());
     assert!(handle_b.is_ready());

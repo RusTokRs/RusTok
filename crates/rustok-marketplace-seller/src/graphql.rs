@@ -5,6 +5,7 @@ use async_graphql::{
 };
 use chrono::{DateTime, FixedOffset};
 use rustok_api::graphql::GraphQLError;
+use rustok_api::request::RequestContext;
 use rustok_api::{
     has_any_effective_permission, AuthContext, ChannelContext, HostRuntimeContext, Permission,
     PortActor, PortContext, PortError, PortErrorKind, TenantContext,
@@ -14,8 +15,9 @@ use uuid::Uuid;
 
 use crate::{
     AddMarketplaceSellerMemberInput, AddMarketplaceSellerMemberRequest,
-    CreateMarketplaceSellerInput, ListMarketplaceSellersInput, MarketplaceSellerCommandPort,
-    MarketplaceSellerMemberResponse, MarketplaceSellerMemberRole, MarketplaceSellerMemberStatus,
+    CreateMarketplaceSellerInput, ListMarketplaceSellerMembersRequest,
+    ListMarketplaceSellersInput, MarketplaceSellerCommandPort, MarketplaceSellerMemberResponse,
+    MarketplaceSellerMemberRole, MarketplaceSellerMemberStatus,
     MarketplaceSellerOnboardingStatus, MarketplaceSellerReadPort, MarketplaceSellerResponse,
     MarketplaceSellerService, MarketplaceSellerStatus, ReactivateMarketplaceSellerRequest,
     ReadMarketplaceSellerRequest, ReviewMarketplaceSellerOnboardingInput,
@@ -44,7 +46,10 @@ impl MarketplaceSellerQuery {
     ) -> Result<MarketplaceSellerConnectionGql> {
         let auth = require_permissions(
             ctx,
-            &[Permission::MARKETPLACE_SELLERS_LIST, Permission::MARKETPLACE_SELLERS_READ],
+            &[
+                Permission::MARKETPLACE_SELLERS_LIST,
+                Permission::MARKETPLACE_SELLERS_READ,
+            ],
         )?;
         let page = page.unwrap_or(1).max(1) as u64;
         let per_page = per_page.unwrap_or(25).clamp(1, 100) as u64;
@@ -93,12 +98,15 @@ impl MarketplaceSellerQuery {
         seller_id: Uuid,
     ) -> Result<Vec<MarketplaceSellerMemberGql>> {
         let auth = require_permissions(ctx, &[Permission::MARKETPLACE_SELLERS_READ])?;
-        let tenant = require_tenant(ctx, auth)?;
-        service(ctx)?
-            .list_members(tenant.id, seller_id)
-            .await
-            .map(|items| items.into_iter().map(Into::into).collect())
-            .map_err(|error| map_port_error(owner_error_to_port_error(error)))
+        let service = service(ctx)?;
+        MarketplaceSellerReadPort::list_members(
+            &service,
+            port_context(ctx, auth, None)?,
+            ListMarketplaceSellerMembersRequest { seller_id },
+        )
+        .await
+        .map(|items| items.into_iter().map(Into::into).collect())
+        .map_err(map_port_error)
     }
 }
 
@@ -123,7 +131,10 @@ impl MarketplaceSellerMutation {
                 display_name: input.display_name,
                 legal_name: input.legal_name,
                 owner_user_id: input.owner_user_id,
-                metadata: input.metadata.map(|value| value.0).unwrap_or_else(empty_object),
+                metadata: input
+                    .metadata
+                    .map(|value| value.0)
+                    .unwrap_or_else(empty_object),
             },
         )
         .await
@@ -259,7 +270,10 @@ impl MarketplaceSellerMutation {
                 input: AddMarketplaceSellerMemberInput {
                     user_id: input.user_id,
                     role: input.role.into(),
-                    metadata: input.metadata.map(|value| value.0).unwrap_or_else(empty_object),
+                    metadata: input
+                        .metadata
+                        .map(|value| value.0)
+                        .unwrap_or_else(empty_object),
                 },
             },
         )
@@ -310,6 +324,7 @@ pub struct MarketplaceSellerGql {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub handle: String,
+    pub resolved_locale: String,
     pub display_name: String,
     pub legal_name: Option<String>,
     pub status: MarketplaceSellerStatusGql,
@@ -406,6 +421,7 @@ impl From<MarketplaceSellerResponse> for MarketplaceSellerGql {
             id: value.id,
             tenant_id: value.tenant_id,
             handle: value.handle,
+            resolved_locale: value.resolved_locale,
             display_name: value.display_name,
             legal_name: value.legal_name,
             status: value.status.into(),
@@ -572,10 +588,18 @@ fn port_context(
     idempotency_key: Option<String>,
 ) -> Result<PortContext> {
     let tenant = require_tenant(ctx, auth)?;
+    let locale = ctx
+        .data::<RequestContext>()
+        .map(|request| request.locale.clone())
+        .or_else(|_| {
+            ctx.data::<rustok_core::Locale>()
+                .map(|locale| locale.as_str().to_string())
+        })
+        .unwrap_or_else(|_| tenant.default_locale.clone());
     let mut context = PortContext::new(
         tenant.id.to_string(),
         PortActor::user(auth.user_id.to_string()),
-        tenant.default_locale.clone(),
+        locale,
         format!("graphql-marketplace-seller-{}", Uuid::new_v4()),
     )
     .with_deadline(PORT_DEADLINE);
@@ -604,54 +628,6 @@ fn map_port_error(error: PortError) -> FieldError {
         }
         PortErrorKind::InvariantViolation => <FieldError as GraphQLError>::internal_error(
             "Marketplace seller command requires operator review",
-        ),
-    }
-}
-
-fn owner_error_to_port_error(error: crate::MarketplaceSellerError) -> PortError {
-    match error {
-        crate::MarketplaceSellerError::SellerNotFound(id) => PortError::not_found(
-            "marketplace_seller.seller_not_found",
-            format!("marketplace seller {id} not found"),
-        ),
-        crate::MarketplaceSellerError::MemberNotFound(id) => PortError::not_found(
-            "marketplace_seller.member_not_found",
-            format!("marketplace seller member {id} not found"),
-        ),
-        crate::MarketplaceSellerError::MembershipNotFound { seller_id, user_id } => {
-            PortError::not_found(
-                "marketplace_seller.membership_not_found",
-                format!("membership for user {user_id} in seller {seller_id} not found"),
-            )
-        }
-        crate::MarketplaceSellerError::DuplicateHandle(_) => PortError::conflict(
-            "marketplace_seller.handle_conflict",
-            "marketplace seller handle is already in use",
-        ),
-        crate::MarketplaceSellerError::DuplicateMembership { .. } => PortError::conflict(
-            "marketplace_seller.membership_conflict",
-            "marketplace seller membership already exists",
-        ),
-        crate::MarketplaceSellerError::IdempotencyConflict(_) => PortError::conflict(
-            "marketplace_seller.idempotency_conflict",
-            "marketplace seller idempotency key is already bound to another command",
-        ),
-        crate::MarketplaceSellerError::CommandReceiptCorrupt(_) => {
-            PortError::invariant_violation(
-                "marketplace_seller.command_receipt_corrupt",
-                "marketplace seller command receipt requires operator review",
-            )
-        }
-        crate::MarketplaceSellerError::Validation(message) => {
-            PortError::validation("marketplace_seller.validation", message)
-        }
-        crate::MarketplaceSellerError::InvalidTransition { from, to } => PortError::conflict(
-            "marketplace_seller.lifecycle_conflict",
-            format!("marketplace seller transition from `{from}` to `{to}` is not allowed"),
-        ),
-        crate::MarketplaceSellerError::Database(_) => PortError::unavailable(
-            "marketplace_seller.storage_unavailable",
-            "marketplace seller storage is temporarily unavailable",
         ),
     }
 }
