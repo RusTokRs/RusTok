@@ -85,7 +85,10 @@ pub fn pages_landing_blocks_contribution() -> ContributionDescriptor {
 pub fn pages_admin_contribution_policy() -> ContributionAssemblyPolicy {
     ContributionAssemblyPolicy {
         enabled_modules: BTreeSet::from([PAGES_MODULE_ID.to_string()]),
-        enabled_providers: BTreeSet::from([PAGES_OWNER_PROVIDER.to_string()]),
+        enabled_providers: BTreeSet::from([
+            PAGES_OWNER_PROVIDER.to_string(),
+            FLY_BUILTIN_PROVIDER.to_string(),
+        ]),
         capabilities: capability_set(PAGES_BUILDER_CAPABILITIES),
         ..ContributionAssemblyPolicy::default()
     }
@@ -145,6 +148,13 @@ mod tests {
         assert!(contribution
             .required_capabilities
             .is_subset(&pages_admin_contribution_policy().capabilities));
+    }
+
+    #[test]
+    fn contribution_policy_enables_owner_and_target_providers() {
+        let policy = pages_admin_contribution_policy();
+        assert!(policy.enabled_providers.contains(PAGES_OWNER_PROVIDER));
+        assert!(policy.enabled_providers.contains(FLY_BUILTIN_PROVIDER));
     }
 
     #[test]
