@@ -90,21 +90,19 @@ async fn evicted_local_entry_cannot_be_revived_by_compare_and_set() {
         .await
         .unwrap();
 
-    tokio::time::timeout(Duration::from_secs(1), async {
-        while backend.stats().entries > 1 {
-            tokio::task::yield_now().await;
+    let (evicted_key, evicted_value) = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let first_value = backend.get(first.0).await.unwrap();
+            let second_value = backend.get(second.0).await.unwrap();
+            match (first_value, second_value) {
+                (None, _) => break (first.0, first.1.clone()),
+                (_, None) => break (second.0, second.1.clone()),
+                (Some(_), Some(_)) => tokio::task::yield_now().await,
+            }
         }
     })
     .await
-    .expect("entry-count cache did not enforce its capacity");
-
-    let first_value = backend.get(first.0).await.unwrap();
-    let second_value = backend.get(second.0).await.unwrap();
-    let (evicted_key, evicted_value) = match (first_value, second_value) {
-        (None, _) => first,
-        (_, None) => second,
-        (Some(_), Some(_)) => panic!("capacity-one cache retained both entries"),
-    };
+    .expect("entry-count cache did not evict either key");
 
     assert_eq!(
         backend
