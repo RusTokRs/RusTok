@@ -248,17 +248,22 @@ requireMarkers('pagesContributions', [
 requireMarkers('pagesContributionBrowser', [
   'pub fn pages_palette_block_access()',
   'pub async fn dispatch_pages_browser_intent(',
+  'pub async fn dispatch_pages_browser_intent_with_capabilities(',
   'pub async fn dispatch_pages_browser_intent_with_store(',
-  'fn preflight_pages_palette_intent(',
+  'pub async fn dispatch_pages_browser_intent_with_store_and_capabilities(',
+  'fn preflight_pages_intent(',
   'validate_browser_palette_access(&envelope, &pages_palette_block_access())',
+  'validate_browser_capability_access(&envelope, capabilities)',
   'pages_preflight_allows_primitives_and_declared_templates',
   'pages_preflight_rejects_uncontributed_namespaced_templates',
   'pages_preflight_rejects_block_drop_bypass',
+  'pages_preflight_rejects_capability_bypass',
 ], 'Pages contribution-aware browser dispatcher');
 requireMarkers('pagesLib', [
   'mod contribution_browser_intent;',
   'pub use contribution_browser_intent::{',
-  'dispatch_pages_browser_intent, dispatch_pages_browser_intent_with_store,',
+  'dispatch_pages_browser_intent_with_capabilities,',
+  'dispatch_pages_browser_intent_with_store_and_capabilities,',
   'pages_palette_block_access,',
 ], 'Pages crate-root browser preflight routing');
 rejectMarker(
