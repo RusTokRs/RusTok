@@ -132,7 +132,7 @@ impl MarketplaceListingCommandPort for crate::MarketplaceListingService {
         context: PortContext,
         request: CreateMarketplaceListingInput,
     ) -> Result<MarketplaceListingResponse, PortError> {
-        self.create_listing(context, request)
+        self.create_listing_replay_safe(context, request)
             .await
             .map_err(map_owner_error)
     }
@@ -172,7 +172,7 @@ impl MarketplaceListingCommandPort for crate::MarketplaceListingService {
         context: PortContext,
         request: MarketplaceListingIdRequest,
     ) -> Result<MarketplaceListingResponse, PortError> {
-        self.publish_listing(context, request.listing_id)
+        self.publish_listing_replay_safe(context, request.listing_id)
             .await
             .map_err(map_owner_error)
     }
@@ -192,7 +192,7 @@ impl MarketplaceListingCommandPort for crate::MarketplaceListingService {
         context: PortContext,
         request: MarketplaceListingIdRequest,
     ) -> Result<MarketplaceListingResponse, PortError> {
-        self.reactivate_listing(context, request.listing_id)
+        self.reactivate_listing_replay_safe(context, request.listing_id)
             .await
             .map_err(map_owner_error)
     }
