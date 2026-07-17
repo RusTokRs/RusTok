@@ -384,10 +384,6 @@ fn map_owner_error(error: MarketplaceSellerError) -> PortError {
             "marketplace_seller.seller_not_found",
             format!("marketplace seller {id} not found"),
         ),
-        MarketplaceSellerError::TranslationNotFound { .. } => PortError::invariant_violation(
-            "marketplace_seller.translation_missing",
-            "marketplace seller translation is missing for the effective locale",
-        ),
         MarketplaceSellerError::MemberNotFound(id) => PortError::not_found(
             "marketplace_seller.member_not_found",
             format!("marketplace seller member {id} not found"),
@@ -416,6 +412,14 @@ fn map_owner_error(error: MarketplaceSellerError) -> PortError {
             "marketplace_seller.lifecycle_conflict",
             format!("marketplace seller transition from `{from}` to `{to}` is not allowed"),
         ),
+        MarketplaceSellerError::Validation(message)
+            if message.starts_with(crate::service::MISSING_TRANSLATION_PREFIX) =>
+        {
+            PortError::invariant_violation(
+                "marketplace_seller.translation_missing",
+                "marketplace seller translation is missing for the effective locale",
+            )
+        }
         MarketplaceSellerError::Validation(message) => {
             PortError::validation("marketplace_seller.validation", message)
         }
