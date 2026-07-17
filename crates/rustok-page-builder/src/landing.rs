@@ -1,21 +1,21 @@
 use crate::dto::PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS;
 use fly::{
-    build_static_landing_artifact_v1, migrate_landing_document_v1, validate_project,
-    ComponentRegistryManifest, FlyError, GrapesJsV1Codec, LandingDocumentV1,
-    LandingReadinessPolicy, RegistryCompatibilityIssue, RegistryCompatibilityIssueKind,
-    RegistryCompatibilityReport, RegistrySet, RenderPolicy, StaticLandingBuildResult,
-    ValidationDiagnostic, ValidationLimits, ValidationReport, FLY_LANDING_DOCUMENT_V1,
+    build_static_landing_artifact, validate_project, ComponentRegistryManifest, FlyError,
+    GrapesJsV1Codec, LandingReadinessPolicy, ProjectDocument, RegistryCompatibilityIssue,
+    RegistryCompatibilityIssueKind, RegistryCompatibilityReport, RegistrySet, RenderPolicy,
+    StaticLandingBuildResult, ValidationDiagnostic, ValidationLimits, ValidationReport,
     GRAPESJS_V1,
 };
 use serde_json::Value;
 
 /// Framework-neutral landing inspection used by Leptos, Dioxus and static-export adapters.
 ///
-/// Legacy GrapesJS payloads are migrated into the versioned Fly landing envelope at this boundary;
-/// callers receive one typed document regardless of the transport that supplied it.
+/// The browser transport is decoded into Fly's single current domain model at this boundary.
+/// GrapesJS is an adapter format, not a previous domain version.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LandingProjectInspection {
-    landing: LandingDocumentV1,
+    document: ProjectDocument,
+    registry: ComponentRegistryManifest,
     validation: ValidationReport,
     registry_compatibility: RegistryCompatibilityReport,
 }
@@ -36,45 +36,31 @@ impl LandingProjectInspection {
         registries: &RegistrySet,
         limits: ValidationLimits,
     ) -> LandingProjectResult<Self> {
-        let landing = match schema_version {
-            GRAPESJS_V1 => {
-                let document = GrapesJsV1Codec::decode_value(project_data.clone())
-                    .map_err(LandingProjectError::Fly)?;
-                LandingDocumentV1::new(document, registries)
-            }
-            FLY_LANDING_DOCUMENT_V1 => {
-                let migrated = migrate_landing_document_v1(project_data.clone(), registries)
-                    .map_err(LandingProjectError::Fly)?;
-                if migrated.migrated {
-                    return Err(LandingProjectError::ContractPayloadMismatch {
-                        declared: FLY_LANDING_DOCUMENT_V1,
-                        actual: GRAPESJS_V1,
-                    });
-                }
-                migrated.document
-            }
-            actual => {
-                return Err(LandingProjectError::UnsupportedSchema {
-                    supported: &PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS,
-                    actual: actual.to_string(),
-                });
-            }
-        };
-        let validation = validate_project(&landing.document, registries, limits);
-        let registry_compatibility = registry_compatibility(&landing, registries);
+        if schema_version != GRAPESJS_V1 {
+            return Err(LandingProjectError::UnsupportedSchema {
+                supported: &PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS,
+                actual: schema_version.to_string(),
+            });
+        }
+        let document = GrapesJsV1Codec::decode_value(project_data.clone())
+            .map_err(LandingProjectError::Fly)?;
+        let registry = ComponentRegistryManifest::for_document(&document, registries);
+        let validation = validate_project(&document, registries, limits);
+        let registry_compatibility = registry_compatibility(&document, &registry, registries);
         Ok(Self {
-            landing,
+            document,
+            registry,
             validation,
             registry_compatibility,
         })
     }
 
-    pub fn landing(&self) -> &LandingDocumentV1 {
-        &self.landing
+    pub fn document(&self) -> &ProjectDocument {
+        &self.document
     }
 
     pub fn registry_manifest(&self) -> &ComponentRegistryManifest {
-        &self.landing.registry
+        &self.registry
     }
 
     pub fn validation(&self) -> &ValidationReport {
@@ -106,26 +92,23 @@ impl LandingProjectInspection {
         render_policy: &RenderPolicy,
     ) -> LandingProjectResult<StaticLandingBuildResult> {
         self.require_contract_valid()?;
-        build_static_landing_artifact_v1(
-            &self.landing.document,
+        build_static_landing_artifact(
+            &self.document,
             registries,
             readiness_policy,
             render_policy,
         )
         .map_err(LandingProjectError::Fly)
     }
-
-    pub fn encode_landing_v1(&self) -> LandingProjectResult<Value> {
-        self.landing.encode_value().map_err(LandingProjectError::Fly)
-    }
 }
 
 fn registry_compatibility(
-    landing: &LandingDocumentV1,
+    document: &ProjectDocument,
+    registry: &ComponentRegistryManifest,
     registries: &RegistrySet,
 ) -> RegistryCompatibilityReport {
-    let mut report = landing.registry.compatibility_with(registries);
-    landing.document.project.visit_components(|component, _, _| {
+    let mut report = registry.compatibility_with(registries);
+    document.project.visit_components(|component, _, _| {
         let component_type = component.component_type();
         let Some(available) = registries.components.get(component_type) else {
             return;
@@ -133,7 +116,7 @@ fn registry_compatibility(
         if let Some(provider) = component.provider.as_deref() {
             push_registry_issue(
                 &mut report,
-                (provider != available.provider).then(|| RegistryCompatibilityIssue {
+                (provider != available.provider.as_str()).then(|| RegistryCompatibilityIssue {
                     component_type: component_type.to_string(),
                     kind: RegistryCompatibilityIssueKind::ProviderMismatch,
                     expected: Some(provider.to_string()),
@@ -153,7 +136,7 @@ fn registry_compatibility(
         } else if let Some(schema_version) = component.schema_version.as_deref() {
             push_registry_issue(
                 &mut report,
-                (schema_version != available.schema_version).then(|| {
+                (schema_version != available.schema_version.as_str()).then(|| {
                     RegistryCompatibilityIssue {
                         component_type: component_type.to_string(),
                         kind: RegistryCompatibilityIssueKind::SchemaVersionMismatch,
@@ -187,13 +170,6 @@ pub enum LandingProjectError {
     UnsupportedSchema {
         supported: &'static [&'static str],
         actual: String,
-    },
-    #[error(
-        "page-builder payload does not match declared schema `{declared}`; received `{actual}`"
-    )]
-    ContractPayloadMismatch {
-        declared: &'static str,
-        actual: &'static str,
     },
     #[error("page-builder project validation failed")]
     Validation {
@@ -235,31 +211,25 @@ mod tests {
     }
 
     #[test]
-    fn legacy_and_landing_contracts_decode_to_the_same_typed_document() {
-        let legacy = LandingProjectInspection::decode(GRAPESJS_V1, &project_value())
-            .expect("legacy inspection");
-        let landing_value = legacy.encode_landing_v1().expect("landing value");
-        let typed = LandingProjectInspection::decode(FLY_LANDING_DOCUMENT_V1, &landing_value)
-            .expect("typed inspection");
-        assert_eq!(&legacy.landing().document, &typed.landing().document);
-        assert_eq!(legacy.registry_manifest(), typed.registry_manifest());
+    fn current_transport_decodes_to_the_domain_document() {
+        let inspection = LandingProjectInspection::decode(GRAPESJS_V1, &project_value())
+            .expect("inspection");
+        assert_eq!(inspection.document().project.pages.len(), 1);
+        assert!(inspection.registry_manifest().components.len() >= 2);
     }
 
     #[test]
-    fn declared_landing_contract_rejects_legacy_payload_shape() {
-        let error = LandingProjectInspection::decode(FLY_LANDING_DOCUMENT_V1, &project_value())
-            .expect_err("declared contract must be authoritative");
-        assert!(matches!(
-            error,
-            LandingProjectError::ContractPayloadMismatch { .. }
-        ));
+    fn unsupported_transport_schema_is_rejected() {
+        let error = LandingProjectInspection::decode("unknown", &project_value())
+            .expect_err("unknown schema must be rejected");
+        assert!(matches!(error, LandingProjectError::UnsupportedSchema { .. }));
     }
 
     #[test]
     fn declared_provider_schema_drift_blocks_contract_validity() {
         let mut project = project_value();
         project["pages"][0]["component"]["components"][0]["provider"] =
-            json!("legacy.provider");
+            json!("other.provider");
         project["pages"][0]["component"]["components"][0]["schemaVersion"] = json!("0");
         let inspection = LandingProjectInspection::decode(GRAPESJS_V1, &project)
             .expect("structural inspection");
@@ -291,7 +261,6 @@ mod tests {
             .expect("static build");
         assert!(result.ready);
         let artifact = result.artifact.expect("artifact");
-        assert_eq!(artifact.schema, fly::FLY_STATIC_LANDING_ARTIFACT_V1);
         assert_eq!(artifact.pages.len(), 1);
     }
 }
