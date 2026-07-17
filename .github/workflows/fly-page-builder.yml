@@ -92,6 +92,9 @@ jobs:
           -p rustok-pages-admin
           --lib -- -D warnings
 
+      - name: Verify Fly contribution access
+        run: node scripts/verify/verify-fly-ui-contributions.mjs
+
       - name: Verify landing readiness wiring
         run: node scripts/verify/verify-fly-landing-readiness.mjs
 
