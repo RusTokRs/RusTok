@@ -1,8 +1,6 @@
 use rustok_events::MarketplaceListingEvent;
 
-use crate::dto::{
-    MarketplaceListingApprovalStatus, MarketplaceListingResponse,
-};
+use crate::dto::{MarketplaceListingApprovalStatus, MarketplaceListingResponse};
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
 
 pub(crate) fn event_for_completed_command(
@@ -56,14 +54,13 @@ mod tests {
     use chrono::Utc;
 
     use super::*;
-    use crate::dto::{
-        MarketplaceListingStatus, MarketplaceListingTermsResponse,
-    };
+    use crate::dto::{MarketplaceListingStatus, MarketplaceListingTermsResponse};
 
     fn listing() -> MarketplaceListingResponse {
         let now = Utc::now().fixed_offset();
+        let listing_id = uuid::Uuid::new_v4();
         MarketplaceListingResponse {
-            id: uuid::Uuid::new_v4(),
+            id: listing_id,
             tenant_id: uuid::Uuid::new_v4(),
             seller_id: uuid::Uuid::new_v4(),
             master_product_id: uuid::Uuid::new_v4(),
@@ -76,7 +73,7 @@ mod tests {
             current_terms_version: 3,
             current_terms: MarketplaceListingTermsResponse {
                 id: uuid::Uuid::new_v4(),
-                listing_id: uuid::Uuid::new_v4(),
+                listing_id,
                 version: 3,
                 pricing_reference: Some("price-list".to_string()),
                 inventory_reference: Some("inventory-item".to_string()),
