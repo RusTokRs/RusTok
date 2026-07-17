@@ -1,0 +1,31 @@
+name: Agent Typos Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  typos:
+    if: ${{ github.event.pull_request.head.ref == 'agent/typos-diagnostics-1777' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install typos CLI
+        run: cargo install typos-cli --locked
+      - name: Capture typos diagnostics
+        shell: bash
+        run: |
+          set +e
+          typos --format brief > typos.log 2>&1
+          echo $? > typos.status
+          exit 0
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agent-typos-diagnostics
+          path: |
+            typos.log
+            typos.status
