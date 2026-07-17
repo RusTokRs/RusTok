@@ -24,10 +24,15 @@ impl CommandCapabilityRequirement {
     }
 
     pub fn is_satisfied_by(&self, state: CapabilityState) -> bool {
+        self.missing(state).is_empty()
+    }
+
+    pub fn missing(&self, state: CapabilityState) -> Vec<EditorCapability> {
         self.capabilities
             .iter()
             .copied()
-            .all(|capability| state.allows(capability))
+            .filter(|capability| !state.allows(*capability))
+            .collect()
     }
 
     pub fn first_missing(&self, state: CapabilityState) -> Option<EditorCapability> {
@@ -151,6 +156,36 @@ mod tests {
             requirement.first_missing(limited),
             Some(EditorCapability::Assets)
         );
+        assert_eq!(requirement.missing(limited), vec![EditorCapability::Assets]);
+    }
+
+    #[test]
+    fn missing_returns_every_denied_capability_in_stable_order() {
+        let command = EditorCommand::batch([
+            EditorCommand::Asset {
+                command: AssetCommand::Remove {
+                    asset_id: "logo".to_string(),
+                },
+            },
+            EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch {
+                    fields: Map::from_iter([("src".to_string(), json!("asset:logo"))]),
+                    ..ComponentPatch::default()
+                },
+            },
+        ]);
+        let requirement = CommandCapabilityRequirement::for_command(&command);
+        let limited = CapabilityState {
+            properties: false,
+            assets: false,
+            ..CapabilityState::full()
+        };
+        assert_eq!(
+            requirement.missing(limited),
+            vec![EditorCapability::Properties, EditorCapability::Assets]
+        );
+        assert!(!requirement.is_satisfied_by(limited));
     }
 
     #[test]
