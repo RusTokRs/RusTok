@@ -5,6 +5,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend};
 
+#[cfg(feature = "redis-cache")]
 use crate::fallback::DegradationAwareFallbackBackend;
 #[cfg(feature = "redis-cache")]
 use crate::shared_backend::SharedClientRedisCacheBackend;
