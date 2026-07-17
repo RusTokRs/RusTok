@@ -3,6 +3,7 @@ mod builder;
 #[cfg(test)]
 mod builder_contract;
 mod composition;
+mod contributions;
 mod core;
 mod i18n;
 mod model;
@@ -15,4 +16,10 @@ pub use browser_intent::{
 };
 pub use builder::PagesBuilderSaveSnapshot;
 pub use composition::PagesAdmin;
+pub use contributions::{
+    build_pages_admin_contribution_registry, pages_contribution_manifest,
+    pages_landing_blocks_contribution, FLY_BUILTIN_PROVIDER, FLY_BUILTIN_PROVIDER_VERSION,
+    PAGES_LANDING_BLOCK_IDS, PAGES_LANDING_BLOCKS_CONTRIBUTION_ID, PAGES_MODULE_ID,
+    PAGES_OWNER_PROVIDER,
+};
 pub use fly_browser::BrowserIntentEnvelope;
