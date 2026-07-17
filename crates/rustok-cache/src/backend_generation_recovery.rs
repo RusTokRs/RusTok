@@ -1,5 +1,8 @@
+const MAX_GENERATION_RECOVERIES_PER_PROBE: usize = 16;
+
 struct GenerationRecoveryOwner {
     identity: std::sync::Weak<dyn std::any::Any + Send + Sync>,
+    state: std::sync::Weak<BackendGenerationState>,
 }
 
 static GENERATION_RECOVERY_OWNERS: OnceLock<Mutex<HashMap<usize, GenerationRecoveryOwner>>> =
@@ -38,9 +41,27 @@ fn bind_generation_recovery_owner(
         state_identity,
         GenerationRecoveryOwner {
             identity: Arc::downgrade(identity),
+            state: Arc::downgrade(state),
         },
     );
     Ok(())
+}
+
+fn generation_recovery_states_for(
+    identity: &Arc<dyn std::any::Any + Send + Sync>,
+) -> Vec<Arc<BackendGenerationState>> {
+    let owners = generation_recovery_owners()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    owners
+        .values()
+        .filter_map(|owner| {
+            let existing = owner.identity.upgrade()?;
+            Arc::ptr_eq(&existing, identity)
+                .then(|| owner.state.upgrade())
+                .flatten()
+        })
+        .collect()
 }
 
 fn unique_generation_recovery_namespace(
@@ -107,6 +128,106 @@ impl CacheService {
             owner_error,
             _owner_identity: identity,
         })
+    }
+
+    #[cfg(feature = "redis-cache")]
+    pub(crate) async fn recover_registered_backend_generations(
+        &self,
+    ) -> rustok_core::Result<usize> {
+        if !self.redis_configuration_present() {
+            return Ok(0);
+        }
+        if !self.redis_client_initialized() {
+            return Err(rustok_core::Error::Cache(
+                "Redis is configured but its client is unavailable for cache generation recovery"
+                    .to_string(),
+            ));
+        }
+
+        let identity = self.generation_store_identity();
+        let mut aliased = 0usize;
+        let mut candidates = generation_recovery_states_for(&identity)
+            .into_iter()
+            .filter(|state| !state.snapshot().trusted)
+            .filter_map(|state| match unique_generation_recovery_namespace(&state) {
+                Some(namespace) => Some((namespace, state)),
+                None => {
+                    aliased = aliased.saturating_add(1);
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by(|left, right| left.0.cmp(&right.0));
+
+        if aliased > 0 {
+            tracing::debug!(
+                aliased,
+                "Skipped generic recovery for aliased cache generation states"
+            );
+        }
+
+        let total = candidates.len();
+        let generations = self.namespace_generations();
+        let reads = candidates
+            .into_iter()
+            .take(MAX_GENERATION_RECOVERIES_PER_PROBE)
+            .map(|(namespace, state)| {
+                let generations = generations.clone();
+                async move {
+                    let result = generations.read(&namespace).await;
+                    (namespace, state, result)
+                }
+            });
+
+        let mut recovered = 0usize;
+        let mut first_error = None;
+        for (namespace, state, result) in futures_util::future::join_all(reads).await {
+            match result {
+                Ok(generation)
+                    if generation.source() == crate::CacheGenerationSource::SharedRedis =>
+                {
+                    match state.observe(generation.value()) {
+                        Ok(()) => {
+                            recovered = recovered.saturating_add(1);
+                            tracing::info!(
+                                namespace = %namespace,
+                                generation = generation.value(),
+                                "Recovered trusted shared cache backend generation"
+                            );
+                        }
+                        Err(error) => first_error.get_or_insert_with(|| error.to_string()),
+                    }
+                }
+                Ok(_) => {
+                    first_error.get_or_insert_with(|| {
+                        format!(
+                            "cache backend generation recovery for {namespace:?} did not verify shared Redis state"
+                        )
+                    });
+                }
+                Err(error) => {
+                    first_error.get_or_insert_with(|| error.to_string());
+                }
+            }
+        }
+
+        if let Some(error) = first_error {
+            return Err(rustok_core::Error::Cache(error));
+        }
+        if total > MAX_GENERATION_RECOVERIES_PER_PROBE {
+            return Err(rustok_core::Error::Cache(format!(
+                "cache backend generation recovery remains pending for {} unique namespaces",
+                total - MAX_GENERATION_RECOVERIES_PER_PROBE
+            )));
+        }
+        Ok(recovered)
+    }
+
+    #[cfg(not(feature = "redis-cache"))]
+    pub(crate) async fn recover_registered_backend_generations(
+        &self,
+    ) -> rustok_core::Result<usize> {
+        Ok(0)
     }
 }
 
