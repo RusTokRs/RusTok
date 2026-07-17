@@ -14,6 +14,72 @@ Server middleware supplies locale and OAuth-app request facts, and the cache key
 includes both. The admin package keeps a Leptos-free core, owner transport
 facade, native server adapter, and REST secondary adapter; it is host-neutral.
 
+The host channel cache is byte-weighted, uses bounded request facts, and has a
+bounded monotonic tenant-generation registry with full-clear rollover and
+fail-safe bypass on allocator exhaustion. Channel mutations advance
+`channel_resolution_invalidation_state` through database triggers in the same
+transaction as the changed channel row. Successful REST/native mutations clear
+the local tenant token and publish the durable generation as a low-latency fast
+path. Every serving replica owns supervised local/Redis/reconcile workers; the
+five-second database reconciliation performs a safe namespace-wide local clear
+when delivery was missed, the generation regressed, or a replica starts from an
+unverified baseline. The worker runtime is a critical host guardrail.
+
+The source now includes eleven durable-recovery evidence layers:
+
+- SQLite reader tests prove that independent replica handles observe committed
+  generations without PubSub, rolled-back changes do not advance the epoch, and
+  missing generation state fails closed before recovery.
+- A server runtime test starts two independent listener/cache runtimes on one
+  database, proves both become not-ready when generation state disappears, and
+  proves both recover after the durable state returns without Redis.
+- An ignored PostgreSQL integration test, wired into the permanent cache
+  workflow with ephemeral Postgres 17, covers statement triggers, an independent
+  replica connection, commit/rollback, concurrent owner mutations and migration
+  replay after state loss.
+- An ignored live Redis server test publishes only from replica A and proves
+  remote replicas consume validated invalidations before their five-second poll.
+  Replica B covers fail-closed degradation, while a fresh replica C covers
+  recovery so the result cannot be explained by the same worker's periodic tick.
+- An ignored Axum integration test makes replica B cache the old default-channel
+  name, commits a triggered update, publishes only from replica A, and requires
+  B to return the new resolved channel name within three seconds. This protects
+  actual resolved-value convergence rather than inferring correctness from
+  worker readiness alone.
+- A non-Redis Axum integration test confirms the old value remains cached after
+  a direct committed mutation with no publication, then requires the persisted
+  generation poll to replace it within the documented recovery window. This is
+  the source contract for a completely missed fast-path event.
+- A deterministic local-broadcast test exceeds the 256-message buffer, observes
+  `RecvError::Lagged`, proves the runtime fails closed while durable state is
+  absent, and recovers readiness only after database reconciliation succeeds.
+- A combined serving-path lag test caches an old channel name, subscribes both
+  the real worker and a probe at the same cursor, publishes 300 no-Redis events
+  without a suspension point, confirms `RecvError::Lagged` with two subscribers,
+  observes not-ready plus the stale Axum value, restores only durable state and
+  requires both readiness and the resolved channel name to recover without a
+  replacement fast-path publication.
+- A resolved-value database-state-loss test commits a new channel value, removes
+  the generation table before reconciliation, observes critical readiness
+  degrade, restores the persisted generation and requires the Axum replica to
+  return the new value.
+- A resolved-value generation-regression test first applies a forward epoch,
+  rewinds the persisted epoch, commits a new channel value and requires the next
+  reconciliation to rebuild the namespace instead of retaining the old value.
+- An ignored self-hosted Redis restart test starts two existing replicas, stops
+  Redis, proves polling convergence during the outage, restarts Redis, waits for
+  both original subscriptions to return through `PUBSUB NUMSUB`, and then
+  requires a new resolved value to arrive within three seconds before the next
+  database poll.
+
+The durable cross-replica contract, normal delivery, missed publication, local
+listener lag, database loss/recovery, generation regression and Redis
+restart/reconnect scenarios are source-complete. The cache-owned live suite also
+uses Redis 7 `CLIENT PAUSE` to protect the shared two-second operation timeout,
+fast circuit-open rejection and half-open recovery contract. None of these are
+compiled or live verified on the current revision until the permanent cache
+workflow reports successful compiled, PostgreSQL and Redis jobs.
+
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
@@ -35,22 +101,33 @@ contracts documented and source-locked.
 
 ## Open results
 
-1. **Collect full runtime evidence for channel resolution.** Exercise
+1. **Execute the permanent durable cache gate.** Run the source-complete SQLite,
+   server two-replica, lagged-listener resolved-value, PostgreSQL, Redis readiness,
+   Redis restart and cache-owned latency/circuit scenarios on one reconciled
+   `main` revision, then fix every format, compile, test or Clippy failure before
+   recording the revision as verified.
+   **Depends on:** GitHub Actions visibility or another Rust 1.96 build
+   environment with ephemeral PostgreSQL, Redis 7 and `redis-server`.
+   **Done when:** `compiled-contract`, `postgres-channel`, and `live-redis` pass
+   on the same revision and the result is recorded without copying raw logs.
+
+2. **Collect full runtime evidence for channel resolution.** Exercise
    `ChannelReadPort` and server middleware with real locale/OAuth facts, policy
-   selection, inactive/degraded behavior, and cache isolation before promotion
-   beyond `boundary_ready`.
+   selection, inactive/degraded behavior, cache isolation, generation rollover,
+   and the durable cross-replica behavior before promotion beyond
+   `boundary_ready`.
    **Depends on:** a composed server runtime and representative request fixtures.
    **Done when:** targeted Rust middleware/port tests provide reproducible
    runtime evidence for every published read and fallback profile.
 
-2. **Extend channel-aware proof points only with owner evidence.** New domain
+3. **Extend channel-aware proof points only with owner evidence.** New domain
    reads must use the already resolved `ChannelContext`, local tests, and local
    documentation; they must not introduce a second channel-selection mechanism.
    **Depends on:** the consuming module's public contract.
    **Done when:** the proof-point verifier and affected module docs identify the
    same resolved-channel source and visibility behavior.
 
-3. **Defer richer target or connector taxonomy until pressure is concrete.**
+4. **Defer richer target or connector taxonomy until pressure is concrete.**
    Do not add speculative target types or connector abstraction merely to expand
    the model.
    **Depends on:** a demonstrated runtime/product need.
@@ -63,14 +140,32 @@ contracts documented and source-locked.
 - `npm run verify:channel:fba`
 - `npm run verify:channel:resolution-contract`
 - `npm run verify:channel:proof-points`
+- `cargo check -p rustok-channel --lib`
+- `cargo test -p rustok-channel invalidation_generation --lib`
+- `cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib`
+- `cargo test -p rustok-server channel_cache_invalidation --lib`
+- `cargo test -p rustok-server --test channel_cache_architecture_guard`
+- `cargo test -p rustok-server --test channel_cache_resolved_value`
+- `RUSTOK_CHANNEL_TEST_POSTGRES_URL=postgres://... cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1`
+- `RUSTOK_CACHE_REAL_REDIS_URL=redis://... RUSTOK_CACHE_REDIS_SERVER_BIN=/usr/bin/redis-server cargo test -p rustok-server --test channel_cache_resolved_value -- --ignored --nocapture --test-threads=1`
+- `RUSTOK_CACHE_REAL_REDIS_URL=redis://... cargo test -p rustok-server redis_publication_drives_remote_replica_readiness_recovery --lib -- --ignored --nocapture --test-threads=1`
+- `RUSTOK_CACHE_REAL_REDIS_URL=redis://... cargo test -p rustok-cache --test real_redis_hardening -- --ignored --nocapture --test-threads=1`
+- `cargo clippy -p rustok-channel --lib -- -D warnings`
 - `cargo xtask module validate channel`
 - `cargo xtask module test channel`
-- Targeted server middleware and policy-lifecycle tests.
+- Targeted policy-lifecycle tests.
+
+## References
+
+- [Host cache contract inventory](../../rustok-cache/docs/host-cache-inventory.md)
+- [Cache operations and recovery runbook](../../rustok-cache/docs/operations.md)
 
 ## Change rules
 
 1. Keep resolution precedence and policy ownership in this module.
-2. Update local docs, `rustok-module.toml`, server middleware docs, and route
+2. Keep durable generation allocation in the same database transaction as the
+   channel mutation; PubSub must never become the source of truth.
+3. Update local docs, `rustok-module.toml`, server middleware docs, and route
    selection documentation with a public contract change.
-3. Update this status block and `docs/modules/registry.md` with an FFA/FBA
+4. Update this status block and `docs/modules/registry.md` with an FFA/FBA
    boundary change.

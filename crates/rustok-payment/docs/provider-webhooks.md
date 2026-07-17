@@ -40,27 +40,39 @@ Reading requires `payments:read` or `payments:manage`. Recovery and replay requi
 
 ## Execution order
 
-1. Resolve tenant, provider, delivery id, idempotency key, signature header, and
-   raw body.
+1. Resolve tenant, provider, provider signature header, optional delivery/replay
+   identity hints, and the unchanged raw body.
 2. Reject empty bodies and bodies larger than 1 MiB.
 3. Invoke `PaymentProviderRegistry::execute_webhook`.
-4. The selected provider verifies the signature and returns a normalized event.
-   The provider must not mutate payment lifecycle state.
-5. `PaymentProviderEventJournal::receive_verified` atomically stores the SHA-256
-   digest, immutable delivery identity, normalized event type, external reference,
-   and bounded normalized metadata. Raw body and signature are discarded.
-6. Claim a bounded processing lease.
-7. `PaymentDomainEventApplier` routes the normalized event to payment/refund owner
+4. The selected provider verifies the signature and derives authoritative
+   `delivery_id` and `replay_key` from the signed provider event. Optional transport
+   headers are only cross-check hints and may not define durable identity.
+5. The provider returns a normalized event without mutating payment lifecycle state.
+6. `PaymentProviderEventJournal::receive_verified` atomically stores the SHA-256
+   digest, provider-verified delivery/replay identities, normalized event type,
+   external reference, and bounded normalized metadata. Raw body and signature are
+   discarded.
+7. Claim a bounded processing lease.
+8. `PaymentDomainEventApplier` routes the normalized event to payment/refund owner
    commands.
-8. Mark the inbox event `processed` only after the owner command succeeds.
-9. Classify retryable failures as `failed`; permanent failures or exhausted retry
-   budgets become `dead_letter`.
+9. Mark the inbox event `processed` only after the owner command succeeds.
+10. Classify retryable failures as `failed`; permanent failures or exhausted retry
+    budgets become `dead_letter`.
 
-Writing normalized facts with the first receipt removes the crash window between
-signature verification and durable replay data. Database guards make those facts
-immutable.
+Writing verified identity and normalized facts with the first receipt removes the
+crash window between signature verification and durable replay data. Database
+guards make those facts immutable.
 
 ## Normalized event contract
+
+Every verified result contains:
+
+- `provider_id`;
+- authoritative `delivery_id`;
+- authoritative `replay_key`;
+- normalized `event_type`;
+- optional provider `external_reference`;
+- bounded metadata object.
 
 Supported event types:
 
@@ -95,7 +107,19 @@ Authorized, captured, and completed-refund events require a provider external
 reference. Provider adapters must return immutable owner ids in normalized
 metadata; owner records are never discovered from an untrusted external reference.
 
-## Deduplication
+## Identity and deduplication
+
+Delivery and replay identities come from signature-verified provider data. These
+headers are optional hints only:
+
+```text
+x-rustok-provider-delivery-id
+x-webhook-id
+idempotency-key
+```
+
+When a hint is present, it must equal the verified provider result or the request is
+rejected before inbox insertion.
 
 The inbox enforces:
 
@@ -151,7 +175,8 @@ raw error message, signature, and raw payload.
 
 - Never persist or log the raw provider body or signature.
 - Never trust a signature header without successful provider verification.
-- Persist verified normalized facts atomically with receipt.
+- Never use unverified transport headers as durable delivery or replay identity.
+- Persist provider-verified identity and normalized facts atomically with receipt.
 - Never rewrite verified normalized facts.
 - Never expose provider SDK, SQL, signature, raw body, or internal error text.
 - Keep normalized metadata below 64 KiB and depth 16.

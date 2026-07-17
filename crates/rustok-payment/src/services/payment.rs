@@ -12,9 +12,8 @@ use rustok_core::generate_id;
 
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
-    CompleteRefundInput, CreatePaymentCollectionInput, CreateRefundInput,
-    ListPaymentCollectionsInput, ListRefundsInput, PaymentCollectionResponse, PaymentResponse,
-    RefundResponse,
+    CompleteRefundInput, CreatePaymentCollectionInput, ListPaymentCollectionsInput,
+    ListRefundsInput, PaymentCollectionResponse, PaymentResponse, RefundResponse,
 };
 use crate::entities;
 use crate::error::{PaymentError, PaymentResult};
@@ -281,61 +280,6 @@ impl PaymentService {
         active.update(&self.db).await?;
 
         self.get_collection(tenant_id, collection_id).await
-    }
-
-    pub async fn create_refund(
-        &self,
-        tenant_id: Uuid,
-        collection_id: Uuid,
-        input: CreateRefundInput,
-    ) -> PaymentResult<RefundResponse> {
-        let txn = self.db.begin().await?;
-        let collection = self
-            .load_collection_in_tx(&txn, tenant_id, collection_id)
-            .await?;
-        if collection.status != STATUS_CAPTURED {
-            return Err(PaymentError::InvalidTransition {
-                from: collection.status,
-                to: STATUS_REFUND_PENDING.to_string(),
-            });
-        }
-        if input.amount <= Decimal::ZERO {
-            return Err(PaymentError::Validation(
-                "refund amount must be greater than zero".to_string(),
-            ));
-        }
-
-        let reserved_amount = self
-            .reserved_refund_amount_in_tx(&txn, collection_id)
-            .await?;
-        let remaining_amount = collection.captured_amount - reserved_amount;
-        if input.amount > remaining_amount {
-            return Err(PaymentError::Validation(format!(
-                "refund amount exceeds remaining refundable amount of {remaining_amount}"
-            )));
-        }
-
-        let refund_id = generate_id();
-        let now = Utc::now();
-        entities::refund::ActiveModel {
-            id: Set(refund_id),
-            tenant_id: Set(tenant_id),
-            payment_collection_id: Set(collection_id),
-            status: Set(STATUS_REFUND_PENDING.to_string()),
-            currency_code: Set(collection.currency_code),
-            amount: Set(input.amount),
-            reason: Set(normalize_optional_reason(input.reason)),
-            metadata: Set(input.metadata),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-            refunded_at: Set(None),
-            cancelled_at: Set(None),
-        }
-        .insert(&txn)
-        .await?;
-
-        txn.commit().await?;
-        self.get_refund(tenant_id, refund_id).await
     }
 
     pub async fn get_refund(

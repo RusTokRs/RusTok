@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "module": "marketplace_listing",
+  "ffa": {
+    "status": "not_started",
+    "required_before_phase_b_ready": [
+      "module_owned_admin_package",
+      "native_graphql_parity",
+      "host_composition",
+      "localized_errors",
+      "mounted_workflows"
+    ]
+  },
+  "fba": {
+    "status": "in_progress",
+    "required_before_boundary_ready": [
+      "compiled_provider_consumer_contracts",
+      "clean_and_upgraded_migrations",
+      "receipt_replay_and_conflict_tests",
+      "scope_and_terms_contention_tests"
+    ],
+    "required_before_transport_verified": [
+      "remote_profile_execution",
+      "timeout_and_degraded_evidence",
+      "mounted_consumer_execution"
+    ]
+  }
+}

@@ -3,7 +3,7 @@
   "module": "payment",
   "role": "provider",
   "status": "boundary_ready",
-  "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1",
+  "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1+refund_creation.v1+provider_outcome.v1+stripe_runtime.v1",
   "ports": [
     {
       "name": "PaymentCollectionPort",
@@ -48,13 +48,53 @@
     "webhook_contract": "crates/rustok-payment/contracts/payment-provider-webhook-v1.json",
     "webhook_runbook": "crates/rustok-payment/docs/provider-webhooks.md",
     "webhook_source_status": "implemented_not_executed",
+    "refund_creation_source": "crates/rustok-payment/src/services/refund_creation.rs",
+    "refund_identity_migrations": [
+      "crates/rustok-payment/src/migrations/m20260714_000118_enforce_refund_creation_identity.rs",
+      "crates/rustok-payment/src/migrations/m20260714_000119_require_refund_creation_identity.rs"
+    ],
+    "provider_error_source": "crates/rustok-payment/src/error.rs",
+    "provider_outcome_journal_source": "crates/rustok-commerce/src/services/journaled_payment_provider.rs",
+    "uncertain_outcome_migration": "crates/rustok-payment/src/migrations/m20260714_000120_allow_uncertain_provider_outcomes.rs",
+    "stripe_adapter_source": "crates/rustok-payment/src/stripe_provider.rs",
+    "stripe_runtime_source": "apps/server/src/services/payment_provider_runtime.rs",
+    "stripe_source_status": "registered_in_server_source_not_compiled_or_executed",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "registry_verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "refund_identity_verifier": "scripts/verify/verify-payment-refund-identity.mjs",
+    "provider_outcome_verifier": "scripts/verify/verify-payment-provider-outcome-contract.mjs",
+    "stripe_runtime_verifier": "scripts/verify/verify-payment-stripe-runtime.mjs"
   },
   "in_process_provider_impl": {
     "service": "PaymentService",
     "source": "crates/rustok-payment/src/ports.rs",
     "status": "implemented"
+  },
+  "refund_creation": {
+    "owner_service": "PaymentRefundCreationService",
+    "operation": "create_or_replay",
+    "status": "source_implemented_not_executed",
+    "public_identity_required": true,
+    "rest_identity": "Idempotency-Key",
+    "graphql_identity": "idempotencyKey",
+    "workflow_identity_sources": [
+      "order_return_id",
+      "order_change_id"
+    ],
+    "database_identity_fields": [
+      "creation_key",
+      "creation_request_hash"
+    ],
+    "database_invariants": [
+      "tenant_collection_creation_key_unique",
+      "creation_identity_required_for_new_rows",
+      "creation_identity_immutable",
+      "same_key_same_hash_replays",
+      "same_key_different_hash_rejected"
+    ],
+    "legacy_identityless_owner_api_present": false,
+    "execution_status": "not_executed_in_change_session"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
@@ -65,7 +105,10 @@
     "profiles": [
       "in_process",
       "remote_adapter_placeholder",
-      "provider_webhook_inbox"
+      "provider_webhook_inbox",
+      "refund_creation_owner",
+      "provider_outcome_journal",
+      "deployment_stripe_runtime"
     ],
     "cases": [
       {
@@ -92,12 +135,58 @@
         ]
       },
       {
+        "operation": "create_or_replay_refund",
+        "profiles": [
+          "refund_creation_owner"
+        ],
+        "assertions": [
+          "creation_identity_required",
+          "canonical_request_hash",
+          "same_key_same_payload_replayed",
+          "same_key_different_payload_rejected",
+          "concurrent_same_key_single_identity",
+          "identityless_database_insert_rejected"
+        ]
+      },
+      {
+        "operation": "classify_provider_outcome",
+        "profiles": [
+          "provider_outcome_journal"
+        ],
+        "assertions": [
+          "unavailable_is_retryable",
+          "rejected_is_non_retryable",
+          "configuration_is_non_retryable",
+          "invalid_success_response_requires_reconciliation",
+          "unknown_outcome_requires_reconciliation",
+          "executing_can_transition_to_reconciliation_required",
+          "reconciliation_without_result_never_reexecutes_provider"
+        ]
+      },
+      {
+        "operation": "compose_external_provider",
+        "profiles": [
+          "deployment_stripe_runtime"
+        ],
+        "assertions": [
+          "server_feature_is_opt_in",
+          "tenant_secret_refs_are_deployment_owned",
+          "raw_secrets_are_not_configured_or_persisted",
+          "duplicate_tenant_mapping_is_rejected",
+          "cross_tenant_secret_reference_reuse_is_rejected",
+          "resolver_aliases_are_process_owned",
+          "one_shared_registry_serves_all_transports"
+        ]
+      },
+      {
         "operation": "handle_webhook",
         "profiles": [
           "provider_webhook_inbox"
         ],
         "assertions": [
           "signature_verified_before_inbox_insert",
+          "provider_verified_delivery_and_replay_identity",
+          "transport_identity_headers_are_optional_hints",
           "raw_payload_not_persisted",
           "delivery_and_idempotency_deduplicated",
           "normalized_event_checkpointed_before_owner_apply",
@@ -121,7 +210,7 @@
   },
   "provider_spi": {
     "status": "manual_baseline_locked",
-    "implementation_status": "webhook_inbox_source_implemented_not_transport_verified",
+    "implementation_status": "stripe_registered_in_server_source_not_compiled_or_runtime_verified",
     "source": "crates/rustok-payment/src/providers.rs",
     "default_provider_id": "manual",
     "operations": [
@@ -138,7 +227,56 @@
       "cancel",
       "webhook_ingress"
     ],
-    "side_effect_boundary": "provider adapters execute external effects and verify/normalize webhook payloads; PaymentService owns persisted lifecycle transitions",
+    "side_effect_boundary": "provider adapters execute external effects and verify or normalize webhook payloads; PaymentService owns persisted lifecycle transitions",
+    "error_taxonomy": {
+      "provider_unavailable": {
+        "retryable": true,
+        "reconciliation_required": false
+      },
+      "provider_rejected": {
+        "retryable": false,
+        "reconciliation_required": false
+      },
+      "provider_configuration": {
+        "retryable": false,
+        "reconciliation_required": false
+      },
+      "provider_invalid_response": {
+        "retryable": false,
+        "reconciliation_required": true
+      },
+      "provider_outcome_unknown": {
+        "retryable": false,
+        "reconciliation_required": true
+      }
+    },
+    "outcome_policy": {
+      "retryable_failure_status": "provider_error",
+      "uncertain_failure_status": "reconciliation_required",
+      "uncertain_transition": "executing_to_reconciliation_required",
+      "automatic_reexecution_from_reconciliation": false,
+      "provider_result_required_for_success_replay": true,
+      "migration": "m20260714_000120_allow_uncertain_provider_outcomes"
+    },
+    "adapters": [
+      {
+        "provider_id": "manual",
+        "status": "baseline_implemented"
+      },
+      {
+        "provider_id": "stripe",
+        "feature": "payment-stripe",
+        "adapter_feature": "rustok-payment/stripe",
+        "source": "crates/rustok-payment/src/stripe_provider.rs",
+        "runtime_source": "apps/server/src/services/payment_provider_runtime.rs",
+        "credential_scope": "tenant",
+        "credential_provider": "StripeCredentialProvider",
+        "secret_registry": "rustok_secrets::SecretResolverRegistry",
+        "request_timeout_required": true,
+        "typed_error_mapping": true,
+        "status": "source_registered_not_compiled_or_executed"
+      }
+    ],
     "webhook_ingress": {
       "status": "planned",
       "implementation_status": "source_implemented_not_transport_verified",
@@ -147,6 +285,9 @@
       "idempotency_required": true,
       "replay_required": true,
       "adapter_operation": "handle_webhook",
+      "verified_identity_required": true,
+      "transport_identity_headers_required": false,
+      "transport_identity_headers_authoritative": false,
       "raw_payload_persisted": false,
       "payload_hash_audit_required": true,
       "normalized_checkpoint_required": true,
@@ -159,11 +300,14 @@
     },
     "lifecycle_owner_service": "PaymentService",
     "external_adapter_registration": {
-      "status": "planned_contract_locked",
-      "registration_owner": "rustok-payment",
+      "status": "source_implemented_not_compiled_or_executed",
+      "registration_owner": "rustok-server",
+      "registry_owner": "rustok-payment",
       "requires_descriptor_capability_match": true,
       "requires_health_status_mapping": true,
       "requires_degraded_mode_mapping": true,
+      "requires_tenant_secret_resolution": true,
+      "secret_reference_owner": "deployment",
       "disallows_persisted_lifecycle_state_in_adapter": true
     }
   }

@@ -1,11 +1,14 @@
 use crate::editor::{
-    AdminEditorRuntime, AuthoringToolbar, BindingPanel, ContextCompatibilityPanel,
+    AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, ContextCompatibilityPanel,
     ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel, DynamicRuntimePanel,
     IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
     ResponsiveStylePanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
-    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, TraitPanel,
+    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, SsrInspectorPanel, SsrLocaleCoveragePanel,
+    SsrLocalePanel, SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel,
+    TraitPanel,
 };
 use crate::i18n::t;
+use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
 use crate::{AdminCanvasController, PageBuilderAdminFacade};
 use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
@@ -29,6 +32,8 @@ pub fn AdminCanvas(
     runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
     on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
+    #[prop(optional)] browser_intent_endpoint: Option<String>,
+    #[prop(optional)] browser_csrf_token: Option<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
@@ -65,10 +70,22 @@ pub fn AdminCanvas(
         Some(policy) => runtime.with_runtime_publish_gate_policy(policy),
         None => runtime,
     };
+    let browser_page_id = runtime
+        .controller
+        .with(|controller| controller.page_id().to_string());
+    let browser_revision = runtime
+        .controller
+        .with(|controller| controller.revision_id().to_string());
+    let browser_project_hash = runtime
+        .controller
+        .with(|controller| controller.editor().revision().project_hash.hex());
+    let root_intent_endpoint = browser_intent_endpoint.clone();
+    let root_csrf_token = browser_csrf_token.clone();
     let toolbar_runtime = runtime.clone();
     let page_runtime = runtime.clone();
     let palette_runtime = runtime.clone();
     let canvas_runtime = runtime.clone();
+    let audit_runtime = runtime.clone();
     let gate_runtime = runtime.clone();
     let scenario_runtime = runtime.clone();
     let scenario_matrix_runtime = runtime.clone();
@@ -82,11 +99,30 @@ pub fn AdminCanvas(
     let trait_runtime = runtime.clone();
     let properties_runtime = runtime.clone();
     let responsive_runtime = runtime.clone();
+    let ssr_locale_runtime = runtime.clone();
+    let ssr_locale_policy_runtime = runtime.clone();
+    let ssr_locale_coverage_runtime = runtime.clone();
+    let ssr_translations_runtime = runtime.clone();
+    let ssr_localized_metadata_runtime = runtime.clone();
+    let ssr_inspector_runtime = runtime.clone();
     let announcement_runtime = runtime.clone();
     let error_runtime = runtime;
 
     view! {
-        <div class="rustok-page-builder-admin__workspace space-y-3">
+        <div
+            class="rustok-page-builder-admin__workspace space-y-3"
+            data-fly-browser-root="true"
+            data-fly-runtime="ssr"
+            data-fly-page-id=browser_page_id
+            data-fly-revision=browser_revision
+            data-fly-project-hash=browser_project_hash
+            data-fly-intent-endpoint=root_intent_endpoint
+            data-fly-csrf-token=root_csrf_token
+        >
+            <PageBuilderBrowserAdapter
+                intent_endpoint=browser_intent_endpoint
+                csrf_token=browser_csrf_token
+            />
             <AuthoringToolbar runtime=toolbar_runtime />
             <div
                 class="grid min-h-[680px] gap-3"
@@ -98,6 +134,13 @@ pub fn AdminCanvas(
                 </div>
                 <IsolatedAuthoringCanvas runtime=canvas_runtime />
                 <div class="space-y-3 overflow-auto">
+                    <SsrLocalePanel runtime=ssr_locale_runtime />
+                    <SsrLocalePolicyPanel runtime=ssr_locale_policy_runtime />
+                    <SsrLocaleCoveragePanel runtime=ssr_locale_coverage_runtime />
+                    <SsrTranslationsPanel runtime=ssr_translations_runtime />
+                    <SsrLocalizedMetadataPanel runtime=ssr_localized_metadata_runtime />
+                    <SsrInspectorPanel runtime=ssr_inspector_runtime />
+                    <AuditPanel runtime=audit_runtime />
                     <RuntimePublishGatePanel runtime=gate_runtime />
                     <RuntimeScenarioPanel runtime=scenario_runtime />
                     <RuntimeScenarioMatrixPanel runtime=scenario_matrix_runtime />

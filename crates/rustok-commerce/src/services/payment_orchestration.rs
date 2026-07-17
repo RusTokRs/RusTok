@@ -6,9 +6,8 @@ use rustok_payment::dto::{
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
 use rustok_payment::{
-    BeginProviderOperation, PaymentProviderOperationJournal, PaymentService,
-    PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-    PROVIDER_OPERATION_SUCCEEDED,
+    PaymentProviderOperationJournal, PaymentRefundCreationService, PaymentService,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
@@ -39,14 +38,9 @@ pub enum PaymentOrchestrationError {
 
 pub type PaymentOrchestrationResult<T> = Result<T, PaymentOrchestrationError>;
 
-/// Commerce-owned payment orchestration for post-checkout operator paths.
-///
-/// The umbrella module may choose *when* payment side effects are needed, but it
-/// must route provider calls through the payment owner registry. Refund capacity
-/// is reserved in the payment owner before a provider side effect is attempted so
-/// concurrent requests cannot externally refund more than the captured amount.
 pub struct PaymentOrchestrationService {
     payment_service: PaymentService,
+    refund_creation_service: PaymentRefundCreationService,
     provider_operation_journal: PaymentProviderOperationJournal,
     payment_provider_registry: PaymentProviderRegistry,
 }
@@ -55,6 +49,7 @@ impl PaymentOrchestrationService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
             payment_service: PaymentService::new(db.clone()),
+            refund_creation_service: PaymentRefundCreationService::new(db.clone()),
             provider_operation_journal: PaymentProviderOperationJournal::new(db),
             payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
         }
@@ -91,23 +86,13 @@ impl PaymentOrchestrationService {
 
         match collection.status.as_str() {
             "authorized" | "captured" => {
-                if let Some(operation) = self
-                    .provider_operation_journal
-                    .find_by_key(tenant_id, &provider_id, &idempotency_key)
-                    .await?
-                {
-                    if matches!(
-                        operation.status.as_str(),
-                        PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-                    ) {
-                        mark_journal_committed(
-                            &self.provider_operation_journal,
-                            operation.id,
-                            "authorize",
-                        )
-                        .await?;
-                    }
-                }
+                self.commit_existing_provider_operation(
+                    tenant_id,
+                    provider_id.as_str(),
+                    idempotency_key.as_str(),
+                    "authorize",
+                )
+                .await?;
                 return Ok(collection);
             }
             "pending" => {}
@@ -116,7 +101,7 @@ impl PaymentOrchestrationService {
                     from: status.to_string(),
                     to: "authorized".to_string(),
                 }
-                .into());
+                .into())
             }
         }
 
@@ -209,23 +194,13 @@ impl PaymentOrchestrationService {
 
         match collection.status.as_str() {
             "captured" => {
-                if let Some(operation) = self
-                    .provider_operation_journal
-                    .find_by_key(tenant_id, &provider_id, &idempotency_key)
-                    .await?
-                {
-                    if matches!(
-                        operation.status.as_str(),
-                        PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-                    ) {
-                        mark_journal_committed(
-                            &self.provider_operation_journal,
-                            operation.id,
-                            "capture",
-                        )
-                        .await?;
-                    }
-                }
+                self.commit_existing_provider_operation(
+                    tenant_id,
+                    provider_id.as_str(),
+                    idempotency_key.as_str(),
+                    "capture",
+                )
+                .await?;
                 return Ok(collection);
             }
             "authorized" => {}
@@ -234,7 +209,7 @@ impl PaymentOrchestrationService {
                     from: status.to_string(),
                     to: "captured".to_string(),
                 }
-                .into());
+                .into())
             }
         }
 
@@ -319,23 +294,13 @@ impl PaymentOrchestrationService {
 
         match collection.status.as_str() {
             "cancelled" => {
-                if let Some(operation) = self
-                    .provider_operation_journal
-                    .find_by_key(tenant_id, &provider_id, &idempotency_key)
-                    .await?
-                {
-                    if matches!(
-                        operation.status.as_str(),
-                        PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-                    ) {
-                        mark_journal_committed(
-                            &self.provider_operation_journal,
-                            operation.id,
-                            "cancel",
-                        )
-                        .await?;
-                    }
-                }
+                self.commit_existing_provider_operation(
+                    tenant_id,
+                    provider_id.as_str(),
+                    idempotency_key.as_str(),
+                    "cancel",
+                )
+                .await?;
                 return Ok(collection);
             }
             "captured" => {
@@ -343,7 +308,7 @@ impl PaymentOrchestrationService {
                     from: collection.status,
                     to: "cancelled".to_string(),
                 }
-                .into());
+                .into())
             }
             "pending" | "authorized" => {}
             status => {
@@ -351,16 +316,15 @@ impl PaymentOrchestrationService {
                     from: status.to_string(),
                     to: "cancelled".to_string(),
                 }
-                .into());
+                .into())
             }
         }
 
         let provider_operation_id = if should_cancel_provider(&collection) {
-            let amount = executable_payment_amount(&collection);
             let provider_request = PaymentProviderOperationRequest {
                 tenant_id,
                 collection_id,
-                amount,
+                amount: executable_payment_amount(&collection),
                 currency_code: collection.currency_code.clone(),
                 idempotency_key: Some(idempotency_key),
                 metadata: merge_provider_context(
@@ -425,10 +389,25 @@ impl PaymentOrchestrationService {
         }
     }
 
+    /// Internal owner-workflow entrypoint. The workflow must already have written
+    /// an immutable return/change identity into metadata.
     pub async fn create_refund(
         &self,
         tenant_id: Uuid,
         collection_id: Uuid,
+        input: CreateRefundInput,
+    ) -> PaymentOrchestrationResult<RefundResponse> {
+        let creation_key = workflow_refund_creation_key(&input.metadata)?;
+        self.create_refund_idempotent(tenant_id, collection_id, creation_key, input)
+            .await
+    }
+
+    /// Public/provider-facing entrypoint with an explicit stable creation key.
+    pub async fn create_refund_idempotent(
+        &self,
+        tenant_id: Uuid,
+        collection_id: Uuid,
+        creation_key: impl Into<String>,
         input: CreateRefundInput,
     ) -> PaymentOrchestrationResult<RefundResponse> {
         let collection = self
@@ -436,21 +415,16 @@ impl PaymentOrchestrationService {
             .get_collection(tenant_id, collection_id)
             .await?;
         let provider_id = provider_id_for_collection(&collection);
-
-        // Reserve refundable capacity before invoking an external provider. If the
-        // provider outcome is unknown, keep the pending refund for reconciliation;
-        // automatically cancelling it could allow a duplicate external refund.
         let refund = self
-            .payment_service
-            .create_refund(tenant_id, collection_id, input.clone())
+            .refund_creation_service
+            .create_or_replay(tenant_id, collection_id, creation_key, input.clone())
             .await?;
-        let idempotency_key = format!("payment_refund:{}", refund.id);
         let provider_request = PaymentProviderOperationRequest {
             tenant_id,
             collection_id,
             amount: refund.amount,
             currency_code: refund.currency_code.clone(),
-            idempotency_key: Some(idempotency_key.clone()),
+            idempotency_key: Some(format!("payment_refund:{}", refund.id)),
             metadata: merge_provider_context(
                 input.metadata,
                 serde_json::json!({
@@ -462,99 +436,31 @@ impl PaymentOrchestrationService {
                 }),
             ),
         };
-        let request_payload = serde_json::to_value(&provider_request).map_err(|error| {
-            PaymentError::Validation(format!(
-                "failed to serialize refund provider request: {error}"
-            ))
-        })?;
-        let operation = self
-            .provider_operation_journal
-            .begin(BeginProviderOperation {
-                tenant_id,
-                payment_collection_id: collection_id,
-                refund_id: Some(refund.id),
-                operation: "refund".to_string(),
-                provider_id: provider_id.clone(),
-                idempotency_key,
-                request_payload,
-            })
-            .await?;
-
-        if operation.status == PROVIDER_OPERATION_COMMITTED {
-            return self
-                .payment_service
-                .get_refund(tenant_id, refund.id)
-                .await
-                .map_err(Into::into);
-        }
-        if matches!(
-            operation.status.as_str(),
-            PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-        ) {
-            self.provider_operation_journal
-                .mark_committed(operation.id)
-                .await?;
-            return self
-                .payment_service
-                .get_refund(tenant_id, refund.id)
-                .await
-                .map_err(Into::into);
-        }
-
-        let provider_result = match self
-            .payment_provider_registry
-            .execute_refund(provider_id.as_str(), provider_request)
-            .await
+        let journaled = execute_journaled_provider_operation(
+            &self.provider_operation_journal,
+            &self.payment_provider_registry,
+            "refund",
+            Some(refund.id),
+            provider_id.as_str(),
+            provider_request,
+        )
+        .await?;
+        match mark_journal_committed(
+            &self.provider_operation_journal,
+            journaled.operation_id,
+            "refund",
+        )
+        .await
         {
-            Ok(result) => result,
-            Err(source) => {
-                let _ = self
-                    .provider_operation_journal
-                    .mark_provider_error(operation.id, source.to_string())
-                    .await;
-                return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
+            Ok(()) => Ok(refund),
+            Err(PaymentOrchestrationError::Provider(source)) => {
+                Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
                     refund_id: refund.id,
                     source,
-                });
+                })
             }
-        };
-        let provider_result_payload = serde_json::to_value(&provider_result).map_err(|error| {
-            PaymentError::Validation(format!(
-                "failed to serialize refund provider result: {error}"
-            ))
-        })?;
-
-        if let Err(source) = self
-            .provider_operation_journal
-            .mark_provider_succeeded(
-                operation.id,
-                provider_result.external_reference.clone(),
-                provider_result_payload,
-            )
-            .await
-        {
-            return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
-                refund_id: refund.id,
-                source: reconciliation_error(operation.id, "record provider success", source),
-            });
+            Err(error) => Err(error),
         }
-
-        if let Err(source) = self
-            .provider_operation_journal
-            .mark_committed(operation.id)
-            .await
-        {
-            let _ = self
-                .provider_operation_journal
-                .mark_reconciliation_required(operation.id, source.to_string())
-                .await;
-            return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
-                refund_id: refund.id,
-                source: reconciliation_error(operation.id, "commit journal", source),
-            });
-        }
-
-        Ok(refund)
     }
 
     pub async fn complete_refund(
@@ -580,12 +486,33 @@ impl PaymentOrchestrationService {
             .cancel_refund(tenant_id, refund_id, input)
             .await?)
     }
-}
 
-fn reconciliation_error(operation_id: Uuid, stage: &str, source: PaymentError) -> PaymentError {
-    PaymentError::Validation(format!(
-        "provider side effect succeeded, but failed to {stage} for operation {operation_id}: {source}"
-    ))
+    async fn commit_existing_provider_operation(
+        &self,
+        tenant_id: Uuid,
+        provider_id: &str,
+        idempotency_key: &str,
+        operation: &'static str,
+    ) -> PaymentOrchestrationResult<()> {
+        if let Some(existing) = self
+            .provider_operation_journal
+            .find_by_key(tenant_id, provider_id, idempotency_key)
+            .await?
+        {
+            if matches!(
+                existing.status.as_str(),
+                PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+            ) {
+                mark_journal_committed(
+                    &self.provider_operation_journal,
+                    existing.id,
+                    operation,
+                )
+                .await?;
+            }
+        }
+        Ok(())
+    }
 }
 
 fn provider_id_for_collection(collection: &PaymentCollectionResponse) -> String {
@@ -609,6 +536,28 @@ fn executable_payment_amount(collection: &PaymentCollectionResponse) -> Decimal 
     } else {
         collection.amount
     }
+}
+
+fn workflow_refund_creation_key(metadata: &Value) -> Result<String, PaymentError> {
+    if let Some(return_id) = metadata
+        .get("order_return_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(format!("order_return:{return_id}:refund"));
+    }
+    if let Some(change_id) = metadata
+        .get("order_change_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(format!("order_change:{change_id}:difference_refund"));
+    }
+    Err(PaymentError::Validation(
+        "refund workflow metadata requires order_return_id or order_change_id".to_string(),
+    ))
 }
 
 fn merge_provider_context(current: Value, patch: Value) -> Value {
@@ -686,5 +635,17 @@ mod tests {
 
         value.captured_amount = dec!(60);
         assert_eq!(executable_payment_amount(&value), dec!(60));
+    }
+
+    #[test]
+    fn workflow_refund_key_requires_owner_identity() {
+        assert_eq!(
+            workflow_refund_creation_key(&serde_json::json!({
+                "order_return_id": "return-1"
+            }))
+            .unwrap(),
+            "order_return:return-1:refund"
+        );
+        assert!(workflow_refund_creation_key(&serde_json::json!({})).is_err());
     }
 }

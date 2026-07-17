@@ -123,7 +123,9 @@ primary metrics.
 - invalidation validation rejection count.
 
 A healthy local fallback does not make Redis healthy. Use `CacheService::health()` for the
-shared backend signal and domain listener health for invalidation connectivity.
+shared backend signal and domain listener health for invalidation connectivity. Alert
+thresholds, incident response and safe tuning procedures are maintained in the
+[cache operations runbook](./operations.md).
 
 ## Verification
 
@@ -152,4 +154,6 @@ should inject delayed Redis responses, disconnect listeners and force local broa
 - [Crate README](../README.md)
 - [Caching architecture](./CACHING_ARCHITECTURE.md)
 - [Implementation plan](./implementation-plan.md)
+- [Host cache contract inventory](./host-cache-inventory.md)
+- [Cache operations and recovery runbook](./operations.md)
 - [Manifest layer contract](../../../docs/modules/manifest.md)

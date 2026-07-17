@@ -25,7 +25,7 @@ const DELIVERY_ID_HEADERS: [&str; 3] = [
     "x-webhook-id",
     "idempotency-key",
 ];
-const IDEMPOTENCY_KEY_HEADERS: [&str; 2] = ["idempotency-key", "x-rustok-provider-delivery-id"];
+const REPLAY_KEY_HEADERS: [&str; 2] = ["idempotency-key", "x-rustok-provider-delivery-id"];
 const SIGNATURE_HEADERS: [&str; 3] = [
     "x-provider-signature",
     "stripe-signature",
@@ -102,7 +102,6 @@ impl From<provider_event::Model> for PaymentProviderEventAdminResponse {
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct DeadLetterQuery {
-    /// Maximum number of newest dead-letter events to return (1..100).
     pub limit: Option<u64>,
 }
 
@@ -141,24 +140,20 @@ pub fn axum_webhook_router(runtime: &HostRuntimeContext) -> anyhow::Result<Route
     tag = "payment-webhooks",
     params(
         ("provider_id" = String, Path, description = "Registered payment provider identifier"),
-        ("x-rustok-provider-delivery-id" = String, Header, description = "Provider delivery identifier"),
-        ("idempotency-key" = String, Header, description = "Provider event replay key"),
+        ("x-rustok-provider-delivery-id" = Option<String>, Header, description = "Optional untrusted delivery identity hint; verified provider output is authoritative"),
+        ("idempotency-key" = Option<String>, Header, description = "Optional untrusted replay identity hint; verified provider output is authoritative"),
         ("x-provider-signature" = String, Header, description = "Provider-specific signature; adapters may also accept a documented provider header")
     ),
-    request_body(
-        content = Vec<u8>,
-        content_type = "application/octet-stream",
-        description = "Raw signed provider payload, maximum 1 MiB"
-    ),
+    request_body(content = Vec<u8>, content_type = "application/octet-stream", description = "Raw signed provider payload, maximum 1 MiB"),
     responses(
         (status = 200, description = "Provider event processed or replayed", body = PaymentWebhookIngressResponse),
         (status = 202, description = "Provider event is already processing", body = PaymentWebhookIngressResponse),
-        (status = 400, description = "Webhook identity or payload is invalid"),
+        (status = 400, description = "Webhook hint or payload is invalid"),
         (status = 401, description = "Provider signature header is missing or invalid"),
         (status = 409, description = "Provider event conflicts with current owner state"),
         (status = 413, description = "Payload exceeds 1 MiB"),
         (status = 422, description = "Provider event requires operator review"),
-        (status = 503, description = "Storage or owner state is temporarily unavailable")
+        (status = 503, description = "Storage, configuration, or provider is temporarily unavailable")
     )
 )]
 pub async fn ingest_provider_webhook(
@@ -169,11 +164,17 @@ pub async fn ingest_provider_webhook(
     body: Bytes,
 ) -> Result<(StatusCode, Json<PaymentWebhookIngressResponse>), (StatusCode, Json<Value>)> {
     let provider_id = normalize_required(provider_id, "provider_id", 100)?;
-    let delivery_id = required_header(&headers, &DELIVERY_ID_HEADERS, "provider delivery id")?;
-    let idempotency_key = required_header(
+    let delivery_id = optional_normalized_header(
         &headers,
-        &IDEMPOTENCY_KEY_HEADERS,
-        "provider idempotency key",
+        &DELIVERY_ID_HEADERS,
+        "provider delivery id",
+        MAX_EVENT_KEY_LENGTH,
+    )?;
+    let idempotency_key = optional_normalized_header(
+        &headers,
+        &REPLAY_KEY_HEADERS,
+        "provider replay key",
+        MAX_EVENT_KEY_LENGTH,
     )?;
     let signature = required_signature(&headers)?;
     if body.is_empty() || body.len() > MAX_RAW_PAYLOAD_BYTES {
@@ -184,10 +185,7 @@ pub async fn ingest_provider_webhook(
         ));
     }
 
-    let lease_owner = format!(
-        "payment-webhook:{provider_id}:{delivery_id}:{}",
-        Uuid::new_v4()
-    );
+    let lease_owner = format!("payment-webhook:{provider_id}:{}", Uuid::new_v4());
     let result = runtime
         .ingress_service()
         .ingest(
@@ -202,7 +200,6 @@ pub async fn ingest_provider_webhook(
             lease_owner,
         )
         .await;
-
     map_ingress_result(result)
 }
 
@@ -379,15 +376,27 @@ fn map_replay_error(error: PaymentProviderEventIngressError) -> (StatusCode, Jso
 
 fn map_webhook_payment_error(error: PaymentError) -> (StatusCode, Json<Value>) {
     match error {
-        PaymentError::Database(_) => safe_error(
+        PaymentError::Database(_) | PaymentError::ProviderUnavailable { .. } => safe_error(
             StatusCode::SERVICE_UNAVAILABLE,
-            "payment_webhook_storage_unavailable",
+            "payment_webhook_temporarily_unavailable",
             "Payment provider event will be retried",
         ),
-        PaymentError::Validation(_) => safe_error(
+        PaymentError::ProviderConfiguration { .. } => safe_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "payment_webhook_provider_not_configured",
+            "Payment provider webhook configuration is unavailable",
+        ),
+        PaymentError::Validation(_)
+        | PaymentError::ProviderRejected { .. }
+        | PaymentError::ProviderInvalidResponse { .. } => safe_error(
             StatusCode::BAD_REQUEST,
             "payment_webhook_invalid",
             "Payment provider webhook could not be verified or parsed",
+        ),
+        PaymentError::ProviderOutcomeUnknown { .. } => safe_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "payment_webhook_outcome_unknown",
+            "Payment provider event requires operator review",
         ),
         PaymentError::InvalidTransition { .. } => safe_error(
             StatusCode::CONFLICT,
@@ -406,10 +415,12 @@ fn map_webhook_payment_error(error: PaymentError) -> (StatusCode, Json<Value>) {
 
 fn map_admin_payment_error(error: PaymentError) -> (StatusCode, Json<Value>) {
     match error {
-        PaymentError::Database(_) => safe_error(
+        PaymentError::Database(_)
+        | PaymentError::ProviderUnavailable { .. }
+        | PaymentError::ProviderConfiguration { .. } => safe_error(
             StatusCode::SERVICE_UNAVAILABLE,
-            "payment_provider_event_storage_unavailable",
-            "Payment provider event storage is unavailable",
+            "payment_provider_event_unavailable",
+            "Payment provider event service is unavailable",
         ),
         PaymentError::Validation(_) => safe_error(
             StatusCode::NOT_FOUND,
@@ -420,6 +431,17 @@ fn map_admin_payment_error(error: PaymentError) -> (StatusCode, Json<Value>) {
             StatusCode::CONFLICT,
             "payment_provider_event_state_conflict",
             "Payment provider event state changed concurrently",
+        ),
+        PaymentError::ProviderOutcomeUnknown { .. } => safe_error(
+            StatusCode::CONFLICT,
+            "payment_provider_outcome_unknown",
+            "Payment provider operation requires reconciliation",
+        ),
+        PaymentError::ProviderRejected { .. }
+        | PaymentError::ProviderInvalidResponse { .. } => safe_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "payment_provider_event_invalid",
+            "Payment provider event cannot be applied",
         ),
         PaymentError::PaymentCollectionNotFound(_)
         | PaymentError::PaymentNotFound(_)
@@ -446,21 +468,15 @@ fn ensure_payment_permission(
     Ok(())
 }
 
-fn required_header(
+fn optional_normalized_header(
     headers: &HeaderMap,
     names: &[&str],
     label: &str,
-) -> Result<String, (StatusCode, Json<Value>)> {
+    max_length: usize,
+) -> Result<Option<String>, (StatusCode, Json<Value>)> {
     optional_header(headers, names)
-        .map(|value| normalize_required(value, label, MAX_EVENT_KEY_LENGTH))
-        .transpose()?
-        .ok_or_else(|| {
-            safe_error(
-                StatusCode::BAD_REQUEST,
-                "payment_webhook_identity_required",
-                format!("{label} header is required"),
-            )
-        })
+        .map(|value| normalize_required(value, label, max_length))
+        .transpose()
 }
 
 fn required_signature(headers: &HeaderMap) -> Result<String, (StatusCode, Json<Value>)> {

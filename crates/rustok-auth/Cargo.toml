@@ -8,6 +8,7 @@ description = "Auth module for RusTok — JWT, credentials, token lifecycle"
 [dependencies]
 rustok-api.workspace = true
 rustok-core = { workspace = true }
+flex.workspace = true
 async-trait.workspace = true
 tracing.workspace = true
 serde.workspace = true

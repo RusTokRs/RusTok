@@ -18,11 +18,11 @@ use super::{
 };
 use crate::{
     dto::{
-        ApplyOrderChangeInput, CancelOrderChangeInput, CreateOrderChangeInput,
-        ListOrderChangesInput, OrderChangeResponse,
+        CancelOrderChangeInput, CreateOrderChangeInput, ListOrderChangesInput, OrderChangeResponse,
     },
-    ApplyOrderChangeResult, ExchangeDifferenceRefundInput, PostOrderOrchestrationService,
+    ApplyOrderChangeResult, ExchangeDifferenceRefundInput,
 };
+use crate::services::OrderChangeOrchestrationService;
 
 /// Create admin order change preview
 #[utoipa::path(
@@ -168,49 +168,11 @@ pub async fn apply_order_change(
         "Permission denied: orders:update required",
     )?;
 
-    let db = runtime.db_clone();
-    let event_bus = runtime.event_bus();
-    let order_service = OrderService::new(db.clone(), event_bus.clone());
-    let orchestration_service = PostOrderOrchestrationService::new(db.clone(), event_bus)
-        .with_payment_provider_registry(runtime.payment_provider_registry());
-
-    let order_change = order_service
-        .get_order_change(tenant.id, id)
+    let result = OrderChangeOrchestrationService::new(runtime.db_clone(), runtime.event_bus())
+        .with_payment_provider_registry(runtime.payment_provider_registry())
+        .apply_order_change(tenant.id, id, input.difference_refund, input.metadata)
         .await
-        .map_err(super::map_order_error)?;
-
-    let result = match order_change.change_type.as_str() {
-        "exchange" => orchestration_service
-            .apply_exchange_order_change(
-                tenant.id,
-                order_change.order_id,
-                id,
-                input.difference_refund,
-                input.metadata,
-            )
-            .await
-            .map_err(super::map_post_order_orchestration_error)?,
-        "claim" => orchestration_service
-            .apply_claim_order_change(tenant.id, id, input.metadata)
-            .await
-            .map_err(super::map_post_order_orchestration_error)?,
-        _ => {
-            let item = order_service
-                .apply_order_change(
-                    tenant.id,
-                    id,
-                    ApplyOrderChangeInput {
-                        metadata: input.metadata,
-                    },
-                )
-                .await
-                .map_err(super::map_order_error)?;
-            ApplyOrderChangeResult {
-                order_change: item,
-                refund: None,
-            }
-        }
-    };
+        .map_err(super::map_post_order_orchestration_error)?;
 
     Ok(Json(result))
 }

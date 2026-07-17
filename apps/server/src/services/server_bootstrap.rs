@@ -9,6 +9,7 @@ use crate::services::app_lifecycle::connect_runtime_workers_with_runtime;
 use crate::services::app_router::compose_application_router;
 use crate::services::app_runtime::bootstrap_app_runtime;
 use crate::services::cache_runtime::ensure_cache_service;
+use crate::services::channel_cache_invalidation::start_channel_cache_invalidation_listener;
 use crate::services::rbac_cache_invalidation::start_rbac_cache_invalidation_listener;
 use crate::services::rbac_invalidation_generation::start_rbac_invalidation_generation_watchdog;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
@@ -22,6 +23,7 @@ pub async fn initialize_server_context(
     check_production_secrets(jwt_secret, database_uri)?;
     start_rbac_invalidation_generation_watchdog(runtime_ctx).await?;
     let cache = ensure_cache_service(runtime_ctx);
+    start_channel_cache_invalidation_listener(runtime_ctx, cache.clone()).await?;
     start_rbac_cache_invalidation_listener(runtime_ctx, cache).await?;
     crate::initializers::superadmin::ensure_default_superadmin(runtime_ctx).await
 }

@@ -8,12 +8,30 @@ use rustok_payment::providers::{
     PaymentProviderRegistry, PaymentProviderWebhookRequest, PaymentProviderWebhookResult,
 };
 use serde_json::json;
+use std::sync::Arc;
 use uuid::Uuid;
 
 struct MockPaymentProvider {
     descriptor: PaymentProviderDescriptor,
     should_fail: bool,
     error_message: String,
+}
+
+impl MockPaymentProvider {
+    fn descriptor(provider_id: &str) -> PaymentProviderDescriptor {
+        PaymentProviderDescriptor {
+            provider_id: provider_id.to_string(),
+            display_name: "Mock Gateway".to_string(),
+            capabilities: PaymentProviderCapabilities {
+                authorize: true,
+                capture: true,
+                refund: true,
+                cancel: true,
+                webhook_ingress: true,
+            },
+            default_for_new_collections: false,
+        }
+    }
 }
 
 #[async_trait]
@@ -88,19 +106,42 @@ impl PaymentProvider for MockPaymentProvider {
 
     async fn handle_webhook(
         &self,
-        request: PaymentProviderWebhookRequest,
+        _request: PaymentProviderWebhookRequest,
     ) -> PaymentResult<PaymentProviderWebhookResult> {
         if self.should_fail {
             return Err(PaymentError::Validation(self.error_message.clone()));
         }
         Ok(PaymentProviderWebhookResult {
             provider_id: self.descriptor.provider_id.clone(),
+            delivery_id: "evt_verified_1".to_string(),
             external_reference: None,
             event_type: "payment.updated".to_string(),
-            replay_key: request.idempotency_key,
+            replay_key: "evt_verified_1".to_string(),
             metadata: json!({}),
         })
     }
+}
+
+fn registered_mock_registry(provider_id: &str) -> PaymentProviderRegistry {
+    let descriptor = MockPaymentProvider::descriptor(provider_id);
+    let provider = MockPaymentProvider {
+        descriptor: descriptor.clone(),
+        should_fail: false,
+        error_message: String::new(),
+    };
+    let mut registry = PaymentProviderRegistry::new();
+    registry
+        .register_external(
+            provider_id,
+            Arc::new(provider),
+            ExternalPaymentProviderRegistration {
+                descriptor,
+                health: PaymentProviderHealth::Ready,
+                degraded_mode: None,
+            },
+        )
+        .unwrap();
+    registry
 }
 
 #[tokio::test]
@@ -118,13 +159,10 @@ async fn test_manual_provider_capabilities() {
 #[tokio::test]
 async fn test_manual_provider_operations_success() {
     let provider = ManualPaymentProvider;
-    let tenant_id = Uuid::new_v4();
-    let collection_id = Uuid::new_v4();
-    let amount = Decimal::new(100, 0); // 100
-
+    let amount = Decimal::new(100, 0);
     let request = PaymentProviderOperationRequest {
-        tenant_id,
-        collection_id,
+        tenant_id: Uuid::new_v4(),
+        collection_id: Uuid::new_v4(),
         amount,
         currency_code: "USD".to_string(),
         idempotency_key: Some("idemp-key-123".to_string()),
@@ -139,11 +177,9 @@ async fn test_manual_provider_operations_success() {
 
     let cap_res = provider.capture(request.clone()).await.unwrap();
     assert_eq!(cap_res.captured_amount, amount);
-
     let cancel_res = provider.cancel(request.clone()).await.unwrap();
     assert_eq!(cancel_res.authorized_amount, Decimal::ZERO);
-
-    let refund_res = provider.refund(request.clone()).await.unwrap();
+    let refund_res = provider.refund(request).await.unwrap();
     assert_eq!(refund_res.captured_amount, Decimal::ZERO);
 }
 
@@ -158,38 +194,13 @@ async fn test_manual_provider_refund_invalid_amount() {
         idempotency_key: None,
         metadata: json!({}),
     };
-
-    let refund_res = provider.refund(request).await;
-    assert!(refund_res.is_err());
-    match refund_res.err().unwrap() {
-        PaymentError::Validation(msg) => {
-            assert!(msg.contains("refund amount must be greater than zero"));
-        }
-        _ => panic!("Expected validation error"),
-    }
+    let error = provider.refund(request).await.unwrap_err();
+    assert!(matches!(error, PaymentError::Validation(message) if message.contains("refund amount must be greater than zero")));
 }
 
 #[tokio::test]
 async fn test_mock_provider_idempotency_and_error_mapping() {
-    let descriptor = PaymentProviderDescriptor {
-        provider_id: "mock-gateway".to_string(),
-        display_name: "Mock Gateway".to_string(),
-        capabilities: PaymentProviderCapabilities {
-            authorize: true,
-            capture: true,
-            refund: true,
-            cancel: true,
-            webhook_ingress: true,
-        },
-        default_for_new_collections: false,
-    };
-
-    let success_provider = MockPaymentProvider {
-        descriptor: descriptor.clone(),
-        should_fail: false,
-        error_message: String::new(),
-    };
-
+    let descriptor = MockPaymentProvider::descriptor("mock-gateway");
     let request = PaymentProviderOperationRequest {
         tenant_id: Uuid::new_v4(),
         collection_id: Uuid::new_v4(),
@@ -198,79 +209,52 @@ async fn test_mock_provider_idempotency_and_error_mapping() {
         idempotency_key: Some("idemp-mock-key".to_string()),
         metadata: json!({}),
     };
-
-    // Verify successful operation propagates the idempotency key context
+    let success_provider = MockPaymentProvider {
+        descriptor: descriptor.clone(),
+        should_fail: false,
+        error_message: String::new(),
+    };
     let auth_res = success_provider.authorize(request.clone()).await.unwrap();
     assert_eq!(auth_res.provider_id, "mock-gateway");
     assert_eq!(auth_res.authorized_amount, Decimal::new(50, 0));
 
-    // Verify error mapping on mock provider failure
     let failing_provider = MockPaymentProvider {
         descriptor,
         should_fail: true,
         error_message: "Gateway connection timeout".to_string(),
     };
-
-    let auth_err = failing_provider.authorize(request).await;
-    assert!(auth_err.is_err());
-    match auth_err.err().unwrap() {
-        PaymentError::Validation(msg) => {
-            assert_eq!(msg, "Gateway connection timeout");
-        }
-        _ => panic!("Expected validation error from failing provider"),
-    }
+    let error = failing_provider.authorize(request).await.unwrap_err();
+    assert!(matches!(error, PaymentError::Validation(message) if message == "Gateway connection timeout"));
 }
 
 #[test]
 fn test_external_payment_provider_registration_contract() {
     let registration = ExternalPaymentProviderRegistration {
-        descriptor: PaymentProviderDescriptor {
-            provider_id: "mock-gateway".to_string(),
-            display_name: "Mock Gateway".to_string(),
-            capabilities: PaymentProviderCapabilities {
-                authorize: true,
-                capture: true,
-                refund: true,
-                cancel: true,
-                webhook_ingress: true,
-            },
-            default_for_new_collections: false,
-        },
+        descriptor: MockPaymentProvider::descriptor("mock-gateway"),
         health: PaymentProviderHealth::Degraded,
         degraded_mode: Some(PaymentProviderDegradedMode {
             reason: "gateway_timeout".to_string(),
             fallback_profile: "manual_review".to_string(),
         }),
     };
-
     assert!(registration.validate("mock-gateway").is_ok());
     assert!(registration.validate("other-gateway").is_err());
 }
 
 #[test]
 fn test_payment_provider_runtime_mode_maps_degraded_and_capability_guards() {
-    let mut registry = PaymentProviderRegistry::with_manual_provider();
-    let descriptor = PaymentProviderDescriptor {
-        provider_id: "slow-gateway".to_string(),
-        display_name: "Slow Gateway".to_string(),
-        capabilities: PaymentProviderCapabilities {
-            authorize: true,
-            capture: true,
-            refund: false,
-            cancel: true,
-            webhook_ingress: true,
-        },
-        default_for_new_collections: false,
-    };
+    let mut descriptor = MockPaymentProvider::descriptor("slow-gateway");
+    descriptor.capabilities.refund = false;
     let provider = MockPaymentProvider {
         descriptor: descriptor.clone(),
         should_fail: false,
         error_message: String::new(),
     };
+    let mut registry = PaymentProviderRegistry::with_manual_provider();
     registry
         .register_external(
             "slow-gateway",
-            std::sync::Arc::new(provider),
+            Arc::new(provider),
             ExternalPaymentProviderRegistration {
                 descriptor,
                 health: PaymentProviderHealth::Degraded,
@@ -284,14 +268,49 @@ fn test_payment_provider_runtime_mode_maps_degraded_and_capability_guards() {
 
     let mode = registry.runtime_mode("slow-gateway", "authorize").unwrap();
     assert!(mode.can_execute);
-    assert_eq!(
-        mode.degraded_mode.unwrap().fallback_profile,
-        "manual_review"
-    );
-
+    assert_eq!(mode.degraded_mode.unwrap().fallback_profile, "manual_review");
     assert!(registry.runtime_mode("slow-gateway", "refund").is_err());
     assert!(registry.runtime_mode("slow-gateway", "unknown").is_err());
-    assert!(registry
-        .runtime_mode("missing-gateway", "authorize")
-        .is_err());
+    assert!(registry.runtime_mode("missing-gateway", "authorize").is_err());
+}
+
+#[tokio::test]
+async fn verified_webhook_identity_does_not_require_transport_hints() {
+    let registry = registered_mock_registry("mock-gateway");
+    let result = registry
+        .execute_webhook(
+            "mock-gateway",
+            PaymentProviderWebhookRequest {
+                tenant_id: Uuid::new_v4(),
+                provider_id: "mock-gateway".to_string(),
+                delivery_id: None,
+                idempotency_key: None,
+                signature: Some("verified-signature".to_string()),
+                raw_payload: br#"{"id":"evt_verified_1"}"#.to_vec(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.delivery_id, "evt_verified_1");
+    assert_eq!(result.replay_key, "evt_verified_1");
+}
+
+#[tokio::test]
+async fn verified_webhook_identity_rejects_conflicting_transport_hint() {
+    let registry = registered_mock_registry("mock-gateway");
+    let error = registry
+        .execute_webhook(
+            "mock-gateway",
+            PaymentProviderWebhookRequest {
+                tenant_id: Uuid::new_v4(),
+                provider_id: "mock-gateway".to_string(),
+                delivery_id: Some("wrong-delivery".to_string()),
+                idempotency_key: Some("evt_verified_1".to_string()),
+                signature: Some("verified-signature".to_string()),
+                raw_payload: br#"{"id":"evt_verified_1"}"#.to_vec(),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(error, PaymentError::Validation(message) if message.contains("delivery identity")));
 }

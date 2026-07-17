@@ -3,14 +3,23 @@ name = "rustok-pages-admin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Leptos admin UI package for the rustok-pages module"
+description = "SSR-first Leptos admin UI package for the rustok-pages module"
 
 [lib]
 crate-type = ["rlib"]
 
+[features]
+default = ["ssr"]
+csr = ["leptos/csr", "leptos-auth/csr", "rustok-page-builder-admin/csr"]
+hydrate = ["leptos/hydrate", "leptos-auth/hydrate", "rustok-page-builder-admin/hydrate"]
+ssr = ["leptos/ssr", "leptos-auth/ssr", "rustok-page-builder-admin/ssr"]
+
 [dependencies]
+fly = { path = "../../fly" }
+fly-browser = { path = "../../fly-browser" }
+fly-ui = { path = "../../fly-ui" }
 rustok-ui-core.workspace = true
-leptos = { workspace = true, features = ["csr"] }
+leptos.workspace = true
 leptos-auth.workspace = true
 rustok-graphql.workspace = true
 rustok-api = { workspace = true, default-features = false }
@@ -21,4 +30,5 @@ leptos-ui-routing.workspace = true
 rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
 rustok-seo-admin-support.workspace = true
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+serde_json.workspace = true
+thiserror.workspace = true

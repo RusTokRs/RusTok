@@ -15,6 +15,7 @@
 - Provide a thin service layer for creating and querying experimental channel data.
 - Back the shared request-level `ChannelContext` used by host transport layers.
 - Own the domain resolution pipeline (`RequestFacts -> ResolutionDecision`) that host middleware applies.
+- Own the durable database generation used to recover channel-resolution caches across serving replicas.
 - Ship the module-owned Leptos admin UI package for channel management.
 - Expose `ChannelReadPort` / `channel.read_projection.v1` as the FBA provider boundary for channel/default/host-target read projections, with deadline-aware read semantics and no-compile executable fallback smoke evidence until executable runtime smoke is available.
 
@@ -32,13 +33,14 @@ Current v0 wiring also includes:
 - server-side channel resolution middleware now delegates to the domain-owned pipeline `explicit selectors -> built-in host slice -> typed policies -> explicit default -> unresolved`, where `explicit default` means the tenant's explicit default channel and the built-in host fast-path intentionally remains a compatibility/performance layer before policy-only evaluation; runtime keeps active-only resolution semantics across all selectors plus typed `resolution_source + resolution_trace` diagnostics,
 - the first typed domain resolution seam for the final architecture: `RequestFacts`, `ResolutionDecision`, `ResolutionTraceStep`, and a `ChannelResolver` that keeps precedence inside `rustok-channel`,
 - persisted tenant-scoped typed resolution policies via `channel_resolution_policy_sets` and `channel_resolution_policy_rules`, with versioned JSON definitions, action-channel foreign keys, and deterministic rule order by `priority`,
+- a trigger-backed `channel_resolution_invalidation_state` generation that advances in the same database transaction as mutations to channel, target, binding, OAuth-app binding, policy-set, and policy-rule tables; the server uses local/Redis publication as a fast path and periodically reconciles the persisted generation to recover missed delivery,
 - the first live typed predicate set for policies: `HostEquals`, `HostSuffix`, `OAuthAppEquals`, `SurfaceIs`, and `LocaleEquals`,
 - `web_domain` targets now use shared canonical normalization/validation (`scheme/path/port` trimming, lowercase, strict host validation), and host lookup reuses the same semantics as storage,
 - a thin REST bootstrap/write surface in `apps/server`, now including policy-set/rule authoring, extended rule update patches (priority/is_active/action/predicates), rule reorder endpoints, and runtime trace diagnostics in channel bootstrap,
 - `rustok-channel-admin` for Leptos admin composition, now including policy-set activation plus policy-rule authoring/edit/removal/reorder/enable-disable flows with build-profile-selected native `#[server]` transport and REST secondary path parity,
 - live proof points in `rustok-pages`, `rustok-blog`, `rustok-commerce`, and `rustok-forum`, where public read-path gating already uses `channel_module_bindings`/resolved host `ChannelContext`; pages/blog exercise metadata-based publication-level `channelSlugs` allowlists, commerce preserves channel snapshot through storefront cart/order/pricing flows without a second sales-channel domain, and forum locks topic/reply/SEO visibility through `forum_topic_channel_access` plus request channel slug filtering.
 
-Validated baseline:
+Previously validated baseline:
 
 - `cargo check -p rustok-channel`
 - `cargo test -p rustok-channel --lib`
@@ -52,6 +54,8 @@ Validated baseline:
 - `npm run verify:channel:resolution-contract` (no-compile resolution order and built-in host fast-path decision gate)
 - `npm run verify:channel:proof-points` (no-compile pages/blog/commerce/forum proof-point source/docs sync gate)
 
+The new durable-generation path remains source-complete until the current permanent cache workflow and multi-replica failure-recovery scenarios pass on the same revision.
+
 It does not yet provide:
 
 - a full omnichannel orchestration model,
@@ -61,8 +65,9 @@ It does not yet provide:
 
 ## Interactions
 
-- `apps/server` registers the module as a core module and wires its runtime presence.
-- `apps/server` resolves the active channel and exposes the thin transport surface, while the module keeps domain logic locally.
+- `apps/server` registers the module as a core module, starts the supervised channel-cache invalidation runtime, and exposes its terminal state through critical runtime guardrails.
+- `apps/server` resolves the active channel and exposes the thin transport surface, while the module keeps domain logic and durable generation ownership locally.
+- `rustok-cache` supplies bounded invalidation transport; Redis PubSub is an acceleration path rather than the durable source of truth.
 - `rustok-api` hosts the shared `ChannelContext` and request-level contracts.
 - `rustok-auth` remains the source of truth for OAuth applications and tokens.
 - Domain modules may gradually become channel-aware by reading channel context or channel bindings.
@@ -73,16 +78,18 @@ It does not yet provide:
 - `ChannelModule`
 - `ChannelResolver`
 - `ChannelService`
+- `read_resolution_invalidation_generation`
 - `controllers::routes`
 
 ## Next Steps
 
+- Execute the permanent cache workflow and multi-replica durable-generation recovery scenarios.
 - Keep the current `channel_module_bindings + metadata` model for v0 while `pages` and `blog` continue to serve as proof points.
 - Revisit a dedicated relation model only if future domains need stronger DB-level querying, authoring UX, or semantics that request-time filtering can no longer cover cleanly.
-- Roll out tenant-scoped typed resolution policies as the next architecture phase, without introducing a second fallback concept beyond explicit default channel.
 - Decide later whether `target`, `connector`, and publishable credentials should become separate concepts.
 
 ## Docs
 
 - [Module docs](./docs/README.md)
+- [Implementation plan](./docs/implementation-plan.md)
 - [Platform docs index](../../docs/index.md)

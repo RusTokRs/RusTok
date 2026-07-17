@@ -18,11 +18,15 @@ pub mod ports;
 pub mod provider_event_recovery_controller;
 pub mod providers;
 pub mod services;
+#[cfg(feature = "stripe")]
+pub mod stripe_provider;
 
 pub use dto::*;
 pub use entities::*;
 pub use ports::*;
 pub use providers::*;
+#[cfg(feature = "stripe")]
+pub use stripe_provider::*;
 
 pub use error::{PaymentError, PaymentResult};
 pub use services::{
@@ -33,11 +37,11 @@ pub use services::{
     PaymentProviderEventIngressService, PaymentProviderEventJournal,
     PaymentProviderEventRecoveryFailure, PaymentProviderEventRecoveryOutcome,
     PaymentProviderEventRecoveryReport, PaymentProviderEventRecoveryService,
-    PaymentProviderOperationJournal, PaymentService, ReceiveProviderEvent,
-    RefundLifecycleEventApplier, VerifiedProviderEvent, PROVIDER_EVENT_DEAD_LETTER,
-    PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING,
-    PROVIDER_EVENT_RECEIVED, PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_ERROR,
-    PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_PENDING,
+    PaymentProviderOperationJournal, PaymentRefundCreationService, PaymentService,
+    ReceiveProviderEvent, RefundLifecycleEventApplier, VerifiedProviderEvent,
+    PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED,
+    PROVIDER_EVENT_PROCESSING, PROVIDER_EVENT_RECEIVED, PROVIDER_OPERATION_COMMITTED,
+    PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_PENDING,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
 

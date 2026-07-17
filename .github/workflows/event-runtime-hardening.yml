@@ -1,0 +1,59 @@
+name: Event runtime hardening
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/server/src/services/app_runtime.rs"
+      - "apps/server/src/services/event_bus.rs"
+      - "apps/server/src/services/event_transport_factory.rs"
+      - "apps/server/src/services/module_event_dispatcher.rs"
+      - "apps/server/src/services/runtime_guardrails.rs"
+      - "apps/server/src/services/runtime_guardrails_base.rs"
+      - "apps/server/src/services/server_runtime_context.rs"
+      - "apps/server/tests/event_bus_runtime_guard.rs"
+      - ".github/workflows/event-runtime-hardening.yml"
+  pull_request:
+    paths:
+      - "apps/server/src/services/app_runtime.rs"
+      - "apps/server/src/services/event_bus.rs"
+      - "apps/server/src/services/event_transport_factory.rs"
+      - "apps/server/src/services/module_event_dispatcher.rs"
+      - "apps/server/src/services/runtime_guardrails.rs"
+      - "apps/server/src/services/runtime_guardrails_base.rs"
+      - "apps/server/src/services/server_runtime_context.rs"
+      - "apps/server/tests/event_bus_runtime_guard.rs"
+      - ".github/workflows/event-runtime-hardening.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: event-runtime-hardening-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  event-runtime-contract:
+    name: Event runtime contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: event-runtime-hardening
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Compile server event runtime
+        run: cargo check -p rustok-server --lib
+      - name: Event forwarder lifecycle guard
+        run: cargo test -p rustok-server --test event_bus_runtime_guard
+      - name: Event forwarder unit tests
+        run: cargo test -p rustok-server event_forwarder --lib
+      - name: Clippy
+        run: cargo clippy -p rustok-server --lib -- -D warnings

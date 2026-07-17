@@ -18,6 +18,8 @@ mod-order = ["dep:rustok-order"]
 mod-payment = ["dep:rustok-payment"]
 mod-fulfillment = ["dep:rustok-fulfillment"]
 mod-commerce = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product", "mod-region", "mod-pricing", "mod-inventory", "mod-order", "mod-payment", "mod-fulfillment"]
+mod-marketplace_seller = ["dep:rustok-marketplace-seller"]
+mod-marketplace = ["dep:rustok-marketplace", "mod-marketplace_seller"]
 mod-content = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content"]
 mod-blog = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog"]
 mod-forum = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum"]
@@ -55,6 +57,8 @@ rustok-order = { workspace = true, optional = true }
 rustok-payment = { workspace = true, optional = true }
 rustok-fulfillment = { workspace = true, optional = true }
 rustok-commerce = { workspace = true, optional = true }
+rustok-marketplace-seller = { workspace = true, optional = true }
+rustok-marketplace = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-content-orchestration.workspace = true
 rustok-blog = { workspace = true, optional = true }

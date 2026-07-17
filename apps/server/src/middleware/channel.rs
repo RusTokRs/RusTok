@@ -89,6 +89,22 @@ impl ChannelCacheVersionState {
         self.tenant_versions.insert(tenant_id, next_version);
         false
     }
+
+    fn invalidate_all(&mut self) {
+        if self.exhausted {
+            self.tenant_versions.clear();
+            return;
+        }
+
+        let Some(next_version) = self.next_version.checked_add(1) else {
+            self.exhausted = true;
+            self.tenant_versions.clear();
+            return;
+        };
+        self.next_version = next_version;
+        self.default_version = next_version;
+        self.tenant_versions.clear();
+    }
 }
 
 #[derive(Clone)]
@@ -207,6 +223,15 @@ impl ChannelResolutionCache {
             self.cache.invalidate_all();
             self.cache.run_pending_tasks().await;
         }
+    }
+
+    async fn invalidate_all(&self) {
+        self.versions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .invalidate_all();
+        self.cache.invalidate_all();
+        self.cache.run_pending_tasks().await;
     }
 
     #[cfg(test)]
@@ -427,6 +452,10 @@ pub async fn invalidate_tenant_channel_cache(ctx: &ServerRuntimeContext, tenant_
     channel_cache(ctx).invalidate_tenant(tenant_id).await;
 }
 
+pub async fn invalidate_all_channel_cache(ctx: &ServerRuntimeContext) {
+    channel_cache(ctx).invalidate_all().await;
+}
+
 #[cfg(test)]
 mod version_registry_tests {
     use super::ChannelResolutionCache;
@@ -449,6 +478,22 @@ mod version_registry_tests {
         assert_ne!(initial_first, cache.tenant_version(first));
         assert!(cache.tracked_tenant_versions() <= 2);
         assert!(cache.tenant_version(third).is_some());
+    }
+
+    #[tokio::test]
+    async fn namespace_invalidation_rotates_default_and_tracked_tokens() {
+        let cache = ChannelResolutionCache::with_max_tenant_versions(2);
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+        cache.invalidate_tenant(first).await;
+        let first_before = cache.tenant_version(first);
+        let second_before = cache.tenant_version(second);
+
+        cache.invalidate_all().await;
+
+        assert_ne!(first_before, cache.tenant_version(first));
+        assert_ne!(second_before, cache.tenant_version(second));
+        assert_eq!(cache.tracked_tenant_versions(), 0);
     }
 
     #[tokio::test]

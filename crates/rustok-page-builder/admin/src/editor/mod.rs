@@ -1,4 +1,5 @@
 mod admin_shell;
+mod audit_panel;
 mod authoring;
 mod binding_panel;
 mod canvas_document;
@@ -23,10 +24,19 @@ mod runtime_scenario_regression;
 mod runtime_scenarios;
 mod selection_commands;
 mod shortcut_dispatch;
+mod ssr_drop;
+mod ssr_forms;
+mod ssr_inspector;
+mod ssr_locale;
+mod ssr_locale_coverage;
+mod ssr_locale_policy;
+mod ssr_localized_metadata;
+mod ssr_translations;
 mod toolbar;
 mod trait_panel;
 
 pub use admin_shell::AdminShell;
+pub(crate) use audit_panel::AuditPanel;
 pub use authoring::{
     CanvasComponentGeometry, LayerItemView, PaletteBlockView, SelectedComponentView,
 };
@@ -54,5 +64,19 @@ pub(crate) use runtime_scenario_matrix::RuntimeScenarioMatrixPanel;
 pub(crate) use runtime_scenario_regression::RuntimeScenarioRegressionPanel;
 pub(crate) use runtime_scenarios::RuntimeScenarioPanel;
 pub(crate) use shortcut_dispatch::dispatch_shortcut;
+pub(crate) use ssr_drop::{SsrDropRequest, SsrDropSource};
+pub(crate) use ssr_forms::{
+    SsrComponentPropertyKind, SsrComponentPropertyRequest, SsrPageCreateRequest,
+    SsrPageMetadataRequest, SsrPageRenameRequest, SsrTranslationRemoveRequest,
+    SsrTranslationUpsertRequest,
+};
+pub(crate) use ssr_inspector::SsrInspectorPanel;
+pub(crate) use ssr_locale::SsrLocalePanel;
+pub(crate) use ssr_locale_coverage::SsrLocaleCoveragePanel;
+pub(crate) use ssr_locale_policy::{SsrLocalePolicyPanel, SsrLocalePolicyRequest};
+pub(crate) use ssr_localized_metadata::{
+    SsrLocalizedMetadataPanel, SsrLocalizedPageMetadataRequest,
+};
+pub(crate) use ssr_translations::SsrTranslationsPanel;
 pub(crate) use toolbar::AuthoringToolbar;
 pub(crate) use trait_panel::TraitPanel;

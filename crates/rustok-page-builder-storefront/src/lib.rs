@@ -1,3 +1,7 @@
+mod localized_route;
+
+pub use localized_route::*;
+
 use fly::{PageHead, RenderPolicy, RenderedPage, RuntimeRenderResult};
 use leptos::prelude::*;
 use rustok_page_builder::render::{

@@ -75,6 +75,48 @@ async fn expired_local_entry_cannot_be_revived_by_compare_and_set() {
 }
 
 #[tokio::test]
+async fn evicted_local_entry_cannot_be_revived_by_compare_and_set() {
+    let service = CacheService::from_url(None);
+    let backend = service.memory_backend(Duration::from_secs(60), 1);
+    let first = ("eviction-first", b"first-old".to_vec());
+    let second = ("eviction-second", b"second-old".to_vec());
+
+    backend
+        .set(first.0.to_string(), first.1.clone())
+        .await
+        .unwrap();
+    backend
+        .set(second.0.to_string(), second.1.clone())
+        .await
+        .unwrap();
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while backend.stats().entries > 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("entry-count cache did not enforce its capacity");
+
+    let first_value = backend.get(first.0).await.unwrap();
+    let second_value = backend.get(second.0).await.unwrap();
+    let (evicted_key, evicted_value) = match (first_value, second_value) {
+        (None, _) => first,
+        (_, None) => second,
+        (Some(_), Some(_)) => panic!("capacity-one cache retained both entries"),
+    };
+
+    assert_eq!(
+        backend
+            .compare_and_set(evicted_key, &evicted_value, b"revived".to_vec(), None)
+            .await
+            .unwrap(),
+        CacheCompareAndSetOutcome::Mismatch
+    );
+    assert_eq!(backend.get(evicted_key).await.unwrap(), None);
+}
+
+#[tokio::test]
 async fn concurrent_local_invalidation_cannot_be_lost_to_compare_and_set() {
     let service = CacheService::from_url(None);
     let backend = service.memory_backend(Duration::from_secs(60), 256);

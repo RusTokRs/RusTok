@@ -10,6 +10,11 @@ pub mod build_event_hub;
 pub mod build_executor;
 pub mod cache_redis_status_monitor;
 pub mod cache_runtime;
+pub mod channel_cache_invalidation;
+#[cfg(test)]
+mod channel_cache_invalidation_resolved_value_tests;
+#[cfg(test)]
+mod channel_cache_invalidation_runtime_tests;
 pub mod commerce_provider_runtime;
 pub mod dashboard_user_activity;
 pub mod effective_module_policy;
@@ -34,6 +39,8 @@ pub mod oauth_token_service;
 pub mod paid_order_label_worker;
 #[cfg(feature = "mod-payment")]
 pub mod payment_provider_event_worker;
+#[cfg(feature = "mod-payment")]
+pub mod payment_provider_runtime;
 pub mod platform_composition;
 
 pub mod event_transport_factory;
@@ -60,9 +67,12 @@ pub mod runtime_guardrails;
 pub mod server_bootstrap;
 pub mod server_runtime_context;
 pub mod settings_service;
+#[cfg(feature = "mod-seo")]
+pub mod seo_redirect_cache_reconciliation;
 pub mod tenant_cache_generation;
 pub mod tenant_cache_generation_status;
 pub mod tenant_generation_delivery_gate;
+pub mod tenant_locale_generation;
 pub mod topic_field_service;
 pub mod user_admin_guard;
 pub mod user_field_service;

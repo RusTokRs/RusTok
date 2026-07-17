@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "module": "marketplace_seller",
+  "family": "marketplace",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "marketplace.seller.v1",
+  "ports": [
+    {
+      "name": "MarketplaceSellerReadPort",
+      "owner": "marketplace_seller",
+      "operations": [
+        "read_seller",
+        "list_sellers",
+        "read_membership",
+        "list_members"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": false,
+      "deadline_required": true
+    },
+    {
+      "name": "MarketplaceSellerCommandPort",
+      "owner": "marketplace_seller",
+      "operations": [
+        "create_seller",
+        "update_seller_profile",
+        "submit_seller_onboarding",
+        "review_seller_onboarding",
+        "suspend_seller",
+        "reactivate_seller",
+        "add_seller_member",
+        "update_seller_member"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
+      "deadline_required": true,
+      "durable_receipt": {
+        "table": "marketplace_seller_command_receipts",
+        "identity_scope": [
+          "tenant_id",
+          "idempotency_key"
+        ],
+        "request_identity": "canonical_sha256_v1",
+        "result_snapshot": "normalized_owner_response_json",
+        "atomic_with_owner_write": true,
+        "conflicting_payload": "marketplace_seller.idempotency_conflict"
+      }
+    }
+  ],
+  "consumers": [
+    {
+      "module": "marketplace",
+      "profile": "marketplace_seller_directory",
+      "degraded_modes": [
+        "seller_directory_unavailable"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "remote_adapter_placeholder"
+      ]
+    },
+    {
+      "module": "marketplace_seller_admin",
+      "profile": "marketplace_seller_admin",
+      "degraded_modes": [
+        "seller_directory_unavailable",
+        "seller_write_retry_required"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_admin_compat"
+      ]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-marketplace-seller/docs/implementation-plan.md",
+    "central_plan": "crates/rustok-commerce/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs",
+    "receipt_entity": "crates/rustok-marketplace-seller/src/entities/seller_command_receipt.rs",
+    "receipt_executor": "crates/rustok-marketplace-seller/src/command_receipts.rs",
+    "receipted_commands": "crates/rustok-marketplace-seller/src/receipted_commands.rs",
+    "graphql_owner_transport": "crates/rustok-marketplace-seller/src/graphql.rs",
+    "native_admin_adapter": "crates/rustok-marketplace-seller/admin/src/transport/native_server_adapter.rs",
+    "graphql_admin_adapter": "crates/rustok-marketplace-seller/admin/src/transport/graphql_adapter.rs",
+    "admin_workflows": "crates/rustok-marketplace-seller/admin/src/ui/leptos.rs"
+  },
+  "in_process_provider_impl": {
+    "service": "MarketplaceSellerService",
+    "source": "crates/rustok-marketplace-seller/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "read_seller",
+        "assertions": [
+          "tenant_scope_preserved",
+          "typed_not_found",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "list_sellers",
+        "assertions": [
+          "bounded_pagination",
+          "tenant_scope_preserved",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "list_members",
+        "assertions": [
+          "seller_scope_preserved",
+          "tenant_scope_preserved",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "create_seller",
+        "assertions": [
+          "deadline_required",
+          "idempotency_key_required",
+          "seller_and_owner_membership_atomic",
+          "receipt_and_owner_write_atomic",
+          "lost_response_replay_returns_saved_result",
+          "conflicting_payload_rejected",
+          "duplicate_handle_conflict"
+        ]
+      },
+      {
+        "operation": "review_seller_onboarding",
+        "assertions": [
+          "deadline_required",
+          "idempotency_key_required",
+          "expected_state_transition",
+          "receipt_and_transition_atomic",
+          "concurrent_transition_conflict"
+        ]
+      },
+      {
+        "operation": "update_seller_member",
+        "assertions": [
+          "seller_scope_preserved",
+          "receipt_and_member_write_atomic",
+          "owner_membership_cannot_be_disabled",
+          "owner_membership_cannot_be_demoted"
+        ]
+      },
+      {
+        "operation": "admin_transport_parity",
+        "assertions": [
+          "native_and_graphql_share_command_envelope",
+          "native_and_graphql_require_same_idempotency_key",
+          "selected_transport_never_implicitly_falls_back",
+          "retry_reuses_original_idempotency_key"
+        ]
+      }
+    ],
+    "known_gap": "compiled migration, replay contention, mounted native and GraphQL execution, and remote-profile evidence are not yet retained"
+  }
+}

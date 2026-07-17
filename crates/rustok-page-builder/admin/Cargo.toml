@@ -3,21 +3,24 @@ name = "rustok-page-builder-admin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Leptos full-authoring surface for the RusTok Page Builder module"
+description = "SSR-first Leptos authoring surface for the RusTok Page Builder module"
 
 [lib]
 crate-type = ["rlib"]
 
 [features]
-default = []
-csr = ["leptos/csr"]
-hydrate = ["leptos/hydrate"]
-ssr = ["leptos/ssr"]
+default = ["ssr", "browser-js"]
+browser-js = []
+wasm-client = ["fly-leptos/wasm-client"]
+csr = ["leptos/csr", "wasm-client"]
+hydrate = ["leptos/hydrate", "wasm-client"]
+ssr = ["leptos/ssr", "fly-leptos/ssr"]
 
 [dependencies]
 fly = { path = "../../fly" }
 fly-ui = { path = "../../fly-ui" }
-fly-leptos = { path = "../../fly-leptos" }
+fly-browser = { path = "../../fly-browser" }
+fly-leptos = { path = "../../fly-leptos", default-features = false }
 rustok-page-builder = { path = "..", default-features = false }
 rustok-ui-core.workspace = true
 rustok-ui-i18n-leptos.workspace = true
@@ -25,3 +28,4 @@ leptos.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
+uuid.workspace = true

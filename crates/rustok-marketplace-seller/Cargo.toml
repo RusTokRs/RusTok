@@ -1,0 +1,31 @@
+[package]
+name = "rustok-marketplace-seller"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Marketplace Family seller identity, lifecycle, and membership owner module"
+
+[dependencies]
+async-graphql = { workspace = true, optional = true }
+async-trait.workspace = true
+chrono.workspace = true
+rustok-api.workspace = true
+rustok-core.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+utoipa = { workspace = true, features = ["uuid", "chrono"] }
+uuid.workspace = true
+validator.workspace = true
+
+[features]
+default = []
+graphql = ["dep:async-graphql", "rustok-api/server"]
+
+[dev-dependencies]
+tokio.workspace = true
+rustok-test-utils.workspace = true

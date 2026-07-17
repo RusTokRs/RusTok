@@ -1,9 +1,9 @@
 use crate::ProjectDocument;
 use crate::{
-    extract_runtime_context_contract, preflight_runtime_context,
-    preflight_runtime_context_scenarios, RuntimeContextPreflight, RuntimeContextPreflightPolicy,
-    RuntimeContextScenario, RuntimeContextScenarioSuiteResult, ValidationDiagnostic,
-    ValidationSeverity,
+    evaluate_landing_readiness, extract_runtime_context_contract, preflight_runtime_context,
+    preflight_runtime_context_scenarios, LandingReadinessPolicy, LandingReadinessReport,
+    RuntimeContextPreflight, RuntimeContextPreflightPolicy, RuntimeContextScenario,
+    RuntimeContextScenarioSuiteResult, ValidationDiagnostic, ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -38,6 +38,8 @@ pub struct RuntimePublishGatePolicy {
     pub scenarios: ScenarioGateMode,
     #[serde(default)]
     pub preflight: RuntimeContextPreflightPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness: Option<LandingReadinessPolicy>,
 }
 
 impl Default for RuntimePublishGatePolicy {
@@ -46,6 +48,7 @@ impl Default for RuntimePublishGatePolicy {
             current_context: CurrentContextGateMode::Ignore,
             scenarios: ScenarioGateMode::Ignore,
             preflight: RuntimeContextPreflightPolicy::default(),
+            readiness: None,
         }
     }
 }
@@ -56,6 +59,8 @@ pub struct RuntimePublishGateEvaluation {
     pub diagnostics: Vec<ValidationDiagnostic>,
     pub current_context: Option<RuntimeContextPreflight>,
     pub scenarios: Option<RuntimeContextScenarioSuiteResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness: Option<LandingReadinessReport>,
 }
 
 pub fn evaluate_runtime_publish_gate(
@@ -189,6 +194,22 @@ pub fn evaluate_runtime_publish_gate(
         }
     };
 
+    let readiness_result = policy.readiness.map(|readiness_policy| {
+        let report = evaluate_landing_readiness(document, readiness_policy);
+        diagnostics.extend(report.diagnostics().cloned());
+        if !report.ready {
+            let blocking_count = report.blocking_issues().count();
+            diagnostics.push(gate_diagnostic(
+                "runtime_publish_readiness_rejected",
+                "project.readiness",
+                format!(
+                    "landing readiness policy rejected publish with {blocking_count} blocking issue(s)"
+                ),
+            ));
+        }
+        report
+    });
+
     deduplicate_diagnostics(&mut diagnostics);
     let allowed = !diagnostics
         .iter()
@@ -198,6 +219,7 @@ pub fn evaluate_runtime_publish_gate(
         diagnostics,
         current_context: current_context_result,
         scenarios: scenario_result,
+        readiness: readiness_result,
     }
 }
 
@@ -240,6 +262,31 @@ mod tests {
                 "path": "page.title",
                 "kind": "string",
                 "required": true
+            }]
+        }))
+        .expect("document")
+    }
+
+    fn ready_document() -> ProjectDocument {
+        GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": {
+                    "title": "Home",
+                    "description": "Landing description",
+                    "slug": "home"
+                },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "tagName": "main",
+                    "components": [{
+                        "id": "heading",
+                        "type": "heading",
+                        "tagName": "h1",
+                        "content": "Welcome"
+                    }]
+                }
             }]
         }))
         .expect("document")
@@ -336,5 +383,54 @@ mod tests {
             .diagnostics
             .iter()
             .any(|diagnostic| { diagnostic.code == "runtime_publish_named_scenario_missing" }));
+    }
+
+    #[test]
+    fn readiness_is_opt_in_and_does_not_block_existing_gate_policies() {
+        let evaluation = evaluate_runtime_publish_gate(
+            &document(),
+            None,
+            &[],
+            &RuntimePublishGatePolicy::default(),
+        );
+        assert!(evaluation.allowed);
+        assert!(evaluation.readiness.is_none());
+    }
+
+    #[test]
+    fn enabled_readiness_blocks_publish_only_when_landing_is_not_ready() {
+        let evaluation = evaluate_runtime_publish_gate(
+            &document(),
+            None,
+            &[],
+            &RuntimePublishGatePolicy {
+                readiness: Some(LandingReadinessPolicy::default()),
+                ..RuntimePublishGatePolicy::default()
+            },
+        );
+        assert!(!evaluation.allowed);
+        assert!(evaluation.readiness.as_ref().is_some_and(|report| !report.ready));
+        assert!(evaluation
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_publish_readiness_rejected"));
+    }
+
+    #[test]
+    fn enabled_readiness_allows_a_stable_landing() {
+        let document = ready_document();
+        let original = document.clone();
+        let evaluation = evaluate_runtime_publish_gate(
+            &document,
+            None,
+            &[],
+            &RuntimePublishGatePolicy {
+                readiness: Some(LandingReadinessPolicy::default()),
+                ..RuntimePublishGatePolicy::default()
+            },
+        );
+        assert!(evaluation.allowed, "{:?}", evaluation.diagnostics);
+        assert!(evaluation.readiness.as_ref().is_some_and(|report| report.ready));
+        assert_eq!(document, original);
     }
 }

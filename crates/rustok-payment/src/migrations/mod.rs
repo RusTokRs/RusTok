@@ -12,6 +12,9 @@ mod m20260714_000114_create_provider_event_inbox;
 mod m20260714_000115_enforce_provider_event_inbox;
 mod m20260714_000116_allow_provider_event_replay;
 mod m20260714_000117_lock_provider_event_normalized_facts;
+mod m20260714_000118_enforce_refund_creation_identity;
+mod m20260714_000119_require_refund_creation_identity;
+mod m20260714_000120_allow_uncertain_provider_outcomes;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -31,5 +34,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260714_000115_enforce_provider_event_inbox::Migration),
         Box::new(m20260714_000116_allow_provider_event_replay::Migration),
         Box::new(m20260714_000117_lock_provider_event_normalized_facts::Migration),
+        Box::new(m20260714_000118_enforce_refund_creation_identity::Migration),
+        Box::new(m20260714_000119_require_refund_creation_identity::Migration),
+        Box::new(m20260714_000120_allow_uncertain_provider_outcomes::Migration),
     ]
 }

@@ -4,6 +4,7 @@ pub(crate) mod checkout_operations;
 mod common;
 pub mod products;
 mod reconciliation;
+pub(crate) mod return_completion_operations;
 pub mod store;
 
 use rustok_api::HostRuntimeContext;
@@ -72,6 +73,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .nest(
             "/admin/checkout-operations",
             checkout_operations::axum_router(),
+        )
+        .nest(
+            "/admin/return-completion-operations",
+            return_completion_operations::axum_router(),
         )
         .nest(
             "/admin/fulfillment-provider-operations",

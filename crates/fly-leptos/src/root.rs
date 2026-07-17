@@ -3,12 +3,12 @@ mod foundation;
 
 pub use foundation::*;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 mod browser_interaction;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 pub use browser_interaction::*;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 mod browser_runtime;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 pub use browser_runtime::*;

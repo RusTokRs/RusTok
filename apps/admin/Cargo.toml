@@ -16,11 +16,29 @@ bench = false
 doc = false
 
 [features]
-default = ["csr"]
-csr = ["leptos/csr", "leptos_i18n/csr", "rustok-mcp-admin/csr", "rustok-workflow-admin/csr", "rustok-auth-admin/csr", "rustok-page-builder-admin/csr"]
+default = ["ssr"]
+csr = [
+  "leptos/csr",
+  "leptos_router/csr",
+  "leptos_i18n/csr",
+  "dep:wasm-bindgen",
+  "dep:web-sys",
+  "dep:console_error_panic_hook",
+  "dep:console_log",
+  "rustok-mcp-admin/csr",
+  "rustok-pages-admin/csr",
+  "rustok-workflow-admin/csr",
+  "rustok-auth-admin/csr",
+  "rustok-page-builder-admin/csr",
+]
 hydrate = [
   "leptos/hydrate",
+  "leptos_router/hydrate",
   "leptos_i18n/hydrate",
+  "dep:wasm-bindgen",
+  "dep:web-sys",
+  "dep:console_error_panic_hook",
+  "dep:console_log",
   "leptos-auth/hydrate",
   "rustok-ai-admin/hydrate",
   "rustok-channel-admin/hydrate",
@@ -29,10 +47,12 @@ hydrate = [
   "rustok-customer-admin/hydrate",
   "rustok-region-admin/hydrate",
   "rustok-index-admin/hydrate",
+  "rustok-marketplace-seller-admin/hydrate",
   "rustok-media-admin/hydrate",
   "rustok-mcp-admin/hydrate",
   "rustok-outbox-admin/hydrate",
   "rustok-page-builder-admin/hydrate",
+  "rustok-pages-admin/hydrate",
   "rustok-seo-admin/hydrate",
   "rustok-fulfillment-admin/hydrate",
   "rustok-inventory-admin/hydrate",
@@ -47,7 +67,10 @@ hydrate = [
 ]
 ssr = [
   "leptos/ssr",
+  "leptos_router/ssr",
   "leptos_i18n/ssr",
+  "dep:axum",
+  "dep:tokio",
   "dep:leptos_axum",
   "dep:sea-orm",
   "dep:rustok-cache",
@@ -70,10 +93,12 @@ ssr = [
   "rustok-customer-admin/ssr",
   "rustok-region-admin/ssr",
   "rustok-index-admin/ssr",
+  "rustok-marketplace-seller-admin/ssr",
   "rustok-media-admin/ssr",
   "rustok-mcp-admin/ssr",
   "rustok-outbox-admin/ssr",
   "rustok-page-builder-admin/ssr",
+  "rustok-pages-admin/ssr",
   "rustok-seo-admin/ssr",
   "rustok-fulfillment-admin/ssr",
   "rustok-inventory-admin/ssr",
@@ -88,9 +113,11 @@ ssr = [
 ]
 
 [dependencies]
+axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
 rustok-ui-core.workspace = true
 rustok-ui-transport.workspace = true
-leptos = { workspace = true, features = ["csr"] }
+leptos.workspace = true
 leptos_router = { workspace = true }
 leptos_axum = { workspace = true, optional = true }
 leptos-auth = { workspace = true, default-features = false }
@@ -104,14 +131,13 @@ leptos-struct-table = { workspace = true }
 leptos-zustand = { workspace = true }
 leptos-shadcn-pagination = { workspace = true }
 leptos-use = { workspace = true }
-leptos_i18n = { workspace = true, features = ["csr"] }
+leptos_i18n.workspace = true
 leptos_query = { workspace = true }
 leptos-chartistry = { workspace = true }
-gloo-storage = { workspace = true }
 serde_urlencoded = { workspace = true }
 chrono = { workspace = true }
-console_error_panic_hook = "0.1"
-console_log = "1"
+console_error_panic_hook = { version = "0.1", optional = true }
+console_log = { version = "1", optional = true }
 log = "0.4"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -122,10 +148,9 @@ sea-orm = { workspace = true, optional = true }
 base64 = { workspace = true }
 hex = { workspace = true }
 sha2 = { workspace = true }
-wasm-bindgen = "0.2"
-web-sys = { version = "0.3", features = ["Clipboard", "CloseEvent", "ErrorEvent", "Event", "MessageEvent", "Navigator", "Storage", "WebSocket", "Window"] }
+wasm-bindgen = { version = "0.2", optional = true }
+web-sys = { version = "0.3", optional = true, features = ["Clipboard", "CloseEvent", "ErrorEvent", "Event", "MessageEvent", "Navigator", "Storage", "WebSocket", "Window"] }
 rustok-api = { path = "../../crates/rustok-api", default-features = false }
-
 rustok-installer = { path = "../../crates/rustok-installer" }
 rustok-cache = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
@@ -148,6 +173,7 @@ rustok-fulfillment-admin = { path = "../../crates/rustok-fulfillment/admin", def
 rustok-forum-admin = { path = "../../crates/rustok-forum/admin", default-features = false }
 rustok-index-admin = { path = "../../crates/rustok-index/admin", default-features = false }
 rustok-inventory-admin = { path = "../../crates/rustok-inventory/admin", default-features = false }
+rustok-marketplace-seller-admin = { path = "../../crates/rustok-marketplace-seller/admin", default-features = false }
 rustok-media-admin = { path = "../../crates/rustok-media/admin", default-features = false }
 rustok-mcp-admin = { path = "../../crates/rustok-mcp/admin", default-features = false }
 rustok-order-admin = { path = "../../crates/rustok-order/admin", default-features = false }
@@ -164,10 +190,24 @@ rustok-tenant-admin = { path = "../../crates/rustok-tenant/admin", default-featu
 rustok-workflow-admin = { path = "../../crates/rustok-workflow/admin", default-features = false }
 rustok-auth-admin = { path = "../../crates/rustok-auth/admin", default-features = false }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-storage = { workspace = true }
+
 [build-dependencies]
 leptos_i18n_build = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true }
+
+[package.metadata.leptos]
+output-name = "rustok-admin"
+site-root = "target/admin-site"
+site-pkg-dir = "pkg"
+site-addr = "127.0.0.1:3001"
+reload-port = 3002
+bin-features = ["ssr"]
+bin-default-features = false
+lib-features = ["hydrate"]
+lib-default-features = false
 
 [package.metadata.cargo-udeps.ignore]
 normal = [
@@ -197,10 +237,12 @@ normal = [
   "rustok-comments-admin",
   "rustok-customer-admin",
   "rustok-core",
+  "rustok-marketplace-seller-admin",
   "rustok-media",
   "rustok-media-admin",
   "rustok-mcp-admin",
   "rustok-page-builder-admin",
+  "rustok-pages-admin",
   "rustok-seo",
   "rustok-seo-admin",
   "rustok-order-admin",
@@ -218,7 +260,6 @@ normal = [
   "rustok-index-admin",
   "rustok-inventory-admin",
   "rustok-outbox-admin",
-  "rustok-pages-admin",
   "rustok-pricing-admin",
   "rustok-rbac",
   "rustok-rbac-admin",

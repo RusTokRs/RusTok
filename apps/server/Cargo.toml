@@ -56,8 +56,11 @@ mod-pricing   = ["dep:rustok-pricing", "mod-product", "rustok-distribution/mod-p
 mod-inventory = ["dep:rustok-inventory", "mod-product", "rustok-distribution/mod-inventory"]
 mod-order     = ["dep:rustok-order", "rustok-distribution/mod-order"]
 mod-payment   = ["dep:rustok-payment", "rustok-payment/server", "rustok-distribution/mod-payment"]
+payment-stripe = ["mod-payment", "rustok-payment/stripe", "dep:rustok-secrets"]
 mod-fulfillment = ["dep:rustok-fulfillment", "rustok-distribution/mod-fulfillment"]
 mod-commerce  = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product", "mod-region", "mod-pricing", "mod-inventory", "mod-order", "mod-payment", "mod-fulfillment", "rustok-distribution/mod-commerce"]
+mod-marketplace_seller = ["dep:rustok-marketplace-seller", "rustok-marketplace-seller/graphql", "rustok-distribution/mod-marketplace_seller"]
+mod-marketplace = ["dep:rustok-marketplace", "mod-marketplace_seller", "rustok-distribution/mod-marketplace"]
 mod-content   = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content", "rustok-distribution/mod-content"]
 mod-blog      = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog", "rustok-distribution/mod-blog"]
 mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum", "rustok-distribution/mod-forum"]
@@ -96,8 +99,11 @@ rustok-pricing   = { workspace = true, optional = true }
 rustok-inventory = { workspace = true, optional = true }
 rustok-order     = { workspace = true, optional = true }
 rustok-payment   = { workspace = true, optional = true }
+rustok-secrets   = { workspace = true, optional = true }
 rustok-fulfillment = { workspace = true, optional = true }
 rustok-commerce  = { workspace = true, optional = true }
+rustok-marketplace-seller = { workspace = true, optional = true }
+rustok-marketplace = { workspace = true, optional = true }
 rustok-blog      = { workspace = true, optional = true }
 rustok-comments  = { workspace = true, optional = true }
 rustok-content   = { workspace = true, optional = true }

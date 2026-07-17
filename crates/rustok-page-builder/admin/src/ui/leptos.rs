@@ -17,7 +17,8 @@ use std::sync::Arc;
 /// Generated module composition mounts [`PageBuilderAdmin`] without props. Consumer routes such as
 /// Pages may provide this context to activate a concrete document, persistence facade,
 /// provider-contributed authoring schemas, preview-only runtime data, named preview scenarios,
-/// runtime publish policy, and a separately persisted scenario release baseline.
+/// runtime publish policy, a separately persisted scenario release baseline, and an optional
+/// classic SSR intent endpoint consumed by the standalone `fly-browser` adapter.
 #[derive(Clone)]
 pub struct PageBuilderAdminHostContext {
     pub controller: AdminCanvasController,
@@ -28,6 +29,8 @@ pub struct PageBuilderAdminHostContext {
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     pub runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
     pub on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
+    pub browser_intent_endpoint: Option<String>,
+    pub browser_csrf_token: Option<String>,
 }
 
 impl PageBuilderAdminHostContext {
@@ -41,6 +44,8 @@ impl PageBuilderAdminHostContext {
             runtime_publish_gate_policy: None,
             runtime_scenario_baseline: None,
             on_runtime_scenario_baseline: None,
+            browser_intent_endpoint: None,
+            browser_csrf_token: None,
         }
     }
 
@@ -90,6 +95,18 @@ impl PageBuilderAdminHostContext {
         self.on_runtime_scenario_baseline = Some(callback);
         self
     }
+
+    pub fn with_browser_intent_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        let endpoint = endpoint.into();
+        self.browser_intent_endpoint = (!endpoint.trim().is_empty()).then_some(endpoint);
+        self
+    }
+
+    pub fn with_browser_csrf_token(mut self, token: impl Into<String>) -> Self {
+        let token = token.into();
+        self.browser_csrf_token = (!token.trim().is_empty()).then_some(token);
+        self
+    }
 }
 
 /// Generated host entrypoint. It intentionally accepts no props.
@@ -113,6 +130,8 @@ pub fn PageBuilderAdmin() -> impl IntoView {
                 runtime_publish_gate_policy=context.runtime_publish_gate_policy
                 runtime_scenario_baseline=context.runtime_scenario_baseline
                 on_runtime_scenario_baseline=context.on_runtime_scenario_baseline
+                browser_intent_endpoint=context.browser_intent_endpoint
+                browser_csrf_token=context.browser_csrf_token
                 on_request=None
             />
         }
@@ -158,6 +177,8 @@ pub fn PageBuilderAdminWithController(
     runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
     on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
+    #[prop(optional)] browser_intent_endpoint: Option<String>,
+    #[prop(optional)] browser_csrf_token: Option<String>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -182,6 +203,8 @@ pub fn PageBuilderAdminWithController(
                 runtime_scenario_baseline
                 on_runtime_scenario_baseline
                 on_request
+                browser_intent_endpoint
+                browser_csrf_token
             />
         </AdminShell>
     }

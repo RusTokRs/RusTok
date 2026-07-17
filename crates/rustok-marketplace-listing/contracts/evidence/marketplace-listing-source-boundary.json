@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "module": "marketplace_listing",
+  "evidence_kind": "source_boundary",
+  "observed_at": "2026-07-16",
+  "status": "source_complete_runtime_pending",
+  "ownership": {
+    "aggregate": "marketplace_listings",
+    "versioned_terms": "marketplace_listing_terms",
+    "command_receipts": "marketplace_listing_command_receipts",
+    "cross_module_foreign_keys": false,
+    "canonical_product_content_copied": false,
+    "buy_box_ranking_owned": false
+  },
+  "provider_dependencies": [
+    {
+      "module": "marketplace_seller",
+      "port": "MarketplaceSellerReadPort"
+    },
+    {
+      "module": "product",
+      "port": "ProductCatalogReadPort"
+    }
+  ],
+  "replay": {
+    "identity": "tenant_id + idempotency_key",
+    "request_hash": "canonical_sha256_v1",
+    "result_snapshot": "normalized_listing_response_json",
+    "receipt_owner_write_atomic": true,
+    "completed_receipt_checked_before_external_reads": [
+      "create_listing",
+      "publish_listing",
+      "reactivate_listing"
+    ]
+  },
+  "eligibility": {
+    "deterministic_order": [
+      "seller_id",
+      "listing_id"
+    ],
+    "reason_codes": [
+      "listing_not_active",
+      "listing_not_published",
+      "listing_not_approved",
+      "pricing_reference_missing",
+      "inventory_reference_missing",
+      "seller_not_active",
+      "seller_unavailable"
+    ]
+  },
+  "runtime_evidence": {
+    "compile": false,
+    "migrations": false,
+    "contention": false,
+    "remote_profile": false,
+    "mounted_transport": false
+  }
+}

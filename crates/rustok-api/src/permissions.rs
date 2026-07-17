@@ -22,6 +22,7 @@ pub enum Resource {
     Fulfillments,
     Inventory,
     Discounts,
+    MarketplaceSellers,
     Posts,
     Pages,
     Nodes,
@@ -77,6 +78,7 @@ impl fmt::Display for Resource {
             Self::Fulfillments => "fulfillments",
             Self::Inventory => "inventory",
             Self::Discounts => "discounts",
+            Self::MarketplaceSellers => "marketplace_sellers",
             Self::Posts => "posts",
             Self::Pages => "pages",
             Self::Nodes => "nodes",
@@ -133,6 +135,7 @@ impl FromStr for Resource {
             "fulfillments" => Ok(Self::Fulfillments),
             "inventory" => Ok(Self::Inventory),
             "discounts" => Ok(Self::Discounts),
+            "marketplace_sellers" => Ok(Self::MarketplaceSellers),
             "posts" => Ok(Self::Posts),
             "pages" => Ok(Self::Pages),
             "nodes" => Ok(Self::Nodes),
@@ -345,6 +348,19 @@ impl Permission {
     pub const FULFILLMENTS_DELETE: Self = Self::new(Resource::Fulfillments, Action::Delete);
     pub const FULFILLMENTS_LIST: Self = Self::new(Resource::Fulfillments, Action::List);
     pub const FULFILLMENTS_MANAGE: Self = Self::new(Resource::Fulfillments, Action::Manage);
+
+    pub const MARKETPLACE_SELLERS_CREATE: Self =
+        Self::new(Resource::MarketplaceSellers, Action::Create);
+    pub const MARKETPLACE_SELLERS_READ: Self =
+        Self::new(Resource::MarketplaceSellers, Action::Read);
+    pub const MARKETPLACE_SELLERS_UPDATE: Self =
+        Self::new(Resource::MarketplaceSellers, Action::Update);
+    pub const MARKETPLACE_SELLERS_DELETE: Self =
+        Self::new(Resource::MarketplaceSellers, Action::Delete);
+    pub const MARKETPLACE_SELLERS_LIST: Self =
+        Self::new(Resource::MarketplaceSellers, Action::List);
+    pub const MARKETPLACE_SELLERS_MANAGE: Self =
+        Self::new(Resource::MarketplaceSellers, Action::Manage);
 
     pub const POSTS_CREATE: Self = Self::new(Resource::Posts, Action::Create);
     pub const POSTS_READ: Self = Self::new(Resource::Posts, Action::Read);

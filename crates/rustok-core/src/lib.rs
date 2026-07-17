@@ -10,6 +10,7 @@
 
 pub mod async_utils;
 pub mod cache;
+mod cache_atomic;
 pub mod config;
 pub mod content_format;
 pub mod context;
@@ -44,7 +45,8 @@ pub use async_utils::{
 };
 #[cfg(feature = "redis-cache")]
 pub use cache::RedisCacheBackend;
-pub use cache::{CacheStats, FallbackCacheBackend, InMemoryCacheBackend};
+pub use cache::CacheStats;
+pub use cache_atomic::{FallbackCacheBackend, InMemoryCacheBackend};
 pub use config::{
     Config, ConfigError, ConfigLoader, ConfigSource, ConfigValue, DatabaseConfig, Secret,
     ServerConfig,

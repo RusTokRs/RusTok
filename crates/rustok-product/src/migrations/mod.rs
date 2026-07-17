@@ -18,6 +18,7 @@ mod m20260711_000001_product_status_enum;
 mod m20260711_000002_enforce_product_tenant_integrity;
 mod m20260711_000003_enforce_catalog_value_invariants;
 mod m20260711_000004_normalize_product_channel_visibility;
+mod m20260716_000002_add_product_field_cache_generation_trigger;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -42,6 +43,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260711_000002_enforce_product_tenant_integrity::Migration),
         Box::new(m20260711_000003_enforce_catalog_value_invariants::Migration),
         Box::new(m20260711_000004_normalize_product_channel_visibility::Migration),
+        Box::new(m20260716_000002_add_product_field_cache_generation_trigger::Migration),
     ]
 }
 

@@ -1,0 +1,252 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(MarketplaceSellers::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MarketplaceSellers::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(MarketplaceSellers::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(MarketplaceSellers::Handle)
+                            .string_len(80)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellers::DisplayName)
+                            .string_len(160)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(MarketplaceSellers::LegalName).string_len(240))
+                    .col(
+                        ColumnDef::new(MarketplaceSellers::Status)
+                            .string_len(32)
+                            .not_null()
+                            .default("draft"),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellers::OnboardingStatus)
+                            .string_len(32)
+                            .not_null()
+                            .default("draft"),
+                    )
+                    .col(ColumnDef::new(MarketplaceSellers::OnboardingNote).text())
+                    .col(ColumnDef::new(MarketplaceSellers::SuspensionReason).text())
+                    .col(
+                        ColumnDef::new(MarketplaceSellers::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellers::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellers::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(ColumnDef::new(MarketplaceSellers::ActivatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(MarketplaceSellers::SuspendedAt).timestamp_with_time_zone())
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("ux_marketplace_sellers_tenant_handle")
+                    .table(MarketplaceSellers::Table)
+                    .col(MarketplaceSellers::TenantId)
+                    .col(MarketplaceSellers::Handle)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("ux_marketplace_sellers_tenant_id")
+                    .table(MarketplaceSellers::Table)
+                    .col(MarketplaceSellers::TenantId)
+                    .col(MarketplaceSellers::Id)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_marketplace_sellers_tenant_status")
+                    .table(MarketplaceSellers::Table)
+                    .col(MarketplaceSellers::TenantId)
+                    .col(MarketplaceSellers::Status)
+                    .col(MarketplaceSellers::UpdatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(MarketplaceSellerMembers::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MarketplaceSellerMembers::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerMembers::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerMembers::SellerId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerMembers::UserId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerMembers::Role)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerMembers::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(MarketplaceSellerMembers::InvitedByActorId).uuid())
+                    .col(
+                        ColumnDef::new(MarketplaceSellerMembers::AcceptedAt)
+                            .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerMembers::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerMembers::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerMembers::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_marketplace_seller_members_tenant_seller")
+                            .from(MarketplaceSellerMembers::Table, MarketplaceSellerMembers::TenantId)
+                            .from_col(MarketplaceSellerMembers::SellerId)
+                            .to(MarketplaceSellers::Table, MarketplaceSellers::TenantId)
+                            .to_col(MarketplaceSellers::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("ux_marketplace_seller_members_scope_user")
+                    .table(MarketplaceSellerMembers::Table)
+                    .col(MarketplaceSellerMembers::TenantId)
+                    .col(MarketplaceSellerMembers::SellerId)
+                    .col(MarketplaceSellerMembers::UserId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_marketplace_seller_members_tenant_user")
+                    .table(MarketplaceSellerMembers::Table)
+                    .col(MarketplaceSellerMembers::TenantId)
+                    .col(MarketplaceSellerMembers::UserId)
+                    .col(MarketplaceSellerMembers::Status)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(MarketplaceSellerMembers::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(MarketplaceSellers::Table).to_owned())
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(Iden)]
+enum MarketplaceSellers {
+    Table,
+    Id,
+    TenantId,
+    Handle,
+    DisplayName,
+    LegalName,
+    Status,
+    OnboardingStatus,
+    OnboardingNote,
+    SuspensionReason,
+    Metadata,
+    CreatedAt,
+    UpdatedAt,
+    ActivatedAt,
+    SuspendedAt,
+}
+
+#[derive(Iden)]
+enum MarketplaceSellerMembers {
+    Table,
+    Id,
+    TenantId,
+    SellerId,
+    UserId,
+    Role,
+    Status,
+    InvitedByActorId,
+    AcceptedAt,
+    Metadata,
+    CreatedAt,
+    UpdatedAt,
+}

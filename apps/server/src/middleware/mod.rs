@@ -1,5 +1,6 @@
 pub mod auth_context;
 pub mod block_rest_auth;
+#[path = "channel_native_wrapper.rs"]
 pub mod channel;
 pub mod guest_cart_access;
 pub mod invite_accept;
@@ -39,6 +40,11 @@ pub mod tenant {
         cache_service: &CacheService,
     ) {
         super::tenant_legacy::init_tenant_cache_infrastructure(ctx, cache_service).await;
+        crate::services::tenant_locale_generation::start_tenant_locale_generation_listener(
+            ctx,
+            cache_service.clone(),
+        )
+        .await;
     }
 
     /// Invalidate the tenant resolver namespace through a durable generation rotation.
@@ -90,11 +96,14 @@ pub mod tenant {
             .unwrap_or_default()
             .as_millis()
             .min(u128::from(u64::MAX)) as u64;
+        let invalidation_key = tenant_id
+            .map(|tenant_id| tenant_id.to_string())
+            .unwrap_or_else(|| "*".to_string());
         let record = match DurableCacheInvalidationRecord::new(
             Uuid::new_v4(),
             tenant_id,
             TENANT_CACHE_GENERATION_CHANNEL,
-            "tenant-manual-invalidation",
+            invalidation_key,
             generation.generation,
             emitted_at_unix_ms,
             cause,

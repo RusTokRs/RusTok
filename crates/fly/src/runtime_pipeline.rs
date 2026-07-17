@@ -1,7 +1,10 @@
 use crate::{
     extract_runtime_context_contract, materialize_bindings, materialize_context,
-    materialize_runtime, BindingMaterialization, ContextMaterialization, ProjectDocument,
-    RuntimeMaterialization, ValidationDiagnostic,
+    materialize_internal_page_links, materialize_localized_page_metadata,
+    materialize_project_locale_context, materialize_project_translations, materialize_runtime,
+    materialize_runtime_locale_context, BindingMaterialization, ContextMaterialization,
+    InternalLinkMaterialization, LocalePolicyMaterialization, LocalizedPageMetadataMaterialization,
+    ProjectDocument, RuntimeMaterialization, TranslationMaterialization, ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -16,6 +19,9 @@ pub struct RuntimeProjectMaterialization {
     pub computed_fallbacks: usize,
     pub unresolved_computed: usize,
     pub context_type_mismatches: usize,
+    pub resolved_internal_links: usize,
+    pub fallback_internal_links: usize,
+    pub unresolved_internal_links: usize,
     pub applied_bindings: usize,
     pub fallback_bindings: usize,
     pub unresolved_bindings: usize,
@@ -28,9 +34,38 @@ pub fn materialize_project_with_runtime_context(
     document: &ProjectDocument,
     input_context: &Value,
 ) -> RuntimeProjectMaterialization {
-    let contract = extract_runtime_context_contract(document);
+    let LocalePolicyMaterialization {
+        context: locale_policy_context,
+        diagnostics: locale_policy_diagnostics,
+        ..
+    } = materialize_project_locale_context(document, input_context);
+    let TranslationMaterialization {
+        context: translation_context,
+        diagnostics: translation_diagnostics,
+        ..
+    } = materialize_project_translations(document, &locale_policy_context);
+    let locale_materialization = materialize_runtime_locale_context(&translation_context);
+    let localized_input_context = locale_materialization.context;
+    let InternalLinkMaterialization {
+        document: linked_document,
+        diagnostics: link_diagnostics,
+        resolved_links: resolved_internal_links,
+        fallback_links: fallback_internal_links,
+        unresolved_links: unresolved_internal_links,
+    } = materialize_internal_page_links(document, &localized_input_context);
+    let LocalizedPageMetadataMaterialization {
+        document: localized_document,
+        diagnostics: metadata_diagnostics,
+        ..
+    } = materialize_localized_page_metadata(&linked_document, &localized_input_context);
+    let contract = extract_runtime_context_contract(&localized_document);
     let contract_is_valid = contract.is_valid();
-    let mut diagnostics = contract.definition_diagnostics;
+    let mut diagnostics = locale_policy_diagnostics;
+    diagnostics.extend(translation_diagnostics);
+    diagnostics.extend(locale_materialization.diagnostics);
+    diagnostics.extend(link_diagnostics);
+    diagnostics.extend(metadata_diagnostics);
+    diagnostics.extend(contract.definition_diagnostics);
     let (
         effective_context,
         defaults_applied,
@@ -47,7 +82,7 @@ pub fn materialize_project_with_runtime_context(
             computed_fallbacks,
             unresolved_computed,
             type_mismatches,
-        } = materialize_context(document, input_context);
+        } = materialize_context(&localized_document, &localized_input_context);
         diagnostics.extend(context_diagnostics);
         (
             context,
@@ -58,7 +93,7 @@ pub fn materialize_project_with_runtime_context(
             type_mismatches,
         )
     } else {
-        (input_context.clone(), 0, 0, 0, 0, 0)
+        (localized_input_context.clone(), 0, 0, 0, 0, 0)
     };
 
     let BindingMaterialization {
@@ -67,7 +102,7 @@ pub fn materialize_project_with_runtime_context(
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
-    } = materialize_bindings(document, &effective_context);
+    } = materialize_bindings(&localized_document, &effective_context);
     diagnostics.extend(binding_diagnostics);
     let RuntimeMaterialization {
         document,
@@ -87,6 +122,9 @@ pub fn materialize_project_with_runtime_context(
         computed_fallbacks,
         unresolved_computed,
         context_type_mismatches,
+        resolved_internal_links,
+        fallback_internal_links,
+        unresolved_internal_links,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
@@ -99,7 +137,7 @@ pub fn materialize_project_with_runtime_context(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::{GrapesJsV1Codec, PageMetadata};
     use serde_json::json;
 
     #[test]
@@ -158,7 +196,250 @@ mod tests {
     }
 
     #[test]
-    fn invalid_context_contract_does_not_replace_root_context() {
+    fn project_locale_policy_defaults_before_translation_materialization() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "flyLocales": {
+                "default_locale": "ru",
+                "supported_locales": ["ru", "en"],
+                "fallback_locales": ["en"]
+            },
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "title",
+                        "type": "text",
+                        "content": "Static"
+                    }]
+                }
+            }],
+            "flyTranslations": [{
+                "id": "hero_title",
+                "values": {
+                    "en": "Welcome",
+                    "ru": "Добро пожаловать"
+                }
+            }],
+            "flyRuntimeBindings": [{
+                "id": "hero-title-content",
+                "component_id": "title",
+                "path": "translations.hero_title",
+                "target": "field",
+                "name": "content"
+            }]
+        }))
+        .expect("document");
+        let materialized = materialize_project_with_runtime_context(&document, &json!({}));
+        assert_eq!(materialized.effective_context["$locale"], "ru");
+        assert_eq!(
+            materialized.effective_context["$fallback_locales"],
+            json!(["en"])
+        );
+        assert_eq!(
+            materialized.effective_context["translations"]["hero_title"],
+            "Добро пожаловать"
+        );
+        assert_eq!(
+            materialized
+                .document
+                .component("title")
+                .and_then(|component| component.extensions.get("content"))
+                .and_then(Value::as_str),
+            Some("Добро пожаловать")
+        );
+    }
+
+    #[test]
+    fn internal_page_links_materialize_after_locale_selection_and_before_bindings() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "flyLocales": {
+                "default_locale": "ru",
+                "supported_locales": ["ru", "en"]
+            },
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "slug": { "$localized": { "en": "home", "ru": "glavnaya" } } },
+                "component": {
+                    "id": "home-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "about-link",
+                        "type": "link",
+                        "tagName": "a",
+                        "flyPageLink": { "page_id": "about" }
+                    }]
+                }
+            }, {
+                "id": "about",
+                "flyPageMeta": { "slug": { "$localized": { "en": "about", "ru": "o-nas" } } },
+                "component": { "id": "about-root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let materialized = materialize_project_with_runtime_context(&document, &json!({}));
+        assert_eq!(materialized.resolved_internal_links, 1);
+        assert_eq!(
+            materialized
+                .document
+                .component("about-link")
+                .unwrap()
+                .attributes["href"],
+            "/o-nas"
+        );
+        assert!(document
+            .component("about-link")
+            .unwrap()
+            .attributes
+            .get("href")
+            .is_none());
+    }
+
+    #[test]
+    fn locale_resolution_runs_before_computed_values_and_bindings() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "title",
+                        "type": "text",
+                        "content": "Static"
+                    }]
+                }
+            }],
+            "flyRuntimeComputed": [{
+                "id": "title",
+                "path": "page.title",
+                "expression": {
+                    "op": "format",
+                    "template": "{{page.prefix}} мир"
+                }
+            }],
+            "flyRuntimeBindings": [{
+                "id": "title-content",
+                "component_id": "title",
+                "path": "page.title",
+                "target": "field",
+                "name": "content"
+            }]
+        }))
+        .expect("document");
+        let materialized = materialize_project_with_runtime_context(
+            &document,
+            &json!({
+                "$locale": "ru-RU",
+                "page": {
+                    "prefix": {
+                        "$localized": {
+                            "en": "Hello",
+                            "ru": "Привет"
+                        }
+                    }
+                }
+            }),
+        );
+        assert_eq!(materialized.effective_context["page"]["prefix"], "Привет");
+        assert_eq!(materialized.effective_context["page"]["title"], "Привет мир");
+        assert_eq!(
+            materialized
+                .document
+                .component("title")
+                .and_then(|component| component.extensions.get("content"))
+                .and_then(Value::as_str),
+            Some("Привет мир")
+        );
+        assert!(materialized
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_localized_value_fallback"));
+    }
+
+    #[test]
+    fn project_translation_catalog_materializes_before_bindings() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "title",
+                        "type": "text",
+                        "content": "Static"
+                    }]
+                }
+            }],
+            "flyTranslations": [{
+                "id": "hero_title",
+                "values": {
+                    "en": "Welcome",
+                    "ru": "Добро пожаловать"
+                },
+                "fallback_locale": "en"
+            }],
+            "flyRuntimeBindings": [{
+                "id": "hero-title-content",
+                "component_id": "title",
+                "path": "translations.hero_title",
+                "target": "field",
+                "name": "content"
+            }]
+        }))
+        .expect("document");
+        let materialized = materialize_project_with_runtime_context(
+            &document,
+            &json!({ "$locale": "ru-RU" }),
+        );
+        assert_eq!(
+            materialized.effective_context["translations"]["hero_title"],
+            "Добро пожаловать"
+        );
+        assert_eq!(materialized.applied_bindings, 1);
+        assert_eq!(
+            materialized
+                .document
+                .component("title")
+                .and_then(|component| component.extensions.get("content"))
+                .and_then(Value::as_str),
+            Some("Добро пожаловать")
+        );
+    }
+
+    #[test]
+    fn localized_page_metadata_is_materialized_before_render_selection() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": {
+                    "title": {
+                        "$localized": {
+                            "en": "Home",
+                            "ru": "Главная"
+                        }
+                    },
+                    "description": {
+                        "$localized": {
+                            "en": "English description",
+                            "ru": "Русское описание"
+                        }
+                    }
+                },
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let materialized = materialize_project_with_runtime_context(
+            &document,
+            &json!({ "$locale": "ru-RU" }),
+        );
+        let metadata = PageMetadata::from_page(&materialized.document.project.pages[0]);
+        assert_eq!(metadata.title.as_deref(), Some("Главная"));
+        assert_eq!(metadata.description.as_deref(), Some("Русское описание"));
+    }
+
+    #[test]
+    fn invalid_context_contract_does_not_replace_localized_root_context() {
         let document = GrapesJsV1Codec::decode_value(json!({
             "pages": [{
                 "component": {
@@ -179,9 +460,17 @@ mod tests {
             }]
         }))
         .expect("document");
-        let input = json!({ "safe": true });
+        let input = json!({
+            "$locale": "ru",
+            "safe": {
+                "$localized": {
+                    "en": "safe",
+                    "ru": "безопасно"
+                }
+            }
+        });
         let materialized = materialize_project_with_runtime_context(&document, &input);
-        assert_eq!(materialized.effective_context, input);
+        assert_eq!(materialized.effective_context["safe"], "безопасно");
         assert_eq!(materialized.defaults_applied, 0);
         assert!(materialized
             .diagnostics

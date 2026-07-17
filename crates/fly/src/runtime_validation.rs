@@ -1,12 +1,18 @@
 use crate::{
     analyze_runtime_context_dependencies, extract_runtime_context_contract,
-    validate_binding_definitions, validate_dynamic_definitions, ProjectDocument,
-    ValidationDiagnostic, ValidationReport,
+    validate_binding_definitions, validate_component_actions, validate_dynamic_definitions,
+    validate_internal_page_links, validate_localized_page_routes, validate_project_locale_policy,
+    validate_translation_definitions, ProjectDocument, ValidationDiagnostic, ValidationReport,
 };
 use std::collections::BTreeSet;
 
 pub fn validate_runtime_extensions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = extract_runtime_context_contract(document).definition_diagnostics;
+    diagnostics.extend(validate_project_locale_policy(document));
+    diagnostics.extend(validate_translation_definitions(document));
+    diagnostics.extend(validate_localized_page_routes(document));
+    diagnostics.extend(validate_internal_page_links(document));
+    diagnostics.extend(validate_component_actions(document));
     diagnostics.extend(validate_binding_definitions(document));
     diagnostics.extend(validate_dynamic_definitions(document));
     diagnostics.extend(analyze_runtime_context_dependencies(document).diagnostics);
@@ -56,6 +62,13 @@ mod tests {
             "pages": [{
                 "component": { "id": "root", "type": "wrapper" }
             }],
+            "flyTranslations": [{
+                "id": "hero",
+                "values": { "invalid locale": "Hello" }
+            }, {
+                "id": "hero",
+                "values": { "en": "Hello" }
+            }],
             "flyRuntimeContextSchema": [{
                 "id": "count",
                 "path": "count",
@@ -92,9 +105,15 @@ mod tests {
     }
 
     #[test]
-    fn runtime_validation_combines_contract_dependency_binding_and_dynamic_diagnostics() {
+    fn runtime_validation_combines_locale_translation_contract_dependency_binding_and_dynamic_diagnostics() {
         let document = invalid_runtime_document();
         let diagnostics = validate_runtime_extensions(&document);
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "translation_locale_invalid"));
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "duplicate_translation_id"));
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_context_default_type_mismatch"));
@@ -110,6 +129,123 @@ mod tests {
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_repeater_targets_page_root"));
+    }
+
+    #[test]
+    fn strict_project_locale_policy_promotes_missing_coverage_to_errors() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "flyLocales": {
+                "default_locale": "en",
+                "supported_locales": ["en", "ru"],
+                "required_locales": ["en", "ru"],
+                "enforce_required_locales": true
+            },
+            "flyTranslations": [{
+                "id": "hero",
+                "values": { "en": "Hello" }
+            }],
+            "pages": [{
+                "flyPageMeta": {
+                    "title": { "$localized": { "en": "Home" } }
+                },
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let diagnostics = validate_runtime_extensions(&document);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "translation_required_locale_missing"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "localized_metadata_required_locale_missing"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
+    }
+
+    #[test]
+    fn duplicate_localized_slugs_block_publish_validation() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "one",
+                "flyPageMeta": { "slug": { "$localized": { "en": "shared" } } },
+                "component": { "id": "root-one", "type": "wrapper" }
+            }, {
+                "id": "two",
+                "flyPageMeta": { "slug": { "$localized": { "en": "shared" } } },
+                "component": { "id": "root-two", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let diagnostics = validate_runtime_extensions(&document);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "duplicate_localized_page_slug"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
+    }
+
+    #[test]
+    fn missing_internal_page_link_target_blocks_publish_validation() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "slug": "home" },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "missing-link",
+                        "type": "link",
+                        "flyPageLink": { "page_id": "missing" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let diagnostics = validate_runtime_extensions(&document);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "internal_page_link_target_missing"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
+    }
+
+    #[test]
+    fn invalid_action_and_form_contracts_block_publish_validation() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "slug": "home" },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "form",
+                        "type": "form",
+                        "flyForm": {
+                            "id": "contact",
+                            "action_url": "/submit",
+                            "provider": "crm",
+                            "action": "create"
+                        }
+                    }, {
+                        "id": "button",
+                        "type": "button",
+                        "flyAction": {
+                            "kind": "submit_form",
+                            "form_id": "missing"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let diagnostics = validate_runtime_extensions(&document);
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "form_definition_invalid"));
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "action_definition_invalid"));
     }
 
     #[test]

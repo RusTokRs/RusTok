@@ -47,6 +47,19 @@ const files = {
   orderChange: "crates/rustok-commerce/admin/src/transport/order_change.rs",
   nativeAdapter: "crates/rustok-commerce/admin/src/transport/native_server_adapter.rs",
   commerceRoot: "crates/rustok-commerce/src/lib.rs",
+  providerOperations: "crates/rustok-commerce/src/graphql/mutations/provider_operations.rs",
+  graphqlFulfillment: "crates/rustok-commerce/src/graphql/mutations/fulfillment.rs",
+  graphqlRuntime: "crates/rustok-commerce/src/graphql_runtime.rs",
+  fulfillmentFacade: "crates/rustok-commerce/src/services/fulfillment_orchestration_facade.rs",
+  fulfillmentGuard: "apps/server/tests/commerce_fulfillment_transport_guard.rs",
+  adminChanges: "crates/rustok-commerce/src/controllers/admin/changes.rs",
+  orderChangeOrchestration:
+    "crates/rustok-commerce/src/services/order_change_orchestration.rs",
+  orderChangeGuard: "apps/server/tests/commerce_order_change_transport_guard.rs",
+  adminReturns: "crates/rustok-commerce/src/controllers/admin/returns.rs",
+  returnCompletionOrchestration:
+    "crates/rustok-commerce/src/services/return_completion_orchestration.rs",
+  returnCompletionGuard: "apps/server/tests/commerce_return_completion_transport_guard.rs",
   legacyApi: "crates/rustok-commerce/admin/src/api.rs",
   implementationPlan: "crates/rustok-commerce/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
@@ -70,6 +83,17 @@ const promotion = readRepo(files.promotion);
 const orderChange = readRepo(files.orderChange);
 const nativeAdapter = readRepo(files.nativeAdapter);
 const commerceRoot = readRepo(files.commerceRoot);
+const providerOperations = readRepo(files.providerOperations);
+const graphqlFulfillment = readRepo(files.graphqlFulfillment);
+const graphqlRuntime = readRepo(files.graphqlRuntime);
+const fulfillmentFacade = readRepo(files.fulfillmentFacade);
+const fulfillmentGuard = readRepo(files.fulfillmentGuard);
+const adminChanges = readRepo(files.adminChanges);
+const orderChangeOrchestration = readRepo(files.orderChangeOrchestration);
+const orderChangeGuard = readRepo(files.orderChangeGuard);
+const adminReturns = readRepo(files.adminReturns);
+const returnCompletionOrchestration = readRepo(files.returnCompletionOrchestration);
+const returnCompletionGuard = readRepo(files.returnCompletionGuard);
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
 const packageJson = readRepo(files.packageJson);
@@ -107,6 +131,183 @@ for (const marker of [
 }
 assertContains(commerceRoot, "pub mod graphql;", `${files.commerceRoot}: GraphQL module path must remain explicit`);
 assertContains(commerceRoot, "pub mod state_machine;", `${files.commerceRoot}: state-machine module path must remain explicit`);
+
+assertNotContains(
+  providerOperations,
+  "use rustok_fulfillment::FulfillmentService;",
+  `${files.providerOperations}: GraphQL transport must not import the fulfillment owner service`,
+);
+assertNotContains(
+  providerOperations,
+  "FulfillmentService::new(",
+  `${files.providerOperations}: GraphQL fulfillment mutations must use commerce orchestration`,
+);
+for (const operation of [
+  ".create_manual_fulfillment(",
+  ".ship_fulfillment(",
+  ".deliver_fulfillment(",
+  ".reopen_fulfillment(",
+  ".reship_fulfillment(",
+  ".cancel_fulfillment(",
+]) {
+  assertContains(
+    providerOperations,
+    operation,
+    `${files.providerOperations}: missing fulfillment orchestration call ${operation}`,
+  );
+}
+for (const method of [
+  "pub async fn deliver_fulfillment(",
+  "pub async fn reopen_fulfillment(",
+]) {
+  assertContains(
+    fulfillmentFacade,
+    method,
+    `${files.fulfillmentFacade}: missing transport-safe fulfillment facade method ${method}`,
+  );
+}
+assertContains(
+  fulfillmentGuard,
+  "graphql_fulfillment_mutations_use_commerce_orchestration",
+  `${files.fulfillmentGuard}: fulfillment transport source guard is missing`,
+);
+
+assertContains(
+  adminChanges,
+  "OrderChangeOrchestrationService::new(",
+  `${files.adminChanges}: REST order-change apply must use commerce orchestration`,
+);
+assertContains(
+  adminChanges,
+  ".apply_order_change(tenant.id, id, input.difference_refund, input.metadata)",
+  `${files.adminChanges}: REST order-change apply must pass the complete command`,
+);
+assertNotContains(
+  adminChanges,
+  "match order_change.change_type.as_str()",
+  `${files.adminChanges}: REST transport must not dispatch order-change domain types`,
+);
+
+assertContains(
+  graphqlFulfillment,
+  "order_change_orchestration_from_context(",
+  `${files.graphqlFulfillment}: GraphQL order-change apply must use composed commerce orchestration`,
+);
+assertContains(
+  graphqlFulfillment,
+  ".apply_order_change(tenant_id, id, difference_refund, metadata)",
+  `${files.graphqlFulfillment}: GraphQL order-change apply must pass the complete command`,
+);
+for (const marker of [
+  "match order_change.change_type.as_str()",
+  ".apply_exchange_order_change(",
+  ".apply_claim_order_change(",
+]) {
+  assertNotContains(
+    graphqlFulfillment,
+    marker,
+    `${files.graphqlFulfillment}: GraphQL transport must not own order-change dispatch (${marker})`,
+  );
+}
+assertContains(
+  graphqlRuntime,
+  "pub(crate) fn order_change_orchestration_from_context(",
+  `${files.graphqlRuntime}: GraphQL runtime must compose order-change orchestration`,
+);
+
+assertContains(
+  orderChangeOrchestration,
+  "match order_change.change_type.as_str()",
+  `${files.orderChangeOrchestration}: orchestration must own order-change type dispatch`,
+);
+for (const operation of [
+  ".apply_exchange_order_change(",
+  ".apply_claim_order_change(",
+  ".apply_order_change(",
+]) {
+  assertContains(
+    orderChangeOrchestration,
+    operation,
+    `${files.orderChangeOrchestration}: missing order-change orchestration call ${operation}`,
+  );
+}
+assertContains(
+  orderChangeGuard,
+  "order_change_application_uses_commerce_orchestration",
+  `${files.orderChangeGuard}: order-change transport source guard is missing`,
+);
+
+assertContains(
+  adminReturns,
+  "ReturnCompletionOrchestrationService::new(",
+  `${files.adminReturns}: REST return completion must use commerce orchestration`,
+);
+assertContains(
+  adminReturns,
+  ".complete_return(tenant.id, auth.user_id, id, command)",
+  `${files.adminReturns}: REST return completion must pass the complete command`,
+);
+for (const marker of [
+  ".create_refund_idempotent(",
+  "attach_return_order_change_context(",
+]) {
+  assertNotContains(
+    adminReturns,
+    marker,
+    `${files.adminReturns}: REST return transport must not own cross-domain orchestration (${marker})`,
+  );
+}
+
+assertContains(
+  graphqlFulfillment,
+  "return_completion_orchestration_from_context(",
+  `${files.graphqlFulfillment}: GraphQL return completion must use composed commerce orchestration`,
+);
+assertContains(
+  graphqlFulfillment,
+  ".complete_return(tenant_id, auth.user_id, id, command)",
+  `${files.graphqlFulfillment}: GraphQL return completion must pass the complete command`,
+);
+for (const marker of [
+  "build_provider_refund_resolution_return_completion(",
+  "build_exchange_resolution_return_completion(",
+  "build_claim_resolution_return_completion(",
+  ".create_refund_idempotent(",
+]) {
+  assertNotContains(
+    graphqlFulfillment,
+    marker,
+    `${files.graphqlFulfillment}: GraphQL return transport must not own cross-domain orchestration (${marker})`,
+  );
+}
+assertContains(
+  graphqlRuntime,
+  "pub(crate) fn return_completion_orchestration_from_context(",
+  `${files.graphqlRuntime}: GraphQL runtime must compose return completion orchestration`,
+);
+
+const returnValidation = returnCompletionOrchestration.indexOf("validate_completion_shape(&input)");
+const returnFirstEffect = returnCompletionOrchestration.indexOf("if let Some(refund_input) = refund");
+if (returnValidation < 0 || returnFirstEffect < 0 || returnValidation >= returnFirstEffect) {
+  fail(`${files.returnCompletionOrchestration}: complete command must be validated before side effects`);
+}
+for (const marker of [
+  "refund, exchange, and claim helpers are mutually exclusive",
+  "resolution helpers cannot be combined with explicit refund_id or order_change_id",
+  'format!("order_return:{return_id}:refund")',
+  ".complete_return(tenant_id, return_id, owner_input)",
+]) {
+  assertContains(
+    returnCompletionOrchestration,
+    marker,
+    `${files.returnCompletionOrchestration}: missing return completion invariant ${marker}`,
+  );
+}
+assertContains(
+  returnCompletionGuard,
+  "return_completion_uses_one_commerce_orchestration_boundary",
+  `${files.returnCompletionGuard}: return completion source guard is missing`,
+);
 
 assertContains(implementationPlan, "verify-commerce-admin-boundary.mjs", `${files.implementationPlan}: local plan must mention commerce admin guardrail`);
 assertContains(implementationPlan, "admin/src/transport/native_server_adapter.rs", `${files.implementationPlan}: local plan must document commerce admin native adapter location`);

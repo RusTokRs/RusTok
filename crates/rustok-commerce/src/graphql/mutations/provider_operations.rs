@@ -1,6 +1,5 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::{graphql::require_module_enabled, Permission};
-use rustok_fulfillment::FulfillmentService;
 use uuid::Uuid;
 
 use crate::graphql_runtime::{
@@ -23,12 +22,7 @@ impl CommerceProviderMutation {
         input: AuthorizePaymentCollectionInput,
     ) -> Result<GqlPaymentCollection> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::PAYMENTS_UPDATE],
-            "Permission denied: payments:update required",
-        )?;
-
+        require_commerce_permission(ctx, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let collection = payment_orchestration_from_context(ctx, db.clone())
             .authorize_collection(
@@ -43,7 +37,6 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
         Ok(collection.into())
     }
 
@@ -55,12 +48,7 @@ impl CommerceProviderMutation {
         input: CapturePaymentCollectionInput,
     ) -> Result<GqlPaymentCollection> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::PAYMENTS_UPDATE],
-            "Permission denied: payments:update required",
-        )?;
-
+        require_commerce_permission(ctx, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let collection = payment_orchestration_from_context(ctx, db.clone())
             .capture_collection(
@@ -73,7 +61,6 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
         Ok(collection.into())
     }
 
@@ -85,12 +72,7 @@ impl CommerceProviderMutation {
         input: CancelPaymentCollectionInput,
     ) -> Result<GqlPaymentCollection> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::PAYMENTS_UPDATE],
-            "Permission denied: payments:update required",
-        )?;
-
+        require_commerce_permission(ctx, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let collection = payment_orchestration_from_context(ctx, db.clone())
             .cancel_collection(
@@ -103,7 +85,6 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
         Ok(collection.into())
     }
 
@@ -112,20 +93,17 @@ impl CommerceProviderMutation {
         ctx: &Context<'_>,
         tenant_id: Uuid,
         payment_collection_id: Uuid,
+        idempotency_key: String,
         input: CreateRefundInputObject,
     ) -> Result<GqlRefund> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::PAYMENTS_UPDATE],
-            "Permission denied: payments:update required",
-        )?;
-
+        require_commerce_permission(ctx, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let refund = payment_orchestration_from_context(ctx, db.clone())
-            .create_refund(
+            .create_refund_idempotent(
                 tenant_id,
                 payment_collection_id,
+                idempotency_key,
                 crate::dto::CreateRefundInput {
                     amount: parse_decimal(&input.amount)?,
                     reason: input.reason,
@@ -134,7 +112,6 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
         Ok(refund.into())
     }
 
@@ -146,12 +123,7 @@ impl CommerceProviderMutation {
         input: CompleteRefundInputObject,
     ) -> Result<GqlRefund> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::PAYMENTS_UPDATE],
-            "Permission denied: payments:update required",
-        )?;
-
+        require_commerce_permission(ctx, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let refund = payment_orchestration_from_context(ctx, db.clone())
             .complete_refund(
@@ -163,7 +135,6 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
         Ok(refund.into())
     }
 
@@ -175,12 +146,7 @@ impl CommerceProviderMutation {
         input: CancelRefundInputObject,
     ) -> Result<GqlRefund> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::PAYMENTS_UPDATE],
-            "Permission denied: payments:update required",
-        )?;
-
+        require_commerce_permission(ctx, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let refund = payment_orchestration_from_context(ctx, db.clone())
             .cancel_refund(
@@ -193,7 +159,6 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
         Ok(refund.into())
     }
 
@@ -204,12 +169,7 @@ impl CommerceProviderMutation {
         input: CreateFulfillmentInputObject,
     ) -> Result<GqlFulfillment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_CREATE],
-            "Permission denied: fulfillments:create required",
-        )?;
-
+        require_commerce_permission(ctx, &[Permission::FULFILLMENTS_CREATE], "Permission denied: fulfillments:create required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
             .create_manual_fulfillment(
@@ -221,24 +181,19 @@ impl CommerceProviderMutation {
                     carrier: input.carrier,
                     tracking_number: input.tracking_number,
                     items: Some(
-                        input
-                            .items
-                            .into_iter()
-                            .map(|item| {
-                                Ok(crate::dto::CreateFulfillmentItemInput {
-                                    order_line_item_id: item.order_line_item_id,
-                                    quantity: item.quantity,
-                                    metadata: parse_optional_metadata(item.metadata.as_deref())?,
-                                })
+                        input.items.into_iter().map(|item| {
+                            Ok(crate::dto::CreateFulfillmentItemInput {
+                                order_line_item_id: item.order_line_item_id,
+                                quantity: item.quantity,
+                                metadata: parse_optional_metadata(item.metadata.as_deref())?,
                             })
-                            .collect::<Result<Vec<_>>>()?,
+                        }).collect::<Result<Vec<_>>>()?,
                     ),
                     metadata: parse_optional_metadata(input.metadata.as_deref())?,
                 },
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
         Ok(fulfillment.into())
     }
 
@@ -250,12 +205,7 @@ impl CommerceProviderMutation {
         input: ShipFulfillmentInputObject,
     ) -> Result<GqlFulfillment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_UPDATE],
-            "Permission denied: fulfillments:update required",
-        )?;
-
+        require_commerce_permission(ctx, &[Permission::FULFILLMENTS_UPDATE], "Permission denied: fulfillments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
             .ship_fulfillment(
@@ -264,21 +214,15 @@ impl CommerceProviderMutation {
                 crate::dto::ShipFulfillmentInput {
                     carrier: input.carrier,
                     tracking_number: input.tracking_number,
-                    items: input.items.map(|items| {
-                        items
-                            .into_iter()
-                            .map(|item| crate::dto::FulfillmentItemQuantityInput {
-                                fulfillment_item_id: item.fulfillment_item_id,
-                                quantity: item.quantity,
-                            })
-                            .collect()
-                    }),
+                    items: input.items.map(|items| items.into_iter().map(|item| crate::dto::FulfillmentItemQuantityInput {
+                        fulfillment_item_id: item.fulfillment_item_id,
+                        quantity: item.quantity,
+                    }).collect()),
                     metadata: parse_optional_metadata(input.metadata.as_deref())?,
                 },
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
         Ok(fulfillment.into())
     }
 
@@ -290,33 +234,23 @@ impl CommerceProviderMutation {
         input: DeliverFulfillmentInputObject,
     ) -> Result<GqlFulfillment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_UPDATE],
-            "Permission denied: fulfillments:update required",
-        )?;
-
+        require_commerce_permission(ctx, &[Permission::FULFILLMENTS_UPDATE], "Permission denied: fulfillments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let fulfillment = FulfillmentService::new(db.clone())
+        let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
             .deliver_fulfillment(
                 tenant_id,
                 id,
                 crate::dto::DeliverFulfillmentInput {
                     delivered_note: input.delivered_note,
-                    items: input.items.map(|items| {
-                        items
-                            .into_iter()
-                            .map(|item| crate::dto::FulfillmentItemQuantityInput {
-                                fulfillment_item_id: item.fulfillment_item_id,
-                                quantity: item.quantity,
-                            })
-                            .collect()
-                    }),
+                    items: input.items.map(|items| items.into_iter().map(|item| crate::dto::FulfillmentItemQuantityInput {
+                        fulfillment_item_id: item.fulfillment_item_id,
+                        quantity: item.quantity,
+                    }).collect()),
                     metadata: parse_optional_metadata(input.metadata.as_deref())?,
                 },
             )
-            .await?;
-
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         Ok(fulfillment.into())
     }
 
@@ -328,32 +262,22 @@ impl CommerceProviderMutation {
         input: ReopenFulfillmentInputObject,
     ) -> Result<GqlFulfillment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_UPDATE],
-            "Permission denied: fulfillments:update required",
-        )?;
-
+        require_commerce_permission(ctx, &[Permission::FULFILLMENTS_UPDATE], "Permission denied: fulfillments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let fulfillment = FulfillmentService::new(db.clone())
+        let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
             .reopen_fulfillment(
                 tenant_id,
                 id,
                 crate::dto::ReopenFulfillmentInput {
-                    items: input.items.map(|items| {
-                        items
-                            .into_iter()
-                            .map(|item| crate::dto::FulfillmentItemQuantityInput {
-                                fulfillment_item_id: item.fulfillment_item_id,
-                                quantity: item.quantity,
-                            })
-                            .collect()
-                    }),
+                    items: input.items.map(|items| items.into_iter().map(|item| crate::dto::FulfillmentItemQuantityInput {
+                        fulfillment_item_id: item.fulfillment_item_id,
+                        quantity: item.quantity,
+                    }).collect()),
                     metadata: parse_optional_metadata(input.metadata.as_deref())?,
                 },
             )
-            .await?;
-
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         Ok(fulfillment.into())
     }
 
@@ -365,12 +289,7 @@ impl CommerceProviderMutation {
         input: ReshipFulfillmentInputObject,
     ) -> Result<GqlFulfillment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_UPDATE],
-            "Permission denied: fulfillments:update required",
-        )?;
-
+        require_commerce_permission(ctx, &[Permission::FULFILLMENTS_UPDATE], "Permission denied: fulfillments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
             .reship_fulfillment(
@@ -379,21 +298,15 @@ impl CommerceProviderMutation {
                 crate::dto::ReshipFulfillmentInput {
                     carrier: input.carrier,
                     tracking_number: input.tracking_number,
-                    items: input.items.map(|items| {
-                        items
-                            .into_iter()
-                            .map(|item| crate::dto::FulfillmentItemQuantityInput {
-                                fulfillment_item_id: item.fulfillment_item_id,
-                                quantity: item.quantity,
-                            })
-                            .collect()
-                    }),
+                    items: input.items.map(|items| items.into_iter().map(|item| crate::dto::FulfillmentItemQuantityInput {
+                        fulfillment_item_id: item.fulfillment_item_id,
+                        quantity: item.quantity,
+                    }).collect()),
                     metadata: parse_optional_metadata(input.metadata.as_deref())?,
                 },
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
         Ok(fulfillment.into())
     }
 
@@ -405,12 +318,7 @@ impl CommerceProviderMutation {
         input: CancelFulfillmentInputObject,
     ) -> Result<GqlFulfillment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_UPDATE],
-            "Permission denied: fulfillments:update required",
-        )?;
-
+        require_commerce_permission(ctx, &[Permission::FULFILLMENTS_UPDATE], "Permission denied: fulfillments:update required")?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let fulfillment = fulfillment_orchestration_from_context(ctx, db.clone())
             .cancel_fulfillment(
@@ -423,7 +331,6 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
         Ok(fulfillment.into())
     }
 }

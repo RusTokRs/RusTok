@@ -70,8 +70,6 @@ impl PaymentProviderEventRecoveryService {
         self
     }
 
-    /// Resume a received, failed, or expired-processing event from its durable
-    /// normalized checkpoint. Raw provider bytes are neither required nor available.
     pub async fn resume(
         &self,
         tenant_id: Uuid,
@@ -222,6 +220,7 @@ fn normalized_from_inbox(
     })?;
     Ok(PaymentProviderWebhookResult {
         provider_id: event.provider_id.clone(),
+        delivery_id: event.delivery_id.clone(),
         external_reference: event.external_reference.clone(),
         event_type,
         replay_key: event.idempotency_key.clone(),
@@ -242,6 +241,19 @@ fn safe_recovery_error_code(error: &PaymentError) -> &'static str {
         PaymentError::Database(_) => "payment.webhook_recovery_storage_unavailable",
         PaymentError::InvalidTransition { .. } => "payment.webhook_recovery_state_conflict",
         PaymentError::Validation(_) => "payment.webhook_recovery_validation_failed",
+        PaymentError::ProviderUnavailable { .. } => {
+            "payment.webhook_recovery_provider_unavailable"
+        }
+        PaymentError::ProviderRejected { .. } => "payment.webhook_recovery_provider_rejected",
+        PaymentError::ProviderInvalidResponse { .. } => {
+            "payment.webhook_recovery_provider_invalid_response"
+        }
+        PaymentError::ProviderOutcomeUnknown { .. } => {
+            "payment.webhook_recovery_provider_outcome_unknown"
+        }
+        PaymentError::ProviderConfiguration { .. } => {
+            "payment.webhook_recovery_provider_not_configured"
+        }
         PaymentError::PaymentCollectionNotFound(_)
         | PaymentError::PaymentNotFound(_)
         | PaymentError::RefundNotFound(_) => "payment.webhook_recovery_owner_missing",

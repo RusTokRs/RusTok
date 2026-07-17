@@ -19,6 +19,10 @@ mod m20260713_000014_create_checkout_order_plans;
 mod m20260713_000015_bind_checkout_payment_collections;
 mod m20260713_000016_block_provider_execution_during_checkout_compensation;
 mod m20260713_000017_classify_checkout_reconciliation;
+mod m20260716_000003_add_order_field_cache_generation_trigger;
+mod m20260716_000004_create_return_completion_operations;
+mod m20260716_000005_enforce_return_completion_resolution_identity;
+mod m20260716_000006_create_return_completion_commands;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -44,6 +48,10 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000015_bind_checkout_payment_collections::Migration),
         Box::new(m20260713_000016_block_provider_execution_during_checkout_compensation::Migration),
         Box::new(m20260713_000017_classify_checkout_reconciliation::Migration),
+        Box::new(m20260716_000003_add_order_field_cache_generation_trigger::Migration),
+        Box::new(m20260716_000004_create_return_completion_operations::Migration),
+        Box::new(m20260716_000005_enforce_return_completion_resolution_identity::Migration),
+        Box::new(m20260716_000006_create_return_completion_commands::Migration),
     ]
 }
 
@@ -132,12 +140,28 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             "m20260713_000016_block_provider_execution_during_checkout_compensation",
             vec![
                 "m20260713_000015_bind_checkout_payment_collections",
-                "m20260713_000111_create_provider_operation_journal",
+                "m20260325_000111_create_provider_operation_journal",
             ],
         ),
         MigrationDependencyDescriptor::new(
             "m20260713_000017_classify_checkout_reconciliation",
             vec!["m20260713_000016_block_provider_execution_during_checkout_compensation"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260716_000004_create_return_completion_operations",
+            vec![
+                "m20260530_000113_add_order_return_resolution_columns",
+                "m20260529_000112_create_order_changes_table",
+                "m20260714_000119_require_refund_creation_identity",
+            ],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260716_000005_enforce_return_completion_resolution_identity",
+            vec!["m20260716_000004_create_return_completion_operations"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260716_000006_create_return_completion_commands",
+            vec!["m20260716_000005_enforce_return_completion_resolution_identity"],
         ),
     ]
 }

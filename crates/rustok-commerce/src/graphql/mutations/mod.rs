@@ -7,7 +7,6 @@ pub mod fulfillment;
 pub mod helpers;
 pub mod pricing;
 pub mod provider_operations;
-pub mod provider_return_helpers;
 pub mod reconciliation;
 
 #[derive(MergedObject, Default)]

@@ -118,9 +118,6 @@ impl PaymentProviderOperationJournal {
             .map_err(Into::into)
     }
 
-    /// Returns the durable provider history for one payment collection in
-    /// execution order. Orchestrators use this owner read to decide whether an
-    /// automatic compensation is safe or requires reconciliation first.
     pub async fn list_by_collection(
         &self,
         tenant_id: Uuid,
@@ -206,6 +203,10 @@ impl PaymentProviderOperationJournal {
         active.update(&self.db).await.map_err(Into::into)
     }
 
+    /// Record an operation whose external outcome cannot be safely retried.
+    /// This transition is valid both after a persisted provider success and
+    /// directly from `executing` when the provider may have accepted the request
+    /// but the response or local success checkpoint is uncertain.
     pub async fn mark_reconciliation_required(
         &self,
         id: Uuid,
@@ -231,11 +232,15 @@ impl PaymentProviderOperationJournal {
         }
         ensure_transition(&model.status, PROVIDER_OPERATION_COMMITTED)?;
 
+        let provider_completion_missing = model.provider_completed_at.is_none();
         let now = Utc::now();
         let mut active: provider_operation::ActiveModel = model.into();
         active.status = Set(PROVIDER_OPERATION_COMMITTED.to_string());
         active.error_message = Set(None);
         active.updated_at = Set(now.into());
+        if provider_completion_missing {
+            active.provider_completed_at = Set(Some(now.into()));
+        }
         active.committed_at = Set(Some(now.into()));
         active.update(&self.db).await.map_err(Into::into)
     }
@@ -298,14 +303,18 @@ fn ensure_transition(from: &str, to: &str) -> PaymentResult<()> {
             | (PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_SUCCEEDED)
             | (PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_ERROR)
             | (
+                PROVIDER_OPERATION_EXECUTING,
+                PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+            )
+            | (
                 PROVIDER_OPERATION_SUCCEEDED,
                 PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             )
+            | (PROVIDER_OPERATION_SUCCEEDED, PROVIDER_OPERATION_COMMITTED)
             | (
                 PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
                 PROVIDER_OPERATION_COMMITTED
             )
-            | (PROVIDER_OPERATION_SUCCEEDED, PROVIDER_OPERATION_COMMITTED)
     );
     if allowed {
         Ok(())
@@ -331,4 +340,23 @@ fn normalize_error(value: String) -> String {
         value
     };
     value.chars().take(2000).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uncertain_executing_outcome_requires_reconciliation() {
+        assert!(ensure_transition(
+            PROVIDER_OPERATION_EXECUTING,
+            PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+        )
+        .is_ok());
+        assert!(ensure_transition(
+            PROVIDER_OPERATION_PENDING,
+            PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+        )
+        .is_err());
+    }
 }

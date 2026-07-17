@@ -1,0 +1,31 @@
+[module]
+slug = "marketplace_listing"
+name = "Marketplace Listing"
+version = "0.1.0"
+description = "Marketplace Family listing identity, versioned terms, lifecycle, approval, and eligibility owner"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "none"
+
+[marketplace]
+category = "commerce"
+tags = ["marketplace", "listing", "offer", "eligibility"]
+
+[dependencies]
+marketplace_seller = { version_req = ">=0.1.0" }
+product = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "MarketplaceListingModule"
+
+[fba.provider]
+status = "in_progress"
+role = "provider"
+contract_version = "marketplace.listing.v1"
+registry = "contracts/marketplace-listing-fba-registry.json"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+
+[fba.provider.rollout]
+fallback_profiles = ["embedded_native", "remote_adapter_placeholder"]
+degraded_modes = ["listing_directory_unavailable", "listing_eligibility_unavailable"]

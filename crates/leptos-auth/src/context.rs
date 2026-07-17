@@ -1,5 +1,7 @@
 use leptos::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use leptos::task::spawn_local;
+#[cfg(target_arch = "wasm32")]
 use leptos_use::use_interval_fn;
 
 use crate::storage;
@@ -134,6 +136,7 @@ impl AuthContext {
             .unwrap_or(0)
     }
 
+    #[cfg(target_arch = "wasm32")]
     fn secs_until_expiry_untracked(&self) -> i64 {
         self.session
             .get_untracked()
@@ -195,38 +198,38 @@ pub fn AuthProvider(children: Children) -> impl IntoView {
 
     provide_context(auth_context.clone());
 
-    // On mount: fetch current user if a session exists in storage
-    let auth_for_init = auth_context.clone();
-    Effect::new(move |_| {
-        if auth_for_init.session.get().is_some() {
-            let auth = auth_for_init.clone();
-            spawn_local(async move {
-                let _ = auth.fetch_current_user().await;
-            });
-        }
-    });
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Browser compatibility mode initializes from LocalStorage and refreshes the bearer token.
+        let auth_for_init = auth_context.clone();
+        Effect::new(move |_| {
+            if auth_for_init.session.get().is_some() {
+                let auth = auth_for_init.clone();
+                spawn_local(async move {
+                    let _ = auth.fetch_current_user().await;
+                });
+            }
+        });
 
-    // Auto-refresh: every 60 seconds check token expiry
-    // - less than 5 minutes remaining → refresh token
-    // - already expired → sign out
-    let auth_for_interval = auth_context.clone();
-    use_interval_fn(
-        move || {
-            let auth = auth_for_interval.clone();
-            spawn_local(async move {
-                if auth.session.get_untracked().is_none() {
-                    return;
-                }
-                let secs = auth.secs_until_expiry_untracked();
-                if secs <= 0 {
-                    let _ = auth.sign_out().await;
-                } else if secs < 300 {
-                    let _ = auth.refresh_session().await;
-                }
-            });
-        },
-        60_000,
-    );
+        let auth_for_interval = auth_context.clone();
+        use_interval_fn(
+            move || {
+                let auth = auth_for_interval.clone();
+                spawn_local(async move {
+                    if auth.session.get_untracked().is_none() {
+                        return;
+                    }
+                    let secs = auth.secs_until_expiry_untracked();
+                    if secs <= 0 {
+                        let _ = auth.sign_out().await;
+                    } else if secs < 300 {
+                        let _ = auth.refresh_session().await;
+                    }
+                });
+            },
+            60_000,
+        );
+    }
 
     children()
 }

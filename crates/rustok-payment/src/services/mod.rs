@@ -6,6 +6,7 @@ mod provider_event_lifecycle;
 mod provider_event_recovery;
 mod provider_event_refund;
 pub mod provider_operation;
+mod refund_creation;
 
 pub use payment::PaymentService;
 pub use provider_event::{
@@ -30,3 +31,4 @@ pub use provider_operation::{
     PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_PENDING,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
+pub use refund_creation::PaymentRefundCreationService;

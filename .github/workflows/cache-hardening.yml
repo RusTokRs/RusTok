@@ -5,7 +5,18 @@ on:
     branches: [main]
     paths:
       - "crates/rustok-cache/**"
+      - "crates/flex/src/cache_generation.rs"
+      - "crates/flex/src/lib.rs"
+      - "crates/flex/tests/**"
+      - "crates/rustok-auth/Cargo.toml"
+      - "crates/rustok-auth/src/migrations/**"
+      - "crates/rustok-product/src/migrations/**"
+      - "crates/rustok-commerce/Cargo.toml"
+      - "crates/rustok-commerce/src/migrations/**"
+      - "crates/rustok-forum/src/migrations/**"
+      - "crates/rustok-channel/**"
       - "crates/rustok-core/src/cache.rs"
+      - "crates/rustok-core/src/cache_atomic.rs"
       - "crates/rustok-core/src/cache_tests.rs"
       - "crates/rustok-core/src/context.rs"
       - "crates/rustok-core/src/lib.rs"
@@ -13,42 +24,83 @@ on:
       - "crates/rustok-core/src/resilience/circuit_breaker.rs"
       - "crates/rustok-core/tests/**"
       - "crates/rustok-telemetry/src/lib.rs"
+      - "apps/server/src/controllers/channel.rs"
       - "apps/server/src/middleware/mod.rs"
       - "apps/server/src/middleware/tenant.rs"
       - "apps/server/src/middleware/tenant_tests.rs"
       - "apps/server/src/middleware/channel.rs"
+      - "apps/server/src/middleware/channel_native_wrapper.rs"
       - "apps/server/src/middleware/channel_tests.rs"
       - "apps/server/src/middleware/locale.rs"
+      - "apps/server/src/middleware/locale_base.rs"
       - "apps/server/src/middleware/rate_limit.rs"
+      - "apps/server/src/middleware/rate_limit_base.rs"
       - "apps/server/src/middleware/rate_limit_tests.rs"
       - "apps/server/src/services/app_runtime.rs"
+      - "apps/server/src/services/cache_redis_status_monitor.rs"
+      - "apps/server/src/services/channel_cache_invalidation*.rs"
       - "apps/server/src/services/event_transport_factory.rs"
+      - "apps/server/src/services/field_definition_cache.rs"
+      - "apps/server/src/services/field_definition_cache_base.rs"
+      - "apps/server/src/services/field_definition_cache_reconciliation*.rs"
+      - "apps/server/src/services/graphql_schema.rs"
+      - "apps/server/src/services/marketplace_catalog_cache.rs"
+      - "apps/server/src/services/marketplace_catalog_cache_base.rs"
       - "apps/server/src/services/module_event_dispatcher.rs"
+      - "apps/server/src/services/rbac_cache_invalidation.rs"
+      - "apps/server/src/services/rbac_invalidation_generation.rs"
+      - "apps/server/src/services/rbac_runtime.rs"
+      - "apps/server/src/services/runtime_guardrails.rs"
+      - "apps/server/src/services/runtime_guardrails_base.rs"
+      - "apps/server/src/services/seo_redirect_cache_reconciliation*.rs"
+      - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/src/services/server_runtime_context.rs"
       - "apps/server/src/services/tenant_cache_generation.rs"
       - "apps/server/src/services/tenant_cache_generation_status.rs"
       - "apps/server/src/services/tenant_generation_delivery_gate.rs"
+      - "apps/server/src/services/tenant_locale_generation*.rs"
       - "apps/server/src/services/mod.rs"
-      - "apps/server/src/services/field_definition_cache.rs"
-      - "apps/server/src/services/rbac_runtime.rs"
       - "apps/server/tests/cache_architecture_guard.rs"
       - "apps/server/tests/cache_legacy_fallback_guard.rs"
+      - "apps/server/tests/cache_redis_monitor_architecture_guard.rs"
       - "apps/server/tests/cache_redis_status_architecture_guard.rs"
-      - "apps/server/tests/channel_cache_architecture_guard.rs"
+      - "apps/server/tests/cache_worker_guardrail_architecture_guard.rs"
+      - "apps/server/tests/channel_cache*.rs"
+      - "apps/server/tests/field_definition_cache_generation_guard.rs"
+      - "apps/server/tests/field_definition_cache_runtime_guard.rs"
       - "apps/server/tests/generation_store_architecture_guard.rs"
+      - "apps/server/tests/locale_cache_architecture_guard.rs"
+      - "apps/server/tests/marketplace_cache_architecture_guard.rs"
+      - "apps/server/tests/rate_limit_cache_runtime_guard.rs"
+      - "apps/server/tests/seo_redirect_cache_reconciliation_guard.rs"
       - "apps/server/tests/tenant_cache_architecture_guard.rs"
       - "apps/server/tests/tenant_generation_concurrency_guard.rs"
       - "apps/server/tests/tenant_generation_delivery_gate_guard.rs"
       - "apps/server/tests/tenant_generation_preflight_guard.rs"
       - "apps/server/tests/tenant_generation_readiness_guard.rs"
       - "apps/server/tests/tenant_listener_handle_guard.rs"
+      - "apps/server/tests/tenant_locale_generation_guard.rs"
+      - "crates/rustok-seo/src/migrations/**"
       - "crates/rustok-seo/src/services/mod.rs"
+      - "crates/rustok-seo/src/services/services_base.rs"
       - "crates/rustok-seo/src/services/redirects.rs"
+      - "ops/prometheus/alert_rules.yml"
       - ".github/workflows/cache-hardening.yml"
   pull_request:
     paths:
       - "crates/rustok-cache/**"
+      - "crates/flex/src/cache_generation.rs"
+      - "crates/flex/src/lib.rs"
+      - "crates/flex/tests/**"
+      - "crates/rustok-auth/Cargo.toml"
+      - "crates/rustok-auth/src/migrations/**"
+      - "crates/rustok-product/src/migrations/**"
+      - "crates/rustok-commerce/Cargo.toml"
+      - "crates/rustok-commerce/src/migrations/**"
+      - "crates/rustok-forum/src/migrations/**"
+      - "crates/rustok-channel/**"
       - "crates/rustok-core/src/cache.rs"
+      - "crates/rustok-core/src/cache_atomic.rs"
       - "crates/rustok-core/src/cache_tests.rs"
       - "crates/rustok-core/src/context.rs"
       - "crates/rustok-core/src/lib.rs"
@@ -56,37 +108,67 @@ on:
       - "crates/rustok-core/src/resilience/circuit_breaker.rs"
       - "crates/rustok-core/tests/**"
       - "crates/rustok-telemetry/src/lib.rs"
+      - "apps/server/src/controllers/channel.rs"
       - "apps/server/src/middleware/mod.rs"
       - "apps/server/src/middleware/tenant.rs"
       - "apps/server/src/middleware/tenant_tests.rs"
       - "apps/server/src/middleware/channel.rs"
+      - "apps/server/src/middleware/channel_native_wrapper.rs"
       - "apps/server/src/middleware/channel_tests.rs"
       - "apps/server/src/middleware/locale.rs"
+      - "apps/server/src/middleware/locale_base.rs"
       - "apps/server/src/middleware/rate_limit.rs"
+      - "apps/server/src/middleware/rate_limit_base.rs"
       - "apps/server/src/middleware/rate_limit_tests.rs"
       - "apps/server/src/services/app_runtime.rs"
+      - "apps/server/src/services/cache_redis_status_monitor.rs"
+      - "apps/server/src/services/channel_cache_invalidation*.rs"
       - "apps/server/src/services/event_transport_factory.rs"
+      - "apps/server/src/services/field_definition_cache.rs"
+      - "apps/server/src/services/field_definition_cache_base.rs"
+      - "apps/server/src/services/field_definition_cache_reconciliation*.rs"
+      - "apps/server/src/services/graphql_schema.rs"
+      - "apps/server/src/services/marketplace_catalog_cache.rs"
+      - "apps/server/src/services/marketplace_catalog_cache_base.rs"
       - "apps/server/src/services/module_event_dispatcher.rs"
+      - "apps/server/src/services/rbac_cache_invalidation.rs"
+      - "apps/server/src/services/rbac_invalidation_generation.rs"
+      - "apps/server/src/services/rbac_runtime.rs"
+      - "apps/server/src/services/runtime_guardrails.rs"
+      - "apps/server/src/services/runtime_guardrails_base.rs"
+      - "apps/server/src/services/seo_redirect_cache_reconciliation*.rs"
+      - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/src/services/server_runtime_context.rs"
       - "apps/server/src/services/tenant_cache_generation.rs"
       - "apps/server/src/services/tenant_cache_generation_status.rs"
       - "apps/server/src/services/tenant_generation_delivery_gate.rs"
+      - "apps/server/src/services/tenant_locale_generation*.rs"
       - "apps/server/src/services/mod.rs"
-      - "apps/server/src/services/field_definition_cache.rs"
-      - "apps/server/src/services/rbac_runtime.rs"
       - "apps/server/tests/cache_architecture_guard.rs"
       - "apps/server/tests/cache_legacy_fallback_guard.rs"
+      - "apps/server/tests/cache_redis_monitor_architecture_guard.rs"
       - "apps/server/tests/cache_redis_status_architecture_guard.rs"
-      - "apps/server/tests/channel_cache_architecture_guard.rs"
+      - "apps/server/tests/cache_worker_guardrail_architecture_guard.rs"
+      - "apps/server/tests/channel_cache*.rs"
+      - "apps/server/tests/field_definition_cache_generation_guard.rs"
+      - "apps/server/tests/field_definition_cache_runtime_guard.rs"
       - "apps/server/tests/generation_store_architecture_guard.rs"
+      - "apps/server/tests/locale_cache_architecture_guard.rs"
+      - "apps/server/tests/marketplace_cache_architecture_guard.rs"
+      - "apps/server/tests/rate_limit_cache_runtime_guard.rs"
+      - "apps/server/tests/seo_redirect_cache_reconciliation_guard.rs"
       - "apps/server/tests/tenant_cache_architecture_guard.rs"
       - "apps/server/tests/tenant_generation_concurrency_guard.rs"
       - "apps/server/tests/tenant_generation_delivery_gate_guard.rs"
       - "apps/server/tests/tenant_generation_preflight_guard.rs"
       - "apps/server/tests/tenant_generation_readiness_guard.rs"
       - "apps/server/tests/tenant_listener_handle_guard.rs"
+      - "apps/server/tests/tenant_locale_generation_guard.rs"
+      - "crates/rustok-seo/src/migrations/**"
       - "crates/rustok-seo/src/services/mod.rs"
+      - "crates/rustok-seo/src/services/services_base.rs"
       - "crates/rustok-seo/src/services/redirects.rs"
+      - "ops/prometheus/alert_rules.yml"
       - ".github/workflows/cache-hardening.yml"
   workflow_dispatch:
 
@@ -117,33 +199,86 @@ jobs:
         run: |
           cargo check -p rustok-core --lib --features redis-cache
           cargo check -p rustok-cache --lib
+          cargo check -p flex --lib
+          cargo check -p rustok-auth --lib
+          cargo check -p rustok-product --lib
+          cargo check -p rustok-commerce --lib
+          cargo check -p rustok-forum --lib
+          cargo check -p rustok-channel --lib
           cargo check -p rustok-server --lib
       - name: Cache unit and architecture tests
         run: |
           cargo test -p rustok-core cache --lib --features redis-cache
+          cargo test -p rustok-core --test cache_atomic_backend_guard
           cargo test -p rustok-core circuit_breaker --lib
           cargo test -p rustok-cache --lib
-          cargo test -p rustok-cache --test atomic_cas concurrent_local_compare_and_set_has_exactly_one_winner
-          cargo test -p rustok-cache --test redis_health_regression
+          cargo test -p rustok-cache --test alert_rules_guard
+          cargo test -p rustok-cache --test atomic_cas
           cargo test -p rustok-cache --test generation_store_regression
-          cargo test -p rustok-server --test cache_architecture_guard --test cache_legacy_fallback_guard --test cache_redis_status_architecture_guard --test channel_cache_architecture_guard --test generation_store_architecture_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard
+          cargo test -p rustok-cache --test invalidation_failure_metrics
+          cargo test -p rustok-cache --test redis_health_regression
+          cargo test -p flex cache_generation --lib
+          cargo test -p rustok-channel invalidation_generation --lib
+          cargo test -p rustok-channel sqlite_triggers_advance_generation_and_replay_preserves_it --lib
+          cargo test -p rustok-server --test cache_architecture_guard --test cache_legacy_fallback_guard --test cache_redis_monitor_architecture_guard --test cache_redis_status_architecture_guard --test cache_worker_guardrail_architecture_guard --test channel_cache_architecture_guard --test field_definition_cache_generation_guard --test field_definition_cache_runtime_guard --test generation_store_architecture_guard --test locale_cache_architecture_guard --test marketplace_cache_architecture_guard --test rate_limit_cache_runtime_guard --test seo_redirect_cache_reconciliation_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard --test tenant_locale_generation_guard
+          cargo test -p rustok-server --test channel_cache_resolved_value
           cargo test -p rustok-server tenant_cache --lib
           cargo test -p rustok-server tenant_cache_generation --lib
           cargo test -p rustok-server tenant_generation_delivery_gate --lib
+          cargo test -p rustok-server tenant_locale_generation --lib
           cargo test -p rustok-server channel_cache --lib
+          cargo test -p rustok-server channel_cache_invalidation --lib
+          cargo test -p rustok-server field_definition_cache_generation --lib
           cargo test -p rustok-server rate_limit --lib
           cargo test -p rustok-server tenant_locale_cache --lib
+          cargo test -p rustok-server seo_redirect_cache_reconciliation --lib
           cargo test -p rustok-server permission_cache_weight --lib
           cargo test -p rustok-seo redirect_cache --lib
       - name: Clippy
         run: |
           cargo clippy -p rustok-core --lib --features redis-cache -- -D warnings
           cargo clippy -p rustok-cache --lib -- -D warnings
+          cargo clippy -p flex --lib -- -D warnings
+          cargo clippy -p rustok-channel --lib -- -D warnings
           cargo clippy -p rustok-server --lib -- -D warnings
       - name: Module contract
         run: |
           cargo xtask module validate cache
           cargo xtask module test cache
+
+  postgres-channel:
+    name: PostgreSQL cache generation contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_channel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_channel"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      RUSTOK_CHANNEL_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/rustok_channel
+      RUSTOK_FLEX_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/rustok_channel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-hardening
+      - name: PostgreSQL channel generation recovery
+        run: cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1
+      - name: PostgreSQL Flex generation recovery
+        run: cargo test -p flex --test postgres_cache_generation -- --ignored --nocapture --test-threads=1
 
   live-redis:
     name: Live Redis cache contract
@@ -161,6 +296,7 @@ jobs:
           --health-retries 20
     env:
       RUSTOK_CACHE_REAL_REDIS_URL: redis://127.0.0.1:6379/
+      RUSTOK_CACHE_REDIS_SERVER_BIN: /usr/bin/redis-server
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -172,7 +308,7 @@ jobs:
       - name: Redis ping
         run: |
           sudo apt-get update
-          sudo apt-get install -y redis-tools
+          sudo apt-get install -y redis-server redis-tools
           redis-cli -h 127.0.0.1 -p 6379 ping
       - name: Cache library live Redis tests
         run: cargo test -p rustok-cache --lib -- --ignored --nocapture --test-threads=1
@@ -180,3 +316,9 @@ jobs:
         run: cargo test -p rustok-cache --test atomic_cas -- --ignored --nocapture --test-threads=1
       - name: Cache hardening live Redis tests
         run: cargo test -p rustok-cache --test real_redis_hardening -- --ignored --nocapture --test-threads=1
+      - name: Tenant locale Redis recovery
+        run: cargo test -p rustok-server tenant_locale_generation --lib -- --ignored --nocapture --test-threads=1
+      - name: Channel replica Redis recovery
+        run: cargo test -p rustok-server redis_publication_drives_remote_replica_readiness_recovery --lib -- --ignored --nocapture --test-threads=1
+      - name: Channel resolved value Redis recovery
+        run: cargo test -p rustok-server --test channel_cache_resolved_value -- --ignored --nocapture --test-threads=1
