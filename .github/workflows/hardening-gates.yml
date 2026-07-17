@@ -53,62 +53,57 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Apply and validate tenant hardening completion
-        id: completion
-        shell: bash
+      - name: Apply focused SEO repair
+        run: python3 scripts/migrations/fix_seo_service_move.py
+
+      - name: Apply tenant runtime profile
+        run: python3 scripts/migrations/complete_tenant_profile_contract.py
+
+      - name: Apply tenant telemetry
+        run: python3 scripts/migrations/complete_tenant_resolution_telemetry.py
+
+      - name: Apply tenant isolation coverage
         env:
           PYTHONWARNINGS: ignore::SyntaxWarning
+        run: python3 scripts/migrations/complete_tenant_isolation_coverage.py
+
+      - name: Format changed Rust files
         run: |
-          set +e
-          {
-            python3 scripts/migrations/fix_seo_service_move.py && \
-            python3 scripts/migrations/complete_tenant_profile_contract.py && \
-            python3 scripts/migrations/complete_tenant_resolution_telemetry.py && \
-            python3 scripts/migrations/complete_tenant_isolation_coverage.py && \
-            rustfmt --edition 2021 \
-              crates/rustok-seo/src/services/services_base.rs \
-              apps/server/src/common/settings.rs \
-              apps/server/src/middleware/tenant_resolution.rs \
-              apps/server/src/middleware/tenant.rs \
-              apps/server/src/controllers/graphql.rs \
-              apps/server/tests/tenant_resolver_invariants_test.rs \
-              crates/rustok-telemetry/src/metrics.rs \
-              crates/rustok-telemetry/tests/metrics_test.rs && \
-            node scripts/verify/verify-tenant-resolution-architecture.mjs && \
-            cargo check -p rustok-seo && \
-            cargo test -p rustok-telemetry --test metrics_test && \
-            cargo test -p rustok-server tenant_policy_ && \
-            cargo test -p rustok-server middleware::tenant_resolution::tests && \
-            cargo test -p rustok-server graphql_ws_tenant_handshake_fails_closed && \
-            cargo test -p rustok-server --test tenant_resolver_invariants_test && \
-            git diff --check
-          } > /tmp/tenant-hardening-completion.log 2>&1
-          status=$?
-          cat /tmp/tenant-hardening-completion.log
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
+          rustfmt --edition 2021 \
+            crates/rustok-seo/src/services/services_base.rs \
+            apps/server/src/common/settings.rs \
+            apps/server/src/middleware/tenant_resolution.rs \
+            apps/server/src/middleware/tenant.rs \
+            apps/server/src/controllers/graphql.rs \
+            apps/server/tests/tenant_resolver_invariants_test.rs \
+            crates/rustok-telemetry/src/metrics.rs \
+            crates/rustok-telemetry/tests/metrics_test.rs
 
-      - name: Reset partial changes after failure
-        if: steps.completion.outputs.status != '0'
-        run: git reset --hard HEAD
+      - name: Verify tenant architecture
+        run: node scripts/verify/verify-tenant-resolution-architecture.mjs
 
-      - name: Remove previous failure report
-        if: steps.completion.outputs.status == '0'
-        run: rm -f TENANT_HARDENING_COMPLETION_FAILURE.md
+      - name: Check focused SEO repair
+        run: cargo check -p rustok-seo
 
-      - name: Prepare failure report
-        if: steps.completion.outputs.status != '0'
-        shell: bash
-        run: |
-          {
-            echo '# Tenant hardening completion failure'
-            echo
-            echo '```text'
-            cat /tmp/tenant-hardening-completion.log
-            echo '```'
-          } > TENANT_HARDENING_COMPLETION_FAILURE.md
+      - name: Test tenant telemetry
+        run: cargo test -p rustok-telemetry --test metrics_test
 
-      - name: Restore permanent workflow and remove staging files
+      - name: Test tenant profile policy
+        run: cargo test -p rustok-server tenant_policy_
+
+      - name: Test tenant resolver units
+        run: cargo test -p rustok-server middleware::tenant_resolution::tests
+
+      - name: Test GraphQL WebSocket tenant handshake
+        run: cargo test -p rustok-server graphql_ws_tenant_handshake_fails_closed
+
+      - name: Test tenant isolation integration
+        run: cargo test -p rustok-server --test tenant_resolver_invariants_test
+
+      - name: Verify generated diff
+        run: git diff --check
+
+      - name: Publish validated result branch
         shell: bash
         run: |
           cat > .github/workflows/hardening-gates.yml <<'WORKFLOW'
@@ -149,24 +144,16 @@ jobs:
           WORKFLOW
           sed -i 's/^          //' .github/workflows/hardening-gates.yml
           rm -f \
+            TENANT_HARDENING_COMPLETION_FAILURE.md \
             scripts/migrations/fix_seo_service_move.py \
             scripts/migrations/complete_tenant_profile_contract.py \
             scripts/migrations/complete_tenant_resolution_telemetry.py \
             scripts/migrations/complete_tenant_isolation_coverage.py \
             scripts/migrations/complete_tenant_hardening.trigger
-
-      - name: Commit atomically to main
-        shell: bash
-        run: |
+          git diff --check
+          git checkout -B agent/tenant-hardening-result
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git diff --cached --quiet && exit 0
-          if [[ "${{ steps.completion.outputs.status }}" == "0" ]]; then
-            message="security(tenant): complete runtime isolation contract"
-          else
-            message="chore: record tenant hardening completion failure"
-          fi
-          git commit -m "$message"
-          git pull --rebase origin main
-          git push origin HEAD:main
+          git commit -m "security(tenant): complete runtime isolation contract"
+          git push --force origin HEAD:agent/tenant-hardening-result
