@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 const paths = {
   flyLib: 'crates/fly/src/lib.rs',
   componentVisit: 'crates/fly/src/component_visit.rs',
+  interactionRoute: 'crates/fly/src/interaction_route.rs',
   safeUrl: 'crates/fly/src/safe_url.rs',
   internalLink: 'crates/fly/src/internal_link.rs',
   localizedRoute: 'crates/fly/src/localized_route.rs',
@@ -37,9 +38,10 @@ const localeValue = (locale, path) => path
 
 requireMarkers('flyLib', [
   'mod component_visit;',
+  'mod interaction_route;',
   'mod safe_url;',
   'pub use component_visit::{visit_project_components, ComponentVisit};',
-], 'Fly traversal and URL infrastructure');
+], 'Fly traversal, route, and URL infrastructure');
 requireMarkers('componentVisit', [
   'pub struct ComponentVisit',
   'pub fn visit_project_components(',
@@ -48,6 +50,15 @@ requireMarkers('componentVisit', [
   'project.pages[{page_index}].component',
   'immutable_and_mutable_walks_share_page_depth_and_path_contract',
 ], 'shared component visitor');
+requireMarkers('interactionRoute', [
+  'pub(crate) struct InteractionRouteCatalog',
+  'pub(crate) fn page_index',
+  'pub(crate) fn has_route',
+  'pub(crate) fn slug_for',
+  'pub(crate) fn interaction_locale_candidates',
+  'pub(crate) fn build_interaction_href',
+  'catalog_resolves_identical_locale_fallback_for_all_interactions',
+], 'shared interaction route catalog');
 requireMarkers('safeUrl', [
   'pub(crate) fn validate_safe_url',
   'pub(crate) fn normalize_safe_url',
@@ -61,6 +72,9 @@ requireMarkers('internalLink', [
   'pub fn materialize_internal_page_links',
   'pub fn validate_internal_page_links',
   'component_visit::{visit_project_components, visit_project_components_mut}',
+  'build_interaction_href',
+  'interaction_locale_candidates',
+  'InteractionRouteCatalog',
   'safe_url::normalize_safe_url',
   'GENERATED_INTERNAL_LINK_ATTRIBUTES',
   'clear_internal_link_materialization',
@@ -74,12 +88,16 @@ requireMarkers('internalLink', [
 for (const forbidden of [
   'fn materialize_node(',
   'fn validate_node(',
+  'fn page_index(',
+  'fn route_slug(',
+  'fn locale_candidates(',
+  'fn build_href(',
   '#[allow(clippy::too_many_arguments)]',
 ]) {
   rejectMarker(
     'internalLink',
     forbidden,
-    `internal links must use the shared visitor instead of ${forbidden}`,
+    `internal links must use shared infrastructure instead of ${forbidden}`,
   );
 }
 rejectMarker(
