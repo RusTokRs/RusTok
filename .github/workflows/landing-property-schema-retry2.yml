@@ -1,5 +1,6 @@
 name: Retry landing property integration
 
+# Registered exact-boundary retry.
 on:
   push:
     branches: [main]
