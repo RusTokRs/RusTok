@@ -1,11 +1,8 @@
 name: Complete tenant hardening contract
 
-# Existing-workflow trigger: apply the staged tenant hardening batch to current main.
 on:
   push:
     branches: [main]
-    paths:
-      - .github/workflows/complete-tenant-hardening.yml
   workflow_dispatch:
 
 permissions:
