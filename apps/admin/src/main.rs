@@ -26,8 +26,9 @@ async fn main() {
     };
     use rustok_pages_admin::{
         dispatch_pages_browser_intent_with_capabilities,
-        pages_editor_capability_policy_for_role, BrowserIntentEnvelope, PagesBrowserIntentError,
-        PagesBrowserIntentResponse, PagesBuilderSaveSnapshot,
+        pages_editor_capability_policy_for_role, BrowserIntentEnvelope,
+        PagesBrowserIntentAccessError, PagesBrowserIntentError, PagesBrowserIntentResponse,
+        PagesBuilderSaveSnapshot,
     };
     use serde_json::{json, Value};
 
@@ -129,33 +130,34 @@ async fn main() {
         )
     }
 
-    fn page_builder_error(error: PagesBrowserIntentError) -> (StatusCode, Json<Value>) {
-        let capability_denial = match &error {
-            PagesBrowserIntentError::Dispatch(error) => {
-                rustok_page_builder_admin::browser_capability_denial(error)
-            }
-            _ => None,
-        };
+    fn page_builder_error(error: PagesBrowserIntentAccessError) -> (StatusCode, Json<Value>) {
+        let capability_denial = error.capability_denial();
         let status = match &error {
-            PagesBrowserIntentError::PageNotFound => StatusCode::NOT_FOUND,
-            PagesBrowserIntentError::PageMismatch { .. } => StatusCode::BAD_REQUEST,
-            PagesBrowserIntentError::Dispatch(
+            PagesBrowserIntentAccessError::Capability(
+                rustok_page_builder_admin::BrowserCapabilityAccessError::Denied(_),
+            ) => StatusCode::FORBIDDEN,
+            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::PageNotFound) => {
+                StatusCode::NOT_FOUND
+            }
+            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::PageMismatch {
+                ..
+            }) => StatusCode::BAD_REQUEST,
+            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Dispatch(
                 rustok_page_builder_admin::BrowserIntentDispatchError::RevisionConflict { .. }
                 | rustok_page_builder_admin::BrowserIntentDispatchError::ProjectHashConflict { .. },
-            ) => StatusCode::CONFLICT,
-            PagesBrowserIntentError::Dispatch(_) if capability_denial.is_some() => {
-                StatusCode::FORBIDDEN
-            }
-            PagesBrowserIntentError::Draft(
+            )) => StatusCode::CONFLICT,
+            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
                 rustok_page_builder_admin::SsrDraftSessionError::GenerationConflict { .. }
                 | rustok_page_builder_admin::SsrDraftSessionError::PageMismatch { .. },
-            ) => StatusCode::CONFLICT,
-            PagesBrowserIntentError::Facade(error)
+            )) => StatusCode::CONFLICT,
+            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Facade(error))
                 if error.stable_code.as_deref() == Some("REVISION_CONFLICT") =>
             {
                 StatusCode::CONFLICT
             }
-            PagesBrowserIntentError::Transport(_) => StatusCode::BAD_GATEWAY,
+            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Transport(_)) => {
+                StatusCode::BAD_GATEWAY
+            }
             _ => StatusCode::UNPROCESSABLE_ENTITY,
         };
         let payload = match capability_denial {
@@ -163,7 +165,7 @@ async fn main() {
                 "error": error.to_string(),
                 "status": status.as_u16(),
                 "code": "FLY_CAPABILITY_DENIED",
-                "intent": denial.intent,
+                "intent": denial.intent.as_str(),
                 "capability": denial.capability.as_str(),
             }),
             None => json!({
