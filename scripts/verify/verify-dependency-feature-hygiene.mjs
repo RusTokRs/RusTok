@@ -31,7 +31,7 @@ function forbidSpec(spec, marker, dependency) {
   }
 }
 
-function walkRustFiles(relativeRoot) {
+function walkFiles(relativeRoot, predicate) {
   const absoluteRoot = path.join(repoRoot, relativeRoot);
   if (!fs.existsSync(absoluteRoot)) {
     return [];
@@ -48,7 +48,7 @@ function walkRustFiles(relativeRoot) {
       const absolute = path.join(current, entry.name);
       if (entry.isDirectory()) {
         stack.push(absolute);
-      } else if (entry.isFile() && entry.name.endsWith(".rs")) {
+      } else if (entry.isFile() && predicate(entry.name)) {
         files.push(absolute);
       }
     }
@@ -80,6 +80,41 @@ if (!postcard) {
   forbidSpec(postcard, '"heapless-cas"', "postcard");
 }
 
+const memberManifests = [
+  ...walkFiles("apps", (name) => name === "Cargo.toml"),
+  ...walkFiles("crates", (name) => name === "Cargo.toml"),
+  ...walkFiles("xtask", (name) => name === "Cargo.toml"),
+  ...walkFiles("tests", (name) => name === "Cargo.toml"),
+  ...walkFiles("ops", (name) => name === "Cargo.toml"),
+  ...walkFiles("UI", (name) => name === "Cargo.toml"),
+];
+
+for (const absolutePath of memberManifests) {
+  const source = fs.readFileSync(absolutePath, "utf8");
+  const relativePath = path.relative(repoRoot, absolutePath);
+  for (const dependency of ["sea-orm-migration", "postcard"]) {
+    const escaped = dependency.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const specs = [...source.matchAll(new RegExp(`^${escaped}\\s*=\\s*\\{([^\\n]+)\\}$`, "gm"))];
+    for (const match of specs) {
+      const spec = match[1];
+      if (!spec.includes("workspace = true")) {
+        failures.push(`${relativePath}: ${dependency} must inherit the workspace dependency policy`);
+      }
+      for (const forbidden of [
+        "default-features = true",
+        '"cli"',
+        '"sqlx-mysql"',
+        '"heapless"',
+        '"heapless-cas"',
+      ]) {
+        if (spec.includes(forbidden)) {
+          failures.push(`${relativePath}: ${dependency} member override must not include ${forbidden}`);
+        }
+      }
+    }
+  }
+}
+
 const forbiddenRustPatterns = [
   ["sea_orm_migration::cli", "SeaORM migration CLI API"],
   ["sea_orm_cli", "sea-orm-cli API"],
@@ -88,10 +123,10 @@ const forbiddenRustPatterns = [
 ];
 
 for (const absolutePath of [
-  ...walkRustFiles("apps"),
-  ...walkRustFiles("crates"),
-  ...walkRustFiles("xtask"),
-  ...walkRustFiles("tests"),
+  ...walkFiles("apps", (name) => name.endsWith(".rs")),
+  ...walkFiles("crates", (name) => name.endsWith(".rs")),
+  ...walkFiles("xtask", (name) => name.endsWith(".rs")),
+  ...walkFiles("tests", (name) => name.endsWith(".rs")),
 ]) {
   const source = fs.readFileSync(absolutePath, "utf8");
   const relativePath = path.relative(repoRoot, absolutePath);
