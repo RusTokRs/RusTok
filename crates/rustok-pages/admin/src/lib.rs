@@ -1,3 +1,4 @@
+mod access;
 mod browser_intent;
 mod builder;
 #[cfg(test)]
@@ -11,6 +12,10 @@ mod model;
 mod transport;
 pub mod ui;
 
+pub use access::{
+    pages_editor_capability_policy, pages_editor_capability_policy_for_role,
+    pages_editor_permissions_for_role, pages_editor_provider_state,
+};
 pub use browser_intent::{
     pages_browser_draft_store, PagesBrowserIntentError, PagesBrowserIntentResponse,
 };
