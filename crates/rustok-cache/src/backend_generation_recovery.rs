@@ -5,8 +5,7 @@ struct GenerationRecoveryOwner {
 static GENERATION_RECOVERY_OWNERS: OnceLock<Mutex<HashMap<usize, GenerationRecoveryOwner>>> =
     OnceLock::new();
 
-fn generation_recovery_owners(
-) -> &'static Mutex<HashMap<usize, GenerationRecoveryOwner>> {
+fn generation_recovery_owners() -> &'static Mutex<HashMap<usize, GenerationRecoveryOwner>> {
     GENERATION_RECOVERY_OWNERS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -50,11 +49,9 @@ fn unique_generation_recovery_namespace(
     let registry = backend_generations()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut prefixes = registry
-        .iter()
-        .filter_map(|(prefix, candidate)| {
-            Arc::ptr_eq(candidate, state).then(|| prefix.clone())
-        });
+    let mut prefixes = registry.iter().filter_map(|(prefix, candidate)| {
+        Arc::ptr_eq(candidate, state).then_some(prefix.clone())
+    });
     let prefix = prefixes.next()?;
     if prefixes.next().is_some() {
         None
@@ -70,6 +67,7 @@ struct GenerationRecoveryHealthBackend {
     namespace: Option<String>,
     redis_client_initialized: bool,
     owner_error: Option<CacheBackendGenerationError>,
+    _owner_identity: Arc<dyn std::any::Any + Send + Sync>,
 }
 
 impl CacheService {
@@ -82,6 +80,7 @@ impl CacheService {
             return inner;
         }
 
+        let identity = self.generation_store_identity();
         let state = match generation_state(prefix) {
             Ok(state) => state,
             Err(error) => {
@@ -92,10 +91,10 @@ impl CacheService {
                     namespace: None,
                     redis_client_initialized: self.redis_client_initialized(),
                     owner_error: Some(error),
+                    _owner_identity: identity,
                 });
             }
         };
-        let identity = self.generation_store_identity();
         let owner_error = bind_generation_recovery_owner(&state, &identity).err();
         let namespace = unique_generation_recovery_namespace(&state);
 
@@ -106,6 +105,7 @@ impl CacheService {
             namespace,
             redis_client_initialized: self.redis_client_initialized(),
             owner_error,
+            _owner_identity: identity,
         })
     }
 }
@@ -137,7 +137,7 @@ impl GenerationRecoveryHealthBackend {
         }
         self.state.observe(generation.value()).map_err(Self::error)?;
         tracing::info!(
-            namespace,
+            namespace = %namespace,
             generation = generation.value(),
             "Recovered trusted shared cache backend generation"
         );
