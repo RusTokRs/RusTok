@@ -3,12 +3,30 @@ use leptos::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
 use fly::EditorCommand;
+#[cfg(any(target_arch = "wasm32", test))]
+use fly_ui::{CanvasRect, ResizeHandle, ViewportState};
 #[cfg(target_arch = "wasm32")]
-use fly_ui::{CanvasRect, ResizeHandle, ResizePolicy, ResizeResult, UiIntent, ViewportState};
+use fly_ui::{ResizePolicy, ResizeResult, UiIntent};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{Element, EventTarget, PointerEvent};
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg(any(target_arch = "wasm32", test))]
+struct SvgRectGeometry {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg(any(target_arch = "wasm32", test))]
+struct SvgPoint {
+    x: f64,
+    y: f64,
+}
 
 #[cfg(target_arch = "wasm32")]
 #[component]
@@ -31,10 +49,18 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
     ];
     let frame_runtime = runtime.clone();
     let preview_runtime = runtime.clone();
+    let preview_geometry = Memo::new(move |_| {
+        preview_runtime.controller.with(|controller| {
+            preview
+                .get()
+                .map(|result| svg_rect_geometry(result.rect, controller.ui().state.viewport))
+        })
+    });
 
     view! {
-        <div
-            class="pointer-events-none absolute inset-0"
+        <svg
+            aria-hidden="false"
+            class="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
             class:hidden=move || frame_runtime.controller.with(|controller| {
                 controller
                     .selected_component_view()
@@ -42,33 +68,40 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                     || controller.ui().state.overlays.selected.is_none()
             })
         >
-            <div
+            <rect
                 aria-hidden="true"
-                class="pointer-events-none absolute border-2 border-violet-500 bg-violet-500/5"
-                class:hidden=move || preview.get().is_none()
-                style=move || preview_runtime.controller.with(|controller| {
-                    preview
-                        .get()
-                        .map(|result| rect_style(result.rect, controller.ui().state.viewport))
-                        .unwrap_or_else(|| "display:none".to_string())
-                })
-            ></div>
+                class="pointer-events-none fill-violet-500/5 stroke-violet-500 stroke-2"
+                class:hidden=move || preview_geometry.get().is_none()
+                x=move || preview_geometry.get().map(|value| value.x).unwrap_or_default()
+                y=move || preview_geometry.get().map(|value| value.y).unwrap_or_default()
+                width=move || preview_geometry.get().map(|value| value.width).unwrap_or_default()
+                height=move || preview_geometry.get().map(|value| value.height).unwrap_or_default()
+            ></rect>
             {handles.into_iter().map(|handle| {
                 let runtime = runtime.clone();
+                let position_runtime = runtime.clone();
+                let position = Memo::new(move |_| position_runtime.controller.with(|controller| {
+                    let viewport = controller.ui().state.viewport;
+                    let rect = preview
+                        .get()
+                        .map(|result| result.rect)
+                        .or(controller.ui().state.overlays.selected);
+                    rect.map(|rect| svg_handle_position(rect, viewport, handle))
+                }));
+                let class = format!(
+                    "pointer-events-auto fill-white stroke-violet-700 stroke-1 drop-shadow focus-visible:stroke-primary {}",
+                    resize_handle_cursor_class(handle),
+                );
                 view! {
-                    <button
-                        type="button"
+                    <circle
+                        role="button"
+                        tabindex="0"
                         aria-label=format!("Resize {handle:?}")
-                        class="pointer-events-auto absolute h-3 w-3 rounded-full border border-violet-700 bg-white shadow"
-                        style=move || runtime.controller.with(|controller| {
-                            let viewport = controller.ui().state.viewport;
-                            let rect = preview
-                                .get()
-                                .map(|result| result.rect)
-                                .or(controller.ui().state.overlays.selected);
-                            rect.map(|rect| handle_style(rect, viewport, handle))
-                                .unwrap_or_else(|| "display:none".to_string())
-                        })
+                        class=class
+                        class:hidden=move || position.get().is_none()
+                        cx=move || position.get().map(|value| value.x).unwrap_or_default()
+                        cy=move || position.get().map(|value| value.y).unwrap_or_default()
+                        r="6"
                         on:pointerdown={
                             let runtime = runtime.clone();
                             move |event: PointerEvent| {
@@ -114,10 +147,10 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                                 preview.set(None);
                             }
                         }
-                    ></button>
+                    ></circle>
                 }
             }).collect_view()}
-        </div>
+        </svg>
     }
 }
 
@@ -182,39 +215,45 @@ fn install_resize_listeners(
     }
 }
 
-#[cfg(target_arch = "wasm32")]
-fn rect_style(rect: CanvasRect, viewport: ViewportState) -> String {
+#[cfg(any(target_arch = "wasm32", test))]
+fn svg_rect_geometry(rect: CanvasRect, viewport: ViewportState) -> SvgRectGeometry {
     let zoom = f64::from(viewport.zoom.max(0.01));
-    format!(
-        "display:block;left:{}px;top:{}px;width:{}px;height:{}px",
-        rect.x * zoom,
-        rect.y * zoom,
-        rect.width * zoom,
-        rect.height * zoom,
-    )
+    SvgRectGeometry {
+        x: rect.x * zoom,
+        y: rect.y * zoom,
+        width: rect.width * zoom,
+        height: rect.height * zoom,
+    }
 }
 
-#[cfg(target_arch = "wasm32")]
-fn handle_style(rect: CanvasRect, viewport: ViewportState, handle: ResizeHandle) -> String {
-    let zoom = f64::from(viewport.zoom.max(0.01));
-    let left = rect.x * zoom;
-    let top = rect.y * zoom;
-    let width = rect.width * zoom;
-    let height = rect.height * zoom;
-    let (x, y, cursor) = match handle {
-        ResizeHandle::North => (left + width / 2.0, top, "ns-resize"),
-        ResizeHandle::NorthEast => (left + width, top, "nesw-resize"),
-        ResizeHandle::East => (left + width, top + height / 2.0, "ew-resize"),
-        ResizeHandle::SouthEast => (left + width, top + height, "nwse-resize"),
-        ResizeHandle::South => (left + width / 2.0, top + height, "ns-resize"),
-        ResizeHandle::SouthWest => (left, top + height, "nesw-resize"),
-        ResizeHandle::West => (left, top + height / 2.0, "ew-resize"),
-        ResizeHandle::NorthWest => (left, top, "nwse-resize"),
+#[cfg(any(target_arch = "wasm32", test))]
+fn svg_handle_position(rect: CanvasRect, viewport: ViewportState, handle: ResizeHandle) -> SvgPoint {
+    let geometry = svg_rect_geometry(rect, viewport);
+    let right = geometry.x + geometry.width;
+    let bottom = geometry.y + geometry.height;
+    let center_x = geometry.x + geometry.width / 2.0;
+    let center_y = geometry.y + geometry.height / 2.0;
+    let (x, y) = match handle {
+        ResizeHandle::North => (center_x, geometry.y),
+        ResizeHandle::NorthEast => (right, geometry.y),
+        ResizeHandle::East => (right, center_y),
+        ResizeHandle::SouthEast => (right, bottom),
+        ResizeHandle::South => (center_x, bottom),
+        ResizeHandle::SouthWest => (geometry.x, bottom),
+        ResizeHandle::West => (geometry.x, center_y),
+        ResizeHandle::NorthWest => (geometry.x, geometry.y),
     };
-    format!(
-        "display:block;left:{}px;top:{}px;transform:translate(-50%,-50%);cursor:{cursor}",
-        x, y,
-    )
+    SvgPoint { x, y }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn resize_handle_cursor_class(handle: ResizeHandle) -> &'static str {
+    match handle {
+        ResizeHandle::North | ResizeHandle::South => "cursor-ns-resize",
+        ResizeHandle::NorthEast | ResizeHandle::SouthWest => "cursor-nesw-resize",
+        ResizeHandle::East | ResizeHandle::West => "cursor-ew-resize",
+        ResizeHandle::SouthEast | ResizeHandle::NorthWest => "cursor-nwse-resize",
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -222,4 +261,41 @@ fn handle_style(rect: CanvasRect, viewport: ViewportState, handle: ResizeHandle)
 pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
     let _ = runtime;
     view! { <span class="hidden" aria-hidden="true"></span> }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resize_geometry_uses_svg_attributes_and_bounded_cursor_classes() {
+        let viewport = ViewportState {
+            zoom: 0.5,
+            ..ViewportState::default()
+        };
+        let rect = CanvasRect {
+            x: 10.0,
+            y: 20.0,
+            width: 100.0,
+            height: 40.0,
+        };
+
+        assert_eq!(
+            svg_rect_geometry(rect, viewport),
+            SvgRectGeometry {
+                x: 5.0,
+                y: 10.0,
+                width: 50.0,
+                height: 20.0,
+            }
+        );
+        assert_eq!(
+            svg_handle_position(rect, viewport, ResizeHandle::SouthEast),
+            SvgPoint { x: 55.0, y: 30.0 }
+        );
+        assert_eq!(
+            resize_handle_cursor_class(ResizeHandle::NorthEast),
+            "cursor-nesw-resize"
+        );
+    }
 }
