@@ -1,5 +1,5 @@
 use axum::{
-    body::{to_bytes, Body},
+    body::to_bytes,
     extract::Request,
     http::{header::CONTENT_TYPE, Method, StatusCode},
     response::{IntoResponse, Response},
@@ -91,7 +91,7 @@ pub(crate) async fn handle(request: Request) -> Response {
     StatusCode::NO_CONTENT.into_response()
 }
 
-fn content_type_is_supported(request: &Request<Body>) -> bool {
+fn content_type_is_supported(request: &Request) -> bool {
     let Some(value) = request.headers().get(CONTENT_TYPE) else {
         return true;
     };
@@ -215,13 +215,7 @@ fn sanitized_location(value: Option<&str>) -> Option<String> {
         });
     }
 
-    Some(
-        value
-            .chars()
-            .filter(|character| !character.is_control())
-            .take(120)
-            .collect(),
-    )
+    Some("opaque".to_string())
 }
 
 #[cfg(test)]
@@ -265,6 +259,18 @@ mod tests {
         assert_eq!(normalized_directive(Some("script-src-attr")), "script-src");
         assert_eq!(normalized_directive(Some("style-src-elem")), "style-src");
         assert_eq!(normalized_directive(Some("unknown-directive")), "other");
+    }
+
+    #[test]
+    fn location_telemetry_drops_paths_queries_and_opaque_values() {
+        assert_eq!(
+            sanitized_location(Some("https://admin.example.com/orders?token=secret")).as_deref(),
+            Some("https://admin.example.com")
+        );
+        assert_eq!(
+            sanitized_location(Some("/private/path?token=secret")).as_deref(),
+            Some("opaque")
+        );
     }
 
     #[test]
