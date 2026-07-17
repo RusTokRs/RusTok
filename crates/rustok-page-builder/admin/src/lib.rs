@@ -23,7 +23,9 @@ pub use draft_session::{
     SsrDraftSessionStore,
 };
 pub use model::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
-pub use palette_access::dispatch_browser_intent_with_palette_access;
+pub use palette_access::{
+    dispatch_browser_intent_with_palette_access, validate_browser_palette_access,
+};
 pub use transport::{
     PageBuilderAdminFacade, PageBuilderAdminFacadeError, PageBuilderAdminFacadeFuture,
 };
