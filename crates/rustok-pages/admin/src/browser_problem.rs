@@ -22,8 +22,13 @@ pub struct PagesBrowserIntentProblem {
     pub code: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intent: Option<String>,
+    /// Backward-compatible primary missing capability.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capability: Option<EditorCapability>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required: Vec<EditorCapability>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing: Vec<EditorCapability>,
 }
 
 impl PagesBrowserIntentProblem {
@@ -35,6 +40,8 @@ impl PagesBrowserIntentProblem {
                 code: Some(BROWSER_CAPABILITY_DENIAL_CODE.to_string()),
                 intent: Some(denial.intent.clone()),
                 capability: Some(denial.capability),
+                required: denial.required.clone(),
+                missing: denial.missing.clone(),
             };
         }
 
@@ -44,6 +51,8 @@ impl PagesBrowserIntentProblem {
             code: None,
             intent: None,
             capability: None,
+            required: Vec::new(),
+            missing: Vec::new(),
         }
     }
 }
@@ -107,6 +116,8 @@ mod tests {
             BrowserCapabilityDenial {
                 intent: "save".to_string(),
                 capability: EditorCapability::Publish,
+                required: vec![EditorCapability::Publish],
+                missing: vec![EditorCapability::Publish],
             }
             .into(),
         );
@@ -118,6 +129,8 @@ mod tests {
         );
         assert_eq!(problem.intent.as_deref(), Some("save"));
         assert_eq!(problem.capability, Some(EditorCapability::Publish));
+        assert_eq!(problem.required, vec![EditorCapability::Publish]);
+        assert_eq!(problem.missing, vec![EditorCapability::Publish]);
         assert_eq!(
             serde_json::to_value(&problem).expect("serialize problem"),
             json!({
@@ -125,8 +138,33 @@ mod tests {
                 "error": "browser intent `save` requires editor capability `publish`",
                 "code": "FLY_CAPABILITY_DENIED",
                 "intent": "save",
-                "capability": "publish"
+                "capability": "publish",
+                "required": ["publish"],
+                "missing": ["publish"]
             })
+        );
+    }
+
+    #[test]
+    fn multiple_missing_capabilities_are_preserved_for_clients() {
+        let error = PagesBrowserIntentAccessError::Capability(
+            BrowserCapabilityDenial {
+                intent: "select_asset".to_string(),
+                capability: EditorCapability::Properties,
+                required: vec![EditorCapability::Properties, EditorCapability::Assets],
+                missing: vec![EditorCapability::Properties, EditorCapability::Assets],
+            }
+            .into(),
+        );
+        let problem = PagesBrowserIntentProblem::from(&error);
+        assert_eq!(problem.status, HTTP_FORBIDDEN);
+        assert_eq!(
+            problem.required,
+            vec![EditorCapability::Properties, EditorCapability::Assets]
+        );
+        assert_eq!(
+            problem.missing,
+            vec![EditorCapability::Properties, EditorCapability::Assets]
         );
     }
 
@@ -143,6 +181,8 @@ mod tests {
         assert!(problem.code.is_none());
         assert!(problem.intent.is_none());
         assert!(problem.capability.is_none());
+        assert!(problem.required.is_empty());
+        assert!(problem.missing.is_empty());
     }
 
     #[test]
@@ -163,5 +203,7 @@ mod tests {
         let problem = PagesBrowserIntentProblem::from(&error);
         assert_eq!(problem.status, HTTP_UNPROCESSABLE_ENTITY);
         assert!(problem.code.is_none());
+        assert!(problem.required.is_empty());
+        assert!(problem.missing.is_empty());
     }
 }
