@@ -1,7 +1,7 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
 use fly::{AssetCatalog, AssetCommand, EditorCommand};
-use fly_ui::UiIntent;
+use fly_ui::{EditorCapability, UiIntent};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 use serde_json::json;
@@ -68,6 +68,7 @@ pub(crate) fn AssetSection(runtime: AdminEditorRuntime) -> impl IntoView {
                     });
                     catalog.assets.into_iter().map(|asset| {
                         let use_runtime = list_runtime.clone();
+                        let use_disabled_runtime = list_runtime.clone();
                         let remove_runtime = list_runtime.clone();
                         let use_id = asset.id.clone();
                         let remove_id = asset.id.clone();
@@ -81,6 +82,9 @@ pub(crate) fn AssetSection(runtime: AdminEditorRuntime) -> impl IntoView {
                                     <button
                                         type="button"
                                         class="rounded border border-border px-2 py-1"
+                                        disabled=move || !use_disabled_runtime.capability_enabled(
+                                            EditorCapability::Properties,
+                                        )
                                         on:click=move |_| {
                                             let intent = use_runtime.controller.with(|controller| {
                                                 controller.apply_asset_to_selected_intent(&use_id, "src")
