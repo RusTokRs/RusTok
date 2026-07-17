@@ -1,31 +1,27 @@
-use super::model::{ComponentAction, ComponentForm, FormEncoding, FormMethod, FLY_ACTION_FIELD, FLY_FORM_FIELD};
+use super::model::{
+    ComponentAction, ComponentForm, FormEncoding, FormMethod, FLY_ACTION_FIELD, FLY_FORM_FIELD,
+};
 use crate::{
-    component_visit::visit_project_components, localized_page_route_index,
-    safe_url::validate_safe_url as validate_shared_safe_url, ComponentObject, ProjectDocument,
-    ValidationDiagnostic, ValidationSeverity, FLY_PAGE_LINK_FIELD,
+    component_visit::visit_project_components,
+    interaction_route::InteractionRouteCatalog,
+    safe_url::validate_safe_url as validate_shared_safe_url,
+    ComponentObject, ProjectDocument, ValidationDiagnostic, ValidationSeverity, FLY_PAGE_LINK_FIELD,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) type PageIndex = BTreeMap<String, usize>;
 pub(super) type FormIndex = BTreeMap<String, String>;
 
 struct ActionValidation<'a> {
-    page_ids: &'a PageIndex,
-    route_pages: &'a BTreeSet<usize>,
+    routes: &'a InteractionRouteCatalog,
     form_ids: &'a FormIndex,
 }
 
 pub fn validate_component_actions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
-    let page_ids = page_index(document);
-    let route_pages = localized_page_route_index(document)
-        .into_iter()
-        .map(|entry| entry.page_index)
-        .collect::<BTreeSet<_>>();
+    let routes = InteractionRouteCatalog::from_document(document);
     let form_ids = collect_form_ids(document);
     let validation = ActionValidation {
-        page_ids: &page_ids,
-        route_pages: &route_pages,
+        routes: &routes,
         form_ids: &form_ids,
     };
     let mut diagnostics = Vec::new();
@@ -41,16 +37,6 @@ pub fn validate_component_actions(document: &ProjectDocument) -> Vec<ValidationD
         );
     });
     diagnostics
-}
-
-pub(super) fn page_index(document: &ProjectDocument) -> PageIndex {
-    document
-        .project
-        .pages
-        .iter()
-        .enumerate()
-        .filter_map(|(index, page)| page.id.as_deref().map(|id| (id.to_string(), index)))
-        .collect()
 }
 
 pub(super) fn collect_form_ids(document: &ProjectDocument) -> FormIndex {
@@ -129,13 +115,9 @@ fn validate_component(
 
     if let Some(raw) = component.extensions.get(FLY_ACTION_FIELD).cloned() {
         match serde_json::from_value::<ComponentAction>(raw) {
-            Ok(action) => validate_action(
-                &action,
-                path,
-                component_id,
-                validation,
-                diagnostics,
-            ),
+            Ok(action) => {
+                validate_action(&action, path, component_id, validation, diagnostics)
+            }
             Err(error) => diagnostics.push(action_diagnostic(
                 ValidationSeverity::Error,
                 "action_definition_invalid",
@@ -221,8 +203,8 @@ fn validate_action(
                 }
                 Ok(())
             })
-            .and_then(|_| match validation.page_ids.get(page_id).copied() {
-                Some(page_index) if validation.route_pages.contains(&page_index) => Ok(()),
+            .and_then(|_| match validation.routes.page_index(page_id) {
+                Some(page_index) if validation.routes.has_route(page_index) => Ok(()),
                 Some(_) if fallback_href.is_some() => Ok(()),
                 Some(_) => Err(format!("target page `{page_id}` has no explicit slug")),
                 None => Err(format!("target page `{page_id}` does not exist")),
