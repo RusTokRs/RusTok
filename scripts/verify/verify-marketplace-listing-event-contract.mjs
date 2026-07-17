@@ -182,6 +182,7 @@ for (const marker of [
 for (const marker of [
   "completed_receipt_commits_one_contract_event_and_replay_adds_none",
   "missing_outbox_storage_rolls_back_the_pending_receipt",
+  "receipt_completion_failure_rolls_back_the_inserted_outbox_event",
 ]) requireMarker(sources.ownerTests, marker, files.ownerTests);
 for (const forbidden of [
   '"legacy_snapshot" =>',
