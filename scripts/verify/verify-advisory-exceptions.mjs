@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Enforces that every cargo-deny advisory ignore has a complete, time-bounded
-// register entry and that expired exceptions cannot silently remain active.
+// Enforces that every advisory ignore in cargo-deny or cargo-audit has a
+// complete, time-bounded active register entry.
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -18,22 +18,48 @@ function fail(message) {
   failures.push(message);
 }
 
+function tomlSection(source, sectionName) {
+  const marker = `[${sectionName}]`;
+  const start = source.indexOf(marker);
+  if (start === -1) {
+    return "";
+  }
+  const nextSection = source.indexOf("\n[", start + marker.length);
+  return source.slice(start + marker.length, nextSection === -1 ? source.length : nextSection);
+}
+
 function parseIgnoredAdvisories(source) {
-  const advisorySection = /^\[advisories\]([\s\S]*?)(?=^\[|\Z)/m.exec(source)?.[1] ?? "";
+  const advisorySection = tomlSection(source, "advisories");
   const ignoreBlock = /\bignore\s*=\s*\[([\s\S]*?)\]/m.exec(advisorySection)?.[1] ?? "";
   return new Set([...ignoreBlock.matchAll(/"(RUSTSEC-\d{4}-\d{4})"/g)].map((match) => match[1]));
 }
 
-function parseRegister(source) {
+function markdownSection(source, heading, nextHeadings) {
+  const start = source.indexOf(heading);
+  if (start === -1) {
+    return "";
+  }
+  const candidates = nextHeadings
+    .map((nextHeading) => source.indexOf(nextHeading, start + heading.length))
+    .filter((index) => index !== -1);
+  const end = candidates.length > 0 ? Math.min(...candidates) : source.length;
+  return source.slice(start + heading.length, end);
+}
+
+function parseActiveRegister(source) {
+  const activeSection = markdownSection(source, "## Active Exceptions", [
+    "## Closed Exceptions",
+    "## Required Verification",
+  ]);
   const entries = new Map();
   const heading = /^###\s+(RUSTSEC-\d{4}-\d{4})\b.*$/gm;
-  const matches = [...source.matchAll(heading)];
+  const matches = [...activeSection.matchAll(heading)];
 
   matches.forEach((match, index) => {
     const id = match[1];
     const start = match.index ?? 0;
-    const end = matches[index + 1]?.index ?? source.length;
-    const block = source.slice(start, end);
+    const end = matches[index + 1]?.index ?? activeSection.length;
+    const block = activeSection.slice(start, end);
     const fields = new Map();
 
     for (const row of block.matchAll(/^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$/gm)) {
@@ -63,10 +89,15 @@ function parseIsoDate(value) {
   return Date.UTC(Number(year), Number(month) - 1, Number(day));
 }
 
-const denySource = readRepo("deny.toml");
-const registerSource = readRepo("docs/security/advisory-exceptions.md");
-const ignored = parseIgnoredAdvisories(denySource);
-const registered = parseRegister(registerSource);
+const policyFiles = ["deny.toml", ".cargo/audit.toml"];
+const ignoredByPolicy = new Map(
+  policyFiles.map((relativePath) => [
+    relativePath,
+    parseIgnoredAdvisories(readRepo(relativePath)),
+  ]),
+);
+const ignored = new Set([...ignoredByPolicy.values()].flatMap((ids) => [...ids]));
+const active = parseActiveRegister(readRepo("docs/security/advisory-exceptions.md"));
 const requiredFields = [
   "Severity",
   "Risk",
@@ -85,9 +116,12 @@ const requiredFields = [
 const today = utcDateOnly(new Date());
 
 for (const id of ignored) {
-  const fields = registered.get(id);
+  const fields = active.get(id);
+  const policyLocations = [...ignoredByPolicy.entries()]
+    .filter(([, ids]) => ids.has(id))
+    .map(([relativePath]) => relativePath);
   if (!fields) {
-    fail(`deny.toml ignores ${id}, but the advisory exception register has no entry`);
+    fail(`${policyLocations.join(", ")} ignore ${id}, but the active exception register has no entry`);
     continue;
   }
 
@@ -106,19 +140,12 @@ for (const id of ignored) {
     fail(`${id}: exception expired on ${expiryText}; remove the ignore or approve a new exception`);
   }
 
-  if (fields.get("Repository policy location") !== "`deny.toml`") {
-    fail(`${id}: Repository policy location must point to deny.toml`);
+  const policyLocation = fields.get("Repository policy location") ?? "";
+  for (const relativePath of policyLocations) {
+    if (!policyLocation.includes(relativePath)) {
+      fail(`${id}: Repository policy location must mention ${relativePath}`);
+    }
   }
-}
-
-for (const id of registered.keys()) {
-  if (!ignored.has(id)) {
-    fail(`${id}: active register entry is not present in deny.toml ignore list`);
-  }
-}
-
-if (ignored.size === 0 && registered.size > 0) {
-  fail("advisory register contains active entries while deny.toml has no ignored advisories");
 }
 
 if (failures.length > 0) {
