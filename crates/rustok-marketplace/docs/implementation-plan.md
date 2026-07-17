@@ -4,9 +4,10 @@ Last reviewed: 2026-07-17
 
 ## Status
 
-- FFA status: `not_started`.
+- FFA status: `in_progress`.
 - FBA status: `in_progress`.
-- Structural shape: `no_ui_boundary`.
+- Root structural shape: `no_ui_boundary`.
+- Owner FFA source work: `in_progress`.
 - Family source gate: `open`.
 - Production promotion gate: `closed`.
 
@@ -23,11 +24,13 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Communicate through typed FBA ports carrying tenant, actor, effective locale,
   channel, correlation, deadline, and idempotency context.
 - [x] Keep host applications and FFA packages free of owner policy and owner entities.
-- [x] Use `core_only -> core_transport -> core_transport_ui`.
+- [x] Use `core_only -> core_transport -> core_transport_ui` inside each owner.
 - [x] Require explicit native/GraphQL transport selection; silent fallback is
   forbidden.
 - [x] Preserve unknown legacy facts as explicit unknown provenance; never fabricate
   actor, locale, provider, or financial attribution during migration.
+- [x] Allow hosts to provide request-scoped typed port/runtime composition without
+  constructing owner dependencies inside FFA packages.
 - [ ] Retain compiled in-process/remote-profile evidence before FBA
   `transport_verified`.
 - [ ] Retain mounted native/GraphQL parity before FFA `phase_b_ready`.
@@ -41,7 +44,8 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Publish `rustok-marketplace-seller` and `rustok-marketplace-listing` owners.
 - [x] Register seller, listing, and root modules as opt-in; Marketplace is not
   default-enabled.
-- [x] Add family, seller transport, listing lifecycle, and provenance source guards.
+- [x] Add family, seller transport, listing lifecycle, provenance, and listing FFA
+  source guards.
 
 ## Owner boundaries
 
@@ -72,8 +76,15 @@ migration, contention, mounted-transport, and remote-profile evidence.
   nullable actor/locale and source-column metadata.
 - [x] Remove `approval_note` and `suspension_reason` from final listing storage and
   DTOs without fabricating legacy attribution.
+- [x] Publish the initial `rustok-marketplace-listing-admin` owner FFA package with
+  model/core/transport/i18n/Leptos boundaries.
+- [x] Preserve command idempotency across explicit UI retry and render legacy history
+  as unknown attribution.
+- [x] Require request-scoped typed ports for native FFA composition and fail closed for
+  the currently unmounted GraphQL profile.
 - [ ] Publish listing events through transactional outbox ownership.
-- [ ] Add module-owned listing FFA package and native/GraphQL transports.
+- [ ] Register listing FFA in workspace/hosts, add platform permissions, and mount real
+  native/GraphQL transports.
 - [ ] Retain compiled/mounted FBA and FFA evidence.
 
 ### Future owners
@@ -88,8 +99,8 @@ migration, contention, mounted-transport, and remote-profile evidence.
 ## FBA promotion
 
 - [ ] Reach family `boundary_ready` after compiled seller/listing contracts,
-  clean/upgraded migrations, provenance/event/receipt contention tests, root consumer
-  execution, and retained source guards.
+  clean/upgraded migrations, provenance/event/receipt/outbox contention tests, root
+  consumer execution, and retained source guards.
 - [ ] Reach family `transport_verified` only after in-process/remote timeout,
   degraded-mode, fallback, and mounted consumer evidence.
 
@@ -100,21 +111,22 @@ by owner modules. A future Marketplace control room may only compose owner view
 models and transport facades.
 
 - [ ] Seller FFA: retain mounted native/GraphQL parity and localized errors.
-- [ ] Listing FFA: publish module-owned core/model/transport/i18n/Leptos package and
-  retain mounted native/GraphQL parity.
+- [ ] Listing FFA: register and mount the owner package, add listing permissions and
+  real GraphQL roots, then retain native/GraphQL parity.
 - [ ] Keep vendor portal, platform admin, and storefront hosts as composition shells.
 
 ## Immediate execution order
 
 1. [x] Complete immutable listing events and remove direct write bypasses.
 2. [x] Backfill truthful legacy snapshots and remove mutable note columns.
-3. [ ] Publish listing events through transactional outbox ownership.
-4. [ ] Complete immutable seller lifecycle/moderation events.
-5. [ ] Add listing FFA package and explicit native/GraphQL transports.
-6. [ ] Compile seller/listing/root contracts and apply SQLite/PostgreSQL migrations.
-7. [ ] Execute idempotency, provenance, locale, tenant, contention, restart, and
-   mounted transport scenarios.
-8. [ ] Start seller order allocation, commission, ledger, and payout owners in order.
+3. [x] Publish the initial listing FFA source package.
+4. [ ] Define and atomically publish the versioned listing outbox event.
+5. [ ] Complete immutable seller lifecycle/moderation events.
+6. [ ] Add listing permissions, workspace/host composition, and real GraphQL roots.
+7. [ ] Compile seller/listing/root contracts and apply SQLite/PostgreSQL migrations.
+8. [ ] Execute idempotency, provenance, locale, tenant, outbox, contention, restart,
+   and mounted transport scenarios.
+9. [ ] Start seller order allocation, commission, ledger, and payout owners in order.
 
 ## Source evidence
 
@@ -124,11 +136,17 @@ models and transport facades.
 - `../rustok-marketplace-seller/docs/implementation-plan.md`
 - `../rustok-marketplace-listing/docs/implementation-plan.md`
 - `../rustok-marketplace-listing/src/migrations/m20260717_000003_backfill_listing_event_provenance.rs`
+- `../rustok-marketplace-listing/admin/src/model.rs`
+- `../rustok-marketplace-listing/admin/src/transport.rs`
+- `../rustok-marketplace-listing/admin/src/transport/native_server_adapter.rs`
+- `../rustok-marketplace-listing/admin/src/transport/graphql_adapter.rs`
+- `../rustok-marketplace-listing/admin/src/ui/leptos.rs`
 - `../../apps/server/tests/marketplace_family_boundary_guard.rs`
 - `../../apps/server/tests/marketplace_seller_transport_guard.rs`
 - `../../apps/server/tests/marketplace_listing_boundary_guard.rs`
 - `../../apps/server/tests/marketplace_listing_lifecycle_event_guard.rs`
 - `../../apps/server/tests/marketplace_listing_provenance_cutover_guard.rs`
+- `../../apps/server/tests/marketplace_listing_admin_ffa_guard.rs`
 - `../../scripts/verify/verify-marketplace-family-boundary.mjs`
 - `../../scripts/verify/verify-marketplace-seller-transport.mjs`
 - `../../scripts/verify/verify-marketplace-listing-boundary.mjs`
