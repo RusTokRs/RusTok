@@ -132,88 +132,139 @@ impl MarketplaceListingService {
             .order_by_asc(listing::Column::Id)
             .all(&self.db)
             .await?;
-        let mut projections = Vec::with_capacity(models.len());
+        let mut output = Vec::with_capacity(models.len());
         for model in models {
-            let seller_active = self.seller_is_active(&context, model.seller_id).await?;
-            let mut reasons = Vec::new();
-            if model.status != MarketplaceListingStatus::Active.as_str() {
-                reasons.push("listing_not_active".to_string());
+            let response = load_response_for_model(&self.db, model).await?;
+            let mut reasons = listing_reason_codes(&response);
+            match self
+                .seller_reader
+                .read_seller(
+                    context.clone(),
+                    ReadMarketplaceSellerRequest {
+                        seller_id: response.seller_id,
+                    },
+                )
+                .await
+            {
+                Ok(seller) if seller.status == MarketplaceSellerStatus::Active => {}
+                Ok(_) => reasons.push("seller_not_active".to_string()),
+                Err(_) => reasons.push("seller_unavailable".to_string()),
             }
-            if model.approval_status != MarketplaceListingApprovalStatus::Approved.as_str() {
-                reasons.push("listing_not_approved".to_string());
-            }
-            if !seller_active {
-                reasons.push("seller_not_active".to_string());
-            }
-            projections.push(MarketplaceListingEligibilityProjection {
-                listing_id: model.id,
-                seller_id: model.seller_id,
-                master_variant_id: model.master_variant_id,
+            output.push(MarketplaceListingEligibilityProjection {
                 eligible: reasons.is_empty(),
+                listing: response,
                 reason_codes: reasons,
             });
         }
-        Ok(projections)
-    }
-
-    async fn seller_is_active(
-        &self,
-        context: &PortContext,
-        seller_id: Uuid,
-    ) -> MarketplaceListingResult<bool> {
-        let seller = self
-            .seller_reader
-            .read_seller(
-                context.clone(),
-                ReadMarketplaceSellerRequest { seller_id },
-            )
-            .await
-            .map_err(map_seller_port_error)?;
-        Ok(seller.status == MarketplaceSellerStatus::Active)
+        Ok(output)
     }
 }
 
+pub(crate) async fn ensure_listing_identity_available<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    seller_id: Uuid,
+    variant_id: Uuid,
+    market_slug: &str,
+    channel_slug: &str,
+    seller_sku: &str,
+) -> MarketplaceListingResult<()> {
+    if listing::Entity::find()
+        .filter(listing::Column::TenantId.eq(tenant_id))
+        .filter(listing::Column::SellerId.eq(seller_id))
+        .filter(listing::Column::MasterVariantId.eq(variant_id))
+        .filter(listing::Column::MarketSlug.eq(market_slug))
+        .filter(listing::Column::ChannelSlug.eq(channel_slug))
+        .one(connection)
+        .await?
+        .is_some()
+    {
+        return Err(MarketplaceListingError::DuplicateScope);
+    }
+    if listing::Entity::find()
+        .filter(listing::Column::TenantId.eq(tenant_id))
+        .filter(listing::Column::SellerId.eq(seller_id))
+        .filter(listing::Column::SellerSku.eq(seller_sku))
+        .one(connection)
+        .await?
+        .is_some()
+    {
+        return Err(MarketplaceListingError::DuplicateSellerSku(
+            seller_sku.to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) async fn find_listing<C: ConnectionTrait>(
-    db: &C,
+    connection: &C,
     tenant_id: Uuid,
     listing_id: Uuid,
 ) -> MarketplaceListingResult<listing::Model> {
-    listing::Entity::find()
+    listing::Entity::find_by_id(listing_id)
         .filter(listing::Column::TenantId.eq(tenant_id))
-        .filter(listing::Column::Id.eq(listing_id))
-        .one(db)
+        .one(connection)
         .await?
         .ok_or(MarketplaceListingError::ListingNotFound(listing_id))
 }
 
+pub(crate) async fn find_current_terms<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    listing_id: Uuid,
+    version: i32,
+) -> MarketplaceListingResult<listing_terms::Model> {
+    listing_terms::Entity::find()
+        .filter(listing_terms::Column::TenantId.eq(tenant_id))
+        .filter(listing_terms::Column::ListingId.eq(listing_id))
+        .filter(listing_terms::Column::Version.eq(version))
+        .one(connection)
+        .await?
+        .ok_or(MarketplaceListingError::TermsNotFound {
+            listing_id,
+            version,
+        })
+}
+
 pub(crate) async fn load_listing_response<C: ConnectionTrait>(
-    db: &C,
+    connection: &C,
     tenant_id: Uuid,
     listing_id: Uuid,
 ) -> MarketplaceListingResult<MarketplaceListingResponse> {
-    let model = find_listing(db, tenant_id, listing_id).await?;
-    load_response_for_model(db, model).await
+    let model = find_listing(connection, tenant_id, listing_id).await?;
+    load_response_for_model(connection, model).await
 }
 
 pub(crate) async fn load_response_for_model<C: ConnectionTrait>(
-    db: &C,
+    connection: &C,
     model: listing::Model,
 ) -> MarketplaceListingResult<MarketplaceListingResponse> {
-    let terms = listing_terms::Entity::find()
-        .filter(listing_terms::Column::ListingId.eq(model.id))
-        .filter(listing_terms::Column::Version.eq(model.current_terms_version))
-        .one(db)
-        .await?
-        .ok_or(MarketplaceListingError::TermsNotFound {
-            listing_id: model.id,
-            version: model.current_terms_version,
-        })?;
+    let terms = find_current_terms(
+        connection,
+        model.tenant_id,
+        model.id,
+        model.current_terms_version,
+    )
+    .await?;
+    map_listing(model, terms)
+}
+
+pub(crate) fn map_listing(
+    model: listing::Model,
+    terms: listing_terms::Model,
+) -> MarketplaceListingResult<MarketplaceListingResponse> {
     let status = MarketplaceListingStatus::parse(model.status.as_str()).ok_or_else(|| {
-        MarketplaceListingError::Validation("listing status is invalid".to_string())
+        MarketplaceListingError::Validation(format!(
+            "unknown marketplace listing status `{}`",
+            model.status
+        ))
     })?;
     let approval_status = MarketplaceListingApprovalStatus::parse(model.approval_status.as_str())
         .ok_or_else(|| {
-            MarketplaceListingError::Validation("listing approval status is invalid".to_string())
+            MarketplaceListingError::Validation(format!(
+                "unknown marketplace listing approval status `{}`",
+                model.approval_status
+            ))
         })?;
     Ok(MarketplaceListingResponse {
         id: model.id,
@@ -245,6 +296,62 @@ pub(crate) async fn load_response_for_model<C: ConnectionTrait>(
     })
 }
 
+pub(crate) fn listing_reason_codes_without_lifecycle(
+    listing: &MarketplaceListingResponse,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    if listing.approval_status != MarketplaceListingApprovalStatus::Approved {
+        reasons.push("listing_not_approved".to_string());
+    }
+    if listing.current_terms.pricing_reference.is_none() {
+        reasons.push("pricing_reference_missing".to_string());
+    }
+    if listing.current_terms.inventory_reference.is_none() {
+        reasons.push("inventory_reference_missing".to_string());
+    }
+    reasons
+}
+
+pub(crate) fn map_seller_port_error(error: rustok_api::PortError) -> MarketplaceListingError {
+    match error.kind {
+        PortErrorKind::Validation | PortErrorKind::NotFound | PortErrorKind::Conflict => {
+            MarketplaceListingError::Validation(error.message)
+        }
+        _ => MarketplaceListingError::SellerUnavailable(error.code),
+    }
+}
+
+pub(crate) fn map_product_port_error(error: rustok_api::PortError) -> MarketplaceListingError {
+    match error.kind {
+        PortErrorKind::Validation | PortErrorKind::NotFound | PortErrorKind::Conflict => {
+            MarketplaceListingError::Validation(error.message)
+        }
+        _ => MarketplaceListingError::ProductUnavailable(error.code),
+    }
+}
+
+pub(crate) fn map_listing_insert_error(error: sea_orm::DbErr) -> MarketplaceListingError {
+    if matches!(
+        error.sql_err(),
+        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+    ) {
+        MarketplaceListingError::DuplicateScope
+    } else {
+        error.into()
+    }
+}
+
+fn listing_reason_codes(listing: &MarketplaceListingResponse) -> Vec<String> {
+    let mut reasons = listing_reason_codes_without_lifecycle(listing);
+    if listing.status != MarketplaceListingStatus::Active {
+        reasons.push("listing_not_active".to_string());
+    }
+    if listing.published_at.is_none() {
+        reasons.push("listing_not_published".to_string());
+    }
+    reasons
+}
+
 fn parse_tenant_id(context: &PortContext) -> MarketplaceListingResult<Uuid> {
     Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
         MarketplaceListingError::Validation(
@@ -254,13 +361,19 @@ fn parse_tenant_id(context: &PortContext) -> MarketplaceListingResult<Uuid> {
 }
 
 fn required_slug(value: String, field: &str) -> MarketplaceListingResult<String> {
-    let value = value.trim();
-    if value.is_empty() {
+    let value = value.trim().to_ascii_lowercase().replace('_', "-");
+    if value.is_empty()
+        || value.starts_with('-')
+        || value.ends_with('-')
+        || value
+            .chars()
+            .any(|character| !(character.is_ascii_alphanumeric() || character == '-'))
+    {
         return Err(MarketplaceListingError::Validation(format!(
-            "{field} must not be empty"
+            "{field} must contain lowercase ASCII letters, digits, or internal hyphens"
         )));
     }
-    Ok(value.to_string())
+    Ok(value)
 }
 
 fn normalize_optional_text(value: Option<String>) -> Option<String> {
@@ -268,14 +381,4 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
         let value = value.trim();
         (!value.is_empty()).then(|| value.to_string())
     })
-}
-
-fn map_seller_port_error(error: rustok_api::PortError) -> MarketplaceListingError {
-    match error.kind {
-        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::Degraded => {
-            MarketplaceListingError::SellerUnavailable(error.code)
-        }
-        PortErrorKind::NotFound => MarketplaceListingError::SellerUnavailable(error.code),
-        _ => MarketplaceListingError::Validation(error.code),
-    }
 }
