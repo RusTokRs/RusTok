@@ -1,5 +1,5 @@
 use crate::BrowserIntentDispatchError;
-use fly_browser::BrowserIntentEnvelope;
+use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};
 use fly_ui::{
     resolve_editor_shortcut, CapabilityState, EditorCapability, EditorShortcut, KeyStroke,
 };
@@ -63,54 +63,66 @@ pub fn validate_browser_capability_access(
 fn capability_requirements(
     envelope: &BrowserIntentEnvelope,
 ) -> Result<Vec<EditorCapability>, BrowserCapabilityAccessError> {
-    let requirements = match envelope.intent.as_str() {
-        "select"
-        | "focus_requested"
-        | "hover"
-        | "hover_requested"
-        | "activate_page"
-        | "cancel_drag"
-        | "cancel_drag_requested" => Vec::new(),
-        "undo" | "redo" => vec![EditorCapability::History],
-        "copy" | "cut" | "paste" | "duplicate" => vec![EditorCapability::Clipboard],
-        "save" => vec![EditorCapability::Publish],
-        "begin_palette_drag"
-        | "begin_selected_move"
-        | "drop"
-        | "drop_requested"
-        | "drag_moved" => vec![EditorCapability::DragDrop],
-        "patch_component_property" => {
+    let Some(kind) = envelope.kind() else {
+        return Ok(Vec::new());
+    };
+    let requirements = match kind {
+        BrowserIntentKind::Select
+        | BrowserIntentKind::FocusRequested
+        | BrowserIntentKind::Hover
+        | BrowserIntentKind::HoverRequested
+        | BrowserIntentKind::ActivatePage
+        | BrowserIntentKind::CancelDrag
+        | BrowserIntentKind::CancelDragRequested => Vec::new(),
+        BrowserIntentKind::Undo | BrowserIntentKind::Redo => vec![EditorCapability::History],
+        BrowserIntentKind::Copy
+        | BrowserIntentKind::Cut
+        | BrowserIntentKind::Paste
+        | BrowserIntentKind::Duplicate => vec![EditorCapability::Clipboard],
+        BrowserIntentKind::Save => vec![EditorCapability::Publish],
+        BrowserIntentKind::BeginPaletteDrag
+        | BrowserIntentKind::BeginSelectedMove
+        | BrowserIntentKind::Drop
+        | BrowserIntentKind::DropRequested
+        | BrowserIntentKind::DragMoved => vec![EditorCapability::DragDrop],
+        BrowserIntentKind::PatchComponentProperty => {
             if property_kind(&envelope.payload) == Some("style") {
                 vec![EditorCapability::Styles]
             } else {
                 vec![EditorCapability::Properties]
             }
         }
-        "patch_page_metadata"
-        | "rename_page"
-        | "set_locale_policy"
-        | "clear_locale_policy"
-        | "upsert_localized_page_metadata"
-        | "set_internal_page_link"
-        | "remove_internal_page_link"
-        | "upsert_translation"
-        | "remove_translation"
-        | "set_component_action"
-        | "remove_component_action"
-        | "set_component_form"
-        | "remove_component_form"
-        | "set_native_form_field" => vec![EditorCapability::Properties],
-        "upsert_asset" | "remove_asset" => vec![EditorCapability::Assets],
-        "select_asset" => vec![EditorCapability::Assets, EditorCapability::Properties],
-        "key_stroke" => return shortcut_requirements(envelope),
-        "insert_block"
-        | "remove_selected"
-        | "move_selected_up"
-        | "move_selected_down"
-        | "create_page"
-        | "remove_page" => vec![EditorCapability::Edit],
-        _ if envelope.is_mutating() => vec![EditorCapability::Edit],
-        _ => Vec::new(),
+        BrowserIntentKind::PatchPageMetadata
+        | BrowserIntentKind::RenamePage
+        | BrowserIntentKind::SetLocalePolicy
+        | BrowserIntentKind::ClearLocalePolicy
+        | BrowserIntentKind::UpsertLocalizedPageMetadata
+        | BrowserIntentKind::SetInternalPageLink
+        | BrowserIntentKind::RemoveInternalPageLink
+        | BrowserIntentKind::UpsertTranslation
+        | BrowserIntentKind::RemoveTranslation
+        | BrowserIntentKind::SetComponentAction
+        | BrowserIntentKind::RemoveComponentAction
+        | BrowserIntentKind::SetComponentForm
+        | BrowserIntentKind::RemoveComponentForm
+        | BrowserIntentKind::SetNativeFormField
+        | BrowserIntentKind::SetRuntimeContext
+        | BrowserIntentKind::SetRuntimeLocale => vec![EditorCapability::Properties],
+        BrowserIntentKind::UpsertAsset | BrowserIntentKind::RemoveAsset => {
+            vec![EditorCapability::Assets]
+        }
+        BrowserIntentKind::SelectAsset => {
+            vec![EditorCapability::Assets, EditorCapability::Properties]
+        }
+        BrowserIntentKind::KeyStroke => return shortcut_requirements(envelope),
+        BrowserIntentKind::InsertBlock
+        | BrowserIntentKind::RemoveSelected
+        | BrowserIntentKind::MoveSelected
+        | BrowserIntentKind::MoveSelectedUp
+        | BrowserIntentKind::MoveSelectedDown
+        | BrowserIntentKind::PatchSelected
+        | BrowserIntentKind::CreatePage
+        | BrowserIntentKind::RemovePage => vec![EditorCapability::Edit],
     };
     Ok(requirements)
 }
@@ -239,7 +251,7 @@ mod tests {
         };
         let error = validate_browser_capability_access(
             &envelope(
-                "rename_page",
+                BrowserIntentKind::RenamePage.as_str(),
                 json!({ "page_id": "home", "new_page_id": "landing" }),
             ),
             capabilities,
@@ -252,13 +264,35 @@ mod tests {
     }
 
     #[test]
+    fn runtime_preview_context_uses_properties_capability() {
+        let capabilities = CapabilityState {
+            properties: false,
+            ..CapabilityState::full()
+        };
+        for kind in [
+            BrowserIntentKind::SetRuntimeContext,
+            BrowserIntentKind::SetRuntimeLocale,
+        ] {
+            let error = validate_browser_capability_access(
+                &envelope(kind.as_str(), json!({})),
+                capabilities,
+            )
+            .expect_err("runtime preview properties denial");
+            assert_eq!(
+                browser_capability_denial(&error).map(|denial| denial.capability),
+                Some(EditorCapability::Properties)
+            );
+        }
+    }
+
+    #[test]
     fn selecting_an_asset_requires_asset_and_property_capabilities() {
         let missing_properties = CapabilityState {
             properties: false,
             ..CapabilityState::full()
         };
         let error = validate_browser_capability_access(
-            &envelope("select_asset", json!({ "asset_id": "logo" })),
+            &envelope(BrowserIntentKind::SelectAsset.as_str(), json!({ "asset_id": "logo" })),
             missing_properties,
         )
         .expect_err("asset application changes component properties");
@@ -272,7 +306,7 @@ mod tests {
             ..CapabilityState::full()
         };
         let error = validate_browser_capability_access(
-            &envelope("select_asset", json!({ "asset_id": "logo" })),
+            &envelope(BrowserIntentKind::SelectAsset.as_str(), json!({ "asset_id": "logo" })),
             missing_assets,
         )
         .expect_err("asset access is required before application");
@@ -288,9 +322,13 @@ mod tests {
             drag_drop: false,
             ..CapabilityState::full()
         };
-        for intent in ["begin_palette_drag", "begin_selected_move", "drop"] {
+        for kind in [
+            BrowserIntentKind::BeginPaletteDrag,
+            BrowserIntentKind::BeginSelectedMove,
+            BrowserIntentKind::Drop,
+        ] {
             assert!(validate_browser_capability_access(
-                &envelope(intent, json!({})),
+                &envelope(kind.as_str(), json!({})),
                 capabilities,
             )
             .is_err());
@@ -305,7 +343,7 @@ mod tests {
         };
         let error = validate_browser_capability_access(
             &envelope(
-                "key_stroke",
+                BrowserIntentKind::KeyStroke.as_str(),
                 json!({
                     "stroke": {
                         "key": "s",
@@ -333,7 +371,7 @@ mod tests {
     #[test]
     fn malformed_shortcut_remains_a_typed_dispatch_error() {
         let error = validate_browser_capability_access(
-            &envelope("key_stroke", json!({ "stroke": "invalid" })),
+            &envelope(BrowserIntentKind::KeyStroke.as_str(), json!({ "stroke": "invalid" })),
             CapabilityState::full(),
         )
         .expect_err("malformed shortcut");
@@ -352,7 +390,7 @@ mod tests {
         }
         .normalized();
         let error = validate_browser_capability_access(
-            &envelope("insert_block", json!({ "block_id": "text" })),
+            &envelope(BrowserIntentKind::InsertBlock.as_str(), json!({ "block_id": "text" })),
             capabilities,
         )
         .expect_err("edit capability denial");
