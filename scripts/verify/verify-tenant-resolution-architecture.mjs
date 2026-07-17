@@ -22,6 +22,8 @@ requireMatch(resolution, /match settings\.tenant\.resolution\s*\{/, "canonical r
 forbidMatch(resolution, /_\s*=>/, "canonical tenant resolution must not contain catch-all branches");
 requireMatch(resolution, /pub enum TenantResolutionSource/, "resolution results must expose a typed source");
 requireMatch(resolution, /SelfResolvingHandshake/, "self-resolving handshakes must be explicit in route policy");
+requireMatch(resolution, /path_is_or_descendant/, "global routes must use segment-safe matching");
+requireMatch(resolution, /asserted_slug/, "dual tenant headers must be correlated against the resolved tenant");
 forbidMatch(runtime, /fn should_bypass_tenant_resolution/, "route policy must not be duplicated in tenant runtime");
 forbidMatch(runtime, /fn resolve_identifier/, "identifier policy must live in tenant_resolution.rs");
 forbidMatch(runtime, /unwrap_or_default\(\)/, "tenant cache timestamps must not mask clock failures");

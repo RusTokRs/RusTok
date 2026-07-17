@@ -16,7 +16,7 @@ Tenant resolution is a typed domain boundary, not a string switch in HTTP middle
 - resolution source classification;
 - typed resolution failures.
 
-The runtime middleware consumes `TenantResolution` and records telemetry from the actual result. It does not predict fallback behavior and contains no catch-all branch.
+The runtime middleware consumes `TenantResolution` and records telemetry from the actual result. It does not predict fallback behavior and contains no catch-all branch. When both the configured tenant header and `X-Tenant-Slug` are supplied, the slug is treated as a correlated assertion and must match the tenant loaded by the primary identifier.
 
 ## Route scopes
 
@@ -24,7 +24,7 @@ The runtime middleware consumes `TenantResolution` and records telemetry from th
 - `GlobalOperator`: health, metrics, schema, installer and read-only platform registry surfaces.
 - `SelfResolvingHandshake`: GraphQL WebSocket, which requires `connection_init.tenantSlug`, resolves an active tenant and binds authentication to that tenant before executing operations.
 
-Adding a route to either non-tenant scope requires changing the canonical route policy and its tests.
+Adding a route to either non-tenant scope requires changing the canonical route policy and its tests. Prefix matching is segment-aware, so a route such as `/healthcare` is tenant-bound and cannot inherit `/health` privileges.
 
 ## Consequences
 

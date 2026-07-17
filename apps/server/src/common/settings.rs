@@ -467,10 +467,7 @@ impl TenantSettings {
 
     pub fn validate_for_environment(&self, production: bool) -> Result<(), TenantSettingsError> {
         self.validate()?;
-        if self.enabled
-            && production
-            && self.fallback_mode == TenantFallbackMode::DefaultTenant
-        {
+        if self.enabled && production && self.fallback_mode == TenantFallbackMode::DefaultTenant {
             return Err(TenantSettingsError::FallbackForbiddenInProduction);
         }
         Ok(())
@@ -2074,5 +2071,4 @@ mod tests {
             Err(TenantSettingsError::MissingSubdomainBaseDomain)
         );
     }
-
 }

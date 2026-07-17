@@ -8,7 +8,9 @@ use axum::{
 use rustok_cache::CacheService;
 use rustok_migrations::Migrator;
 use rustok_server::{
-    common::settings::{RustokSettings, TenantResolutionMode}, extractors::tenant::CurrentTenant, middleware::tenant,
+    common::settings::{RustokSettings, TenantResolutionMode},
+    extractors::tenant::CurrentTenant,
+    middleware::tenant,
     services::server_runtime_context::ServerRuntimeContext,
 };
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
@@ -215,6 +217,31 @@ async fn subdomain_resolution_extracts_slug_and_resolves_tenant() {
     assert_eq!(status, StatusCode::OK);
     let payload: serde_json::Value = serde_json::from_slice(&body).expect("json payload");
     assert_eq!(payload["slug"], "resolver-subdomain");
+}
+
+#[tokio::test]
+#[serial]
+async fn conflicting_id_and_slug_headers_are_rejected() {
+    let mut settings = RustokSettings::default();
+    settings.tenant.enabled = true;
+    settings.tenant.resolution = TenantResolutionMode::Header;
+
+    let (db, _runtime_ctx, app) = setup_tenant_router(settings).await;
+    let tenant = insert_tenant(&db, "canonical-slug", None, true).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/tenant-probe")
+                .header("X-Tenant-ID", tenant.id.to_string())
+                .header("X-Tenant-Slug", "different-slug")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("conflicting tenant request should complete");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

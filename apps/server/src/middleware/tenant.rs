@@ -19,12 +19,12 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use crate::context::{TenantContext, TenantContextExtension};
-use crate::services::server_runtime_context::ServerRuntimeContext;
 use super::tenant_resolution::{
     resolve_request, tenant_route_scope, ResolvedTenantIdentifier, TenantIdentifierKind,
     TenantResolutionSource, TenantResolutionSourceExtension, TenantRouteScope,
 };
+use crate::context::{TenantContext, TenantContextExtension};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const TENANT_CACHE_VERSION: &str = "v2";
 const TENANT_CONTEXT_SCHEMA_VERSION: u32 = 1;
@@ -422,9 +422,7 @@ impl TenantCacheInfrastructure {
                 || async move {
                     let context = loader().await?;
                     let generated_at = current_unix_ms().map_err(|error| {
-                        CoreError::Cache(format!(
-                            "tenant cache timestamp creation failed: {error}"
-                        ))
+                        CoreError::Cache(format!("tenant cache timestamp creation failed: {error}"))
                     })?;
                     CacheEnvelope::new(TENANT_CONTEXT_SCHEMA_VERSION, generated_at, context)
                         .and_then(|envelope| {
@@ -582,6 +580,18 @@ pub async fn resolve(
             }
         })
         .await?;
+
+    resolution
+        .validate_resolved_slug(&context.slug)
+        .map_err(|error| {
+            tracing::warn!(
+                tenant_id = %context.id,
+                resolved_slug = %context.slug,
+                error = %error,
+                "Conflicting tenant assertions rejected"
+            );
+            error.status_code()
+        })?;
 
     req.extensions_mut()
         .insert(TenantResolutionSourceExtension(resolution.source));

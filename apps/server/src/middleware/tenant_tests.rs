@@ -1,6 +1,4 @@
-use super::{
-    tenant_context_from_projection, unix_ms_at, CachedTenantMiss, TenantCacheKeyBuilder,
-};
+use super::{tenant_context_from_projection, unix_ms_at, CachedTenantMiss, TenantCacheKeyBuilder};
 use crate::middleware::tenant_resolution::TenantIdentifierKind;
 use rustok_tenant::TenantReadProjection;
 use std::time::{Duration, UNIX_EPOCH};

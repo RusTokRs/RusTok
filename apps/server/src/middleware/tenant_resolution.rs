@@ -19,6 +19,13 @@ pub enum TenantRouteScope {
     SelfResolvingHandshake,
 }
 
+fn path_is_or_descendant(path: &str, root: &str) -> bool {
+    path == root
+        || path
+            .strip_prefix(root)
+            .is_some_and(|suffix| suffix.starts_with('/'))
+}
+
 pub fn tenant_route_scope(path: &str) -> TenantRouteScope {
     if path == "/api/graphql/ws" {
         return TenantRouteScope::SelfResolvingHandshake;
@@ -26,13 +33,10 @@ pub fn tenant_route_scope(path: &str) -> TenantRouteScope {
 
     if matches!(path, "/metrics" | "/api/openapi.json" | "/api/openapi.yaml")
         || path == "/api/graphql/schema.graphql"
-        || path == "/api/install"
-        || path.starts_with("/api/install/")
-        || path == "/v1/catalog"
-        || path.starts_with("/v1/catalog/")
-        || path == "/catalog"
-        || path.starts_with("/catalog/")
-        || path.starts_with("/health")
+        || path_is_or_descendant(path, "/api/install")
+        || path_is_or_descendant(path, "/v1/catalog")
+        || path_is_or_descendant(path, "/catalog")
+        || path_is_or_descendant(path, "/health")
     {
         TenantRouteScope::GlobalOperator
     } else {
@@ -96,6 +100,7 @@ impl ResolvedTenantIdentifier {
 pub enum TenantResolutionSource {
     SingleTenantDefault,
     Header,
+    CompatibilitySlugHeader,
     Host,
     Domain,
     Subdomain,
@@ -107,6 +112,7 @@ impl TenantResolutionSource {
         match self {
             Self::SingleTenantDefault => "single_tenant_default",
             Self::Header => "header",
+            Self::CompatibilitySlugHeader => "compatibility_slug_header",
             Self::Host => "host",
             Self::Domain => "domain",
             Self::Subdomain => "subdomain",
@@ -122,19 +128,57 @@ pub struct TenantResolutionSourceExtension(pub TenantResolutionSource);
 pub struct TenantResolution {
     pub identifier: ResolvedTenantIdentifier,
     pub source: TenantResolutionSource,
+    pub asserted_slug: Option<String>,
+}
+
+impl TenantResolution {
+    pub fn validate_resolved_slug(&self, resolved_slug: &str) -> Result<(), TenantResolutionError> {
+        let Some(asserted_slug) = self.asserted_slug.as_deref() else {
+            return Ok(());
+        };
+        if asserted_slug == resolved_slug {
+            return Ok(());
+        }
+        Err(TenantResolutionError::ConflictingTenantAssertions {
+            asserted_slug: asserted_slug.to_string(),
+            resolved_slug: resolved_slug.to_string(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TenantResolutionError {
     InvalidPolicy(String),
-    MissingHeader { header_name: String },
-    InvalidHeaderValue { header_name: String },
+    MissingHeader {
+        header_name: String,
+    },
+    InvalidHeaderValue {
+        header_name: String,
+    },
     MissingHost,
-    InvalidHost { value: String, reason: String },
-    InvalidIdentifier { value: String, reason: String },
-    BaseDomainRequiresTenantSlug { host: String, base_domain: String },
-    NestedSubdomain { host: String, base_domain: String },
-    NoBaseDomainMatch { host: String },
+    InvalidHost {
+        value: String,
+        reason: String,
+    },
+    InvalidIdentifier {
+        value: String,
+        reason: String,
+    },
+    BaseDomainRequiresTenantSlug {
+        host: String,
+        base_domain: String,
+    },
+    NestedSubdomain {
+        host: String,
+        base_domain: String,
+    },
+    NoBaseDomainMatch {
+        host: String,
+    },
+    ConflictingTenantAssertions {
+        asserted_slug: String,
+        resolved_slug: String,
+    },
 }
 
 impl TenantResolutionError {
@@ -148,7 +192,8 @@ impl TenantResolutionError {
             | Self::InvalidHost { .. }
             | Self::InvalidIdentifier { .. }
             | Self::BaseDomainRequiresTenantSlug { .. }
-            | Self::NestedSubdomain { .. } => StatusCode::BAD_REQUEST,
+            | Self::NestedSubdomain { .. }
+            | Self::ConflictingTenantAssertions { .. } => StatusCode::BAD_REQUEST,
         }
     }
 }
@@ -181,6 +226,13 @@ impl fmt::Display for TenantResolutionError {
             Self::NoBaseDomainMatch { host } => {
                 write!(formatter, "tenant host `{host}` matches no configured base domain")
             }
+            Self::ConflictingTenantAssertions {
+                asserted_slug,
+                resolved_slug,
+            } => write!(
+                formatter,
+                "tenant slug assertion `{asserted_slug}` conflicts with resolved tenant `{resolved_slug}`"
+            ),
         }
     }
 }
@@ -200,6 +252,7 @@ pub fn resolve_request(
         return Ok(TenantResolution {
             identifier: ResolvedTenantIdentifier::Uuid(settings.tenant.default_id),
             source: TenantResolutionSource::SingleTenantDefault,
+            asserted_slug: None,
         });
     }
 
@@ -216,16 +269,31 @@ fn resolve_header(
     settings: &RustokSettings,
 ) -> Result<TenantResolution, TenantResolutionError> {
     let primary = header_value(req, &settings.tenant.header_name)?;
-    let slug = if settings.tenant.header_name.eq_ignore_ascii_case("X-Tenant-Slug") {
+    let compatibility_slug = if settings
+        .tenant
+        .header_name
+        .eq_ignore_ascii_case("X-Tenant-Slug")
+    {
         None
     } else {
         header_value(req, "X-Tenant-Slug")?
     };
 
-    if let Some(identifier) = primary.or(slug) {
+    if let Some(identifier) = primary {
+        let asserted_slug = compatibility_slug.map(validate_slug).transpose()?;
         return Ok(TenantResolution {
             identifier: classify_identifier(identifier)?,
             source: TenantResolutionSource::Header,
+            asserted_slug,
+        });
+    }
+
+    if let Some(slug) = compatibility_slug {
+        let slug = validate_slug(slug)?;
+        return Ok(TenantResolution {
+            identifier: ResolvedTenantIdentifier::Slug(slug),
+            source: TenantResolutionSource::CompatibilitySlugHeader,
+            asserted_slug: None,
         });
     }
 
@@ -233,6 +301,7 @@ fn resolve_header(
         return Ok(TenantResolution {
             identifier: ResolvedTenantIdentifier::Uuid(settings.tenant.default_id),
             source: TenantResolutionSource::DevelopmentFallback,
+            asserted_slug: None,
         });
     }
 
@@ -266,6 +335,7 @@ fn resolve_host(
     Ok(TenantResolution {
         identifier: ResolvedTenantIdentifier::Host(host),
         source,
+        asserted_slug: None,
     })
 }
 
@@ -278,6 +348,7 @@ fn resolve_subdomain(
     Ok(TenantResolution {
         identifier: classify_identifier(&identifier)?,
         source: TenantResolutionSource::Subdomain,
+        asserted_slug: None,
     })
 }
 
@@ -288,7 +359,13 @@ fn effective_host(
     let peer_ip = peer_ip_from_extensions(req.extensions());
     let host = extract_effective_host(req.headers(), peer_ip, &settings.runtime.request_trust)
         .ok_or(TenantResolutionError::MissingHost)?;
-    let host_without_port = host.split(':').next().unwrap_or(host.as_str());
+    let authority = host
+        .parse::<axum::http::uri::Authority>()
+        .map_err(|error| TenantResolutionError::InvalidHost {
+            value: host.clone(),
+            reason: error.to_string(),
+        })?;
+    let host_without_port = authority.host();
     TenantIdentifierValidator::validate_host(host_without_port).map_err(|error| {
         TenantResolutionError::InvalidHost {
             value: host_without_port.to_string(),
@@ -326,17 +403,21 @@ pub(crate) fn subdomain_identifier(
     })
 }
 
+fn validate_slug(value: &str) -> Result<String, TenantResolutionError> {
+    TenantIdentifierValidator::validate_slug(value).map_err(|error| {
+        TenantResolutionError::InvalidIdentifier {
+            value: value.to_string(),
+            reason: error.to_string(),
+        }
+    })
+}
+
 fn classify_identifier(value: &str) -> Result<ResolvedTenantIdentifier, TenantResolutionError> {
     if let Ok(uuid) = TenantIdentifierValidator::validate_uuid(value) {
         return Ok(ResolvedTenantIdentifier::Uuid(uuid));
     }
 
-    TenantIdentifierValidator::validate_slug(value)
-        .map(ResolvedTenantIdentifier::Slug)
-        .map_err(|error| TenantResolutionError::InvalidIdentifier {
-            value: value.to_string(),
-            reason: error.to_string(),
-        })
+    validate_slug(value).map(ResolvedTenantIdentifier::Slug)
 }
 
 #[cfg(test)]
@@ -352,7 +433,14 @@ mod tests {
 
     #[test]
     fn route_policy_distinguishes_global_and_self_resolving_surfaces() {
-        assert_eq!(tenant_route_scope("/metrics"), TenantRouteScope::GlobalOperator);
+        assert_eq!(
+            tenant_route_scope("/metrics"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/healthcare"),
+            TenantRouteScope::TenantBound
+        );
         assert_eq!(
             tenant_route_scope("/api/graphql/ws"),
             TenantRouteScope::SelfResolvingHandshake
@@ -379,7 +467,11 @@ mod tests {
         let mut settings = RustokSettings::default();
         settings.tenant.fallback_mode = TenantFallbackMode::DefaultTenant;
         let resolution = resolve_request(&request("/api/users"), &settings).expect("fallback");
-        assert_eq!(resolution.source, TenantResolutionSource::DevelopmentFallback);
+        assert_eq!(
+            resolution.source,
+            TenantResolutionSource::DevelopmentFallback
+        );
+        assert_eq!(resolution.asserted_slug, None);
         assert_eq!(
             resolution.identifier,
             ResolvedTenantIdentifier::Uuid(settings.tenant.default_id)
@@ -396,10 +488,29 @@ mod tests {
             .expect("request");
         let resolution = resolve_request(&request, &settings).expect("header resolution");
         assert_eq!(resolution.source, TenantResolutionSource::Header);
+        assert_eq!(resolution.asserted_slug, None);
         assert_eq!(
             resolution.identifier,
             ResolvedTenantIdentifier::Slug("demo".to_string())
         );
+    }
+
+    #[test]
+    fn dual_headers_are_correlated_after_tenant_lookup() {
+        let settings = RustokSettings::default();
+        let request = Request::builder()
+            .uri("/api/users")
+            .header("X-Tenant-ID", Uuid::from_u128(7).to_string())
+            .header("X-Tenant-Slug", "expected-slug")
+            .body(Body::empty())
+            .expect("request");
+        let resolution = resolve_request(&request, &settings).expect("header resolution");
+        assert_eq!(resolution.asserted_slug.as_deref(), Some("expected-slug"));
+        assert!(resolution.validate_resolved_slug("expected-slug").is_ok());
+        assert!(matches!(
+            resolution.validate_resolved_slug("other-slug"),
+            Err(TenantResolutionError::ConflictingTenantAssertions { .. })
+        ));
     }
 
     #[test]
