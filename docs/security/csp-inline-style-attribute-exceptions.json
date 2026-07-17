@@ -32,7 +32,7 @@
       "owner": "Forum module maintainers",
       "reason": "Category cards expose a persisted visual accent.",
       "constraints": "Category colors are rejected before persistence unless they match the strict hex grammar, then normalized again at the JSON model boundary before this source site is rendered.",
-      "exit_criteria": "Replace arbitrary category accents with a reviewed finite palette class.",
+      "exit_criteria": "Replace arbitrary category accents with the shared reviewed finite palette class already used by the storefront.",
       "required_markers": [
         "style=vm.accent_style.clone()"
       ],
@@ -51,36 +51,7 @@
         },
         {
           "path": "crates/rustok-ui-core/src/css.rs",
-          "marker": "normalize_css_hex_color"
-        }
-      ]
-    },
-    {
-      "path": "crates/rustok-forum/storefront/src/ui/leptos.rs",
-      "expected_occurrences": 1,
-      "owner": "Forum module maintainers",
-      "reason": "Storefront category cards expose the same persisted visual accent as the admin surface.",
-      "constraints": "The persistence hook, transport model and direct accent helper all reject non-hex CSS tokens and declaration separators.",
-      "exit_criteria": "Replace arbitrary category accents with the same reviewed finite palette class as the admin surface.",
-      "required_markers": [
-        "style=card.accent_style"
-      ],
-      "required_evidence": [
-        {
-          "path": "crates/rustok-forum/src/entities/forum_category.rs",
-          "marker": "async fn before_save"
-        },
-        {
-          "path": "crates/rustok-forum/src/entities/forum_category.rs",
-          "marker": "normalize_category_color"
-        },
-        {
-          "path": "crates/rustok-forum/storefront/src/model.rs",
-          "marker": "deserialize_optional_css_hex_color"
-        },
-        {
-          "path": "crates/rustok-forum/storefront/src/core.rs",
-          "marker": ".and_then(normalize_css_hex_color)"
+          "marker": "css_hex_accent_class"
         }
       ]
     },
