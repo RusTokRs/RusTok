@@ -114,57 +114,16 @@ jobs:
       - name: Verify generated diff
         run: git diff --check
 
-      - name: Publish tenant result branch
+      - name: Publish validated application result
         shell: bash
         run: |
-          cat > .github/workflows/hardening-gates.yml <<'WORKFLOW'
-          name: Hardening Gates
-
-          on:
-            push:
-              branches:
-                - "**"
-            pull_request:
-              branches:
-                - "**"
-            workflow_dispatch:
-
-          permissions:
-            contents: read
-
-          concurrency:
-            group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-            cancel-in-progress: true
-
-          env:
-            FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
-          jobs:
-            repository-hardening:
-              name: Repository Hardening
-              runs-on: ubuntu-latest
-              steps:
-                - uses: actions/checkout@v7
-                - uses: actions/setup-node@v6
-                  with:
-                    node-version: 22
-                - name: Verify module manifest documentation parity
-                  run: node scripts/verify/verify-module-manifest-docs-drift.mjs
-                - name: Verify security advisory exceptions
-                  run: node scripts/verify/verify-advisory-exceptions.mjs
-          WORKFLOW
-          sed -i 's/^          //' .github/workflows/hardening-gates.yml
-          rm -f \
-            TENANT_HARDENING_COMPLETION_FAILURE.md \
-            scripts/migrations/fix_seo_service_move.py \
-            scripts/migrations/complete_tenant_profile_contract.py \
-            scripts/migrations/complete_tenant_resolution_telemetry.py \
-            scripts/migrations/complete_tenant_isolation_coverage.py \
-            scripts/migrations/complete_tenant_hardening.trigger
-          git diff --check
-          git checkout -B agent/tenant-hardening-result-final
+          git checkout -B agent/tenant-hardening-result-validated
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
+          git diff --cached --quiet && {
+            echo "Expected tenant hardening changes, but generated diff is empty" >&2
+            exit 1
+          }
           git commit -m "security(tenant): complete runtime isolation contract"
-          git push --force origin HEAD:agent/tenant-hardening-result-final
+          git push --force origin HEAD:agent/tenant-hardening-result-validated
