@@ -184,7 +184,7 @@ pub fn PageBuilderAdminWithController(
     controller: AdminCanvasController,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     trait_schemas: Option<Arc<TraitSchemaRegistry>>,
-    contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
+    #[prop(optional)] contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
     runtime_context: Option<Value>,
     runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
