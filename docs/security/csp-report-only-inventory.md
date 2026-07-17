@@ -11,7 +11,7 @@ status: active
 
 This inventory defines the target browser policy, the report collection boundary and the evidence required before the UI CSP can remove the remaining inline-style-attribute allowance from enforcement. Inline scripts and style elements already require a per-response nonce, inline event handlers are blocked, `unsafe-eval` is prohibited and production connections are HTTPS/WSS-only.
 
-No violation in this document is an automatic allowlist request. The preferred resolution is to remove the dependency, move code into a same-origin static asset, attach a per-response nonce/hash to a trusted element, or replace a style attribute with a reviewed CSS class.
+No violation in this document is an automatic allowlist request. The preferred resolution is to remove the dependency, move code into a same-origin static asset, attach a per-response nonce/hash to a trusted element, or replace a style attribute with a reviewed CSS class, native element attribute or SVG geometry contract.
 
 ## Collection Contract
 
@@ -49,7 +49,7 @@ The existing Prometheus family `rustok_module_errors_total` records the same bou
 | `script-src` | `'self' 'nonce-<per-response>'` | Only same-origin external scripts and explicitly trusted nonce-bearing inline scripts; inline event handlers and eval are forbidden |
 | `script-src-attr` | `'none'` | Inline event-handler attributes are forbidden |
 | `style-src` | `'self' 'nonce-<per-response>'` | Only same-origin stylesheets and explicitly trusted nonce-bearing style elements |
-| `style-src-attr` | `'none'` | Target state forbids inline style attributes; migrate them to reviewed classes |
+| `style-src-attr` | `'none'` | Target state forbids inline style attributes; migrate them to reviewed classes, native attributes or SVG geometry |
 | `img-src` | `'self' data: blob: https:` | Remote images remain HTTPS-only |
 | `font-src` | `'self' data:` | No remote font origin is currently approved |
 | `connect-src` | `'self' https: wss:` | Production permits only secure HTTP and WebSocket connections |
@@ -85,28 +85,33 @@ The enforced UI policies now isolate their remaining exception to:
 
 The broader `style-src 'unsafe-inline'` source, `script-src 'unsafe-inline'`, `unsafe-eval`, plaintext HTTP and production plaintext WebSocket have been removed from enforcement and are protected by the CSP verification gate. The remaining attribute-level entry is migration debt, not an approved permanent production exception. The strict main-server report-only policy uses `style-src-attr 'none'` to expose the affected components.
 
-The machine-readable register is `docs/security/csp-inline-style-attribute-exceptions.json`. It currently records exactly **15 source sites across 7 Rust-hosted UI files** and must be reviewed no later than **2026-08-14**. The verification gate fails on an unregistered file, a changed occurrence count, missing constraint evidence, stale entries or an expired review date.
+The machine-readable register is `docs/security/csp-inline-style-attribute-exceptions.json`. It now records exactly **5 source sites across 4 Rust-hosted UI files**, down from 15 sites across 7 files, and must be reviewed no later than **2026-08-14**. The verification gate fails on an unregistered file, a changed occurrence count, missing constraint evidence, stale entries or an expired review date.
 
 | Source | Sites | Reviewed constraint | Exit path |
 |---|---:|---|---|
-| `apps/admin/src/features/modules/components/modules_list.rs` | 1 | Percent width is formatted from typed `BuildJob.progress: i32`, never from a CSS string | Move to a CSP-compatible progress component contract |
-| `crates/rustok-forum/admin/src/ui/leptos.rs` | 1 | The entity hook rejects invalid colors before persistence, and the admin JSON boundary normalizes valid hex tokens again | Replace arbitrary accents with a finite palette or non-inline theming contract |
-| `crates/rustok-forum/storefront/src/ui/leptos.rs` | 1 | Persistence validation, JSON deserialization and direct helper calls all reject non-hex CSS values and declaration separators | Replace arbitrary accents with a finite palette or non-inline theming contract |
-| `crates/rustok-page-builder/admin/src/editor/admin_canvas.rs` | 6 | Legacy layout, indentation, iframe and overlay geometry; generated from typed host state | Retire the legacy canvas or move geometry to a reviewed DOM/custom-property adapter |
-| `crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs` | 3 | Typed viewport dimensions, scale and overlay geometry | Move geometry to a reviewed DOM/custom-property adapter |
-| `crates/rustok-page-builder/admin/src/editor/palette_layers.rs` | 1 | Numeric indentation derived from typed layer depth | Replace with a finite indentation class scale |
-| `crates/rustok-page-builder/admin/src/editor/resize_handles.rs` | 2 | Numeric pointer geometry and cursor selected by a closed enum | Move positioning to a reviewed DOM/custom-property adapter |
+| `apps/admin/src/features/modules/components/modules_list.rs` | 1 | Percent width is formatted from typed `BuildJob.progress: i32`, never from a CSS string | Move to a native progress or finite class contract |
+| `crates/rustok-forum/admin/src/ui/leptos.rs` | 1 | The entity hook rejects invalid colors before persistence, and the admin JSON boundary normalizes valid hex tokens again | Replace arbitrary accents with a finite palette class |
+| `crates/rustok-forum/storefront/src/ui/leptos.rs` | 1 | Persistence validation, JSON deserialization and direct helper calls all reject non-hex CSS values and declaration separators | Reuse the same finite palette class as admin |
+| `crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs` | 2 | Custom viewport dimensions and continuous zoom emit only typed numeric width, height and zoom | Replace iframe sizing and zoom with a CSP-compatible viewport adapter |
 
-The static modular Page Builder three-column layout has already moved from an inline attribute to a Tailwind arbitrary grid class and is not registered as an exception.
+Completed attribute migrations in this batch:
 
-Forum category accents previously accepted an arbitrary persisted CSS fragment. The SeaORM `before_save` hook now rejects any non-hex category color before insert or update. `rustok-ui-core::normalize_css_hex_color` and both Rust UI transport models independently retain the same strict `#RGB`, `#RGBA`, `#RRGGBB` or `#RRGGBBAA` grammar. The storefront helper performs a final check for direct internal calls and falls back to the reviewed default gradient instead of concatenating an invalid value into `background`.
+- the unreferenced legacy `editor/admin_canvas.rs` duplicate was removed after confirming it had no `mod`, `#[path]` or source reference;
+- modular layer indentation now uses a bounded nine-step Tailwind class scale and caps deeper trees at the final class;
+- hover, selection and insertion overlays now use SVG `x`, `y`, `width` and `height` attributes;
+- resize preview geometry now uses an SVG `<rect>`;
+- the eight resize handles now use SVG `<circle>` positions and a closed cursor-class mapping while retaining pointer capture.
+
+The static modular Page Builder three-column layout had already moved from an inline attribute to a Tailwind arbitrary grid class and remains outside the exception register.
+
+Forum category accents previously accepted an arbitrary persisted CSS fragment. The SeaORM `before_save` hook rejects any non-hex category color before insert or update. `rustok-ui-core::normalize_css_hex_color` and both Rust UI transport models independently retain the same strict `#RGB`, `#RGBA`, `#RRGGBB` or `#RRGGBBAA` grammar. The storefront helper performs a final check for direct internal calls and falls back to the reviewed default gradient instead of concatenating an invalid value into `background`.
 
 ## Triage Rules
 
 1. Group reports by normalized directive and origin.
 2. Reproduce each unique violation in embedded admin, standalone admin and storefront browser smoke tests.
 3. Classify it as application code, framework bootstrap, third-party dependency or malicious/noise traffic.
-4. Replace each required style attribute with a reviewed class, CSS custom property contract or another non-inline representation.
+4. Replace each required style attribute with a reviewed class, native attribute, SVG geometry contract or another non-inline representation.
 5. Remove or replace a source before considering an allowlist.
 6. Any new external origin requires a security review, named owner, exact resource purpose and expiry/review date.
 7. Never allowlist `unsafe-eval`; replace the dependency or execution path.
@@ -134,6 +139,7 @@ cargo test -p rustok-ui-core
 cargo test -p rustok-forum
 cargo test -p rustok-forum-admin
 cargo test -p rustok-forum-storefront
+cargo test -p rustok-page-builder-admin
 cargo test -p rustok-admin --features ssr app::security
 cargo test -p rustok-admin --features ssr app::auth_ssr
 cargo test -p rustok-storefront --features ssr
