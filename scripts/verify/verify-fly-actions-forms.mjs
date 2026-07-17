@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
+  flyLib: 'crates/fly/src/lib.rs',
+  safeUrl: 'crates/fly/src/safe_url.rs',
   action: 'crates/fly/src/action.rs',
   runtimePipeline: 'crates/fly/src/runtime_pipeline.rs',
   browserContract: 'crates/fly-browser/src/lib.rs',
@@ -56,6 +58,13 @@ const flattenKeys = (value, prefix = '') => Object.entries(value).flatMap(([key,
     : [path];
 }).sort();
 
+requireMarker('flyLib', 'mod safe_url;', 'Fly must register the shared safe URL boundary');
+requireMarkers('safeUrl', [
+  'pub(crate) fn validate_safe_url',
+  'pub(crate) fn normalize_safe_url',
+  'rejects_network_paths_backslashes_controls_and_unsafe_schemes',
+  'rejects_absolute_urls_without_authority_or_scheme_targets',
+], 'shared safe URL boundary');
 requireMarkers('action', [
   'pub const FLY_ACTION_FIELD',
   'pub const FLY_FORM_FIELD',
@@ -63,12 +72,15 @@ requireMarkers('action', [
   'pub struct ComponentForm',
   'pub fn materialize_component_actions',
   'pub fn validate_component_actions',
+  'safe_url::validate_safe_url as validate_shared_safe_url',
+  'validate_shared_safe_url(value, label)',
   'GENERATED_INTERACTION_ATTRIBUTES',
   'clear_interaction_materialization',
   'component_form_interaction_contract_conflict',
   'non-default form encoding requires post method',
   'root.visit(0, "page.component", &mut |component, _, _|',
   'materialization_clears_stale_interaction_attributes',
+  'network_paths_and_backslash_urls_are_blocking_validation',
   'duplicate_forms_and_interaction_conflicts_are_rejected',
   'non_post_encoding_is_rejected',
 ], 'Fly action and form contract');
