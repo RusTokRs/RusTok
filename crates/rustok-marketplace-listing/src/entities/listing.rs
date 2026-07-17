@@ -15,8 +15,6 @@ pub struct Model {
     pub channel_slug: String,
     pub status: String,
     pub approval_status: String,
-    pub approval_note: Option<String>,
-    pub suspension_reason: Option<String>,
     pub current_terms_version: i32,
     pub metadata: Json,
     pub published_at: Option<DateTimeWithTimeZone>,
