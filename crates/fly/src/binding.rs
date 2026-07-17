@@ -132,12 +132,15 @@ pub fn materialize_bindings(document: &ProjectDocument, context: &Value) -> Bind
     let mut unresolved_bindings = 0usize;
 
     for binding in &catalog.bindings {
+        println!("BINDING ID: {}, PATH: {}, TARGET: {:?}", binding.id, binding.path, binding.target);
         let resolved = resolve_path(context, &binding.path).cloned();
+        println!("RESOLVED VALUE: {:?}", resolved);
         let (source, used_fallback) = match resolved {
             Some(value) => (Some(value), false),
             None => (binding.fallback.clone(), binding.fallback.is_some()),
         };
         let Some(source) = source else {
+            println!("UNRESOLVED BINDING");
             unresolved_bindings = unresolved_bindings.saturating_add(1);
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Info,
@@ -151,6 +154,7 @@ pub fn materialize_bindings(document: &ProjectDocument, context: &Value) -> Bind
             continue;
         };
         let Some(value) = transform_value(source, binding.transform) else {
+            println!("TRANSFORM FAILED");
             unresolved_bindings = unresolved_bindings.saturating_add(1);
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Warning,
@@ -163,7 +167,9 @@ pub fn materialize_bindings(document: &ProjectDocument, context: &Value) -> Bind
             ));
             continue;
         };
+        println!("VALUE TO APPLY: {:?}", value);
         let Some(component) = materialized.component_mut(&binding.component_id) else {
+            println!("COMPONENT MISSING");
             unresolved_bindings = unresolved_bindings.saturating_add(1);
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Warning,
@@ -536,6 +542,7 @@ mod tests {
     #[test]
     fn materialization_applies_fields_attributes_styles_and_fallbacks() {
         let source = document();
+        println!("SOURCE DOCUMENT: {:#?}", source);
         let materialized = materialize_bindings(
             &source,
             &json!({ "page": { "title": "Hello" }, "theme": { "color": "red" } }),

@@ -1,9 +1,9 @@
 use super::*;
 use crate::{
-    BindingCatalog, BindingTarget, BindingTransform, ConditionOperator, ContextFieldDefinition,
-    ContextSchemaCatalog, ContextValueKind, DynamicCatalog, FlyError, GrapesJsV1Codec, RegistrySet,
-    RuntimeBinding, RuntimeCondition, SnapshotCatalog, TranslationCatalog, TranslationEntry,
-    FLY_RUNTIME_CONDITIONS_FIELD,
+    BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ConditionOperator, ContextCommand,
+    ContextFieldDefinition, ContextSchemaCatalog, ContextValueKind, DynamicCatalog, DynamicCommand,
+    FlyError, GrapesJsV1Codec, RegistrySet, RuntimeBinding, RuntimeCondition, SnapshotCatalog,
+    TranslationCatalog, TranslationCommand, TranslationEntry, FLY_RUNTIME_CONDITIONS_FIELD,
 };
 use serde_json::{json, Map, Value};
 

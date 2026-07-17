@@ -10338,6 +10338,7 @@ dependencies = [
  "rustok-index-admin",
  "rustok-installer",
  "rustok-inventory-admin",
+ "rustok-marketplace-listing-admin",
  "rustok-marketplace-seller-admin",
  "rustok-mcp-admin",
  "rustok-media",
@@ -11102,7 +11103,6 @@ dependencies = [
  "once_cell",
  "proptest",
  "rand 0.10.2",
- "redis",
  "regex",
  "reqwest 0.13.4",
  "rustok-api",
@@ -11189,6 +11189,7 @@ dependencies = [
  "rustok-index",
  "rustok-inventory",
  "rustok-marketplace",
+ "rustok-marketplace-listing",
  "rustok-marketplace-seller",
  "rustok-media",
  "rustok-modules",
@@ -11602,6 +11603,23 @@ dependencies = [
  "utoipa",
  "uuid",
  "validator",
+]
+
+[[package]]
+name = "rustok-marketplace-listing-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.20",
+ "leptos_axum",
+ "rustok-api",
+ "rustok-graphql",
+ "rustok-marketplace-listing",
+ "rustok-ui-core",
+ "rustok-ui-i18n-leptos",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -12740,6 +12758,7 @@ dependencies = [
  "rustok-installer-persistence",
  "rustok-inventory",
  "rustok-marketplace",
+ "rustok-marketplace-listing",
  "rustok-marketplace-seller",
  "rustok-mcp",
  "rustok-media",
