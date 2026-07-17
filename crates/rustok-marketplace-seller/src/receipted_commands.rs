@@ -713,6 +713,7 @@ impl MarketplaceSellerService {
         member_id: Uuid,
         input: UpdateMarketplaceSellerMemberInput,
     ) -> MarketplaceSellerResult<MarketplaceSellerMemberResponse> {
+        let policy_input = input.clone();
         let metadata = input
             .metadata
             .map(|value| object_or_empty(value, "metadata"))
@@ -750,7 +751,7 @@ impl MarketplaceSellerService {
                         .one(&receipt.transaction)
                         .await?
                         .ok_or(MarketplaceSellerError::MemberNotFound(member_id))?;
-                    validate_owner_membership_update(&current, &input)?;
+                    validate_owner_membership_update(&current, &policy_input)?;
                     let mut active: seller_member::ActiveModel = current.into();
                     if let Some(role) = input.role {
                         active.role = Set(role.as_str().to_string());
