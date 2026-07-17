@@ -176,6 +176,9 @@ mod tests {
             axum::http::header::COOKIE,
             format!("{ADMIN_SESSION_COOKIE}=invalid").parse().unwrap(),
         );
-        assert_eq!(auth_snapshot_from_headers(&headers), ServerAuthSnapshot::default());
+        assert_eq!(
+            auth_snapshot_from_headers(&headers),
+            ServerAuthSnapshot::default()
+        );
     }
 }
