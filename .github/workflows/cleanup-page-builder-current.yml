@@ -31,6 +31,7 @@ jobs:
           set +e
           {
             python3 scripts/migrations/cleanup_page_builder_current.py && \
+            python3 scripts/migrations/cleanup_page_builder_contributions.py && \
             cargo fmt --all && \
             cargo check -p fly -p fly-ui -p fly-leptos -p rustok-page-builder --all-features && \
             cargo test -p fly --lib && \
@@ -62,6 +63,7 @@ jobs:
         run: |
           rm -f \
             scripts/migrations/cleanup_page_builder_current.py \
+            scripts/migrations/cleanup_page_builder_contributions.py \
             .github/workflows/cleanup-page-builder-current.yml
 
       - name: Commit atomically to main
