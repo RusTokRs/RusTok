@@ -1,3 +1,4 @@
+#[cfg(feature = "redis-cache")]
 const MAX_GENERATION_RECOVERIES_PER_PROBE: usize = 16;
 
 struct GenerationRecoveryOwner {
@@ -47,6 +48,7 @@ fn bind_generation_recovery_owner(
     Ok(())
 }
 
+#[cfg(feature = "redis-cache")]
 fn generation_recovery_states_for(
     identity: &Arc<dyn std::any::Any + Send + Sync>,
 ) -> Vec<Arc<BackendGenerationState>> {
@@ -57,9 +59,11 @@ fn generation_recovery_states_for(
         .values()
         .filter_map(|owner| {
             let existing = owner.identity.upgrade()?;
-            Arc::ptr_eq(&existing, identity)
-                .then(|| owner.state.upgrade())
-                .flatten()
+            if Arc::ptr_eq(&existing, identity) {
+                owner.state.upgrade()
+            } else {
+                None
+            }
         })
         .collect()
 }
@@ -195,7 +199,9 @@ impl CacheService {
                                 "Recovered trusted shared cache backend generation"
                             );
                         }
-                        Err(error) => first_error.get_or_insert_with(|| error.to_string()),
+                        Err(error) => {
+                            first_error.get_or_insert_with(|| error.to_string());
+                        }
                     }
                 }
                 Ok(_) => {
@@ -221,13 +227,6 @@ impl CacheService {
             )));
         }
         Ok(recovered)
-    }
-
-    #[cfg(not(feature = "redis-cache"))]
-    pub(crate) async fn recover_registered_backend_generations(
-        &self,
-    ) -> rustok_core::Result<usize> {
-        Ok(0)
     }
 }
 
