@@ -10,6 +10,7 @@ use rustok_core::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
 #[cfg(feature = "redis-cache")]
 use tokio::sync::Mutex as AsyncMutex;
 
+#[cfg(feature = "redis-cache")]
 use crate::fallback::DegradationAwareFallbackBackend;
 use crate::{CacheBackendOptions, CacheService};
 
