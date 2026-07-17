@@ -8,6 +8,20 @@ use rustok_ui_core::UiRouteContext;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+fn layer_indent_class(depth: usize) -> &'static str {
+    match depth {
+        0 => "pl-2",
+        1 => "pl-[22px]",
+        2 => "pl-9",
+        3 => "pl-[50px]",
+        4 => "pl-16",
+        5 => "pl-[78px]",
+        6 => "pl-[92px]",
+        7 => "pl-[106px]",
+        _ => "pl-[120px]",
+    }
+}
+
 #[component]
 pub fn PaletteLayersPanel(
     runtime: AdminEditorRuntime,
@@ -198,17 +212,18 @@ pub fn PaletteLayersPanel(
                             let browser_component_id = layer.id.clone();
                             let active = selected.as_deref() == Some(layer.id.as_str());
                             let select_runtime = layers_runtime.clone();
+                            let state_class = if active {
+                                "block w-full rounded bg-primary/10 px-2 py-1 text-left text-sm text-primary"
+                            } else {
+                                "block w-full rounded px-2 py-1 text-left text-sm hover:bg-muted"
+                            };
+                            let class = format!("{state_class} {}", layer_indent_class(layer.depth));
                             view! {
                                 <button
                                     type="button"
                                     data-fly-component-id=browser_component_id
                                     data-fly-action="select-component"
-                                    class=if active {
-                                        "block w-full rounded bg-primary/10 px-2 py-1 text-left text-sm text-primary"
-                                    } else {
-                                        "block w-full rounded px-2 py-1 text-left text-sm hover:bg-muted"
-                                    }
-                                    style=format!("padding-left:{}px", 8 + layer.depth * 14)
+                                    class=class
                                     on:click=move |_| select_runtime.dispatch(
                                         UiIntent::Select(Some(component_id.clone()))
                                     )
@@ -232,6 +247,14 @@ mod tests {
     use fly_ui::{ContributionDescriptor, ContributionRegistry};
     use serde_json::Map;
     use std::collections::{BTreeMap, BTreeSet};
+
+    #[test]
+    fn layer_indent_uses_a_bounded_class_scale() {
+        assert_eq!(layer_indent_class(0), "pl-2");
+        assert_eq!(layer_indent_class(3), "pl-[50px]");
+        assert_eq!(layer_indent_class(8), "pl-[120px]");
+        assert_eq!(layer_indent_class(usize::MAX), "pl-[120px]");
+    }
 
     #[test]
     fn contribution_access_filters_templates_without_copying_block_definitions() {
