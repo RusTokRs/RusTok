@@ -10,6 +10,7 @@ pub mod draft_session;
 pub mod editor;
 mod i18n;
 mod model;
+mod palette_access;
 pub mod transport;
 pub mod ui;
 
@@ -22,6 +23,7 @@ pub use draft_session::{
     SsrDraftSessionStore,
 };
 pub use model::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
+pub use palette_access::dispatch_browser_intent_with_palette_access;
 pub use transport::{
     PageBuilderAdminFacade, PageBuilderAdminFacadeError, PageBuilderAdminFacadeFuture,
 };
