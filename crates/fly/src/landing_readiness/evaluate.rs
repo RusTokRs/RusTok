@@ -5,16 +5,24 @@ use super::{
 use crate::{
     analyze_project_locale_coverage, audit_page, localized_page_route_index,
     materialize_component_actions, materialize_internal_page_links,
-    materialize_localized_page_metadata, materialize_project_locale_context, validate_project,
-    AuditSeverity, LocaleCoverageKind, PageLocator, ProjectDocument, RegistrySet,
-    ValidationDiagnostic, ValidationLimits, ValidationSeverity, FLY_PAGE_METADATA_FIELD,
-    LOCALIZED_VALUES_FIELD,
+    materialize_localized_page_metadata, materialize_project_locale_context,
+    materialize_project_with_runtime_context, validate_project, AuditSeverity, LocaleCoverageKind,
+    PageLocator, ProjectDocument, RegistrySet, ValidationDiagnostic, ValidationLimits,
+    ValidationSeverity, FLY_PAGE_METADATA_FIELD, LOCALIZED_VALUES_FIELD,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub fn evaluate_landing_readiness(
     document: &ProjectDocument,
+    policy: LandingReadinessPolicy,
+) -> LandingReadinessReport {
+    evaluate_landing_readiness_with_context(document, None, policy)
+}
+
+pub fn evaluate_landing_readiness_with_context(
+    document: &ProjectDocument,
+    runtime_context: Option<&Value>,
     policy: LandingReadinessPolicy,
 ) -> LandingReadinessReport {
     let mut issues = validate_project(
@@ -24,57 +32,27 @@ pub fn evaluate_landing_readiness(
     )
     .diagnostics
     .into_iter()
-    .map(|diagnostic| LandingReadinessIssue {
-        category: classify_validation_diagnostic(&diagnostic),
-        diagnostic,
-    })
+    .map(classified_issue)
     .collect::<Vec<_>>();
 
-    // Readiness validates the project contract, not one runtime data instance. Materialize only
-    // locale-sensitive links, metadata, actions, and forms so the accessibility audit sees the
-    // same native HTML contracts as storefront rendering without requiring arbitrary runtime data.
-    let locale_materialization =
-        materialize_project_locale_context(document, &Value::Object(Map::new()));
-    issues.extend(
-        locale_materialization
-            .diagnostics
-            .iter()
-            .cloned()
-            .map(classified_issue),
-    );
-    let link_materialization =
-        materialize_internal_page_links(document, &locale_materialization.context);
-    issues.extend(
-        link_materialization
-            .diagnostics
-            .iter()
-            .cloned()
-            .map(classified_issue),
-    );
-    let metadata_materialization = materialize_localized_page_metadata(
-        &link_materialization.document,
-        &locale_materialization.context,
-    );
-    issues.extend(
-        metadata_materialization
-            .diagnostics
-            .iter()
-            .cloned()
-            .map(classified_issue),
-    );
-    let action_materialization = materialize_component_actions(
-        &metadata_materialization.document,
-        &locale_materialization.context,
-    );
-    issues.extend(
-        action_materialization
-            .diagnostics
-            .iter()
-            .cloned()
-            .map(classified_issue),
-    );
+    let audit_document = match runtime_context {
+        Some(context) => {
+            // A publish gate may provide the exact runtime context that will be rendered. In that
+            // case readiness must audit the fully materialized output, including translations,
+            // defaults, computed values, bindings, repeaters, forms, and actions.
+            let materialized = materialize_project_with_runtime_context(document, context);
+            issues.extend(
+                materialized
+                    .diagnostics
+                    .iter()
+                    .cloned()
+                    .map(classified_issue),
+            );
+            materialized.document
+        }
+        None => materialize_structural_document(document, &mut issues),
+    };
 
-    let audit_document = &action_materialization.document;
     let routes = localized_page_route_index(document);
     for (page_index, page) in document.project.pages.iter().enumerate() {
         let path = format!("project.pages[{page_index}]");
@@ -126,7 +104,7 @@ pub fn evaluate_landing_readiness(
             ));
         }
 
-        let audit = audit_page(audit_document, &PageLocator::by_index(page_index));
+        let audit = audit_page(&audit_document, &PageLocator::by_index(page_index));
         for diagnostic in audit.diagnostics {
             if matches!(
                 diagnostic.code.as_str(),
@@ -193,6 +171,56 @@ pub fn evaluate_landing_readiness(
         categories,
         locale_coverage,
     }
+}
+
+fn materialize_structural_document(
+    document: &ProjectDocument,
+    issues: &mut Vec<LandingReadinessIssue>,
+) -> ProjectDocument {
+    // The standalone report validates the project contract rather than one business-data instance.
+    // Materialize only locale-sensitive links, metadata, forms, and actions. Runtime instance data
+    // is evaluated when the publish gate supplies an explicit context.
+    let locale_materialization =
+        materialize_project_locale_context(document, &Value::Object(Map::new()));
+    issues.extend(
+        locale_materialization
+            .diagnostics
+            .iter()
+            .cloned()
+            .map(classified_issue),
+    );
+    let link_materialization =
+        materialize_internal_page_links(document, &locale_materialization.context);
+    issues.extend(
+        link_materialization
+            .diagnostics
+            .iter()
+            .cloned()
+            .map(classified_issue),
+    );
+    let metadata_materialization = materialize_localized_page_metadata(
+        &link_materialization.document,
+        &locale_materialization.context,
+    );
+    issues.extend(
+        metadata_materialization
+            .diagnostics
+            .iter()
+            .cloned()
+            .map(classified_issue),
+    );
+    let action_materialization = materialize_component_actions(
+        &metadata_materialization.document,
+        &locale_materialization.context,
+    );
+    issues.extend(
+        action_materialization
+            .diagnostics
+            .iter()
+            .cloned()
+            .map(classified_issue),
+    );
+    action_materialization.document
 }
 
 fn classified_issue(diagnostic: ValidationDiagnostic) -> LandingReadinessIssue {
