@@ -41,15 +41,10 @@ impl InteractionRouteCatalog {
         self.routed_pages.contains(&page_index)
     }
 
-    pub(crate) fn slug_for(
-        &self,
-        page_index: usize,
-        locale_candidates: &[String],
-    ) -> Option<&str> {
+    pub(crate) fn slug_for(&self, page_index: usize, locale_candidates: &[String]) -> Option<&str> {
         for locale in locale_candidates {
             if let Some(route) = self.entries.iter().find(|route| {
-                route.page_index == page_index
-                    && route.locale.as_deref() == Some(locale.as_str())
+                route.page_index == page_index && route.locale.as_deref() == Some(locale.as_str())
             }) {
                 return Some(route.slug.as_str());
             }
@@ -57,7 +52,11 @@ impl InteractionRouteCatalog {
         self.entries
             .iter()
             .find(|route| route.page_index == page_index && route.locale.is_none())
-            .or_else(|| self.entries.iter().find(|route| route.page_index == page_index))
+            .or_else(|| {
+                self.entries
+                    .iter()
+                    .find(|route| route.page_index == page_index)
+            })
             .map(|route| route.slug.as_str())
     }
 }

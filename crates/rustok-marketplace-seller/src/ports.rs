@@ -164,11 +164,7 @@ impl MarketplaceSellerReadPort for crate::MarketplaceSellerService {
     ) -> Result<MarketplaceSellerListResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let (items, total) = self
-            .list_sellers(
-                parse_tenant_id(&context)?,
-                context.locale.as_str(),
-                request,
-            )
+            .list_sellers(parse_tenant_id(&context)?, context.locale.as_str(), request)
             .await
             .map_err(map_owner_error)?;
         Ok(MarketplaceSellerListResponse { items, total })
@@ -449,13 +445,17 @@ mod tests {
             "marketplace-seller-contract",
         );
         assert_eq!(
-            base.require_policy(PortCallPolicy::read()).unwrap_err().kind,
+            base.require_policy(PortCallPolicy::read())
+                .unwrap_err()
+                .kind,
             PortErrorKind::Timeout
         );
         let read = base.clone().with_deadline(Duration::from_secs(3));
         assert!(read.require_policy(PortCallPolicy::read()).is_ok());
         assert_eq!(
-            read.require_policy(PortCallPolicy::write()).unwrap_err().code,
+            read.require_policy(PortCallPolicy::write())
+                .unwrap_err()
+                .code,
             "port.idempotency_key_required"
         );
         assert!(read

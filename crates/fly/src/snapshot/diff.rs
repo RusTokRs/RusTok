@@ -1,14 +1,9 @@
 use super::model::ProjectDiffSummary;
-use crate::{
-    visit_project_components, AssetCatalog, ProjectDocument, StyleRuleCatalog,
-};
+use crate::{visit_project_components, AssetCatalog, ProjectDocument, StyleRuleCatalog};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub fn compare_projects(
-    before: &ProjectDocument,
-    after: &ProjectDocument,
-) -> ProjectDiffSummary {
+pub fn compare_projects(before: &ProjectDocument, after: &ProjectDocument) -> ProjectDiffSummary {
     let before_pages = page_map(before);
     let after_pages = page_map(after);
     let before_components = component_map(before);
@@ -51,14 +46,8 @@ fn page_map(document: &ProjectDocument) -> BTreeMap<String, Value> {
         .iter()
         .enumerate()
         .map(|(index, page)| {
-            let key = page
-                .id
-                .clone()
-                .unwrap_or_else(|| format!("@index:{index}"));
-            (
-                key,
-                serde_json::to_value(page).unwrap_or(Value::Null),
-            )
+            let key = page.id.clone().unwrap_or_else(|| format!("@index:{index}"));
+            (key, serde_json::to_value(page).unwrap_or(Value::Null))
         })
         .collect()
 }
@@ -70,10 +59,7 @@ fn component_map(document: &ProjectDocument) -> BTreeMap<String, Value> {
             .id()
             .map(ToString::to_string)
             .unwrap_or_else(|| format!("@path:{}", visit.path()));
-        components.insert(
-            key,
-            serde_json::to_value(component).unwrap_or(Value::Null),
-        );
+        components.insert(key, serde_json::to_value(component).unwrap_or(Value::Null));
     });
     components
 }

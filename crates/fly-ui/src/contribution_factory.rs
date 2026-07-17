@@ -160,8 +160,7 @@ pub fn assemble_contribution_registry(
             .provider_health
             .get(&module.provider)
             .is_some_and(|health| {
-                *health == ContributionProviderHealth::Degraded
-                    && policy.allow_degraded_providers
+                *health == ContributionProviderHealth::Degraded && policy.allow_degraded_providers
             })
         {
             result.diagnostics.push(diagnostic(
@@ -219,8 +218,7 @@ pub fn assemble_contribution_registry(
                         result.registered_contributions.saturating_add(1);
                 }
                 Err(error) => {
-                    result.skipped_contributions =
-                        result.skipped_contributions.saturating_add(1);
+                    result.skipped_contributions = result.skipped_contributions.saturating_add(1);
                     result.diagnostics.push(registration_diagnostic(
                         &module.module_id,
                         contribution.id.trim(),
@@ -245,8 +243,7 @@ fn module_filter(
             ContributionAssemblySeverity::Info,
         ));
     }
-    if !policy.enabled_providers.is_empty()
-        && !policy.enabled_providers.contains(&module.provider)
+    if !policy.enabled_providers.is_empty() && !policy.enabled_providers.contains(&module.provider)
     {
         return Some((
             "contribution_provider_policy_disabled",
@@ -513,11 +510,7 @@ mod tests {
         }
     }
 
-    fn contribution(
-        id: &str,
-        provider: &str,
-        capability: Option<&str>,
-    ) -> ContributionDescriptor {
+    fn contribution(id: &str, provider: &str, capability: Option<&str>) -> ContributionDescriptor {
         ContributionDescriptor {
             id: id.to_string(),
             provider: provider.to_string(),
@@ -581,10 +574,8 @@ mod tests {
             modules.clone(),
             &ContributionAssemblyPolicy::default(),
         );
-        let storefront = build_storefront_contribution_registry(
-            modules,
-            &ContributionAssemblyPolicy::default(),
-        );
+        let storefront =
+            build_storefront_contribution_registry(modules, &ContributionAssemblyPolicy::default());
         assert!(admin.registry.get("pages.admin").is_some());
         assert!(admin.registry.get("pages.storefront").is_none());
         assert!(storefront.registry.get("pages.storefront").is_some());
@@ -604,7 +595,9 @@ mod tests {
             )],
             Vec::new(),
         );
-        pages.required_permissions.insert("pages.manage".to_string());
+        pages
+            .required_permissions
+            .insert("pages.manage".to_string());
         let result = build_admin_contribution_registry(
             [pages],
             &ContributionAssemblyPolicy {
@@ -655,9 +648,10 @@ mod tests {
             &ContributionAssemblyPolicy::default(),
         );
         assert!(!missing.is_valid());
-        assert!(missing.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "contribution_dependency_missing"
-        }));
+        assert!(missing
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "contribution_dependency_missing" }));
 
         let cycle = build_admin_contribution_registry(
             [
@@ -707,9 +701,10 @@ mod tests {
         );
         assert_eq!(result.registered_contributions, 1);
         assert_eq!(result.skipped_contributions, 1);
-        assert!(result.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "contribution_renderer_duplicate"
-        }));
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "contribution_renderer_duplicate" }));
     }
 
     #[test]

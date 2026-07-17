@@ -26,7 +26,9 @@ pub enum ScenarioGateMode {
     Ignore,
     All,
     Any,
-    Named { scenario_ids: Vec<String> },
+    Named {
+        scenario_ids: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -492,8 +494,7 @@ mod tests {
         );
         assert!(evaluation.allowed, "{:?}", evaluation.diagnostics);
         assert!(!evaluation.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "landing_empty_heading"
-                || diagnostic.code == "landing_missing_h1"
+            diagnostic.code == "landing_empty_heading" || diagnostic.code == "landing_missing_h1"
         }));
     }
 }

@@ -451,10 +451,9 @@ pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationEr
         PostOrderOrchestrationError::PaymentOrchestration(error) => {
             map_payment_orchestration_error(error)
         }
-        PostOrderOrchestrationError::Validation(_) => HttpError::bad_request(
-            "commerce_admin_invalid",
-            "Post-order request is invalid",
-        ),
+        PostOrderOrchestrationError::Validation(_) => {
+            HttpError::bad_request("commerce_admin_invalid", "Post-order request is invalid")
+        }
     }
 }
 

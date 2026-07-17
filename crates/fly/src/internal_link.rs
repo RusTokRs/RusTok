@@ -3,8 +3,9 @@ use crate::{
     interaction_route::{
         build_interaction_href, interaction_locale_candidates, InteractionRouteCatalog,
     },
-    safe_url::normalize_safe_url, ComponentObject, ProjectDocument, RuntimeLocaleSelection,
-    ValidationDiagnostic, ValidationSeverity,
+    safe_url::normalize_safe_url,
+    ComponentObject, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
+    ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -167,7 +168,10 @@ fn materialize_component(
             path,
             component_id,
             "internal_page_link_target_missing",
-            format!("internal page link target `{}` does not exist", link.page_id),
+            format!(
+                "internal page link target `{}` does not exist",
+                link.page_id
+            ),
         );
         return;
     };
@@ -281,7 +285,10 @@ fn validate_component(
             "internal_page_link_target_missing",
             path,
             component_id,
-            format!("internal page link target `{}` does not exist", link.page_id),
+            format!(
+                "internal page link target `{}` does not exist",
+                link.page_id
+            ),
         )),
     }
 }

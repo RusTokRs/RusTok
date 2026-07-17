@@ -5,9 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{
     MarketplaceSellerAdminCommand, MarketplaceSellerAdminCommandResult,
-    MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory,
-    MarketplaceSellerAdminFilters, MarketplaceSellerAdminListItem,
-    MarketplaceSellerAdminMember, MarketplaceSellerAdminRecord,
+    MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory, MarketplaceSellerAdminFilters,
+    MarketplaceSellerAdminListItem, MarketplaceSellerAdminMember, MarketplaceSellerAdminRecord,
 };
 
 pub type GraphqlMarketplaceSellerAdminError = String;

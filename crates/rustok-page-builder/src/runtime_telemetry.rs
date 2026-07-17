@@ -139,8 +139,7 @@ mod tests {
             "correlation-a",
         );
         let value = serde_json::to_value(PageBuilderRuntimeCallEvidence::load_project(
-            &context,
-            "home",
+            &context, "home",
         ))
         .expect("runtime evidence");
 

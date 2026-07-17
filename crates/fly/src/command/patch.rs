@@ -180,8 +180,7 @@ impl ComponentPatch {
 
     fn set_reserved_string(&mut self, field: &str, value: String) {
         self.remove_fields.retain(|candidate| candidate != field);
-        self.fields
-            .insert(field.to_string(), Value::String(value));
+        self.fields.insert(field.to_string(), Value::String(value));
     }
 
     fn remove_reserved_field(&mut self, field: &str) {

@@ -70,7 +70,10 @@ fn discover_manifests(
                 "contribution_manifest_duplicate",
                 Some(&manifest.module_id),
                 None,
-                format!("module contribution manifest `{}` is duplicated", manifest.module_id),
+                format!(
+                    "module contribution manifest `{}` is duplicated",
+                    manifest.module_id
+                ),
             ));
             continue;
         }
@@ -166,8 +169,7 @@ fn register_surface_contributions(
 
         match result.registry.register(contribution.clone()) {
             Ok(()) => {
-                result.registered_contributions =
-                    result.registered_contributions.saturating_add(1);
+                result.registered_contributions = result.registered_contributions.saturating_add(1);
             }
             Err(error) => {
                 result.skipped_contributions = result.skipped_contributions.saturating_add(1);
@@ -261,7 +263,9 @@ fn normalize_set(values: BTreeSet<String>, label: &str) -> Result<BTreeSet<Strin
     for value in values {
         let value = required(&value, label)?;
         if !normalized.insert(value.clone()) {
-            return Err(format!("{label} `{value}` is duplicated after normalization"));
+            return Err(format!(
+                "{label} `{value}` is duplicated after normalization"
+            ));
         }
     }
     Ok(normalized)
@@ -271,12 +275,13 @@ fn manifest_filter(
     manifest: &ModuleContributionManifest,
     policy: &ContributionAssemblyPolicy,
 ) -> Option<(&'static str, String, ContributionAssemblySeverity)> {
-    if !policy.enabled_modules.is_empty()
-        && !policy.enabled_modules.contains(&manifest.module_id)
-    {
+    if !policy.enabled_modules.is_empty() && !policy.enabled_modules.contains(&manifest.module_id) {
         return Some((
             "contribution_module_disabled",
-            format!("module `{}` is not enabled for this tenant", manifest.module_id),
+            format!(
+                "module `{}` is not enabled for this tenant",
+                manifest.module_id
+            ),
             ContributionAssemblySeverity::Info,
         ));
     }
@@ -309,7 +314,10 @@ fn manifest_filter(
     match policy.provider_health.get(&manifest.owner_provider) {
         Some(ContributionProviderHealth::Unavailable) => Some((
             "contribution_owner_provider_unavailable",
-            format!("owner provider `{}` is unavailable", manifest.owner_provider),
+            format!(
+                "owner provider `{}` is unavailable",
+                manifest.owner_provider
+            ),
             ContributionAssemblySeverity::Warning,
         )),
         Some(ContributionProviderHealth::Degraded) if !policy.allow_degraded_providers => Some((

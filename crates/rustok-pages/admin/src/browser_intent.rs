@@ -1,9 +1,7 @@
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::core;
 use crate::transport;
-use fly::{
-    normalize_locale_tag, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD,
-};
+use fly::{normalize_locale_tag, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD};
 use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL_V1};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PublishPageBuilderResult,
@@ -442,11 +440,10 @@ mod tests {
 
     #[test]
     fn runtime_locale_form_rejects_invalid_tags() {
-        assert!(runtime_locale_from_payload(
-            &json!({}),
-            &json!({ "locale": "invalid locale" }),
-        )
-        .is_err());
+        assert!(
+            runtime_locale_from_payload(&json!({}), &json!({ "locale": "invalid locale" }),)
+                .is_err()
+        );
         assert!(runtime_locale_from_payload(
             &json!({}),
             &json!({ "locale": "ru", "fallback_locales": "en, bad locale" }),

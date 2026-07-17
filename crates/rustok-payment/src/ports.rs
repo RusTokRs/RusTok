@@ -153,10 +153,9 @@ fn payment_error_to_port_error(error: crate::PaymentError) -> PortError {
             "payment.payment_not_found",
             format!("payment for collection {id} not found"),
         ),
-        crate::PaymentError::RefundNotFound(id) => PortError::not_found(
-            "payment.refund_not_found",
-            format!("refund {id} not found"),
-        ),
+        crate::PaymentError::RefundNotFound(id) => {
+            PortError::not_found("payment.refund_not_found", format!("refund {id} not found"))
+        }
         crate::PaymentError::InvalidTransition { from, to } => PortError::conflict(
             "payment.invalid_transition",
             format!("invalid payment transition from `{from}` to `{to}`"),
@@ -181,7 +180,9 @@ fn payment_error_to_port_error(error: crate::PaymentError) -> PortError {
         } => PortError::new(
             PortErrorKind::InvariantViolation,
             "payment.provider_invalid_response",
-            format!("payment provider `{provider_id}` returned an invalid response for `{operation}`"),
+            format!(
+                "payment provider `{provider_id}` returned an invalid response for `{operation}`"
+            ),
             false,
         ),
         crate::PaymentError::ProviderOutcomeUnknown {

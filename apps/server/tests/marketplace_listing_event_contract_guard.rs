@@ -16,15 +16,24 @@ fn marketplace_listing_external_event_contract_is_typed_and_safe() {
         ),
         ("MarketplaceListingApproved", "marketplace.listing.approved"),
         ("MarketplaceListingRejected", "marketplace.listing.rejected"),
-        ("MarketplaceListingPublished", "marketplace.listing.published"),
-        ("MarketplaceListingSuspended", "marketplace.listing.suspended"),
+        (
+            "MarketplaceListingPublished",
+            "marketplace.listing.published",
+        ),
+        (
+            "MarketplaceListingSuspended",
+            "marketplace.listing.suspended",
+        ),
         (
             "MarketplaceListingReactivated",
             "marketplace.listing.reactivated",
         ),
         ("MarketplaceListingArchived", "marketplace.listing.archived"),
     ] {
-        assert!(types.contains(&format!("{variant} {{")), "missing {variant}");
+        assert!(
+            types.contains(&format!("{variant} {{")),
+            "missing {variant}"
+        );
         assert!(
             types.contains(&format!("Self::{variant} {{ .. }}")) && types.contains(event_type),
             "missing event type mapping for {variant}"

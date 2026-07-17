@@ -6,8 +6,7 @@ use fly::{
     TraitSchemaRegistry,
 };
 use fly_ui::{
-    CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation,
-    EditorCapabilityPolicy,
+    CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation, EditorCapabilityPolicy,
 };
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;

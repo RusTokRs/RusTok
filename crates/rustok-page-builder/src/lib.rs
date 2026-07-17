@@ -105,11 +105,8 @@ mod tests {
 
     #[test]
     fn dto_contract_roundtrip_is_stable() {
-        let input = PublishPageBuilderInput::new(
-            "home",
-            "rev-1",
-            serde_json::json!({ "pages": [] }),
-        );
+        let input =
+            PublishPageBuilderInput::new("home", "rev-1", serde_json::json!({ "pages": [] }));
         let encoded = serde_json::to_value(&input).expect("serialize input");
         assert_eq!(encoded["page_id"], "home");
         assert!(encoded.get("schema_version").is_none());
@@ -120,8 +117,8 @@ mod tests {
             "schema_version": "grapesjs_v1",
             "project_data": { "pages": [] }
         });
-        let decoded: PublishPageBuilderInput = serde_json::from_value(compatibility_payload)
-            .expect("deserialize compatibility input");
+        let decoded: PublishPageBuilderInput =
+            serde_json::from_value(compatibility_payload).expect("deserialize compatibility input");
         assert_eq!(decoded.page_id, "home");
 
         let props = BuilderNodePropertiesInput {

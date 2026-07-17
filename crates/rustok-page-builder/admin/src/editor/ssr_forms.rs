@@ -276,9 +276,7 @@ impl AdminCanvasController {
             .fields
             .insert("id".to_string(), Value::String(new_page_id));
         if let Some(name) = optional(request.name) {
-            patch
-                .fields
-                .insert("name".to_string(), Value::String(name));
+            patch.fields.insert("name".to_string(), Value::String(name));
         }
         Ok(UiIntent::execute(EditorCommand::Page {
             command: PageCommand::Patch {
@@ -311,7 +309,9 @@ impl AdminCanvasController {
             .map_err(|error| format!("translation values JSON is invalid: {error}"))?
             .as_object()
             .cloned()
-            .ok_or_else(|| "translation values must be a JSON object keyed by locale".to_string())?;
+            .ok_or_else(|| {
+                "translation values must be a JSON object keyed by locale".to_string()
+            })?;
         if values.is_empty() {
             return Err("translation values must not be empty".to_string());
         }
@@ -329,7 +329,11 @@ impl AdminCanvasController {
 
         let component_id = request.component_id.trim();
         let bind_name = request.bind_name.trim();
-        match (component_id.is_empty(), bind_name.is_empty(), request.bind_kind) {
+        match (
+            component_id.is_empty(),
+            bind_name.is_empty(),
+            request.bind_kind,
+        ) {
             (true, true, None) => {}
             (false, false, Some(bind_kind)) => {
                 ensure_component_exists(self, component_id)?;
@@ -423,10 +427,7 @@ fn normalize_translation_id(value: &str) -> Result<String, String> {
     Ok(value.to_string())
 }
 
-fn binding_target(
-    kind: SsrComponentPropertyKind,
-    name: &str,
-) -> Result<BindingTarget, String> {
+fn binding_target(kind: SsrComponentPropertyKind, name: &str) -> Result<BindingTarget, String> {
     let name = required(name, "binding property name")?.to_string();
     Ok(match kind {
         SsrComponentPropertyKind::Field => BindingTarget::Field { name },
@@ -499,7 +500,10 @@ fn normalize_css_property(value: &str) -> Result<String, String> {
 
 pub(crate) fn request_effects(
     effects: Vec<AdminCanvasEffect>,
-) -> Vec<(rustok_page_builder::dto::PageBuilderCapabilityRequest, Option<fly::ProjectHash>)> {
+) -> Vec<(
+    rustok_page_builder::dto::PageBuilderCapabilityRequest,
+    Option<fly::ProjectHash>,
+)> {
     effects
         .into_iter()
         .filter_map(|effect| match effect {

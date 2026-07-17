@@ -61,10 +61,7 @@ async fn uncertain_executing_provider_operation_requires_reconciliation_without_
         )
         .await
         .expect("executing operation must become reconciliation_required");
-    assert_eq!(
-        uncertain.status,
-        PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-    );
+    assert_eq!(uncertain.status, PROVIDER_OPERATION_RECONCILIATION_REQUIRED);
     assert!(uncertain.provider_completed_at.is_none());
     assert!(uncertain.error_message.is_some());
 

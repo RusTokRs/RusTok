@@ -29,10 +29,7 @@ fn ready_document() -> ProjectDocument {
 
 #[test]
 fn localized_metadata_counts_as_ready_content() {
-    let report = evaluate_landing_readiness(
-        &ready_document(),
-        LandingReadinessPolicy::default(),
-    );
+    let report = evaluate_landing_readiness(&ready_document(), LandingReadinessPolicy::default());
     assert!(report.ready, "{:?}", report.issues);
     assert_eq!(report.page_count, 1);
     assert_eq!(report.categories.len(), 5);
@@ -46,10 +43,7 @@ fn missing_landing_contracts_block_readiness() {
         }]
     }))
     .expect("document");
-    let report = evaluate_landing_readiness(
-        &document,
-        LandingReadinessPolicy::default(),
-    );
+    let report = evaluate_landing_readiness(&document, LandingReadinessPolicy::default());
     assert!(!report.ready);
     for code in [
         "landing_page_id_required",
@@ -70,10 +64,7 @@ fn missing_landing_contracts_block_readiness() {
 #[test]
 fn warnings_only_block_when_policy_requires_it() {
     let document = ready_document();
-    let normal = evaluate_landing_readiness(
-        &document,
-        LandingReadinessPolicy::default(),
-    );
+    let normal = evaluate_landing_readiness(&document, LandingReadinessPolicy::default());
     assert!(normal.ready);
 
     let strict = evaluate_landing_readiness(
@@ -96,8 +87,7 @@ fn warnings_only_block_when_policy_requires_it() {
 
 #[test]
 fn required_locale_coverage_gaps_block_readiness_without_strict_locale_validation() {
-    let mut source =
-        GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
+    let mut source = GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
     source["flyLocales"] = json!({
         "default_locale": "en",
         "supported_locales": ["en", "ru"],
@@ -110,10 +100,7 @@ fn required_locale_coverage_gaps_block_readiness_without_strict_locale_validatio
     }]);
     let document = GrapesJsV1Codec::decode_value(source).expect("document");
 
-    let report = evaluate_landing_readiness(
-        &document,
-        LandingReadinessPolicy::default(),
-    );
+    let report = evaluate_landing_readiness(&document, LandingReadinessPolicy::default());
     assert!(!report.ready);
     assert!(report.issues.iter().any(|issue| {
         issue.category == LandingReadinessCategory::Locales
@@ -129,8 +116,7 @@ fn required_locale_coverage_gaps_block_readiness_without_strict_locale_validatio
 
 #[test]
 fn structural_readiness_does_not_require_runtime_instance_data() {
-    let mut source =
-        GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
+    let mut source = GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
     source["flyRuntimeContextSchema"] = json!([{
         "id": "customer-name",
         "path": "customer.name",
@@ -139,10 +125,7 @@ fn structural_readiness_does_not_require_runtime_instance_data() {
     }]);
     let document = GrapesJsV1Codec::decode_value(source).expect("document");
 
-    let report = evaluate_landing_readiness(
-        &document,
-        LandingReadinessPolicy::default(),
-    );
+    let report = evaluate_landing_readiness(&document, LandingReadinessPolicy::default());
     assert!(report.ready, "{:?}", report.issues);
     assert!(!report
         .issues
@@ -189,10 +172,7 @@ fn structural_readiness_applies_schema_defaults_before_audit() {
     }))
     .expect("document");
 
-    let report = evaluate_landing_readiness(
-        &document,
-        LandingReadinessPolicy::default(),
-    );
+    let report = evaluate_landing_readiness(&document, LandingReadinessPolicy::default());
     assert!(report.ready, "{:?}", report.issues);
     assert!(!report
         .issues
@@ -238,10 +218,7 @@ fn structural_readiness_validates_binding_fallback_contracts() {
     }))
     .expect("document");
 
-    let report = evaluate_landing_readiness(
-        &document,
-        LandingReadinessPolicy::default(),
-    );
+    let report = evaluate_landing_readiness(&document, LandingReadinessPolicy::default());
     assert!(!report.ready);
     assert!(report.issues.iter().any(|issue| {
         issue.diagnostic.code == "component_navigation_contract_conflict"
@@ -251,17 +228,13 @@ fn structural_readiness_validates_binding_fallback_contracts() {
 
 #[test]
 fn localized_slug_diagnostics_are_classified_as_routes() {
-    let mut source =
-        GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
+    let mut source = GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
     source["pages"][0]["flyPageMeta"]["slug"] = json!({
         "$localized": { "en": " " }
     });
     let document = GrapesJsV1Codec::decode_value(source).expect("document");
 
-    let report = evaluate_landing_readiness(
-        &document,
-        LandingReadinessPolicy::default(),
-    );
+    let report = evaluate_landing_readiness(&document, LandingReadinessPolicy::default());
     assert!(report.issues.iter().any(|issue| {
         issue.category == LandingReadinessCategory::Routes
             && issue.diagnostic.code == "localized_page_slug_empty"
@@ -270,9 +243,9 @@ fn localized_slug_diagnostics_are_classified_as_routes() {
 
 #[test]
 fn unresolved_runtime_bound_action_is_a_publish_blocker() {
-    let mut source =
-        GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
-    source["pages"][0]["component"]["components"].as_array_mut()
+    let mut source = GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
+    source["pages"][0]["component"]["components"]
+        .as_array_mut()
         .expect("components")
         .push(json!({
             "id": "cta",

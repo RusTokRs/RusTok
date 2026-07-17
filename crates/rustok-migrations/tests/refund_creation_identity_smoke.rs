@@ -59,21 +59,11 @@ async fn refund_creation_key_replays_and_rejects_payload_conflicts() {
         metadata: json!({"case": "same-request"}),
     };
     let first = refunds
-        .create_or_replay(
-            tenant_id,
-            collection.id,
-            "refund-request-1",
-            input.clone(),
-        )
+        .create_or_replay(tenant_id, collection.id, "refund-request-1", input.clone())
         .await
         .expect("first refund reservation must succeed");
     let replay = refunds
-        .create_or_replay(
-            tenant_id,
-            collection.id,
-            "refund-request-1",
-            input,
-        )
+        .create_or_replay(tenant_id, collection.id, "refund-request-1", input)
         .await
         .expect("same refund request must replay");
     assert_eq!(first.id, replay.id);
@@ -146,18 +136,8 @@ async fn concurrent_same_refund_creation_key_returns_one_identity() {
         metadata: json!({"concurrent": true}),
     };
     let (left_result, right_result) = tokio::join!(
-        left.create_or_replay(
-            tenant_id,
-            collection.id,
-            "refund-race-1",
-            input.clone(),
-        ),
-        right.create_or_replay(
-            tenant_id,
-            collection.id,
-            "refund-race-1",
-            input,
-        ),
+        left.create_or_replay(tenant_id, collection.id, "refund-race-1", input.clone(),),
+        right.create_or_replay(tenant_id, collection.id, "refund-race-1", input,),
     );
     let left_refund = left_result.expect("left caller must create or replay");
     let right_refund = right_result.expect("right caller must create or replay");

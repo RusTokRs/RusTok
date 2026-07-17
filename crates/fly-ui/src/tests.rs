@@ -60,8 +60,8 @@ fn restricted_capabilities_survive_presentation_round_trip() {
         publish: false,
         ..CapabilityState::full()
     };
-    let mut machine = FlyUiStateMachine::new(Presentation::Full)
-        .with_editable_capabilities(restricted);
+    let mut machine =
+        FlyUiStateMachine::new(Presentation::Full).with_editable_capabilities(restricted);
     assert_eq!(machine.editable_capabilities(), restricted);
     assert!(!machine.state.capabilities.assets);
     assert!(!machine.state.capabilities.publish);
@@ -107,8 +107,8 @@ fn withdrawing_drag_capability_cancels_active_drag_and_overlay() {
 
 #[test]
 fn reviewer_profile_can_publish_but_cannot_mutate() {
-    let mut machine = FlyUiStateMachine::new(Presentation::Full)
-        .with_editable_capabilities(CapabilityState {
+    let mut machine =
+        FlyUiStateMachine::new(Presentation::Full).with_editable_capabilities(CapabilityState {
             edit: false,
             publish: true,
             ..CapabilityState::full()
@@ -129,8 +129,8 @@ fn reviewer_profile_can_publish_but_cannot_mutate() {
 
 #[test]
 fn specialized_commands_cannot_bypass_disabled_capabilities() {
-    let mut machine = FlyUiStateMachine::new(Presentation::Full)
-        .with_editable_capabilities(CapabilityState {
+    let mut machine =
+        FlyUiStateMachine::new(Presentation::Full).with_editable_capabilities(CapabilityState {
             properties: false,
             styles: false,
             assets: false,
@@ -196,8 +196,8 @@ fn batch_commands_require_every_specialized_capability_before_dispatch() {
             },
         },
     ]);
-    let mut machine = FlyUiStateMachine::new(Presentation::Full)
-        .with_editable_capabilities(CapabilityState {
+    let mut machine =
+        FlyUiStateMachine::new(Presentation::Full).with_editable_capabilities(CapabilityState {
             styles: false,
             assets: false,
             ..CapabilityState::full()

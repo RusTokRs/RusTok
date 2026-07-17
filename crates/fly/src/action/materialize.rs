@@ -1,7 +1,6 @@
 use super::model::{
-    ActionMaterialization, ComponentAction, ComponentForm, FormMethod,
-    GENERATED_INTERACTION_ATTRIBUTES, FLY_ACTION_DATA_ATTRIBUTE, FLY_ACTION_FIELD,
-    FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD,
+    ActionMaterialization, ComponentAction, ComponentForm, FormMethod, FLY_ACTION_DATA_ATTRIBUTE,
+    FLY_ACTION_FIELD, FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD, GENERATED_INTERACTION_ATTRIBUTES,
 };
 use super::validation::{action_diagnostic, collect_form_ids, decode_form, FormIndex};
 use crate::{
@@ -208,7 +207,9 @@ fn apply_action(
             fallback_href,
         } => {
             let Some(page_index) = resolution.routes.page_index(page_id) else {
-                return AppliedAction::Unresolved(format!("target page `{page_id}` does not exist"));
+                return AppliedAction::Unresolved(format!(
+                    "target page `{page_id}` does not exist"
+                ));
             };
             let href = match resolution
                 .routes
@@ -249,10 +250,9 @@ fn apply_action(
                 .attributes
                 .insert("href".to_string(), Value::String(href.trim().to_string()));
             if *new_window {
-                component.attributes.insert(
-                    "target".to_string(),
-                    Value::String("_blank".to_string()),
-                );
+                component
+                    .attributes
+                    .insert("target".to_string(), Value::String("_blank".to_string()));
                 component.attributes.insert(
                     "rel".to_string(),
                     Value::String("noopener noreferrer".to_string()),
@@ -265,10 +265,9 @@ fn apply_action(
                 return AppliedAction::Unresolved(format!("form `{form_id}` does not exist"));
             }
             component.tag_name = Some("button".to_string());
-            component.attributes.insert(
-                "type".to_string(),
-                Value::String("submit".to_string()),
-            );
+            component
+                .attributes
+                .insert("type".to_string(), Value::String("submit".to_string()));
             component
                 .attributes
                 .insert("form".to_string(), Value::String(form_id.clone()));
@@ -276,10 +275,9 @@ fn apply_action(
         }
         ComponentAction::EmitEvent { .. } | ComponentAction::ProviderAction { .. } => {
             component.tag_name = Some("button".to_string());
-            component.attributes.insert(
-                "type".to_string(),
-                Value::String("button".to_string()),
-            );
+            component
+                .attributes
+                .insert("type".to_string(), Value::String("button".to_string()));
             if let Ok(payload) = serde_json::to_string(action) {
                 component.attributes.insert(
                     FLY_ACTION_DATA_ATTRIBUTE.to_string(),

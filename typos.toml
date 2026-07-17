@@ -7,6 +7,7 @@ extend-exclude = [
   "apps/next-admin/src/styles/globals.css",
   "crates/rustok-ai/src/direct.rs",
   "crates/rustok-ai/src/provider.rs",
+  "crates/rustok-ai/contracts/rig-0.39-stream-cassettes.json",
   "crates/rustok-commerce/src/controllers/store.rs",
   "crates/rustok-commerce/tests/checkout_service_test.rs",
   "crates/rustok-commerce/tests/graphql_runtime_parity_test.rs",
@@ -24,4 +25,7 @@ extend-ignore-re = [
   "\\bReFuNdEd\\b",
   "\\b[Pp]rodukt\\b",
   "\\bOT\\b",
+  "\\bintoto\\b",
+  "\\bJOD\\b",
+  "\\bcategorie\\b",
 ]

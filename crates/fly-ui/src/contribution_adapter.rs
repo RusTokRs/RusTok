@@ -111,11 +111,7 @@ fn renderer_lookup_id(
     )
 }
 
-fn property_editor_lookup_id(
-    provider: &str,
-    component_type: &str,
-    schema_version: &str,
-) -> String {
+fn property_editor_lookup_id(provider: &str, component_type: &str, schema_version: &str) -> String {
     format!(
         "{}:{}:{}",
         provider.trim(),
@@ -128,8 +124,7 @@ fn property_editor_lookup_id(
 mod tests {
     use super::*;
     use crate::{
-        AccessibilityMetadata, ContributionDescriptor, PropertyEditorDescriptor,
-        RendererDescriptor,
+        AccessibilityMetadata, ContributionDescriptor, PropertyEditorDescriptor, RendererDescriptor,
     };
     use serde_json::{json, Map};
     use std::collections::{BTreeMap, BTreeSet};
@@ -200,10 +195,7 @@ mod tests {
                     property_schema: json!({ "type": "object" }),
                     accessibility,
                 }],
-                messages: BTreeMap::from([(
-                    "mock.label".to_string(),
-                    "Mock card".to_string(),
-                )]),
+                messages: BTreeMap::from([("mock.label".to_string(), "Mock card".to_string())]),
                 metadata: Map::new(),
             })
             .expect("registry");

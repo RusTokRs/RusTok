@@ -57,9 +57,9 @@ impl CommandCapabilityRequirement {
             EditorCommand::StyleRule { .. } => self.insert(EditorCapability::Styles),
             EditorCommand::Page { command } => match command {
                 PageCommand::Patch { .. } => self.insert(EditorCapability::Properties),
-                PageCommand::Add { .. }
-                | PageCommand::Remove { .. }
-                | PageCommand::Move { .. } => self.insert(EditorCapability::Edit),
+                PageCommand::Add { .. } | PageCommand::Remove { .. } | PageCommand::Move { .. } => {
+                    self.insert(EditorCapability::Edit)
+                }
             },
             EditorCommand::Dynamic { .. }
             | EditorCommand::Binding { .. }
@@ -199,9 +199,11 @@ mod tests {
             insert.capabilities().collect::<Vec<_>>(),
             vec![EditorCapability::Edit]
         );
-        assert!(CommandCapabilityRequirement::for_command(&EditorCommand::Select {
-            component_id: None,
-        })
-        .is_empty());
+        assert!(
+            CommandCapabilityRequirement::for_command(&EditorCommand::Select {
+                component_id: None,
+            })
+            .is_empty()
+        );
     }
 }

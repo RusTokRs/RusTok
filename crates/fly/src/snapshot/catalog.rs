@@ -59,7 +59,10 @@ impl SnapshotCatalog {
     }
 
     pub fn remove(&mut self, id: &str) -> Option<ProjectSnapshot> {
-        let index = self.snapshots.iter().position(|snapshot| snapshot.id == id)?;
+        let index = self
+            .snapshots
+            .iter()
+            .position(|snapshot| snapshot.id == id)?;
         self.snapshots.remove(index)
     }
 

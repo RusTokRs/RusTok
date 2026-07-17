@@ -32,12 +32,8 @@ pub fn render_storefront_localized_slug(
     policy.instrument_components = false;
     let document = GrapesJsV1Codec::decode_value(project_data)?;
     let route = resolve_localized_page_route(&document, requested_slug, &context)?;
-    let result = render_page_with_runtime_context(
-        &document,
-        &route.selection(),
-        &policy,
-        &route.context,
-    )?;
+    let result =
+        render_page_with_runtime_context(&document, &route.selection(), &policy, &route.context)?;
     Ok(StorefrontLocalizedRouteOutput { route, result })
 }
 
@@ -168,7 +164,10 @@ mod tests {
         .expect("localized storefront route");
         assert_eq!(output.route.matched_locale.as_deref(), Some("ru"));
         assert_eq!(output.route.canonical_slug, "glavnaya");
-        assert_eq!(output.result.page.metadata.title.as_deref(), Some("Главная"));
+        assert_eq!(
+            output.result.page.metadata.title.as_deref(),
+            Some("Главная")
+        );
         assert!(output.result.page.html.contains("Добро пожаловать"));
         assert!(output.document_html().contains("<title>Главная</title>"));
     }

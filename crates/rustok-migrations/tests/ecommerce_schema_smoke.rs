@@ -17,8 +17,8 @@ use rustok_inventory::InventoryService;
 use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
 use rustok_order::services::OrderService;
 use rustok_payment::dto::{
-    AuthorizePaymentInput, CapturePaymentInput, CompleteRefundInput,
-    CreatePaymentCollectionInput, CreateRefundInput,
+    AuthorizePaymentInput, CapturePaymentInput, CompleteRefundInput, CreatePaymentCollectionInput,
+    CreateRefundInput,
 };
 use rustok_payment::services::{PaymentRefundCreationService, PaymentService};
 use rustok_pricing::PricingService;
@@ -428,7 +428,12 @@ async fn order_service_supports_order_lifecycle_on_migrated_schema() {
         .await
         .expect("order should be shippable");
     let order = service
-        .deliver_order(tenant_id, actor_id, order.id, Some("front-desk".to_string()))
+        .deliver_order(
+            tenant_id,
+            actor_id,
+            order.id,
+            Some("front-desk".to_string()),
+        )
         .await
         .expect("order should be deliverable");
     assert_eq!(order.status, "delivered");

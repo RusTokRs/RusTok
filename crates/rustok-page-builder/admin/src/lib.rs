@@ -24,8 +24,8 @@ pub use browser_intent::{
     BrowserIntentEffect,
 };
 pub use capability_access::{
-    browser_capability_denial, validate_browser_capability_access,
-    BrowserCapabilityAccessError, BrowserCapabilityDenial, CapabilityFailure,
+    browser_capability_denial, validate_browser_capability_access, BrowserCapabilityAccessError,
+    BrowserCapabilityDenial, CapabilityFailure,
 };
 pub use draft_session::{
     InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,

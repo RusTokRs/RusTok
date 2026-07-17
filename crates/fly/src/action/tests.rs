@@ -263,12 +263,12 @@ fn duplicate_forms_and_interaction_conflicts_are_rejected() {
     assert!(diagnostics
         .iter()
         .any(|diagnostic| diagnostic.code == "duplicate_form_id"));
-    assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "component_navigation_contract_conflict"
-    }));
-    assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "component_form_interaction_contract_conflict"
-    }));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| { diagnostic.code == "component_navigation_contract_conflict" }));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| { diagnostic.code == "component_form_interaction_contract_conflict" }));
 }
 
 #[test]
@@ -314,7 +314,7 @@ fn anonymous_action_diagnostics_use_the_shared_canonical_path() {
     }))
     .expect("document");
     let diagnostics = validate_component_actions(&document);
-    assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.path == "project.pages[0].component.components[0]"
-    }));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| { diagnostic.path == "project.pages[0].component.components[0]" }));
 }

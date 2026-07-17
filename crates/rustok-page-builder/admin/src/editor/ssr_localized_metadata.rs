@@ -282,8 +282,7 @@ fn localized_metadata_json(page: &ProjectPage) -> String {
             localized.insert((*field).to_string(), Value::Object(values.clone()));
         }
     }
-    serde_json::to_string_pretty(&Value::Object(localized))
-        .unwrap_or_else(|_| "{}".to_string())
+    serde_json::to_string_pretty(&Value::Object(localized)).unwrap_or_else(|_| "{}".to_string())
 }
 
 fn localized_metadata_fallback(page: &ProjectPage) -> String {
@@ -354,11 +353,16 @@ mod tests {
                 fallback_locale: "en".to_string(),
             })
             .expect("localized metadata intent");
-        controller.dispatch(intent).expect("localized metadata patch");
-        let metadata = &controller.editor().document().project.pages[0].extensions
-            [FLY_PAGE_METADATA_FIELD];
+        controller
+            .dispatch(intent)
+            .expect("localized metadata patch");
+        let metadata =
+            &controller.editor().document().project.pages[0].extensions[FLY_PAGE_METADATA_FIELD];
         assert_eq!(metadata["providerFuture"]["enabled"], true);
-        assert_eq!(metadata["slug"][LOCALIZED_VALUES_FIELD]["en"], "hello-world");
+        assert_eq!(
+            metadata["slug"][LOCALIZED_VALUES_FIELD]["en"],
+            "hello-world"
+        );
         assert_eq!(metadata["slug"][LOCALIZED_VALUES_FIELD]["ru"], "привет-мир");
         let materialized = materialize_localized_page_metadata(
             controller.editor().document(),

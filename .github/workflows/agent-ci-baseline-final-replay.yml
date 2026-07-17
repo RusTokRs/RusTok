@@ -1,0 +1,69 @@
+name: Agent CI Baseline Final Replay
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-ci-baseline-final-replay
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-rustfmt-cache-clean' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/ci-baseline-rustfmt-cache-clean
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/next-admin/package-lock.json
+      - name: Replay baseline fixes onto current main
+        shell: bash
+        run: |
+          set +e
+          (
+            set -euo pipefail
+            git fetch origin main
+            source=$(git rev-parse HEAD)
+            base=$(git merge-base origin/main "$source")
+            cp .github/workflows/agent-ci-baseline-final-replay.yml /tmp/agent-ci-baseline-final-replay.yml
+            git diff --binary "$base".."$source" -- . \
+              ':(exclude).github/workflows/agent-ci-baseline-final-replay.yml' \
+              ':(exclude)Cargo.lock' > /tmp/baseline-final.patch
+            test -s /tmp/baseline-final.patch
+            git reset --hard origin/main
+            mkdir -p .github/workflows
+            cp /tmp/agent-ci-baseline-final-replay.yml .github/workflows/agent-ci-baseline-final-replay.yml
+            git apply --3way --whitespace=nowarn /tmp/baseline-final.patch
+            cargo check -p rustok-payment --features stripe
+            cargo fmt --all
+            npm ci --prefix apps/next-admin
+            (cd apps/next-admin && npx prettier --write packages/rustok-ai/src/index.tsx)
+            git diff --check
+            git add -A
+            git config user.name "RusToK CI Agent"
+            git config user.email "actions@users.noreply.github.com"
+            git commit -m "chore(ci): restore formatting baseline and workspace quality"
+            git push --force-with-lease origin HEAD:agent/ci-baseline-rustfmt-cache-clean
+          ) > /tmp/baseline-final-replay.log 2>&1
+          status=$?
+          cat /tmp/baseline-final-replay.log
+          exit "$status"
+      - name: Upload final replay log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-ci-baseline-final-replay-log
+          path: /tmp/baseline-final-replay.log

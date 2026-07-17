@@ -9,12 +9,11 @@ use crate::command_receipts::{
     replay_command, rollback_command, CommandReceiptAdmission,
 };
 use crate::dto::{
-    AddMarketplaceSellerMemberInput, CreateMarketplaceSellerInput,
-    MarketplaceSellerMemberResponse, MarketplaceSellerMemberRole, MarketplaceSellerMemberStatus,
-    MarketplaceSellerOnboardingStatus, MarketplaceSellerResponse, MarketplaceSellerStatus,
-    ReviewMarketplaceSellerOnboardingInput, SubmitMarketplaceSellerOnboardingInput,
-    SuspendMarketplaceSellerInput, UpdateMarketplaceSellerMemberInput,
-    UpdateMarketplaceSellerProfileInput,
+    AddMarketplaceSellerMemberInput, CreateMarketplaceSellerInput, MarketplaceSellerMemberResponse,
+    MarketplaceSellerMemberRole, MarketplaceSellerMemberStatus, MarketplaceSellerOnboardingStatus,
+    MarketplaceSellerResponse, MarketplaceSellerStatus, ReviewMarketplaceSellerOnboardingInput,
+    SubmitMarketplaceSellerOnboardingInput, SuspendMarketplaceSellerInput,
+    UpdateMarketplaceSellerMemberInput, UpdateMarketplaceSellerProfileInput,
 };
 use crate::entities::{seller, seller_member};
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
@@ -91,11 +90,9 @@ impl MarketplaceSellerService {
                         handle: Set(handle.clone()),
                         legal_name: Set(legal_name.clone()),
                         status: Set(MarketplaceSellerStatus::Draft.as_str().to_string()),
-                        onboarding_status: Set(
-                            MarketplaceSellerOnboardingStatus::Draft
-                                .as_str()
-                                .to_string(),
-                        ),
+                        onboarding_status: Set(MarketplaceSellerOnboardingStatus::Draft
+                            .as_str()
+                            .to_string()),
                         onboarding_note: Set(None),
                         suspension_reason: Set(None),
                         metadata: Set(metadata.clone()),
@@ -297,15 +294,11 @@ impl MarketplaceSellerService {
                         )
                         .filter(seller::Column::TenantId.eq(tenant_id))
                         .filter(seller::Column::Id.eq(seller_id))
-                        .filter(
-                            seller::Column::Status.eq(MarketplaceSellerStatus::Draft.as_str()),
-                        )
-                        .filter(
-                            seller::Column::OnboardingStatus.is_in([
-                                MarketplaceSellerOnboardingStatus::Draft.as_str(),
-                                MarketplaceSellerOnboardingStatus::Rejected.as_str(),
-                            ]),
-                        )
+                        .filter(seller::Column::Status.eq(MarketplaceSellerStatus::Draft.as_str()))
+                        .filter(seller::Column::OnboardingStatus.is_in([
+                            MarketplaceSellerOnboardingStatus::Draft.as_str(),
+                            MarketplaceSellerOnboardingStatus::Rejected.as_str(),
+                        ]))
                         .exec(&receipt.transaction)
                         .await?;
                     require_transition(
@@ -405,13 +398,10 @@ impl MarketplaceSellerService {
                         )
                         .filter(seller::Column::TenantId.eq(tenant_id))
                         .filter(seller::Column::Id.eq(seller_id))
+                        .filter(seller::Column::Status.eq(MarketplaceSellerStatus::Draft.as_str()))
                         .filter(
-                            seller::Column::Status.eq(MarketplaceSellerStatus::Draft.as_str()),
-                        )
-                        .filter(
-                            seller::Column::OnboardingStatus.eq(
-                                MarketplaceSellerOnboardingStatus::Submitted.as_str(),
-                            ),
+                            seller::Column::OnboardingStatus
+                                .eq(MarketplaceSellerOnboardingStatus::Submitted.as_str()),
                         );
                     if approved {
                         update = update.col_expr(
@@ -503,9 +493,7 @@ impl MarketplaceSellerService {
                         )
                         .filter(seller::Column::TenantId.eq(tenant_id))
                         .filter(seller::Column::Id.eq(seller_id))
-                        .filter(
-                            seller::Column::Status.eq(MarketplaceSellerStatus::Active.as_str()),
-                        )
+                        .filter(seller::Column::Status.eq(MarketplaceSellerStatus::Active.as_str()))
                         .exec(&receipt.transaction)
                         .await?;
                     require_transition(
@@ -588,13 +576,11 @@ impl MarketplaceSellerService {
                         .filter(seller::Column::TenantId.eq(tenant_id))
                         .filter(seller::Column::Id.eq(seller_id))
                         .filter(
-                            seller::Column::Status
-                                .eq(MarketplaceSellerStatus::Suspended.as_str()),
+                            seller::Column::Status.eq(MarketplaceSellerStatus::Suspended.as_str()),
                         )
                         .filter(
-                            seller::Column::OnboardingStatus.eq(
-                                MarketplaceSellerOnboardingStatus::Approved.as_str(),
-                            ),
+                            seller::Column::OnboardingStatus
+                                .eq(MarketplaceSellerOnboardingStatus::Approved.as_str()),
                         )
                         .exec(&receipt.transaction)
                         .await?;
@@ -788,7 +774,11 @@ async fn require_transition(
     }
     let current = load_seller_response(transaction, tenant_id, seller_id, locale).await?;
     Err(MarketplaceSellerError::InvalidTransition {
-        from: format!("{}:{}", current.status.as_str(), current.onboarding_status.as_str()),
+        from: format!(
+            "{}:{}",
+            current.status.as_str(),
+            current.onboarding_status.as_str()
+        ),
         to: to.to_string(),
     })
 }

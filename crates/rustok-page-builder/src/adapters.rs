@@ -262,11 +262,8 @@ impl<S> FlyValidatedPageBuilderService<S> {
     }
 
     fn validate_project(&self, project_data: &Value) -> Result<(), PageBuilderServiceError> {
-        let inspection = FlyProjectInspection::decode_current_with(
-            project_data,
-            &self.registries,
-            self.limits,
-        )?;
+        let inspection =
+            FlyProjectInspection::decode_current_with(project_data, &self.registries, self.limits)?;
         inspection.require_valid()?;
         Ok(())
     }

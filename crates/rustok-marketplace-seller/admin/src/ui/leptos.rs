@@ -10,10 +10,10 @@ use crate::core::{
 };
 use crate::i18n::normalize_admin_locale;
 use crate::model::{
-    MarketplaceSellerAdminCommand, MarketplaceSellerAdminDetail,
-    MarketplaceSellerAdminDirectory, MarketplaceSellerAdminFilters,
-    MarketplaceSellerCreateDraft, MarketplaceSellerMemberCreateDraft,
-    MarketplaceSellerMemberUpdateDraft, MarketplaceSellerProfileDraft,
+    MarketplaceSellerAdminCommand, MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory,
+    MarketplaceSellerAdminFilters, MarketplaceSellerCreateDraft,
+    MarketplaceSellerMemberCreateDraft, MarketplaceSellerMemberUpdateDraft,
+    MarketplaceSellerProfileDraft,
 };
 use crate::transport::{
     execute_marketplace_seller_command, load_marketplace_seller_detail,
@@ -49,8 +49,7 @@ pub fn MarketplaceSellerAdmin() -> impl IntoView {
     let busy = RwSignal::new(false);
     let error = RwSignal::new(Option::<String>::None);
     let notice = RwSignal::new(Option::<String>::None);
-    let pending_command =
-        RwSignal::new(Option::<(String, MarketplaceSellerAdminCommand)>::None);
+    let pending_command = RwSignal::new(Option::<(String, MarketplaceSellerAdminCommand)>::None);
 
     let create_handle = RwSignal::new(String::new());
     let create_display_name = RwSignal::new(String::new());

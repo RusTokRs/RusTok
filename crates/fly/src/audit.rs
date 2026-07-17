@@ -126,8 +126,12 @@ fn audit_node(
     let aria_label = string_attribute(component, "aria-label");
     let title = string_attribute(component, "title");
     let accessible_name = !content.is_empty()
-        || aria_label.as_deref().is_some_and(|value| !value.trim().is_empty())
-        || title.as_deref().is_some_and(|value| !value.trim().is_empty());
+        || aria_label
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        || title
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
 
     if let Some(dom_id) = string_attribute(component, "id") {
         state
@@ -175,7 +179,13 @@ fn audit_node(
 
     match tag {
         "img" => audit_image(component, path, component_id.clone(), report),
-        "a" => audit_link(component, accessible_name, path, component_id.clone(), report),
+        "a" => audit_link(
+            component,
+            accessible_name,
+            path,
+            component_id.clone(),
+            report,
+        ),
         "button" => {
             if !accessible_name {
                 report.push(diagnostic(
@@ -519,7 +529,10 @@ fn semantic_tag(component_type: &str, tag_name: Option<&str>) -> &'static str {
 }
 
 fn heading_level(tag: &str) -> Option<u8> {
-    tag.strip_prefix('h')?.parse::<u8>().ok().filter(|level| (1..=6).contains(level))
+    tag.strip_prefix('h')?
+        .parse::<u8>()
+        .ok()
+        .filter(|level| (1..=6).contains(level))
 }
 
 fn string_attribute(component: &crate::ComponentObject, name: &str) -> Option<String> {
@@ -536,7 +549,9 @@ fn bool_attribute(component: &crate::ComponentObject, name: &str) -> bool {
         .get(name)
         .is_some_and(|value| match value {
             Value::Bool(value) => *value,
-            Value::String(value) => !matches!(value.to_ascii_lowercase().as_str(), "false" | "0" | "off"),
+            Value::String(value) => {
+                !matches!(value.to_ascii_lowercase().as_str(), "false" | "0" | "off")
+            }
             _ => false,
         })
 }

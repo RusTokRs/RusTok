@@ -300,10 +300,7 @@ pub fn collect_results<T, E>(input: Vec<Result<T, E>>) -> Result<Vec<T>, E> {
     let mut results = Vec::with_capacity(input.len());
 
     for result in input {
-        match result {
-            Ok(value) => results.push(value),
-            Err(e) => return Err(e),
-        }
+        results.push(result?);
     }
 
     Ok(results)

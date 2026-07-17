@@ -459,7 +459,10 @@ mod tests {
         .normalized();
         assert_eq!(config.root_selector, "[data-fly-browser-root]");
         assert_eq!(config.iframe_selector, "iframe");
-        assert_eq!(config.intent_endpoint.as_deref(), Some("/admin/fly/intents"));
+        assert_eq!(
+            config.intent_endpoint.as_deref(),
+            Some("/admin/fly/intents")
+        );
         assert_eq!(config.csrf_token, None);
     }
 

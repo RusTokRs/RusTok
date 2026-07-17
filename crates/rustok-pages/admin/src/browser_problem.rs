@@ -68,9 +68,9 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
         PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Denied(_)) => {
             HTTP_FORBIDDEN
         }
-        PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Dispatch(error)) => {
-            dispatch_status(error)
-        }
+        PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Dispatch(
+            error,
+        )) => dispatch_status(error),
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::PageNotFound) => {
             HTTP_NOT_FOUND
         }
@@ -197,11 +197,10 @@ mod tests {
 
     #[test]
     fn malformed_capability_preflight_payload_stays_unprocessable() {
-        let error = PagesBrowserIntentAccessError::Capability(
-            BrowserCapabilityAccessError::Dispatch(BrowserIntentDispatchError::Payload(
-                "invalid key stroke".to_string(),
-            )),
-        );
+        let error =
+            PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Dispatch(
+                BrowserIntentDispatchError::Payload("invalid key stroke".to_string()),
+            ));
         let problem = PagesBrowserIntentProblem::from(&error);
         assert_eq!(problem.status, HTTP_UNPROCESSABLE_ENTITY);
         assert!(problem.code.is_none());

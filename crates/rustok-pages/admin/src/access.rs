@@ -42,9 +42,7 @@ pub fn pages_editor_permissions_for_role(role: Option<&str>) -> CapabilityState 
     }
 }
 
-pub fn pages_editor_provider_state(
-    assembly: &ContributionAssemblyResult,
-) -> EditorProviderState {
+pub fn pages_editor_provider_state(assembly: &ContributionAssemblyResult) -> EditorProviderState {
     if assembly
         .diagnostics
         .iter()

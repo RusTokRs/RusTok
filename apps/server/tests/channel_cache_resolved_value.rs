@@ -188,14 +188,14 @@ fn reserve_loopback_port() -> u16 {
 async fn wait_for_redis(url: &str) {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            if let Ok(client) = redis::Client::open(url)
-                && let Ok(mut connection) = client.get_multiplexed_async_connection().await
-            {
-                let pong = redis::cmd("PING")
-                    .query_async::<String>(&mut connection)
-                    .await;
-                if pong.as_deref() == Ok("PONG") {
-                    return;
+            if let Ok(client) = redis::Client::open(url) {
+                if let Ok(mut connection) = client.get_multiplexed_async_connection().await {
+                    let pong = redis::cmd("PING")
+                        .query_async::<String>(&mut connection)
+                        .await;
+                    if pong.as_deref() == Ok("PONG") {
+                        return;
+                    }
                 }
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -232,20 +232,20 @@ async fn stop_redis(child: &mut Child) {
 async fn wait_for_redis_subscribers(url: &str, expected: usize) {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            if let Ok(client) = redis::Client::open(url)
-                && let Ok(mut connection) = client.get_multiplexed_async_connection().await
-            {
-                let counts = redis::cmd("PUBSUB")
-                    .arg("NUMSUB")
-                    .arg(CHANNEL_RESOLUTION_INVALIDATION_CHANNEL)
-                    .query_async::<Vec<(String, usize)>>(&mut connection)
-                    .await;
-                if counts
-                    .ok()
-                    .and_then(|counts| counts.into_iter().next())
-                    .is_some_and(|(_, count)| count >= expected)
-                {
-                    return;
+            if let Ok(client) = redis::Client::open(url) {
+                if let Ok(mut connection) = client.get_multiplexed_async_connection().await {
+                    let counts = redis::cmd("PUBSUB")
+                        .arg("NUMSUB")
+                        .arg(CHANNEL_RESOLUTION_INVALIDATION_CHANNEL)
+                        .query_async::<Vec<(String, usize)>>(&mut connection)
+                        .await;
+                    if counts
+                        .ok()
+                        .and_then(|counts| counts.into_iter().next())
+                        .is_some_and(|(_, count)| count >= expected)
+                    {
+                        return;
+                    }
                 }
             }
             tokio::time::sleep(Duration::from_millis(50)).await;

@@ -572,12 +572,7 @@ mod tests {
         let service = CacheService::from_url(Some("redis://127.0.0.1:1/"));
         let options = service.default_backend_options().clone();
         let backend = service
-            .raw_shared_client_backend(
-                "startup-outage",
-                Duration::from_secs(30),
-                16,
-                &options,
-            )
+            .raw_shared_client_backend("startup-outage", Duration::from_secs(30), 16, &options)
             .await;
 
         assert!(backend.health().await.is_err());

@@ -22,8 +22,7 @@ use crate::{
     resolve_granted_artifact_capability, ArtifactBindingDispatch, ArtifactBindingExecutor,
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactInstallationTarget,
     ArtifactMigrationCheckpointRequest, ArtifactReleaseRef, InstalledModuleArtifact,
-    ModuleArtifactDescriptor, ModuleInstallationScope, ModuleRuntimeBinding,
-    ModuleRuntimeBindingKind,
+    ModuleInstallationScope, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
 };
 
 const MAX_ARTIFACT_DATA_KEY_BYTES: usize = 256;

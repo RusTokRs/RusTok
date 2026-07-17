@@ -11,12 +11,7 @@ pub const FLY_BUILTIN_PROVIDER: &str = "fly.builtin";
 pub const FLY_BUILTIN_PROVIDER_VERSION: &str = "1";
 pub const PAGES_LANDING_BLOCKS_CONTRIBUTION_ID: &str = "rustok.pages.landing-blocks";
 
-pub const PAGES_BUILDER_CAPABILITIES: &[&str] = &[
-    "preview",
-    "tree",
-    "properties",
-    "publish",
-];
+pub const PAGES_BUILDER_CAPABILITIES: &[&str] = &["preview", "tree", "properties", "publish"];
 
 pub const PAGES_LANDING_BLOCK_CAPABILITIES: &[&str] = &["tree", "properties"];
 
@@ -74,10 +69,7 @@ pub fn pages_landing_blocks_contribution() -> ContributionDescriptor {
                 "contract".to_string(),
                 Value::String("grapesjs_v1".to_string()),
             ),
-            (
-                "surface".to_string(),
-                Value::String("admin".to_string()),
-            ),
+            ("surface".to_string(), Value::String("admin".to_string())),
         ]),
     }
 }
@@ -115,10 +107,9 @@ mod tests {
     #[test]
     fn manifest_explicitly_pins_the_fly_builtin_target() {
         let manifest = pages_contribution_manifest();
-        assert!(manifest.allows_target_provider(
-            FLY_BUILTIN_PROVIDER,
-            FLY_BUILTIN_PROVIDER_VERSION,
-        ));
+        assert!(
+            manifest.allows_target_provider(FLY_BUILTIN_PROVIDER, FLY_BUILTIN_PROVIDER_VERSION,)
+        );
         assert!(!manifest.allows_target_provider("other.provider", "1"));
     }
 

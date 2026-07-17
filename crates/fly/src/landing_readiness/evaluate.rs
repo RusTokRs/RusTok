@@ -58,13 +58,7 @@ pub fn evaluate_landing_readiness_with_context(
     let routes = localized_page_route_index(document);
     for (page_index, page) in document.project.pages.iter().enumerate() {
         let path = format!("project.pages[{page_index}]");
-        if policy.require_page_id
-            && page
-                .id
-                .as_deref()
-                .map(str::trim)
-                .is_none_or(str::is_empty)
-        {
+        if policy.require_page_id && page.id.as_deref().map(str::trim).is_none_or(str::is_empty) {
             issues.push(issue(
                 LandingReadinessCategory::Routes,
                 ValidationSeverity::Error,
@@ -331,19 +325,15 @@ fn metadata_has_text(metadata: Option<&serde_json::Map<String, Value>>, field: &
             .get(LOCALIZED_VALUES_FIELD)
             .and_then(Value::as_object)
             .is_some_and(|values| {
-                values.values().any(|value| {
-                    value
-                        .as_str()
-                        .is_some_and(|value| !value.trim().is_empty())
-                })
+                values
+                    .values()
+                    .any(|value| value.as_str().is_some_and(|value| !value.trim().is_empty()))
             }),
         _ => false,
     }
 }
 
-fn classify_validation_diagnostic(
-    diagnostic: &ValidationDiagnostic,
-) -> LandingReadinessCategory {
+fn classify_validation_diagnostic(diagnostic: &ValidationDiagnostic) -> LandingReadinessCategory {
     let code = diagnostic.code.as_str();
     if code.contains("slug")
         || code.contains("route")
@@ -376,9 +366,7 @@ fn classify_validation_diagnostic(
     }
 }
 
-fn category_summaries(
-    issues: &[LandingReadinessIssue],
-) -> Vec<LandingReadinessCategorySummary> {
+fn category_summaries(issues: &[LandingReadinessIssue]) -> Vec<LandingReadinessCategorySummary> {
     let mut counts = BTreeMap::<LandingReadinessCategory, (usize, usize, usize)>::new();
     for issue in issues {
         let entry = counts.entry(issue.category).or_default();

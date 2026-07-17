@@ -12,8 +12,8 @@ use rustok_test_utils::db::setup_test_db;
 use rustok_test_utils::mock_transactional_event_bus;
 pub use sea_orm::ConnectionTrait;
 use serde_json::json;
-pub use std::str::FromStr;
 use std::ops::Deref;
+pub use std::str::FromStr;
 pub use tower::util::ServiceExt;
 use uuid::Uuid;
 
@@ -27,9 +27,7 @@ use crate::dto::{
 use crate::ShippingProfileService;
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
-use rustok_payment::{
-    PaymentRefundCreationService, PaymentService as DomainPaymentService,
-};
+use rustok_payment::{PaymentRefundCreationService, PaymentService as DomainPaymentService};
 
 mod support {
     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support.rs"));
@@ -192,8 +190,9 @@ pub(crate) async fn inject_transport_context(
         && path.ends_with("/refunds")
         && !req.headers().contains_key("idempotency-key")
     {
-        let value = HeaderValue::from_str(format!("controller-http-fixture:{}", Uuid::new_v4()).as_str())
-            .expect("fixture idempotency key must be a valid header");
+        let value =
+            HeaderValue::from_str(format!("controller-http-fixture:{}", Uuid::new_v4()).as_str())
+                .expect("fixture idempotency key must be a valid header");
         req.headers_mut().insert("idempotency-key", value);
     }
 

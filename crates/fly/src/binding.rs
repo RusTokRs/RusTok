@@ -246,7 +246,10 @@ pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<Validatio
     diagnostics
 }
 
-fn validate_binding_identity(document: &ProjectDocument, binding: &RuntimeBinding) -> FlyResult<()> {
+fn validate_binding_identity(
+    document: &ProjectDocument,
+    binding: &RuntimeBinding,
+) -> FlyResult<()> {
     if binding.id.trim().is_empty() {
         return Err(FlyError::Decode(
             "runtime binding id must not be empty".to_string(),
@@ -296,7 +299,9 @@ fn apply_value(component: &mut ComponentObject, target: &BindingTarget, value: V
             set_component_field(component, name, value);
         }
         BindingTarget::Style { name } => {
-            let style = component.style.get_or_insert_with(|| Value::Object(Map::new()));
+            let style = component
+                .style
+                .get_or_insert_with(|| Value::Object(Map::new()));
             if !style.is_object() {
                 *style = Value::Object(Map::new());
             }
@@ -330,10 +335,7 @@ fn transform_value(value: Value, transform: BindingTransform) -> Option<Value> {
             Value::String(value) => value,
             other => other.to_string(),
         })),
-        BindingTransform::Number => value
-            .as_f64()
-            .and_then(Number::from_f64)
-            .map(Value::Number),
+        BindingTransform::Number => value.as_f64().and_then(Number::from_f64).map(Value::Number),
         BindingTransform::Boolean => match value {
             Value::Bool(value) => Some(Value::Bool(value)),
             Value::String(value) if value.eq_ignore_ascii_case("true") => Some(Value::Bool(true)),

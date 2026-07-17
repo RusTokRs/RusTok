@@ -1,11 +1,10 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
-use fly::{
-    analyze_project_locale_coverage, LocaleCoverageGap, LocaleCoverageKind,
-    LocaleCoverageSummary,
-};
 #[cfg(test)]
 use fly::LocaleCoverageReport;
+use fly::{
+    analyze_project_locale_coverage, LocaleCoverageGap, LocaleCoverageKind, LocaleCoverageSummary,
+};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
@@ -95,9 +94,9 @@ pub fn SsrLocaleCoveragePanel(runtime: AdminEditorRuntime) -> impl IntoView {
             "page_builder.localeCoverage.metadataGap",
             "Page metadata",
         );
-        let report = runtime.controller.with(|controller| {
-            analyze_project_locale_coverage(controller.editor().document())
-        });
+        let report = runtime
+            .controller
+            .with(|controller| analyze_project_locale_coverage(controller.editor().document()));
         let policy_valid = report.policy_valid;
         let required_complete = report.required_complete();
         let strict_ready = report.strict_ready();

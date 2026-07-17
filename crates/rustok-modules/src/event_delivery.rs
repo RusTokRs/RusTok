@@ -9,7 +9,7 @@ use std::{any::Any, collections::BTreeMap, sync::Arc};
 use async_trait::async_trait;
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, TransactionTrait,
-    TryGetable, Value as SqlValue,
+    Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

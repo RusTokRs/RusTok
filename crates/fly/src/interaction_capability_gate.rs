@@ -1,7 +1,8 @@
 use crate::{
     evaluate_runtime_publish_gate, validate_interaction_capabilities, InteractionCapabilityPolicy,
     InteractionCapabilityRegistry, ProjectDocument, RuntimeContextScenario,
-    RuntimePublishGateEvaluation, RuntimePublishGatePolicy, ValidationDiagnostic, ValidationSeverity,
+    RuntimePublishGateEvaluation, RuntimePublishGatePolicy, ValidationDiagnostic,
+    ValidationSeverity,
 };
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -19,17 +20,15 @@ pub fn evaluate_runtime_publish_gate_with_capabilities(
     capability_registry: &InteractionCapabilityRegistry,
     capability_policy: InteractionCapabilityPolicy,
 ) -> RuntimePublishGateEvaluation {
-    let mut evaluation = evaluate_runtime_publish_gate(
-        document,
-        current_context,
-        scenarios,
-        gate_policy,
-    );
-    evaluation.diagnostics.extend(validate_interaction_capabilities(
-        document,
-        capability_registry,
-        capability_policy,
-    ));
+    let mut evaluation =
+        evaluate_runtime_publish_gate(document, current_context, scenarios, gate_policy);
+    evaluation
+        .diagnostics
+        .extend(validate_interaction_capabilities(
+            document,
+            capability_registry,
+            capability_policy,
+        ));
     deduplicate_capability_gate_diagnostics(&mut evaluation.diagnostics);
     evaluation.allowed = !evaluation
         .diagnostics

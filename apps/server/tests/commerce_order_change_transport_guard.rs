@@ -1,24 +1,20 @@
 #[test]
 fn order_change_application_uses_commerce_orchestration() {
-    let rest = include_str!(
-        "../../../crates/rustok-commerce/src/controllers/admin/changes.rs"
-    );
-    let graphql = include_str!(
-        "../../../crates/rustok-commerce/src/graphql/mutations/fulfillment.rs"
-    );
-    let graphql_runtime = include_str!(
-        "../../../crates/rustok-commerce/src/graphql_runtime.rs"
-    );
-    let orchestration = include_str!(
-        "../../../crates/rustok-commerce/src/services/order_change_orchestration.rs"
-    );
+    let rest = include_str!("../../../crates/rustok-commerce/src/controllers/admin/changes.rs");
+    let graphql =
+        include_str!("../../../crates/rustok-commerce/src/graphql/mutations/fulfillment.rs");
+    let graphql_runtime = include_str!("../../../crates/rustok-commerce/src/graphql_runtime.rs");
+    let orchestration =
+        include_str!("../../../crates/rustok-commerce/src/services/order_change_orchestration.rs");
 
     assert!(
         rest.contains("OrderChangeOrchestrationService::new("),
         "REST order-change application must use the commerce orchestration boundary"
     );
     assert!(
-        rest.contains(".apply_order_change(tenant.id, id, input.difference_refund, input.metadata)"),
+        rest.contains(
+            ".apply_order_change(tenant.id, id, input.difference_refund, input.metadata)"
+        ),
         "REST order-change application must pass the complete command to orchestration"
     );
     assert!(

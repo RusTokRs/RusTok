@@ -355,11 +355,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
 }
 
 #[component]
-fn PageSelect(
-    pages: Vec<ProjectPage>,
-    name: &'static str,
-    page_fallback: String,
-) -> impl IntoView {
+fn PageSelect(pages: Vec<ProjectPage>, name: &'static str, page_fallback: String) -> impl IntoView {
     view! {
         <select name=name class="rounded border border-input bg-background px-2 py-1 text-xs">
             {pages.into_iter().enumerate().map(move |(index, page)| {

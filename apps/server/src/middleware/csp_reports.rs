@@ -111,7 +111,8 @@ fn content_type_is_supported(request: &Request) -> bool {
 }
 
 fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseError> {
-    let value: Value = serde_json::from_slice(body).map_err(|_| CspReportParseError::InvalidJson)?;
+    let value: Value =
+        serde_json::from_slice(body).map_err(|_| CspReportParseError::InvalidJson)?;
 
     if let Some(report) = value.get("csp-report") {
         let violation = serde_json::from_value(report.clone())
@@ -135,8 +136,8 @@ fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseErro
             .get("body")
             .cloned()
             .ok_or(CspReportParseError::UnsupportedShape)?;
-        let violation = serde_json::from_value(body)
-            .map_err(|_| CspReportParseError::UnsupportedShape)?;
+        let violation =
+            serde_json::from_value(body).map_err(|_| CspReportParseError::UnsupportedShape)?;
         reports.push(ParsedCspReport {
             format: "reporting_api",
             violation,

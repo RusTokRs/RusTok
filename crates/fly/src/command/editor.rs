@@ -79,10 +79,7 @@ impl FlyEditor {
         )
     }
 
-    pub fn restore_snapshot(
-        &mut self,
-        snapshot: &ProjectSnapshot,
-    ) -> FlyResult<ValidationReport> {
+    pub fn restore_snapshot(&mut self, snapshot: &ProjectSnapshot) -> FlyResult<ValidationReport> {
         self.apply(EditorCommand::restore_snapshot(snapshot.clone()))
     }
 
@@ -216,9 +213,7 @@ impl FlyEditor {
             EditorCommand::Dynamic { command } => apply_dynamic_command(document, command),
             EditorCommand::Binding { command } => apply_binding_command(document, command),
             EditorCommand::Context { command } => apply_context_command(document, command),
-            EditorCommand::Translation { command } => {
-                apply_translation_command(document, command)
-            }
+            EditorCommand::Translation { command } => apply_translation_command(document, command),
             EditorCommand::RestoreSnapshot { snapshot } => {
                 *document = snapshot.restore()?;
                 Ok(())

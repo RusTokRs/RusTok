@@ -95,8 +95,7 @@ impl LandingReadinessReport {
         let block_on_warnings = self.block_on_warnings;
         self.issues.iter().filter(move |issue| {
             issue.diagnostic.severity == ValidationSeverity::Error
-                || (block_on_warnings
-                    && issue.diagnostic.severity == ValidationSeverity::Warning)
+                || (block_on_warnings && issue.diagnostic.severity == ValidationSeverity::Warning)
         })
     }
 }

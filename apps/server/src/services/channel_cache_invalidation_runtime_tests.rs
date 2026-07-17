@@ -150,9 +150,7 @@ async fn local_listener_lag_fails_closed_and_recovers_from_durable_state() {
     // The local bus holds 256 messages. Publishing without Redis has no await
     // point, so neither subscription can drain until this burst completes.
     for _ in 0..300 {
-        let outcome = cache
-            .publish_invalidation(invalidation_message(2))
-            .await;
+        let outcome = cache.publish_invalidation(invalidation_message(2)).await;
         assert_eq!(outcome.local_subscribers, 2);
     }
     match probe.recv().await {

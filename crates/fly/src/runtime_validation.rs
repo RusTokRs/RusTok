@@ -105,7 +105,8 @@ mod tests {
     }
 
     #[test]
-    fn runtime_validation_combines_locale_translation_contract_dependency_binding_and_dynamic_diagnostics() {
+    fn runtime_validation_combines_locale_translation_contract_dependency_binding_and_dynamic_diagnostics(
+    ) {
         let document = invalid_runtime_document();
         let diagnostics = validate_runtime_extensions(&document);
         assert!(diagnostics

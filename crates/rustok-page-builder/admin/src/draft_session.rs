@@ -324,11 +324,7 @@ mod tests {
             .commit_with_context(None, None, controller("home"), json!({ "value": 42 }))
             .expect("create");
         let second = store
-            .commit(
-                Some(&first.token),
-                Some(first.generation),
-                first.controller,
-            )
+            .commit(Some(&first.token), Some(first.generation), first.controller)
             .expect("update controller");
         assert_eq!(second.runtime_context["value"], 42);
     }
@@ -348,11 +344,7 @@ mod tests {
             .expect("update");
         assert_eq!(second.generation, 2);
         assert!(matches!(
-            store.commit(
-                Some(&first.token),
-                Some(first.generation),
-                first.controller,
-            ),
+            store.commit(Some(&first.token), Some(first.generation), first.controller,),
             Err(SsrDraftSessionError::GenerationConflict { .. })
         ));
     }

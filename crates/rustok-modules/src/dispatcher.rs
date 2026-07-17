@@ -162,7 +162,7 @@ impl<'a> ModuleExecutionDispatcher<'a> {
             .catalog
             .get(module_slug)
             .ok_or_else(|| ModuleDispatchError::UnknownDefinition(module_slug.to_string()))?;
-        let ModuleDefinitionSource::Artifact { release } = &definition.source else {
+        let ModuleDefinitionSource::Artifact { .. } = &definition.source else {
             return Err(ModuleDispatchError::StaticDynamicBindingUnavailable(
                 module_slug.to_string(),
             ));
@@ -211,7 +211,7 @@ impl<'a> ModuleExecutionDispatcher<'a> {
             .catalog
             .get(module_slug)
             .ok_or_else(|| ModuleDispatchError::UnknownDefinition(module_slug.to_string()))?;
-        let ModuleDefinitionSource::Artifact { release } = &definition.source else {
+        let ModuleDefinitionSource::Artifact { .. } = &definition.source else {
             return Err(ModuleDispatchError::StaticDynamicBindingUnavailable(
                 module_slug.to_string(),
             ));
@@ -269,7 +269,7 @@ impl<'a> ModuleExecutionDispatcher<'a> {
             .catalog
             .get(module_slug)
             .ok_or_else(|| ModuleDispatchError::UnknownDefinition(module_slug.to_string()))?;
-        let ModuleDefinitionSource::Artifact { release } = &definition.source else {
+        let ModuleDefinitionSource::Artifact { .. } = &definition.source else {
             return Err(ModuleDispatchError::StaticDynamicBindingUnavailable(
                 module_slug.to_string(),
             ));

@@ -228,15 +228,10 @@ fn normalize_contribution(
         &contribution.id,
         "provider_version",
     )?;
-    contribution.required_capabilities = normalize_capabilities(
-        contribution.required_capabilities,
-        &contribution.id,
-    )?;
-    contribution.blocks = normalize_unique_values(
-        contribution.blocks,
-        &contribution.id,
-        "block id",
-    )?;
+    contribution.required_capabilities =
+        normalize_capabilities(contribution.required_capabilities, &contribution.id)?;
+    contribution.blocks =
+        normalize_unique_values(contribution.blocks, &contribution.id, "block id")?;
     contribution.messages = normalize_messages(contribution.messages, &contribution.id)?;
 
     let mut renderer_ids = BTreeSet::new();
@@ -248,11 +243,8 @@ fn normalize_contribution(
             &contribution.id,
             "renderer component_type",
         )?;
-        renderer.provider = required_value(
-            &renderer.provider,
-            &contribution.id,
-            "renderer provider",
-        )?;
+        renderer.provider =
+            required_value(&renderer.provider, &contribution.id, "renderer provider")?;
         renderer.schema_version = required_value(
             &renderer.schema_version,
             &contribution.id,
@@ -354,10 +346,7 @@ fn normalize_unique_values(
     for value in values {
         let value = required_value(&value, contribution_id, label)?;
         if !seen.insert(value.clone()) {
-            return invalid_contribution(
-                contribution_id,
-                format!("duplicate {label} `{value}`"),
-            );
+            return invalid_contribution(contribution_id, format!("duplicate {label} `{value}`"));
         }
         normalized.push(value);
     }
@@ -392,12 +381,10 @@ fn normalize_accessibility(
         contribution_id,
         &format!("{owner} accessibility label_message_id"),
     )?;
-    accessibility.description_message_id = normalize_optional(
-        accessibility.description_message_id.take(),
-    );
-    accessibility.keyboard_hint_message_id = normalize_optional(
-        accessibility.keyboard_hint_message_id.take(),
-    );
+    accessibility.description_message_id =
+        normalize_optional(accessibility.description_message_id.take());
+    accessibility.keyboard_hint_message_id =
+        normalize_optional(accessibility.keyboard_hint_message_id.take());
     Ok(())
 }
 
@@ -451,10 +438,7 @@ fn contribution_id_for_error(id: &str) -> String {
     }
 }
 
-fn invalid_contribution<T>(
-    contribution: &str,
-    message: impl Into<String>,
-) -> UiResult<T> {
+fn invalid_contribution<T>(contribution: &str, message: impl Into<String>) -> UiResult<T> {
     Err(UiError::InvalidContribution {
         contribution: contribution.to_string(),
         message: message.into(),
@@ -561,7 +545,9 @@ mod tests {
         let mut duplicate = contribution("rustok.pages.hero.alternative", None);
         duplicate.renderers[0].id = "alternative.renderer".to_string();
         duplicate.property_editors.clear();
-        let error = registry.register(duplicate).expect_err("duplicate renderer");
+        let error = registry
+            .register(duplicate)
+            .expect_err("duplicate renderer");
         assert!(matches!(error, UiError::DuplicateRenderer(_)));
         assert_eq!(registry.len(), 1);
         assert!(registry.get("rustok.pages.hero.alternative").is_none());

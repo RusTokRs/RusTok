@@ -4,9 +4,8 @@ use crate::{
     materialize_project_locale_context, materialize_project_translations, materialize_runtime,
     materialize_runtime_locale_context, validate_component_actions, validate_internal_page_links,
     ActionMaterialization, BindingMaterialization, ContextMaterialization,
-    InternalLinkMaterialization, LocalePolicyMaterialization,
-    LocalizedPageMetadataMaterialization, ProjectDocument, RuntimeMaterialization,
-    TranslationMaterialization, ValidationDiagnostic,
+    InternalLinkMaterialization, LocalePolicyMaterialization, LocalizedPageMetadataMaterialization,
+    ProjectDocument, RuntimeMaterialization, TranslationMaterialization, ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -393,7 +392,11 @@ mod tests {
             Some("form")
         );
         assert_eq!(
-            materialized.document.component("submit").unwrap().attributes["form"],
+            materialized
+                .document
+                .component("submit")
+                .unwrap()
+                .attributes["form"],
             "contact"
         );
         assert_eq!(
@@ -546,7 +549,10 @@ mod tests {
             }),
         );
         assert_eq!(materialized.effective_context["page"]["prefix"], "Привет");
-        assert_eq!(materialized.effective_context["page"]["title"], "Привет мир");
+        assert_eq!(
+            materialized.effective_context["page"]["title"],
+            "Привет мир"
+        );
         assert_eq!(
             materialized
                 .document
@@ -592,10 +598,8 @@ mod tests {
             }]
         }))
         .expect("document");
-        let materialized = materialize_project_with_runtime_context(
-            &document,
-            &json!({ "$locale": "ru-RU" }),
-        );
+        let materialized =
+            materialize_project_with_runtime_context(&document, &json!({ "$locale": "ru-RU" }));
         assert_eq!(
             materialized.effective_context["translations"]["hero_title"],
             "Добро пожаловать"
@@ -634,10 +638,8 @@ mod tests {
             }]
         }))
         .expect("document");
-        let materialized = materialize_project_with_runtime_context(
-            &document,
-            &json!({ "$locale": "ru-RU" }),
-        );
+        let materialized =
+            materialize_project_with_runtime_context(&document, &json!({ "$locale": "ru-RU" }));
         let metadata = PageMetadata::from_page(&materialized.document.project.pages[0]);
         assert_eq!(metadata.title.as_deref(), Some("Главная"));
         assert_eq!(metadata.description.as_deref(), Some("Русское описание"));

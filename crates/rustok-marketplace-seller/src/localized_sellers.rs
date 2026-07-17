@@ -171,15 +171,15 @@ fn map_seller(
             model.status
         ))
     })?;
-    let onboarding_status =
-        MarketplaceSellerOnboardingStatus::parse(model.onboarding_status.as_str()).ok_or_else(
-            || {
-                MarketplaceSellerError::Validation(format!(
-                    "unknown marketplace seller onboarding status `{}`",
-                    model.onboarding_status
-                ))
-            },
-        )?;
+    let onboarding_status = MarketplaceSellerOnboardingStatus::parse(
+        model.onboarding_status.as_str(),
+    )
+    .ok_or_else(|| {
+        MarketplaceSellerError::Validation(format!(
+            "unknown marketplace seller onboarding status `{}`",
+            model.onboarding_status
+        ))
+    })?;
 
     Ok(MarketplaceSellerResponse {
         id: model.id,

@@ -92,7 +92,8 @@ pub fn set_project_locale_policy(
     policy: &ProjectLocalePolicy,
 ) -> FlyResult<()> {
     let policy = policy.normalized().map_err(FlyError::Decode)?;
-    let value = serde_json::to_value(policy).map_err(|error| FlyError::Encode(error.to_string()))?;
+    let value =
+        serde_json::to_value(policy).map_err(|error| FlyError::Encode(error.to_string()))?;
     document
         .project
         .extensions
@@ -158,9 +159,7 @@ pub fn materialize_project_locale_context(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
-    let requested_locale = requested_source
-        .as_deref()
-        .and_then(normalize_locale_tag);
+    let requested_locale = requested_source.as_deref().and_then(normalize_locale_tag);
     if let Some(source) = requested_source.as_deref() {
         if requested_locale.is_none() {
             diagnostics.push(locale_policy_diagnostic(
@@ -180,9 +179,7 @@ pub fn materialize_project_locale_context(
             diagnostics.push(locale_policy_diagnostic(
                 ValidationSeverity::Warning,
                 "runtime_locale_unsupported",
-                format!(
-                    "runtime locale `{locale}` is not supported by the project locale policy"
-                ),
+                format!("runtime locale `{locale}` is not supported by the project locale policy"),
             ));
             active_locale = policy.default_locale.clone();
             default_locale_applied = active_locale.is_some();
@@ -245,9 +242,7 @@ pub fn materialize_project_locale_context(
     }
 }
 
-pub fn validate_project_locale_policy(
-    document: &ProjectDocument,
-) -> Vec<ValidationDiagnostic> {
+pub fn validate_project_locale_policy(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let Some(raw_policy) = document.project.extensions.get(FLY_LOCALES_FIELD) else {
         return Vec::new();
     };
@@ -373,8 +368,8 @@ fn normalize_required_locale(locale: &str) -> Result<String, String> {
 fn normalize_locale_list(locales: &[String], label: &str) -> Result<Vec<String>, String> {
     let mut normalized = Vec::new();
     for locale in locales {
-        let locale = normalize_locale_tag(locale)
-            .ok_or_else(|| format!("{label} `{locale}` is invalid"))?;
+        let locale =
+            normalize_locale_tag(locale).ok_or_else(|| format!("{label} `{locale}` is invalid"))?;
         if !normalized.contains(&locale) {
             normalized.push(locale);
         }
@@ -474,7 +469,10 @@ mod tests {
         }));
         let defaulted = materialize_project_locale_context(&document, &json!({}));
         assert_eq!(defaulted.context[RUNTIME_LOCALE_FIELD], "ru");
-        assert_eq!(defaulted.context[RUNTIME_FALLBACK_LOCALES_FIELD], json!(["en"]));
+        assert_eq!(
+            defaulted.context[RUNTIME_FALLBACK_LOCALES_FIELD],
+            json!(["en"])
+        );
         assert!(defaulted.default_locale_applied);
 
         let explicit = materialize_project_locale_context(
@@ -520,10 +518,8 @@ mod tests {
             },
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
         }));
-        let result = materialize_project_locale_context(
-            &document,
-            &json!({ "$locale": "invalid locale" }),
-        );
+        let result =
+            materialize_project_locale_context(&document, &json!({ "$locale": "invalid locale" }));
         assert_eq!(result.context[RUNTIME_LOCALE_FIELD], "en");
         assert!(result.default_locale_applied);
         assert!(result
@@ -582,10 +578,7 @@ mod tests {
             },
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
         }));
-        let result = materialize_project_locale_context(
-            &document,
-            &json!({ "$locale": "de" }),
-        );
+        let result = materialize_project_locale_context(&document, &json!({ "$locale": "de" }));
         assert_eq!(result.context[RUNTIME_LOCALE_FIELD], "en");
         assert!(result.unsupported_locale_replaced);
         assert!(result

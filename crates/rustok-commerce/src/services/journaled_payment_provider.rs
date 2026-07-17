@@ -27,14 +27,8 @@ pub(crate) async fn execute_journaled_provider_operation(
     provider_id: &str,
     request: PaymentProviderOperationRequest,
 ) -> PaymentOrchestrationResult<JournaledProviderResult> {
-    let request = enrich_provider_request(
-        journal,
-        operation,
-        refund_id,
-        provider_id,
-        request,
-    )
-    .await?;
+    let request =
+        enrich_provider_request(journal, operation, refund_id, provider_id, request).await?;
     let idempotency_key = request
         .idempotency_key
         .as_deref()
@@ -167,10 +161,9 @@ fn wrap_provider_failure<T>(
     source: PaymentError,
 ) -> PaymentOrchestrationResult<T> {
     match refund_id {
-        Some(refund_id) => Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
-            refund_id,
-            source,
-        }),
+        Some(refund_id) => {
+            Err(PaymentOrchestrationError::ProviderAfterRefundReservation { refund_id, source })
+        }
         None => Err(PaymentOrchestrationError::Provider(source)),
     }
 }
@@ -253,7 +246,9 @@ fn insert_metadata_string(
         }
     }
     let object = metadata.as_object_mut().ok_or_else(|| {
-        PaymentError::Validation("payment provider operation metadata must be an object".to_string())
+        PaymentError::Validation(
+            "payment provider operation metadata must be an object".to_string(),
+        )
     })?;
     if let Some(existing) = object.get(key).and_then(Value::as_str) {
         if existing != value {
@@ -356,12 +351,7 @@ mod tests {
     #[test]
     fn inserts_owner_provider_identity_without_overwriting_conflicts() {
         let mut metadata = serde_json::json!({});
-        insert_metadata_string(
-            &mut metadata,
-            "provider_payment_id",
-            "pi_123".to_string(),
-        )
-        .unwrap();
+        insert_metadata_string(&mut metadata, "provider_payment_id", "pi_123".to_string()).unwrap();
         assert_eq!(
             metadata.get("provider_payment_id").and_then(Value::as_str),
             Some("pi_123")

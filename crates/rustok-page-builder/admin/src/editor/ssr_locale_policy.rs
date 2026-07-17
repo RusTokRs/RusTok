@@ -236,8 +236,8 @@ fn parse_locale_list(value: &str, label: &str) -> Result<Vec<String>, String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        let locale = normalize_locale_tag(value)
-            .ok_or_else(|| format!("{label} `{value}` is invalid"))?;
+        let locale =
+            normalize_locale_tag(value).ok_or_else(|| format!("{label} `{value}` is invalid"))?;
         if !locales.contains(&locale) {
             locales.push(locale);
         }
@@ -306,11 +306,12 @@ mod tests {
             .expect("locale policy intent");
         controller.dispatch(intent).expect("locale policy command");
         assert_eq!(
-            controller.editor().document().project.extensions[FLY_LOCALES_FIELD]
-                ["default_locale"],
+            controller.editor().document().project.extensions[FLY_LOCALES_FIELD]["default_locale"],
             "ru"
         );
-        controller.dispatch(UiIntent::Undo).expect("undo locale policy");
+        controller
+            .dispatch(UiIntent::Undo)
+            .expect("undo locale policy");
         assert!(!controller
             .editor()
             .document()

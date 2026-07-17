@@ -437,12 +437,13 @@ fn map_admin_payment_error(error: PaymentError) -> (StatusCode, Json<Value>) {
             "payment_provider_outcome_unknown",
             "Payment provider operation requires reconciliation",
         ),
-        PaymentError::ProviderRejected { .. }
-        | PaymentError::ProviderInvalidResponse { .. } => safe_error(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "payment_provider_event_invalid",
-            "Payment provider event cannot be applied",
-        ),
+        PaymentError::ProviderRejected { .. } | PaymentError::ProviderInvalidResponse { .. } => {
+            safe_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "payment_provider_event_invalid",
+                "Payment provider event cannot be applied",
+            )
+        }
         PaymentError::PaymentCollectionNotFound(_)
         | PaymentError::PaymentNotFound(_)
         | PaymentError::RefundNotFound(_) => safe_error(
