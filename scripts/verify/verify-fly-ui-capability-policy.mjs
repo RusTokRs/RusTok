@@ -108,6 +108,11 @@ requireMarkers('flyUiTests', [
   'restricted_capabilities_survive_presentation_round_trip',
   'withdrawing_drag_capability_cancels_active_drag_and_overlay',
   'reviewer_profile_can_publish_but_cannot_mutate',
+  'specialized_commands_cannot_bypass_disabled_capabilities',
+  'batch_commands_require_every_specialized_capability_before_dispatch',
+  'UiError::CapabilityUnavailable("properties".to_string())',
+  'UiError::CapabilityUnavailable("styles".to_string())',
+  'UiError::CapabilityUnavailable("assets".to_string())',
 ], 'capability state-machine regressions');
 requireMarkers('host', [
   'pub editor_capabilities: Option<CapabilityState>',
@@ -148,7 +153,10 @@ requireMarkers('propertyFacade', [
 ], 'property/style/asset capability facade');
 requireMarkers('propertiesSection', ['pub(crate) fn PropertiesSection'], 'properties section split');
 requireMarkers('styleSection', ['pub(crate) fn StyleSection'], 'style section split');
-requireMarkers('assetSection', ['pub(crate) fn AssetSection'], 'asset section split');
+requireMarkers('assetSection', [
+  'pub(crate) fn AssetSection',
+  'disabled=move || !use_runtime.capability_enabled(EditorCapability::Properties)',
+], 'asset section split and cross-capability apply gate');
 requireMarkers('diagnosticsSection', ['pub(crate) fn DiagnosticsSection'], 'diagnostics section split');
 requireMarkers('toolbar', [
   '!controller.ui().state.capabilities.history',
