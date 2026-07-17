@@ -202,6 +202,7 @@ for (const forbidden of [
 }
 requireMarkers('pageBuilderLib', [
   'mod capability_access;',
+  'pub const BROWSER_CAPABILITY_DENIAL_CODE: &str = "FLY_CAPABILITY_DENIED";',
   'browser_capability_denial, validate_browser_capability_access,',
   'BrowserCapabilityAccessError, BrowserCapabilityDenial,',
 ], 'Page Builder browser capability export');
@@ -244,7 +245,7 @@ requireMarkers('adminMain', [
   'PagesBrowserIntentAccessError',
   'let capability_denial = error.capability_denial();',
   'BrowserCapabilityAccessError::Denied(_)',
-  '"code": "FLY_CAPABILITY_DENIED"',
+  '"code": rustok_page_builder_admin::BROWSER_CAPABILITY_DENIAL_CODE',
   'StatusCode::FORBIDDEN',
   'Page Builder access token is missing',
 ], 'server-verified Page Builder endpoint policy');
@@ -252,6 +253,7 @@ for (const forbidden of [
   'auth.user.as_ref().map(|user| user.role.as_str())',
   'message.contains("requires editor capability")',
   'rustok_page_builder_admin::browser_capability_denial(error)',
+  '"code": "FLY_CAPABILITY_DENIED"',
 ]) {
   rejectMarker('adminMain', forbidden, `Page Builder endpoint must not contain ${forbidden}`);
 }
