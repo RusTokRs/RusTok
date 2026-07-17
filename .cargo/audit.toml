@@ -1,8 +1,11 @@
 [advisories]
+# TEMPORARY exceptions only. Every entry is registered in
+# docs/security/advisory-exceptions.md and expires on 2026-07-24.
+# Do not extend an ignore without fresh dependency-path and reachability evidence.
 ignore = [
-  "RUSTSEC-2023-0071", # rsa timing side-channel; no patched release available yet
-  "RUSTSEC-2023-0089", # atomic-polyfill unmaintained; transitive dependency without maintained replacement in current graph
-  "RUSTSEC-2026-0098", # rustls-webpki URI name constraints; fix requires upstream aws-smithy/rustls 0.21 migration
-  "RUSTSEC-2026-0099", # rustls-webpki wildcard name constraints; fix requires upstream aws-smithy/rustls 0.21 migration
-  "RUSTSEC-2026-0104", # rustls-webpki CRL parsing panic; fix requires upstream aws-smithy/rustls 0.21 migration
+  "RUSTSEC-2023-0071", # rsa timing side-channel; no patched release currently available; expires 2026-07-24
+  "RUSTSEC-2023-0089", # atomic-polyfill unmaintained; replace parent path with portable-atomic; expires 2026-07-24
+  "RUSTSEC-2026-0098", # rustls-webpki URI name constraints; upgrade AWS Smithy/rustls lane; expires 2026-07-24
+  "RUSTSEC-2026-0099", # rustls-webpki wildcard constraints; upgrade AWS Smithy/rustls lane; expires 2026-07-24
+  "RUSTSEC-2026-0104", # rustls-webpki CRL parsing panic; upgrade AWS Smithy/rustls lane; expires 2026-07-24
 ]
