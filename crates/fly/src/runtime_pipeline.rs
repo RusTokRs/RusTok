@@ -2,8 +2,9 @@ use crate::{
     extract_runtime_context_contract, materialize_bindings, materialize_component_actions,
     materialize_context, materialize_internal_page_links, materialize_localized_page_metadata,
     materialize_project_locale_context, materialize_project_translations, materialize_runtime,
-    materialize_runtime_locale_context, ActionMaterialization, BindingMaterialization,
-    ContextMaterialization, InternalLinkMaterialization, LocalePolicyMaterialization,
+    materialize_runtime_locale_context, validate_component_actions, validate_internal_page_links,
+    ActionMaterialization, BindingMaterialization, ContextMaterialization,
+    InternalLinkMaterialization, LocalePolicyMaterialization,
     LocalizedPageMetadataMaterialization, ProjectDocument, RuntimeMaterialization,
     TranslationMaterialization, ValidationDiagnostic,
 };
@@ -122,6 +123,11 @@ pub fn materialize_project_with_runtime_context(
     } = materialize_runtime(&bound_document, &effective_context);
     diagnostics.extend(dynamic_diagnostics);
 
+    // Bindings and repeaters may introduce or duplicate runtime navigation, action, and form
+    // contracts. Validate the effective document before lowering those contracts to native HTML.
+    diagnostics.extend(validate_internal_page_links(&dynamic_document));
+    diagnostics.extend(validate_component_actions(&dynamic_document));
+
     // Resolve navigation and action contracts only after conditions/repeaters. This guarantees
     // that generated nodes receive native href/form/button attributes and hidden nodes do not
     // contribute stale runtime diagnostics or counters.
@@ -174,7 +180,7 @@ pub fn materialize_project_with_runtime_context(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsV1Codec, PageMetadata};
+    use crate::{GrapesJsV1Codec, PageMetadata, ValidationSeverity};
     use serde_json::json;
 
     #[test]
@@ -447,6 +453,51 @@ mod tests {
             materialized.document.component("cta").unwrap().attributes["href"],
             "/about"
         );
+    }
+
+    #[test]
+    fn runtime_bound_navigation_conflict_is_validated_before_materialization() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "slug": "home" },
+                "component": {
+                    "id": "home-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "cta",
+                        "type": "link",
+                        "content": "About",
+                        "flyPageLink": { "page_id": "about" }
+                    }]
+                }
+            }, {
+                "id": "about",
+                "flyPageMeta": { "slug": "about" },
+                "component": { "id": "about-root", "type": "wrapper" }
+            }],
+            "flyRuntimeBindings": [{
+                "id": "cta-action",
+                "component_id": "cta",
+                "path": "cta.action",
+                "target": "field",
+                "name": "flyAction"
+            }]
+        }))
+        .expect("document");
+
+        let materialized = materialize_project_with_runtime_context(
+            &document,
+            &json!({
+                "cta": {
+                    "action": { "kind": "navigate_page", "page_id": "about" }
+                }
+            }),
+        );
+        assert!(materialized.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "component_navigation_contract_conflict"
+                && diagnostic.severity == ValidationSeverity::Error
+        }));
     }
 
     #[test]
