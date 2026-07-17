@@ -72,6 +72,7 @@ fn shared_redis_backend_connects_lazily_and_keeps_startup_outage_visible() {
 #[test]
 fn memory_only_cache_feature_matrix_remains_enforced() {
     let cache_lib = include_str!("../../rustok-cache/src/lib.rs");
+    let cache_manifest = include_str!("../../rustok-cache/Cargo.toml");
     let shared = include_str!("../../rustok-cache/src/shared_backend.rs");
     let weighted = include_str!("../../rustok-cache/src/weighted.rs");
     let workflow = include_str!("../../../.github/workflows/cache-feature-matrix.yml");
@@ -85,9 +86,22 @@ fn memory_only_cache_feature_matrix_remains_enforced() {
     assert!(weighted.contains(
         "#[cfg(feature = \"redis-cache\")]\nuse crate::fallback::DegradationAwareFallbackBackend;"
     ));
-    assert!(workflow.contains("cargo check -p rustok-cache --lib --no-default-features"));
-    assert!(workflow.contains("cargo test -p rustok-cache --lib --no-default-features"));
+    assert!(shared.contains("#[cfg(not(feature = \"redis-cache\"))]\n        let _ = (prefix, options);"));
+    assert!(weighted.contains("#[cfg(not(feature = \"redis-cache\"))]\n        let _ = (prefix, options);"));
+    for target in ["fallback_cas_live", "real_redis_hardening"] {
+        assert!(cache_manifest.contains(&format!("name = \"{target}\"")));
+    }
+    assert_eq!(
+        cache_manifest
+            .matches("required-features = [\"redis-cache\"]")
+            .count(),
+        2
+    );
     assert!(workflow.contains(
-        "cargo clippy -p rustok-cache --lib --no-default-features -- -D warnings"
+        "cargo check -p rustok-cache --all-targets --no-default-features"
+    ));
+    assert!(workflow.contains("cargo test -p rustok-cache --no-default-features"));
+    assert!(workflow.contains(
+        "cargo clippy -p rustok-cache --all-targets --no-default-features -- -D warnings"
     ));
 }
