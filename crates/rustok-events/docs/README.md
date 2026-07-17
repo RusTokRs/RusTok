@@ -24,6 +24,7 @@ validation rules, while `rustok-core` retains only a compatibility re-export pat
 - domain modules, outbox/runtime crates and test utilities must import event contracts directly from `rustok-events`;
 - changes to event contracts must be synchronized with outbox, replay, DLQ and reindex guidance;
 - tenant lifecycle contracts (`tenant.created`, `tenant.updated`, `tenant.module.toggled`) must remain synchronized with tenancy modules and their outbox mutation paths;
+- marketplace listing lifecycle contracts use nine explicit versioned event types and expose only stable listing identity/scope fields; moderation prose and arbitrary metadata remain owner-private;
 - breaking payload changes require a version bump and an explicit dual-read/migration plan.
 
 ## Verification

@@ -79,9 +79,9 @@ migration, contention, mounted-transport, and remote-profile evidence.
 ## Ownership remaining
 
 - [ ] Publish listing lifecycle/moderation events through the transactional outbox.
-- [ ] Define a versioned `marketplace.listing.changed` payload in the platform event
-  contract before external Marketplace consumers subscribe.
-- [ ] Keep moderation notes and arbitrary owner metadata out of the external event;
+- [x] Define nine explicit versioned `marketplace.listing.*` payload variants in the
+  platform event contract before external Marketplace consumers subscribe.
+- [x] Keep moderation notes and arbitrary owner metadata out of the external event;
   consumers refresh through `MarketplaceListingReadPort`.
 - [ ] Add product matching/approval workflow before automated EAN/GTIN matching,
   deduplication, or buy-box ranking.
@@ -113,9 +113,10 @@ migration, contention, mounted-transport, and remote-profile evidence.
 
 ## FBA remaining
 
-- [ ] Add the versioned listing event to `rustok-events` and publish it through
-  `TransactionalEventBus::publish_in_tx` in the same owner transaction as listing
-  event/state/receipt completion.
+- [x] Add the versioned listing event family to `rustok-events`, including validation,
+  schema registry coverage, serialization safety tests, and source guards.
+- [ ] Publish the event family through `TransactionalEventBus::publish_in_tx` in the
+  same owner transaction as listing event/state/receipt completion.
 - [ ] Do not relay imported legacy snapshots as new live business commands.
 - [ ] Compile owner/provider/root consumer contracts.
 - [ ] Apply clean and upgraded SQLite/PostgreSQL migrations, including the
@@ -171,7 +172,8 @@ migration, contention, mounted-transport, and remote-profile evidence.
 2. [x] Backfill truthful legacy snapshots and remove mutable note columns.
 3. [x] Publish the initial module-owned listing FFA source package.
 4. [x] Add workspace/admin feature wiring and platform listing permissions.
-5. [ ] Define and atomically publish the versioned transactional outbox event.
+5. [ ] Atomically publish the source-ready versioned event family through the
+   transactional outbox.
 6. [ ] Mount authenticated request-scoped native provider composition.
 7. [ ] Add listing GraphQL roots and replace the declared-unmounted adapter.
 8. [ ] Compile and execute database, contention, replay, tenant, locale, provenance,
@@ -213,6 +215,9 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `../../apps/server/tests/marketplace_listing_admin_ffa_guard.rs`
 - `../../scripts/verify/verify-marketplace-listing-boundary.mjs`
 - `../../scripts/verify/verify-marketplace-listing-lifecycle-events.mjs`
+- `../../scripts/verify/verify-marketplace-listing-event-contract.mjs`
+- `../../rustok-events/src/types.rs`
+- `../../rustok-events/src/schema.rs`
 - `../../scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
 - `../../scripts/verify/verify-marketplace-listing-admin-ffa.mjs`
 
