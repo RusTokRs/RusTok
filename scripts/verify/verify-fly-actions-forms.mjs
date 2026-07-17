@@ -111,7 +111,9 @@ requireMarkers('ssrEditor', [
   'pub fn ssr_native_form_field_intent',
   'action_from_request(request.clone())',
   'form_from_request(request.clone(), extensions)',
+  'preserved_action_extensions',
   'validate_component_actions(&candidate)',
+  'action_editor_preserves_unknown_extensions',
   'form_editor_preserves_unknown_extensions',
   'native_field_editor_sets_and_clears_html_constraints',
 ], 'typed SSR action/form/field editor');
