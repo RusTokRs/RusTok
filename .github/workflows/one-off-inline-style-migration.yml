@@ -1,0 +1,175 @@
+name: One-off Inline Style Migration
+
+on:
+  push:
+    paths:
+      - ".github/workflows/one-off-inline-style-migration.yml"
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  patch-final-rust-style-sites:
+    if: github.event.head_commit.message == 'chore: install one-off inline style migration'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Rebase on current main
+        run: git pull --rebase origin main
+
+      - name: Apply exact inline-style migrations
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              source = file.read_text()
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one exact match, found {count}: {old!r}")
+              file.write_text(source.replace(old, new, 1))
+
+          admin_core = "crates/rustok-forum/admin/src/core.rs"
+          replace_once(
+              admin_core,
+              """use rustok_ui_core::{
+              normalize_optional_ui_text, ui_busy_key_last_segment_matches, ui_scoped_busy_key,
+              AdminQueryKey, UiRouteQueryIntent,
+          };""",
+              """use rustok_ui_core::{
+              css_hex_accent_class, normalize_optional_ui_text, ui_busy_key_last_segment_matches,
+              ui_scoped_busy_key, AdminQueryKey, UiRouteQueryIntent,
+          };""",
+          )
+          replace_once(
+              admin_core,
+              """const DEFAULT_CATEGORY_ACCENT_STYLE: &str =
+              "background:linear-gradient(180deg,#0ea5e9 0%,#f59e0b 100%);";
+
+          """,
+              "",
+          )
+          replace_once(admin_core, "    pub accent_style: String,", "    pub accent_class: &'static str,")
+          replace_once(
+              admin_core,
+              """        accent_style: item
+                      .color
+                      .as_deref()
+                      .filter(|value| !value.trim().is_empty())
+                      .map(|value| format!("background:{};", value))
+                      .unwrap_or_else(|| DEFAULT_CATEGORY_ACCENT_STYLE.to_string()),""",
+              "        accent_class: css_hex_accent_class(item.color.as_deref()),",
+          )
+          replace_once(
+              admin_core,
+              "        assert_eq!(vm.accent_style, DEFAULT_CATEGORY_ACCENT_STYLE);",
+              "        assert!(vm.accent_class.contains(\"from-sky-500\"));",
+          )
+
+          replace_once(
+              "crates/rustok-forum/admin/src/ui/leptos.rs",
+              """                            <span class="absolute inset-y-0 left-0 w-1.5" style=vm.accent_style.clone()></span>""",
+              """                            <span class=format!("absolute inset-y-0 left-0 w-1.5 {}", vm.accent_class)></span>""",
+          )
+
+          modules = "apps/admin/src/features/modules/components/modules_list.rs"
+          replace_once(
+              modules,
+              '                                let progress_width = format!("width: {}%;", build.progress);',
+              '                                let progress_value = build.progress.clamp(0, 100);',
+          )
+          replace_once(
+              modules,
+              '{format!("{}%", build.progress)}',
+              '{format!("{}%", progress_value)}',
+          )
+          replace_once(
+              modules,
+              '<div class="h-2 overflow-hidden rounded-full bg-primary/15"><div class="h-full rounded-full bg-primary transition-all" style=progress_width></div></div>',
+              '<progress class="h-2 w-full overflow-hidden rounded-full accent-primary" max="100" value=progress_value></progress>',
+          )
+
+          register_path = Path("docs/security/csp-inline-style-attribute-exceptions.json")
+          register = json.loads(register_path.read_text())
+          if len(register.get("exceptions", [])) != 2:
+              raise SystemExit("inline-style exception register did not contain the expected two entries")
+          register["exceptions"] = []
+          register_path.write_text(json.dumps(register, indent=2) + "\n")
+
+          verifier = "scripts/verify/verify-csp-inline-style-exceptions.mjs"
+          replace_once(verifier, "const maxRegisteredSites = 2;", "const maxRegisteredSites = 0;")
+          replace_once(verifier, "const maxRegisteredFiles = 2;", "const maxRegisteredFiles = 0;")
+          replace_once(
+              verifier,
+              """if (entries.length === 0) {
+            failures.push(`${registerPath}: exceptions must contain at least one reviewed entry`);
+          }""",
+              """if (!Array.isArray(register.exceptions)) {
+            failures.push(`${registerPath}: exceptions must be an array`);
+          }""",
+          )
+          migration_contract = """requireMarkers("crates/rustok-forum/admin/src/core.rs", [
+            "pub accent_class: &'static str",
+            "accent_class: css_hex_accent_class(item.color.as_deref())",
+            "assert!(vm.accent_class.contains(\\\"from-sky-500\\\"))",
+          ]);
+          forbidMarkers("crates/rustok-forum/admin/src/core.rs", [
+            "accent_style",
+            "DEFAULT_CATEGORY_ACCENT_STYLE",
+            "background:{};",
+          ]);
+          requireMarkers("crates/rustok-forum/admin/src/ui/leptos.rs", [
+            "vm.accent_class",
+            "absolute inset-y-0 left-0 w-1.5",
+          ]);
+          forbidMarkers("crates/rustok-forum/admin/src/ui/leptos.rs", [
+            "style=vm.accent_style",
+            "vm.accent_style",
+          ]);
+          requireMarkers("apps/admin/src/features/modules/components/modules_list.rs", [
+            "let progress_value = build.progress.clamp(0, 100)",
+            "<progress",
+            "max=\\\"100\\\"",
+            "value=progress_value",
+          ]);
+          forbidMarkers("apps/admin/src/features/modules/components/modules_list.rs", [
+            "progress_width",
+            "style=progress_width",
+          ]);
+
+          """
+          replace_once(
+              verifier,
+              "for (const [file, required] of [\n",
+              migration_contract + "for (const [file, required] of [\n",
+          )
+          PY
+
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          git status --short
+          test -n "$(git status --short)"
+
+      - name: Commit exact migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/admin/src/features/modules/components/modules_list.rs \
+            crates/rustok-forum/admin/src/core.rs \
+            crates/rustok-forum/admin/src/ui/leptos.rs \
+            docs/security/csp-inline-style-attribute-exceptions.json \
+            scripts/verify/verify-csp-inline-style-exceptions.mjs
+          git commit -m "security: remove final Rust inline style attributes"
+          git push origin HEAD:main
