@@ -33,3 +33,16 @@ fn atomic_local_backend_keeps_capacity_and_cas_regressions() {
     assert!(atomic.contains("compare_and_set_does_not_insert_a_missing_or_expired_entry"));
     assert!(atomic.contains("compare_and_set_replaces_or_removes_only_a_matching_entry"));
 }
+
+#[test]
+fn redis_feature_is_compatibility_only_in_core_and_owned_by_cache() {
+    let core_manifest = include_str!("../Cargo.toml");
+    let cache_manifest = include_str!("../../rustok-cache/Cargo.toml");
+
+    assert!(core_manifest.contains("redis-cache = []"));
+    assert!(!core_manifest.contains("\nredis ="));
+    assert!(cache_manifest.contains(
+        "redis-cache = [\"rustok-core/redis-cache\", \"dep:redis\", \"dep:futures-util\"]"
+    ));
+    assert!(cache_manifest.contains("\nredis = {"));
+}
