@@ -4,9 +4,9 @@ use crate::editor::{
     ContextSchemaPanel, DynamicRuntimePanel, IsolatedAuthoringCanvas, PageManagerPanel,
     PaletteLayersPanel, PropertiesAssetsPanel, ResponsiveStylePanel, RuntimePublishGatePanel,
     RuntimeScenarioMatrixPanel, RuntimeScenarioPanel, RuntimeScenarioRegressionPanel,
-    SsrActionsFormsPanel, SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel,
-    SsrLocalePanel, SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel,
-    TraitPanel,
+    SsrActionsFormsPanel, SsrAssetPanel, SsrInspectorPanel, SsrInternalPageLinkPanel,
+    SsrLocaleCoveragePanel, SsrLocalePanel, SsrLocalePolicyPanel, SsrLocalizedMetadataPanel,
+    SsrTranslationsPanel, TraitPanel,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
@@ -124,6 +124,7 @@ pub fn AdminCanvas(
     let ssr_localized_metadata_runtime = runtime.clone();
     let ssr_internal_link_runtime = runtime.clone();
     let ssr_actions_forms_runtime = runtime.clone();
+    let ssr_assets_runtime = runtime.clone();
     let ssr_inspector_runtime = runtime.clone();
     let announcement_runtime = runtime.clone();
     let error_runtime = runtime;
@@ -165,6 +166,7 @@ pub fn AdminCanvas(
                     <SsrLocalizedMetadataPanel runtime=ssr_localized_metadata_runtime />
                     <SsrInternalPageLinkPanel runtime=ssr_internal_link_runtime />
                     <SsrActionsFormsPanel runtime=ssr_actions_forms_runtime />
+                    <SsrAssetPanel runtime=ssr_assets_runtime />
                     <SsrInspectorPanel runtime=ssr_inspector_runtime />
                     <AuditPanel runtime=audit_runtime />
                     <RuntimePublishGatePanel runtime=gate_runtime />
