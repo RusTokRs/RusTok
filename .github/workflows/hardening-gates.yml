@@ -32,3 +32,5 @@ jobs:
         run: node scripts/verify/verify-module-manifest-docs-drift.mjs
       - name: Verify security advisory exceptions
         run: node scripts/verify/verify-advisory-exceptions.mjs
+      - name: Verify CSP reporting contract
+        run: node scripts/verify/verify-csp-reporting-contract.mjs
