@@ -121,6 +121,7 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
 
     let list_runtime = runtime.clone();
     let edit_gate_runtime = runtime.clone();
+    let properties_gate_runtime = runtime.clone();
     let add_runtime = runtime.clone();
     let identity_runtime = runtime.clone();
     let metadata_runtime = runtime.clone();
@@ -196,85 +197,90 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     >{add_label}</button>
                 </div>
 
-                <div class="grid gap-2 border-t border-border pt-3">
-                    <label class="text-sm font-medium">{name_label.clone()}</label>
-                    <input
-                        class="rounded border border-input bg-background px-2 py-1 text-sm"
-                        prop:value=move || page_name.get()
-                        on:input=move |event| page_name.set(event_target_value(&event))
-                    />
-                    <label class="text-sm font-medium">{id_label}</label>
-                    <input
-                        class="rounded border border-input bg-background px-2 py-1 text-sm"
-                        prop:value=move || page_id.get()
-                        on:input=move |event| page_id.set(event_target_value(&event))
-                    />
-                    <button
-                        type="button"
-                        class="w-fit rounded border border-border px-2 py-1 text-xs"
-                        on:click=move |_| {
-                            let id = page_id.get_untracked().trim().to_string();
-                            if id.is_empty() {
-                                identity_runtime.fail("page id must not be empty");
-                                return;
-                            }
-                            identity_runtime.dispatch(UiIntent::execute(EditorCommand::Page {
-                                command: PageCommand::Patch {
-                                    locator: identity_runtime.controller.with(|controller| controller.active_page_locator()),
-                                    patch: PagePatch {
-                                        fields: Map::from_iter([
-                                            ("id".to_string(), Value::String(id)),
-                                            ("name".to_string(), Value::String(page_name.get_untracked().trim().to_string())),
-                                        ]),
-                                        ..PagePatch::default()
-                                    },
-                                },
-                            }));
-                        }
-                    >{apply_label.clone()}</button>
-                </div>
-
-                <details class="border-t border-border pt-3" open>
-                    <summary class="cursor-pointer text-sm font-medium">"SEO / Open Graph"</summary>
-                    <div class="mt-2 grid gap-2">
-                        <MetadataInput label=seo_title_label signal=seo_title />
-                        <MetadataTextarea label=description_label signal=seo_description />
-                        <MetadataInput label=slug_label signal=slug />
-                        <MetadataInput label=canonical_label signal=canonical_url />
-                        <MetadataInput label=og_title_label signal=open_graph_title />
-                        <MetadataTextarea label=og_description_label signal=open_graph_description />
-                        <MetadataInput label=og_image_label signal=open_graph_image />
-                        <label class="flex items-center gap-2 text-sm">
-                            <input
-                                type="checkbox"
-                                prop:checked=move || no_index.get()
-                                on:change=move |event| no_index.set(event_target_checked(&event))
-                            />
-                            <span>{no_index_label}</span>
-                        </label>
+                <CapabilityFieldset
+                    runtime=properties_gate_runtime
+                    capability=EditorCapability::Properties
+                >
+                    <div class="grid gap-2 border-t border-border pt-3">
+                        <label class="text-sm font-medium">{name_label.clone()}</label>
+                        <input
+                            class="rounded border border-input bg-background px-2 py-1 text-sm"
+                            prop:value=move || page_name.get()
+                            on:input=move |event| page_name.set(event_target_value(&event))
+                        />
+                        <label class="text-sm font-medium">{id_label}</label>
+                        <input
+                            class="rounded border border-input bg-background px-2 py-1 text-sm"
+                            prop:value=move || page_id.get()
+                            on:input=move |event| page_id.set(event_target_value(&event))
+                        />
                         <button
                             type="button"
                             class="w-fit rounded border border-border px-2 py-1 text-xs"
                             on:click=move |_| {
-                                let mut metadata = current_metadata(&metadata_runtime);
-                                metadata.title = Some(seo_title.get_untracked());
-                                metadata.description = Some(seo_description.get_untracked());
-                                metadata.slug = Some(slug.get_untracked());
-                                metadata.canonical_url = Some(canonical_url.get_untracked());
-                                metadata.open_graph_title = Some(open_graph_title.get_untracked());
-                                metadata.open_graph_description = Some(open_graph_description.get_untracked());
-                                metadata.open_graph_image = Some(open_graph_image.get_untracked());
-                                metadata.no_index = no_index.get_untracked();
-                                metadata_runtime.dispatch(UiIntent::execute(EditorCommand::Page {
+                                let id = page_id.get_untracked().trim().to_string();
+                                if id.is_empty() {
+                                    identity_runtime.fail("page id must not be empty");
+                                    return;
+                                }
+                                identity_runtime.dispatch(UiIntent::execute(EditorCommand::Page {
                                     command: PageCommand::Patch {
-                                        locator: metadata_runtime.controller.with(|controller| controller.active_page_locator()),
-                                        patch: metadata.normalized().into_page_patch(),
+                                        locator: identity_runtime.controller.with(|controller| controller.active_page_locator()),
+                                        patch: PagePatch {
+                                            fields: Map::from_iter([
+                                                ("id".to_string(), Value::String(id)),
+                                                ("name".to_string(), Value::String(page_name.get_untracked().trim().to_string())),
+                                            ]),
+                                            ..PagePatch::default()
+                                        },
                                     },
                                 }));
                             }
-                        >{apply_label}</button>
+                        >{apply_label.clone()}</button>
                     </div>
-                </details>
+
+                    <details class="border-t border-border pt-3" open>
+                        <summary class="cursor-pointer text-sm font-medium">"SEO / Open Graph"</summary>
+                        <div class="mt-2 grid gap-2">
+                            <MetadataInput label=seo_title_label signal=seo_title />
+                            <MetadataTextarea label=description_label signal=seo_description />
+                            <MetadataInput label=slug_label signal=slug />
+                            <MetadataInput label=canonical_label signal=canonical_url />
+                            <MetadataInput label=og_title_label signal=open_graph_title />
+                            <MetadataTextarea label=og_description_label signal=open_graph_description />
+                            <MetadataInput label=og_image_label signal=open_graph_image />
+                            <label class="flex items-center gap-2 text-sm">
+                                <input
+                                    type="checkbox"
+                                    prop:checked=move || no_index.get()
+                                    on:change=move |event| no_index.set(event_target_checked(&event))
+                                />
+                                <span>{no_index_label}</span>
+                            </label>
+                            <button
+                                type="button"
+                                class="w-fit rounded border border-border px-2 py-1 text-xs"
+                                on:click=move |_| {
+                                    let mut metadata = current_metadata(&metadata_runtime);
+                                    metadata.title = Some(seo_title.get_untracked());
+                                    metadata.description = Some(seo_description.get_untracked());
+                                    metadata.slug = Some(slug.get_untracked());
+                                    metadata.canonical_url = Some(canonical_url.get_untracked());
+                                    metadata.open_graph_title = Some(open_graph_title.get_untracked());
+                                    metadata.open_graph_description = Some(open_graph_description.get_untracked());
+                                    metadata.open_graph_image = Some(open_graph_image.get_untracked());
+                                    metadata.no_index = no_index.get_untracked();
+                                    metadata_runtime.dispatch(UiIntent::execute(EditorCommand::Page {
+                                        command: PageCommand::Patch {
+                                            locator: metadata_runtime.controller.with(|controller| controller.active_page_locator()),
+                                            patch: metadata.normalized().into_page_patch(),
+                                        },
+                                    }));
+                                }
+                            >{apply_label}</button>
+                        </div>
+                    </details>
+                </CapabilityFieldset>
 
                 <div class="flex flex-wrap gap-2 border-t border-border pt-3">
                     <button
