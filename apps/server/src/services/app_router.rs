@@ -38,6 +38,8 @@ use axum::{
 #[cfg(feature = "embed-admin-assets")]
 use rust_embed::RustEmbed;
 #[cfg(feature = "embed-admin-assets")]
+use rustok_web::CspNonce;
+#[cfg(feature = "embed-admin-assets")]
 use sha2::{Digest, Sha256};
 
 #[cfg(feature = "embed-admin")]
@@ -47,14 +49,17 @@ struct AdminAssets;
 
 #[cfg(feature = "embed-admin")]
 pub fn build_admin_router() -> AxumRouter {
-    AxumRouter::new().fallback(move |uri: axum::http::Uri| async move {
-        let path = uri.path().trim_start_matches('/');
+    AxumRouter::new().fallback(move |request: axum::extract::Request| async move {
+        let path = request.uri().path().trim_start_matches('/');
         let path = if path.is_empty() { "index.html" } else { path };
+        let csp_nonce = request.extensions().get::<CspNonce>().cloned();
 
         match AdminAssets::get(path) {
-            Some(content) => admin_asset_response(path, content.data),
+            Some(content) => admin_asset_response(path, content.data, csp_nonce.as_ref()),
             None => match AdminAssets::get("index.html") {
-                Some(content) => admin_asset_response("index.html", content.data),
+                Some(content) => {
+                    admin_asset_response("index.html", content.data, csp_nonce.as_ref())
+                }
                 None => (axum::http::StatusCode::NOT_FOUND, "Admin UI not bundled").into_response(),
             },
         }
@@ -62,11 +67,32 @@ pub fn build_admin_router() -> AxumRouter {
 }
 
 #[cfg(feature = "embed-admin-assets")]
-fn admin_asset_response(path: &str, bytes: std::borrow::Cow<'static, [u8]>) -> AxumResponse {
+fn admin_asset_response(
+    path: &str,
+    bytes: std::borrow::Cow<'static, [u8]>,
+    csp_nonce: Option<&CspNonce>,
+) -> AxumResponse {
+    let is_document = path.ends_with("index.html");
+    let response_bytes = if is_document {
+        match (std::str::from_utf8(bytes.as_ref()), csp_nonce) {
+            (Ok(html), Some(nonce)) => nonce_trusted_admin_scripts(html, nonce).into_bytes(),
+            (Ok(_), None) => bytes.into_owned(),
+            (Err(error), _) => {
+                tracing::error!(%error, path, "Embedded admin document is not valid UTF-8");
+                return (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "Admin UI document is invalid",
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        bytes.into_owned()
+    };
+
     let mime = mime_guess::from_path(path).first_or_octet_stream();
-    let mut response = ([(CONTENT_TYPE, mime.as_ref())], bytes.clone()).into_response();
-    let digest = hex::encode(Sha256::digest(bytes.as_ref()));
-    let cache_control = if path.ends_with("index.html") {
+    let mut response = ([(CONTENT_TYPE, mime.as_ref())], response_bytes.clone()).into_response();
+    let cache_control = if is_document {
         "no-cache"
     } else {
         "public, max-age=31536000, immutable"
@@ -76,13 +102,29 @@ fn admin_asset_response(path: &str, bytes: std::borrow::Cow<'static, [u8]>) -> A
         CACHE_CONTROL,
         cache_control.parse().expect("cache-control header"),
     );
-    response.headers_mut().insert(
-        ETAG,
-        format!("\"{}\"", &digest[..16])
-            .parse()
-            .expect("etag header"),
-    );
+    // The document body carries a per-response nonce, so a stable ETag would be incorrect. Static
+    // immutable assets retain their content-derived validators.
+    if !is_document {
+        let digest = hex::encode(Sha256::digest(response_bytes.as_slice()));
+        response.headers_mut().insert(
+            ETAG,
+            format!("\"{}\"", &digest[..16])
+                .parse()
+                .expect("etag header"),
+        );
+    }
     response
+}
+
+#[cfg(feature = "embed-admin-assets")]
+fn nonce_trusted_admin_scripts(html: &str, csp_nonce: &CspNonce) -> String {
+    // This transformation is intentionally limited to the immutable bundled index document. It
+    // must never be applied to tenant or user-authored HTML because that would authorize injected
+    // script elements.
+    html.replace(
+        "<script",
+        format!(r#"<script nonce="{}""#, csp_nonce.as_str()).as_str(),
+    )
 }
 
 #[cfg(not(feature = "embed-admin"))]
@@ -302,6 +344,10 @@ mod tests {
 
     #[cfg(not(feature = "embed-admin"))]
     use super::build_admin_router;
+    #[cfg(feature = "embed-admin-assets")]
+    use super::nonce_trusted_admin_scripts;
+    #[cfg(feature = "embed-admin-assets")]
+    use rustok_web::CspNonce;
 
     #[tokio::test]
     async fn mount_application_shell_routes_requests_to_nested_routers() {
@@ -390,6 +436,23 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(root_response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[cfg(feature = "embed-admin-assets")]
+    #[test]
+    fn trusted_admin_asset_scripts_receive_csp_nonce() {
+        let nonce = CspNonce::generate();
+        let html = r#"<script src="/pkg/app.js"></script><script>bootstrap()</script>"#;
+
+        let rendered = nonce_trusted_admin_scripts(html, &nonce);
+
+        assert_eq!(
+            rendered,
+            format!(
+                r#"<script nonce="{0}" src="/pkg/app.js"></script><script nonce="{0}">bootstrap()</script>"#,
+                nonce.as_str()
+            )
+        );
     }
 
     #[cfg(not(feature = "embed-admin"))]
