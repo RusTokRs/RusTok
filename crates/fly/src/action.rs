@@ -7,4 +7,6 @@ pub use model::*;
 pub use validation::*;
 
 #[cfg(test)]
+use crate::ValidationSeverity;
+#[cfg(test)]
 mod tests;
