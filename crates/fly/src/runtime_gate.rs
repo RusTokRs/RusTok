@@ -1,9 +1,10 @@
 use crate::ProjectDocument;
 use crate::{
-    evaluate_landing_readiness, extract_runtime_context_contract, preflight_runtime_context,
-    preflight_runtime_context_scenarios, LandingReadinessPolicy, LandingReadinessReport,
-    RuntimeContextPreflight, RuntimeContextPreflightPolicy, RuntimeContextScenario,
-    RuntimeContextScenarioSuiteResult, ValidationDiagnostic, ValidationSeverity,
+    evaluate_landing_readiness_with_context, extract_runtime_context_contract,
+    preflight_runtime_context, preflight_runtime_context_scenarios, LandingReadinessPolicy,
+    LandingReadinessReport, RuntimeContextPreflight, RuntimeContextPreflightPolicy,
+    RuntimeContextScenario, RuntimeContextScenarioSuiteResult, ValidationDiagnostic,
+    ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -25,9 +26,7 @@ pub enum ScenarioGateMode {
     Ignore,
     All,
     Any,
-    Named {
-        scenario_ids: Vec<String>,
-    },
+    Named { scenario_ids: Vec<String> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -195,7 +194,11 @@ pub fn evaluate_runtime_publish_gate(
     };
 
     let readiness_result = policy.readiness.map(|readiness_policy| {
-        let report = evaluate_landing_readiness(document, readiness_policy);
+        let report = evaluate_landing_readiness_with_context(
+            document,
+            current_context,
+            readiness_policy,
+        );
         diagnostics.extend(report.diagnostics().cloned());
         if !report.ready {
             let blocking_count = report.blocking_issues().count();
@@ -409,7 +412,10 @@ mod tests {
             },
         );
         assert!(!evaluation.allowed);
-        assert!(evaluation.readiness.as_ref().is_some_and(|report| !report.ready));
+        assert!(evaluation
+            .readiness
+            .as_ref()
+            .is_some_and(|report| !report.ready));
         assert!(evaluation
             .diagnostics
             .iter()
@@ -430,7 +436,64 @@ mod tests {
             },
         );
         assert!(evaluation.allowed, "{:?}", evaluation.diagnostics);
-        assert!(evaluation.readiness.as_ref().is_some_and(|report| report.ready));
+        assert!(evaluation
+            .readiness
+            .as_ref()
+            .is_some_and(|report| report.ready));
         assert_eq!(document, original);
+    }
+
+    #[test]
+    fn readiness_audits_the_publish_context_after_runtime_bindings() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": {
+                    "title": "Home",
+                    "description": "Landing description",
+                    "slug": "home"
+                },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "tagName": "main",
+                    "components": [{
+                        "id": "heading",
+                        "type": "heading",
+                        "tagName": "h1",
+                        "content": ""
+                    }]
+                }
+            }],
+            "flyRuntimeContextSchema": [{
+                "id": "heading-title",
+                "path": "page.title",
+                "kind": "string",
+                "required": true
+            }],
+            "flyRuntimeBindings": [{
+                "id": "heading-content",
+                "component_id": "heading",
+                "path": "page.title",
+                "target": "field",
+                "name": "content"
+            }]
+        }))
+        .expect("document");
+        let context = json!({ "page": { "title": "Context heading" } });
+        let evaluation = evaluate_runtime_publish_gate(
+            &document,
+            Some(&context),
+            &[],
+            &RuntimePublishGatePolicy {
+                readiness: Some(LandingReadinessPolicy::default()),
+                ..RuntimePublishGatePolicy::default()
+            },
+        );
+        assert!(evaluation.allowed, "{:?}", evaluation.diagnostics);
+        assert!(!evaluation.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "landing_empty_heading"
+                || diagnostic.code == "landing_missing_h1"
+        }));
     }
 }
