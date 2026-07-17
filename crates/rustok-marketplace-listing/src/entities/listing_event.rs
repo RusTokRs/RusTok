@@ -8,9 +8,12 @@ pub struct Model {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub listing_id: Uuid,
-    pub actor_id: Uuid,
+    /// Present for command-origin events; absent for imported legacy snapshots.
+    pub actor_id: Option<Uuid>,
     pub event_kind: String,
-    pub locale: String,
+    /// Present for command-origin events; absent when the legacy row had no locale fact.
+    pub locale: Option<String>,
+    pub provenance: String,
     pub note: Option<String>,
     pub metadata: Json,
     pub created_at: DateTimeWithTimeZone,
