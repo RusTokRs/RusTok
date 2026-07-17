@@ -11,6 +11,262 @@ pub const FLY_BROWSER_PROTOCOL_V1: &str = "fly_iframe_v1";
 pub const FLY_BROWSER_ADAPTER_VERSION: &str = "fly_browser_v1";
 pub const FLY_BROWSER_ADAPTER_JS: &str = include_str!("../assets/fly-browser.js");
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum BrowserIntentKind {
+    Select,
+    FocusRequested,
+    Hover,
+    HoverRequested,
+    ActivatePage,
+    CancelDrag,
+    CancelDragRequested,
+    BeginPaletteDrag,
+    BeginSelectedMove,
+    DragMoved,
+    Drop,
+    DropRequested,
+    InsertBlock,
+    RemoveSelected,
+    MoveSelected,
+    MoveSelectedUp,
+    MoveSelectedDown,
+    PatchSelected,
+    PatchComponentProperty,
+    PatchPageMetadata,
+    CreatePage,
+    RenamePage,
+    RemovePage,
+    UpsertTranslation,
+    RemoveTranslation,
+    SetLocalePolicy,
+    ClearLocalePolicy,
+    UpsertLocalizedPageMetadata,
+    SetInternalPageLink,
+    RemoveInternalPageLink,
+    SetComponentAction,
+    RemoveComponentAction,
+    SetComponentForm,
+    RemoveComponentForm,
+    SetNativeFormField,
+    UpsertAsset,
+    RemoveAsset,
+    SelectAsset,
+    SetRuntimeContext,
+    SetRuntimeLocale,
+    Undo,
+    Redo,
+    Copy,
+    Cut,
+    Paste,
+    Duplicate,
+    KeyStroke,
+    Save,
+}
+
+impl BrowserIntentKind {
+    pub const ALL: [Self; 48] = [
+        Self::Select,
+        Self::FocusRequested,
+        Self::Hover,
+        Self::HoverRequested,
+        Self::ActivatePage,
+        Self::CancelDrag,
+        Self::CancelDragRequested,
+        Self::BeginPaletteDrag,
+        Self::BeginSelectedMove,
+        Self::DragMoved,
+        Self::Drop,
+        Self::DropRequested,
+        Self::InsertBlock,
+        Self::RemoveSelected,
+        Self::MoveSelected,
+        Self::MoveSelectedUp,
+        Self::MoveSelectedDown,
+        Self::PatchSelected,
+        Self::PatchComponentProperty,
+        Self::PatchPageMetadata,
+        Self::CreatePage,
+        Self::RenamePage,
+        Self::RemovePage,
+        Self::UpsertTranslation,
+        Self::RemoveTranslation,
+        Self::SetLocalePolicy,
+        Self::ClearLocalePolicy,
+        Self::UpsertLocalizedPageMetadata,
+        Self::SetInternalPageLink,
+        Self::RemoveInternalPageLink,
+        Self::SetComponentAction,
+        Self::RemoveComponentAction,
+        Self::SetComponentForm,
+        Self::RemoveComponentForm,
+        Self::SetNativeFormField,
+        Self::UpsertAsset,
+        Self::RemoveAsset,
+        Self::SelectAsset,
+        Self::SetRuntimeContext,
+        Self::SetRuntimeLocale,
+        Self::Undo,
+        Self::Redo,
+        Self::Copy,
+        Self::Cut,
+        Self::Paste,
+        Self::Duplicate,
+        Self::KeyStroke,
+        Self::Save,
+    ];
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value.trim().to_ascii_lowercase().as_str() {
+            "select" => Self::Select,
+            "focus_requested" => Self::FocusRequested,
+            "hover" => Self::Hover,
+            "hover_requested" => Self::HoverRequested,
+            "activate_page" => Self::ActivatePage,
+            "cancel_drag" => Self::CancelDrag,
+            "cancel_drag_requested" => Self::CancelDragRequested,
+            "begin_palette_drag" => Self::BeginPaletteDrag,
+            "begin_selected_move" => Self::BeginSelectedMove,
+            "drag_moved" => Self::DragMoved,
+            "drop" => Self::Drop,
+            "drop_requested" => Self::DropRequested,
+            "insert_block" => Self::InsertBlock,
+            "remove_selected" => Self::RemoveSelected,
+            "move_selected" => Self::MoveSelected,
+            "move_selected_up" => Self::MoveSelectedUp,
+            "move_selected_down" => Self::MoveSelectedDown,
+            "patch_selected" => Self::PatchSelected,
+            "patch_component_property" => Self::PatchComponentProperty,
+            "patch_page_metadata" => Self::PatchPageMetadata,
+            "create_page" => Self::CreatePage,
+            "rename_page" => Self::RenamePage,
+            "remove_page" => Self::RemovePage,
+            "upsert_translation" => Self::UpsertTranslation,
+            "remove_translation" => Self::RemoveTranslation,
+            "set_locale_policy" => Self::SetLocalePolicy,
+            "clear_locale_policy" => Self::ClearLocalePolicy,
+            "upsert_localized_page_metadata" => Self::UpsertLocalizedPageMetadata,
+            "set_internal_page_link" => Self::SetInternalPageLink,
+            "remove_internal_page_link" => Self::RemoveInternalPageLink,
+            "set_component_action" => Self::SetComponentAction,
+            "remove_component_action" => Self::RemoveComponentAction,
+            "set_component_form" => Self::SetComponentForm,
+            "remove_component_form" => Self::RemoveComponentForm,
+            "set_native_form_field" => Self::SetNativeFormField,
+            "upsert_asset" => Self::UpsertAsset,
+            "remove_asset" => Self::RemoveAsset,
+            "select_asset" => Self::SelectAsset,
+            "set_runtime_context" => Self::SetRuntimeContext,
+            "set_runtime_locale" => Self::SetRuntimeLocale,
+            "undo" => Self::Undo,
+            "redo" => Self::Redo,
+            "copy" => Self::Copy,
+            "cut" => Self::Cut,
+            "paste" => Self::Paste,
+            "duplicate" => Self::Duplicate,
+            "key_stroke" => Self::KeyStroke,
+            "save" => Self::Save,
+            _ => return None,
+        })
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Select => "select",
+            Self::FocusRequested => "focus_requested",
+            Self::Hover => "hover",
+            Self::HoverRequested => "hover_requested",
+            Self::ActivatePage => "activate_page",
+            Self::CancelDrag => "cancel_drag",
+            Self::CancelDragRequested => "cancel_drag_requested",
+            Self::BeginPaletteDrag => "begin_palette_drag",
+            Self::BeginSelectedMove => "begin_selected_move",
+            Self::DragMoved => "drag_moved",
+            Self::Drop => "drop",
+            Self::DropRequested => "drop_requested",
+            Self::InsertBlock => "insert_block",
+            Self::RemoveSelected => "remove_selected",
+            Self::MoveSelected => "move_selected",
+            Self::MoveSelectedUp => "move_selected_up",
+            Self::MoveSelectedDown => "move_selected_down",
+            Self::PatchSelected => "patch_selected",
+            Self::PatchComponentProperty => "patch_component_property",
+            Self::PatchPageMetadata => "patch_page_metadata",
+            Self::CreatePage => "create_page",
+            Self::RenamePage => "rename_page",
+            Self::RemovePage => "remove_page",
+            Self::UpsertTranslation => "upsert_translation",
+            Self::RemoveTranslation => "remove_translation",
+            Self::SetLocalePolicy => "set_locale_policy",
+            Self::ClearLocalePolicy => "clear_locale_policy",
+            Self::UpsertLocalizedPageMetadata => "upsert_localized_page_metadata",
+            Self::SetInternalPageLink => "set_internal_page_link",
+            Self::RemoveInternalPageLink => "remove_internal_page_link",
+            Self::SetComponentAction => "set_component_action",
+            Self::RemoveComponentAction => "remove_component_action",
+            Self::SetComponentForm => "set_component_form",
+            Self::RemoveComponentForm => "remove_component_form",
+            Self::SetNativeFormField => "set_native_form_field",
+            Self::UpsertAsset => "upsert_asset",
+            Self::RemoveAsset => "remove_asset",
+            Self::SelectAsset => "select_asset",
+            Self::SetRuntimeContext => "set_runtime_context",
+            Self::SetRuntimeLocale => "set_runtime_locale",
+            Self::Undo => "undo",
+            Self::Redo => "redo",
+            Self::Copy => "copy",
+            Self::Cut => "cut",
+            Self::Paste => "paste",
+            Self::Duplicate => "duplicate",
+            Self::KeyStroke => "key_stroke",
+            Self::Save => "save",
+        }
+    }
+
+    pub const fn is_mutating(self) -> bool {
+        matches!(
+            self,
+            Self::Drop
+                | Self::DropRequested
+                | Self::InsertBlock
+                | Self::RemoveSelected
+                | Self::MoveSelected
+                | Self::MoveSelectedUp
+                | Self::MoveSelectedDown
+                | Self::PatchSelected
+                | Self::PatchComponentProperty
+                | Self::PatchPageMetadata
+                | Self::CreatePage
+                | Self::RenamePage
+                | Self::RemovePage
+                | Self::UpsertTranslation
+                | Self::RemoveTranslation
+                | Self::SetLocalePolicy
+                | Self::ClearLocalePolicy
+                | Self::UpsertLocalizedPageMetadata
+                | Self::SetInternalPageLink
+                | Self::RemoveInternalPageLink
+                | Self::SetComponentAction
+                | Self::RemoveComponentAction
+                | Self::SetComponentForm
+                | Self::RemoveComponentForm
+                | Self::SetNativeFormField
+                | Self::UpsertAsset
+                | Self::RemoveAsset
+                | Self::SelectAsset
+                | Self::SetRuntimeContext
+                | Self::SetRuntimeLocale
+                | Self::Undo
+                | Self::Redo
+                | Self::Cut
+                | Self::Paste
+                | Self::Duplicate
+                | Self::KeyStroke
+                | Self::Save
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BrowserAdapterConfig {
     #[serde(default = "default_root_selector")]
@@ -109,43 +365,12 @@ impl BrowserIntentEnvelope {
         Ok(self)
     }
 
+    pub fn kind(&self) -> Option<BrowserIntentKind> {
+        BrowserIntentKind::parse(&self.intent)
+    }
+
     pub fn is_mutating(&self) -> bool {
-        matches!(
-            self.intent.as_str(),
-            "insert_block"
-                | "drop"
-                | "drop_requested"
-                | "remove_selected"
-                | "move_selected"
-                | "move_selected_up"
-                | "move_selected_down"
-                | "patch_selected"
-                | "patch_component_property"
-                | "patch_page_metadata"
-                | "create_page"
-                | "rename_page"
-                | "remove_page"
-                | "upsert_translation"
-                | "remove_translation"
-                | "set_locale_policy"
-                | "clear_locale_policy"
-                | "set_internal_page_link"
-                | "remove_internal_page_link"
-                | "set_component_action"
-                | "remove_component_action"
-                | "set_component_form"
-                | "remove_component_form"
-                | "set_native_form_field"
-                | "set_runtime_context"
-                | "set_runtime_locale"
-                | "undo"
-                | "redo"
-                | "cut"
-                | "paste"
-                | "duplicate"
-                | "key_stroke"
-                | "save"
-        )
+        self.kind().is_some_and(BrowserIntentKind::is_mutating)
     }
 }
 
@@ -210,6 +435,7 @@ fn default_true() -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::collections::BTreeSet;
 
     #[test]
     fn defaults_are_ssr_host_friendly() {
@@ -277,58 +503,83 @@ mod tests {
     }
 
     #[test]
-    fn command_producing_and_draft_intents_are_mutating() {
-        for intent in [
-            "insert_block",
-            "drop",
-            "drop_requested",
-            "remove_selected",
-            "move_selected_up",
-            "move_selected_down",
-            "patch_component_property",
-            "patch_page_metadata",
-            "create_page",
-            "rename_page",
-            "remove_page",
-            "upsert_translation",
-            "remove_translation",
-            "set_locale_policy",
-            "clear_locale_policy",
-            "set_internal_page_link",
-            "remove_internal_page_link",
-            "set_component_action",
-            "remove_component_action",
-            "set_component_form",
-            "remove_component_form",
-            "set_native_form_field",
-            "set_runtime_context",
-            "set_runtime_locale",
-            "undo",
-            "redo",
-            "cut",
-            "paste",
-            "duplicate",
-            "key_stroke",
-            "save",
-        ] {
-            let request = BrowserIntentEnvelope {
-                protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
-                instance_id: "canvas-a".to_string(),
-                intent: intent.to_string(),
-                payload: json!({}),
-                sequence: None,
-                page_id: Some("home".to_string()),
-                revision: Some("rev-1".to_string()),
-                project_hash: Some("abc".to_string()),
-                draft_token: None,
-                draft_generation: None,
-            };
-            assert!(request.is_mutating(), "{intent}");
+    fn intent_kind_names_are_unique_and_round_trip() {
+        let mut names = BTreeSet::new();
+        for kind in BrowserIntentKind::ALL {
+            assert!(names.insert(kind.as_str()), "{}", kind.as_str());
+            assert_eq!(BrowserIntentKind::parse(kind.as_str()), Some(kind));
+            assert_eq!(
+                serde_json::to_value(kind).expect("serialize kind"),
+                Value::String(kind.as_str().to_string())
+            );
         }
-        let selection = BrowserIntentEnvelope {
+        assert_eq!(names.len(), BrowserIntentKind::ALL.len());
+    }
+
+    #[test]
+    fn command_producing_and_draft_intents_are_mutating() {
+        for kind in [
+            BrowserIntentKind::InsertBlock,
+            BrowserIntentKind::Drop,
+            BrowserIntentKind::DropRequested,
+            BrowserIntentKind::RemoveSelected,
+            BrowserIntentKind::MoveSelectedUp,
+            BrowserIntentKind::MoveSelectedDown,
+            BrowserIntentKind::PatchComponentProperty,
+            BrowserIntentKind::PatchPageMetadata,
+            BrowserIntentKind::CreatePage,
+            BrowserIntentKind::RenamePage,
+            BrowserIntentKind::RemovePage,
+            BrowserIntentKind::UpsertTranslation,
+            BrowserIntentKind::RemoveTranslation,
+            BrowserIntentKind::SetLocalePolicy,
+            BrowserIntentKind::ClearLocalePolicy,
+            BrowserIntentKind::UpsertLocalizedPageMetadata,
+            BrowserIntentKind::SetInternalPageLink,
+            BrowserIntentKind::RemoveInternalPageLink,
+            BrowserIntentKind::SetComponentAction,
+            BrowserIntentKind::RemoveComponentAction,
+            BrowserIntentKind::SetComponentForm,
+            BrowserIntentKind::RemoveComponentForm,
+            BrowserIntentKind::SetNativeFormField,
+            BrowserIntentKind::UpsertAsset,
+            BrowserIntentKind::RemoveAsset,
+            BrowserIntentKind::SelectAsset,
+            BrowserIntentKind::SetRuntimeContext,
+            BrowserIntentKind::SetRuntimeLocale,
+            BrowserIntentKind::Undo,
+            BrowserIntentKind::Redo,
+            BrowserIntentKind::Cut,
+            BrowserIntentKind::Paste,
+            BrowserIntentKind::Duplicate,
+            BrowserIntentKind::KeyStroke,
+            BrowserIntentKind::Save,
+        ] {
+            assert!(kind.is_mutating(), "{}", kind.as_str());
+        }
+        for kind in [
+            BrowserIntentKind::Select,
+            BrowserIntentKind::FocusRequested,
+            BrowserIntentKind::Hover,
+            BrowserIntentKind::HoverRequested,
+            BrowserIntentKind::ActivatePage,
+            BrowserIntentKind::CancelDrag,
+            BrowserIntentKind::CancelDragRequested,
+            BrowserIntentKind::BeginPaletteDrag,
+            BrowserIntentKind::BeginSelectedMove,
+            BrowserIntentKind::DragMoved,
+            BrowserIntentKind::Copy,
+        ] {
+            assert!(!kind.is_mutating(), "{}", kind.as_str());
+        }
+    }
+
+    #[test]
+    fn envelope_uses_typed_kind_without_rejecting_extensions() {
+        let known = BrowserIntentEnvelope {
             protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
             instance_id: "canvas-a".to_string(),
-            intent: "select".to_string(),
+            intent: "  RENAME_PAGE ".to_string(),
             payload: json!({}),
             sequence: None,
             page_id: None,
@@ -336,7 +587,17 @@ mod tests {
             project_hash: None,
             draft_token: None,
             draft_generation: None,
+        }
+        .normalized()
+        .expect("known intent");
+        assert_eq!(known.kind(), Some(BrowserIntentKind::RenamePage));
+        assert!(known.is_mutating());
+
+        let extension = BrowserIntentEnvelope {
+            intent: "plugin_custom_preview".to_string(),
+            ..known
         };
-        assert!(!selection.is_mutating());
+        assert_eq!(extension.kind(), None);
+        assert!(!extension.is_mutating());
     }
 }
