@@ -17,6 +17,8 @@ use crate::dto::{
 use crate::entities::{seller, seller_member, seller_translation};
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
 
+pub(crate) const MISSING_TRANSLATION_PREFIX: &str = "marketplace seller translation missing";
+
 pub struct MarketplaceSellerService {
     db: DatabaseConnection,
 }
@@ -174,10 +176,7 @@ async fn load_seller_responses<C: ConnectionTrait>(
             let translation = candidates
                 .iter()
                 .find_map(|candidate| translations.get(&(model.id, candidate.clone())).cloned())
-                .ok_or_else(|| MarketplaceSellerError::TranslationNotFound {
-                    seller_id: model.id,
-                    locale: normalized.clone(),
-                })?;
+                .ok_or_else(|| missing_translation_error(model.id, normalized.as_str()))?;
             map_seller(model, translation)
         })
         .collect()
@@ -203,10 +202,13 @@ async fn resolve_translation<C: ConnectionTrait>(
     candidates
         .iter()
         .find_map(|candidate| translations.get(candidate).cloned())
-        .ok_or(MarketplaceSellerError::TranslationNotFound {
-            seller_id,
-            locale: normalized,
-        })
+        .ok_or_else(|| missing_translation_error(seller_id, normalized.as_str()))
+}
+
+fn missing_translation_error(seller_id: Uuid, locale: &str) -> MarketplaceSellerError {
+    MarketplaceSellerError::Validation(format!(
+        "{MISSING_TRANSLATION_PREFIX}: seller {seller_id}, locale `{locale}`"
+    ))
 }
 
 pub(crate) async fn upsert_translation<C: ConnectionTrait>(
