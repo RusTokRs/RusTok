@@ -11,6 +11,7 @@ use crate::{
     common::settings::{RustokSettings, TenantFallbackMode},
     controllers,
     error::{Error, Result},
+    middleware::security_headers::hsts_enabled,
     routes::ServerRouter,
     services::{
         app_lifecycle::{resolve_boot_database_uri, shutdown_runtime_workers},
@@ -67,7 +68,9 @@ pub async fn run() -> Result<()> {
     let db = connect_database(&config.database, &database_uri).await?;
     let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
         .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
-    validate_tenant_routing_settings(&rustok_settings, is_production_environment())?;
+    let production = is_production_environment();
+    validate_tenant_routing_settings(&rustok_settings, production)?;
+    validate_https_deployment(production, hsts_enabled())?;
     let runtime_ctx = ServerRuntimeContext::new(db, rustok_settings.clone());
     let auth_config = crate::auth::auth_config_from_host_settings(
         config.auth.jwt.secret.clone(),
@@ -141,6 +144,17 @@ fn validate_tenant_routing_settings(
                     .to_string(),
             ));
         }
+    }
+
+    Ok(())
+}
+
+fn validate_https_deployment(production: bool, https_declared: bool) -> Result<()> {
+    if production && !https_declared {
+        return Err(Error::BadRequest(
+            "RUSTOK_HTTPS must be set to true for production deployments so HSTS is emitted"
+                .to_string(),
+        ));
     }
 
     Ok(())
@@ -246,7 +260,8 @@ async fn shutdown_signal(runtime_ctx: ServerRuntimeContext) {
 #[cfg(test)]
 mod tests {
     use super::{
-        application_router, resolve_database_uri, validate_tenant_routing_settings,
+        application_router, resolve_database_uri, validate_https_deployment,
+        validate_tenant_routing_settings,
     };
     use crate::common::settings::{RuntimeHostMode, RustokSettings, TenantFallbackMode};
 
@@ -322,5 +337,24 @@ mod tests {
         let settings = RustokSettings::default();
         validate_tenant_routing_settings(&settings, true)
             .expect("strict header routing is valid in production");
+    }
+
+    #[test]
+    fn production_requires_explicit_https_declaration() {
+        let error = validate_https_deployment(true, false)
+            .expect_err("production without HSTS declaration must fail closed");
+        assert!(error.to_string().contains("RUSTOK_HTTPS"));
+    }
+
+    #[test]
+    fn non_production_can_run_without_hsts() {
+        validate_https_deployment(false, false)
+            .expect("local development may use plaintext HTTP");
+    }
+
+    #[test]
+    fn production_accepts_https_declaration() {
+        validate_https_deployment(true, true)
+            .expect("production HTTPS declaration enables the HSTS contract");
     }
 }
