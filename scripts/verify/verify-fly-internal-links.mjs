@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
+  flyLib: 'crates/fly/src/lib.rs',
+  safeUrl: 'crates/fly/src/safe_url.rs',
   internalLink: 'crates/fly/src/internal_link.rs',
   localizedRoute: 'crates/fly/src/localized_route.rs',
   runtimePipeline: 'crates/fly/src/runtime_pipeline.rs',
@@ -22,6 +24,9 @@ const failures = [];
 const requireMarker = (key, marker, message) => {
   if (!source[key].includes(marker)) failures.push(message);
 };
+const rejectMarker = (key, marker, message) => {
+  if (source[key].includes(marker)) failures.push(message);
+};
 const requireMarkers = (key, markers, label) => {
   for (const marker of markers) requireMarker(key, marker, `${label} is missing ${marker}`);
 };
@@ -29,16 +34,33 @@ const localeValue = (locale, path) => path
   .split('.')
   .reduce((value, segment) => value && typeof value === 'object' ? value[segment] : undefined, locale);
 
+requireMarker('flyLib', 'mod safe_url;', 'Fly must register the shared safe URL boundary');
+requireMarkers('safeUrl', [
+  'pub(crate) fn validate_safe_url',
+  'pub(crate) fn normalize_safe_url',
+  'rejects_network_paths_backslashes_controls_and_unsafe_schemes',
+  'rejects_absolute_urls_without_authority_or_scheme_targets',
+], 'shared safe URL boundary');
 requireMarkers('internalLink', [
   'pub const FLY_PAGE_LINK_FIELD',
   'pub struct InternalPageLink',
   'pub struct InternalLinkMaterialization',
   'pub fn materialize_internal_page_links',
   'pub fn validate_internal_page_links',
+  'safe_url::normalize_safe_url',
+  'GENERATED_INTERNAL_LINK_ATTRIBUTES',
+  'clear_internal_link_materialization',
   'internal_page_link_materializes_locale_specific_href',
-  'missing_target_is_blocking_validation_and_preserves_raw_href_at_runtime',
+  'missing_target_is_blocking_validation_and_clears_stale_href_at_runtime',
   'fallback_href_is_used_when_target_page_has_no_slug',
+  'unsafe_fallback_and_network_base_path_are_rejected',
+  'unencoded_query_and_backslash_fragment_are_rejected',
 ], 'Fly internal page link contract');
+rejectMarker(
+  'internalLink',
+  'missing_target_is_blocking_validation_and_preserves_raw_href_at_runtime',
+  'internal link tests must not preserve stale href for unresolved targets',
+);
 requireMarkers('localizedRoute', [
   'pub fn localized_page_route_index',
   'pub struct LocalizedPageRouteEntry',
