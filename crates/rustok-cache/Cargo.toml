@@ -31,3 +31,13 @@ sea-orm-migration = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
+
+[[test]]
+name = "fallback_cas_live"
+path = "tests/fallback_cas_live.rs"
+required-features = ["redis-cache"]
+
+[[test]]
+name = "real_redis_hardening"
+path = "tests/real_redis_hardening.rs"
+required-features = ["redis-cache"]
