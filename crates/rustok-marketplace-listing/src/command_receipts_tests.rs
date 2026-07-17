@@ -1,5 +1,6 @@
 use sea_orm::{
-    ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait,
+    ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait,
+    QueryFilter,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
@@ -51,7 +52,10 @@ async fn completed_receipt_commits_one_contract_event_and_replay_adds_none() {
     assert_eq!(outbox[0].event_type, "marketplace.listing.created");
     let payload = outbox[0].payload.to_string();
     for forbidden in ["\"note\"", "\"reason\"", "\"metadata\"", "owner_private"] {
-        assert!(!payload.contains(forbidden), "outbox payload leaked {forbidden}");
+        assert!(
+            !payload.contains(forbidden),
+            "outbox payload leaked {forbidden}"
+        );
     }
 
     let replayed = replay_existing::<MarketplaceListingResponse>(
@@ -65,7 +69,10 @@ async fn completed_receipt_commits_one_contract_event_and_replay_adds_none() {
     .unwrap()
     .expect("completed receipt must replay");
     assert_eq!(replayed.id, response.id);
-    assert_eq!(rustok_outbox::SysEvents::find().count(&db).await.unwrap(), 1);
+    assert_eq!(
+        rustok_outbox::SysEvents::find().count(&db).await.unwrap(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -91,14 +98,20 @@ async fn missing_outbox_storage_rolls_back_the_pending_receipt() {
     let error = complete(receipt, &listing_response(tenant_id))
         .await
         .expect_err("missing outbox table must fail the owner transaction");
-    assert!(matches!(error, MarketplaceListingError::EventPublication(_)));
+    assert!(matches!(
+        error,
+        MarketplaceListingError::EventPublication(_)
+    ));
 
     let receipts = listing_command_receipt::Entity::find()
         .filter(listing_command_receipt::Column::TenantId.eq(tenant_id))
         .all(&db)
         .await
         .unwrap();
-    assert!(receipts.is_empty(), "pending receipt must roll back with outbox failure");
+    assert!(
+        receipts.is_empty(),
+        "pending receipt must roll back with outbox failure"
+    );
 }
 
 async fn setup_database(with_outbox: bool) -> DatabaseConnection {
