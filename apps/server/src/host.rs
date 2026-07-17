@@ -20,6 +20,10 @@ use crate::{
     },
 };
 
+const DEFAULT_JWT_ISSUER: &str = "rustok";
+const DEFAULT_JWT_AUDIENCE: &str = "rustok-admin";
+const MIN_PRODUCTION_HS256_SECRET_BYTES: usize = 64;
+
 #[derive(Debug, Deserialize)]
 struct HostConfig {
     server: ServerConfig,
@@ -77,6 +81,7 @@ pub async fn run() -> Result<()> {
         config.auth.jwt.expiration,
         Some(&config.settings),
     )?;
+    validate_auth_deployment(&auth_config, production)?;
 
     initialize_server_context(&runtime_ctx, &config.auth.jwt.secret, &database_uri).await?;
 
@@ -158,6 +163,86 @@ fn validate_https_deployment(production: bool, https_declared: bool) -> Result<(
     }
 
     Ok(())
+}
+
+fn validate_auth_deployment(config: &crate::auth::AuthConfig, production: bool) -> Result<()> {
+    if !production {
+        return Ok(());
+    }
+
+    if config.issuer == DEFAULT_JWT_ISSUER || !config.issuer.starts_with("https://") {
+        return Err(Error::BadRequest(
+            "Production JWT issuer must be an explicit HTTPS identifier and must not use the `rustok` default"
+                .to_string(),
+        ));
+    }
+
+    if config.audience == DEFAULT_JWT_AUDIENCE
+        || config.audience.len() < 8
+        || config.audience.chars().any(char::is_whitespace)
+    {
+        return Err(Error::BadRequest(
+            "Production JWT audience must be explicit, contain at least 8 characters, contain no whitespace, and must not use the `rustok-admin` default"
+                .to_string(),
+        ));
+    }
+
+    match config.algorithm {
+        crate::auth::JwtAlgorithm::HS256 => {
+            if config.secret.len() < MIN_PRODUCTION_HS256_SECRET_BYTES {
+                return Err(Error::BadRequest(format!(
+                    "Production HS256 secret must contain at least {MIN_PRODUCTION_HS256_SECRET_BYTES} bytes"
+                )));
+            }
+            if jwt_secret_looks_like_placeholder(&config.secret) {
+                return Err(Error::BadRequest(
+                    "Production HS256 secret looks like a placeholder or low-diversity value"
+                        .to_string(),
+                ));
+            }
+        }
+        crate::auth::JwtAlgorithm::RS256 => {
+            if config
+                .rsa_private_key_pem
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+                || config
+                    .rsa_public_key_pem
+                    .as_deref()
+                    .is_none_or(|value| value.trim().is_empty())
+            {
+                return Err(Error::BadRequest(
+                    "Production RS256 requires non-empty private and public key material"
+                        .to_string(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn jwt_secret_looks_like_placeholder(secret: &str) -> bool {
+    let normalized = secret.trim().to_ascii_lowercase();
+    const PLACEHOLDER_MARKERS: &[&str] = &[
+        "change_me",
+        "changeme",
+        "replace_me",
+        "replace-this",
+        "do-not-use",
+        "development",
+        "example-secret",
+        "test-secret",
+    ];
+
+    PLACEHOLDER_MARKERS
+        .iter()
+        .any(|marker| normalized.contains(marker))
+        || normalized
+            .chars()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            < 16
 }
 
 fn is_production_environment() -> bool {
@@ -260,8 +345,8 @@ async fn shutdown_signal(runtime_ctx: ServerRuntimeContext) {
 #[cfg(test)]
 mod tests {
     use super::{
-        application_router, resolve_database_uri, validate_https_deployment,
-        validate_tenant_routing_settings,
+        application_router, resolve_database_uri, validate_auth_deployment,
+        validate_https_deployment, validate_tenant_routing_settings,
     };
     use crate::common::settings::{RuntimeHostMode, RustokSettings, TenantFallbackMode};
 
@@ -356,5 +441,41 @@ mod tests {
     fn production_accepts_https_declaration() {
         validate_https_deployment(true, true)
             .expect("production HTTPS declaration enables the HSTS contract");
+    }
+
+    #[test]
+    fn non_production_allows_default_jwt_claims() {
+        let config = crate::auth::AuthConfig::new(
+            "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
+        );
+        validate_auth_deployment(&config, false)
+            .expect("development may use the framework claim defaults");
+    }
+
+    #[test]
+    fn production_rejects_default_jwt_claims() {
+        let config = crate::auth::AuthConfig::new("aB3!".repeat(20));
+        let error = validate_auth_deployment(&config, true)
+            .expect_err("production must not share the framework claim namespace");
+        assert!(error.to_string().contains("issuer"));
+    }
+
+    #[test]
+    fn production_rejects_short_hs256_secret() {
+        let config = crate::auth::AuthConfig::new("aB3!".repeat(10))
+            .with_issuer("https://api.example.com")
+            .with_audience("rustok-production-admin");
+        let error = validate_auth_deployment(&config, true)
+            .expect_err("production HS256 needs a stronger secret floor");
+        assert!(error.to_string().contains("at least 64 bytes"));
+    }
+
+    #[test]
+    fn production_accepts_explicit_strong_hs256_policy() {
+        let config = crate::auth::AuthConfig::new("aB3!zY7@".repeat(10))
+            .with_issuer("https://api.example.com")
+            .with_audience("rustok-production-admin");
+        validate_auth_deployment(&config, true)
+            .expect("explicit claims and a high-entropy secret satisfy production policy");
     }
 }
