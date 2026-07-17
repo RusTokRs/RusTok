@@ -66,6 +66,7 @@ for (const marker of [
   "CspNonce::generate",
   "request.extensions_mut().insert(nonce.clone())",
   "script-src-attr 'none'",
+  "plaintext_websocket_allowed()",
 ]) {
   requireMarker(headers, marker, headersFile);
 }
@@ -73,6 +74,7 @@ for (const marker of [
 const enforced = stringConstant(headers, "UI_CSP_TEMPLATE", headersFile);
 if (enforced) {
   requireMarker(enforced, "{nonce}", headersFile);
+  requireMarker(enforced, "{connect_sources}", headersFile);
   const script = directive(enforced, "script-src");
   if (!script) {
     failures.push(`${headersFile}: enforced script-src directive not found`);
@@ -91,6 +93,25 @@ if (enforced) {
       failures.push(`${headersFile}: enforced UI policy contains ${forbidden}`);
     }
   }
+}
+
+const secureConnect = stringConstant(headers, "SECURE_UI_CONNECT_SOURCES", headersFile);
+if (secureConnect) {
+  if (secureConnect.includes(" ws:")) {
+    failures.push(`${headersFile}: production connect sources contain plaintext ws:`);
+  }
+  if (!secureConnect.includes(" wss:")) {
+    failures.push(`${headersFile}: production connect sources must retain wss:`);
+  }
+}
+
+const developmentConnect = stringConstant(
+  headers,
+  "DEVELOPMENT_UI_CONNECT_SOURCES",
+  headersFile,
+);
+if (developmentConnect && !developmentConnect.includes(" ws:")) {
+  failures.push(`${headersFile}: development connect sources must explicitly carry local ws:`);
 }
 
 const reportOnly = stringConstant(headers, "UI_CSP_REPORT_ONLY_TEMPLATE", headersFile);
@@ -164,6 +185,7 @@ for (const marker of [
   "## Collection Contract",
   "## Telemetry Contract",
   "## Target Policy Inventory",
+  "## Trusted Script Nonce Boundary",
   "## Current Migration Debt",
   "## Enforcement Exit Criteria",
   "64 KiB",
@@ -179,4 +201,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ nonce-backed script CSP, trusted renderers and bounded violation collection are aligned");
+console.log("✔ nonce-backed script CSP, production WSS policy and bounded violation collection are aligned");
