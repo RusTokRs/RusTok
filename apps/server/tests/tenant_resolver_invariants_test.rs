@@ -36,6 +36,8 @@ async fn setup_tenant_router(
 
     let app = Router::new()
         .route("/tenant-probe", get(tenant_probe))
+        .route("/api/graphql", get(tenant_probe))
+        .route("/storefront/products", get(tenant_probe))
         .route_layer(middleware::from_fn_with_state(
             runtime_ctx.clone(),
             tenant::resolve,
@@ -43,6 +45,18 @@ async fn setup_tenant_router(
         .with_state(runtime_ctx.clone());
 
     (db, runtime_ctx, app)
+}
+
+async fn request_path(app: &Router, path: &str, tenant_header: Option<&str>) -> StatusCode {
+    let mut builder = Request::builder().uri(path);
+    if let Some(tenant_header) = tenant_header {
+        builder = builder.header("X-Tenant-ID", tenant_header);
+    }
+    app.clone()
+        .oneshot(builder.body(Body::empty()).expect("request"))
+        .await
+        .expect("tenant-bound request should complete")
+        .status()
 }
 
 async fn request_tenant_slug(app: &Router, tenant_header: &str) -> (StatusCode, Option<String>) {
@@ -117,6 +131,36 @@ async fn insert_tenant(
     .insert(db)
     .await
     .expect("tenant should insert")
+}
+
+#[tokio::test]
+#[serial]
+async fn tenant_bound_http_transports_reject_missing_tenant_assertion() {
+    let settings = RustokSettings::default();
+    let (_db, _runtime_ctx, app) = setup_tenant_router(settings).await;
+
+    for path in ["/tenant-probe", "/api/graphql", "/storefront/products"] {
+        assert_eq!(
+            request_path(&app, path, None).await,
+            StatusCode::BAD_REQUEST,
+            "{path} must fail closed without tenant identity"
+        );
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn tenant_bound_http_transports_reject_attacker_controlled_identifier() {
+    let settings = RustokSettings::default();
+    let (_db, _runtime_ctx, app) = setup_tenant_router(settings).await;
+
+    for path in ["/tenant-probe", "/api/graphql", "/storefront/products"] {
+        assert_eq!(
+            request_path(&app, path, Some("../../other-tenant")).await,
+            StatusCode::BAD_REQUEST,
+            "{path} must reject malformed tenant identity"
+        );
+    }
 }
 
 #[tokio::test]

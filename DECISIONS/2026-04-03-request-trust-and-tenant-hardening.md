@@ -16,7 +16,10 @@ These two behaviors weakened tenant isolation and made production safety depend 
   - `trusted_proxy_cidrs = []`
 - Default to `ignore`, meaning `Forwarded` / `X-Forwarded-*` are not trusted unless an operator explicitly opts in.
 - Route tenant, channel, rate-limit and OAuth secure-cookie transport decisions through one shared request-trust helper.
-- Add explicit tenant fallback policy with `settings.rustok.tenant.fallback_mode = "disabled" | "default_tenant"`.
+- Add an explicit tenant runtime profile with `settings.rustok.tenant.profile = "multi_tenant" | "single_tenant" | "development"`.
+- Retain `settings.rustok.tenant.enabled` as a compatibility switch, but validate it against the profile: `single_tenant` requires `false`; request-derived profiles require `true`.
+- Permit `settings.rustok.tenant.fallback_mode = "default_tenant"` only in the `development` profile and only with header resolution.
+- Reject the entire `development` profile in production, even when fallback is disabled.
 - Keep the default production posture as strict:
   - `resolution=header` + `fallback_mode=disabled` => missing tenant header returns `400`
   - disabled tenants are rejected during tenant middleware resolution with `403`
@@ -26,7 +29,8 @@ These two behaviors weakened tenant isolation and made production safety depend 
 
 - Production deployments become safer by default against forwarded-header spoofing and accidental tenant confusion.
 - Installations behind trusted ingress must explicitly declare proxy CIDR ranges before forwarded headers start influencing routing or rate limiting.
-- Dev/test environments can still opt into `default_tenant` fallback when convenient, but this must now be explicit in configuration.
+- Dev/test environments can opt into the explicit `development` profile and then enable `default_tenant` fallback when needed.
+- Production deployments must declare either `multi_tenant` or `single_tenant`; implicit single-tenant behavior is rejected.
 - Documentation and tests must keep the request-trust contract aligned across tenant, channel, rate limiting and OAuth browser-session flows.
 
 

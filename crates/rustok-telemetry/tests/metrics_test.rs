@@ -17,6 +17,7 @@ fn test_register_all_metrics() {
     metrics::record_event_dispatch_latency_ms("event_dispatcher", "ProductCreated", 1.0);
     metrics::update_circuit_breaker_state("redis", 0);
     metrics::record_cache_operation("tenant_cache", "get", "hit");
+    metrics::record_tenant_resolution("http", "header", "success");
     metrics::record_module_entrypoint_call("catalog", "create_product", "success");
 
     // Verify metrics are registered
@@ -43,6 +44,7 @@ fn test_register_all_metrics() {
 
     // Cache metrics
     assert!(metric_names.contains(&"rustok_cache_operations_total".to_string()));
+    assert!(metric_names.contains(&"rustok_tenant_resolutions_total".to_string()));
     assert!(metric_names.contains(&"rustok_module_entrypoint_calls_total".to_string()));
 }
 
@@ -110,6 +112,13 @@ fn test_cache_metrics() {
 
     // Record operation duration
     metrics::record_cache_duration("tenant_cache", "get", 0.001);
+}
+
+#[test]
+fn test_tenant_resolution_metrics() {
+    metrics::record_tenant_resolution("http", "header", "success");
+    metrics::record_tenant_resolution("http", "development_fallback", "success");
+    metrics::record_tenant_resolution("graphql_ws", "self_resolving_handshake", "not_found");
 }
 
 #[test]

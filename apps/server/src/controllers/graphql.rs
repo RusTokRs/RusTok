@@ -404,7 +404,60 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::graphql_permissions;
+    use crate::{
+        common::settings::RustokSettings, middleware::tenant,
+        services::server_runtime_context::ServerRuntimeContext,
+    };
     use rustok_api::{Permission, Resource};
+    use rustok_cache::CacheService;
+    use rustok_migrations::Migrator;
+    use sea_orm::{ActiveModelTrait, Set};
+    use serial_test::serial;
+
+    #[tokio::test]
+    #[serial]
+    async fn graphql_ws_tenant_handshake_fails_closed() {
+        let db = rustok_test_utils::db::setup_test_db_with_migrations::<Migrator>().await;
+        let runtime = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        tenant::init_tenant_cache_infrastructure(&runtime, &CacheService::from_url(None)).await;
+
+        let malformed = match tenant::resolve_tenant_context_by_slug(&runtime, "../../other").await
+        {
+            Ok(_) => panic!("malformed WebSocket tenant slug must be rejected"),
+            Err(error) => error,
+        };
+        assert_eq!(malformed.client_message(), "Invalid tenant identifier");
+
+        let unknown =
+            match tenant::resolve_tenant_context_by_slug(&runtime, "missing-ws-tenant").await {
+                Ok(_) => panic!("unknown WebSocket tenant must be rejected"),
+                Err(error) => error,
+            };
+        assert_eq!(unknown.client_message(), "Tenant not found");
+
+        let now = chrono::Utc::now();
+        crate::models::_entities::tenants::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            name: Set("Disabled WS tenant".to_string()),
+            slug: Set("disabled-ws-tenant".to_string()),
+            domain: Set(None),
+            settings: Set(serde_json::json!({})),
+            default_locale: Set("en".to_string()),
+            is_active: Set(false),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("disabled tenant should insert");
+
+        let disabled =
+            match tenant::resolve_tenant_context_by_slug(&runtime, "disabled-ws-tenant").await {
+                Ok(_) => panic!("disabled WebSocket tenant must be rejected"),
+                Err(error) => error,
+            };
+        assert_eq!(disabled.client_message(), "Tenant is disabled");
+    }
 
     #[test]
     fn manage_implies_graphql_read_and_list_without_widening_other_resources() {

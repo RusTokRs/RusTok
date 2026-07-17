@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::common::{
     extract_effective_host, peer_ip_from_extensions,
-    settings::{RustokSettings, TenantFallbackMode, TenantResolutionMode},
+    settings::{RustokSettings, TenantFallbackMode, TenantResolutionMode, TenantRuntimeProfile},
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -207,7 +207,7 @@ pub(crate) fn resolve_request(
         .validate()
         .map_err(|error| TenantResolutionError::InvalidPolicy(error.to_string()))?;
 
-    if !settings.tenant.enabled {
+    if settings.tenant.profile == TenantRuntimeProfile::SingleTenant {
         return Ok(TenantResolution {
             identifier: ResolvedTenantIdentifier::Uuid(settings.tenant.default_id),
             source: TenantResolutionSource::SingleTenantDefault,
@@ -415,6 +415,22 @@ mod tests {
     }
 
     #[test]
+    fn explicit_single_tenant_profile_resolves_default_without_request_assertion() {
+        let mut settings = RustokSettings::default();
+        settings.tenant.profile = TenantRuntimeProfile::SingleTenant;
+        settings.tenant.enabled = false;
+        let resolution = resolve_request(&request("/api/users"), &settings).expect("single tenant");
+        assert_eq!(
+            resolution.source,
+            TenantResolutionSource::SingleTenantDefault
+        );
+        assert_eq!(
+            resolution.identifier,
+            ResolvedTenantIdentifier::Uuid(settings.tenant.default_id)
+        );
+    }
+
+    #[test]
     fn strict_header_mode_rejects_missing_header() {
         let settings = RustokSettings::default();
         let error = resolve_request(&request("/api/users"), &settings).expect_err("missing header");
@@ -424,6 +440,7 @@ mod tests {
     #[test]
     fn fallback_is_reported_as_actual_resolution_source() {
         let mut settings = RustokSettings::default();
+        settings.tenant.profile = TenantRuntimeProfile::Development;
         settings.tenant.fallback_mode = TenantFallbackMode::DefaultTenant;
         let resolution = resolve_request(&request("/api/users"), &settings).expect("fallback");
         assert_eq!(

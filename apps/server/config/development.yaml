@@ -30,6 +30,7 @@ settings:
     audience: rustok-admin
   rustok:
     tenant:
+      profile: development
       enabled: true
       resolution: header
       header_name: X-Tenant-ID
