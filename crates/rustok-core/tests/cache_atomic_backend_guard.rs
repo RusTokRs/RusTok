@@ -68,3 +68,14 @@ fn shared_redis_backend_connects_lazily_and_keeps_startup_outage_visible() {
     assert!(recovery.contains("RUSTOK_CACHE_REDIS_SERVER_BIN"));
     assert!(recovery.contains("existing backend did not connect after Redis startup"));
 }
+
+#[test]
+fn memory_only_cache_feature_matrix_remains_enforced() {
+    let workflow = include_str!("../../../.github/workflows/cache-feature-matrix.yml");
+
+    assert!(workflow.contains("cargo check -p rustok-cache --lib --no-default-features"));
+    assert!(workflow.contains("cargo test -p rustok-cache --lib --no-default-features"));
+    assert!(workflow.contains(
+        "cargo clippy -p rustok-cache --lib --no-default-features -- -D warnings"
+    ));
+}
