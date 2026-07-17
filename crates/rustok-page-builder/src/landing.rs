@@ -10,8 +10,9 @@ use serde_json::Value;
 
 /// Framework-neutral landing inspection used by Leptos, Dioxus and static-export adapters.
 ///
-/// The browser transport is decoded into Fly's single current domain model at this boundary.
-/// GrapesJS is an adapter format, not a previous domain version.
+/// The current API accepts a document without a schema/version selector. GrapesJS decoding is an
+/// implementation detail of the adapter boundary and the resulting domain model evolves together
+/// with the `fly` module.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LandingProjectInspection {
     document: ProjectDocument,
@@ -21,6 +22,37 @@ pub struct LandingProjectInspection {
 }
 
 impl LandingProjectInspection {
+    /// Decode through the current, versionless page-builder API.
+    pub fn decode_current(project_data: &Value) -> LandingProjectResult<Self> {
+        Self::decode_current_with(
+            project_data,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        )
+    }
+
+    /// Decode through the current API with an explicit runtime registry and validation policy.
+    pub fn decode_current_with(
+        project_data: &Value,
+        registries: &RegistrySet,
+        limits: ValidationLimits,
+    ) -> LandingProjectResult<Self> {
+        let document = GrapesJsV1Codec::decode_value(project_data.clone())
+            .map_err(LandingProjectError::Fly)?;
+        let registry = ComponentRegistryManifest::for_document(&document, registries);
+        let validation = validate_project(&document, registries, limits);
+        let registry_compatibility = registry_compatibility(&document, &registry, registries);
+        Ok(Self {
+            document,
+            registry,
+            validation,
+            registry_compatibility,
+        })
+    }
+
+    /// Compatibility entrypoint for the existing versioned transport.
+    ///
+    /// Keep this API during the current module major. New callers must use `decode_current`.
     pub fn decode(schema_version: &str, project_data: &Value) -> LandingProjectResult<Self> {
         Self::decode_with(
             schema_version,
@@ -30,6 +62,9 @@ impl LandingProjectInspection {
         )
     }
 
+    /// Compatibility entrypoint for the existing versioned transport.
+    ///
+    /// The selector is validated only at the adapter edge and never enters the domain model.
     pub fn decode_with(
         schema_version: &str,
         project_data: &Value,
@@ -42,17 +77,7 @@ impl LandingProjectInspection {
                 actual: schema_version.to_string(),
             });
         }
-        let document = GrapesJsV1Codec::decode_value(project_data.clone())
-            .map_err(LandingProjectError::Fly)?;
-        let registry = ComponentRegistryManifest::for_document(&document, registries);
-        let validation = validate_project(&document, registries, limits);
-        let registry_compatibility = registry_compatibility(&document, &registry, registries);
-        Ok(Self {
-            document,
-            registry,
-            validation,
-            registry_compatibility,
-        })
+        Self::decode_current_with(project_data, registries, limits)
     }
 
     pub fn document(&self) -> &ProjectDocument {
@@ -123,28 +148,6 @@ fn registry_compatibility(
                     actual: Some(available.provider.clone()),
                 }),
             );
-            push_registry_issue(
-                &mut report,
-                (component.schema_version.as_deref() != Some(available.schema_version.as_str()))
-                    .then(|| RegistryCompatibilityIssue {
-                        component_type: component_type.to_string(),
-                        kind: RegistryCompatibilityIssueKind::SchemaVersionMismatch,
-                        expected: component.schema_version.clone(),
-                        actual: Some(available.schema_version.clone()),
-                    }),
-            );
-        } else if let Some(schema_version) = component.schema_version.as_deref() {
-            push_registry_issue(
-                &mut report,
-                (schema_version != available.schema_version.as_str()).then(|| {
-                    RegistryCompatibilityIssue {
-                        component_type: component_type.to_string(),
-                        kind: RegistryCompatibilityIssueKind::SchemaVersionMismatch,
-                        expected: Some(schema_version.to_string()),
-                        actual: Some(available.schema_version.clone()),
-                    }
-                }),
-            );
         }
     });
     report.compatible = report.issues.is_empty();
@@ -166,7 +169,7 @@ pub type LandingProjectResult<T> = Result<T, LandingProjectError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LandingProjectError {
-    #[error("unsupported page-builder document schema `{actual}`; supported: {supported:?}")]
+    #[error("unsupported compatibility schema `{actual}`; supported: {supported:?}")]
     UnsupportedSchema {
         supported: &'static [&'static str],
         actual: String,
@@ -211,27 +214,33 @@ mod tests {
     }
 
     #[test]
-    fn current_transport_decodes_to_the_domain_document() {
-        let inspection = LandingProjectInspection::decode(GRAPESJS_V1, &project_value())
+    fn current_api_decodes_to_the_domain_document_without_a_version_selector() {
+        let inspection = LandingProjectInspection::decode_current(&project_value())
             .expect("inspection");
         assert_eq!(inspection.document().project.pages.len(), 1);
         assert!(inspection.registry_manifest().components.len() >= 2);
     }
 
     #[test]
-    fn unsupported_transport_schema_is_rejected() {
+    fn compatibility_transport_still_decodes_during_the_current_major() {
+        let inspection = LandingProjectInspection::decode(GRAPESJS_V1, &project_value())
+            .expect("inspection");
+        assert_eq!(inspection.document().project.pages.len(), 1);
+    }
+
+    #[test]
+    fn unsupported_compatibility_schema_is_rejected() {
         let error = LandingProjectInspection::decode("unknown", &project_value())
             .expect_err("unknown schema must be rejected");
         assert!(matches!(error, LandingProjectError::UnsupportedSchema { .. }));
     }
 
     #[test]
-    fn declared_provider_schema_drift_blocks_contract_validity() {
+    fn declared_provider_drift_blocks_contract_validity() {
         let mut project = project_value();
         project["pages"][0]["component"]["components"][0]["provider"] =
             json!("other.provider");
-        project["pages"][0]["component"]["components"][0]["schemaVersion"] = json!("0");
-        let inspection = LandingProjectInspection::decode(GRAPESJS_V1, &project)
+        let inspection = LandingProjectInspection::decode_current(&project)
             .expect("structural inspection");
         assert!(!inspection.registry_compatibility().compatible);
         assert!(inspection
@@ -247,7 +256,7 @@ mod tests {
 
     #[test]
     fn inspection_builds_static_publish_artifact() {
-        let inspection = LandingProjectInspection::decode(GRAPESJS_V1, &project_value())
+        let inspection = LandingProjectInspection::decode_current(&project_value())
             .expect("inspection");
         inspection
             .require_contract_valid()
