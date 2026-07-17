@@ -1,16 +1,14 @@
 use crate::BrowserIntentDispatchError;
 use fly_browser::BrowserIntentEnvelope;
-use fly_ui::{
-    resolve_editor_shortcut, CapabilityState, EditorShortcut, KeyStroke,
-};
+use fly_ui::{resolve_editor_shortcut, CapabilityState, EditorShortcut, KeyStroke};
 use serde_json::Value;
 
 pub fn validate_browser_capability_access(
     envelope: &BrowserIntentEnvelope,
     capabilities: CapabilityState,
 ) -> Result<(), BrowserIntentDispatchError> {
-    let requirement = capability_requirement(envelope)?;
-    if let Some((name, enabled)) = requirement {
+    let capabilities = capabilities.normalized();
+    if let Some((name, enabled)) = capability_requirement(envelope, capabilities)? {
         if !enabled {
             return Err(BrowserIntentDispatchError::Authoring(format!(
                 "browser intent `{}` requires editor capability `{name}`",
@@ -23,8 +21,8 @@ pub fn validate_browser_capability_access(
 
 fn capability_requirement(
     envelope: &BrowserIntentEnvelope,
+    capabilities: CapabilityState,
 ) -> Result<Option<(&'static str, bool)>, BrowserIntentDispatchError> {
-    let capabilities = capability_profile(envelope);
     let requirement = match envelope.intent.as_str() {
         "select"
         | "focus_requested"
@@ -78,14 +76,6 @@ fn capability_requirement(
         _ => None,
     };
     Ok(requirement)
-}
-
-fn capability_profile(envelope: &BrowserIntentEnvelope) -> CapabilityState {
-    let _ = envelope;
-    // Kept as a separate seam so a future envelope version may carry a signed capability profile
-    // without changing the classification table. The authoritative profile is still supplied by
-    // the host to `validate_browser_capability_access`.
-    CapabilityState::full()
 }
 
 fn shortcut_requirement(
@@ -214,7 +204,20 @@ mod tests {
         assert!(validate_browser_capability_access(
             &envelope(
                 "key_stroke",
-                json!({ "stroke": { "key": "s", "ctrl": true } }),
+                json!({
+                    "stroke": {
+                        "key": "s",
+                        "code": null,
+                        "modifiers": {
+                            "shift": false,
+                            "alt": false,
+                            "control": true,
+                            "meta": false
+                        },
+                        "repeat": false,
+                        "editing_text": false
+                    }
+                }),
             ),
             capabilities,
         )
@@ -222,17 +225,16 @@ mod tests {
     }
 
     #[test]
-    fn unknown_mutating_intent_falls_back_to_edit() {
-        let mut envelope = envelope("future_mutation", json!({}));
-        envelope.payload["mutates_project"] = Value::Bool(true);
+    fn supplied_profile_is_authoritative() {
         let capabilities = CapabilityState {
             edit: false,
             ..CapabilityState::full()
         }
         .normalized();
-        let result = validate_browser_capability_access(&envelope, capabilities);
-        if envelope.is_mutating() {
-            assert!(result.is_err());
-        }
+        assert!(validate_browser_capability_access(
+            &envelope("insert_block", json!({ "block_id": "text" })),
+            capabilities,
+        )
+        .is_err());
     }
 }
