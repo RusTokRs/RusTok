@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct MarketplaceSellerAdminListItem {
     pub id: String,
     pub handle: String,
+    pub resolved_locale: String,
     pub display_name: String,
     pub status: String,
     pub onboarding_status: String,
@@ -31,6 +32,7 @@ pub struct MarketplaceSellerAdminRecord {
     pub id: String,
     pub tenant_id: String,
     pub handle: String,
+    pub resolved_locale: String,
     pub display_name: String,
     pub legal_name: Option<String>,
     pub status: String,
