@@ -27,6 +27,7 @@ mod shortcut_dispatch;
 mod ssr_drop;
 mod ssr_forms;
 mod ssr_inspector;
+mod ssr_internal_link;
 mod ssr_locale;
 mod ssr_locale_coverage;
 mod ssr_locale_policy;
@@ -71,6 +72,9 @@ pub(crate) use ssr_forms::{
     SsrTranslationUpsertRequest,
 };
 pub(crate) use ssr_inspector::SsrInspectorPanel;
+pub(crate) use ssr_internal_link::{
+    SsrInternalPageLinkPanel, SsrInternalPageLinkRemoveRequest, SsrInternalPageLinkRequest,
+};
 pub(crate) use ssr_locale::SsrLocalePanel;
 pub(crate) use ssr_locale_coverage::SsrLocaleCoveragePanel;
 pub(crate) use ssr_locale_policy::{SsrLocalePolicyPanel, SsrLocalePolicyRequest};
