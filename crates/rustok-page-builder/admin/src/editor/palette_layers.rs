@@ -1,6 +1,8 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
-use fly_ui::{ContributionAssemblyResult, ContributionAssemblySeverity, UiIntent};
+use fly_ui::{
+    ContributionAssemblyResult, ContributionAssemblySeverity, PaletteBlockAccess, UiIntent,
+};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 use std::collections::BTreeMap;
@@ -19,7 +21,7 @@ pub fn PaletteLayersPanel(
     let drag_label = t(locale.as_deref(), "page_builder.action.drag", "Drag");
     let palette_runtime = runtime.clone();
     let layers_runtime = runtime;
-    let contributed_blocks = Arc::new(contributed_block_sources(
+    let palette_access = Arc::new(PaletteBlockAccess::from_optional_assembly(
         contribution_assembly.as_deref(),
     ));
     let contribution_summary = contribution_assembly.as_ref().map(|assembly| {
@@ -73,14 +75,16 @@ pub fn PaletteLayersPanel(
                     </div>
                 })}
                 {move || {
+                    let access = Arc::clone(&palette_access);
                     let mut groups = BTreeMap::<String, Vec<_>>::new();
-                    for block in palette_runtime.controller.with(|controller| controller.palette_blocks()) {
+                    for block in palette_runtime.controller.with(|controller| {
+                        controller.palette_blocks_with_access(&access)
+                    }) {
                         groups.entry(block.category.clone()).or_default().push(block);
                     }
-                    let contributed_blocks = Arc::clone(&contributed_blocks);
                     groups.into_iter().map(|(category, blocks)| {
                         let category_open = category == "landing";
-                        let contributed_blocks = Arc::clone(&contributed_blocks);
+                        let access = Arc::clone(&access);
                         view! {
                             <details open=category_open class="rounded-lg border border-border">
                                 <summary class="cursor-pointer px-3 py-2 text-sm font-medium">{category}</summary>
@@ -90,10 +94,10 @@ pub fn PaletteLayersPanel(
                                         let drag_id = block.id.clone();
                                         let html_drag_id = block.id.clone();
                                         let browser_block_id = block.id.clone();
-                                        let contribution_ids = contributed_blocks
-                                            .get(&block.id)
-                                            .cloned()
-                                            .unwrap_or_default();
+                                        let contribution_ids = access
+                                            .contribution_ids(&block.id)
+                                            .map(ToString::to_string)
+                                            .collect::<Vec<_>>();
                                         let contribution_attr = contribution_ids.join(",");
                                         let contribution_badge = (!contribution_ids.is_empty()).then(|| {
                                             let label = contribution_ids.join(", ");
@@ -107,6 +111,9 @@ pub fn PaletteLayersPanel(
                                         let insert_runtime = palette_runtime.clone();
                                         let drag_runtime = palette_runtime.clone();
                                         let html_drag_runtime = palette_runtime.clone();
+                                        let insert_access = Arc::clone(&access);
+                                        let drag_access = Arc::clone(&access);
+                                        let html_drag_access = Arc::clone(&access);
                                         let add_label = add_label.clone();
                                         let drag_label = drag_label.clone();
                                         view! {
@@ -117,7 +124,10 @@ pub fn PaletteLayersPanel(
                                                 data-fly-contribution-ids=contribution_attr
                                                 on:dragstart=move |_| {
                                                     let intent = html_drag_runtime.controller.with(|controller| {
-                                                        controller.begin_palette_drag_intent(&html_drag_id)
+                                                        controller.begin_palette_drag_intent_with_access(
+                                                            &html_drag_id,
+                                                            &html_drag_access,
+                                                        )
                                                     });
                                                     html_drag_runtime.dispatch_result(intent);
                                                 }
@@ -133,7 +143,10 @@ pub fn PaletteLayersPanel(
                                                         data-fly-action="insert-block"
                                                         on:click=move |_| {
                                                             let intent = insert_runtime.controller.with(|controller| {
-                                                                controller.insert_palette_block_intent(&insert_id)
+                                                                controller.insert_palette_block_intent_with_access(
+                                                                    &insert_id,
+                                                                    &insert_access,
+                                                                )
                                                             });
                                                             insert_runtime.dispatch_result(intent);
                                                         }
@@ -144,7 +157,10 @@ pub fn PaletteLayersPanel(
                                                         data-fly-action="begin-block-drag"
                                                         on:click=move |_| {
                                                             let intent = drag_runtime.controller.with(|controller| {
-                                                                controller.begin_palette_drag_intent(&drag_id)
+                                                                controller.begin_palette_drag_intent_with_access(
+                                                                    &drag_id,
+                                                                    &drag_access,
+                                                                )
                                                             });
                                                             drag_runtime.dispatch_result(intent);
                                                         }
@@ -200,37 +216,15 @@ pub fn PaletteLayersPanel(
     }
 }
 
-fn contributed_block_sources(
-    assembly: Option<&ContributionAssemblyResult>,
-) -> BTreeMap<String, Vec<String>> {
-    let mut sources = BTreeMap::<String, Vec<String>>::new();
-    let Some(assembly) = assembly else {
-        return sources;
-    };
-    for (contribution_id, contribution) in assembly.registry.iter() {
-        for block_id in &contribution.blocks {
-            sources
-                .entry(block_id.clone())
-                .or_default()
-                .push(contribution_id.to_string());
-        }
-    }
-    for contribution_ids in sources.values_mut() {
-        contribution_ids.sort();
-        contribution_ids.dedup();
-    }
-    sources
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use fly_ui::{ContributionDescriptor, ContributionRegistry};
     use serde_json::Map;
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
 
     #[test]
-    fn contribution_provenance_is_derived_without_copying_block_definitions() {
+    fn contribution_access_filters_templates_without_copying_block_definitions() {
         let mut registry = ContributionRegistry::default();
         registry
             .register(ContributionDescriptor {
@@ -250,8 +244,13 @@ mod tests {
             registered_contributions: 1,
             ..ContributionAssemblyResult::default()
         };
-        let sources = contributed_block_sources(Some(&assembly));
-        assert_eq!(sources["fly.hero"], vec!["pages.blocks"]);
-        assert!(!sources.contains_key("componentJson"));
+        let access = PaletteBlockAccess::from_assembly(&assembly);
+        assert!(access.allows("text"));
+        assert!(access.allows("fly.hero"));
+        assert!(!access.allows("fly.cta"));
+        assert_eq!(
+            access.contribution_ids("fly.hero").collect::<Vec<_>>(),
+            vec!["pages.blocks"]
+        );
     }
 }
