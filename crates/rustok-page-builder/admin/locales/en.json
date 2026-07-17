@@ -207,6 +207,15 @@
       "localizedMetadataFallbackLabel": "Metadata fallback locale",
       "localizedMetadataSave": "Save localized metadata"
     },
+    "actionsForms": {
+      "title": "Actions, forms, and fields",
+      "empty": "Select a component to configure an action, form, or native form field.",
+      "actionTitle": "Component action",
+      "formTitle": "Component form",
+      "fieldTitle": "Native form field",
+      "save": "Save contract",
+      "remove": "Remove contract"
+    },
     "traits": {
       "empty": "Select a component to edit its traits."
     },
