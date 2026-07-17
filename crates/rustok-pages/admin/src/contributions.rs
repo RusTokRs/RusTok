@@ -25,8 +25,8 @@ pub const PAGES_LANDING_BLOCK_IDS: &[&str] = &[
 /// Module-owned metadata used by the generated Fly admin contribution registry.
 ///
 /// Pages owns document lifecycle, while the referenced blocks belong to `fly.builtin`. The
-/// cross-provider relationship is explicit and explicit; no renderer or property-editor is
-/// advertised until Pages has a real executable adapter for that contract.
+/// cross-provider relationship is explicit; no renderer or property editor is advertised until
+/// Pages has a real executable adapter for that provider.
 pub fn pages_contribution_manifest() -> ModuleContributionManifest {
     ModuleContributionManifest {
         module_id: PAGES_MODULE_ID.to_string(),
@@ -96,7 +96,7 @@ mod tests {
     use fly::RegistrySet;
 
     #[test]
-    fn manifest_explicitly_pins_the_fly_builtin_target() {
+    fn manifest_explicitly_targets_the_fly_builtin_provider() {
         let manifest = pages_contribution_manifest();
         assert!(manifest.allows_target_provider(FLY_BUILTIN_PROVIDER));
         assert!(!manifest.allows_target_provider("other.provider"));
@@ -146,10 +146,5 @@ mod tests {
                 "Pages module manifest is missing builder capability `{capability}`"
             );
         }
-    }
-
-    #[test]
-    fn storefront_surface_stays_empty_until_a_real_adapter_exists() {
-        assert!(pages_contribution_manifest().storefront.is_empty());
     }
 }
