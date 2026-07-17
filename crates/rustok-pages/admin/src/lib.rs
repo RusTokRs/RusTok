@@ -1,5 +1,6 @@
 mod access;
 mod browser_intent;
+mod browser_problem;
 mod builder;
 #[cfg(test)]
 mod builder_contract;
@@ -18,6 +19,10 @@ pub use access::{
 };
 pub use browser_intent::{
     pages_browser_draft_store, PagesBrowserIntentError, PagesBrowserIntentResponse,
+};
+pub use browser_problem::{
+    PagesBrowserIntentProblem, HTTP_BAD_GATEWAY, HTTP_BAD_REQUEST, HTTP_CONFLICT,
+    HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_UNPROCESSABLE_ENTITY,
 };
 pub use builder::PagesBuilderSaveSnapshot;
 pub use composition::PagesAdmin;
