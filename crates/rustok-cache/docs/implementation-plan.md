@@ -108,7 +108,9 @@ Last reconciled with `main`: 2026-07-16.
   use two actual serving contexts to cover exact and wildcard value refresh, deterministic local
   listener lag, a completely missed PubSub publication, Redis reconnect after shared-generation
   loss, fail-closed regression, explicit epoch restoration and delivery of the next `N+1` event.
-  Every event validates the durable epoch before cache mutation or tracker acknowledgement.
+  Every event validates the durable epoch before cache mutation or tracker acknowledgement. If the
+  durable epoch is already beyond an otherwise in-order exact event, the listener performs a
+  namespace-wide recovery and records the durable offset instead of applying only that tenant key.
 - [x] Marketplace list/detail caches are byte-weighted, hashed, response-bounded and single-flight;
   detail negatives use a short independent TTL.
 - [x] Channel cache is byte-weighted with hashed request facts, bounded monotonic tenant versions,
@@ -149,9 +151,9 @@ The detailed active-cache contract is maintained in
 - [x] Guard the channel workflow path scope, Channel/Flex Clippy commands, PostgreSQL job, full
   non-ignored resolved-value suite, combined lag/value lib test, live Redis readiness/resolved-value
   commands, self-hosted Redis restart setup and durable recovery sources from accidental removal.
-- [x] Guard tenant-locale path scope, compiled and ignored Redis commands, exact/wildcard value
-  evidence, deterministic lag, missed publication, shared-state loss/restoration, critical readiness
-  and durable-before-apply ordering from accidental removal.
+- [x] Guard tenant-locale path scope, compiled and ignored Redis commands, exact/wildcard value,
+  durable-ahead namespace recovery, deterministic lag, missed publication, shared-state
+  loss/restoration, critical readiness and durable-before-apply ordering from accidental removal.
 - [x] Guard Flex SQLite/PostgreSQL test paths and commands, all four owner mutation classes,
   two-replica outage/regression recovery, clear-before-ack ordering and critical `is_ready()` wiring
   from accidental removal.
@@ -182,8 +184,8 @@ The detailed active-cache contract is maintained in
   resolved-value, PostgreSQL 17, live Redis, latency/circuit and repeated self-hosted Redis restart
   jobs on the same revision and record their results.
 - [ ] Run ignored `rustok-cache` and `rustok-core` suites against isolated Redis 7.
-- [ ] Execute and record the source-complete exact/wildcard tenant-locale, listener-lag,
-  missed-publication, Redis state-loss/restoration and critical-readiness scenarios.
+- [ ] Execute and record the source-complete exact/wildcard tenant-locale, durable-ahead recovery,
+  listener-lag, missed-publication, Redis state-loss/restoration and critical-readiness scenarios.
 - [ ] Execute and record the source-complete Flex SQLite owner matrix, PostgreSQL
   transaction/concurrency/replay and two-replica startup/outage/regression recovery scenarios.
 - [ ] Prove SEO seed-before-clear startup, exact tenant invalidation, multi-page catch-up, database
