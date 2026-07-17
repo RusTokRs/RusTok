@@ -1,10 +1,11 @@
 use crate::{
-    extract_runtime_context_contract, materialize_bindings, materialize_context,
-    materialize_internal_page_links, materialize_localized_page_metadata,
+    extract_runtime_context_contract, materialize_bindings, materialize_component_actions,
+    materialize_context, materialize_internal_page_links, materialize_localized_page_metadata,
     materialize_project_locale_context, materialize_project_translations, materialize_runtime,
-    materialize_runtime_locale_context, BindingMaterialization, ContextMaterialization,
-    InternalLinkMaterialization, LocalePolicyMaterialization, LocalizedPageMetadataMaterialization,
-    ProjectDocument, RuntimeMaterialization, TranslationMaterialization, ValidationDiagnostic,
+    materialize_runtime_locale_context, ActionMaterialization, BindingMaterialization,
+    ContextMaterialization, InternalLinkMaterialization, LocalePolicyMaterialization,
+    LocalizedPageMetadataMaterialization, ProjectDocument, RuntimeMaterialization,
+    TranslationMaterialization, ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,6 +23,16 @@ pub struct RuntimeProjectMaterialization {
     pub resolved_internal_links: usize,
     pub fallback_internal_links: usize,
     pub unresolved_internal_links: usize,
+    #[serde(default)]
+    pub materialized_forms: usize,
+    #[serde(default)]
+    pub native_actions: usize,
+    #[serde(default)]
+    pub custom_actions: usize,
+    #[serde(default)]
+    pub fallback_actions: usize,
+    #[serde(default)]
+    pub unresolved_actions: usize,
     pub applied_bindings: usize,
     pub fallback_bindings: usize,
     pub unresolved_bindings: usize,
@@ -96,13 +107,24 @@ pub fn materialize_project_with_runtime_context(
         (localized_input_context.clone(), 0, 0, 0, 0, 0)
     };
 
+    let ActionMaterialization {
+        document: action_document,
+        diagnostics: action_diagnostics,
+        materialized_forms,
+        native_actions,
+        custom_actions,
+        fallback_actions,
+        unresolved_actions,
+    } = materialize_component_actions(&localized_document, &effective_context);
+    diagnostics.extend(action_diagnostics);
+
     let BindingMaterialization {
         document,
         diagnostics: binding_diagnostics,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
-    } = materialize_bindings(&localized_document, &effective_context);
+    } = materialize_bindings(&action_document, &effective_context);
     diagnostics.extend(binding_diagnostics);
     let RuntimeMaterialization {
         document,
@@ -125,6 +147,11 @@ pub fn materialize_project_with_runtime_context(
         resolved_internal_links,
         fallback_internal_links,
         unresolved_internal_links,
+        materialized_forms,
+        native_actions,
+        custom_actions,
+        fallback_actions,
+        unresolved_actions,
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
@@ -292,6 +319,76 @@ mod tests {
             .unwrap()
             .attributes
             .get("href")
+            .is_none());
+    }
+
+    #[test]
+    fn actions_and_forms_materialize_in_the_canonical_runtime_pipeline() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "flyLocales": {
+                "default_locale": "ru",
+                "supported_locales": ["ru", "en"]
+            },
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "slug": { "$localized": { "en": "home", "ru": "glavnaya" } } },
+                "component": {
+                    "id": "home-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "contact-form",
+                        "type": "wrapper",
+                        "flyForm": {
+                            "id": "contact",
+                            "method": "post",
+                            "provider": "crm",
+                            "action": "create_lead"
+                        }
+                    }, {
+                        "id": "submit",
+                        "type": "button",
+                        "flyAction": { "kind": "submit_form", "form_id": "contact" }
+                    }, {
+                        "id": "about",
+                        "type": "button",
+                        "flyAction": { "kind": "navigate_page", "page_id": "about-page" }
+                    }]
+                }
+            }, {
+                "id": "about-page",
+                "flyPageMeta": { "slug": { "$localized": { "en": "about", "ru": "o-nas" } } },
+                "component": { "id": "about-root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+
+        let materialized = materialize_project_with_runtime_context(&document, &json!({}));
+        assert_eq!(materialized.materialized_forms, 1);
+        assert_eq!(materialized.native_actions, 2);
+        assert_eq!(materialized.custom_actions, 0);
+        assert_eq!(materialized.unresolved_actions, 0);
+        assert_eq!(
+            materialized
+                .document
+                .component("contact-form")
+                .unwrap()
+                .tag_name
+                .as_deref(),
+            Some("form")
+        );
+        assert_eq!(
+            materialized.document.component("submit").unwrap().attributes["form"],
+            "contact"
+        );
+        assert_eq!(
+            materialized.document.component("about").unwrap().attributes["href"],
+            "/o-nas"
+        );
+        assert!(document
+            .component("contact-form")
+            .unwrap()
+            .attributes
+            .get("data-fly-form-provider")
             .is_none());
     }
 
