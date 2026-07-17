@@ -18,6 +18,14 @@ function fail(message) {
   failures.push(message);
 }
 
+function addRecord(records, record, sourceName) {
+  if (records.has(record.slug)) {
+    fail(`${sourceName}: duplicate module ${record.slug}`);
+    return;
+  }
+  records.set(record.slug, record);
+}
+
 function parseManifest(relativePath) {
   const source = readRepo(relativePath);
   const modulesStart = source.indexOf("[modules]");
@@ -53,13 +61,17 @@ function parseManifest(relativePath) {
       ? [...dependsMatch[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1])
       : [];
 
-    records.set(slug, {
-      slug,
-      crate: crateMatch[1],
-      required: /\brequired\s*=\s*true\b/.test(body),
-      runtime: /\bruntime\s*=\s*"([^"]+)"/.exec(body)?.[1] ?? null,
-      dependencies,
-    });
+    addRecord(
+      records,
+      {
+        slug,
+        crate: crateMatch[1],
+        required: /\brequired\s*=\s*true\b/.test(body),
+        runtime: /\bruntime\s*=\s*"([^"]+)"/.exec(body)?.[1] ?? null,
+        dependencies,
+      },
+      relativePath,
+    );
   }
 
   return records;
@@ -101,13 +113,17 @@ function parseOverviewTable(source, startHeading, endHeading, category) {
       ? /^`([^`]+)`$/.exec(cells[2] ?? "")?.[1] ?? null
       : null;
 
-    records.set(slug, {
-      slug,
-      crate: crateName,
-      required: category === "core",
-      runtime,
-      dependencies,
-    });
+    addRecord(
+      records,
+      {
+        slug,
+        crate: crateName,
+        required: category === "core",
+        runtime,
+        dependencies,
+      },
+      `docs/modules/overview.md ${startHeading}`,
+    );
   }
 
   return records;
@@ -115,21 +131,29 @@ function parseOverviewTable(source, startHeading, endHeading, category) {
 
 function parseOverview() {
   const source = readRepo("docs/modules/overview.md");
-  return new Map([
-    ...parseOverviewTable(source, "### Core", "### Optional", "core"),
-    ...parseOverviewTable(
+  const records = new Map();
+  const sections = [
+    parseOverviewTable(source, "### Core", "### Optional", "core"),
+    parseOverviewTable(
       source,
       "### Optional",
       "### Capability Extensions",
       "optional",
     ),
-    ...parseOverviewTable(
+    parseOverviewTable(
       source,
       "### Capability Extensions",
       "## What Lives Next to Modules",
       "extension",
     ),
-  ]);
+  ];
+
+  for (const section of sections) {
+    for (const record of section.values()) {
+      addRecord(records, record, "docs/modules/overview.md");
+    }
+  }
+  return records;
 }
 
 function normalized(record) {
@@ -174,8 +198,13 @@ compareMaps("modules.toml", canonical, "docs/modules/overview.md", overview);
 
 if (failures.length > 0) {
   console.error("Module manifest documentation drift check failed:");
+  console.error(
+    `Parsed module counts: modules.toml=${canonical.size}, modules.toml.example=${example.size}, docs/modules/overview.md=${overview.size}`,
+  );
   failures.forEach((failure) => console.error(`✗ ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log(`✔ Module topology is synchronized across ${canonical.size} modules`);
+console.log(
+  `✔ Module topology is synchronized: modules.toml=${canonical.size}, modules.toml.example=${example.size}, docs/modules/overview.md=${overview.size}`,
+);
