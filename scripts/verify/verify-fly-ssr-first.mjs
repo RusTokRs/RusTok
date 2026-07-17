@@ -69,7 +69,7 @@ requireMarkers('appsAdminMain', [
   'dispatch_pages_browser_intent_with_capabilities(',
   'PagesBrowserIntentAccessError',
   'BrowserCapabilityAccessError::Denied(_)',
-  '"code": "FLY_CAPABILITY_DENIED"',
+  'rustok_page_builder_admin::BROWSER_CAPABILITY_DENIAL_CODE',
 ], 'native admin Page Builder endpoint');
 rejectMarker(
   'appsAdminMain',
