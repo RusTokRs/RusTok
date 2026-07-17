@@ -24,6 +24,7 @@ ssr = [
   "dep:rustok-seo",
   "dep:rustok-seo-render",
   "dep:rustok-tenant",
+  "dep:rustok-web",
   "dep:tokio",
   "dep:rustok-blog-storefront",
   "rustok-blog-storefront/ssr",
@@ -83,6 +84,7 @@ rustok-content = { workspace = true, optional = true }
 rustok-seo = { workspace = true, optional = true }
 rustok-seo-render = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
+rustok-web = { workspace = true, optional = true }
 rustok-blog-storefront = { path = "../../crates/rustok-blog/storefront", default-features = false, optional = true }
 rustok-cart-storefront = { path = "../../crates/rustok-cart/storefront", default-features = false, optional = true }
 rustok-commerce-storefront = { path = "../../crates/rustok-commerce/storefront", default-features = false, optional = true }
