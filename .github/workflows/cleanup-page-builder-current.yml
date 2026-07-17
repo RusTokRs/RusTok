@@ -6,6 +6,9 @@ on:
     paths:
       - scripts/migrations/cleanup_page_builder_current.py
       - .github/workflows/cleanup-page-builder-current.yml
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 permissions:
   contents: write
@@ -16,7 +19,9 @@ concurrency:
 
 jobs:
   apply:
-    if: github.actor != 'github-actions[bot]'
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Check out main
@@ -25,38 +30,57 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Stop when cleanup is already complete
+        id: staged
+        shell: bash
+        run: |
+          if [[ -f scripts/migrations/cleanup_page_builder_current.py ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install Rust toolchain
+        if: steps.staged.outputs.present == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.96
           components: rustfmt
 
       - name: Apply cleanup
+        if: steps.staged.outputs.present == 'true'
         run: python3 scripts/migrations/cleanup_page_builder_current.py
 
       - name: Format
+        if: steps.staged.outputs.present == 'true'
         run: cargo fmt --all
 
       - name: Check Fly and Page Builder
+        if: steps.staged.outputs.present == 'true'
         run: cargo check -p fly -p rustok-page-builder --all-features
 
       - name: Test Fly
+        if: steps.staged.outputs.present == 'true'
         run: cargo test -p fly --lib
 
       - name: Test Page Builder
+        if: steps.staged.outputs.present == 'true'
         run: cargo test -p rustok-page-builder --lib --all-features
 
       - name: Verify diff
+        if: steps.staged.outputs.present == 'true'
         run: git diff --check
 
       - name: Remove one-time migration
+        if: steps.staged.outputs.present == 'true'
         run: rm -f scripts/migrations/cleanup_page_builder_current.py .github/workflows/cleanup-page-builder-current.yml
 
       - name: Commit directly to main
+        if: steps.staged.outputs.present == 'true'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "418982bot@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
           git commit -m "refactor(page-builder): keep only the current API"
