@@ -9,7 +9,7 @@ status: active
 
 ## Purpose
 
-This inventory defines the target browser policy, the report collection boundary and the evidence required before the UI CSP can remove `unsafe-inline` and `unsafe-eval` from enforcement.
+This inventory defines the target browser policy, the report collection boundary and the evidence required before the UI CSP can remove the remaining `unsafe-inline` allowances from enforcement. `unsafe-eval` is already prohibited by the enforced policy.
 
 No violation in this document is an automatic allowlist request. The preferred resolution is to remove the dependency, move code into a same-origin static asset, or attach a per-response nonce/hash.
 
@@ -60,11 +60,11 @@ The existing Prometheus family `rustok_module_errors_total` records the same bou
 
 The enforced UI policy still contains:
 
-- `script-src 'unsafe-inline' 'unsafe-eval'`;
+- `script-src 'unsafe-inline'`;
 - `style-src 'unsafe-inline'`;
 - plaintext `ws:` for local/development compatibility.
 
-These entries are migration debt, not approved production exceptions. The strict report-only policy intentionally excludes them.
+`unsafe-eval` has been removed from enforcement and is protected by the CSP verification gate. The remaining entries are migration debt, not approved production exceptions. The strict report-only policy intentionally excludes them.
 
 ## Triage Rules
 
