@@ -5,6 +5,7 @@ const paths = {
   flyUiLib: 'crates/fly-ui/src/lib.rs',
   error: 'crates/fly-ui/src/error.rs',
   contribution: 'crates/fly-ui/src/contribution.rs',
+  factory: 'crates/fly-ui/src/contribution_factory.rs',
   tests: 'crates/fly-ui/src/tests.rs',
 };
 
@@ -24,7 +25,9 @@ const requireMarkers = (key, markers, label) => {
 
 requireMarkers('flyUiLib', [
   'mod contribution;',
+  'mod contribution_factory;',
   'pub use contribution::*;',
+  'pub use contribution_factory::*;',
 ], 'fly-ui contribution module wiring');
 requireMarkers('error', [
   'InvalidContribution',
@@ -54,6 +57,33 @@ requireMarkers('contribution', [
   'provider_ownership_and_accessibility_labels_are_required',
   'registration_normalizes_identity_and_optional_accessibility_ids',
 ], 'deterministic contribution registry');
+requireMarkers('factory', [
+  'pub enum ContributionSurface',
+  'pub enum ContributionProviderHealth',
+  'pub struct ModuleContributionMetadata',
+  'pub struct ContributionAssemblyPolicy',
+  'pub struct ContributionAssemblyDiagnostic',
+  'pub struct ContributionAssemblyResult',
+  'pub fn build_admin_contribution_registry(',
+  'pub fn build_storefront_contribution_registry(',
+  'pub fn assemble_contribution_registry(',
+  'fn remove_missing_dependencies(',
+  'fn dependency_order(',
+  'contribution_dependency_missing',
+  'contribution_dependency_cycle',
+  'contribution_provider_unavailable',
+  'contribution_permission_missing',
+  'contribution_capability_missing',
+  'admin_and_storefront_factories_are_separate',
+  'assembly_filters_tenant_permissions_capabilities_and_health',
+  'missing_dependencies_and_cycles_are_diagnosed',
+  'duplicate_nested_contracts_are_reported_without_partial_registration',
+], 'generated contribution registry factories');
+requireMarker(
+  'factory',
+  'let code = match &error',
+  'factory diagnostics must not move UiError before formatting it',
+);
 for (const forbidden of [
   'leptos',
   'dioxus',
@@ -62,16 +92,13 @@ for (const forbidden of [
   'rustok_',
   'rustok-',
 ]) {
-  rejectMarker(
-    'contribution',
-    forbidden,
-    `fly-ui contribution contracts must remain framework/RusTok neutral: ${forbidden}`,
-  );
-  rejectMarker(
-    'flyUiCargo',
-    forbidden,
-    `fly-ui dependencies must remain framework/RusTok neutral: ${forbidden}`,
-  );
+  for (const key of ['contribution', 'factory', 'flyUiCargo']) {
+    rejectMarker(
+      key,
+      forbidden,
+      `fly-ui contribution infrastructure must remain framework/RusTok neutral: ${forbidden}`,
+    );
+  }
 }
 requireMarker(
   'tests',
