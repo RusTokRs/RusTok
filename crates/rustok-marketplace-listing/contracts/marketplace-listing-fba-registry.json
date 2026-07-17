@@ -111,11 +111,25 @@
         "actor_id",
         "event_kind",
         "locale",
+        "provenance",
         "note",
         "metadata",
         "created_at"
       ],
-      "locale_source": "PortContext.locale_effective",
+      "provenance_contract": {
+        "command": {
+          "actor_id_required": true,
+          "locale_required": true,
+          "locale_source": "PortContext.locale_effective"
+        },
+        "legacy_snapshot": {
+          "actor_id_required": false,
+          "actor_id_must_be_null": true,
+          "locale_required": false,
+          "locale_must_be_null": true,
+          "fabricated_attribution_forbidden": true
+        }
+      },
       "locale_normalizer": "rustok_api::normalize_locale_tag",
       "locale_max_bytes": 32,
       "timeline_order": [
@@ -141,13 +155,15 @@
         "published",
         "suspended",
         "reactivated",
-        "archived"
+        "archived",
+        "legacy_approval_snapshot",
+        "legacy_suspension_snapshot"
       ],
-      "compatibility_snapshots_still_present": [
+      "compatibility_snapshot_columns_removed": [
         "approval_note",
         "suspension_reason"
       ],
-      "planned_cutover": "backfill events then drop compatibility snapshot columns"
+      "cutover_migration": "m20260717_000003_backfill_listing_event_provenance"
     },
     "one_scope_identity": [
       "tenant_id",
@@ -165,7 +181,9 @@
       "localized_title",
       "localized_description",
       "translations_json",
-      "localized_fields_json"
+      "localized_fields_json",
+      "approval_note",
+      "suspension_reason"
     ],
     "language_agnostic_fields": [
       "seller_sku",
@@ -192,16 +210,14 @@
     "central_plan": "crates/rustok-commerce/docs/implementation-plan.md",
     "schema": "crates/rustok-marketplace-listing/src/migrations/m20260716_000001_create_marketplace_listings.rs",
     "event_schema": "crates/rustok-marketplace-listing/src/migrations/m20260717_000002_create_marketplace_listing_events.rs",
+    "provenance_cutover": "crates/rustok-marketplace-listing/src/migrations/m20260717_000003_backfill_listing_event_provenance.rs",
     "read_service": "crates/rustok-marketplace-listing/src/service.rs",
     "ports": "crates/rustok-marketplace-listing/src/ports.rs",
     "receipt_executor": "crates/rustok-marketplace-listing/src/command_receipts.rs",
     "provider_event_commands": "crates/rustok-marketplace-listing/src/replay_safe_commands.rs",
     "moderation_event_commands": "crates/rustok-marketplace-listing/src/evented_commands.rs",
     "owner_lifecycle_event_commands": "crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs",
-    "event_storage": "crates/rustok-marketplace-listing/src/listing_events.rs",
-    "distribution_manifest": "crates/rustok-distribution/Cargo.toml",
-    "distribution_registry": "crates/rustok-distribution/src/lib.rs",
-    "server_manifest": "apps/server/Cargo.toml"
+    "event_storage": "crates/rustok-marketplace-listing/src/listing_events.rs"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
@@ -211,63 +227,36 @@
     ],
     "cases": [
       {
-        "operation": "create_listing",
+        "operation": "all_listing_commands",
         "assertions": [
-          "replay_checked_before_provider_reads",
-          "seller_resolved_through_port",
-          "variant_resolved_through_product_port",
-          "seller_and_variant_scope_not_foreign_keyed",
-          "canonical_product_localized_copy_not_persisted",
-          "scope_identity_unique",
-          "seller_sku_unique",
-          "listing_terms_version_one_created_atomically",
-          "created_event_and_receipt_atomic",
           "effective_locale_in_request_identity",
+          "state_or_terms_event_and_receipt_atomic",
+          "command_event_actor_matches_port_actor",
+          "command_event_locale_matches_effective_locale",
           "lost_response_replay_returns_saved_result",
           "conflicting_payload_rejected"
         ]
       },
       {
-        "operation": "update_listing_terms",
+        "operation": "provider_preflight_commands",
         "assertions": [
-          "new_terms_version_inserted",
-          "previous_terms_retained",
-          "listing_returns_to_draft_review",
-          "terms_event_and_receipt_atomic",
-          "effective_locale_in_request_identity"
+          "replay_checked_before_provider_reads",
+          "admission_rechecked_after_provider_reads",
+          "seller_and_product_resolved_through_ports",
+          "provider_reads_outside_owner_transaction"
         ]
       },
       {
-        "operation": "submit_review_moderate_archive",
+        "operation": "legacy_snapshot_cutover",
         "assertions": [
-          "state_event_and_receipt_atomic",
-          "event_actor_matches_port_actor",
-          "effective_locale_in_request_identity",
-          "lost_response_replay_returns_saved_result"
-        ]
-      },
-      {
-        "operation": "publish_listing",
-        "assertions": [
-          "replay_checked_before_seller_read",
-          "seller_must_be_active",
-          "listing_must_be_approved",
-          "pricing_reference_required",
-          "inventory_reference_required",
-          "published_event_and_receipt_atomic",
-          "effective_locale_in_request_identity"
-        ]
-      },
-      {
-        "operation": "reactivate_listing",
-        "assertions": [
-          "replay_checked_before_seller_read",
-          "seller_must_be_active",
-          "listing_must_be_approved",
-          "pricing_reference_required",
-          "inventory_reference_required",
-          "reactivated_event_and_receipt_atomic",
-          "effective_locale_in_request_identity"
+          "non_empty_approval_note_imported_once",
+          "non_empty_suspension_reason_imported_once",
+          "legacy_event_provenance_explicit",
+          "legacy_actor_null",
+          "legacy_locale_null",
+          "source_column_retained_in_metadata",
+          "mutable_snapshot_columns_removed",
+          "migration_is_intentionally_irreversible"
         ]
       },
       {
@@ -277,16 +266,8 @@
           "bounded_limit",
           "newest_first_order",
           "typed_event_kind",
-          "locale_and_actor_returned"
-        ]
-      },
-      {
-        "operation": "list_eligibility",
-        "assertions": [
-          "deterministic_order",
-          "explicit_reason_codes",
-          "seller_status_resolved_through_port",
-          "no_buy_box_ranking"
+          "typed_provenance",
+          "nullable_legacy_attribution_returned"
         ]
       },
       {
@@ -295,10 +276,11 @@
           "listing_base_has_no_product_title_or_description",
           "listing_terms_store_owner_references_not_localized_copy",
           "localized_json_maps_forbidden",
-          "operator_notes_use_immutable_locale_tagged_events"
+          "command_event_locale_exact",
+          "legacy_locale_not_fabricated"
         ]
       }
     ],
-    "known_gap": "compatibility snapshot backfill/drop, outbox publication, compiled migrations, contention/replay, remote-profile, GraphQL/native transport, and FFA evidence are not yet retained"
+    "known_gap": "transactional outbox publication, compiled migrations, contention/replay, remote-profile, GraphQL/native transport, and FFA evidence are not yet retained"
   }
 }
