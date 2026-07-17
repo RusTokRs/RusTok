@@ -1,1 +1,1 @@
-Publish the tenant hardening result after strict whitespace normalization and architecture validation.
+Publish the validated tenant application diff without workflow self-cleanup.
