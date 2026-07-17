@@ -1,5 +1,5 @@
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, Set};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -10,14 +10,14 @@ use crate::command_receipts::{
 use crate::dto::{
     ListMarketplaceListingEventsRequest, MarketplaceListingApprovalStatus,
     MarketplaceListingEventKind, MarketplaceListingEventResponse, MarketplaceListingResponse,
-    MarketplaceListingStatus, MarketplaceListingTermsResponse, ReviewMarketplaceListingInput,
-    SuspendMarketplaceListingInput,
+    MarketplaceListingStatus, ReviewMarketplaceListingInput, SuspendMarketplaceListingInput,
 };
-use crate::entities::{listing, listing_terms};
+use crate::entities::listing;
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
 use crate::listing_events::{
     append_listing_event, list_listing_events, normalize_listing_event_locale,
 };
+use crate::service::{find_listing, load_response_for_model};
 use crate::MarketplaceListingService;
 
 impl MarketplaceListingService {
@@ -26,7 +26,7 @@ impl MarketplaceListingService {
         tenant_id: Uuid,
         request: ListMarketplaceListingEventsRequest,
     ) -> MarketplaceListingResult<Vec<MarketplaceListingEventResponse>> {
-        ensure_listing_exists(self.database(), tenant_id, request.listing_id).await?;
+        find_listing(self.database(), tenant_id, request.listing_id).await?;
         list_listing_events(
             self.database(),
             tenant_id,
@@ -60,8 +60,8 @@ impl MarketplaceListingService {
         let normalized = serde_json::json!({
             "listing_id": input.listing_id,
             "approved": input.approved,
-            "note": note,
-            "locale": locale,
+            "note": note.clone(),
+            "locale": locale.clone(),
         });
         let hash = request_hash("review_listing", actor_id, &normalized)?;
 
@@ -79,7 +79,7 @@ impl MarketplaceListingService {
                 replay(receipt, "review_listing", hash.as_str())
             }
             ListingCommandAdmission::New(receipt) => {
-                let result = review_listing_in_transaction(
+                let result = review_in_transaction(
                     &receipt,
                     tenant_id,
                     actor_id,
@@ -113,8 +113,8 @@ impl MarketplaceListingService {
         let reason = required_text(input.reason, "reason")?;
         let normalized = serde_json::json!({
             "listing_id": input.listing_id,
-            "reason": reason,
-            "locale": locale,
+            "reason": reason.clone(),
+            "locale": locale.clone(),
         });
         let hash = request_hash("suspend_listing", actor_id, &normalized)?;
 
@@ -132,7 +132,7 @@ impl MarketplaceListingService {
                 replay(receipt, "suspend_listing", hash.as_str())
             }
             ListingCommandAdmission::New(receipt) => {
-                let result = suspend_listing_in_transaction(
+                let result = suspend_in_transaction(
                     &receipt,
                     tenant_id,
                     actor_id,
@@ -147,7 +147,7 @@ impl MarketplaceListingService {
     }
 }
 
-async fn review_listing_in_transaction(
+async fn review_in_transaction(
     receipt: &NewListingCommandReceipt,
     tenant_id: Uuid,
     actor_id: Uuid,
@@ -177,10 +177,13 @@ async fn review_listing_in_transaction(
         .as_str()
         .to_string(),
     );
-    active.approval_note = Set(note.clone());
-    active.approved_at = Set(approved.then(|| now.into()));
+    active.approved_at = Set(if approved {
+        Some(now.clone().into())
+    } else {
+        None
+    });
     active.updated_at = Set(now.into());
-    active.update(&receipt.transaction).await?;
+    let model = active.update(&receipt.transaction).await?;
 
     append_listing_event(
         &receipt.transaction,
@@ -190,13 +193,13 @@ async fn review_listing_in_transaction(
         event_kind,
         locale,
         note,
-        serde_json::json!({"compatibility_snapshot": "approval_note"}),
+        serde_json::json!({}),
     )
     .await?;
-    load_listing_response(&receipt.transaction, tenant_id, listing_id).await
+    load_response_for_model(&receipt.transaction, model).await
 }
 
-async fn suspend_listing_in_transaction(
+async fn suspend_in_transaction(
     receipt: &NewListingCommandReceipt,
     tenant_id: Uuid,
     actor_id: Uuid,
@@ -212,12 +215,10 @@ async fn suspend_listing_in_transaction(
         });
     }
 
-    let now = Utc::now();
     let mut active: listing::ActiveModel = current.into();
     active.status = Set(MarketplaceListingStatus::Suspended.as_str().to_string());
-    active.suspension_reason = Set(Some(reason.clone()));
-    active.updated_at = Set(now.into());
-    active.update(&receipt.transaction).await?;
+    active.updated_at = Set(Utc::now().into());
+    let model = active.update(&receipt.transaction).await?;
 
     append_listing_event(
         &receipt.transaction,
@@ -227,10 +228,10 @@ async fn suspend_listing_in_transaction(
         MarketplaceListingEventKind::Suspended,
         locale,
         Some(reason),
-        serde_json::json!({"compatibility_snapshot": "suspension_reason"}),
+        serde_json::json!({}),
     )
     .await?;
-    load_listing_response(&receipt.transaction, tenant_id, listing_id).await
+    load_response_for_model(&receipt.transaction, model).await
 }
 
 async fn finish(
@@ -241,94 +242,6 @@ async fn finish(
         Ok(response) => complete(receipt, &response).await,
         Err(error) => rollback(receipt, error).await,
     }
-}
-
-async fn ensure_listing_exists<C: ConnectionTrait>(
-    connection: &C,
-    tenant_id: Uuid,
-    listing_id: Uuid,
-) -> MarketplaceListingResult<()> {
-    find_listing(connection, tenant_id, listing_id).await.map(|_| ())
-}
-
-async fn find_listing<C: ConnectionTrait>(
-    connection: &C,
-    tenant_id: Uuid,
-    listing_id: Uuid,
-) -> MarketplaceListingResult<listing::Model> {
-    listing::Entity::find_by_id(listing_id)
-        .filter(listing::Column::TenantId.eq(tenant_id))
-        .one(connection)
-        .await?
-        .ok_or(MarketplaceListingError::ListingNotFound(listing_id))
-}
-
-async fn load_listing_response<C: ConnectionTrait>(
-    connection: &C,
-    tenant_id: Uuid,
-    listing_id: Uuid,
-) -> MarketplaceListingResult<MarketplaceListingResponse> {
-    let model = find_listing(connection, tenant_id, listing_id).await?;
-    let terms = listing_terms::Entity::find()
-        .filter(listing_terms::Column::TenantId.eq(tenant_id))
-        .filter(listing_terms::Column::ListingId.eq(listing_id))
-        .filter(listing_terms::Column::Version.eq(model.current_terms_version))
-        .one(connection)
-        .await?
-        .ok_or(MarketplaceListingError::TermsNotFound {
-            listing_id,
-            version: model.current_terms_version,
-        })?;
-    map_listing(model, terms)
-}
-
-fn map_listing(
-    model: listing::Model,
-    terms: listing_terms::Model,
-) -> MarketplaceListingResult<MarketplaceListingResponse> {
-    let status = MarketplaceListingStatus::parse(model.status.as_str()).ok_or_else(|| {
-        MarketplaceListingError::Validation(format!(
-            "unknown marketplace listing status `{}`",
-            model.status
-        ))
-    })?;
-    let approval_status = MarketplaceListingApprovalStatus::parse(model.approval_status.as_str())
-        .ok_or_else(|| {
-            MarketplaceListingError::Validation(format!(
-                "unknown marketplace listing approval status `{}`",
-                model.approval_status
-            ))
-        })?;
-    Ok(MarketplaceListingResponse {
-        id: model.id,
-        tenant_id: model.tenant_id,
-        seller_id: model.seller_id,
-        master_product_id: model.master_product_id,
-        master_variant_id: model.master_variant_id,
-        seller_sku: model.seller_sku,
-        market_slug: model.market_slug,
-        channel_slug: model.channel_slug,
-        status,
-        approval_status,
-        approval_note: model.approval_note,
-        suspension_reason: model.suspension_reason,
-        current_terms_version: model.current_terms_version,
-        current_terms: MarketplaceListingTermsResponse {
-            id: terms.id,
-            listing_id: terms.listing_id,
-            version: terms.version,
-            pricing_reference: terms.pricing_reference,
-            inventory_reference: terms.inventory_reference,
-            fulfillment_profile_slug: terms.fulfillment_profile_slug,
-            metadata: terms.metadata,
-            created_at: terms.created_at,
-        },
-        metadata: model.metadata,
-        published_at: model.published_at,
-        approved_at: model.approved_at,
-        created_at: model.created_at,
-        updated_at: model.updated_at,
-    })
 }
 
 fn parse_tenant_id(context: &rustok_api::PortContext) -> MarketplaceListingResult<Uuid> {
