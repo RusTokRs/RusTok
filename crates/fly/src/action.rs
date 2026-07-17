@@ -701,10 +701,7 @@ fn collect_form_ids(document: &ProjectDocument) -> FormIndex {
         let Some(root) = page.component.as_ref() else {
             continue;
         };
-        root.visit(0, "page.component", &mut |node, _, _| {
-            let Some(component) = node.as_object() else {
-                return;
-            };
+        root.visit(0, "page.component", &mut |component, _, _| {
             let Some(raw) = component.extensions.get(FLY_FORM_FIELD).cloned() else {
                 return;
             };
