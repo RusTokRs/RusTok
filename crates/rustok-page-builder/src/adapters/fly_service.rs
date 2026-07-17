@@ -2,8 +2,10 @@ use super::FlyProjectInspection;
 use crate::runtime_scenario_release::{
     release_gate_error, NoopPageBuilderScenarioBaselineStore, PageBuilderScenarioBaselineStore,
 };
+use crate::runtime_telemetry::{
+    NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeCallEvidence, PageBuilderRuntimeTelemetry,
+};
 use crate::service::{
-    NoopPageBuilderAdapterTelemetry, PageBuilderAdapterCallEvidence, PageBuilderAdapterTelemetry,
     PageBuilderCapabilityService, PageBuilderProjectStore, PageBuilderRenderingAdapter,
     PageBuilderServiceError, PageBuilderServiceResult,
 };
@@ -15,13 +17,13 @@ use fly::{
 use rustok_api::PortContext;
 use serde_json::Value;
 
-/// Fly-backed reference provider that keeps the existing storage/rendering ports while making Fly
+/// Fly-backed current provider that keeps the existing storage/rendering ports while making Fly
 /// authoritative for project decode, structural validation, layers traversal, component lookup,
 /// and optional runtime-scenario release gating.
 pub struct FlyAdapterBackedPageBuilderService<
     S,
     R,
-    T = NoopPageBuilderAdapterTelemetry,
+    T = NoopPageBuilderRuntimeTelemetry,
     B = NoopPageBuilderScenarioBaselineStore,
 > {
     store: S,
@@ -37,7 +39,7 @@ impl<S, R>
     FlyAdapterBackedPageBuilderService<
         S,
         R,
-        NoopPageBuilderAdapterTelemetry,
+        NoopPageBuilderRuntimeTelemetry,
         NoopPageBuilderScenarioBaselineStore,
     >
 {
@@ -45,7 +47,7 @@ impl<S, R>
         Self {
             store,
             renderer,
-            telemetry: NoopPageBuilderAdapterTelemetry,
+            telemetry: NoopPageBuilderRuntimeTelemetry,
             baseline_store: NoopPageBuilderScenarioBaselineStore,
             release_policy: RuntimeScenarioReleasePolicy::disabled(),
             registries: RegistrySet::with_builtins(),
@@ -107,7 +109,7 @@ impl<S, R, T, B> PageBuilderCapabilityService for FlyAdapterBackedPageBuilderSer
 where
     S: PageBuilderProjectStore,
     R: PageBuilderRenderingAdapter,
-    T: PageBuilderAdapterTelemetry,
+    T: PageBuilderRuntimeTelemetry,
     B: PageBuilderScenarioBaselineStore,
 {
     async fn preview(
@@ -116,19 +118,19 @@ where
         input: crate::dto::PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<crate::dto::PreviewPageBuilderResult> {
         self.inspect(&input.project_data)?;
-        let evidence = PageBuilderAdapterCallEvidence::render_preview(context, &input.page_id);
-        self.telemetry.record_adapter_call(&evidence);
+        let evidence = PageBuilderRuntimeCallEvidence::render_preview(context, &input.page_id);
+        self.telemetry.record_runtime_call(&evidence);
         let html = match self
             .renderer
             .render_preview(context, &input.project_data)
             .await
         {
             Ok(html) => {
-                self.telemetry.record_adapter_call(&evidence.succeeded());
+                self.telemetry.record_runtime_call(&evidence.succeeded());
                 html
             }
             Err(error) => {
-                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                self.telemetry.record_runtime_call(&evidence.failed(&error));
                 return Err(error);
             }
         };
@@ -149,15 +151,15 @@ where
                 "page_id must not be empty".to_string(),
             ));
         }
-        let evidence = PageBuilderAdapterCallEvidence::load_project(context, &input.page_id);
-        self.telemetry.record_adapter_call(&evidence);
+        let evidence = PageBuilderRuntimeCallEvidence::load_project(context, &input.page_id);
+        self.telemetry.record_runtime_call(&evidence);
         let project_data = match self.store.load_project(context, &input.page_id).await {
             Ok(project_data) => {
-                self.telemetry.record_adapter_call(&evidence.succeeded());
+                self.telemetry.record_runtime_call(&evidence.succeeded());
                 project_data
             }
             Err(error) => {
-                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                self.telemetry.record_runtime_call(&evidence.failed(&error));
                 return Err(error);
             }
         };
@@ -188,15 +190,15 @@ where
             ));
         }
 
-        let evidence = PageBuilderAdapterCallEvidence::load_project(context, &input.page_id);
-        self.telemetry.record_adapter_call(&evidence);
+        let evidence = PageBuilderRuntimeCallEvidence::load_project(context, &input.page_id);
+        self.telemetry.record_runtime_call(&evidence);
         if let Some(project_data) = match self.store.load_project(context, &input.page_id).await {
             Ok(project_data) => {
-                self.telemetry.record_adapter_call(&evidence.succeeded());
+                self.telemetry.record_runtime_call(&evidence.succeeded());
                 project_data
             }
             Err(error) => {
-                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                self.telemetry.record_runtime_call(&evidence.failed(&error));
                 return Err(error);
             }
         } {
@@ -237,12 +239,12 @@ where
             }
         }
 
-        let evidence = PageBuilderAdapterCallEvidence::save_project(
+        let evidence = PageBuilderRuntimeCallEvidence::save_project(
             context,
             &input.page_id,
             &input.revision_id,
         );
-        self.telemetry.record_adapter_call(&evidence);
+        self.telemetry.record_runtime_call(&evidence);
         match self
             .store
             .save_project(
@@ -253,9 +255,9 @@ where
             )
             .await
         {
-            Ok(()) => self.telemetry.record_adapter_call(&evidence.succeeded()),
+            Ok(()) => self.telemetry.record_runtime_call(&evidence.succeeded()),
             Err(error) => {
-                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                self.telemetry.record_runtime_call(&evidence.failed(&error));
                 return Err(error);
             }
         }
