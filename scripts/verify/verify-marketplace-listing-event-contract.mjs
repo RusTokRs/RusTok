@@ -18,8 +18,12 @@ const files = {
   iggyExports: "crates/rustok-iggy/src/lib.rs",
   tests: "crates/rustok-events/tests/marketplace_listing_contracts.rs",
   registry: "crates/rustok-marketplace-listing/contracts/marketplace-listing-fba-registry.json",
+  ownerService: "crates/rustok-marketplace-listing/src/service.rs",
   ownerReceipts: "crates/rustok-marketplace-listing/src/command_receipts.rs",
   ownerEvents: "crates/rustok-marketplace-listing/src/external_events.rs",
+  ownerEvented: "crates/rustok-marketplace-listing/src/evented_commands.rs",
+  ownerLifecycle: "crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs",
+  ownerReplay: "crates/rustok-marketplace-listing/src/replay_safe_commands.rs",
   ownerTests: "crates/rustok-marketplace-listing/src/command_receipts_tests.rs",
 };
 
@@ -172,6 +176,17 @@ for (const marker of [
   "ConsumedContractEvent",
   "PersistentContractConsumerGroup",
 ]) requireMarker(sources.iggyExports, marker, files.iggyExports);
+
+for (const marker of [
+  "event_bus: TransactionalEventBus",
+  "pub(crate) fn event_bus(&self) -> &TransactionalEventBus",
+]) requireMarker(sources.ownerService, marker, files.ownerService);
+for (const [source, file] of [
+  [sources.ownerEvented, files.ownerEvented],
+  [sources.ownerLifecycle, files.ownerLifecycle],
+  [sources.ownerReplay, files.ownerReplay],
+]) requireMarker(source, "self.event_bus().clone()", file);
+forbidMarker(sources.ownerReceipts, "OutboxTransport::new", files.ownerReceipts);
 
 for (const marker of [
   "event_for_completed_command(command_kind.as_str(), response)",
