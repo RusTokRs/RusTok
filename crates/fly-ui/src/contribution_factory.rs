@@ -112,111 +112,65 @@ pub fn assemble_contribution_registry(
     let mut discovered = BTreeMap::new();
 
     for module in modules {
-        match normalize_module(module) {
-            Ok(module) => {
-                if discovered.contains_key(&module.module_id) {
-                    result.diagnostics.push(diagnostic(
-                        ContributionAssemblySeverity::Error,
-                        "contribution_module_duplicate",
-                        Some(&module.module_id),
-                        None,
-                        format!("module metadata `{}` is duplicated", module.module_id),
-                    ));
-                    result.skipped_contributions = result.skipped_contributions.saturating_add(
-                        surface_contributions(&module, surface).len(),
-                    );
-                    continue;
-                }
-                discovered.insert(module.module_id.clone(), module);
+        let module = match normalize_module(module) {
+            Ok(module) => module,
+            Err(message) => {
+                result.diagnostics.push(diagnostic(
+                    ContributionAssemblySeverity::Error,
+                    "contribution_module_invalid",
+                    None,
+                    None,
+                    message,
+                ));
+                continue;
             }
-            Err(message) => result.diagnostics.push(diagnostic(
+        };
+        if discovered.contains_key(&module.module_id) {
+            result.skipped_contributions = result
+                .skipped_contributions
+                .saturating_add(surface_contributions(&module, surface).len());
+            result.diagnostics.push(diagnostic(
                 ContributionAssemblySeverity::Error,
-                "contribution_module_invalid",
+                "contribution_module_duplicate",
+                Some(&module.module_id),
                 None,
-                None,
-                message,
-            )),
+                format!("module metadata `{}` is duplicated", module.module_id),
+            ));
+            continue;
         }
+        discovered.insert(module.module_id.clone(), module);
     }
 
     let mut selected = BTreeMap::new();
     for (module_id, module) in discovered {
-        if !policy.enabled_modules.is_empty() && !policy.enabled_modules.contains(&module_id) {
-            record_module_filter(
-                &mut result,
-                &module,
-                surface,
-                "contribution_module_tenant_disabled",
-                "module is disabled for the tenant",
-            );
+        if let Some((code, message, severity)) = module_filter(&module, policy) {
+            result.skipped_contributions = result
+                .skipped_contributions
+                .saturating_add(surface_contributions(&module, surface).len());
+            result.diagnostics.push(diagnostic(
+                severity,
+                code,
+                Some(&module.module_id),
+                None,
+                message,
+            ));
             continue;
         }
-        if !policy.enabled_providers.is_empty()
-            && !policy.enabled_providers.contains(&module.provider)
-        {
-            record_module_filter(
-                &mut result,
-                &module,
-                surface,
-                "contribution_provider_policy_disabled",
-                "provider is disabled by policy",
-            );
-            continue;
-        }
-        let missing_permissions = module
-            .required_permissions
-            .difference(&policy.permissions)
-            .cloned()
-            .collect::<Vec<_>>();
-        if !missing_permissions.is_empty() {
-            record_module_filter(
-                &mut result,
-                &module,
-                surface,
-                "contribution_permission_missing",
-                &format!(
-                    "required permissions are missing: {}",
-                    missing_permissions.join(", ")
-                ),
-            );
-            continue;
-        }
-        match policy
+        if policy
             .provider_health
             .get(&module.provider)
-            .copied()
-            .unwrap_or(ContributionProviderHealth::Healthy)
+            .is_some_and(|health| {
+                *health == ContributionProviderHealth::Degraded
+                    && policy.allow_degraded_providers
+            })
         {
-            ContributionProviderHealth::Healthy => {}
-            ContributionProviderHealth::Degraded if policy.allow_degraded_providers => {
-                result.diagnostics.push(diagnostic(
-                    ContributionAssemblySeverity::Warning,
-                    "contribution_provider_degraded",
-                    Some(&module.module_id),
-                    None,
-                    format!("provider `{}` is degraded", module.provider),
-                ));
-            }
-            ContributionProviderHealth::Degraded => {
-                record_module_filter(
-                    &mut result,
-                    &module,
-                    surface,
-                    "contribution_provider_degraded_blocked",
-                    "degraded provider is blocked by policy",
-                );
-                continue;
-            }
-            ContributionProviderHealth::Unavailable => {
-                record_module_filter(
-                    &mut result,
-                    &module,
-                    surface,
-                    "contribution_provider_unavailable",
-                    "provider is unavailable",
-                );
-                continue;
-            }
+            result.diagnostics.push(diagnostic(
+                ContributionAssemblySeverity::Warning,
+                "contribution_provider_degraded",
+                Some(&module.module_id),
+                None,
+                format!("provider `{}` is degraded", module.provider),
+            ));
         }
         selected.insert(module_id, module);
     }
@@ -229,46 +183,14 @@ pub fn assemble_contribution_registry(
             continue;
         };
         for contribution in surface_contributions(module, surface) {
-            if !policy.allowed_contributions.is_empty()
-                && !policy.allowed_contributions.contains(contribution.id.trim())
-            {
+            if let Some((code, message)) = contribution_filter(contribution, policy) {
                 result.skipped_contributions = result.skipped_contributions.saturating_add(1);
                 result.diagnostics.push(diagnostic(
                     ContributionAssemblySeverity::Info,
-                    "contribution_not_allowlisted",
+                    code,
                     Some(&module.module_id),
                     Some(contribution.id.trim()),
-                    "contribution is not allowlisted".to_string(),
-                ));
-                continue;
-            }
-            if policy.denied_contributions.contains(contribution.id.trim()) {
-                result.skipped_contributions = result.skipped_contributions.saturating_add(1);
-                result.diagnostics.push(diagnostic(
-                    ContributionAssemblySeverity::Info,
-                    "contribution_denied",
-                    Some(&module.module_id),
-                    Some(contribution.id.trim()),
-                    "contribution is denied by policy".to_string(),
-                ));
-                continue;
-            }
-            let missing_capabilities = contribution
-                .required_capabilities
-                .difference(&policy.capabilities)
-                .cloned()
-                .collect::<Vec<_>>();
-            if !missing_capabilities.is_empty() {
-                result.skipped_contributions = result.skipped_contributions.saturating_add(1);
-                result.diagnostics.push(diagnostic(
-                    ContributionAssemblySeverity::Info,
-                    "contribution_capability_missing",
-                    Some(&module.module_id),
-                    Some(contribution.id.trim()),
-                    format!(
-                        "required capabilities are missing: {}",
-                        missing_capabilities.join(", ")
-                    ),
+                    message,
                 ));
                 continue;
             }
@@ -312,6 +234,92 @@ pub fn assemble_contribution_registry(
     result
 }
 
+fn module_filter(
+    module: &ModuleContributionMetadata,
+    policy: &ContributionAssemblyPolicy,
+) -> Option<(&'static str, String, ContributionAssemblySeverity)> {
+    if !policy.enabled_modules.is_empty() && !policy.enabled_modules.contains(&module.module_id) {
+        return Some((
+            "contribution_module_tenant_disabled",
+            "module is disabled for the tenant".to_string(),
+            ContributionAssemblySeverity::Info,
+        ));
+    }
+    if !policy.enabled_providers.is_empty()
+        && !policy.enabled_providers.contains(&module.provider)
+    {
+        return Some((
+            "contribution_provider_policy_disabled",
+            "provider is disabled by policy".to_string(),
+            ContributionAssemblySeverity::Info,
+        ));
+    }
+    let missing_permissions = module
+        .required_permissions
+        .difference(&policy.permissions)
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing_permissions.is_empty() {
+        return Some((
+            "contribution_permission_missing",
+            format!(
+                "required permissions are missing: {}",
+                missing_permissions.join(", ")
+            ),
+            ContributionAssemblySeverity::Info,
+        ));
+    }
+    match policy
+        .provider_health
+        .get(&module.provider)
+        .copied()
+        .unwrap_or(ContributionProviderHealth::Healthy)
+    {
+        ContributionProviderHealth::Healthy => None,
+        ContributionProviderHealth::Degraded if policy.allow_degraded_providers => None,
+        ContributionProviderHealth::Degraded => Some((
+            "contribution_provider_degraded_blocked",
+            "degraded provider is blocked by policy".to_string(),
+            ContributionAssemblySeverity::Info,
+        )),
+        ContributionProviderHealth::Unavailable => Some((
+            "contribution_provider_unavailable",
+            "provider is unavailable".to_string(),
+            ContributionAssemblySeverity::Info,
+        )),
+    }
+}
+
+fn contribution_filter(
+    contribution: &ContributionDescriptor,
+    policy: &ContributionAssemblyPolicy,
+) -> Option<(&'static str, String)> {
+    let id = contribution.id.trim();
+    if !policy.allowed_contributions.is_empty() && !policy.allowed_contributions.contains(id) {
+        return Some((
+            "contribution_not_allowlisted",
+            "contribution is not allowlisted".to_string(),
+        ));
+    }
+    if policy.denied_contributions.contains(id) {
+        return Some((
+            "contribution_denied",
+            "contribution is denied by policy".to_string(),
+        ));
+    }
+    let missing = contribution
+        .required_capabilities
+        .difference(&policy.capabilities)
+        .cloned()
+        .collect::<Vec<_>>();
+    (!missing.is_empty()).then(|| {
+        (
+            "contribution_capability_missing",
+            format!("required capabilities are missing: {}", missing.join(", ")),
+        )
+    })
+}
+
 fn normalize_module(
     mut module: ModuleContributionMetadata,
 ) -> Result<ModuleContributionMetadata, String> {
@@ -350,25 +358,6 @@ fn surface_contributions(
     }
 }
 
-fn record_module_filter(
-    result: &mut ContributionAssemblyResult,
-    module: &ModuleContributionMetadata,
-    surface: ContributionSurface,
-    code: &str,
-    message: &str,
-) {
-    result.skipped_contributions = result
-        .skipped_contributions
-        .saturating_add(surface_contributions(module, surface).len());
-    result.diagnostics.push(diagnostic(
-        ContributionAssemblySeverity::Info,
-        code,
-        Some(&module.module_id),
-        None,
-        message.to_string(),
-    ));
-}
-
 fn remove_missing_dependencies(
     selected: &mut BTreeMap<String, ModuleContributionMetadata>,
     surface: ContributionSurface,
@@ -388,7 +377,7 @@ fn remove_missing_dependencies(
             })
             .collect::<Vec<_>>();
         if missing.is_empty() {
-            break;
+            return;
         }
         for (module_id, dependencies) in missing {
             let Some(module) = selected.remove(&module_id) else {
@@ -402,7 +391,10 @@ fn remove_missing_dependencies(
                 "contribution_dependency_missing",
                 Some(&module_id),
                 None,
-                format!("required modules are missing or filtered: {}", dependencies.join(", ")),
+                format!(
+                    "required modules are missing or filtered: {}",
+                    dependencies.join(", ")
+                ),
             ));
         }
     }
@@ -447,11 +439,10 @@ fn dependency_order(
         }
     }
 
-    let cyclic = indegree
-        .into_iter()
-        .filter_map(|(module_id, degree)| (degree > 0).then_some(module_id))
-        .collect::<Vec<_>>();
-    for module_id in cyclic {
+    for (module_id, degree) in indegree {
+        if degree == 0 {
+            continue;
+        }
         if let Some(module) = selected.get(&module_id) {
             result.skipped_contributions = result
                 .skipped_contributions
@@ -473,7 +464,7 @@ fn registration_diagnostic(
     contribution_id: &str,
     error: UiError,
 ) -> ContributionAssemblyDiagnostic {
-    let code = match error {
+    let code = match &error {
         UiError::DuplicateContribution(_) => "contribution_duplicate",
         UiError::DuplicateRenderer(_) => "contribution_renderer_duplicate",
         UiError::DuplicatePropertyEditor(_) => "contribution_property_editor_duplicate",
@@ -614,18 +605,20 @@ mod tests {
             Vec::new(),
         );
         pages.required_permissions.insert("pages.manage".to_string());
-        let policy = ContributionAssemblyPolicy {
-            enabled_modules: BTreeSet::from(["pages".to_string()]),
-            enabled_providers: BTreeSet::from(["rustok.pages".to_string()]),
-            capabilities: BTreeSet::from(["pages.read".to_string()]),
-            permissions: BTreeSet::from(["pages.manage".to_string()]),
-            provider_health: BTreeMap::from([(
-                "rustok.pages".to_string(),
-                ContributionProviderHealth::Healthy,
-            )]),
-            ..ContributionAssemblyPolicy::default()
-        };
-        let result = build_admin_contribution_registry([pages], &policy);
+        let result = build_admin_contribution_registry(
+            [pages],
+            &ContributionAssemblyPolicy {
+                enabled_modules: BTreeSet::from(["pages".to_string()]),
+                enabled_providers: BTreeSet::from(["rustok.pages".to_string()]),
+                capabilities: BTreeSet::from(["pages.read".to_string()]),
+                permissions: BTreeSet::from(["pages.manage".to_string()]),
+                provider_health: BTreeMap::from([(
+                    "rustok.pages".to_string(),
+                    ContributionProviderHealth::Healthy,
+                )]),
+                ..ContributionAssemblyPolicy::default()
+            },
+        );
         assert!(result.is_valid());
         assert_eq!(result.registered_contributions, 1);
 
@@ -741,6 +734,7 @@ mod tests {
             &ContributionAssemblyPolicy::default(),
         );
         assert!(result.is_valid());
+        assert_eq!(result.registered_contributions, 2);
         assert_eq!(
             result.registry.iter().map(|(id, _)| id).collect::<Vec<_>>(),
             vec!["blog.admin", "media.admin"]
