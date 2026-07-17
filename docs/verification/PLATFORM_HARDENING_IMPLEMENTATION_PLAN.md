@@ -11,32 +11,35 @@ status: active
 
 This document is the execution plan for moving RusToK from an ambitious development platform to a reproducible, production-ready platform with explicit security, tenancy, compatibility, release and scale contracts.
 
-The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5f1b443d7fc0fa1dae8ee9b09a29d2edfb67`. The progress ledger was refreshed on 2026-07-17 after the first implementation batches through commit `4d9cbb0300ddcda40231109a0ca87a9323973a66`.
+The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5f1b443d7fc0fa1dae8ee9b09a29d2edfb67`. The progress ledger was refreshed on 2026-07-17 after the security and tenant hardening batches through commit `5cbab58823b8cf1edb3698b7b549ddaa5645cc90`.
 
 ## Current Revalidation Summary
 
 ### Confirmed open high-risk findings
 
-1. The UI Content Security Policy still permits `unsafe-inline` and `unsafe-eval`; nonce/hash migration remains required.
-2. `resolve_identifier` still has a request-time catch-all arm that selects the default tenant. Normal executable startup now rejects unknown modes, but the middleware must also fail closed as defense in depth.
-3. Default-tenant fallback remains available in non-production header mode and does not yet emit dedicated usage metrics.
-4. The legacy tenant resolver `current_unix_ms()` still hides pre-epoch system clock anomalies through `unwrap_or_default()`; the durable tenant cache generation path has already been corrected separately.
-5. Browser E2E now runs in a dedicated workflow, but repository branch protection has not yet been verified to require that workflow.
-6. Legacy advisory exceptions remain in `.cargo/audit.toml` and are not yet governed by the repository exception register.
-7. Production JWT algorithm, issuer, audience, rotation and secret-quality requirements still need a bootstrap policy gate.
+1. The enforced UI Content Security Policy still permits `unsafe-inline` and `unsafe-eval`; a strict report-only policy now exposes violations, but nonce/hash migration and enforcement remain required.
+2. Negative tenant-isolation integration coverage is still incomplete across REST, GraphQL, WebSocket and storefront paths.
+3. Browser E2E runs in a dedicated workflow, but repository branch protection has not yet been verified to require that workflow.
+4. Five dependency waivers are now registered and time-bounded, but their exact reverse dependency paths and reachability evidence must be captured before the 2026-07-24 expiry.
+5. Production JWT bootstrap policy now validates algorithm-specific key material, issuer, audience and HS256 secret quality; operational key rotation and emergency revocation remain separate production-readiness work.
+6. The private legacy resolver still contains an `unwrap_or_default()` timestamp helper. Public tenant-bound requests and durable generation publication now fail closed on a pre-epoch clock, but the private helper should be removed during resolver decomposition.
 
 ### Findings closed or materially reduced
 
-1. Plaintext `http:` was removed from the UI CSP `connect-src`, and object/plugin content is blocked.
-2. Unknown tenant resolution modes now fail executable bootstrap instead of silently starting with an unsafe configuration.
-3. `DefaultTenant` fallback is forbidden in production and rejected outside header mode.
-4. Subdomain tenant resolution now requires at least one configured base domain at bootstrap.
-5. Production startup now requires an explicit HTTPS deployment declaration, and HSTS flag parsing is normalized.
-6. The `/v1/catalog*` bypass was reviewed and documented as a global read-only registry boundary; `/v2/catalog/*` mutation routes remain tenant-bound.
-7. `modules.toml.example` and `docs/modules/overview.md` were synchronized with `modules.toml`, and an automated drift gate now protects them.
-8. The stale `quick-xml` advisory waivers were removed after confirming that the package is absent from the resolved `Cargo.lock` graph.
-9. A dedicated browser Playwright matrix now runs smoke tests for `next-admin` and `next-frontend`.
-10. Durable tenant cache generation publication now aborts and logs an error rather than emitting timestamp zero on a pre-epoch clock anomaly.
+1. Plaintext `http:` was removed from the enforced UI CSP `connect-src`, and object/plugin content is blocked.
+2. A strict CSP report-only policy contains no `unsafe-inline`, `unsafe-eval`, plaintext HTTP or plaintext WebSocket source.
+3. Unknown tenant resolution modes now fail executable bootstrap and the public request-time tenant boundary.
+4. `DefaultTenant` fallback is forbidden in production, rejected outside header mode and emits telemetry plus a warning whenever it is used on a tenant-bound development request.
+5. Operator routes and the global read-only registry catalog are excluded from fallback telemetry and tenant clock checks.
+6. Subdomain tenant resolution requires at least one configured base domain at bootstrap.
+7. Production startup requires an explicit HTTPS deployment declaration, and HSTS flag parsing is normalized.
+8. The `/v1/catalog*` bypass was reviewed and documented as a global read-only registry boundary; `/v2/catalog/*` mutation routes remain tenant-bound.
+9. `modules.toml.example` and `docs/modules/overview.md` were synchronized with `modules.toml`, and an automated drift gate now protects them.
+10. The stale `quick-xml` advisory waivers were removed after confirming that the package is absent from the resolved `Cargo.lock` graph.
+11. Both `deny.toml` and `.cargo/audit.toml` ignores are governed by the same expiry-enforcing exception register.
+12. A dedicated browser Playwright matrix runs smoke tests for `next-admin` and `next-frontend`.
+13. Durable tenant cache generation publication aborts and logs an error rather than emitting timestamp zero on a pre-epoch clock anomaly.
+14. Production JWT claims cannot use framework defaults; HS256 requires at least 64 bytes and rejects common placeholder or low-diversity secrets.
 
 ## Execution Rules
 
@@ -163,20 +166,20 @@ The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5
 
 ## Top 20 Ordered Backlog
 
-1. Complete `HARD-104` by removing the request-time default-tenant catch-all from the legacy resolver.
-2. Complete `HARD-105` with fallback usage metrics and an explicit development/single-tenant profile contract.
-3. `HARD-101` Enforce nonce/hash-based CSP and remove `unsafe-eval`.
-4. `HARD-107` Required negative tenant-isolation integration tests.
-5. Complete `HARD-109` in the legacy tenant resolver and cache expiration paths.
-6. Complete `HARD-004` by migrating legacy `.cargo/audit.toml` waivers into the exception register or removing them.
-7. `HARD-110` Production JWT bootstrap validation.
-8. Make `HARD-201` a required branch-protection check.
-9. `HARD-204` API compatibility diff gates.
-10. `HARD-205` Migration upgrade and rollback verification.
-11. `HARD-206` Signed SemVer release workflow and artifacts.
-12. `HARD-005` Protected main branch and merge policy.
-13. `HARD-006` Benchmark claim evidence cleanup.
-14. `HARD-202` Leptos admin/storefront browser smoke coverage.
+1. `HARD-107` Add required negative tenant-isolation integration tests.
+2. Complete `HARD-101` with nonce/hash CSP and remove `unsafe-eval` from enforcement.
+3. Complete `HARD-102` with violation collection, telemetry and an allowlist inventory.
+4. Capture exact dependency paths and reachability evidence before advisory exceptions expire on 2026-07-24.
+5. Complete `HARD-109` by removing the private legacy timestamp fallback and adding clock-skew cache tests.
+6. Complete `HARD-105` with an explicitly named development/single-tenant profile contract.
+7. Make `HARD-201` a required branch-protection check.
+8. `HARD-204` API compatibility diff gates.
+9. `HARD-205` Migration upgrade and rollback verification.
+10. `HARD-206` Signed SemVer release workflow and artifacts.
+11. `HARD-005` Protected main branch and merge policy.
+12. `HARD-006` Benchmark claim evidence cleanup.
+13. `HARD-202` Leptos admin/storefront browser smoke coverage.
+14. `HARD-305` JWT/key rotation and emergency revocation runbooks.
 15. `HARD-301` SLI/SLO definitions and dashboards.
 16. `HARD-302` Worker backpressure and cancellation policy.
 17. `HARD-307` Per-tenant resource quotas.
@@ -195,6 +198,10 @@ cargo test -p rustok-server middleware::security_headers
 cargo test -p rustok-server middleware::tenant
 node scripts/verify/verify-module-manifest-docs-drift.mjs
 node scripts/verify/verify-advisory-exceptions.mjs
+cargo tree -i rsa --workspace --all-features
+cargo tree -i atomic-polyfill --workspace --all-features
+cargo tree -i rustls-webpki --workspace --all-features
+cargo audit
 cargo xtask validate-manifest
 cargo xtask module validate
 cargo clippy --workspace --all-targets --no-deps -- -D warnings
@@ -217,12 +224,14 @@ npm --prefix apps/next-frontend run test:e2e
 | `HARD-001` Synchronize manifest documentation | Completed | `f31dc37`, `9303c59` |
 | `HARD-002` Automated manifest/docs drift verification | Completed | `f7c1fbe`, `8d6f1fb`, `b579617` |
 | `HARD-003` Implementation plan and ledger | Completed | `5eb0687`, this update |
-| `HARD-004` Advisory exception governance | In progress | Register and expiry gate added; quick-xml entries closed; legacy cargo-audit waivers remain |
-| `HARD-101` CSP hardening | In progress | Plaintext HTTP and object content blocked; nonce/hash migration remains |
+| `HARD-004` Advisory exception governance | Implemented; evidence remediation pending | Unified register `6b7b6cb`, gate `f9ac9ae`, time-bounded policy `b7d2e51` |
+| `HARD-101` CSP enforcement hardening | In progress | Safe directives `34a508a`; strict report-only target `5cbab58`; nonce/hash enforcement remains |
+| `HARD-102` CSP report-only and telemetry | In progress | Strict report-only policy `5cbab58`; collection/telemetry and allowlist inventory remain |
 | `HARD-103` Production HSTS contract | Completed | `822430e`, `3a9f936` |
-| `HARD-104` Tenant resolution fail-closed | In progress | Bootstrap validation completed in `47c8003`; request-time catch-all remains |
-| `HARD-105` Default-tenant fallback restriction | In progress | Production and non-header use rejected in `47c8003`; metrics/profile contract remain |
-| `HARD-106` Global catalog isolation review | Completed | Boundary test `f1ae6e1`; accepted decision `4d9cbb0` |
-| `HARD-109` Clock anomaly handling | In progress | Durable generation path fixed in `07ed2ab`; legacy resolver remains |
+| `HARD-104` Tenant resolution fail-closed | Completed at public boundaries | Bootstrap `47c8003`; request-time boundary `ce315be`; legacy private cleanup remains |
+| `HARD-105` Default-tenant fallback restriction | In progress | Production restriction `47c8003`; usage telemetry `ce315be`; named profile contract remains |
+| `HARD-106` Global catalog isolation review | Completed | Boundary test `f1ae6e1`; accepted decision `4d9cbb0`; wrapper parity `8965919` |
+| `HARD-109` Clock anomaly handling | Materially mitigated | Durable generation `07ed2ab`; tenant request guard `8965919`; private helper cleanup and skew tests remain |
+| `HARD-110` Production JWT bootstrap policy | Implemented; rotation remains operational work | Bootstrap policy `ec5111b`; production example `c6cb4a3` |
 | `HARD-201` Browser E2E CI | Implemented, not yet required | Workflow `8982982`; branch-protection requirement unverified |
 | Quick-xml advisory debt | Closed | Waivers removed and register entries closed in `0b4d003`, `b988167`, `a6682fc` |
