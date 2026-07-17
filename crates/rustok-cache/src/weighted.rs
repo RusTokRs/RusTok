@@ -46,6 +46,7 @@ impl CacheService {
             .raw_weighted_backend(prefix, ttl, max_weight_bytes, &options)
             .await;
         let backend = self.wrap_generation_aware_backend(prefix, backend).await;
+        let backend = self.wrap_generation_recovery_health(prefix, backend);
         if options.metrics_enabled {
             Arc::new(InstrumentedWeightedCacheBackend::new(prefix, backend))
         } else {
