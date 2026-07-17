@@ -90,8 +90,8 @@ The machine-readable register is `docs/security/csp-inline-style-attribute-excep
 | Source | Sites | Reviewed constraint | Exit path |
 |---|---:|---|---|
 | `apps/admin/src/features/modules/components/modules_list.rs` | 1 | Percent width is formatted from typed `BuildJob.progress: i32`, never from a CSS string | Move to a CSP-compatible progress component contract |
-| `crates/rustok-forum/admin/src/ui/leptos.rs` | 1 | Persisted color is normalized at the JSON boundary to strict hex tokens | Replace arbitrary accents with a finite palette or non-inline theming contract |
-| `crates/rustok-forum/storefront/src/ui/leptos.rs` | 1 | Both JSON deserialization and direct helper calls reject non-hex CSS values and declaration separators | Replace arbitrary accents with a finite palette or non-inline theming contract |
+| `crates/rustok-forum/admin/src/ui/leptos.rs` | 1 | The entity hook rejects invalid colors before persistence, and the admin JSON boundary normalizes valid hex tokens again | Replace arbitrary accents with a finite palette or non-inline theming contract |
+| `crates/rustok-forum/storefront/src/ui/leptos.rs` | 1 | Persistence validation, JSON deserialization and direct helper calls all reject non-hex CSS values and declaration separators | Replace arbitrary accents with a finite palette or non-inline theming contract |
 | `crates/rustok-page-builder/admin/src/editor/admin_canvas.rs` | 6 | Legacy layout, indentation, iframe and overlay geometry; generated from typed host state | Retire the legacy canvas or move geometry to a reviewed DOM/custom-property adapter |
 | `crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs` | 3 | Typed viewport dimensions, scale and overlay geometry | Move geometry to a reviewed DOM/custom-property adapter |
 | `crates/rustok-page-builder/admin/src/editor/palette_layers.rs` | 1 | Numeric indentation derived from typed layer depth | Replace with a finite indentation class scale |
@@ -99,7 +99,7 @@ The machine-readable register is `docs/security/csp-inline-style-attribute-excep
 
 The static modular Page Builder three-column layout has already moved from an inline attribute to a Tailwind arbitrary grid class and is not registered as an exception.
 
-Forum category accents previously accepted an arbitrary persisted CSS fragment. `rustok-ui-core::normalize_css_hex_color` now accepts only `#RGB`, `#RGBA`, `#RRGGBB` and `#RRGGBBAA`; invalid values fall back to the reviewed default gradient instead of being concatenated into a declaration.
+Forum category accents previously accepted an arbitrary persisted CSS fragment. The SeaORM `before_save` hook now rejects any non-hex category color before insert or update. `rustok-ui-core::normalize_css_hex_color` and both Rust UI transport models independently retain the same strict `#RGB`, `#RGBA`, `#RRGGBB` or `#RRGGBBAA` grammar. The storefront helper performs a final check for direct internal calls and falls back to the reviewed default gradient instead of concatenating an invalid value into `background`.
 
 ## Triage Rules
 
@@ -131,6 +131,7 @@ The enforced policy may be promoted to the strict target only when:
 
 ```bash
 cargo test -p rustok-ui-core
+cargo test -p rustok-forum
 cargo test -p rustok-forum-admin
 cargo test -p rustok-forum-storefront
 cargo test -p rustok-admin --features ssr app::security
