@@ -16,22 +16,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.93.1
+        with:
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: agent-page-builder-admin-diagnostics
-      - name: Capture Page Builder admin tests
+      - name: Capture formatter and Page Builder admin tests
         shell: bash
         run: |
           mkdir -p /tmp/page-builder-admin
           set +e
+          cargo fmt --all -- --check > /tmp/page-builder-admin/fmt.log 2>&1
+          echo $? > /tmp/page-builder-admin/fmt.status
           cargo test -p rustok-page-builder-admin --lib -- --nocapture \
             > /tmp/page-builder-admin/test.log 2>&1
-          status=$?
-          echo "$status" > /tmp/page-builder-admin/test.status
+          echo $? > /tmp/page-builder-admin/test.status
           exit 0
       - uses: actions/upload-artifact@v7
         with:
           name: agent-page-builder-admin-diagnostics
           path: /tmp/page-builder-admin
-      - name: Fail on test error
-        run: exit "$(cat /tmp/page-builder-admin/test.status)"
+      - name: Fail on diagnostics
+        shell: bash
+        run: |
+          test "$(cat /tmp/page-builder-admin/fmt.status)" = 0
+          test "$(cat /tmp/page-builder-admin/test.status)" = 0
