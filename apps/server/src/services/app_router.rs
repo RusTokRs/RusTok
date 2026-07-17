@@ -77,7 +77,7 @@ fn admin_asset_response(
     let response_bytes = if is_document {
         if let Some(nonce) = csp_nonce {
             match std::str::from_utf8(raw_bytes.as_slice()) {
-                Ok(html) => nonce_trusted_admin_scripts(html, nonce).into_bytes(),
+                Ok(html) => nonce_trusted_admin_elements(html, nonce).into_bytes(),
                 Err(error) => {
                     tracing::error!(%error, path, "Embedded admin document is not valid UTF-8");
                     return (
@@ -121,14 +121,14 @@ fn admin_asset_response(
 }
 
 #[cfg(feature = "embed-admin-assets")]
-fn nonce_trusted_admin_scripts(html: &str, csp_nonce: &CspNonce) -> String {
+fn nonce_trusted_admin_elements(html: &str, csp_nonce: &CspNonce) -> String {
     // This transformation is intentionally limited to the immutable bundled index document. It
     // must never be applied to tenant or user-authored HTML because that would authorize injected
-    // script elements.
-    html.replace(
-        "<script",
-        format!(r#"<script nonce="{}""#, csp_nonce.as_str()).as_str(),
-    )
+    // script or style elements.
+    let script_opening = format!(r#"<script nonce="{}""#, csp_nonce.as_str());
+    let style_opening = format!(r#"<style nonce="{}""#, csp_nonce.as_str());
+    html.replace("<script", script_opening.as_str())
+        .replace("<style", style_opening.as_str())
 }
 
 #[cfg(not(feature = "embed-admin"))]
@@ -349,7 +349,7 @@ mod tests {
     #[cfg(not(feature = "embed-admin"))]
     use super::build_admin_router;
     #[cfg(feature = "embed-admin-assets")]
-    use super::nonce_trusted_admin_scripts;
+    use super::nonce_trusted_admin_elements;
     #[cfg(feature = "embed-admin-assets")]
     use rustok_web::CspNonce;
 
@@ -444,16 +444,16 @@ mod tests {
 
     #[cfg(feature = "embed-admin-assets")]
     #[test]
-    fn trusted_admin_asset_scripts_receive_csp_nonce() {
+    fn trusted_admin_asset_scripts_and_styles_receive_csp_nonce() {
         let nonce = CspNonce::generate();
-        let html = r#"<script src="/pkg/app.js"></script><script>bootstrap()</script>"#;
+        let html = r#"<style>.app{display:block}</style><script src="/pkg/app.js"></script><script>bootstrap()</script>"#;
 
-        let rendered = nonce_trusted_admin_scripts(html, &nonce);
+        let rendered = nonce_trusted_admin_elements(html, &nonce);
 
         assert_eq!(
             rendered,
             format!(
-                r#"<script nonce="{0}" src="/pkg/app.js"></script><script nonce="{0}">bootstrap()</script>"#,
+                r#"<style nonce="{0}">.app{{display:block}}</style><script nonce="{0}" src="/pkg/app.js"></script><script nonce="{0}">bootstrap()</script>"#,
                 nonce.as_str()
             )
         );
