@@ -22,7 +22,7 @@ jobs:
       - name: Load staged cleanup scripts
         shell: bash
         run: |
-          git fetch origin chore/page-builder-cleanup-stage
+          git fetch origin chore/page-builder-cleanup-stage:refs/remotes/origin/chore/page-builder-cleanup-stage
           mkdir -p scripts/migrations
           for script in cleanup_page_builder_current cleanup_page_builder_contributions cleanup_page_builder_compile_fixes cleanup_page_builder_test_fixtures; do
             git show "origin/chore/page-builder-cleanup-stage:scripts/migrations/${script}.py" > "scripts/migrations/${script}.py"
