@@ -221,6 +221,13 @@
       "localizedMetadataFallbackLabel": "Metadata fallback locale",
       "localizedMetadataSave": "Save localized metadata"
     },
+    "ssrAssets": {
+      "title": "SSR assets",
+      "description": "Create, remove, and assign project assets through the revision-protected SSR intent endpoint.",
+      "empty": "No project assets are defined.",
+      "name": "Asset name",
+      "sourceAttribute": "Component source attribute"
+    },
     "actionsForms": {
       "title": "Actions, forms, and fields",
       "empty": "Select a component to configure an action, form, or native form field.",
