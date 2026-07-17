@@ -1,3 +1,4 @@
+# Second push activates this workflow after it exists in the parent revision.
 name: One-off Inline Style Migration
 
 on:
