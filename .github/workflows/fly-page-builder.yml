@@ -53,6 +53,9 @@ jobs:
       - name: Run Fly unit tests
         run: cargo test -p fly --lib
 
+      - name: Run Fly browser contract tests
+        run: cargo test -p fly-browser --lib
+
       - name: Run Page Builder admin unit tests
         run: cargo test -p rustok-page-builder-admin --lib
 
@@ -61,6 +64,9 @@ jobs:
 
       - name: Lint Fly
         run: cargo clippy -p fly --lib -- -D warnings
+
+      - name: Lint Fly browser and Page Builder admin
+        run: cargo clippy -p fly-browser -p rustok-page-builder-admin --lib -- -D warnings
 
       - name: Verify landing readiness wiring
         run: node scripts/verify/verify-fly-landing-readiness.mjs
