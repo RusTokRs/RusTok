@@ -14,6 +14,7 @@ use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
 };
+use fly_ui::ContributionAssemblyResult;
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
@@ -26,6 +27,7 @@ pub fn AdminCanvas(
     controller: AdminCanvasController,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     trait_schemas: Option<Arc<TraitSchemaRegistry>>,
+    contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
     runtime_context: Option<Value>,
     runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
@@ -132,7 +134,10 @@ pub fn AdminCanvas(
             >
                 <div class="space-y-3 overflow-auto">
                     <PageManagerPanel runtime=page_runtime />
-                    <PaletteLayersPanel runtime=palette_runtime />
+                    <PaletteLayersPanel
+                        runtime=palette_runtime
+                        contribution_assembly
+                    />
                 </div>
                 <IsolatedAuthoringCanvas runtime=canvas_runtime />
                 <div class="space-y-3 overflow-auto">
