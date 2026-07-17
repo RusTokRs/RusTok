@@ -27,7 +27,7 @@ impl PageBuilderContractMetadata {
         contract: FLY_LANDING_DOCUMENT_V1,
         builder_contract_version: "1.1",
         consumer_min_version: "1.0",
-        capabilities: &["preview", "tree", "properties", "publish", "static_export"],
+        capabilities: &["preview", "tree", "properties", "publish"],
     };
 
     pub fn supports_document_contract(contract: &str) -> bool {
