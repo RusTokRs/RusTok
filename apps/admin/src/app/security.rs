@@ -9,7 +9,7 @@ use rustok_web::CspNonce;
 
 const API_CSP: &str =
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
-const ADMIN_UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+const ADMIN_UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 const SECURE_CONNECT_SOURCES: &str = "'self' https: wss:";
 const DEVELOPMENT_CONNECT_SOURCES: &str = "'self' https: ws: wss:";
 const HSTS: &str = "max-age=31536000; includeSubDomains";
@@ -59,7 +59,7 @@ pub async fn admin_security_headers(mut request: Request, next: Next) -> Respons
 
 /// Copies the nonce installed by [`admin_security_headers`] from Axum request parts into the
 /// Leptos render context. Missing state remains `None`; the enforced policy then allows no inline
-/// script because it never falls back to `unsafe-inline`.
+/// script or style element because it never falls back to a blanket `unsafe-inline` source.
 pub fn request_csp_nonce() -> Option<CspNonce> {
     use_context::<Parts>().and_then(|parts| parts.extensions.get::<CspNonce>().cloned())
 }
@@ -161,6 +161,7 @@ mod tests {
         let production = select_csp("/dashboard", Some(&nonce), false);
         let development = select_csp("/dashboard", Some(&nonce), true);
         let script = directive(production.as_str(), "script-src").expect("script-src");
+        let style = directive(production.as_str(), "style-src").expect("style-src");
         let production_connect =
             directive(production.as_str(), "connect-src").expect("connect-src");
         let development_connect =
@@ -169,7 +170,10 @@ mod tests {
         assert!(script.contains(nonce.source_expression().as_str()));
         assert!(!script.contains("'unsafe-inline'"));
         assert!(!script.contains("'unsafe-eval'"));
+        assert!(style.contains(nonce.source_expression().as_str()));
+        assert!(!style.contains("'unsafe-inline'"));
         assert!(production.contains("script-src-attr 'none'"));
+        assert!(production.contains("style-src-attr 'unsafe-inline'"));
         assert!(!production_connect.contains(" ws:"));
         assert!(production_connect.contains(" wss:"));
         assert!(development_connect.contains(" ws:"));
