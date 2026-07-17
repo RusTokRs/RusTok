@@ -85,7 +85,8 @@ jobs:
           if violations:
               raise SystemExit('forbidden Page Builder version/legacy markers remain:\n' + '\n'.join(violations))
           PY
-            git diff --check
+            scan_status=$?
+            test "$scan_status" -eq 0 && git diff --check
           } > /tmp/page-builder-cleanup.log 2>&1
           status=$?
           cat /tmp/page-builder-cleanup.log
