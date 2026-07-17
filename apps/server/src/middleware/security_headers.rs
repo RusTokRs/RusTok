@@ -25,7 +25,8 @@ const API_CSP: &str =
 const UI_CSP: &str = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: ws: wss:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 /// HSTS: 1 year, include subdomains.
-/// Only injected when `RUSTOK_HTTPS=true` env var is set to avoid breaking local dev.
+/// Injected when `RUSTOK_HTTPS` explicitly declares an HTTPS deployment. The
+/// executable host rejects production startup without the same declaration.
 const HSTS: &str = "max-age=31536000; includeSubDomains";
 
 pub async fn security_headers(request: Request, next: Next) -> Response {
@@ -66,12 +67,25 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
         ),
     );
 
-    // Strict-Transport-Security — only in production (HTTPS)
-    if std::env::var("RUSTOK_HTTPS").as_deref() == Ok("true") {
+    // Strict-Transport-Security — only for an explicitly declared HTTPS deployment.
+    if hsts_enabled() {
         headers.insert("strict-transport-security", HeaderValue::from_static(HSTS));
     }
 
     response
+}
+
+pub(crate) fn hsts_enabled() -> bool {
+    std::env::var("RUSTOK_HTTPS")
+        .map(|value| parse_env_flag(&value))
+        .unwrap_or(false)
+}
+
+fn parse_env_flag(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 fn select_csp(path: &str) -> &'static str {
@@ -90,7 +104,7 @@ fn select_csp(path: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{select_csp, API_CSP, UI_CSP};
+    use super::{parse_env_flag, select_csp, API_CSP, UI_CSP};
 
     #[test]
     fn api_and_operator_paths_use_strict_csp() {
@@ -112,5 +126,15 @@ mod tests {
         assert!(!UI_CSP.contains(" http:"));
         assert!(UI_CSP.contains("object-src 'none'"));
         assert!(UI_CSP.contains("form-action 'self'"));
+    }
+
+    #[test]
+    fn https_flag_accepts_explicit_boolean_forms() {
+        for value in ["true", "TRUE", "1", "yes", "on", " on "] {
+            assert!(parse_env_flag(value), "expected {value:?} to enable HSTS");
+        }
+        for value in ["", "false", "0", "no", "off", "https"] {
+            assert!(!parse_env_flag(value), "expected {value:?} to disable HSTS");
+        }
     }
 }
