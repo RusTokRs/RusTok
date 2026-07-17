@@ -211,8 +211,10 @@ for (const forbidden of [
 }
 requireMarkers('runtimePipeline', [
   'locale_resolution_runs_before_computed_values_and_bindings',
-  'runtime_bound_navigation_conflict_is_reported_after_bindings',
-  'runtime_bound_action_is_materialized_after_bindings',
+  'internal_page_links_materialize_after_bindings_and_repeaters',
+  'actions_and_forms_materialize_in_the_canonical_runtime_pipeline',
+  'runtime_binding_can_supply_action_before_native_materialization',
+  'runtime_bound_navigation_conflict_is_validated_before_materialization',
 ], 'runtime pipeline regression coverage');
 
 requireMarkers('pagesCargo', [
