@@ -164,7 +164,7 @@ async fn main() {
             Some(denial) => json!({
                 "error": error.to_string(),
                 "status": status.as_u16(),
-                "code": "FLY_CAPABILITY_DENIED",
+                "code": rustok_page_builder_admin::BROWSER_CAPABILITY_DENIAL_CODE,
                 "intent": denial.intent.as_str(),
                 "capability": denial.capability.as_str(),
             }),
