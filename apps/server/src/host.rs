@@ -472,7 +472,7 @@ mod tests {
 
     #[test]
     fn production_accepts_explicit_strong_hs256_policy() {
-        let config = crate::auth::AuthConfig::new("aB3!zY7@".repeat(10))
+        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
             .with_issuer("https://api.example.com")
             .with_audience("rustok-production-admin");
         validate_auth_deployment(&config, true)
