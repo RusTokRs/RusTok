@@ -3,10 +3,18 @@ fn marketplace_listing_external_events_use_a_sealed_typed_contract() {
     let contract = include_str!("../../../crates/rustok-events/src/contract.rs");
     let listing = include_str!("../../../crates/rustok-events/src/marketplace_listing.rs");
     let outbox = include_str!("../../../crates/rustok-outbox/src/transactional.rs");
+    let owner_service =
+        include_str!("../../../crates/rustok-marketplace-listing/src/service.rs");
     let owner_receipts =
         include_str!("../../../crates/rustok-marketplace-listing/src/command_receipts.rs");
     let owner_events =
         include_str!("../../../crates/rustok-marketplace-listing/src/external_events.rs");
+    let owner_evented =
+        include_str!("../../../crates/rustok-marketplace-listing/src/evented_commands.rs");
+    let owner_lifecycle =
+        include_str!("../../../crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs");
+    let owner_replay =
+        include_str!("../../../crates/rustok-marketplace-listing/src/replay_safe_commands.rs");
     let owner_tests =
         include_str!("../../../crates/rustok-marketplace-listing/src/command_receipts_tests.rs");
 
@@ -68,6 +76,27 @@ fn marketplace_listing_external_events_use_a_sealed_typed_contract() {
     assert!(outbox.contains("publish_contract_in_tx"));
     assert!(outbox.contains("E: EventContract"));
     assert!(outbox.contains("write_contract_to_outbox"));
+
+    for marker in [
+        "event_bus: TransactionalEventBus",
+        "event_bus: TransactionalEventBus,",
+        "pub(crate) fn event_bus(&self) -> &TransactionalEventBus",
+    ] {
+        assert!(
+            owner_service.contains(marker),
+            "listing owner service is missing injected event bus marker {marker}"
+        );
+    }
+    assert!(
+        !owner_receipts.contains("OutboxTransport::new"),
+        "receipt executor must not construct the owner event transport"
+    );
+    for source in [owner_evented, owner_lifecycle, owner_replay] {
+        assert!(
+            source.contains("self.event_bus().clone()"),
+            "listing command path does not pass the injected event bus to admission"
+        );
+    }
 
     for marker in [
         "event_for_completed_command(command_kind.as_str(), response)",
