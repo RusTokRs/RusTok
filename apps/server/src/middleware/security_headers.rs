@@ -22,17 +22,17 @@ const API_CSP: &str =
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 /// UI-compatible enforced CSP for embedded admin/storefront shells.
 ///
-/// Trusted inline scripts receive one per-response nonce. Inline event handlers and all dynamic
-/// string compilation are prohibited. Inline styles remain temporary migration debt until the
-/// SSR and component style paths are nonce/hash compatible.
-const UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+/// Trusted inline scripts and style elements receive one per-response nonce. Inline event handlers
+/// and all dynamic string compilation are prohibited. Inline style attributes remain temporary
+/// migration debt until component-level style usage is moved to classes or hashes.
+const UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 const SECURE_UI_CONNECT_SOURCES: &str = "'self' https: wss:";
 const DEVELOPMENT_UI_CONNECT_SOURCES: &str = "'self' https: ws: wss:";
 
-/// Target UI policy used during style migration. It carries the same trusted script nonce as the
-/// enforced policy, omits inline style allowances and plaintext connection schemes, and remains
-/// report-only until the style inventory is clean.
-const UI_CSP_REPORT_ONLY_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/security/csp-report; report-to rustok-csp";
+/// Target UI policy used during style-attribute migration. It carries the same trusted nonce as the
+/// enforced policy, blocks inline style attributes and plaintext connection schemes, and remains
+/// report-only until the component style inventory is clean.
+const UI_CSP_REPORT_ONLY_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/security/csp-report; report-to rustok-csp";
 const REPORTING_ENDPOINTS: &str = "rustok-csp=\"/api/security/csp-report\"";
 
 /// HSTS: 1 year, include subdomains.
@@ -57,7 +57,7 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
     let headers = response.headers_mut();
 
     // Content-Security-Policy. Missing nonce state on a UI path falls back to the API deny policy
-    // rather than restoring an inline-script allowance.
+    // rather than restoring an inline-script or inline-style-element allowance.
     let enforced_policy = select_csp(
         &path,
         csp_nonce.as_ref(),
@@ -68,7 +68,7 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
         policy_header(enforced_policy.as_str()),
     );
 
-    // Run the future style-compatible UI policy without blocking users. API
+    // Run the future style-attribute-compatible UI policy without blocking users. API
     // surfaces already use the stricter enforced policy and do not need a duplicate.
     if let Some(policy) = select_report_only_csp(&path, csp_nonce.as_ref()) {
         headers.insert(
@@ -227,18 +227,23 @@ mod tests {
     }
 
     #[test]
-    fn ui_paths_use_nonce_backed_enforced_and_report_only_policies() {
+    fn ui_paths_use_nonce_backed_script_and_style_element_policies() {
         for path in ["/admin", "/", "/assets/app.js"] {
             let nonce = CspNonce::generate();
             let enforced = select_csp(path, Some(&nonce), false);
             let report_only = select_report_only_csp(path, Some(&nonce)).expect("UI policy");
             let script = directive(enforced.as_str(), "script-src").expect("script-src");
+            let style = directive(enforced.as_str(), "style-src").expect("style-src");
 
             assert!(script.contains(nonce.source_expression().as_str()));
             assert!(!script.contains("'unsafe-inline'"));
             assert!(!script.contains("'unsafe-eval'"));
+            assert!(style.contains(nonce.source_expression().as_str()));
+            assert!(!style.contains("'unsafe-inline'"));
             assert!(enforced.contains("script-src-attr 'none'"));
+            assert!(enforced.contains("style-src-attr 'unsafe-inline'"));
             assert!(report_only.contains(nonce.source_expression().as_str()));
+            assert!(report_only.contains("style-src-attr 'none'"));
         }
     }
 
@@ -269,7 +274,7 @@ mod tests {
     }
 
     #[test]
-    fn report_only_ui_csp_exposes_style_and_plaintext_dependencies() {
+    fn report_only_ui_csp_exposes_style_attributes_and_plaintext_dependencies() {
         let nonce = CspNonce::generate();
         let policy = select_report_only_csp("/", Some(&nonce)).expect("report-only policy");
 
@@ -277,6 +282,7 @@ mod tests {
         assert!(!policy.contains("'unsafe-eval'"));
         assert!(!policy.contains(" http:"));
         assert!(!policy.contains(" ws:"));
+        assert!(policy.contains("style-src-attr 'none'"));
         assert!(policy.contains("worker-src 'self' blob:"));
         assert!(policy.contains("report-uri /api/security/csp-report"));
         assert!(policy.contains("report-to rustok-csp"));
