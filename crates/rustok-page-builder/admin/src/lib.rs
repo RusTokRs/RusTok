@@ -19,7 +19,9 @@ pub use browser_intent::{
     dispatch_browser_intent, BrowserIntentDispatchError, BrowserIntentDispatchResult,
     BrowserIntentEffect,
 };
-pub use capability_access::validate_browser_capability_access;
+pub use capability_access::{
+    browser_capability_denial, validate_browser_capability_access, BrowserCapabilityDenial,
+};
 pub use draft_session::{
     InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,
     SsrDraftSessionStore,
