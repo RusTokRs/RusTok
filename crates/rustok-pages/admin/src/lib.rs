@@ -20,10 +20,7 @@ pub use access::{
 pub use browser_intent::{
     pages_browser_draft_store, PagesBrowserIntentError, PagesBrowserIntentResponse,
 };
-pub use browser_problem::{
-    PagesBrowserIntentProblem, HTTP_BAD_GATEWAY, HTTP_BAD_REQUEST, HTTP_CONFLICT,
-    HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_UNPROCESSABLE_ENTITY,
-};
+pub use browser_problem::PagesBrowserIntentProblem;
 pub use builder::PagesBuilderSaveSnapshot;
 pub use composition::PagesAdmin;
 pub use contribution_browser_intent::{
