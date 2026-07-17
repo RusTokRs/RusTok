@@ -146,6 +146,14 @@ requireText(
   "crates/rustok-page-builder/admin/src/editor/runtime.rs",
   "if matches!(&intent, UiIntent::RequestSave)",
 );
+requireText(
+  "crates/rustok-page-builder/admin/src/editor/dynamic_runtime.rs",
+  "context_runtime.set_runtime_context(context)",
+);
+rejectText(
+  "crates/rustok-page-builder/admin/src/editor/dynamic_runtime.rs",
+  "context_runtime.runtime_context.set(context)",
+);
 rejectText(
   "crates/rustok-page-builder/admin/src/editor/runtime.rs",
   "UiIntent::Execute(_) | UiIntent::Undo | UiIntent::Redo | UiIntent::RequestSave",
