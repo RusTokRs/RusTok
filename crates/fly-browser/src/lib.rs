@@ -131,6 +131,11 @@ impl BrowserIntentEnvelope {
                 | "clear_locale_policy"
                 | "set_internal_page_link"
                 | "remove_internal_page_link"
+                | "set_component_action"
+                | "remove_component_action"
+                | "set_component_form"
+                | "remove_component_form"
+                | "set_native_form_field"
                 | "set_runtime_context"
                 | "set_runtime_locale"
                 | "undo"
@@ -291,6 +296,11 @@ mod tests {
             "clear_locale_policy",
             "set_internal_page_link",
             "remove_internal_page_link",
+            "set_component_action",
+            "remove_component_action",
+            "set_component_form",
+            "remove_component_form",
+            "set_native_form_field",
             "set_runtime_context",
             "set_runtime_locale",
             "undo",
