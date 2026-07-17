@@ -67,7 +67,9 @@ pub const AUTH_COOKIE_BOOTSTRAP_JS: &str = r#"
 
 #[component]
 pub fn AuthCookieBootstrap() -> impl IntoView {
-    let nonce = use_context::<CspNonce>().map(|nonce| nonce.as_str().to_string());
+    let nonce = use_context::<CspNonce>()
+        .or_else(crate::app::security::request_csp_nonce)
+        .map(|nonce| nonce.as_str().to_string());
     view! {
         <script
             nonce=nonce
