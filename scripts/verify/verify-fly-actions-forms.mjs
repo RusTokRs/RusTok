@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 const paths = {
   flyLib: 'crates/fly/src/lib.rs',
   componentVisit: 'crates/fly/src/component_visit.rs',
+  interactionRoute: 'crates/fly/src/interaction_route.rs',
   safeUrl: 'crates/fly/src/safe_url.rs',
   actionFacade: 'crates/fly/src/action.rs',
   actionModel: 'crates/fly/src/action/model.rs',
@@ -65,6 +66,7 @@ const flattenKeys = (value, prefix = '') => Object.entries(value).flatMap(([key,
 
 requireMarkers('flyLib', [
   'mod component_visit;',
+  'mod interaction_route;',
   'mod safe_url;',
   'pub use component_visit::{visit_project_components, ComponentVisit};',
 ], 'Fly interaction infrastructure');
@@ -75,6 +77,16 @@ requireMarkers('componentVisit', [
   'Mutation stays crate-private',
   'immutable_and_mutable_walks_share_page_depth_and_path_contract',
 ], 'read-only public component visitor');
+requireMarkers('interactionRoute', [
+  'pub(crate) struct InteractionRouteCatalog',
+  'pub(crate) fn from_document',
+  'pub(crate) fn page_index',
+  'pub(crate) fn has_route',
+  'pub(crate) fn slug_for',
+  'pub(crate) fn interaction_locale_candidates',
+  'pub(crate) fn build_interaction_href',
+  'catalog_resolves_identical_locale_fallback_for_all_interactions',
+], 'shared interaction route catalog');
 requireMarkers('safeUrl', [
   'pub(crate) fn validate_safe_url',
   'pub(crate) fn normalize_safe_url',
@@ -113,15 +125,21 @@ requireMarkers('actionModel', [
 requireMarkers('actionValidation', [
   'pub fn validate_component_actions',
   'component_visit::visit_project_components',
+  'interaction_route::InteractionRouteCatalog',
   'safe_url::validate_safe_url as validate_shared_safe_url',
   'validate_shared_safe_url(value, label)',
   'component_form_interaction_contract_conflict',
   'non-default form encoding requires post method',
   'visit_project_components(&document.project',
+  'validation.routes.page_index(page_id)',
+  'validation.routes.has_route(page_index)',
 ], 'action and form validation');
 requireMarkers('actionMaterialize', [
   'pub fn materialize_component_actions',
   'component_visit::visit_project_components_mut',
+  'build_interaction_href',
+  'interaction_locale_candidates',
+  'InteractionRouteCatalog',
   'visit_project_components_mut(&mut materialized.project',
   'clear_interaction_materialization',
   'ActionResolution',
@@ -129,10 +147,14 @@ requireMarkers('actionMaterialize', [
 for (const [key, forbidden] of [
   ['actionValidation', 'root.visit(0, "page.component"'],
   ['actionValidation', 'fn validate_node('],
+  ['actionValidation', 'fn page_index('],
   ['actionMaterialize', 'fn materialize_node('],
+  ['actionMaterialize', 'fn action_route_slug('],
+  ['actionMaterialize', 'fn action_locale_candidates('],
+  ['actionMaterialize', 'fn build_page_href('],
   ['actionMaterialize', '#[allow(clippy::too_many_arguments)]'],
 ]) {
-  rejectMarker(key, forbidden, `${key} must use the shared component visitor instead of ${forbidden}`);
+  rejectMarker(key, forbidden, `${key} must use shared infrastructure instead of ${forbidden}`);
 }
 requireMarkers('actionTests', [
   'actions_and_forms_materialize_to_native_and_custom_contracts',
