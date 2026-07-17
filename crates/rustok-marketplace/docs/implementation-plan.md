@@ -45,7 +45,7 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Publish `rustok-marketplace-seller` as the seller identity, membership,
   onboarding, lifecycle, and localized profile owner.
 - [x] Publish `rustok-marketplace-listing` as the seller listing, versioned terms,
-  lifecycle, moderation-event, and eligibility owner.
+  lifecycle, immutable-event, and eligibility owner.
 - [x] Register seller, listing, and root modules as opt-in composition features;
   Marketplace is not default-enabled.
 - [x] Add family, seller transport, listing boundary, and listing lifecycle-event
@@ -77,12 +77,14 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Persist durable command receipts and replay admission.
 - [x] Persist append-only locale-tagged listing events with actor and bounded timeline
   reads.
-- [x] Route terms update, submit, review, suspend, and archive through atomic
-  state/terms + event + receipt transactions.
-- [ ] Add immutable events to create, publish, and reactivate while preserving
-  provider-preflight replay.
+- [x] Route all eight FBA writes through atomic state/terms + event + receipt
+  executors.
+- [x] Preserve replay before seller/product provider reads for create, publish, and
+  reactivate.
+- [x] Keep the listing service read-only; direct owner write bypasses are removed.
 - [ ] Backfill events and remove mutable `approval_note` and `suspension_reason`
   compatibility columns.
+- [ ] Publish listing events through the transactional outbox.
 - [ ] Add module-owned listing FFA package and native/GraphQL transports.
 - [ ] Retain compiled/mounted FBA and FFA evidence.
 
@@ -100,8 +102,8 @@ migration, contention, mounted-transport, and remote-profile evidence.
 ## FBA promotion
 
 - [ ] Reach family `boundary_ready` after seller/listing compiled contracts,
-  migrations, receipt/event contention tests, root consumer execution, and source
-  guards are retained.
+  migrations, compatibility-column cutover, receipt/event contention tests, root
+  consumer execution, and source guards are retained.
 - [ ] Reach family `transport_verified` only after in-process and remote-profile
   timeout, degraded-mode, fallback, and mounted consumer evidence is retained.
 
@@ -119,7 +121,8 @@ room may only compose owner view models and transport facades.
 
 ## Immediate execution order
 
-1. [ ] Complete immutable listing events for create, publish, and reactivate.
+1. [x] Complete immutable listing events for all FBA write commands and remove direct
+   service write bypasses.
 2. [ ] Backfill listing compatibility snapshots and remove mutable note columns.
 3. [ ] Complete immutable seller lifecycle/moderation events.
 4. [ ] Add listing FFA package and explicit native/GraphQL transports.
