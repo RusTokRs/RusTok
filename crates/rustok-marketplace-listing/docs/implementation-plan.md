@@ -66,6 +66,11 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Persist `created`, `terms_updated`, `submitted_for_review`, `approved`,
   `rejected`, `published`, `suspended`, `reactivated`, and `archived` events
   atomically with owner state/terms and the durable command receipt.
+- [x] Publish one sealed external listing contract event from the receipt completion
+  executor in the same transaction as owner state, internal event, and completed
+  receipt.
+- [x] Keep completed receipt replay outside the publication path and roll back the
+  owner transaction when contract mapping or outbox persistence fails.
 - [x] Preserve replay admission before seller/product provider reads for create,
   publish, and reactivate.
 - [x] Remove all direct write methods from the read/provider composition service.
@@ -78,11 +83,11 @@ migration, contention, mounted-transport, and remote-profile evidence.
 
 ## Ownership remaining
 
-- [ ] Publish listing lifecycle/moderation events through the transactional outbox.
 - [x] Define the sealed, typed nine-variant `MarketplaceListingEvent` family in
   `rustok-events` before external Marketplace consumers subscribe.
 - [x] Keep moderation notes and arbitrary owner metadata out of the external event;
   consumers refresh through `MarketplaceListingReadPort`.
+- [x] Do not relay imported legacy snapshots as new live business commands.
 - [ ] Add product matching/approval workflow before automated EAN/GTIN matching,
   deduplication, or buy-box ranking.
 
@@ -106,27 +111,26 @@ migration, contention, mounted-transport, and remote-profile evidence.
   opt-in owner module; Marketplace remains excluded from default module sets.
 - [x] Add source guards for schema ownership, absence of localized catalog copy,
   versioned terms, durable receipts, provider-preflight replay, complete immutable
-  events, truthful provenance cutover, sealed external event contracts, read-service
-  non-bypass, deterministic eligibility, and module composition.
+  events, truthful provenance cutover, sealed external event contracts, owner outbox
+  publication, read-service non-bypass, deterministic eligibility, and composition.
 - [x] Restore evented module registration and command-port routing after parallel
   source drift; compatibility write methods are not an FBA path.
-
-## FBA remaining
-
 - [x] Add the sealed versioned listing event family to `rustok-events`, including
   validation, schema registry coverage, serialization safety tests, source guards,
   and the generic transactional outbox publication boundary.
-- [ ] Publish the event family through
-  `TransactionalEventBus::publish_contract_in_tx` in the same owner transaction as
-  listing event/state/receipt completion.
-- [ ] Do not relay imported legacy snapshots as new live business commands.
+- [x] Publish the event family through
+  `TransactionalEventBus::publish_contract_in_tx` before receipt completion and
+  transaction commit.
+
+## FBA remaining
+
 - [ ] Compile owner/provider/root consumer contracts.
 - [ ] Apply clean and upgraded SQLite/PostgreSQL migrations, including the
   intentionally irreversible provenance cutover.
 - [ ] Execute receipt replay, conflicting payload, same-key contention, provider
   preflight races, scope/SKU conflicts, terms-version races, lifecycle contention,
-  locale/provenance constraints, bounded timeline isolation, outbox atomicity,
-  rollback, and restart scenarios.
+  locale/provenance constraints, bounded timeline isolation, PostgreSQL outbox
+  atomicity, rollback, relay, and restart scenarios.
 - [ ] Retain remote-profile timeout/degraded/fallback evidence before promotion.
 
 ## FFA completed
@@ -174,8 +178,7 @@ migration, contention, mounted-transport, and remote-profile evidence.
 2. [x] Backfill truthful legacy snapshots and remove mutable note columns.
 3. [x] Publish the initial module-owned listing FFA source package.
 4. [x] Add workspace/admin feature wiring and platform listing permissions.
-5. [ ] Atomically publish the source-ready versioned event family through the
-   transactional outbox.
+5. [x] Atomically publish the versioned event family through the transactional outbox.
 6. [ ] Mount authenticated request-scoped native provider composition.
 7. [ ] Add listing GraphQL roots and replace the declared-unmounted adapter.
 8. [ ] Compile and execute database, contention, replay, tenant, locale, provenance,
@@ -192,6 +195,8 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `src/migrations/m20260717_000002_create_marketplace_listing_events.rs`
 - `src/migrations/m20260717_000003_backfill_listing_event_provenance.rs`
 - `src/command_receipts.rs`
+- `src/command_receipts_tests.rs`
+- `src/external_events.rs`
 - `src/replay_safe_commands.rs`
 - `src/listing_events.rs`
 - `src/evented_commands.rs`
@@ -213,6 +218,7 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `../../apps/admin/Cargo.toml`
 - `../../apps/server/tests/marketplace_listing_boundary_guard.rs`
 - `../../apps/server/tests/marketplace_listing_lifecycle_event_guard.rs`
+- `../../apps/server/tests/marketplace_listing_event_contract_guard.rs`
 - `../../apps/server/tests/marketplace_listing_provenance_cutover_guard.rs`
 - `../../apps/server/tests/marketplace_listing_admin_ffa_guard.rs`
 - `../../scripts/verify/verify-marketplace-listing-boundary.mjs`
