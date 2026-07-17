@@ -7,10 +7,10 @@ use crate::{
     localized_page_route_index, materialize_bindings, materialize_component_actions,
     materialize_context, materialize_internal_page_links, materialize_localized_page_metadata,
     materialize_project_locale_context, materialize_project_translations,
-    materialize_project_with_runtime_context, materialize_runtime_locale_context, validate_project,
-    AuditSeverity, LocaleCoverageKind, PageLocator, ProjectDocument, RegistrySet,
-    ValidationDiagnostic, ValidationLimits, ValidationSeverity, FLY_PAGE_METADATA_FIELD,
-    LOCALIZED_VALUES_FIELD,
+    materialize_project_with_runtime_context, materialize_runtime_locale_context,
+    validate_component_actions, validate_internal_page_links, validate_project, AuditSeverity,
+    LocaleCoverageKind, PageLocator, ProjectDocument, RegistrySet, ValidationDiagnostic,
+    ValidationLimits, ValidationSeverity, FLY_PAGE_METADATA_FIELD, LOCALIZED_VALUES_FIELD,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -249,6 +249,17 @@ fn materialize_structural_document(
             .iter()
             .filter(|diagnostic| include_structural_runtime_diagnostic(diagnostic))
             .cloned()
+            .map(classified_issue),
+    );
+
+    issues.extend(
+        validate_internal_page_links(&binding_materialization.document)
+            .into_iter()
+            .map(classified_issue),
+    );
+    issues.extend(
+        validate_component_actions(&binding_materialization.document)
+            .into_iter()
             .map(classified_issue),
     );
 
