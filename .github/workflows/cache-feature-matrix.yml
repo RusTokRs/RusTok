@@ -1,0 +1,43 @@
+name: Cache feature matrix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/rustok-cache/**"
+      - "crates/rustok-core/**"
+      - ".github/workflows/cache-feature-matrix.yml"
+  pull_request:
+    paths:
+      - "crates/rustok-cache/**"
+      - "crates/rustok-core/**"
+      - ".github/workflows/cache-feature-matrix.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cache-feature-matrix-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  memory-only:
+    name: Memory-only cache contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-feature-matrix
+      - name: Compile without Redis
+        run: cargo check -p rustok-cache --lib --no-default-features
+      - name: Test without Redis
+        run: cargo test -p rustok-cache --lib --no-default-features
+      - name: Clippy without Redis
+        run: cargo clippy -p rustok-cache --lib --no-default-features -- -D warnings
