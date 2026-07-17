@@ -27,7 +27,7 @@ async fn main() {
     use rustok_pages_admin::{
         dispatch_pages_browser_intent_with_capabilities,
         pages_editor_capability_policy_for_role, BrowserIntentEnvelope,
-        PagesBrowserIntentAccessError, PagesBrowserIntentError, PagesBrowserIntentResponse,
+        PagesBrowserIntentAccessError, PagesBrowserIntentProblem, PagesBrowserIntentResponse,
         PagesBuilderSaveSnapshot,
     };
     use serde_json::{json, Value};
@@ -131,49 +131,16 @@ async fn main() {
     }
 
     fn page_builder_error(error: PagesBrowserIntentAccessError) -> (StatusCode, Json<Value>) {
-        let capability_denial = error.capability_denial();
-        let status = match &error {
-            PagesBrowserIntentAccessError::Capability(
-                rustok_page_builder_admin::BrowserCapabilityAccessError::Denied(_),
-            ) => StatusCode::FORBIDDEN,
-            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::PageNotFound) => {
-                StatusCode::NOT_FOUND
-            }
-            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::PageMismatch {
-                ..
-            }) => StatusCode::BAD_REQUEST,
-            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Dispatch(
-                rustok_page_builder_admin::BrowserIntentDispatchError::RevisionConflict { .. }
-                | rustok_page_builder_admin::BrowserIntentDispatchError::ProjectHashConflict { .. },
-            )) => StatusCode::CONFLICT,
-            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
-                rustok_page_builder_admin::SsrDraftSessionError::GenerationConflict { .. }
-                | rustok_page_builder_admin::SsrDraftSessionError::PageMismatch { .. },
-            )) => StatusCode::CONFLICT,
-            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Facade(error))
-                if error.stable_code.as_deref() == Some("REVISION_CONFLICT") =>
-            {
-                StatusCode::CONFLICT
-            }
-            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Transport(_)) => {
-                StatusCode::BAD_GATEWAY
-            }
-            _ => StatusCode::UNPROCESSABLE_ENTITY,
-        };
-        let payload = match capability_denial {
-            Some(denial) => json!({
-                "error": error.to_string(),
-                "status": status.as_u16(),
-                "code": rustok_page_builder_admin::BROWSER_CAPABILITY_DENIAL_CODE,
-                "intent": denial.intent.as_str(),
-                "capability": denial.capability.as_str(),
-            }),
-            None => json!({
-                "error": error.to_string(),
-                "status": status.as_u16(),
-            }),
-        };
-        (status, Json(payload))
+        let problem = PagesBrowserIntentProblem::from(&error);
+        let status = StatusCode::from_u16(problem.status)
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        match serde_json::to_value(problem) {
+            Ok(payload) => (status, Json(payload)),
+            Err(serialization_error) => auth_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Page Builder problem serialization failed: {serialization_error}"),
+            ),
+        }
     }
 
     let configuration = get_configuration(None).expect("Leptos SSR configuration");
