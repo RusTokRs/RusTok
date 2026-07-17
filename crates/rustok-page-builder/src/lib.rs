@@ -1,6 +1,7 @@
 pub mod adapters;
 pub mod dto;
 pub mod health;
+pub mod landing;
 pub mod locale;
 pub mod render;
 pub mod rollout;
