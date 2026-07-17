@@ -229,6 +229,12 @@ impl FallbackCacheBackend {
         self.degraded_writes.get(key).await.ok().flatten().is_some()
     }
 
+    async fn warm_fallback(&self, key: &str, value: Vec<u8>) {
+        if let Err(error) = self.fallback.set(key.to_string(), value).await {
+            tracing::warn!(%error, key, "Primary cache read succeeded but local fallback warm failed");
+        }
+    }
+
     async fn mirror_primary_cas(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) {
         let result = match ttl {
             Some(ttl) => {
@@ -247,22 +253,29 @@ impl FallbackCacheBackend {
 #[async_trait]
 impl CacheBackend for FallbackCacheBackend {
     async fn health(&self) -> Result<()> {
-        match self.primary.health().await {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                tracing::warn!(%error, "Primary cache unhealthy, using in-memory fallback");
-                self.fallback.health().await
-            }
-        }
+        self.primary.health().await.map_err(|error| {
+            tracing::warn!(%error, "Primary cache unhealthy; bounded fallback reads remain available");
+            error
+        })
     }
 
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        if self.has_degraded_write(key).await {
+            match self.fallback.get(key).await {
+                Ok(Some(value)) => return Ok(Some(value)),
+                Ok(None) => self.clear_degraded_write(key).await,
+                Err(error) => {
+                    tracing::warn!(%error, key, "Marked degraded cache value could not be read");
+                }
+            }
+        }
+
         match self.primary.get(key).await {
             Ok(Some(value)) => {
                 self.clear_degraded_write(key).await;
+                self.warm_fallback(key, value.clone()).await;
                 Ok(Some(value))
             }
-            Ok(None) if self.has_degraded_write(key).await => self.fallback.get(key).await,
             Ok(None) => Ok(None),
             Err(error) => {
                 tracing::debug!(%error, key, "Primary cache GET failed, falling back to in-memory");
@@ -353,6 +366,126 @@ impl CacheBackend for FallbackCacheBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::RwLock;
+
+    #[derive(Debug)]
+    struct TestPrimaryState {
+        healthy: bool,
+        fail_gets: bool,
+        fail_writes: bool,
+        value: Option<Vec<u8>>,
+    }
+
+    #[derive(Debug)]
+    struct TestPrimary {
+        state: RwLock<TestPrimaryState>,
+    }
+
+    impl TestPrimary {
+        fn new(value: Option<Vec<u8>>) -> Self {
+            Self {
+                state: RwLock::new(TestPrimaryState {
+                    healthy: true,
+                    fail_gets: false,
+                    fail_writes: false,
+                    value,
+                }),
+            }
+        }
+
+        fn set_healthy(&self, healthy: bool) {
+            self.state.write().unwrap().healthy = healthy;
+        }
+
+        fn set_fail_gets(&self, fail_gets: bool) {
+            self.state.write().unwrap().fail_gets = fail_gets;
+        }
+
+        fn set_fail_writes(&self, fail_writes: bool) {
+            self.state.write().unwrap().fail_writes = fail_writes;
+        }
+    }
+
+    #[async_trait]
+    impl CacheBackend for TestPrimary {
+        async fn health(&self) -> Result<()> {
+            if self.state.read().unwrap().healthy {
+                Ok(())
+            } else {
+                Err(crate::Error::Cache(
+                    "test primary is unhealthy".to_string(),
+                ))
+            }
+        }
+
+        async fn get(&self, _key: &str) -> Result<Option<Vec<u8>>> {
+            let state = self.state.read().unwrap();
+            if state.fail_gets {
+                Err(crate::Error::Cache("test primary GET failed".to_string()))
+            } else {
+                Ok(state.value.clone())
+            }
+        }
+
+        async fn set(&self, _key: String, value: Vec<u8>) -> Result<()> {
+            let mut state = self.state.write().unwrap();
+            if state.fail_writes {
+                Err(crate::Error::Cache("test primary SET failed".to_string()))
+            } else {
+                state.value = Some(value);
+                Ok(())
+            }
+        }
+
+        async fn set_with_ttl(
+            &self,
+            key: String,
+            value: Vec<u8>,
+            ttl: Duration,
+        ) -> Result<()> {
+            if ttl.is_zero() {
+                self.invalidate(&key).await
+            } else {
+                self.set(key, value).await
+            }
+        }
+
+        async fn compare_and_set(
+            &self,
+            _key: &str,
+            expected: &[u8],
+            value: Vec<u8>,
+            ttl: Option<Duration>,
+        ) -> Result<CacheCompareAndSetOutcome> {
+            let mut state = self.state.write().unwrap();
+            if state.fail_writes {
+                return Err(crate::Error::Cache("test primary CAS failed".to_string()));
+            }
+            if state.value.as_deref() != Some(expected) {
+                return Ok(CacheCompareAndSetOutcome::Mismatch);
+            }
+            state.value = if ttl.is_some_and(Duration::is_zero) {
+                None
+            } else {
+                Some(value)
+            };
+            Ok(CacheCompareAndSetOutcome::Applied)
+        }
+
+        async fn invalidate(&self, _key: &str) -> Result<()> {
+            let mut state = self.state.write().unwrap();
+            if state.fail_writes {
+                Err(crate::Error::Cache("test primary DEL failed".to_string()))
+            } else {
+                state.value = None;
+                Ok(())
+            }
+        }
+
+        fn stats(&self) -> CacheStats {
+            CacheStats::default()
+        }
+    }
 
     #[tokio::test]
     async fn compare_and_set_does_not_insert_a_missing_or_expired_entry() {
@@ -408,5 +541,41 @@ mod tests {
             CacheCompareAndSetOutcome::Applied
         );
         assert_eq!(cache.get("key").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn fallback_health_preserves_primary_degradation() {
+        let primary = Arc::new(TestPrimary::new(None));
+        primary.set_healthy(false);
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(1), 16));
+        let cache = FallbackCacheBackend::new(primary, fallback);
+
+        assert!(cache.health().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn successful_primary_read_warms_fallback_for_a_later_outage() {
+        let primary = Arc::new(TestPrimary::new(Some(b"shared".to_vec())));
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(1), 16));
+        let cache = FallbackCacheBackend::new(primary.clone(), fallback);
+
+        assert_eq!(cache.get("key").await.unwrap(), Some(b"shared".to_vec()));
+        primary.set_fail_gets(true);
+        assert_eq!(cache.get("key").await.unwrap(), Some(b"shared".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn degraded_write_wins_over_stale_primary_only_until_marker_expiry() {
+        let primary = Arc::new(TestPrimary::new(Some(b"stale".to_vec())));
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_millis(40), 16));
+        let cache = FallbackCacheBackend::new(primary.clone(), fallback);
+
+        primary.set_fail_writes(true);
+        cache.set("key".to_string(), b"fresh".to_vec()).await.unwrap();
+        primary.set_fail_writes(false);
+
+        assert_eq!(cache.get("key").await.unwrap(), Some(b"fresh".to_vec()));
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert_eq!(cache.get("key").await.unwrap(), Some(b"stale".to_vec()));
     }
 }
