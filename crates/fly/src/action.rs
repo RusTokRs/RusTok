@@ -1,7 +1,8 @@
 use crate::{
-    localized_page_route_index, normalize_locale_tag, ComponentNode, LocalizedPageRouteEntry,
-    ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic, ValidationSeverity,
-    FLY_PAGE_LINK_FIELD,
+    localized_page_route_index, normalize_locale_tag,
+    safe_url::validate_safe_url as validate_shared_safe_url, ComponentNode,
+    LocalizedPageRouteEntry, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
+    ValidationSeverity, FLY_PAGE_LINK_FIELD,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -667,9 +668,7 @@ fn apply_action(
             AppliedAction::Native
         }
         ComponentAction::EmitEvent { .. } | ComponentAction::ProviderAction { .. } => {
-            if component.tag_name.is_none() {
-                component.tag_name = Some("button".to_string());
-            }
+            component.tag_name = Some("button".to_string());
             component.attributes.insert(
                 "type".to_string(),
                 Value::String("button".to_string()),
@@ -806,11 +805,13 @@ fn validate_base_path(value: &str) -> Result<(), String> {
         return Ok(());
     }
     if !value.starts_with('/')
+        || value.starts_with("//")
         || value.contains("://")
         || value.contains('?')
         || value.contains('#')
-        || value.contains('\r')
-        || value.contains('\n')
+        || value.contains('\\')
+        || value.chars().any(|character| character.is_control())
+        || value.chars().any(char::is_whitespace)
     {
         return Err(format!(
             "base path `{value}` is not a safe absolute path prefix"
@@ -820,37 +821,22 @@ fn validate_base_path(value: &str) -> Result<(), String> {
 }
 
 fn validate_suffix(value: Option<&str>, label: &str) -> Result<(), String> {
-    if value.is_some_and(|value| value.contains('\r') || value.contains('\n')) {
-        Err(format!("{label} contains a line break"))
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+    if value.contains('\\')
+        || value.chars().any(|character| character.is_control())
+        || value.chars().any(char::is_whitespace)
+        || (label == "query" && value.contains('#'))
+    {
+        Err(format!("{label} is not safely encoded"))
     } else {
         Ok(())
     }
 }
 
 fn validate_safe_url(value: &str, label: &str) -> Result<(), String> {
-    let value = value.trim();
-    let lower = value.to_ascii_lowercase();
-    if value.is_empty()
-        || value.contains('\r')
-        || value.contains('\n')
-        || lower.starts_with("javascript:")
-        || lower.starts_with("data:")
-        || lower.starts_with("vbscript:")
-    {
-        return Err(format!("{label} `{value}` is unsafe"));
-    }
-    if value.starts_with('/')
-        || value.starts_with('#')
-        || value.starts_with('?')
-        || lower.starts_with("https://")
-        || lower.starts_with("http://")
-        || lower.starts_with("mailto:")
-        || lower.starts_with("tel:")
-    {
-        Ok(())
-    } else {
-        Err(format!("{label} `{value}` uses an unsupported URL form"))
-    }
+    validate_shared_safe_url(value, label)
 }
 
 fn action_diagnostic(
@@ -944,10 +930,9 @@ mod tests {
             result.document.component("about").unwrap().attributes["href"],
             "/o-nas"
         );
-        assert_eq!(
-            result.document.component("track").unwrap().attributes[FLY_ACTION_KIND_ATTRIBUTE],
-            "emit_event"
-        );
+        let track = result.document.component("track").unwrap();
+        assert_eq!(track.tag_name.as_deref(), Some("button"));
+        assert_eq!(track.attributes[FLY_ACTION_KIND_ATTRIBUTE], "emit_event");
     }
 
     #[test]
@@ -975,6 +960,7 @@ mod tests {
                     }, {
                         "id": "track",
                         "type": "button",
+                        "tagName": "a",
                         "attributes": {
                             "href": "/legacy",
                             "target": "_blank",
@@ -1016,6 +1002,7 @@ mod tests {
         }
 
         let action = result.document.component("track").unwrap();
+        assert_eq!(action.tag_name.as_deref(), Some("button"));
         assert_eq!(action.attributes["type"], "button");
         assert_eq!(action.attributes[FLY_ACTION_KIND_ATTRIBUTE], "emit_event");
         assert!(action.attributes.contains_key(FLY_ACTION_DATA_ATTRIBUTE));
@@ -1049,6 +1036,43 @@ mod tests {
                         "id": "bad-link",
                         "type": "link",
                         "flyAction": { "kind": "navigate_url", "href": "javascript:alert(1)" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let diagnostics = validate_component_actions(&document);
+        assert_eq!(
+            diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.severity == ValidationSeverity::Error)
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn network_paths_and_backslash_urls_are_blocking_validation() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "network-link",
+                        "type": "link",
+                        "flyAction": {
+                            "kind": "navigate_url",
+                            "href": "//attacker.example/path"
+                        }
+                    }, {
+                        "id": "unsafe-form",
+                        "type": "wrapper",
+                        "flyForm": {
+                            "id": "unsafe",
+                            "method": "post",
+                            "action_url": "/\\attacker.example/submit"
+                        }
                     }]
                 }
             }]
