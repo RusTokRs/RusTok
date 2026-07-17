@@ -214,8 +214,6 @@ async fn update_terms_in_transaction(
     active.current_terms_version = Set(next_version);
     active.status = Set(MarketplaceListingStatus::Draft.as_str().to_string());
     active.approval_status = Set(MarketplaceListingApprovalStatus::Draft.as_str().to_string());
-    active.approval_note = Set(None);
-    active.suspension_reason = Set(None);
     active.approved_at = Set(None);
     active.published_at = Set(None);
     active.updated_at = Set(Utc::now().into());
