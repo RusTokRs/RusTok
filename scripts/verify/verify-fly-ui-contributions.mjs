@@ -5,7 +5,10 @@ const paths = {
   flyUiLib: 'crates/fly-ui/src/lib.rs',
   error: 'crates/fly-ui/src/error.rs',
   contribution: 'crates/fly-ui/src/contribution.rs',
+  adapter: 'crates/fly-ui/src/contribution_adapter.rs',
   factory: 'crates/fly-ui/src/contribution_factory.rs',
+  manifest: 'crates/fly-ui/src/contribution_manifest.rs',
+  pagesContributions: 'crates/rustok-pages/admin/src/contributions.rs',
   tests: 'crates/fly-ui/src/tests.rs',
 };
 
@@ -25,14 +28,20 @@ const requireMarkers = (key, markers, label) => {
 
 requireMarkers('flyUiLib', [
   'mod contribution;',
+  'mod contribution_adapter;',
   'mod contribution_factory;',
+  'mod contribution_manifest;',
   'pub use contribution::*;',
+  'pub use contribution_adapter::*;',
   'pub use contribution_factory::*;',
+  'pub use contribution_manifest::*;',
 ], 'fly-ui contribution module wiring');
 requireMarkers('error', [
   'InvalidContribution',
   'DuplicateRenderer(String)',
   'DuplicatePropertyEditor(String)',
+  'RendererUnavailable(String)',
+  'PropertyEditorUnavailable(String)',
 ], 'contribution contract errors');
 requireMarkers('contribution', [
   'pub struct AccessibilityMetadata',
@@ -57,6 +66,21 @@ requireMarkers('contribution', [
   'provider_ownership_and_accessibility_labels_are_required',
   'registration_normalizes_identity_and_optional_accessibility_ids',
 ], 'deterministic contribution registry');
+requireMarkers('adapter', [
+  'pub trait ContributionAdapter',
+  'pub struct RendererRequest',
+  'pub struct PropertyEditorRequest',
+  'pub fn render_contribution',
+  'pub fn edit_contribution_properties',
+  'one_mock_adapter_renders_all_presentations',
+  'property_editor_is_available_only_in_editable_presentations',
+  'missing_capability_returns_typed_lookup_error',
+], 'framework-neutral contribution adapter');
+rejectMarker(
+  'adapter',
+  'let request = |presentation|',
+  'mock adapter proof must not return borrowed requests from a capturing closure',
+);
 requireMarkers('factory', [
   'pub enum ContributionSurface',
   'pub enum ContributionProviderHealth',
@@ -78,12 +102,45 @@ requireMarkers('factory', [
   'assembly_filters_tenant_permissions_capabilities_and_health',
   'missing_dependencies_and_cycles_are_diagnosed',
   'duplicate_nested_contracts_are_reported_without_partial_registration',
-], 'generated contribution registry factories');
+], 'legacy owner-equals-target contribution factories');
 requireMarker(
   'factory',
   'let code = match &error',
   'factory diagnostics must not move UiError before formatting it',
 );
+requireMarkers('manifest', [
+  'pub struct ModuleContributionManifest',
+  'pub owner_provider: String',
+  'pub owner_version: String',
+  'pub target_providers: BTreeMap<String, String>',
+  'pub fn allows_target_provider',
+  'pub fn build_admin_contribution_registry_from_manifests(',
+  'pub fn build_storefront_contribution_registry_from_manifests(',
+  'pub fn assemble_contribution_manifests(',
+  'contribution_target_provider_forbidden',
+  'contribution_target_provider_unavailable',
+  'owner_provider_is_the_only_implicit_target',
+  'explicit_versioned_target_provider_is_allowed',
+  'target_provider_version_mismatch_is_rejected',
+  'admin_and_storefront_surfaces_remain_separate',
+], 'owner-safe contribution manifests');
+requireMarkers('pagesContributions', [
+  'pub fn pages_contribution_manifest()',
+  'pub fn pages_landing_blocks_contribution()',
+  'pub fn build_pages_admin_contribution_registry(',
+  'FLY_BUILTIN_PROVIDER',
+  'FLY_BUILTIN_PROVIDER_VERSION',
+  'PAGES_LANDING_BLOCK_IDS',
+  '"fly.hero"',
+  '"fly.two_columns"',
+  '"fly.feature_grid"',
+  '"fly.cta"',
+  '"fly.contact_form"',
+  'renderers: Vec::new()',
+  'property_editors: Vec::new()',
+  'contributed_block_ids_exist_in_the_fly_registry',
+  'storefront_surface_stays_empty_until_a_real_adapter_exists',
+], 'Pages Fly contribution manifest');
 for (const forbidden of [
   'leptos',
   'dioxus',
@@ -92,7 +149,7 @@ for (const forbidden of [
   'rustok_',
   'rustok-',
 ]) {
-  for (const key of ['contribution', 'factory', 'flyUiCargo']) {
+  for (const key of ['contribution', 'adapter', 'factory', 'manifest', 'flyUiCargo']) {
     rejectMarker(
       key,
       forbidden,
