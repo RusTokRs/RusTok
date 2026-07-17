@@ -186,6 +186,23 @@
     "buy_box_ranking_owned": false,
     "direct_write_methods_in_service": false
   },
+  "platform_permissions": {
+    "resource": "marketplace_listings",
+    "owner_declares_permissions": true,
+    "actions": [
+      "create",
+      "read",
+      "update",
+      "list",
+      "manage",
+      "publish",
+      "moderate"
+    ],
+    "ffa_action_mapping_owned_by_module": true,
+    "host_decision_owned_by_platform_rbac": true,
+    "delete_command_exposed": false,
+    "archive_remains_owner_command": true
+  },
   "outbox": {
     "status": "planned_contract_required",
     "transport": "rustok_outbox::TransactionalEventBus",
@@ -205,10 +222,13 @@
     "default_enabled": false,
     "ffa_package": "source_in_progress_unmounted",
     "ffa_package_path": "crates/rustok-marketplace-listing/admin",
-    "native_transport": "request_scoped_host_runtime_unmounted",
+    "workspace_registration": "source_ready",
+    "admin_host_feature_graph": "source_ready",
+    "admin_route_codegen": "manifest_driven",
+    "native_transport": "request_scoped_host_runtime_unmounted_fail_closed",
     "graphql_transport": "declared_unmounted",
     "implicit_transport_fallback": false,
-    "workspace_and_host_registration": "pending"
+    "authenticated_runtime_mount": "pending"
   },
   "evidence": {
     "local_plan": "crates/rustok-marketplace-listing/docs/implementation-plan.md",
@@ -218,11 +238,15 @@
     "provenance_cutover": "crates/rustok-marketplace-listing/src/migrations/m20260717_000003_backfill_listing_event_provenance.rs",
     "read_service": "crates/rustok-marketplace-listing/src/service.rs",
     "ports": "crates/rustok-marketplace-listing/src/ports.rs",
+    "owner_permissions": "crates/rustok-marketplace-listing/src/lib.rs",
+    "platform_permissions": "crates/rustok-api/src/permissions.rs",
     "receipt_executor": "crates/rustok-marketplace-listing/src/command_receipts.rs",
     "provider_event_commands": "crates/rustok-marketplace-listing/src/replay_safe_commands.rs",
     "moderation_event_commands": "crates/rustok-marketplace-listing/src/evented_commands.rs",
     "owner_lifecycle_event_commands": "crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs",
     "event_storage": "crates/rustok-marketplace-listing/src/listing_events.rs",
+    "workspace_manifest": "Cargo.toml",
+    "admin_host_manifest": "apps/admin/Cargo.toml",
     "ffa_model": "crates/rustok-marketplace-listing/admin/src/model.rs",
     "ffa_transport": "crates/rustok-marketplace-listing/admin/src/transport.rs",
     "ffa_native_runtime": "crates/rustok-marketplace-listing/admin/src/transport/native_server_adapter.rs",
@@ -285,12 +309,15 @@
           "implicit_fallback_forbidden",
           "native_runtime_uses_typed_ports",
           "native_runtime_constructs_no_owner_dependencies",
+          "missing_native_runtime_returns_error_not_panic",
+          "platform_permission_mapping_owned_by_ffa",
           "graphql_profile_fails_closed_while_unmounted",
           "retry_reuses_original_idempotency_key",
-          "legacy_attribution_rendered_unknown"
+          "legacy_attribution_rendered_unknown",
+          "workspace_and_admin_host_source_wiring_present"
         ]
       }
     ],
-    "known_gap": "transactional outbox publication, workspace/host registration, platform listing permissions, real GraphQL schema, compiled migrations, contention/replay, remote-profile, mounted native transport, and FFA parity evidence are not yet retained"
+    "known_gap": "transactional outbox publication, authenticated native runtime provider composition, real GraphQL schema, readiness-board synchronization, compiled migrations, contention/replay, remote-profile, mounted transport, and FFA parity evidence are not yet retained"
   }
 }
