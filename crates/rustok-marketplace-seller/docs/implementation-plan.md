@@ -10,7 +10,24 @@ Last reviewed: 2026-07-17
 - Owner source gate: `open`.
 - Production promotion gate: `closed`.
 
-## Ownership
+Source implementation does not promote FBA or FFA without retained compile,
+migration, contention, mounted-transport, and remote-profile evidence.
+
+## FBA/FFA architecture contract
+
+- [x] Keep seller persistence, membership policy, lifecycle, receipts, translations,
+  and future verification facts inside `rustok-marketplace-seller`.
+- [x] Expose owner behavior through typed FBA read/command ports using
+  `PortContext` and stable `PortError` mappings.
+- [x] Keep native and GraphQL FFA adapters over the same command envelope and owner
+  ports; host applications do not implement seller policy.
+- [x] Use explicit transport selection and forbid implicit native/GraphQL fallback.
+- [x] Treat effective locale as request context, not as a host or UI default.
+- [ ] Retain compiled remote-profile contract evidence before FBA
+  `transport_verified`.
+- [ ] Retain mounted native/GraphQL parity before FFA `phase_b_ready`.
+
+## Ownership completed
 
 - [x] Own seller identity, legal profile, lifecycle, and onboarding state.
 - [x] Own seller-scoped memberships, roles, and status.
@@ -21,10 +38,9 @@ Last reviewed: 2026-07-17
   only in `marketplace_seller_translations`.
 - [x] Enforce `(tenant_id, seller_id, locale)` translation identity, normalized locale
   tags, and `VARCHAR(32)` locale storage.
-- [x] Use the effective locale supplied by `PortContext`; the owner does not invent a
-  fallback chain after request middleware resolution.
-- [x] Return `resolved_locale` with seller projections so native and GraphQL clients
-  can prove which localized row was used.
+- [x] Use exact effective locale supplied by `PortContext`; the owner does not invent
+  a fallback chain after request middleware resolution.
+- [x] Return `resolved_locale` with seller projections.
 - [x] Enforce tenant-scoped handle and membership identities in the schema.
 - [x] Use expected-state updates for onboarding and suspension transitions.
 - [x] Persist one tenant-scoped command receipt for every FBA seller write with
@@ -36,14 +52,22 @@ Last reviewed: 2026-07-17
   not abort a PostgreSQL transaction after a unique violation.
 - [x] Reject reuse of an idempotency key for another command kind, actor, locale, or
   payload.
-- [ ] Replace mutable onboarding/suspension prose with immutable seller lifecycle and
-  moderation events carrying actor and effective locale; these operator records are
-  not seller profile translations.
-- [ ] Publish lifecycle events through the transactional outbox.
-- [ ] Add normalized verification facts and a KYC provider SPI without raw payload
-  persistence.
 
-## FBA
+## Ownership remaining
+
+- [ ] Replace mutable onboarding/suspension prose with immutable seller lifecycle and
+  moderation events carrying tenant, seller, actor, event kind, effective locale,
+  note, metadata, and timestamp.
+- [ ] Add bounded seller lifecycle/moderation timeline reads through the FBA read port.
+- [ ] Include effective locale in every event-producing command identity and persist
+  state + event + receipt atomically.
+- [ ] Backfill existing prose snapshots and remove mutable compatibility columns only
+  after event coverage is complete.
+- [ ] Publish seller lifecycle events through the transactional outbox.
+- [ ] Add normalized verification facts and a KYC provider SPI without raw provider
+  payload persistence.
+
+## FBA completed
 
 - [x] Publish `MarketplaceSellerReadPort` with deadline semantics for seller,
   directory, membership, and member-list reads.
@@ -61,23 +85,29 @@ Last reviewed: 2026-07-17
   rules.
 - [x] Aggregate marketplace family and seller transport verifiers into the root npm
   verification entry points.
-- [ ] Compile the provider and GraphQL contracts.
-- [ ] Apply seller/translation/receipt migrations and execute lost-response replay,
-  conflicting payload, same-key contention, same-locale upsert contention, and
-  rollback scenarios on SQLite/PostgreSQL.
-- [ ] Retain timeout, degraded, remote-profile, and fallback execution evidence
-  before promoting FBA to `transport_verified`.
 
-## FFA
+## FBA remaining
+
+- [ ] Add immutable lifecycle/moderation event storage and typed timeline port.
+- [ ] Compile the provider and GraphQL contracts.
+- [ ] Apply seller/translation/receipt/event migrations on clean and upgraded
+  SQLite/PostgreSQL graphs.
+- [ ] Execute lost-response replay, conflicting payload, same-key contention,
+  same-locale upsert contention, lifecycle contention, event atomicity, rollback,
+  exact-locale missing translation, and cross-tenant scenarios.
+- [ ] Retain timeout, degraded, remote-profile, and fallback execution evidence before
+  promoting FBA to `transport_verified`.
+
+## FFA completed
 
 - [x] Create module-owned `rustok-marketplace-seller-admin` package boundaries for
   core, model, transport, i18n, and Leptos UI.
 - [x] Implement authenticated native server transport over typed seller ports with
   tenant and marketplace-seller permission checks.
-- [x] Implement module-owned GraphQL query/mutation roots and a selected GraphQL
-  admin adapter over the same command envelope.
-- [x] Use canonical request `RequestContext.locale` in native and GraphQL owner
-  transports instead of reconstructing locale from tenant defaults.
+- [x] Implement module-owned GraphQL query/mutation roots and a selected GraphQL admin
+  adapter over the same command envelope.
+- [x] Use canonical request `RequestContext.locale` in native and GraphQL transports
+  instead of reconstructing locale from tenant defaults.
 - [x] Return `resolved_locale` through native and GraphQL admin DTOs.
 - [x] Keep native/GraphQL selection explicit through `execute_selected_transport`;
   automatic fallback is forbidden.
@@ -87,8 +117,24 @@ Last reviewed: 2026-07-17
   explicit retry action that reuses the same command and key.
 - [x] Wire seller GraphQL roots into module manifest/server features and seller UI
   into manifest-driven admin host composition without default-enabling Marketplace.
-- [ ] Retain native/GraphQL parity, localized errors, route state, and mounted host
-  evidence before promoting FFA to `phase_b_ready`.
+
+## FFA remaining
+
+- [ ] Add lifecycle/moderation history to native and GraphQL DTOs and workflows after
+  the owner event port exists.
+- [ ] Retain native/GraphQL parity, localized errors, route state, retries, and mounted
+  authenticated host evidence before promoting FFA to `phase_b_ready`.
+
+## Immediate execution order
+
+1. [ ] Add immutable seller lifecycle/moderation event schema and entity.
+2. [ ] Route onboarding review, suspension, and reactivation through atomic
+   state + event + receipt transactions.
+3. [ ] Add bounded event timeline reads to FBA and both FFA transports.
+4. [ ] Backfill/remove mutable prose snapshots.
+5. [ ] Add normalized verification/KYC facts and provider SPI.
+6. [ ] Compile and execute database, contention, replay, tenant, and mounted transport
+   evidence.
 
 ## Source evidence
 
@@ -112,14 +158,3 @@ Last reviewed: 2026-07-17
 - `../../apps/server/tests/marketplace_seller_transport_guard.rs`
 - `../../scripts/verify/verify-marketplace-family-boundary.mjs`
 - `../../scripts/verify/verify-marketplace-seller-transport.mjs`
-
-## Database and runtime evidence
-
-- [ ] Apply clean and upgraded SQLite/PostgreSQL migrations.
-- [ ] Verify rollback/reapply, translation uniqueness, and composite tenant/seller
-  foreign keys.
-- [ ] Execute duplicate handle/member, concurrent review/suspend, receipt replay,
-  exact-locale missing translation, parallel-locale update, same-locale upsert, and
-  cross-tenant access scenarios.
-- [ ] Prove seller writes cannot mutate another tenant, seller, or locale scope.
-- [ ] Execute mounted native and GraphQL workflows with authenticated operators.
