@@ -1,0 +1,92 @@
+name: Repair tenant context loading plain
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/migrations/repair_tenant_runtime_plain.py
+      - scripts/migrations/repair_tenant_transports_plain.py
+      - .github/workflows/repair-tenant-context-loading-plain.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-tenant-context-loading-plain-main
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply readable tenant refactor
+        id: migration
+        shell: bash
+        run: |
+          set +e
+          {
+            python3 scripts/migrations/repair_tenant_runtime_plain.py && \
+            python3 scripts/migrations/repair_tenant_transports_plain.py && \
+            rustfmt --edition 2021 \
+              apps/server/src/middleware/tenant_resolution.rs \
+              apps/server/src/middleware/tenant.rs \
+              apps/server/src/middleware/mod.rs \
+              apps/server/src/controllers/graphql.rs && \
+            node scripts/verify/verify-tenant-resolution-architecture.mjs && \
+            git diff --check
+          } > /tmp/tenant-plain-repair.log 2>&1
+          status=$?
+          cat /tmp/tenant-plain-repair.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Reset partial changes after failure
+        if: steps.migration.outputs.status != '0'
+        run: git reset --hard HEAD
+
+      - name: Prepare failure report
+        if: steps.migration.outputs.status != '0'
+        shell: bash
+        run: |
+          {
+            echo '# Tenant context loading plain repair failure'
+            echo
+            echo '```text'
+            cat /tmp/tenant-plain-repair.log
+            echo '```'
+          } > TENANT_MIGRATION_FAILURE.md
+
+      - name: Remove one-time infrastructure
+        shell: bash
+        run: |
+          rm scripts/migrations/repair_tenant_runtime_plain.py
+          rm scripts/migrations/repair_tenant_transports_plain.py
+          rm .github/workflows/repair-tenant-context-loading-plain.yml
+
+      - name: Commit atomically to main
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          if [[ "${{ steps.migration.outputs.status }}" == "0" ]]; then
+            message="refactor(tenant): unify context loading across transports"
+          else
+            message="chore: record readable tenant repair failure"
+          fi
+          git commit -m "$message"
+          git pull --rebase origin main
+          git push origin HEAD:main
