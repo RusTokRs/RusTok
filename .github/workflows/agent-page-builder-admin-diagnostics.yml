@@ -22,7 +22,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: agent-baseline-failure-diagnostics
-      - name: Capture formatter, workspace compile, and Page Builder tests
+      - name: Capture current baseline failures
         shell: bash
         run: |
           mkdir -p /tmp/baseline-failures
@@ -35,6 +35,9 @@ jobs:
           cargo +1.93.1 test -p rustok-page-builder-admin --lib -- --nocapture \
             > /tmp/baseline-failures/page-builder.log 2>&1
           echo $? > /tmp/baseline-failures/page-builder.status
+          cargo +stable test -p rustok-cache --no-default-features -- --nocapture \
+            > /tmp/baseline-failures/cache-memory.log 2>&1
+          echo $? > /tmp/baseline-failures/cache-memory.status
           exit 0
       - uses: actions/upload-artifact@v7
         with:
