@@ -1,15 +1,16 @@
 #[test]
-fn root_cache_api_uses_atomic_local_backend() {
+fn root_cache_api_exposes_only_the_atomic_local_backend() {
     let lib = include_str!("../src/lib.rs");
     let atomic = include_str!("../src/cache_atomic.rs");
 
+    assert!(lib.contains("mod cache;"));
+    assert!(!lib.contains("pub mod cache;"));
     assert!(lib.contains("mod cache_atomic;"));
-    assert!(lib.contains(
-        "pub use cache_atomic::{FallbackCacheBackend, InMemoryCacheBackend};"
-    ));
-    assert!(!lib.contains(
-        "pub use cache::{CacheStats, FallbackCacheBackend, InMemoryCacheBackend};"
-    ));
+    assert!(lib.contains("pub use cache_atomic::InMemoryCacheBackend;"));
+    assert!(!lib.contains("pub use cache::RedisCacheBackend;"));
+    assert!(!lib.contains("pub use cache_atomic::{FallbackCacheBackend"));
+    assert!(!lib.contains("pub use crate::RedisCacheBackend;"));
+    assert!(!lib.contains("CacheStats, FallbackCacheBackend,"));
 
     assert!(atomic.contains("moka::ops::compute::{CompResult, Op}"));
     assert!(atomic.contains(".and_compute_with(move |current|"));
@@ -19,7 +20,7 @@ fn root_cache_api_uses_atomic_local_backend() {
 }
 
 #[test]
-fn root_fallback_preserves_bounded_degradation_contract() {
+fn internal_compatibility_fallback_preserves_bounded_degradation_contract() {
     let atomic = include_str!("../src/cache_atomic.rs");
 
     assert!(atomic.contains("if self.has_degraded_write(key).await"));
