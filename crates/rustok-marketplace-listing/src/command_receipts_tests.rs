@@ -22,15 +22,7 @@ async fn completed_receipt_commits_one_contract_event_and_replay_adds_none() {
     let actor_id = Uuid::new_v4();
     let key = "create-listing-once";
     let hash = "request-hash";
-    let receipt = new_receipt(
-        &db,
-        tenant_id,
-        actor_id,
-        key,
-        "create_listing",
-        hash,
-    )
-    .await;
+    let receipt = new_receipt(&db, tenant_id, actor_id, key, "create_listing", hash).await;
     let response = listing_response(tenant_id);
 
     let completed = complete(receipt, &response).await.unwrap();
@@ -55,16 +47,11 @@ async fn completed_receipt_commits_one_contract_event_and_replay_adds_none() {
         );
     }
 
-    let replayed = replay_existing::<MarketplaceListingResponse>(
-        &db,
-        tenant_id,
-        key,
-        "create_listing",
-        hash,
-    )
-    .await
-    .unwrap()
-    .expect("completed receipt must replay");
+    let replayed =
+        replay_existing::<MarketplaceListingResponse>(&db, tenant_id, key, "create_listing", hash)
+            .await
+            .unwrap()
+            .expect("completed receipt must replay");
     assert_eq!(replayed.id, response.id);
     assert_eq!(
         rustok_outbox::SysEvents::find().count(&db).await.unwrap(),
