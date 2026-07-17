@@ -151,12 +151,27 @@ pub enum MarketplaceListingAdminCommand {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MarketplaceListingAdminAction {
+    List,
     Read,
     Create,
     Update,
     Moderate,
     Publish,
     Manage,
+}
+
+impl MarketplaceListingAdminAction {
+    pub const fn permission(self) -> rustok_api::Permission {
+        match self {
+            Self::List => rustok_api::Permission::MARKETPLACE_LISTINGS_LIST,
+            Self::Read => rustok_api::Permission::MARKETPLACE_LISTINGS_READ,
+            Self::Create => rustok_api::Permission::MARKETPLACE_LISTINGS_CREATE,
+            Self::Update => rustok_api::Permission::MARKETPLACE_LISTINGS_UPDATE,
+            Self::Moderate => rustok_api::Permission::MARKETPLACE_LISTINGS_MODERATE,
+            Self::Publish => rustok_api::Permission::MARKETPLACE_LISTINGS_PUBLISH,
+            Self::Manage => rustok_api::Permission::MARKETPLACE_LISTINGS_MANAGE,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
