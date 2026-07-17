@@ -230,6 +230,8 @@
     "required_api": "publish_contract_in_tx",
     "contract_type": "rustok_events::MarketplaceListingEvent",
     "contract_sealed": true,
+    "event_bus_composition": "injected_through_marketplace_listing_service",
+    "receipt_executor_constructs_transport": false,
     "publication_owner": "marketplace_listing_command_receipts_completion",
     "same_transaction_as_owner_event_and_receipt": true,
     "replay_publishes_duplicate_event": false,
