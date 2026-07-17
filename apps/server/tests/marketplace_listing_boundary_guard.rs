@@ -25,6 +25,12 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
     let provider_events = include_str!(
         "../../../crates/rustok-marketplace-listing/src/replay_safe_commands.rs"
     );
+    let moderation_events = include_str!(
+        "../../../crates/rustok-marketplace-listing/src/evented_commands.rs"
+    );
+    let lifecycle_events = include_str!(
+        "../../../crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs"
+    );
     let ports = include_str!(
         "../../../crates/rustok-marketplace-listing/src/ports.rs"
     );
@@ -92,8 +98,10 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
     }
 
     for marker in [
+        "event_bus: TransactionalEventBus",
         "Arc<dyn MarketplaceSellerReadPort>",
         "Arc<dyn ProductCatalogReadPort>",
+        "pub(crate) fn event_bus(&self) -> &TransactionalEventBus",
         "seller_reader(&self)",
         "product_reader(&self)",
         "listing_not_active",
@@ -117,6 +125,7 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "pub async fn archive_listing(",
         "ListingCommandAdmission",
         "append_listing_event(",
+        "OutboxTransport::new",
     ] {
         assert!(!service.contains(forbidden), "read service contains write bypass: {forbidden}");
     }
@@ -130,10 +139,23 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "Sha256::digest",
         "replay_existing",
         "STATUS_COMPLETED",
+        "event_bus: TransactionalEventBus",
+        "publish_contract_in_tx(&transaction, tenant_id, Some(actor_id), event)",
         "transaction.commit().await?",
         "IdempotencyConflict",
     ] {
         assert!(receipt.contains(marker), "listing receipt is missing {marker}");
+    }
+    assert!(
+        !receipt.contains("OutboxTransport::new"),
+        "listing receipt executor must not construct its event transport"
+    );
+
+    for source in [provider_events, moderation_events, lifecycle_events] {
+        assert!(
+            source.contains("self.event_bus().clone()"),
+            "listing command path does not pass the injected event bus"
+        );
     }
     for marker in [
         "create_listing_replay_safe",
@@ -188,9 +210,9 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "\"cross_module_foreign_keys\": false",
         "\"buy_box_ranking_owned\": false",
         "\"atomic_with_owner_write\": true",
-        "created_event_and_receipt_atomic",
-        "published_event_and_receipt_atomic",
-        "reactivated_event_and_receipt_atomic",
+        "\"atomic_with_external_contract_event\": true",
+        "\"receipt_executor_constructs_transport\": false",
+        "\"event_bus_composition\": \"injected_through_marketplace_listing_service\"",
         "lost_response_replay_returns_saved_result",
     ] {
         assert!(registry.contains(marker), "listing registry is missing {marker}");
