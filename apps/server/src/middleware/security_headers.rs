@@ -3,6 +3,7 @@ use axum::http::HeaderValue;
 ///
 /// Adds OWASP-recommended security response headers to every HTTP response:
 /// - `Content-Security-Policy` — restricts resource loading
+/// - `Content-Security-Policy-Report-Only` — surfaces strict UI policy violations
 /// - `X-Content-Type-Options: nosniff` — prevents MIME sniffing
 /// - `X-Frame-Options: DENY` — prevents clickjacking
 /// - `X-XSS-Protection: 0` — disables legacy XSS filter (modern browsers use CSP)
@@ -16,13 +17,18 @@ use axum::{extract::Request, middleware::Next, response::Response};
 /// Default CSP for API/server-only surfaces.
 const API_CSP: &str =
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
-/// UI-compatible CSP for embedded admin/storefront shells.
+/// UI-compatible enforced CSP for embedded admin/storefront shells.
 ///
 /// Inline script/style allowances remain temporarily for the current SSR/bootstrap
 /// path and must be replaced with nonce/hash-based directives before the platform
 /// is declared production-ready. Plaintext browser connections and plugin/object
 /// content are intentionally prohibited now.
 const UI_CSP: &str = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: ws: wss:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+
+/// Target UI policy used during migration. It intentionally omits all inline/eval
+/// allowances and plaintext connection schemes, but remains report-only until the
+/// SSR/bootstrap surfaces are nonce/hash compatible.
+const UI_CSP_REPORT_ONLY: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 /// HSTS: 1 year, include subdomains.
 /// Injected when `RUSTOK_HTTPS` explicitly declares an HTTPS deployment. The
@@ -39,6 +45,15 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
         "content-security-policy",
         HeaderValue::from_static(select_csp(&path)),
     );
+
+    // Run the future nonce/hash-compatible UI policy without blocking users. API
+    // surfaces already use the stricter enforced policy and do not need a duplicate.
+    if let Some(policy) = select_report_only_csp(&path) {
+        headers.insert(
+            "content-security-policy-report-only",
+            HeaderValue::from_static(policy),
+        );
+    }
 
     // X-Content-Type-Options
     headers.insert(
@@ -88,23 +103,32 @@ fn parse_env_flag(value: &str) -> bool {
     )
 }
 
-fn select_csp(path: &str) -> &'static str {
-    let is_api_surface = path.starts_with("/api/")
+fn is_api_surface(path: &str) -> bool {
+    path.starts_with("/api/")
         || path == "/metrics"
         || path.starts_with("/health")
         || path.starts_with("/swagger")
-        || path.starts_with("/api/openapi");
+        || path.starts_with("/api/openapi")
+}
 
-    if is_api_surface {
+fn select_csp(path: &str) -> &'static str {
+    if is_api_surface(path) {
         API_CSP
     } else {
         UI_CSP
     }
 }
 
+fn select_report_only_csp(path: &str) -> Option<&'static str> {
+    (!is_api_surface(path)).then_some(UI_CSP_REPORT_ONLY)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_env_flag, select_csp, API_CSP, UI_CSP};
+    use super::{
+        parse_env_flag, select_csp, select_report_only_csp, API_CSP, UI_CSP,
+        UI_CSP_REPORT_ONLY,
+    };
 
     #[test]
     fn api_and_operator_paths_use_strict_csp() {
@@ -112,20 +136,31 @@ mod tests {
         assert_eq!(select_csp("/metrics"), API_CSP);
         assert_eq!(select_csp("/health/ready"), API_CSP);
         assert_eq!(select_csp("/swagger/index.html"), API_CSP);
+        assert_eq!(select_report_only_csp("/api/graphql"), None);
     }
 
     #[test]
-    fn ui_paths_use_ui_csp() {
-        assert_eq!(select_csp("/admin"), UI_CSP);
-        assert_eq!(select_csp("/"), UI_CSP);
-        assert_eq!(select_csp("/assets/app.js"), UI_CSP);
+    fn ui_paths_use_enforced_and_report_only_policies() {
+        for path in ["/admin", "/", "/assets/app.js"] {
+            assert_eq!(select_csp(path), UI_CSP);
+            assert_eq!(select_report_only_csp(path), Some(UI_CSP_REPORT_ONLY));
+        }
     }
 
     #[test]
-    fn ui_csp_blocks_plaintext_connections_and_plugin_content() {
+    fn enforced_ui_csp_blocks_plaintext_connections_and_plugin_content() {
         assert!(!UI_CSP.contains(" http:"));
         assert!(UI_CSP.contains("object-src 'none'"));
         assert!(UI_CSP.contains("form-action 'self'"));
+    }
+
+    #[test]
+    fn report_only_ui_csp_exposes_inline_eval_and_plaintext_dependencies() {
+        assert!(!UI_CSP_REPORT_ONLY.contains("'unsafe-inline'"));
+        assert!(!UI_CSP_REPORT_ONLY.contains("'unsafe-eval'"));
+        assert!(!UI_CSP_REPORT_ONLY.contains(" http:"));
+        assert!(!UI_CSP_REPORT_ONLY.contains(" ws:"));
+        assert!(UI_CSP_REPORT_ONLY.contains("worker-src 'self' blob:"));
     }
 
     #[test]
