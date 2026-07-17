@@ -118,7 +118,7 @@ impl CacheBackend for SharedClientRedisCacheBackend {
         let timeout = self.operation_timeout;
         self.circuit_breaker
             .call(|| async move {
-                shared_redis_timeout(timeout, async {
+                shared_redis_timeout(timeout, async move {
                     let mut manager = self.connection_manager().await?;
                     let pong = redis::cmd("PING")
                         .query_async::<String>(&mut manager)
@@ -143,7 +143,7 @@ impl CacheBackend for SharedClientRedisCacheBackend {
         let timeout = self.operation_timeout;
         self.circuit_breaker
             .call(|| async move {
-                shared_redis_timeout(timeout, async {
+                shared_redis_timeout(timeout, async move {
                     let mut manager = self.connection_manager().await?;
                     redis::cmd("GET")
                         .arg(redis_key)
@@ -174,7 +174,7 @@ impl CacheBackend for SharedClientRedisCacheBackend {
         let timeout = self.operation_timeout;
         self.circuit_breaker
             .call(|| async move {
-                shared_redis_timeout(timeout, async {
+                shared_redis_timeout(timeout, async move {
                     let mut manager = self.connection_manager().await?;
                     redis::cmd("SET")
                         .arg(redis_key)
@@ -204,7 +204,7 @@ impl CacheBackend for SharedClientRedisCacheBackend {
         let timeout = self.operation_timeout;
         self.circuit_breaker
             .call(|| async move {
-                shared_redis_timeout(timeout, async {
+                shared_redis_timeout(timeout, async move {
                     let mut manager = self.connection_manager().await?;
                     let applied = redis::cmd("EVAL")
                         .arg(SHARED_REDIS_COMPARE_AND_SET_SCRIPT)
@@ -235,7 +235,7 @@ impl CacheBackend for SharedClientRedisCacheBackend {
         let timeout = self.operation_timeout;
         self.circuit_breaker
             .call(|| async move {
-                shared_redis_timeout(timeout, async {
+                shared_redis_timeout(timeout, async move {
                     let mut manager = self.connection_manager().await?;
                     redis::cmd("DEL")
                         .arg(redis_key)
