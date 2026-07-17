@@ -47,7 +47,7 @@ impl AdminCanvasController {
         self.insert_palette_block_intent(block_id)
     }
 
-    pub fn ssr_drop_intent_with_palette_access(
+    pub(crate) fn ssr_drop_intent_with_palette_access(
         &self,
         request: SsrDropRequest,
         access: &PaletteBlockAccess,
