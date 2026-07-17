@@ -93,3 +93,78 @@ fn warnings_only_block_when_policy_requires_it() {
         })
     );
 }
+
+#[test]
+fn required_locale_coverage_gaps_block_readiness_without_strict_locale_validation() {
+    let mut source =
+        GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
+    source["flyLocales"] = json!({
+        "default_locale": "en",
+        "supported_locales": ["en", "ru"],
+        "required_locales": ["en", "ru"],
+        "enforce_required_locales": false
+    });
+    source["flyTranslations"] = json!([{
+        "id": "hero",
+        "values": { "en": "Welcome" }
+    }]);
+    let document = GrapesJsV1Codec::decode_value(source).expect("document");
+
+    let report = evaluate_landing_readiness(
+        &document,
+        LandingReadinessPolicy::default(),
+    );
+    assert!(!report.ready);
+    assert!(report.issues.iter().any(|issue| {
+        issue.category == LandingReadinessCategory::Locales
+            && issue.diagnostic.code == "landing_translation_locale_missing"
+            && issue.diagnostic.severity == ValidationSeverity::Error
+    }));
+    assert!(report
+        .categories
+        .iter()
+        .find(|summary| summary.category == LandingReadinessCategory::Locales)
+        .is_some_and(|summary| summary.error_count > 0));
+}
+
+#[test]
+fn structural_readiness_does_not_require_runtime_instance_data() {
+    let mut source =
+        GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
+    source["flyRuntimeContextSchema"] = json!([{
+        "id": "customer-name",
+        "path": "customer.name",
+        "kind": "string",
+        "required": true
+    }]);
+    let document = GrapesJsV1Codec::decode_value(source).expect("document");
+
+    let report = evaluate_landing_readiness(
+        &document,
+        LandingReadinessPolicy::default(),
+    );
+    assert!(report.ready, "{:?}", report.issues);
+    assert!(!report
+        .issues
+        .iter()
+        .any(|issue| issue.diagnostic.code == "runtime_context_required_value_missing"));
+}
+
+#[test]
+fn localized_slug_diagnostics_are_classified_as_routes() {
+    let mut source =
+        GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
+    source["pages"][0]["flyPageMeta"]["slug"] = json!({
+        "$localized": { "en": " " }
+    });
+    let document = GrapesJsV1Codec::decode_value(source).expect("document");
+
+    let report = evaluate_landing_readiness(
+        &document,
+        LandingReadinessPolicy::default(),
+    );
+    assert!(report.issues.iter().any(|issue| {
+        issue.category == LandingReadinessCategory::Routes
+            && issue.diagnostic.code == "localized_page_slug_empty"
+    }));
+}
