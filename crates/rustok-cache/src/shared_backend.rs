@@ -288,6 +288,7 @@ impl CacheService {
             .raw_shared_client_backend(prefix, ttl, max_capacity, &options)
             .await;
         let backend = self.wrap_generation_aware_backend(prefix, backend).await;
+        let backend = self.wrap_generation_recovery_health(prefix, backend);
         if options.metrics_enabled {
             Arc::new(SharedInstrumentedCacheBackend::new(prefix, backend))
         } else {
