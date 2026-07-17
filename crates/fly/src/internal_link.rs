@@ -1,15 +1,18 @@
 use crate::{
-    localized_page_route_index, normalize_locale_tag, safe_url::normalize_safe_url, ComponentNode,
-    LocalizedPageRouteEntry, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
-    ValidationSeverity,
+    component_visit::{visit_project_components, visit_project_components_mut},
+    localized_page_route_index, normalize_locale_tag, safe_url::normalize_safe_url,
+    ComponentObject, LocalizedPageRouteEntry, ProjectDocument, RuntimeLocaleSelection,
+    ValidationDiagnostic, ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const FLY_PAGE_LINK_FIELD: &str = "flyPageLink";
 
 const GENERATED_INTERNAL_LINK_ATTRIBUTES: &[&str] = &["href", "target", "rel"];
+
+type PageIndex = BTreeMap<String, usize>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InternalPageLink {
@@ -62,272 +65,273 @@ pub struct InternalLinkMaterialization {
     pub unresolved_links: usize,
 }
 
+#[derive(Default)]
+struct InternalLinkCounters {
+    resolved: usize,
+    fallback: usize,
+    unresolved: usize,
+}
+
+struct InternalLinkResolution<'a> {
+    route_index: &'a [LocalizedPageRouteEntry],
+    page_ids: &'a PageIndex,
+    locale_candidates: &'a [String],
+}
+
+struct InternalLinkValidation<'a> {
+    page_ids: &'a PageIndex,
+    routed_pages: &'a BTreeSet<usize>,
+}
+
 pub fn materialize_internal_page_links(
     document: &ProjectDocument,
     context: &Value,
 ) -> InternalLinkMaterialization {
     let route_index = localized_page_route_index(document);
-    let selection = RuntimeLocaleSelection::from_context(context);
-    let candidates = locale_candidates(&selection);
-    let page_ids = document
-        .project
-        .pages
-        .iter()
-        .enumerate()
-        .filter_map(|(index, page)| page.id.as_deref().map(|id| (id.to_string(), index)))
-        .collect::<MapIndex>();
+    let locale_candidates = locale_candidates(&RuntimeLocaleSelection::from_context(context));
+    let page_ids = page_index(document);
+    let resolution = InternalLinkResolution {
+        route_index: &route_index,
+        page_ids: &page_ids,
+        locale_candidates: &locale_candidates,
+    };
     let mut materialized = document.clone();
     let mut diagnostics = Vec::new();
-    let mut resolved_links = 0usize;
-    let mut fallback_links = 0usize;
-    let mut unresolved_links = 0usize;
+    let mut counters = InternalLinkCounters::default();
 
-    for (page_index, page) in materialized.project.pages.iter_mut().enumerate() {
-        let Some(root) = page.component.as_mut() else {
-            continue;
-        };
-        materialize_node(
-            root,
-            &format!("project.pages[{page_index}].component"),
-            &route_index,
-            &page_ids,
-            &candidates,
+    visit_project_components_mut(&mut materialized.project, |component, visit| {
+        materialize_component(
+            component,
+            visit.path(),
+            &resolution,
             &mut diagnostics,
-            &mut resolved_links,
-            &mut fallback_links,
-            &mut unresolved_links,
+            &mut counters,
         );
-    }
+    });
 
     InternalLinkMaterialization {
         document: materialized,
         diagnostics,
-        resolved_links,
-        fallback_links,
-        unresolved_links,
+        resolved_links: counters.resolved,
+        fallback_links: counters.fallback,
+        unresolved_links: counters.unresolved,
     }
 }
 
 pub fn validate_internal_page_links(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let route_index = localized_page_route_index(document);
-    let page_ids = document
+    let page_ids = page_index(document);
+    let routed_pages = route_index
+        .iter()
+        .map(|entry| entry.page_index)
+        .collect::<BTreeSet<_>>();
+    let validation = InternalLinkValidation {
+        page_ids: &page_ids,
+        routed_pages: &routed_pages,
+    };
+    let mut diagnostics = Vec::new();
+
+    visit_project_components(&document.project, |component, visit| {
+        validate_component(component, visit.path(), &validation, &mut diagnostics);
+    });
+    diagnostics
+}
+
+fn page_index(document: &ProjectDocument) -> PageIndex {
+    document
         .project
         .pages
         .iter()
         .enumerate()
         .filter_map(|(index, page)| page.id.as_deref().map(|id| (id.to_string(), index)))
-        .collect::<MapIndex>();
-    let routed_pages = route_index
-        .iter()
-        .map(|entry| entry.page_index)
-        .collect::<BTreeSet<_>>();
-    let mut diagnostics = Vec::new();
-    for (page_index, page) in document.project.pages.iter().enumerate() {
-        let Some(root) = page.component.as_ref() else {
-            continue;
-        };
-        validate_node(
-            root,
-            &format!("project.pages[{page_index}].component"),
-            &page_ids,
-            &routed_pages,
-            &mut diagnostics,
-        );
-    }
-    diagnostics
+        .collect()
 }
 
-type MapIndex = std::collections::BTreeMap<String, usize>;
-
-#[allow(clippy::too_many_arguments)]
-fn materialize_node(
-    node: &mut ComponentNode,
+fn materialize_component(
+    component: &mut ComponentObject,
     path: &str,
-    route_index: &[LocalizedPageRouteEntry],
-    page_ids: &MapIndex,
-    candidates: &[String],
+    resolution: &InternalLinkResolution<'_>,
     diagnostics: &mut Vec<ValidationDiagnostic>,
-    resolved_links: &mut usize,
-    fallback_links: &mut usize,
-    unresolved_links: &mut usize,
+    counters: &mut InternalLinkCounters,
 ) {
-    let Some(component) = node.as_object_mut() else {
+    let Some(raw) = component.extensions.get(FLY_PAGE_LINK_FIELD).cloned() else {
         return;
     };
-    if let Some(raw) = component.extensions.get(FLY_PAGE_LINK_FIELD).cloned() {
-        clear_internal_link_materialization(component);
-        let component_id = component.id.clone();
-        match serde_json::from_value::<InternalPageLink>(raw) {
-            Ok(link) => match link.normalized() {
-                Ok(link) => match page_ids.get(&link.page_id).copied() {
-                    Some(target_page_index) => {
-                        if let Some(slug) = route_slug(route_index, target_page_index, candidates) {
-                            component.tag_name = Some("a".to_string());
-                            component.attributes.insert(
-                                "href".to_string(),
-                                Value::String(build_href(&link, slug)),
-                            );
-                            *resolved_links = resolved_links.saturating_add(1);
-                        } else if let Some(fallback_href) = link.fallback_href {
-                            component.tag_name = Some("a".to_string());
-                            component
-                                .attributes
-                                .insert("href".to_string(), Value::String(fallback_href));
-                            *fallback_links = fallback_links.saturating_add(1);
-                            diagnostics.push(link_diagnostic(
-                                ValidationSeverity::Info,
-                                "internal_page_link_fallback_used",
-                                path,
-                                component_id,
-                                format!(
-                                    "internal page link target `{}` has no localized slug; fallback_href was used",
-                                    link.page_id
-                                ),
-                            ));
-                        } else {
-                            *unresolved_links = unresolved_links.saturating_add(1);
-                            diagnostics.push(link_diagnostic(
-                                ValidationSeverity::Warning,
-                                "internal_page_link_slug_unresolved",
-                                path,
-                                component_id,
-                                format!(
-                                    "internal page link target `{}` has no route for the active locale",
-                                    link.page_id
-                                ),
-                            ));
-                        }
-                    }
-                    None => {
-                        *unresolved_links = unresolved_links.saturating_add(1);
-                        diagnostics.push(link_diagnostic(
-                            ValidationSeverity::Warning,
-                            "internal_page_link_target_missing",
-                            path,
-                            component_id,
-                            format!(
-                                "internal page link target `{}` does not exist",
-                                link.page_id
-                            ),
-                        ));
-                    }
-                },
-                Err(error) => {
-                    *unresolved_links = unresolved_links.saturating_add(1);
-                    diagnostics.push(link_diagnostic(
-                        ValidationSeverity::Warning,
-                        "internal_page_link_invalid",
-                        path,
-                        component_id,
-                        error,
-                    ));
-                }
-            },
+    clear_internal_link_materialization(component);
+    let component_id = component.id.clone();
+    let link = match serde_json::from_value::<InternalPageLink>(raw) {
+        Ok(link) => match link.normalized() {
+            Ok(link) => link,
             Err(error) => {
-                *unresolved_links = unresolved_links.saturating_add(1);
-                diagnostics.push(link_diagnostic(
-                    ValidationSeverity::Warning,
-                    "internal_page_link_invalid",
+                record_unresolved(
+                    diagnostics,
+                    counters,
                     path,
                     component_id,
-                    format!("internal page link cannot be decoded: {error}"),
-                ));
+                    "internal_page_link_invalid",
+                    error,
+                );
+                return;
             }
-        }
-    }
-    if let Some(children) = component.children_mut() {
-        for (index, child) in children.iter_mut().enumerate() {
-            materialize_node(
-                child,
-                &format!("{path}.components[{index}]"),
-                route_index,
-                page_ids,
-                candidates,
+        },
+        Err(error) => {
+            record_unresolved(
                 diagnostics,
-                resolved_links,
-                fallback_links,
-                unresolved_links,
+                counters,
+                path,
+                component_id,
+                "internal_page_link_invalid",
+                format!("internal page link cannot be decoded: {error}"),
             );
+            return;
         }
-    }
-}
+    };
 
-fn validate_node(
-    node: &ComponentNode,
-    path: &str,
-    page_ids: &MapIndex,
-    routed_pages: &BTreeSet<usize>,
-    diagnostics: &mut Vec<ValidationDiagnostic>,
-) {
-    let Some(component) = node.as_object() else {
+    let Some(target_page_index) = resolution.page_ids.get(&link.page_id).copied() else {
+        record_unresolved(
+            diagnostics,
+            counters,
+            path,
+            component_id,
+            "internal_page_link_target_missing",
+            format!("internal page link target `{}` does not exist", link.page_id),
+        );
         return;
     };
-    if let Some(raw) = component.extensions.get(FLY_PAGE_LINK_FIELD).cloned() {
-        let component_id = component.id.clone();
-        match serde_json::from_value::<InternalPageLink>(raw) {
-            Ok(link) => match link.normalized() {
-                Ok(link) => match page_ids.get(&link.page_id).copied() {
-                    Some(page_index) if routed_pages.contains(&page_index) => {}
-                    Some(_) if link.fallback_href.is_some() => diagnostics.push(link_diagnostic(
-                        ValidationSeverity::Info,
-                        "internal_page_link_route_missing_with_fallback",
-                        path,
-                        component_id,
-                        format!(
-                            "internal page link target `{}` has no explicit slug and relies on fallback_href",
-                            link.page_id
-                        ),
-                    )),
-                    Some(_) => diagnostics.push(link_diagnostic(
-                        ValidationSeverity::Warning,
-                        "internal_page_link_route_missing",
-                        path,
-                        component_id,
-                        format!(
-                            "internal page link target `{}` has no explicit page slug",
-                            link.page_id
-                        ),
-                    )),
-                    None => diagnostics.push(link_diagnostic(
-                        ValidationSeverity::Error,
-                        "internal_page_link_target_missing",
-                        path,
-                        component_id,
-                        format!(
-                            "internal page link target `{}` does not exist",
-                            link.page_id
-                        ),
-                    )),
-                },
-                Err(error) => diagnostics.push(link_diagnostic(
+
+    if let Some(slug) = route_slug(
+        resolution.route_index,
+        target_page_index,
+        resolution.locale_candidates,
+    ) {
+        apply_href(component, build_href(&link, slug));
+        counters.resolved = counters.resolved.saturating_add(1);
+        return;
+    }
+
+    if let Some(fallback_href) = link.fallback_href {
+        apply_href(component, fallback_href);
+        counters.fallback = counters.fallback.saturating_add(1);
+        diagnostics.push(link_diagnostic(
+            ValidationSeverity::Info,
+            "internal_page_link_fallback_used",
+            path,
+            component_id,
+            format!(
+                "internal page link target `{}` has no localized slug; fallback_href was used",
+                link.page_id
+            ),
+        ));
+        return;
+    }
+
+    record_unresolved(
+        diagnostics,
+        counters,
+        path,
+        component_id,
+        "internal_page_link_slug_unresolved",
+        format!(
+            "internal page link target `{}` has no route for the active locale",
+            link.page_id
+        ),
+    );
+}
+
+fn validate_component(
+    component: &ComponentObject,
+    path: &str,
+    validation: &InternalLinkValidation<'_>,
+    diagnostics: &mut Vec<ValidationDiagnostic>,
+) {
+    let Some(raw) = component.extensions.get(FLY_PAGE_LINK_FIELD).cloned() else {
+        return;
+    };
+    let component_id = component.id.clone();
+    let link = match serde_json::from_value::<InternalPageLink>(raw) {
+        Ok(link) => match link.normalized() {
+            Ok(link) => link,
+            Err(error) => {
+                diagnostics.push(link_diagnostic(
                     ValidationSeverity::Error,
                     "internal_page_link_invalid",
                     path,
                     component_id,
                     error,
-                )),
-            },
-            Err(error) => diagnostics.push(link_diagnostic(
+                ));
+                return;
+            }
+        },
+        Err(error) => {
+            diagnostics.push(link_diagnostic(
                 ValidationSeverity::Error,
                 "internal_page_link_invalid",
                 path,
                 component_id,
                 format!("internal page link cannot be decoded: {error}"),
-            )),
+            ));
+            return;
         }
-    }
-    for (index, child) in component.children().iter().enumerate() {
-        validate_node(
-            child,
-            &format!("{path}.components[{index}]"),
-            page_ids,
-            routed_pages,
-            diagnostics,
-        );
+    };
+
+    match validation.page_ids.get(&link.page_id).copied() {
+        Some(page_index) if validation.routed_pages.contains(&page_index) => {}
+        Some(_) if link.fallback_href.is_some() => diagnostics.push(link_diagnostic(
+            ValidationSeverity::Info,
+            "internal_page_link_route_missing_with_fallback",
+            path,
+            component_id,
+            format!(
+                "internal page link target `{}` has no explicit slug and relies on fallback_href",
+                link.page_id
+            ),
+        )),
+        Some(_) => diagnostics.push(link_diagnostic(
+            ValidationSeverity::Warning,
+            "internal_page_link_route_missing",
+            path,
+            component_id,
+            format!(
+                "internal page link target `{}` has no explicit page slug",
+                link.page_id
+            ),
+        )),
+        None => diagnostics.push(link_diagnostic(
+            ValidationSeverity::Error,
+            "internal_page_link_target_missing",
+            path,
+            component_id,
+            format!("internal page link target `{}` does not exist", link.page_id),
+        )),
     }
 }
 
-fn clear_internal_link_materialization(component: &mut crate::ComponentObject) {
+fn apply_href(component: &mut ComponentObject, href: String) {
+    component.tag_name = Some("a".to_string());
+    component
+        .attributes
+        .insert("href".to_string(), Value::String(href));
+}
+
+fn record_unresolved(
+    diagnostics: &mut Vec<ValidationDiagnostic>,
+    counters: &mut InternalLinkCounters,
+    path: &str,
+    component_id: Option<String>,
+    code: &'static str,
+    message: String,
+) {
+    counters.unresolved = counters.unresolved.saturating_add(1);
+    diagnostics.push(link_diagnostic(
+        ValidationSeverity::Warning,
+        code,
+        path,
+        component_id,
+        message,
+    ));
+}
+
+fn clear_internal_link_materialization(component: &mut ComponentObject) {
     for attribute in GENERATED_INTERNAL_LINK_ATTRIBUTES {
         component.attributes.remove(*attribute);
     }
@@ -614,5 +618,27 @@ mod tests {
         assert!(validate_internal_page_links(&fragment)
             .iter()
             .any(|diagnostic| diagnostic.code == "internal_page_link_invalid"));
+    }
+
+    #[test]
+    fn anonymous_component_diagnostics_use_the_shared_canonical_path() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "type": "link",
+                        "flyPageLink": { "page_id": "missing" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let diagnostics = validate_internal_page_links(&document);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.path
+                == "project.pages[0].component.components[0].flyPageLink"
+        }));
     }
 }
