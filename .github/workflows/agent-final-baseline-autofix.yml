@@ -34,6 +34,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
           python - <<'PY'
           from pathlib import Path
           import re
@@ -59,7 +61,6 @@ jobs:
                   raise SystemExit(f"{path}: replacement state not found")
               file.write_text(source)
 
-          # Fly parser and contract-test repairs validated by focused format, 112 unit tests and Clippy.
           replace_once(
               "crates/fly/src/dynamic.rs",
               '''    trimmed
@@ -115,7 +116,6 @@ jobs:
               '        .unwrap_or(match component_type {',
           )
 
-          # Rust 2021 compatibility for cache readiness helpers.
           path = Path("apps/server/src/services/channel_cache_invalidation.rs")
           source = path.read_text()
           generation_pattern = re.compile(
@@ -214,7 +214,6 @@ jobs:
               raise SystemExit("startup Redis let-chain pattern not found")
           path.write_text(source)
 
-          # Cache source guard follows the deterministic observed-key eviction test.
           replace_once(
               "crates/rustok-cache/tests/alert_rules_guard.rs",
               '        "while backend.stats().entries > 1",',
@@ -226,7 +225,6 @@ jobs:
               '        ".expect(\\"entry-count cache did not evict either key\\");",',
           )
 
-          # Current Clippy baseline.
           for old, new in [
               ("for (_, counter) in counters.iter()", "for counter in counters.values()"),
               ("for (_, gauge) in gauges.iter()", "for gauge in gauges.values()"),
@@ -245,7 +243,6 @@ jobs:
           ''',
           )
 
-          # Payment crypto dependencies must use the same digest generation.
           replace_once(
               "crates/rustok-payment/Cargo.toml",
               'hmac = { version = "0.12", optional = true }',
@@ -257,7 +254,6 @@ jobs:
               'use hmac::{Hmac, KeyInit, Mac};',
           )
 
-          # CSP source guard tracks the current nonce-boundary heading and avoids a sensitive marker in test names.
           replace_once(
               "scripts/verify/verify-csp-reporting-contract.mjs",
               '## Trusted Script Nonce Boundary',
@@ -269,7 +265,6 @@ jobs:
               'fn parses_legacy_csp_report_without_recording_sensitive_sample()',
           )
 
-          # Restore the crate-private test accessor used by SSR editor tests.
           replace_once(
               "crates/rustok-page-builder/admin/src/model.rs",
               '''    pub fn editor(&self) -> &FlyEditor {
@@ -287,7 +282,6 @@ jobs:
           ''',
           )
 
-          # New transitive dependency uses the OSI-approved MIT No Attribution license.
           replace_once(
               "deny.toml",
               '    "MIT",',
@@ -309,4 +303,4 @@ jobs:
           git add -A
           git diff --cached --quiet && exit 0
           git commit -m "fix(ci): repair current repository baseline [agent-final-autofix]"
-          git push origin HEAD:agent/ci-baseline-final-clean
+          git push --force-with-lease origin HEAD:agent/ci-baseline-final-clean
