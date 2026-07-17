@@ -4,6 +4,8 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 mod command_receipts;
+mod evented_commands;
+mod lifecycle_event_commands;
 mod listing_events;
 mod replay_safe_commands;
 
