@@ -175,12 +175,64 @@ requireText(
   "mod audit_panel;",
 );
 requireText(
+  "crates/rustok-page-builder/admin/src/editor/mod.rs",
+  "mod ssr_internal_link;",
+);
+requireText(
   "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
   "<AuditPanel runtime=audit_runtime />",
 );
 requireText(
+  "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
+  "<SsrInternalPageLinkPanel runtime=ssr_internal_link_runtime />",
+);
+requireText(
+  "crates/rustok-page-builder/admin/src/browser_intent.rs",
+  '"set_internal_page_link"',
+);
+requireText(
+  "crates/rustok-page-builder/admin/src/browser_intent.rs",
+  '"remove_internal_page_link"',
+);
+requireText(
+  "crates/fly-browser/src/lib.rs",
+  '"set_internal_page_link"',
+);
+requireText(
+  "crates/fly-browser/src/lib.rs",
+  '"remove_internal_page_link"',
+);
+requireText(
+  "crates/rustok-page-builder/admin/src/editor/ssr_inspector.rs",
+  "metadata.open_graph_title",
+);
+requireText(
+  "crates/rustok-page-builder/admin/src/editor/ssr_inspector.rs",
+  "metadata.open_graph_description",
+);
+requireText(
+  "crates/rustok-page-builder/admin/src/editor/ssr_inspector.rs",
+  "metadata.open_graph_image",
+);
+rejectText(
+  "crates/rustok-page-builder/admin/src/editor/ssr_inspector.rs",
+  "metadata.og_title",
+);
+rejectText(
+  "crates/rustok-page-builder/admin/src/editor/ssr_inspector.rs",
+  "metadata.og_description",
+);
+rejectText(
+  "crates/rustok-page-builder/admin/src/editor/ssr_inspector.rs",
+  "metadata.og_image",
+);
+requireText(
   ".github/workflows/fly-page-builder.yml",
   "dtolnay/rust-toolchain@1.93.1",
+);
+requireText(
+  ".github/workflows/fly-page-builder.yml",
+  "node scripts/verify/verify-fly-internal-links.mjs",
 );
 for (const localePath of [
   "crates/rustok-page-builder/admin/locales/en.json",
