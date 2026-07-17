@@ -145,11 +145,12 @@ for (const [localeName, locale] of [['en', en], ['ru', ru]]) {
   }
 }
 
-requireMarker(
-  'workflow',
+requireMarkers('workflow', [
+  'cargo fmt -p fly -p fly-browser -p rustok-page-builder-admin -- --check',
+  'cargo test -p fly-browser --lib',
+  'cargo clippy -p fly-browser -p rustok-page-builder-admin --lib -- -D warnings',
   'node scripts/verify/verify-fly-actions-forms.mjs',
-  'focused Fly workflow must execute the action/form/field guard',
-);
+], 'focused Fly workflow');
 
 if (failures.length > 0) {
   console.error('Fly actions, forms, and fields verification failed:');
