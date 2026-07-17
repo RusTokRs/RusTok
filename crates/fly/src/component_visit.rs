@@ -6,11 +6,11 @@ use crate::{ComponentNode, ComponentObject, GrapesProject};
 /// consumers must not persist the path as an editor reference because sibling insertions can
 /// change indexes.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ComponentVisit {
-    pub page_index: usize,
-    pub page_id: Option<String>,
-    pub depth: usize,
-    pub path: String,
+pub struct ComponentVisit {
+    page_index: usize,
+    page_id: Option<String>,
+    depth: usize,
+    path: String,
 }
 
 impl ComponentVisit {
@@ -32,12 +32,29 @@ impl ComponentVisit {
         }
     }
 
+    pub const fn page_index(&self) -> usize {
+        self.page_index
+    }
+
+    pub fn page_id(&self) -> Option<&str> {
+        self.page_id.as_deref()
+    }
+
+    pub const fn depth(&self) -> usize {
+        self.depth
+    }
+
     pub fn path(&self) -> &str {
         &self.path
     }
 }
 
-pub(crate) fn visit_project_components(
+/// Walks every typed component in deterministic page/pre-order sequence.
+///
+/// Opaque provider nodes remain lossless in the document but are intentionally skipped because
+/// Fly cannot safely expose them as `ComponentObject` values. Mutation stays crate-private so
+/// external adapters cannot bypass editor commands, validation, revision tracking, or history.
+pub fn visit_project_components(
     project: &GrapesProject,
     mut visitor: impl FnMut(&ComponentObject, &ComponentVisit),
 ) {
@@ -134,10 +151,10 @@ mod tests {
         visit_project_components(&document.project, |component, visit| {
             immutable.push((
                 component.id.clone().unwrap_or_default(),
-                visit.page_index,
-                visit.page_id.clone(),
-                visit.depth,
-                visit.path.clone(),
+                visit.page_index(),
+                visit.page_id().map(ToString::to_string),
+                visit.depth(),
+                visit.path().to_string(),
             ));
         });
 
@@ -145,10 +162,10 @@ mod tests {
         visit_project_components_mut(&mut document.project, |component, visit| {
             mutable.push((
                 component.id.clone().unwrap_or_default(),
-                visit.page_index,
-                visit.page_id.clone(),
-                visit.depth,
-                visit.path.clone(),
+                visit.page_index(),
+                visit.page_id().map(ToString::to_string),
+                visit.depth(),
+                visit.path().to_string(),
             ));
             component
                 .attributes
@@ -182,6 +199,9 @@ mod tests {
                 ),
             ]
         );
-        assert_eq!(document.component("copy").unwrap().attributes["data-visited"], true);
+        assert_eq!(
+            document.component("copy").unwrap().attributes["data-visited"],
+            Value::Bool(true)
+        );
     }
 }
