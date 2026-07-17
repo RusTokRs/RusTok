@@ -19,6 +19,7 @@ const paths = {
   draftSession: 'crates/rustok-page-builder/admin/src/draft_session.rs',
   pagesCargo: 'crates/rustok-pages/admin/Cargo.toml',
   pagesContributionBrowser: 'crates/rustok-pages/admin/src/contribution_browser_intent.rs',
+  pagesProblem: 'crates/rustok-pages/admin/src/browser_problem.rs',
   pagesLib: 'crates/rustok-pages/admin/src/lib.rs',
   localeEn: 'crates/rustok-page-builder/admin/locales/en.json',
   localeRu: 'crates/rustok-page-builder/admin/locales/ru.json',
@@ -67,15 +68,19 @@ requireMarkers('appsAdminMain', [
   '/api/admin/pages/{page_id}/builder/intents',
   'leptos_auth::api::fetch_current_user(',
   'dispatch_pages_browser_intent_with_capabilities(',
-  'PagesBrowserIntentAccessError',
-  'BrowserCapabilityAccessError::Denied(_)',
-  'rustok_page_builder_admin::BROWSER_CAPABILITY_DENIAL_CODE',
-], 'native admin Page Builder endpoint');
-rejectMarker(
-  'appsAdminMain',
+  'PagesBrowserIntentProblem',
+  'let problem = PagesBrowserIntentProblem::from(&error);',
+  'StatusCode::from_u16(problem.status)',
+  'serde_json::to_value(problem)',
+], 'native admin Page Builder adapter');
+for (const forbidden of [
   'auth.user.as_ref().map(|user| user.role.as_str())',
-  'authoritative Page Builder access must not use the client-mirrored user cookie',
-);
+  'BrowserCapabilityAccessError::Denied(_)',
+  'PagesBrowserIntentError::PageNotFound',
+  '"code": "FLY_CAPABILITY_DENIED"',
+]) {
+  rejectMarker('appsAdminMain', forbidden, `admin host must not own ${forbidden}`);
+}
 requireMarkers('appsAdminShell', [
   '<!DOCTYPE html>',
   '<App/>',
@@ -229,10 +234,18 @@ requireMarkers('pagesContributionBrowser', [
   'validate_browser_capability_access(&envelope, capabilities)',
   'pages_preflight_preserves_typed_capability_denial',
 ], 'Pages SSR browser preflight');
+requireMarkers('pagesProblem', [
+  'pub struct PagesBrowserIntentProblem',
+  'pub fn from_error(error: &PagesBrowserIntentAccessError)',
+  'code: Some(BROWSER_CAPABILITY_DENIAL_CODE.to_string())',
+  'fn status_for_error(',
+  'capability_denial_has_stable_problem_contract',
+], 'framework-neutral Pages problem mapping');
 requireMarkers('pagesLib', [
-  'dispatch_pages_browser_intent_with_capabilities,',
+  'mod browser_problem;',
+  'PagesBrowserIntentProblem,',
   'PagesBrowserIntentAccessError,',
-], 'Pages typed browser access export');
+], 'Pages typed browser exports');
 
 const en = JSON.parse(source.localeEn);
 const ru = JSON.parse(source.localeRu);
