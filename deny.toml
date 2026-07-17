@@ -3,13 +3,9 @@ db-urls = ["https://github.com/RustSec/advisory-db"]
 unmaintained = "workspace"
 unsound = "workspace"
 git-fetch-with-cli = true
-# TEMPORARY exceptions only. Both expire on 2026-07-24 and require the
-# dependency-path/reachability evidence recorded in
-# docs/security/advisory-exceptions.md. Prefer upgrading quick-xml to >=0.41.0.
-ignore = [
-    "RUSTSEC-2026-0194", # quick-xml CPU-exhaustion DoS; temporary until 2026-07-24
-    "RUSTSEC-2026-0195", # quick-xml memory-exhaustion DoS; temporary until 2026-07-24
-]
+# Advisory exceptions must be time-bounded and registered in
+# docs/security/advisory-exceptions.md.
+ignore = []
 
 [licenses]
 allow = [
