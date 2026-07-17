@@ -86,28 +86,26 @@
     },
     {
       "path": "crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs",
-      "expected_occurrences": 3,
+      "expected_occurrences": 2,
       "owner": "Page Builder maintainers",
-      "reason": "The isolated authoring canvas continuously projects typed viewport and overlay geometry into the host document.",
-      "constraints": "Only numeric width, height, scale, position, and visibility values from typed canvas state are emitted.",
-      "exit_criteria": "Move overlay and resize geometry to SVG attributes, and replace iframe sizing or zoom with a reviewed CSP-compatible viewport adapter.",
+      "reason": "The authoring iframe supports custom viewport dimensions and continuous zoom from typed editor state.",
+      "constraints": "The two source sites emit only numeric width, height and normalized zoom values; overlay and resize geometry no longer use CSS text.",
+      "exit_criteria": "Replace iframe sizing and zoom with a reviewed CSP-compatible viewport adapter while preserving custom viewport support.",
       "required_markers": [
         "style=move || frame_runtime.controller.with",
         "style=move || iframe_runtime.controller.with",
-        "overlay_style(rect"
-      ]
-    },
-    {
-      "path": "crates/rustok-page-builder/admin/src/editor/resize_handles.rs",
-      "expected_occurrences": 2,
-      "owner": "Page Builder maintainers",
-      "reason": "Resize preview and handle positions must follow pointer-driven typed geometry in real time.",
-      "constraints": "Only numeric geometry and a cursor selected from the closed ResizeHandle enum are emitted.",
-      "exit_criteria": "Move preview and handle positioning to SVG geometry attributes compatible with style-src-attr 'none'.",
-      "required_markers": [
-        "style=move || preview_runtime.controller.with",
-        "style=move || runtime.controller.with",
-        "match handle"
+        "<OverlayLayer",
+        "<ResizeHandles"
+      ],
+      "required_evidence": [
+        {
+          "path": "crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs",
+          "marker": "fn overlay_geometry"
+        },
+        {
+          "path": "crates/rustok-page-builder/admin/src/editor/resize_handles.rs",
+          "marker": "fn svg_handle_position"
+        }
       ]
     }
   ]
