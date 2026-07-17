@@ -8,6 +8,7 @@ mod envelope;
 mod event_dedupe;
 mod fallback;
 mod generation;
+mod generation_health;
 mod invalidation;
 mod invalidation_consumer;
 mod invalidation_processor;
