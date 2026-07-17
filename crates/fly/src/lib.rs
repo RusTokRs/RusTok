@@ -21,6 +21,7 @@ mod dynamic;
 mod error;
 mod fragment;
 mod ids;
+mod interaction_route;
 mod internal_link;
 mod landing_readiness;
 mod locale_coverage;
