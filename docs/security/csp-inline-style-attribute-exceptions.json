@@ -5,7 +5,7 @@
     "owner": "Platform security and UI maintainers",
     "approved_on": "2026-07-17",
     "review_by": "2026-08-14",
-    "exit_criteria": "Every registered source site is replaced by a reviewed class, bounded CSS custom-property contract, or another representation compatible with style-src-attr 'none'."
+    "exit_criteria": "Every registered source site is replaced by a reviewed class, SVG geometry contract, native element contract, or another representation compatible with style-src-attr 'none'."
   },
   "exceptions": [
     {
@@ -14,7 +14,7 @@
       "owner": "Admin platform maintainers",
       "reason": "Build progress width is rendered from the typed i32 BuildJob.progress field.",
       "constraints": "The value is numeric transport data and the source site may set only width in percent; it must not accept a CSS string.",
-      "exit_criteria": "Replace the width attribute with a reviewed progress component contract that remains functional under style-src-attr 'none'.",
+      "exit_criteria": "Replace the width attribute with a reviewed native progress or finite class contract that remains functional under style-src-attr 'none'.",
       "required_markers": [
         "format!(\"width: {}%;\", build.progress)",
         "style=progress_width"
@@ -32,7 +32,7 @@
       "owner": "Forum module maintainers",
       "reason": "Category cards expose a persisted visual accent.",
       "constraints": "Category colors are rejected before persistence unless they match the strict hex grammar, then normalized again at the JSON model boundary before this source site is rendered.",
-      "exit_criteria": "Replace arbitrary category accents with a reviewed finite palette or a non-inline theming contract.",
+      "exit_criteria": "Replace arbitrary category accents with a reviewed finite palette class.",
       "required_markers": [
         "style=vm.accent_style.clone()"
       ],
@@ -61,7 +61,7 @@
       "owner": "Forum module maintainers",
       "reason": "Storefront category cards expose the same persisted visual accent as the admin surface.",
       "constraints": "The persistence hook, transport model and direct accent helper all reject non-hex CSS tokens and declaration separators.",
-      "exit_criteria": "Replace arbitrary category accents with a reviewed finite palette or a non-inline theming contract.",
+      "exit_criteria": "Replace arbitrary category accents with the same reviewed finite palette class as the admin surface.",
       "required_markers": [
         "style=card.accent_style"
       ],
@@ -85,41 +85,16 @@
       ]
     },
     {
-      "path": "crates/rustok-page-builder/admin/src/editor/admin_canvas.rs",
-      "expected_occurrences": 6,
-      "owner": "Page Builder maintainers",
-      "reason": "The legacy canvas uses runtime geometry for layer indentation, iframe sizing, and selection or insertion overlays.",
-      "constraints": "Generated values are numeric canvas coordinates and dimensions owned by typed Page Builder state; no tenant-authored CSS string may be concatenated into these host attributes.",
-      "exit_criteria": "Retire the legacy canvas or move every remaining host geometry site to a reviewed CSS custom-property or DOM style API contract.",
-      "required_markers": [
-        "overlay_style(",
-        "style=format!(\"padding-left:{}px\"",
-        "style=move || controller.with"
-      ]
-    },
-    {
       "path": "crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs",
       "expected_occurrences": 3,
       "owner": "Page Builder maintainers",
       "reason": "The isolated authoring canvas continuously projects typed viewport and overlay geometry into the host document.",
       "constraints": "Only numeric width, height, scale, position, and visibility values from typed canvas state are emitted.",
-      "exit_criteria": "Introduce a reviewed bounded CSS custom-property bridge or direct DOM geometry adapter compatible with style-src-attr 'none'.",
+      "exit_criteria": "Move overlay and resize geometry to SVG attributes, and replace iframe sizing or zoom with a reviewed CSP-compatible viewport adapter.",
       "required_markers": [
         "style=move || frame_runtime.controller.with",
         "style=move || iframe_runtime.controller.with",
         "overlay_style(rect"
-      ]
-    },
-    {
-      "path": "crates/rustok-page-builder/admin/src/editor/palette_layers.rs",
-      "expected_occurrences": 1,
-      "owner": "Page Builder maintainers",
-      "reason": "Layer indentation is computed from the typed tree depth.",
-      "constraints": "The source site emits only a numeric padding-left value derived from layer.depth.",
-      "exit_criteria": "Replace unbounded depth padding with a finite reviewed indentation class scale or another non-inline hierarchy treatment.",
-      "required_markers": [
-        "style=format!(\"padding-left:{}px\"",
-        "layer.depth * 14"
       ]
     },
     {
@@ -128,7 +103,7 @@
       "owner": "Page Builder maintainers",
       "reason": "Resize preview and handle positions must follow pointer-driven typed geometry in real time.",
       "constraints": "Only numeric geometry and a cursor selected from the closed ResizeHandle enum are emitted.",
-      "exit_criteria": "Move resize positioning to a reviewed DOM adapter or bounded CSS custom-property bridge compatible with style-src-attr 'none'.",
+      "exit_criteria": "Move preview and handle positioning to SVG geometry attributes compatible with style-src-attr 'none'.",
       "required_markers": [
         "style=move || preview_runtime.controller.with",
         "style=move || runtime.controller.with",
