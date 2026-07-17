@@ -8,7 +8,12 @@ const paths = {
   adapter: 'crates/fly-ui/src/contribution_adapter.rs',
   factory: 'crates/fly-ui/src/contribution_factory.rs',
   manifest: 'crates/fly-ui/src/contribution_manifest.rs',
+  pageBuilderHost: 'crates/rustok-page-builder/admin/src/ui/leptos.rs',
+  pageBuilderCanvas: 'crates/rustok-page-builder/admin/src/editor/modular_canvas.rs',
+  pageBuilderPalette: 'crates/rustok-page-builder/admin/src/editor/palette_layers.rs',
+  pageBuilderContextContract: 'crates/rustok-page-builder/admin/src/context_contract.rs',
   pagesContributions: 'crates/rustok-pages/admin/src/contributions.rs',
+  pagesComposition: 'crates/rustok-pages/admin/src/composition.rs',
   tests: 'crates/fly-ui/src/tests.rs',
 };
 
@@ -124,6 +129,30 @@ requireMarkers('manifest', [
   'target_provider_version_mismatch_is_rejected',
   'admin_and_storefront_surfaces_remain_separate',
 ], 'owner-safe contribution manifests');
+requireMarkers('pageBuilderHost', [
+  'pub contribution_assembly: Option<Arc<ContributionAssemblyResult>>',
+  'pub fn with_contribution_assembly(',
+  'contribution_assembly=context.contribution_assembly',
+  'contribution_assembly: Option<Arc<ContributionAssemblyResult>>',
+], 'Page Builder host contribution boundary');
+requireMarkers('pageBuilderCanvas', [
+  'contribution_assembly: Option<Arc<ContributionAssemblyResult>>',
+  '<PaletteLayersPanel',
+  'contribution_assembly',
+], 'Page Builder canvas contribution routing');
+requireMarkers('pageBuilderPalette', [
+  'data-fly-contribution-registry="true"',
+  'data-fly-contribution-ids=contribution_attr',
+  'fn contributed_block_sources(',
+  'assembly.registry.iter()',
+  'controller.palette_blocks()',
+  'contribution_provenance_is_derived_without_copying_block_definitions',
+], 'Page Builder palette contribution provenance');
+requireMarker(
+  'pageBuilderContextContract',
+  'assert_send_sync::<Arc<ContributionAssemblyResult>>()',
+  'contribution assembly must remain safe for Leptos owner context',
+);
 requireMarkers('pagesContributions', [
   'pub fn pages_contribution_manifest()',
   'pub fn pages_landing_blocks_contribution()',
@@ -141,6 +170,15 @@ requireMarkers('pagesContributions', [
   'contributed_block_ids_exist_in_the_fly_registry',
   'storefront_surface_stays_empty_until_a_real_adapter_exists',
 ], 'Pages Fly contribution manifest');
+requireMarkers('pagesComposition', [
+  'build_pages_admin_contribution_registry(',
+  'fn pages_contribution_policy()',
+  '"preview".to_string()',
+  '"properties".to_string()',
+  '"publish".to_string()',
+  '"tree".to_string()',
+  '.with_contribution_assembly(contribution_assembly)',
+], 'Pages generated contribution composition');
 for (const forbidden of [
   'leptos',
   'dioxus',
