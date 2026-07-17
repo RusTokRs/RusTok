@@ -15,7 +15,7 @@ Completed execution history does not belong here.
 - Domain-specific cache identity and recovery stay in the owner module plan. This plan coordinates
   the reusable capability and host adoption only.
 
-Last reconciled with `main`: 2026-07-16.
+Last reconciled with `main`: 2026-07-17.
 
 ## Ownership boundary
 
@@ -37,7 +37,7 @@ Last reconciled with `main`: 2026-07-16.
 - [x] Bound connection creation, commands, health checks, PUBLISH and subscription setup with
   timeouts that participate in circuit-breaker accounting.
 - [x] Reuse the `CacheService` Redis client in all shared backend factories.
-- [x] Clamp Redis TTL arguments to the signed Redis range.
+- [x] Clamp canonical shared-client Redis TTL arguments to the signed Redis range.
 - [x] Reject legacy URL-owned Redis/fallback construction from production wiring.
 - [x] Retain Redis 7 `CLIENT PAUSE` evidence proving the shared two-second operation deadline,
   immediate circuit-open rejection and successful half-open recovery after the latency clears.
@@ -58,6 +58,9 @@ Last reconciled with `main`: 2026-07-16.
 - [x] Keep Redis degradation visible to health/readiness while eligible reads use bounded fallback.
 - [x] Retain a unit scenario where shared health is degraded while an eligible bounded local write is
   still served.
+- [x] Keep the root compatibility fallback aligned for bounded outage-write precedence,
+  authoritative primary-miss cleanup, primary-hit local warming and primary health visibility, with
+  source guards protecting those regression scenarios.
 
 ### 3. Stampede, refresh and leases
 
@@ -172,6 +175,8 @@ The detailed active-cache contract is maintained in
   names from accidental narrowing.
 - [x] Guard binary-safe live Redis CAS, self-hosted fallback outage/recovery, unsynchronized mutation
   rejection and both isolated workflow commands from accidental removal.
+- [x] Guard root compatibility fallback outage-write precedence, authoritative miss cleanup,
+  primary-hit warming and health visibility from accidental removal.
 - [x] Guard Redis, generation, PubSub, refresh and CAS Prometheus alert metric names in
   `tests/alert_rules_guard.rs`.
 - [x] Publish operational alerts for Redis degradation, generation bump failure, PubSub failure,
@@ -188,6 +193,14 @@ The detailed active-cache contract is maintained in
 - [ ] Run the permanent `Cache hardening` workflow on one reconciled `main` revision.
 - [ ] Fix every cache-specific format, compile, test or Clippy failure found by that run.
 - [ ] Record the verified revision and job results here without copying raw logs.
+
+### P0. Legacy compatibility cleanup
+
+- [ ] Clamp the public `rustok-core` Redis TTL helper to Redis’ signed millisecond range and protect
+  the extreme-duration case with a regression test.
+- [ ] Remove the public legacy URL-owned fallback/Redis construction surface or bring its failed
+  invalidation tombstones and fail-closed CAS behavior to parity with the canonical `rustok-cache`
+  backend; production wiring must continue rejecting that surface meanwhile.
 
 ### P0. Live and failure-recovery evidence
 
