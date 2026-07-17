@@ -45,6 +45,17 @@ for (const marker of [
   requireMarker(headers, marker, headersFile);
 }
 
+const enforcedMatch = /const UI_CSP: &str = "([^"]+)";/.exec(headers);
+if (!enforcedMatch) {
+  failures.push(`${headersFile}: enforced UI policy constant not found`);
+} else {
+  for (const forbidden of ["'unsafe-eval'", " http:"]) {
+    if (enforcedMatch[1].includes(forbidden)) {
+      failures.push(`${headersFile}: enforced UI policy contains ${forbidden}`);
+    }
+  }
+}
+
 const reportOnlyMatch = /const UI_CSP_REPORT_ONLY: &str = "([^"]+)";/.exec(headers);
 if (!reportOnlyMatch) {
   failures.push(`${headersFile}: strict report-only policy constant not found`);
@@ -104,4 +115,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ CSP report-only collection, telemetry minimization and migration inventory are aligned");
+console.log("✔ enforced/report-only CSP and bounded violation collection are aligned");
