@@ -1,11 +1,10 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
-use fly::{
-    analyze_project_locale_coverage, LocaleCoverageGap, LocaleCoverageKind,
-    LocaleCoverageSummary,
-};
 #[cfg(test)]
 use fly::LocaleCoverageReport;
+use fly::{
+    analyze_project_locale_coverage, LocaleCoverageGap, LocaleCoverageKind, LocaleCoverageSummary,
+};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
@@ -95,9 +94,9 @@ pub fn SsrLocaleCoveragePanel(runtime: AdminEditorRuntime) -> impl IntoView {
             "page_builder.localeCoverage.metadataGap",
             "Page metadata",
         );
-        let report = runtime.controller.with(|controller| {
-            analyze_project_locale_coverage(controller.editor().document())
-        });
+        let report = runtime
+            .controller
+            .with(|controller| analyze_project_locale_coverage(controller.editor().document()));
         let policy_valid = report.policy_valid;
         let required_complete = report.required_complete();
         let strict_ready = report.strict_ready();
@@ -204,7 +203,7 @@ fn locale_summary_view(
             data-required=summary.required
         >
             <div class="flex items-center justify-between gap-2">
-                <strong>{summary.locale}</strong>
+                <strong>{summary.locale.clone()}</strong>
                 <span class="rounded bg-muted px-2 py-0.5 text-[11px]">{badge}</span>
             </div>
             <dl class="mt-2 grid grid-cols-3 gap-2 text-muted-foreground">
@@ -248,7 +247,7 @@ fn locale_gap_view(
             data-required=gap.required
         >
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <strong>{gap.locale}</strong>
+                <strong>{gap.locale.clone()}</strong>
                 <span>{kind}</span>
                 <span class="rounded bg-muted px-1.5 py-0.5 text-[10px]">{badge}</span>
                 <span class="font-medium">{gap.label}</span>
@@ -261,11 +260,11 @@ fn locale_gap_view(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::{GrapesJsV1Codec, ProjectDocument};
+    use fly::{GrapesJsCodec, ProjectDocument};
     use serde_json::json;
 
     fn report() -> LocaleCoverageReport {
-        let document: ProjectDocument = GrapesJsV1Codec::decode_value(json!({
+        let document: ProjectDocument = GrapesJsCodec::decode_value(json!({
             "flyLocales": {
                 "supported_locales": ["en", "ru"],
                 "required_locales": ["en", "ru"]

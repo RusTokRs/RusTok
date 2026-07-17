@@ -10,11 +10,9 @@ mod binding;
 mod codec;
 mod command;
 mod component_visit;
-mod context_compatibility;
 mod context_contract;
 mod context_dependency;
 mod context_json_schema;
-mod context_migration;
 mod context_scenario;
 mod context_schema;
 mod dynamic;
@@ -59,11 +57,9 @@ pub use binding::*;
 pub use codec::*;
 pub use command::*;
 pub use component_visit::{visit_project_components, ComponentVisit};
-pub use context_compatibility::*;
 pub use context_contract::*;
 pub use context_dependency::*;
 pub use context_json_schema::*;
-pub use context_migration::*;
 pub use context_scenario::*;
 pub use context_schema::*;
 pub use dynamic::*;
@@ -102,9 +98,9 @@ pub use validation::*;
 impl Copy for ConditionOperator {}
 impl Copy for EmptyRepeaterBehavior {}
 
-pub const GRAPESJS_V1: &str = "grapesjs_v1";
-pub const FLY_FRAGMENT_V1: &str = "fly_fragment_v1";
-pub const RICH_TEXT_PAYLOAD_V1: &str = "fly_rich_text_payload_v1";
+pub const GRAPESJS_FORMAT: &str = "grapesjs";
+pub const FLY_FRAGMENT_FORMAT: &str = "fly_fragment";
+pub const RICH_TEXT_PAYLOAD_FORMAT: &str = "fly_rich_text_payload";
 
 pub type FlyResult<T> = Result<T, FlyError>;
 

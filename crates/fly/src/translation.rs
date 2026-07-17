@@ -54,9 +54,7 @@ impl TranslationCatalog {
     }
 
     pub fn get(&self, translation_id: &str) -> Option<&TranslationEntry> {
-        self.entries
-            .iter()
-            .find(|entry| entry.id == translation_id)
+        self.entries.iter().find(|entry| entry.id == translation_id)
     }
 }
 
@@ -154,10 +152,7 @@ pub fn materialize_project_translations(
         }
         let mut probe = Map::new();
         copy_locale_metadata(&context, &mut probe);
-        probe.insert(
-            "value".to_string(),
-            Value::Object(localized_wrapper),
-        );
+        probe.insert("value".to_string(), Value::Object(localized_wrapper));
         let materialized = materialize_runtime_locale_context(&Value::Object(probe));
         for mut diagnostic in materialized.diagnostics {
             diagnostic.path = format!("project.translations.{}", entry.id);
@@ -201,9 +196,7 @@ pub fn materialize_project_translations(
     }
 }
 
-pub fn validate_translation_definitions(
-    document: &ProjectDocument,
-) -> Vec<ValidationDiagnostic> {
+pub fn validate_translation_definitions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let catalog = TranslationCatalog::from_document(document);
     let mut diagnostics = Vec::new();
     let mut ids = BTreeSet::new();
@@ -255,14 +248,11 @@ pub fn validate_translation_definitions(
                     ValidationSeverity::Error,
                     "translation_fallback_locale_invalid",
                     Some(id.to_string()),
-                    format!(
-                        "translation `{id}` fallback locale `{fallback_locale}` is invalid"
-                    ),
+                    format!("translation `{id}` fallback locale `{fallback_locale}` is invalid"),
                 )),
                 Some(fallback_locale)
                     if !entry.values.keys().any(|locale| {
-                        normalize_locale_tag(locale).as_deref()
-                            == Some(fallback_locale.as_str())
+                        normalize_locale_tag(locale).as_deref() == Some(fallback_locale.as_str())
                     }) =>
                 {
                     diagnostics.push(translation_diagnostic(
@@ -341,15 +331,12 @@ fn write_catalog(document: &mut ProjectDocument, catalog: TranslationCatalog) ->
         .collect::<FlyResult<Vec<_>>>()?;
     entries.extend(catalog.unknown_entries);
     if entries.is_empty() {
+        document.project.extensions.remove(FLY_TRANSLATIONS_FIELD);
+    } else {
         document
             .project
             .extensions
-            .remove(FLY_TRANSLATIONS_FIELD);
-    } else {
-        document.project.extensions.insert(
-            FLY_TRANSLATIONS_FIELD.to_string(),
-            Value::Array(entries),
-        );
+            .insert(FLY_TRANSLATIONS_FIELD.to_string(), Value::Array(entries));
     }
     Ok(())
 }
@@ -391,11 +378,11 @@ fn translation_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsV1Codec, FLY_LOCALES_FIELD};
+    use crate::{GrapesJsCodec, FLY_LOCALES_FIELD};
     use serde_json::json;
 
     fn document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "component": { "id": "root", "type": "wrapper" }
@@ -437,7 +424,9 @@ mod tests {
             },
         )
         .expect("remove");
-        assert!(TranslationCatalog::from_document(&document).entries.is_empty());
+        assert!(TranslationCatalog::from_document(&document)
+            .entries
+            .is_empty());
     }
 
     #[test]

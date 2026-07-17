@@ -355,11 +355,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
 }
 
 #[component]
-fn PageSelect(
-    pages: Vec<ProjectPage>,
-    name: &'static str,
-    page_fallback: String,
-) -> impl IntoView {
+fn PageSelect(pages: Vec<ProjectPage>, name: &'static str, page_fallback: String) -> impl IntoView {
     view! {
         <select name=name class="rounded border border-input bg-background px-2 py-1 text-xs">
             {pages.into_iter().enumerate().map(move |(index, page)| {
@@ -371,23 +367,11 @@ fn PageSelect(
 }
 
 fn flatten_layer(layer: &crate::editor::LayerItemView) -> Vec<SsrComponentOption> {
-    fn visit(
-        layer: &crate::editor::LayerItemView,
-        depth: usize,
-        output: &mut Vec<SsrComponentOption>,
-    ) {
-        output.push(SsrComponentOption {
-            id: layer.id.clone(),
-            label: layer.label.clone(),
-            depth,
-        });
-        for child in &layer.children {
-            visit(child, depth.saturating_add(1), output);
-        }
-    }
-    let mut output = Vec::new();
-    visit(layer, 0, &mut output);
-    output
+    vec![SsrComponentOption {
+        id: layer.id.clone(),
+        label: layer.component_type.clone(),
+        depth: layer.depth,
+    }]
 }
 
 fn page_label(page: &ProjectPage, index: usize, page_fallback: &str) -> String {

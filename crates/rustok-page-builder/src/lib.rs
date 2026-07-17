@@ -8,9 +8,7 @@ pub mod locale;
 pub mod render;
 pub mod rollout;
 pub mod runtime_context;
-pub mod runtime_context_compatibility;
 pub mod runtime_context_dependency;
-pub mod runtime_context_migration;
 pub mod runtime_scenario_release;
 pub mod runtime_scenario_render;
 pub mod runtime_scenario_snapshot;
@@ -105,24 +103,10 @@ mod tests {
 
     #[test]
     fn dto_contract_roundtrip_is_stable() {
-        let input = PublishPageBuilderInput::new(
-            "home",
-            "rev-1",
-            serde_json::json!({ "pages": [] }),
-        );
+        let input =
+            PublishPageBuilderInput::new("home", "rev-1", serde_json::json!({ "pages": [] }));
         let encoded = serde_json::to_value(&input).expect("serialize input");
         assert_eq!(encoded["page_id"], "home");
-        assert!(encoded.get("schema_version").is_none());
-
-        let compatibility_payload = serde_json::json!({
-            "page_id": "home",
-            "revision_id": "rev-1",
-            "schema_version": "grapesjs_v1",
-            "project_data": { "pages": [] }
-        });
-        let decoded: PublishPageBuilderInput = serde_json::from_value(compatibility_payload)
-            .expect("deserialize compatibility input");
-        assert_eq!(decoded.page_id, "home");
 
         let props = BuilderNodePropertiesInput {
             page_id: "home".to_string(),

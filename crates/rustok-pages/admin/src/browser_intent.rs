@@ -1,10 +1,8 @@
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::core;
 use crate::transport;
-use fly::{
-    normalize_locale_tag, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD,
-};
-use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL_V1};
+use fly::{normalize_locale_tag, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD};
+use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PublishPageBuilderResult,
 };
@@ -137,7 +135,7 @@ pub async fn dispatch_pages_browser_intent_with_store(
 
     if !context_update && result.dirty && requests.is_empty() {
         let save = BrowserIntentEnvelope {
-            protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
+            protocol: FLY_BROWSER_PROTOCOL.to_string(),
             instance_id: envelope.instance_id.clone(),
             intent: "save".to_string(),
             payload: json!({}),
@@ -335,7 +333,7 @@ fn controller_snapshot(
         command_sequence: revision.command_sequence,
         dirty: revision.dirty,
         selected_component_id: controller.ui().state.selection.component_id.clone(),
-        project_data: fly::GrapesJsV1Codec::encode_value(controller.editor().document())?,
+        project_data: fly::GrapesJsCodec::encode_value(controller.editor().document())?,
         effects: Vec::new(),
     })
 }
@@ -383,7 +381,6 @@ mod tests {
             rustok_page_builder::dto::PublishPageBuilderInput {
                 page_id: "home".to_string(),
                 revision_id: "rev-1".to_string(),
-                schema_version: "grapesjs_v1".to_string(),
                 project_data: json!({ "pages": [] }),
             },
         );
@@ -442,11 +439,10 @@ mod tests {
 
     #[test]
     fn runtime_locale_form_rejects_invalid_tags() {
-        assert!(runtime_locale_from_payload(
-            &json!({}),
-            &json!({ "locale": "invalid locale" }),
-        )
-        .is_err());
+        assert!(
+            runtime_locale_from_payload(&json!({}), &json!({ "locale": "invalid locale" }),)
+                .is_err()
+        );
         assert!(runtime_locale_from_payload(
             &json!({}),
             &json!({ "locale": "ru", "fallback_locales": "en, bad locale" }),

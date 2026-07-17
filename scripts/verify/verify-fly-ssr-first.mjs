@@ -184,7 +184,7 @@ requireMarkers('browserIntent', [
   'RevisionConflict',
   'ProjectHashConflict',
   'ssr_form_intent',
-  'GrapesJsV1Codec::encode_value',
+  'GrapesJsCodec::encode_value',
 ], 'classic SSR intent dispatcher');
 requireMarkers('capabilityAccess', [
   'use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};',

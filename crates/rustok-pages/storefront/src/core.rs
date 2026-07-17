@@ -267,7 +267,7 @@ mod tests {
             body: Some(PageBody {
                 locale: "en".to_string(),
                 content: "{\"pages\":[]}".to_string(),
-                format: "grapesjs_v1".to_string(),
+                format: "grapesjs".to_string(),
             }),
             blocks: Vec::new(),
         };
@@ -278,6 +278,6 @@ mod tests {
             "empty".to_string(),
         );
 
-        assert_eq!(summary, "grapesjs_v1:12");
+        assert_eq!(summary, "grapesjs:12");
     }
 }

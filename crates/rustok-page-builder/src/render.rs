@@ -1,6 +1,6 @@
 use crate::locale::PageBuilderLocaleContext;
 use fly::{
-    render_page, render_page_with_runtime_context, FlyResult, GrapesJsV1Codec, PageSelection,
+    render_page, render_page_with_runtime_context, FlyResult, GrapesJsCodec, PageSelection,
     RenderPolicy, RenderedPage, RuntimeRenderResult,
 };
 use serde::{Deserialize, Serialize};
@@ -65,7 +65,7 @@ impl PageBuilderRenderer {
         &self,
         request: PageBuilderRenderRequest,
     ) -> FlyResult<PageBuilderRenderResponse> {
-        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let document = GrapesJsCodec::decode_value(request.project_data)?;
         let page = render_page(&document, &request.selection, &request.policy)?;
         Ok(PageBuilderRenderResponse { page })
     }
@@ -74,7 +74,7 @@ impl PageBuilderRenderer {
         &self,
         request: PageBuilderRuntimeRenderRequest,
     ) -> FlyResult<PageBuilderRuntimeRenderResponse> {
-        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let document = GrapesJsCodec::decode_value(request.project_data)?;
         let result = render_page_with_runtime_context(
             &document,
             &request.selection,

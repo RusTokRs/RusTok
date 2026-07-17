@@ -58,7 +58,6 @@ requireArrayIncludes(contract.required_toggle_guidance, [
   "builder.preview.enabled",
   "builder.properties.enabled",
   "builder.publish.enabled",
-  "builder.legacy_bridge_readonly",
 ], "required_toggle_guidance");
 
 for (const section of ["metadata", "profiles", "runtime_checks", "observability", "approvals"]) {

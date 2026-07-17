@@ -136,9 +136,9 @@ pub fn SsrTranslationsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             "page_builder.ssrInspector.inlineStyleKind",
             "Inline style",
         );
-        let catalog = runtime.controller.with(|controller| {
-            TranslationCatalog::from_document(controller.editor().document())
-        });
+        let catalog = runtime
+            .controller
+            .with(|controller| TranslationCatalog::from_document(controller.editor().document()));
 
         view! {
             <section

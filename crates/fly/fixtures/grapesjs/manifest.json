@@ -1,5 +1,5 @@
 {
-  "format": "grapesjs_v1",
+  "format": "grapesjs",
   "fixtures": [
     {
       "file": "baseline.json",

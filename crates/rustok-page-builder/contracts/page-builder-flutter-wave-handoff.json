@@ -1,11 +1,8 @@
 {
-  "schema_version": 1,
   "artifact": "page_builder_flutter_wave_handoff_contract",
   "module_slug": "page_builder",
   "consumer_module_slug": "pages",
   "mobile_surface": "rustok_mobile/packages/app_core",
-  "builder_contract_version": "1.0",
-  "consumer_min_version": "1.0",
   "handoff_scope": "device_runtime_evidence_only",
   "non_goals": [
     "duplicate_fba_registry_thresholds_in_mobile_registry",
@@ -25,8 +22,7 @@
     "builder.enabled",
     "builder.preview.enabled",
     "builder.properties.enabled",
-    "builder.publish.enabled",
-    "builder.legacy_bridge_readonly"
+    "builder.publish.enabled"
   ],
   "required_device_evidence_sections": {
     "metadata": [

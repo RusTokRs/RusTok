@@ -1,35 +1,16 @@
-use crate::{FlyError, FlyResult, IdGenerator, ProjectHash, GRAPESJS_V1};
+use crate::{FlyError, FlyResult, IdGenerator, ProjectHash};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectFormat {
-    #[serde(rename = "grapesjs_v1")]
-    GrapesJsV1,
-}
-
-impl ProjectFormat {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::GrapesJsV1 => GRAPESJS_V1,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProjectDocument {
-    pub format: ProjectFormat,
     pub project: GrapesProject,
 }
 
 impl ProjectDocument {
     pub fn new(project: GrapesProject) -> Self {
-        Self {
-            format: ProjectFormat::GrapesJsV1,
-            project,
-        }
+        Self { project }
     }
 
     pub fn hash(&self) -> ProjectHash {
@@ -318,12 +299,6 @@ pub struct ComponentObject {
     pub tag_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
-    #[serde(
-        rename = "schemaVersion",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub schema_version: Option<String>,
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub attributes: Map<String, Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -343,7 +318,6 @@ impl Default for ComponentObject {
             component_type: None,
             tag_name: None,
             provider: None,
-            schema_version: None,
             attributes: Map::new(),
             style: None,
             traits: Vec::new(),

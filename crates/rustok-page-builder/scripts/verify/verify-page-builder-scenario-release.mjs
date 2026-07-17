@@ -29,7 +29,7 @@ const [
 const required = [
   [flyLib, 'mod runtime_scenario_release;', 'Fly release module is not registered'],
   [flyLib, 'pub use runtime_scenario_release::*;', 'Fly release API is not exported'],
-  [releaseCore, 'FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1', 'release baseline format marker is missing'],
+  [releaseCore, 'FLY_RUNTIME_SCENARIO_RELEASE_BASELINE', 'release baseline format marker is missing'],
   [releaseCore, 'pub fn evaluate_runtime_scenario_release', 'release evaluator is missing'],
   [releaseCore, 'snapshot_has_valid_hash', 'snapshot integrity validation is missing'],
   [releaseCore, 'RuntimeScenarioReleaseMode::BlockBroken', 'broken regression policy is missing'],

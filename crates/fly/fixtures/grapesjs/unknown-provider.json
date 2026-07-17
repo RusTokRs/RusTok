@@ -12,13 +12,16 @@
             "id": "widget-1",
             "type": "rustok.forum.latest_topics",
             "provider": "rustok.forum",
-            "schemaVersion": "3",
             "attributes": {
               "data-query": "latest"
             },
             "components": [],
             "futureField": {
-              "nested": [1, 2, 3]
+              "nested": [
+                1,
+                2,
+                3
+              ]
             },
             "pluginMetadata": {
               "opaque": true,

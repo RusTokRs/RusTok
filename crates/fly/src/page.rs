@@ -266,11 +266,11 @@ fn remove_known_page_style_rules(document: &mut ProjectDocument, page: &ProjectP
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsV1Codec, StyleRuleCatalog, StyleRuleScope};
+    use crate::{GrapesJsCodec, StyleRuleCatalog, StyleRuleScope};
     use serde_json::json;
 
     fn document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "styles": [{
                 "selectors": [{ "name": "hero-a", "type": 2 }],
                 "style": { "padding": "24px" },

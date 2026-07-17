@@ -52,10 +52,7 @@ impl<S> LandingValidatedPageBuilderService<S> {
         &self.inner
     }
 
-    pub fn inspect(
-        &self,
-        project_data: &Value,
-    ) -> LandingProjectResult<LandingProjectInspection> {
+    pub fn inspect(&self, project_data: &Value) -> LandingProjectResult<LandingProjectInspection> {
         LandingProjectInspection::decode_with(project_data, &self.registries, self.limits)
     }
 
@@ -72,11 +69,7 @@ impl<S> LandingValidatedPageBuilderService<S> {
             .require_contract_valid()
             .map_err(validation_error)?;
         let build = inspection
-            .build_static(
-                &self.registries,
-                self.readiness_policy,
-                &self.render_policy,
-            )
+            .build_static(&self.registries, self.readiness_policy, &self.render_policy)
             .map_err(validation_error)?;
         if build.ready && build.artifact.is_some() {
             return Ok(());
@@ -87,11 +80,13 @@ impl<S> LandingValidatedPageBuilderService<S> {
             .map(|issue| issue.diagnostic.code.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        Err(PageBuilderServiceError::Validation(if blocking.is_empty() {
-            "landing publish artifact is not ready".to_string()
-        } else {
-            format!("landing publish readiness failed: {blocking}")
-        }))
+        Err(PageBuilderServiceError::Validation(
+            if blocking.is_empty() {
+                "landing publish artifact is not ready".to_string()
+            } else {
+                format!("landing publish readiness failed: {blocking}")
+            },
+        ))
     }
 }
 

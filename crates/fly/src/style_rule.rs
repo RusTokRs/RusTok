@@ -329,11 +329,11 @@ fn normalize_query(query: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     fn document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "styles": [],
             "pages": [{
                 "component": {

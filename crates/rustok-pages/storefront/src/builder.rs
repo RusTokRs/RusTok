@@ -3,10 +3,10 @@ use leptos::prelude::*;
 use rustok_page_builder_storefront::{PageBuilderStorefront, PageSelection};
 use serde_json::Value;
 
-pub const GRAPESJS_V1_BODY_FORMAT: &str = "grapesjs_v1";
+pub const GRAPESJS_FORMAT_BODY_FORMAT: &str = "grapesjs";
 
 pub fn is_page_builder_body(body: &PageBody) -> bool {
-    body.format.eq_ignore_ascii_case(GRAPESJS_V1_BODY_FORMAT)
+    body.format.eq_ignore_ascii_case(GRAPESJS_FORMAT_BODY_FORMAT)
 }
 
 pub fn decode_page_builder_body(body: &PageBody) -> Result<Value, serde_json::Error> {
@@ -83,7 +83,7 @@ mod tests {
             }]
         });
         let decoded = decode_page_builder_body(&body(
-            GRAPESJS_V1_BODY_FORMAT,
+            GRAPESJS_FORMAT_BODY_FORMAT,
             serde_json::to_string(&project).expect("project json"),
         ))
         .expect("decode project");
@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn invalid_builder_json_is_rejected() {
         assert!(
-            decode_page_builder_body(&body(GRAPESJS_V1_BODY_FORMAT, "{invalid".to_string(),))
+            decode_page_builder_body(&body(GRAPESJS_FORMAT_BODY_FORMAT, "{invalid".to_string(),))
                 .is_err()
         );
     }

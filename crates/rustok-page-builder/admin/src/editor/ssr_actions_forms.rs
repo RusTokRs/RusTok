@@ -158,7 +158,12 @@ impl AdminCanvasController {
         &self,
         request: SsrComponentActionRemoveRequest,
     ) -> Result<UiIntent, String> {
-        remove_contract_intent(self, &request.component_id, FLY_ACTION_FIELD, "component action")
+        remove_contract_intent(
+            self,
+            &request.component_id,
+            FLY_ACTION_FIELD,
+            "component action",
+        )
     }
 
     pub fn ssr_component_form_intent(
@@ -191,7 +196,12 @@ impl AdminCanvasController {
         &self,
         request: SsrComponentFormRemoveRequest,
     ) -> Result<UiIntent, String> {
-        remove_contract_intent(self, &request.component_id, FLY_FORM_FIELD, "component form")
+        remove_contract_intent(
+            self,
+            &request.component_id,
+            FLY_FORM_FIELD,
+            "component form",
+        )
     }
 
     pub fn ssr_native_form_field_intent(
@@ -291,9 +301,9 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             "page_builder.actionsForms.remove",
             "Remove contract",
         );
-        let selected_component_id = runtime.controller.with(|controller| {
-            controller.ui().state.selection.component_id.clone()
-        });
+        let selected_component_id = runtime
+            .controller
+            .with(|controller| controller.ui().state.selection.component_id.clone());
         let Some(component_id) = selected_component_id else {
             return view! {
                 <section class="space-y-2 rounded-xl border border-border bg-card p-3" data-fly-ssr-actions-forms="true">
@@ -320,7 +330,13 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 let tag_name = component
                     .and_then(|component| component.tag_name.clone())
                     .unwrap_or_else(|| "input".to_string());
-                (action, form, attributes, tag_name, controller.page_summaries())
+                (
+                    action,
+                    form,
+                    attributes,
+                    tag_name,
+                    controller.page_summaries(),
+                )
             });
         let action_values = ActionValues::new(current_action.as_ref());
         let form_values = FormValues::new(current_form.as_ref());
@@ -688,7 +704,9 @@ fn remove_contract_intent(
         .component(component_id)
         .ok_or_else(|| format!("component `{component_id}` does not exist"))?;
     if !component.extensions.contains_key(field) {
-        return Err(format!("component `{component_id}` does not define {label}"));
+        return Err(format!(
+            "component `{component_id}` does not define {label}"
+        ));
     }
     Ok(UiIntent::execute(EditorCommand::Patch {
         component_id: component_id.to_string(),
@@ -837,13 +855,19 @@ fn validate_native_field_constraints(
                 ));
             }
             if has_pattern && !TEXTUAL_TYPES.contains(&input_type) {
-                return Err(format!("input type `{input_type}` does not support pattern"));
+                return Err(format!(
+                    "input type `{input_type}` does not support pattern"
+                ));
             }
             if has_range && !RANGE_TYPES.contains(&input_type) {
-                return Err(format!("input type `{input_type}` does not support min or max"));
+                return Err(format!(
+                    "input type `{input_type}` does not support min or max"
+                ));
             }
             if request.required && REQUIRED_IGNORED_TYPES.contains(&input_type) {
-                return Err(format!("input type `{input_type}` does not support required"));
+                return Err(format!(
+                    "input type `{input_type}` does not support required"
+                ));
             }
             if matches!(input_type, "number" | "range") {
                 let minimum = parse_numeric_bound(&request.min, "minimum value")?;
@@ -878,8 +902,7 @@ fn parse_numeric_bound(value: &str, label: &str) -> Result<Option<f64>, String> 
 fn validate_token(value: &str, label: &str) -> Result<String, String> {
     let value = required(value, label)?;
     if !value.chars().all(|character| {
-        character.is_ascii_alphanumeric()
-            || matches!(character, '-' | '_' | '.' | ':' | '[' | ']')
+        character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':' | '[' | ']')
     }) {
         return Err(format!("{label} `{value}` contains unsupported characters"));
     }
@@ -1049,7 +1072,7 @@ mod tests {
                 FLY_ACTION_FIELD.to_string(),
                 json!({
                     "kind": "navigate_url",
-                    "href": "/legacy",
+                    "href": "/current",
                     "providerFuture": { "enabled": true }
                 }),
             );

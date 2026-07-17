@@ -1,6 +1,7 @@
 use crate::editor::AdminEditorRuntime;
 use fly::{ComponentPatch, EditorCommand};
 use fly_ui::UiIntent;
+use leptos::prelude::With;
 use serde_json::Value;
 
 pub(crate) fn selected_patch(

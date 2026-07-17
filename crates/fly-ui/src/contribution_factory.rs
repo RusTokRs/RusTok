@@ -21,7 +21,6 @@ pub enum ContributionProviderHealth {
 pub struct ModuleContributionMetadata {
     pub module_id: String,
     pub provider: String,
-    pub provider_version: String,
     #[serde(default)]
     pub dependencies: BTreeSet<String>,
     #[serde(default)]
@@ -160,8 +159,7 @@ pub fn assemble_contribution_registry(
             .provider_health
             .get(&module.provider)
             .is_some_and(|health| {
-                *health == ContributionProviderHealth::Degraded
-                    && policy.allow_degraded_providers
+                *health == ContributionProviderHealth::Degraded && policy.allow_degraded_providers
             })
         {
             result.diagnostics.push(diagnostic(
@@ -194,9 +192,7 @@ pub fn assemble_contribution_registry(
                 ));
                 continue;
             }
-            if contribution.provider.trim() != module.provider
-                || contribution.provider_version.trim() != module.provider_version
-            {
+            if contribution.provider.trim() != module.provider {
                 result.skipped_contributions = result.skipped_contributions.saturating_add(1);
                 result.diagnostics.push(diagnostic(
                     ContributionAssemblySeverity::Error,
@@ -204,11 +200,9 @@ pub fn assemble_contribution_registry(
                     Some(&module.module_id),
                     Some(contribution.id.trim()),
                     format!(
-                        "contribution provider/version `{}@{}` does not match module `{}@{}`",
+                        "contribution provider `{}` does not match module `{}`",
                         contribution.provider.trim(),
-                        contribution.provider_version.trim(),
-                        module.provider,
-                        module.provider_version
+                        module.provider
                     ),
                 ));
                 continue;
@@ -219,8 +213,7 @@ pub fn assemble_contribution_registry(
                         result.registered_contributions.saturating_add(1);
                 }
                 Err(error) => {
-                    result.skipped_contributions =
-                        result.skipped_contributions.saturating_add(1);
+                    result.skipped_contributions = result.skipped_contributions.saturating_add(1);
                     result.diagnostics.push(registration_diagnostic(
                         &module.module_id,
                         contribution.id.trim(),
@@ -245,8 +238,7 @@ fn module_filter(
             ContributionAssemblySeverity::Info,
         ));
     }
-    if !policy.enabled_providers.is_empty()
-        && !policy.enabled_providers.contains(&module.provider)
+    if !policy.enabled_providers.is_empty() && !policy.enabled_providers.contains(&module.provider)
     {
         return Some((
             "contribution_provider_policy_disabled",
@@ -325,7 +317,6 @@ fn normalize_module(
 ) -> Result<ModuleContributionMetadata, String> {
     module.module_id = required(&module.module_id, "module_id")?;
     module.provider = required(&module.provider, "provider")?;
-    module.provider_version = required(&module.provider_version, "provider_version")?;
     module.dependencies = normalize_set(module.dependencies, "dependency")?;
     module.required_permissions =
         normalize_set(module.required_permissions, "required permission")?;
@@ -513,15 +504,10 @@ mod tests {
         }
     }
 
-    fn contribution(
-        id: &str,
-        provider: &str,
-        capability: Option<&str>,
-    ) -> ContributionDescriptor {
+    fn contribution(id: &str, provider: &str, capability: Option<&str>) -> ContributionDescriptor {
         ContributionDescriptor {
             id: id.to_string(),
             provider: provider.to_string(),
-            provider_version: "1".to_string(),
             required_capabilities: capability
                 .map(|value| BTreeSet::from([value.to_string()]))
                 .unwrap_or_default(),
@@ -530,7 +516,6 @@ mod tests {
                 id: format!("{id}.renderer"),
                 component_type: id.to_string(),
                 provider: provider.to_string(),
-                schema_version: "1".to_string(),
                 presentations: BTreeSet::from([Presentation::Full]),
                 accessibility: accessibility(&format!("{id}.label")),
             }],
@@ -538,7 +523,6 @@ mod tests {
                 id: format!("{id}.properties"),
                 component_type: id.to_string(),
                 provider: provider.to_string(),
-                schema_version: "1".to_string(),
                 property_schema: json!({ "type": "object" }),
                 accessibility: accessibility(&format!("{id}.properties.label")),
             }],
@@ -557,7 +541,6 @@ mod tests {
         ModuleContributionMetadata {
             module_id: module_id.to_string(),
             provider: provider.to_string(),
-            provider_version: "1".to_string(),
             dependencies: dependencies
                 .iter()
                 .map(|value| (*value).to_string())
@@ -581,10 +564,8 @@ mod tests {
             modules.clone(),
             &ContributionAssemblyPolicy::default(),
         );
-        let storefront = build_storefront_contribution_registry(
-            modules,
-            &ContributionAssemblyPolicy::default(),
-        );
+        let storefront =
+            build_storefront_contribution_registry(modules, &ContributionAssemblyPolicy::default());
         assert!(admin.registry.get("pages.admin").is_some());
         assert!(admin.registry.get("pages.storefront").is_none());
         assert!(storefront.registry.get("pages.storefront").is_some());
@@ -604,7 +585,9 @@ mod tests {
             )],
             Vec::new(),
         );
-        pages.required_permissions.insert("pages.manage".to_string());
+        pages
+            .required_permissions
+            .insert("pages.manage".to_string());
         let result = build_admin_contribution_registry(
             [pages],
             &ContributionAssemblyPolicy {
@@ -655,9 +638,10 @@ mod tests {
             &ContributionAssemblyPolicy::default(),
         );
         assert!(!missing.is_valid());
-        assert!(missing.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "contribution_dependency_missing"
-        }));
+        assert!(missing
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "contribution_dependency_missing" }));
 
         let cycle = build_admin_contribution_registry(
             [
@@ -707,9 +691,10 @@ mod tests {
         );
         assert_eq!(result.registered_contributions, 1);
         assert_eq!(result.skipped_contributions, 1);
-        assert!(result.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "contribution_renderer_duplicate"
-        }));
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "contribution_renderer_duplicate" }));
     }
 
     #[test]

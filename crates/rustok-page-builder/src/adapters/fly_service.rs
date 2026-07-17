@@ -94,11 +94,8 @@ impl<S, R, T, B> FlyAdapterBackedPageBuilderService<S, R, T, B> {
     }
 
     fn inspect(&self, project_data: &Value) -> PageBuilderServiceResult<FlyProjectInspection> {
-        let inspection = FlyProjectInspection::decode_current_with(
-            project_data,
-            &self.registries,
-            self.limits,
-        )?;
+        let inspection =
+            FlyProjectInspection::decode_with(project_data, &self.registries, self.limits)?;
         inspection.require_valid()?;
         Ok(inspection)
     }

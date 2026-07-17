@@ -28,8 +28,8 @@ impl LandingProjectInspection {
         registries: &RegistrySet,
         limits: ValidationLimits,
     ) -> LandingProjectResult<Self> {
-        let document = GrapesJsCodec::decode_value(project_data.clone())
-            .map_err(LandingProjectError::Fly)?;
+        let document =
+            GrapesJsCodec::decode_value(project_data.clone()).map_err(LandingProjectError::Fly)?;
         let registry = ComponentRegistryManifest::for_document(&document, registries);
         let validation = validate_project(&document, registries, limits);
         let registry_compatibility = registry_compatibility(&document, &registry, registries);
@@ -78,13 +78,8 @@ impl LandingProjectInspection {
         render_policy: &RenderPolicy,
     ) -> LandingProjectResult<StaticLandingBuildResult> {
         self.require_contract_valid()?;
-        build_static_landing_artifact(
-            &self.document,
-            registries,
-            readiness_policy,
-            render_policy,
-        )
-        .map_err(LandingProjectError::Fly)
+        build_static_landing_artifact(&self.document, registries, readiness_policy, render_policy)
+            .map_err(LandingProjectError::Fly)
     }
 }
 
@@ -179,8 +174,7 @@ mod tests {
     #[test]
     fn declared_provider_drift_blocks_contract_validity() {
         let mut project = project_value();
-        project["pages"][0]["component"]["components"][0]["provider"] =
-            json!("other.provider");
+        project["pages"][0]["component"]["components"][0]["provider"] = json!("other.provider");
         let inspection = LandingProjectInspection::decode(&project).expect("structural inspection");
         assert!(!inspection.registry_compatibility().compatible);
         assert!(inspection
@@ -197,9 +191,7 @@ mod tests {
     #[test]
     fn inspection_builds_static_publish_artifact() {
         let inspection = LandingProjectInspection::decode(&project_value()).expect("inspection");
-        inspection
-            .require_contract_valid()
-            .expect("contract-valid");
+        inspection.require_contract_valid().expect("contract-valid");
         let result = inspection
             .build_static(
                 &RegistrySet::with_builtins(),

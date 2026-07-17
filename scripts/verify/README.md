@@ -517,7 +517,6 @@ What it does:
   3) `verify-page-builder-consumer-readiness.mjs <module-slug>` (default `pages` in the aggregator),
   4) `verify-page-builder-fallback-profiles.mjs <module-slug>`,
   5) `verify-page-builder-toggle-profiles-consistency.mjs <module-slug>`,
-  6) `verify-page-builder-terminology.mjs`.
 - returns non-zero exit code on any step failure.
 
 **Severity:** GATE. This is the canonical baseline check before promotion to the next rollout wave.

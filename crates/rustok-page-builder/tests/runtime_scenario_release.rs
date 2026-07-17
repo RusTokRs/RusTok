@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use fly::{
-    GrapesJsV1Codec, PageSelection, RenderPolicy, RuntimeContextScenario,
+    GrapesJsCodec, PageSelection, RenderPolicy, RuntimeContextScenario,
     RuntimeScenarioReleaseBaseline, RuntimeScenarioReleasePolicy,
 };
 use rustok_api::{PortActor, PortContext};
@@ -112,7 +112,7 @@ fn project(page_id: &str) -> Value {
 }
 
 fn baseline() -> RuntimeScenarioReleaseBaseline {
-    let document = GrapesJsV1Codec::decode_value(project("home")).expect("baseline document");
+    let document = GrapesJsCodec::decode_value(project("home")).expect("baseline document");
     RuntimeScenarioReleaseBaseline::capture(
         "baseline-1",
         &document,
@@ -130,7 +130,7 @@ async fn publish(
     service: &FlyAdapterBackedPageBuilderService<
         CountingProjectStore,
         NoopRenderer,
-        rustok_page_builder::service::NoopPageBuilderAdapterTelemetry,
+        rustok_page_builder::runtime_telemetry::NoopPageBuilderRuntimeTelemetry,
         FixedBaselineStore,
     >,
     project_data: Value,
@@ -141,7 +141,6 @@ async fn publish(
             PublishPageBuilderInput {
                 page_id: "home".to_string(),
                 revision_id: "rev-2".to_string(),
-                schema_version: "grapesjs_v1".to_string(),
                 project_data,
             },
         )

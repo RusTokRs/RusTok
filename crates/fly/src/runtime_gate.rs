@@ -26,7 +26,9 @@ pub enum ScenarioGateMode {
     Ignore,
     All,
     Any,
-    Named { scenario_ids: Vec<String> },
+    Named {
+        scenario_ids: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -254,11 +256,11 @@ fn gate_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsV1Codec, RuntimeContextScenario};
+    use crate::{GrapesJsCodec, RuntimeContextScenario};
     use serde_json::json;
 
     fn document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }],
             "flyRuntimeContextSchema": [{
                 "id": "title",
@@ -271,7 +273,7 @@ mod tests {
     }
 
     fn ready_document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "flyPageMeta": {
@@ -445,7 +447,7 @@ mod tests {
 
     #[test]
     fn readiness_audits_the_publish_context_after_runtime_bindings() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "flyPageMeta": {
@@ -492,8 +494,7 @@ mod tests {
         );
         assert!(evaluation.allowed, "{:?}", evaluation.diagnostics);
         assert!(!evaluation.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "landing_empty_heading"
-                || diagnostic.code == "landing_missing_h1"
+            diagnostic.code == "landing_empty_heading" || diagnostic.code == "landing_missing_h1"
         }));
     }
 }

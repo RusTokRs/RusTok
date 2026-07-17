@@ -1,10 +1,10 @@
 # rustok-page-builder
 
 ## Purpose
-`rustok-page-builder` is the FBA-first visual authoring capability and compatibility module for RusTok. It owns the canonical `grapesjs_v1` capability contract and publishes an optional Fly-based Leptos admin surface without taking ownership of consumer documents.
+`rustok-page-builder` is the FBA-first visual authoring capability and compatibility module for RusTok. It owns the canonical `grapesjs` capability contract and publishes an optional Fly-based Leptos admin surface without taking ownership of consumer documents.
 
 ## Responsibilities
-- keep vendor-neutral builder contract baseline (`grapesjs_v1` write/read semantics);
+- keep vendor-neutral builder contract baseline (`grapesjs` write/read semantics);
 - expose module runtime identity, permissions, rollout, health, validation, persistence and rendering seams;
 - integrate the framework-neutral `fly` engine with Page Builder backend adapters;
 - publish the optional `rustok-page-builder-admin` full-authoring composition surface;

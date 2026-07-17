@@ -9,7 +9,6 @@ pub struct RendererRequest<'a> {
     pub component_id: &'a str,
     pub provider: &'a str,
     pub component_type: &'a str,
-    pub schema_version: &'a str,
     pub presentation: Presentation,
     pub component: &'a Value,
 }
@@ -19,7 +18,6 @@ pub struct PropertyEditorRequest<'a> {
     pub component_id: &'a str,
     pub provider: &'a str,
     pub component_type: &'a str,
-    pub schema_version: &'a str,
     pub presentation: Presentation,
     pub component: &'a Value,
 }
@@ -55,7 +53,6 @@ pub fn render_contribution<A: ContributionAdapter>(
         .resolve_renderer(
             request.provider,
             request.component_type,
-            request.schema_version,
             request.presentation,
             capabilities,
         )
@@ -63,7 +60,6 @@ pub fn render_contribution<A: ContributionAdapter>(
             UiError::RendererUnavailable(renderer_lookup_id(
                 request.provider,
                 request.component_type,
-                request.schema_version,
                 request.presentation,
             ))
         })?;
@@ -80,56 +76,34 @@ pub fn edit_contribution_properties<A: ContributionAdapter>(
         return Err(UiError::ReadOnly);
     }
     let resolved = registry
-        .resolve_property_editor(
-            request.provider,
-            request.component_type,
-            request.schema_version,
-            capabilities,
-        )
+        .resolve_property_editor(request.provider, request.component_type, capabilities)
         .ok_or_else(|| {
             UiError::PropertyEditorUnavailable(property_editor_lookup_id(
                 request.provider,
                 request.component_type,
-                request.schema_version,
             ))
         })?;
     adapter.property_editor(resolved, request)
 }
 
-fn renderer_lookup_id(
-    provider: &str,
-    component_type: &str,
-    schema_version: &str,
-    presentation: Presentation,
-) -> String {
-    format!(
-        "{}:{}:{}:{}",
-        provider.trim(),
-        component_type.trim(),
-        schema_version.trim(),
-        presentation.as_str()
-    )
-}
-
-fn property_editor_lookup_id(
-    provider: &str,
-    component_type: &str,
-    schema_version: &str,
-) -> String {
+fn renderer_lookup_id(provider: &str, component_type: &str, presentation: Presentation) -> String {
     format!(
         "{}:{}:{}",
         provider.trim(),
         component_type.trim(),
-        schema_version.trim()
+        presentation.as_str()
     )
+}
+
+fn property_editor_lookup_id(provider: &str, component_type: &str) -> String {
+    format!("{}:{}", provider.trim(), component_type.trim())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        AccessibilityMetadata, ContributionDescriptor, PropertyEditorDescriptor,
-        RendererDescriptor,
+        AccessibilityMetadata, ContributionDescriptor, PropertyEditorDescriptor, RendererDescriptor,
     };
     use serde_json::{json, Map};
     use std::collections::{BTreeMap, BTreeSet};
@@ -176,14 +150,12 @@ mod tests {
             .register(ContributionDescriptor {
                 id: "mock.contribution".to_string(),
                 provider: "mock.provider".to_string(),
-                provider_version: "1".to_string(),
                 required_capabilities: BTreeSet::from(["mock.render".to_string()]),
                 blocks: Vec::new(),
                 renderers: vec![RendererDescriptor {
                     id: "mock.renderer".to_string(),
                     component_type: "mock-card".to_string(),
                     provider: "mock.provider".to_string(),
-                    schema_version: "1".to_string(),
                     presentations: BTreeSet::from([
                         Presentation::Full,
                         Presentation::Inline,
@@ -196,14 +168,10 @@ mod tests {
                     id: "mock.properties".to_string(),
                     component_type: "mock-card".to_string(),
                     provider: "mock.provider".to_string(),
-                    schema_version: "1".to_string(),
                     property_schema: json!({ "type": "object" }),
                     accessibility,
                 }],
-                messages: BTreeMap::from([(
-                    "mock.label".to_string(),
-                    "Mock card".to_string(),
-                )]),
+                messages: BTreeMap::from([("mock.label".to_string(), "Mock card".to_string())]),
                 metadata: Map::new(),
             })
             .expect("registry");
@@ -228,7 +196,6 @@ mod tests {
                     component_id: "card",
                     provider: "mock.provider",
                     component_type: "mock-card",
-                    schema_version: "1",
                     presentation,
                     component: &component,
                 },
@@ -248,7 +215,6 @@ mod tests {
             component_id: "card",
             provider: "mock.provider",
             component_type: "mock-card",
-            schema_version: "1",
             presentation: Presentation::Full,
             component: &component,
         };
@@ -277,7 +243,6 @@ mod tests {
                 component_id: "card",
                 provider: "mock.provider",
                 component_type: "mock-card",
-                schema_version: "1",
                 presentation: Presentation::Full,
                 component: &component,
             },

@@ -47,7 +47,10 @@ impl AdminCanvasController {
                 if target_location.depth == 0 {
                     return Err("the page root cannot have a before drop position".to_string());
                 }
-                (target_location.parent_component_id.clone(), target_location.index)
+                (
+                    target_location.parent_component_id.clone(),
+                    target_location.index,
+                )
             }
             DropPosition::After => {
                 if target_location.depth == 0 {

@@ -1,5 +1,5 @@
 use fly::{
-    analyze_runtime_context_dependencies, FlyResult, GrapesJsV1Codec, RuntimeContextDependencyGraph,
+    analyze_runtime_context_dependencies, FlyResult, GrapesJsCodec, RuntimeContextDependencyGraph,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,7 +22,7 @@ impl PageBuilderRuntimeDependencyInspector {
         &self,
         request: PageBuilderRuntimeDependencyRequest,
     ) -> FlyResult<PageBuilderRuntimeDependencyResponse> {
-        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let document = GrapesJsCodec::decode_value(request.project_data)?;
         Ok(PageBuilderRuntimeDependencyResponse {
             graph: analyze_runtime_context_dependencies(&document),
         })

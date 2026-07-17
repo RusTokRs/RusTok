@@ -1,7 +1,6 @@
 {
-  "schema_version": 1,
   "artifact": "page_builder_wave_evidence_template",
-  "contract": "grapesjs_v1",
+  "contract": "grapesjs",
   "required_profiles": [
     "all_on",
     "publish_off",

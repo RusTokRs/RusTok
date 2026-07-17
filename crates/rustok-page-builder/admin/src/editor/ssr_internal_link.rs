@@ -1,9 +1,7 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
 use crate::AdminCanvasController;
-use fly::{
-    ComponentPatch, EditorCommand, InternalPageLink, FLY_PAGE_LINK_FIELD,
-};
+use fly::{ComponentPatch, EditorCommand, InternalPageLink, FLY_PAGE_LINK_FIELD};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
@@ -159,10 +157,12 @@ pub fn SsrInternalPageLinkPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             "page_builder.internalLink.remove",
             "Remove internal link",
         );
-        let selected_component_id = runtime.controller.with(|controller| {
-            controller.ui().state.selection.component_id.clone()
-        });
-        let page_options = runtime.controller.with(|controller| controller.page_summaries());
+        let selected_component_id = runtime
+            .controller
+            .with(|controller| controller.ui().state.selection.component_id.clone());
+        let page_options = runtime
+            .controller
+            .with(|controller| controller.page_summaries());
         let current = runtime.controller.with(|controller| {
             selected_component_id
                 .as_deref()
@@ -391,7 +391,9 @@ mod tests {
         assert_eq!(value["page_id"], "about");
         assert_eq!(value["base_path"], "/site");
         assert_eq!(value["providerFuture"], true);
-        controller.dispatch(UiIntent::Undo).expect("undo link patch");
+        controller
+            .dispatch(UiIntent::Undo)
+            .expect("undo link patch");
         assert!(controller
             .editor()
             .document()

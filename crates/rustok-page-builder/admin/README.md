@@ -25,7 +25,6 @@ A consumer provides `PageBuilderAdminHostContext` with an `AdminCanvasController
 canonical responses. The editor owns save-start, save-failure and acknowledgement state, including
 acknowledgement against the exact project hash that was dispatched.
 
-`rustok-pages/admin` is the reference consumer. It resolves the selected page, migrates legacy
 `frames[0].component` data into canonical `pages[].component`, keeps a synchronized frame snapshot
 for the existing JSON fallback, performs optimistic `updated_at` revision checks, and persists
 through the existing Pages transport facade.

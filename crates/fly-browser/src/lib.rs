@@ -7,8 +7,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub const FLY_BROWSER_PROTOCOL_V1: &str = "fly_iframe_v1";
-pub const FLY_BROWSER_ADAPTER_VERSION: &str = "fly_browser_v1";
+pub const FLY_BROWSER_PROTOCOL: &str = "fly_iframe";
+pub const FLY_BROWSER_ADAPTER: &str = "fly_browser";
 pub const FLY_BROWSER_ADAPTER_JS: &str = include_str!("../assets/fly-browser.js");
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -353,7 +353,7 @@ impl BrowserIntentEnvelope {
         self.revision = normalize_optional(self.revision);
         self.project_hash = normalize_optional(self.project_hash);
         self.draft_token = normalize_optional(self.draft_token);
-        if self.protocol != FLY_BROWSER_PROTOCOL_V1 {
+        if self.protocol != FLY_BROWSER_PROTOCOL {
             return Err(BrowserIntentError::Protocol(self.protocol));
         }
         if self.instance_id.is_empty() {
@@ -386,7 +386,7 @@ impl std::fmt::Display for BrowserIntentError {
         match self {
             Self::Protocol(protocol) => write!(
                 formatter,
-                "unsupported Fly browser protocol `{protocol}`; expected `{FLY_BROWSER_PROTOCOL_V1}`"
+                "unsupported Fly browser protocol `{protocol}`; expected `{FLY_BROWSER_PROTOCOL}`"
             ),
             Self::MissingInstanceId => formatter.write_str("Fly browser instance id is required"),
             Self::MissingIntent => formatter.write_str("Fly browser intent is required"),
@@ -424,7 +424,7 @@ fn default_expected_origin() -> String {
 }
 
 fn default_protocol() -> String {
-    FLY_BROWSER_PROTOCOL_V1.to_string()
+    FLY_BROWSER_PROTOCOL.to_string()
 }
 
 fn default_true() -> bool {
@@ -459,7 +459,10 @@ mod tests {
         .normalized();
         assert_eq!(config.root_selector, "[data-fly-browser-root]");
         assert_eq!(config.iframe_selector, "iframe");
-        assert_eq!(config.intent_endpoint.as_deref(), Some("/admin/fly/intents"));
+        assert_eq!(
+            config.intent_endpoint.as_deref(),
+            Some("/admin/fly/intents")
+        );
         assert_eq!(config.csrf_token, None);
     }
 
@@ -485,7 +488,7 @@ mod tests {
     #[test]
     fn draft_token_is_normalized_without_becoming_project_state() {
         let request = BrowserIntentEnvelope {
-            protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
+            protocol: FLY_BROWSER_PROTOCOL.to_string(),
             instance_id: "canvas-a".to_string(),
             intent: "copy".to_string(),
             payload: json!({}),
@@ -577,7 +580,7 @@ mod tests {
     #[test]
     fn envelope_uses_typed_kind_without_rejecting_extensions() {
         let known = BrowserIntentEnvelope {
-            protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
+            protocol: FLY_BROWSER_PROTOCOL.to_string(),
             instance_id: "canvas-a".to_string(),
             intent: "  RENAME_PAGE ".to_string(),
             payload: json!({}),

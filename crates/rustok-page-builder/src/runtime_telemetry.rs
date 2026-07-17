@@ -139,14 +139,12 @@ mod tests {
             "correlation-a",
         );
         let value = serde_json::to_value(PageBuilderRuntimeCallEvidence::load_project(
-            &context,
-            "home",
+            &context, "home",
         ))
         .expect("runtime evidence");
 
         assert_eq!(value["module_slug"], "page_builder");
         assert!(value.get("contract").is_none());
-        assert!(value.get("schema_version").is_none());
         assert!(value.get("version").is_none());
     }
 }

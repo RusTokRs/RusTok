@@ -134,7 +134,7 @@ impl ProviderHealthEvidence {
 
         Self {
             module_slug: "page_builder",
-            contract: "grapesjs_v1",
+            contract: "grapesjs",
             builder_contract_version: "1.0",
             slo_evaluation: ProviderSloEvaluation::evaluate(observed, thresholds),
             snapshot,

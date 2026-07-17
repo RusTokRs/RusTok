@@ -8,10 +8,7 @@ use fly_ui::{PaletteBlockAccess, UiIntent};
 use serde_json::Value;
 
 impl AdminCanvasController {
-    pub fn palette_blocks_with_access(
-        &self,
-        access: &PaletteBlockAccess,
-    ) -> Vec<PaletteBlockView> {
+    pub fn palette_blocks_with_access(&self, access: &PaletteBlockAccess) -> Vec<PaletteBlockView> {
         self.palette_blocks()
             .into_iter()
             .filter(|block| access.allows(&block.id))
@@ -65,16 +62,14 @@ pub fn validate_browser_palette_access(
     access: &PaletteBlockAccess,
 ) -> Result<(), BrowserIntentDispatchError> {
     let block_id = match envelope.intent.as_str() {
-        "insert_block" | "begin_palette_drag" => Some(required_payload_string(
-            &envelope.payload,
-            "block_id",
-        )?),
+        "insert_block" | "begin_palette_drag" => {
+            Some(required_payload_string(&envelope.payload, "block_id")?)
+        }
         "drop" => block_drop_id(&envelope.payload)?,
         _ => None,
     };
     if let Some(block_id) = block_id {
-        require_palette_access(block_id, access)
-            .map_err(BrowserIntentDispatchError::Authoring)?;
+        require_palette_access(block_id, access).map_err(BrowserIntentDispatchError::Authoring)?;
     }
     Ok(())
 }
@@ -118,9 +113,7 @@ fn require_palette_access(block_id: &str, access: &PaletteBlockAccess) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly_ui::{
-        ContributionAssemblyResult, ContributionDescriptor, ContributionRegistry,
-    };
+    use fly_ui::{ContributionAssemblyResult, ContributionDescriptor, ContributionRegistry};
     use serde_json::{json, Map};
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -144,7 +137,6 @@ mod tests {
             .register(ContributionDescriptor {
                 id: "pages.blocks".to_string(),
                 provider: "fly.builtin".to_string(),
-                provider_version: "1".to_string(),
                 required_capabilities: BTreeSet::new(),
                 blocks: vec!["fly.hero".to_string()],
                 renderers: Vec::new(),
@@ -162,7 +154,7 @@ mod tests {
 
     fn envelope(intent: &str, payload: Value) -> BrowserIntentEnvelope {
         BrowserIntentEnvelope {
-            protocol: fly_browser::FLY_BROWSER_PROTOCOL_V1.to_string(),
+            protocol: fly_browser::FLY_BROWSER_PROTOCOL.to_string(),
             instance_id: "test".to_string(),
             intent: intent.to_string(),
             payload,
@@ -179,7 +171,9 @@ mod tests {
     fn namespaced_blocks_are_filtered_for_ui_and_controller_helpers() {
         let controller = controller();
         let access = access();
-        assert!(controller.palette_block_with_access("text", &access).is_some());
+        assert!(controller
+            .palette_block_with_access("text", &access)
+            .is_some());
         assert!(controller
             .palette_block_with_access("fly.hero", &access)
             .is_some());

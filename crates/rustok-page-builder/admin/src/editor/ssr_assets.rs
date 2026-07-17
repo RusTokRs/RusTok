@@ -128,12 +128,7 @@ impl AdminCanvasController {
         let component_id = required(&request.component_id, "component id")?;
         let asset_id = required(&request.asset_id, "asset id")?;
         let source_attribute = normalize_asset_source_attribute(&request.source_attribute)?;
-        if self
-            .editor()
-            .document()
-            .component(component_id)
-            .is_none()
-        {
+        if self.editor().document().component(component_id).is_none() {
             return Err(format!("component `{component_id}` does not exist"));
         }
         let catalog = AssetCatalog::from_document(self.editor().document());
@@ -337,21 +332,24 @@ fn asset_reference_component_ids(
     asset_id: &str,
 ) -> Vec<String> {
     let mut references = Vec::new();
-    visit_project_components(&controller.editor().document().project, |component, visit| {
-        if component
-            .attributes
-            .get("data-fly-asset-id")
-            .and_then(Value::as_str)
-            == Some(asset_id)
-        {
-            references.push(
-                component
-                    .id
-                    .clone()
-                    .unwrap_or_else(|| visit.path().to_string()),
-            );
-        }
-    });
+    visit_project_components(
+        &controller.editor().document().project,
+        |component, visit| {
+            if component
+                .attributes
+                .get("data-fly-asset-id")
+                .and_then(Value::as_str)
+                == Some(asset_id)
+            {
+                references.push(
+                    component
+                        .id
+                        .clone()
+                        .unwrap_or_else(|| visit.path().to_string()),
+                );
+            }
+        },
+    );
     references
 }
 

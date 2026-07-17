@@ -1,9 +1,9 @@
 use super::*;
-use crate::{FlyError, GrapesJsV1Codec, ProjectDocument};
+use crate::{FlyError, GrapesJsCodec, ProjectDocument};
 use serde_json::{json, Map};
 
 fn document(content: &str) -> ProjectDocument {
-    GrapesJsV1Codec::decode_value(json!({
+    GrapesJsCodec::decode_value(json!({
         "pages": [{
             "id": "home",
             "component": {
@@ -83,7 +83,7 @@ fn catalog_compares_snapshot_with_current() {
 
 #[test]
 fn anonymous_components_use_canonical_paths_in_diffs() {
-    let before = GrapesJsV1Codec::decode_value(json!({
+    let before = GrapesJsCodec::decode_value(json!({
         "pages": [{
             "component": {
                 "id": "root",
@@ -93,7 +93,7 @@ fn anonymous_components_use_canonical_paths_in_diffs() {
         }]
     }))
     .expect("before");
-    let after = GrapesJsV1Codec::decode_value(json!({
+    let after = GrapesJsCodec::decode_value(json!({
         "pages": [{
             "component": {
                 "id": "root",

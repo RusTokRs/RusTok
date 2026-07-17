@@ -332,12 +332,12 @@ fn dependency_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     #[test]
     fn graph_connects_computed_bindings_conditions_and_repeaters() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": {
                     "id": "root",
@@ -410,7 +410,7 @@ mod tests {
 
     #[test]
     fn graph_rejects_input_computed_path_shadowing() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }],
             "flyRuntimeContextSchema": [{
                 "id": "title-input",
@@ -432,7 +432,7 @@ mod tests {
 
     #[test]
     fn graph_orders_computed_dependencies() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }],
             "flyRuntimeComputed": [{
                 "id": "a",

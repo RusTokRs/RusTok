@@ -54,11 +54,11 @@ fn diagnostic_identity(diagnostic: &ValidationDiagnostic) -> (u8, String, String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{validate_project, GrapesJsV1Codec, RegistrySet, ValidationLimits};
+    use crate::{validate_project, GrapesJsCodec, RegistrySet, ValidationLimits};
     use serde_json::json;
 
     fn invalid_runtime_document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": { "id": "root", "type": "wrapper" }
             }],
@@ -105,7 +105,8 @@ mod tests {
     }
 
     #[test]
-    fn runtime_validation_combines_locale_translation_contract_dependency_binding_and_dynamic_diagnostics() {
+    fn runtime_validation_combines_locale_translation_contract_dependency_binding_and_dynamic_diagnostics(
+    ) {
         let document = invalid_runtime_document();
         let diagnostics = validate_runtime_extensions(&document);
         assert!(diagnostics
@@ -133,7 +134,7 @@ mod tests {
 
     #[test]
     fn strict_project_locale_policy_promotes_missing_coverage_to_errors() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "flyLocales": {
                 "default_locale": "en",
                 "supported_locales": ["en", "ru"],
@@ -165,7 +166,7 @@ mod tests {
 
     #[test]
     fn duplicate_localized_slugs_block_publish_validation() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "one",
                 "flyPageMeta": { "slug": { "$localized": { "en": "shared" } } },
@@ -186,7 +187,7 @@ mod tests {
 
     #[test]
     fn missing_internal_page_link_target_blocks_publish_validation() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "flyPageMeta": { "slug": "home" },
@@ -211,7 +212,7 @@ mod tests {
 
     #[test]
     fn invalid_action_and_form_contracts_block_publish_validation() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "flyPageMeta": { "slug": "home" },

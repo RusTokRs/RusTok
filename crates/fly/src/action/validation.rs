@@ -2,10 +2,9 @@ use super::model::{
     ComponentAction, ComponentForm, FormEncoding, FormMethod, FLY_ACTION_FIELD, FLY_FORM_FIELD,
 };
 use crate::{
-    component_visit::visit_project_components,
-    interaction_route::InteractionRouteCatalog,
-    safe_url::validate_safe_url as validate_shared_safe_url,
-    ComponentObject, ProjectDocument, ValidationDiagnostic, ValidationSeverity, FLY_PAGE_LINK_FIELD,
+    component_visit::visit_project_components, interaction_route::InteractionRouteCatalog,
+    safe_url::validate_safe_url as validate_shared_safe_url, ComponentObject, ProjectDocument,
+    ValidationDiagnostic, ValidationSeverity, FLY_PAGE_LINK_FIELD,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -115,9 +114,7 @@ fn validate_component(
 
     if let Some(raw) = component.extensions.get(FLY_ACTION_FIELD).cloned() {
         match serde_json::from_value::<ComponentAction>(raw) {
-            Ok(action) => {
-                validate_action(&action, path, component_id, validation, diagnostics)
-            }
+            Ok(action) => validate_action(&action, path, component_id, validation, diagnostics),
             Err(error) => diagnostics.push(action_diagnostic(
                 ValidationSeverity::Error,
                 "action_definition_invalid",
@@ -210,15 +207,14 @@ fn validate_action(
                 None => Err(format!("target page `{page_id}` does not exist")),
             }),
         ComponentAction::NavigateUrl { href, .. } => validate_safe_url(href, "navigation href"),
-        ComponentAction::SubmitForm { form_id } => {
-            validate_identifier(form_id, "form id").and_then(|_| {
+        ComponentAction::SubmitForm { form_id } => validate_identifier(form_id, "form id")
+            .and_then(|_| {
                 validation
                     .form_ids
                     .contains_key(form_id)
                     .then_some(())
                     .ok_or_else(|| format!("form `{form_id}` does not exist"))
-            })
-        }
+            }),
         ComponentAction::EmitEvent { event, .. } => validate_identifier(event, "event name"),
         ComponentAction::ProviderAction {
             provider, action, ..

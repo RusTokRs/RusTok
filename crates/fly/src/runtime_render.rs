@@ -101,12 +101,12 @@ pub fn render_page_with_runtime_context(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     #[test]
     fn runtime_renderer_applies_context_bindings_and_repeaters_in_order() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "component": {
@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn runtime_renderer_emits_native_forms_and_locale_aware_actions() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "flyLocales": {
                 "default_locale": "ru",
                 "supported_locales": ["ru", "en"]

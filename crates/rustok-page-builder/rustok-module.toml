@@ -24,7 +24,7 @@ supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
 
 [fba.provider]
-contract = "grapesjs_v1"
+contract = "grapesjs"
 builder_contract_version = "1.0"
 consumer_min_version = "1.0"
 capabilities = ["preview", "tree", "properties", "publish"]

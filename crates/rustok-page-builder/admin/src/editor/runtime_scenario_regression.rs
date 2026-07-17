@@ -3,7 +3,7 @@ use crate::i18n::t;
 use fly::{
     evaluate_runtime_scenario_release, PageSelection, RenderPolicy, RuntimeScenarioReleaseBaseline,
     RuntimeScenarioReleasePolicy, RuntimeScenarioReleaseStatus, RuntimeScenarioRenderChange,
-    RuntimeScenarioRenderChangeImpact, FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1,
+    RuntimeScenarioRenderChangeImpact, FLY_RUNTIME_SCENARIO_RELEASE_BASELINE,
 };
 use leptos::prelude::*;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
@@ -139,7 +139,7 @@ pub fn RuntimeScenarioRegressionPanel(
                             ) {
                                 Ok(release_baseline)
                                     if release_baseline.format
-                                        == FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1
+                                        == FLY_RUNTIME_SCENARIO_RELEASE_BASELINE
                                         && release_baseline.is_valid() =>
                                 {
                                     baseline.set(Some(release_baseline.clone()));
@@ -196,7 +196,7 @@ pub fn RuntimeScenarioRegressionPanel(
 
                 <textarea
                     class="min-h-36 w-full rounded border border-input bg-background px-2 py-1 font-mono text-[11px]"
-                    placeholder="Paste fly_runtime_scenario_release_baseline_v1 JSON"
+                    placeholder="Paste fly_runtime_scenario_release_baseline JSON"
                     prop:value=move || baseline_json.get()
                     on:input=move |event| baseline_json.set(event_target_value(&event))
                 ></textarea>

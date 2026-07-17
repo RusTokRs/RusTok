@@ -181,9 +181,10 @@ impl FlyUiStateMachine {
                         })?;
                         if !candidate.legal {
                             return Err(UiError::IllegalDrop(
-                                candidate.reason.clone().unwrap_or_else(|| {
-                                    "candidate rejected by policy".to_string()
-                                }),
+                                candidate
+                                    .reason
+                                    .clone()
+                                    .unwrap_or_else(|| "candidate rejected by policy".to_string()),
                             ));
                         }
                     }
@@ -197,9 +198,10 @@ impl FlyUiStateMachine {
             }
             UiIntent::Drop => {
                 let drag = self.state.drag.take().ok_or(UiError::NoActiveDrag)?;
-                let candidate = drag.active_candidate().cloned().ok_or_else(|| {
-                    UiError::IllegalDrop("no active drop candidate".to_string())
-                })?;
+                let candidate = drag
+                    .active_candidate()
+                    .cloned()
+                    .ok_or_else(|| UiError::IllegalDrop("no active drop candidate".to_string()))?;
                 if !candidate.legal {
                     return Err(UiError::IllegalDrop(
                         candidate
@@ -251,9 +253,7 @@ impl FlyUiStateMachine {
                     if !self.state.presentation.is_editable() {
                         return Err(UiError::ReadOnly);
                     }
-                    if let Some(capability) =
-                        requirement.first_missing(self.state.capabilities)
-                    {
+                    if let Some(capability) = requirement.first_missing(self.state.capabilities) {
                         return Err(UiError::CapabilityUnavailable(
                             capability.as_str().to_string(),
                         ));

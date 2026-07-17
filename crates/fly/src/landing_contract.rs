@@ -185,11 +185,11 @@ pub fn build_static_landing_artifact(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     fn ready_project() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "flyPageMeta": {
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn static_artifact_is_not_emitted_for_unready_project() {
-        let project = GrapesJsV1Codec::decode_value(json!({
+        let project = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "component": { "id": "root", "type": "wrapper" }

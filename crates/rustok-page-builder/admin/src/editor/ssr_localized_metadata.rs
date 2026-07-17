@@ -282,8 +282,7 @@ fn localized_metadata_json(page: &ProjectPage) -> String {
             localized.insert((*field).to_string(), Value::Object(values.clone()));
         }
     }
-    serde_json::to_string_pretty(&Value::Object(localized))
-        .unwrap_or_else(|_| "{}".to_string())
+    serde_json::to_string_pretty(&Value::Object(localized)).unwrap_or_else(|_| "{}".to_string())
 }
 
 fn localized_metadata_fallback(page: &ProjectPage) -> String {
@@ -319,7 +318,7 @@ fn page_label(page: &ProjectPage, index: usize, fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::{materialize_localized_page_metadata, GrapesJsV1Codec, PageMetadata};
+    use fly::{materialize_localized_page_metadata, GrapesJsCodec, PageMetadata};
     use serde_json::json;
 
     fn controller() -> AdminCanvasController {
@@ -354,11 +353,16 @@ mod tests {
                 fallback_locale: "en".to_string(),
             })
             .expect("localized metadata intent");
-        controller.dispatch(intent).expect("localized metadata patch");
-        let metadata = &controller.editor().document().project.pages[0].extensions
-            [FLY_PAGE_METADATA_FIELD];
+        controller
+            .dispatch(intent)
+            .expect("localized metadata patch");
+        let metadata =
+            &controller.editor().document().project.pages[0].extensions[FLY_PAGE_METADATA_FIELD];
         assert_eq!(metadata["providerFuture"]["enabled"], true);
-        assert_eq!(metadata["slug"][LOCALIZED_VALUES_FIELD]["en"], "hello-world");
+        assert_eq!(
+            metadata["slug"][LOCALIZED_VALUES_FIELD]["en"],
+            "hello-world"
+        );
         assert_eq!(metadata["slug"][LOCALIZED_VALUES_FIELD]["ru"], "привет-мир");
         let materialized = materialize_localized_page_metadata(
             controller.editor().document(),
@@ -390,7 +394,7 @@ mod tests {
 
     #[test]
     fn panel_round_trip_extracts_only_localizable_wrappers() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "flyPageMeta": {
                     "title": {

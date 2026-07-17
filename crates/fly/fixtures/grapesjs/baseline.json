@@ -8,7 +8,9 @@
   ],
   "styles": [
     {
-      "selectors": ["rtk-hero"],
+      "selectors": [
+        "rtk-hero"
+      ],
       "style": {
         "padding": "4rem 1.5rem"
       }
@@ -34,7 +36,9 @@
                 "id": "hero-title",
                 "type": "heading",
                 "tagName": "h1",
-                "components": ["Build on RusTok"]
+                "components": [
+                  "Build on RusTok"
+                ]
               }
             ]
           },

@@ -52,12 +52,12 @@ slug = "pages"
 
 [dependencies.page_builder]
 module = "page-builder"
-contract = "grapesjs_v1"
+contract = "grapesjs"
 contract_version = "1.0"
 
 [fba.builder_consumer]
 provider_module = "page-builder"
-contract = "grapesjs_v1"
+contract = "grapesjs"
 contract_version = "1.0"
 builder_contract_version = "${builder_contract_version}"
 consumer_min_version = "${consumer_min_version}"
@@ -107,7 +107,7 @@ write_registry_fixture() {
   "provider": {
     "module_slug": "page_builder",
     "manifest_module": "page-builder",
-    "contract": "grapesjs_v1",
+    "contract": "grapesjs",
     "builder_contract_version": "1.0",
     "consumer_min_version": "1.0",
     "capabilities": ["preview", "tree", "properties", "publish"]
@@ -117,7 +117,7 @@ write_registry_fixture() {
       "module_slug": "pages",
       "crate": "rustok-pages",
       "provider_module": "page-builder",
-      "contract": "grapesjs_v1",
+      "contract": "grapesjs",
       "contract_version": "1.0",
       "builder_contract_version": "1.0",
       "consumer_min_version": "1.0",
@@ -128,7 +128,7 @@ write_registry_fixture() {
       "module_slug": "forum",
       "crate": "rustok-forum",
       "provider_module": "page-builder",
-      "contract": "grapesjs_v1",
+      "contract": "grapesjs",
       "contract_version": "1.0",
       "builder_contract_version": "1.0",
       "consumer_min_version": "1.0",
@@ -158,7 +158,7 @@ create_fixture_repo() {
 slug = "page_builder"
 
 [fba.provider]
-contract = "grapesjs_v1"
+contract = "grapesjs"
 builder_contract_version = "1.0"
 consumer_min_version = "1.0"
 capabilities = ["preview", "tree", "properties", "publish"]
@@ -187,7 +187,7 @@ page_builder = "*"
 
 [fba.builder_consumer]
 provider_module = "page-builder"
-contract = "grapesjs_v1"
+contract = "grapesjs"
 contract_version = "1.0"
 builder_contract_version = "1.0"
 consumer_min_version = "1.0"
@@ -212,7 +212,6 @@ copy_verify_scripts() {
   cp "$PB_VERIFY_DIR/verify-page-builder-consumer-readiness.mjs" "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/"
   cp "$PB_VERIFY_DIR/verify-page-builder-fallback-profiles.mjs" "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/"
   cp "$PB_VERIFY_DIR/verify-page-builder-toggle-profiles-consistency.mjs" "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/"
-  cp "$PB_VERIFY_DIR/verify-page-builder-terminology.mjs" "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/"
   cp "$PB_VERIFY_DIR/verify-page-builder-fba-baseline.mjs" "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/"
 
   for script in \

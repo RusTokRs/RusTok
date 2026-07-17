@@ -368,12 +368,12 @@ fn contract_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     #[test]
     fn contract_exposes_required_defaults_and_dependencies() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }],
             "flyRuntimeContextSchema": [{
                 "id": "currency",
@@ -404,7 +404,7 @@ mod tests {
 
     #[test]
     fn strict_preflight_promotes_missing_and_type_mismatch() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }],
             "flyRuntimeContextSchema": [{
                 "id": "title",
@@ -434,7 +434,7 @@ mod tests {
 
     #[test]
     fn empty_definition_paths_are_rejected_even_though_root_resolution_exists() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }],
             "flyRuntimeContextSchema": [{
                 "id": "root-field",

@@ -34,9 +34,9 @@ pub(crate) fn CapabilityPolicyPanel(runtime: AdminEditorRuntime) -> impl IntoVie
         "page_builder.capabilityPolicy.title",
         "Editor access policy",
     );
-    let legacy = t(
+    let policy_note = t(
         locale.as_deref(),
-        "page_builder.capabilityPolicy.legacy",
+        "page_builder.capabilityPolicy.summary",
         "No detailed host policy was supplied. The effective profile still remains enforced by the state machine.",
     );
     let provider_label = t(
@@ -84,23 +84,15 @@ pub(crate) fn CapabilityPolicyPanel(runtime: AdminEditorRuntime) -> impl IntoVie
         "page_builder.capabilityPolicy.yes",
         "yes",
     );
-    let no_label = t(
-        locale.as_deref(),
-        "page_builder.capabilityPolicy.no",
-        "no",
-    );
+    let no_label = t(locale.as_deref(), "page_builder.capabilityPolicy.no", "no");
     let evaluation = runtime.editor_capability_evaluation.clone();
     let provider = evaluation
         .as_ref()
         .map(|evaluation| evaluation.provider_state)
         .unwrap_or(EditorProviderState::Healthy);
     let provider_class = match provider {
-        EditorProviderState::Healthy => {
-            "rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-900"
-        }
-        EditorProviderState::Degraded => {
-            "rounded bg-amber-100 px-2 py-1 text-xs text-amber-900"
-        }
+        EditorProviderState::Healthy => "rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-900",
+        EditorProviderState::Degraded => "rounded bg-amber-100 px-2 py-1 text-xs text-amber-900",
         EditorProviderState::Unavailable => {
             "rounded bg-destructive/10 px-2 py-1 text-xs text-destructive"
         }
@@ -118,7 +110,7 @@ pub(crate) fn CapabilityPolicyPanel(runtime: AdminEditorRuntime) -> impl IntoVie
             </div>
             {evaluation.is_none().then(|| view! {
                 <p class="rounded bg-muted/50 px-2 py-1 text-xs text-muted-foreground" role="status">
-                    {legacy}
+                    {policy_note}
                 </p>
             })}
             <div class="overflow-x-auto">
@@ -173,11 +165,7 @@ pub(crate) fn CapabilityPolicyPanel(runtime: AdminEditorRuntime) -> impl IntoVie
 }
 
 #[component]
-fn CapabilitySourceCell(
-    value: Option<bool>,
-    yes_label: String,
-    no_label: String,
-) -> impl IntoView {
+fn CapabilitySourceCell(value: Option<bool>, yes_label: String, no_label: String) -> impl IntoView {
     let (label, class) = match value {
         Some(true) => (yes_label, "px-1 py-1 text-emerald-700"),
         Some(false) => (no_label, "px-1 py-1 text-destructive"),

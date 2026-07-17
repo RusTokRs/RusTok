@@ -91,7 +91,6 @@ fn validate_registry_id(id: &str) -> FlyResult<()> {
 pub struct ComponentDefinition {
     pub id: String,
     pub provider: String,
-    pub schema_version: String,
     #[serde(default)]
     pub allowed_children: Vec<String>,
     #[serde(default)]
@@ -192,14 +191,11 @@ impl RegistryItem for CommandDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PluginRequirement {
     pub id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub minimum_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PluginDescriptor {
     pub id: String,
-    pub version: String,
     #[serde(default)]
     pub dependencies: Vec<PluginRequirement>,
 }
@@ -305,7 +301,6 @@ pub fn builtin_component_definitions() -> Vec<ComponentDefinition> {
             ComponentDefinition {
                 id: id.to_string(),
                 provider: "fly.builtin".to_string(),
-                schema_version: "1".to_string(),
                 allowed_children,
                 accepts_any_child,
                 is_container: accepts_any_child || matches!(id, "list" | "select"),

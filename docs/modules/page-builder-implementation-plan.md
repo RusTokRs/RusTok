@@ -17,7 +17,7 @@ status: active
 ## Decision summary
 
 Fly is the custom Rust page-builder ecosystem. GrapesJS remains the behavioural and
-`grapesjs_v1` compatibility reference until bidirectional browser round trips are proven.
+`grapesjs` compatibility reference until bidirectional browser round trips are proven.
 
 The stable layer split is:
 
@@ -42,7 +42,7 @@ capability and is explicitly outside Fly scope.
 
 - [x] Next GrapesJS remains the behavioural reference and uses `loadProjectData()` /
   `getProjectData()`.
-- [x] `grapesjs_v1` remains the canonical stored contract.
+- [x] `grapesjs` remains the canonical stored contract.
 - [x] `fly`, `fly-ui` and `fly-leptos` exist as separate crates.
 - [x] The Fly project model preserves unknown fields/providers and exposes stable IDs, commands,
   history, registries, validation, clipboard fragments and revision hashes.
@@ -70,7 +70,7 @@ The current admin pilot supports this end-to-end path:
 
 ```text
 selected Pages document
-  -> Pages loads current grapesjs_v1 project
+  -> Pages loads current grapesjs project
   -> Pages canonicalizes pages[].component
   -> PageBuilderAdminHostContext
   -> AdminCanvasController / FlyEditor
@@ -259,7 +259,7 @@ RusTok-owned and authoritative.
 
 ### Phase 0 — Baseline, ADR and dependency policy
 
-- [x] Keep Next GrapesJS and `grapesjs_v1` as the reference.
+- [x] Keep Next GrapesJS and `grapesjs` as the reference.
 - [x] Preserve backend FBA boundaries and Pages JSON fallback.
 - [x] Record the Fly layers, dual deployment surfaces and rich-text exclusion.
 - [x] Add the Fly architecture ADR.

@@ -32,7 +32,7 @@ fn module_manifest_declares_fba_builder_consumer_contract() {
             .get("contract")
             .and_then(toml::Value::as_str)
             .expect("dependencies.page_builder.contract is required"),
-        "grapesjs_v1",
+        "grapesjs",
         "pages and builder contract drifted"
     );
 

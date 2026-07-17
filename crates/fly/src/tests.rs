@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 fn baseline() -> ProjectDocument {
-    GrapesJsV1Codec::decode_str(include_str!("../fixtures/grapesjs/baseline.json"))
+    GrapesJsCodec::decode_str(include_str!("../fixtures/grapesjs/baseline.json"))
         .expect("baseline fixture must decode")
 }
 
@@ -13,8 +13,8 @@ fn grapesjs_round_trip_preserves_unknown_fields() {
     let input: Value =
         serde_json::from_str(include_str!("../fixtures/grapesjs/unknown-provider.json"))
             .expect("fixture json");
-    let document = GrapesJsV1Codec::decode_value(input.clone()).expect("decode");
-    let output = GrapesJsV1Codec::encode_value(&document).expect("encode");
+    let document = GrapesJsCodec::decode_value(input.clone()).expect("decode");
+    let output = GrapesJsCodec::encode_value(&document).expect("encode");
     assert_eq!(output, input);
     assert_eq!(
         output["pages"][0]["component"]["components"][0]["futureField"],
@@ -52,7 +52,7 @@ fn commands_and_history_are_transactional() {
 #[test]
 fn validation_preserves_missing_provider_nodes() {
     let document =
-        GrapesJsV1Codec::decode_str(include_str!("../fixtures/grapesjs/unknown-provider.json"))
+        GrapesJsCodec::decode_str(include_str!("../fixtures/grapesjs/unknown-provider.json"))
             .expect("decode");
     let report = validate_project(
         &document,
@@ -122,15 +122,6 @@ fn stable_id_assignment_avoids_existing_ids() {
     assert!(ids.contains("fly-section-1"));
     assert!(ids.contains("fly-section-2"));
 }
-
-#[test]
-fn project_format_wire_name_matches_contract() {
-    assert_eq!(
-        serde_json::to_value(ProjectFormat::GrapesJsV1).expect("serialize"),
-        json!("grapesjs_v1")
-    );
-}
-
 proptest! {
     #[test]
     fn opaque_top_level_fields_round_trip(key in "[a-zA-Z][a-zA-Z0-9_]{0,16}", value in any::<i64>()) {
@@ -141,8 +132,8 @@ proptest! {
         object.insert("pages".to_string(), json!([]));
         object.insert(key.clone(), json!(value));
         let input = Value::Object(object);
-        let document = GrapesJsV1Codec::decode_value(input.clone()).expect("decode");
-        let output = GrapesJsV1Codec::encode_value(&document).expect("encode");
+        let document = GrapesJsCodec::decode_value(input.clone()).expect("decode");
+        let output = GrapesJsCodec::encode_value(&document).expect("encode");
         prop_assert_eq!(output, input);
     }
 }

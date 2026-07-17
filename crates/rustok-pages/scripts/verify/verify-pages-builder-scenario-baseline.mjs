@@ -92,7 +92,7 @@ const required = [
   [composition, 'server_status.get_untracked().baseline_hash.clone()', 'Pages builder does not use the server-confirmed expected hash'],
   [composition, 'ServerReleaseStatus', 'Pages builder does not display server release status'],
   [composition, 'Baseline was written but server status could not be verified', 'baseline persistence is not confirmed by server evaluation'],
-  [releaseCore, 'FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1', 'Fly release baseline format is missing'],
+  [releaseCore, 'FLY_RUNTIME_SCENARIO_RELEASE_BASELINE', 'Fly release baseline format is missing'],
   [releaseApi, 'SCENARIO_REGRESSION_BLOCKED', 'stable release rejection code is missing'],
 ];
 
@@ -119,10 +119,10 @@ if (composition.includes('body_content_json: baseline')) {
   failures.push('scenario baseline must remain separate from Pages body project_data');
 }
 if (adminTransport.includes('graphql_adapter::save_page_builder_scenario_baseline(')) {
-  failures.push('Pages admin transport must not use the legacy unconditional baseline save');
+  failures.push('Pages admin transport must not use the current unconditional baseline save');
 }
 if (adminTransport.includes('graphql_adapter::delete_page_builder_scenario_baseline(')) {
-  failures.push('Pages admin transport must not use the legacy unconditional baseline delete');
+  failures.push('Pages admin transport must not use the current unconditional baseline delete');
 }
 
 if (failures.length > 0) {

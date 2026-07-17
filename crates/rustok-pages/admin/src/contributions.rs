@@ -8,15 +8,9 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const PAGES_MODULE_ID: &str = "pages";
 pub const PAGES_OWNER_PROVIDER: &str = "rustok.pages";
 pub const FLY_BUILTIN_PROVIDER: &str = "fly.builtin";
-pub const FLY_BUILTIN_PROVIDER_VERSION: &str = "1";
 pub const PAGES_LANDING_BLOCKS_CONTRIBUTION_ID: &str = "rustok.pages.landing-blocks";
 
-pub const PAGES_BUILDER_CAPABILITIES: &[&str] = &[
-    "preview",
-    "tree",
-    "properties",
-    "publish",
-];
+pub const PAGES_BUILDER_CAPABILITIES: &[&str] = &["preview", "tree", "properties", "publish"];
 
 pub const PAGES_LANDING_BLOCK_CAPABILITIES: &[&str] = &["tree", "properties"];
 
@@ -30,18 +24,14 @@ pub const PAGES_LANDING_BLOCK_IDS: &[&str] = &[
 
 /// Module-owned metadata used by the generated Fly admin contribution registry.
 ///
-/// Pages owns document lifecycle, while the referenced blocks belong to `fly.builtin@1`. The
-/// cross-provider relationship is explicit and version-pinned; no renderer or property-editor is
+/// Pages owns document lifecycle, while the referenced blocks belong to `fly.builtin`. The
+/// cross-provider relationship is explicit and explicit; no renderer or property-editor is
 /// advertised until Pages has a real executable adapter for that contract.
 pub fn pages_contribution_manifest() -> ModuleContributionManifest {
     ModuleContributionManifest {
         module_id: PAGES_MODULE_ID.to_string(),
         owner_provider: PAGES_OWNER_PROVIDER.to_string(),
-        owner_version: env!("CARGO_PKG_VERSION").to_string(),
-        target_providers: BTreeMap::from([(
-            FLY_BUILTIN_PROVIDER.to_string(),
-            FLY_BUILTIN_PROVIDER_VERSION.to_string(),
-        )]),
+        target_providers: BTreeSet::from([FLY_BUILTIN_PROVIDER.to_string()]),
         dependencies: BTreeSet::new(),
         required_permissions: BTreeSet::new(),
         admin: vec![pages_landing_blocks_contribution()],
@@ -53,7 +43,6 @@ pub fn pages_landing_blocks_contribution() -> ContributionDescriptor {
     ContributionDescriptor {
         id: PAGES_LANDING_BLOCKS_CONTRIBUTION_ID.to_string(),
         provider: FLY_BUILTIN_PROVIDER.to_string(),
-        provider_version: FLY_BUILTIN_PROVIDER_VERSION.to_string(),
         required_capabilities: capability_set(PAGES_LANDING_BLOCK_CAPABILITIES),
         blocks: PAGES_LANDING_BLOCK_IDS
             .iter()
@@ -70,14 +59,8 @@ pub fn pages_landing_blocks_contribution() -> ContributionDescriptor {
                 "ownerProvider".to_string(),
                 Value::String(PAGES_OWNER_PROVIDER.to_string()),
             ),
-            (
-                "contract".to_string(),
-                Value::String("grapesjs_v1".to_string()),
-            ),
-            (
-                "surface".to_string(),
-                Value::String("admin".to_string()),
-            ),
+            ("format".to_string(), Value::String("grapesjs".to_string())),
+            ("surface".to_string(), Value::String("admin".to_string())),
         ]),
     }
 }
@@ -115,11 +98,8 @@ mod tests {
     #[test]
     fn manifest_explicitly_pins_the_fly_builtin_target() {
         let manifest = pages_contribution_manifest();
-        assert!(manifest.allows_target_provider(
-            FLY_BUILTIN_PROVIDER,
-            FLY_BUILTIN_PROVIDER_VERSION,
-        ));
-        assert!(!manifest.allows_target_provider("other.provider", "1"));
+        assert!(manifest.allows_target_provider(FLY_BUILTIN_PROVIDER));
+        assert!(!manifest.allows_target_provider("other.provider"));
     }
 
     #[test]

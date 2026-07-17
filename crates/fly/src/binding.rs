@@ -143,7 +143,6 @@ pub fn materialize_bindings(document: &ProjectDocument, context: &Value) -> Bind
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Info,
                 "runtime_binding_unresolved",
-                Some(binding.component_id.clone()),
                 format!(
                     "binding `{}` path `{}` did not resolve and has no fallback",
                     binding.id, binding.path
@@ -156,7 +155,6 @@ pub fn materialize_bindings(document: &ProjectDocument, context: &Value) -> Bind
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Warning,
                 "runtime_binding_transform_failed",
-                Some(binding.component_id.clone()),
                 format!(
                     "binding `{}` could not apply transform `{:?}`",
                     binding.id, binding.transform
@@ -169,7 +167,6 @@ pub fn materialize_bindings(document: &ProjectDocument, context: &Value) -> Bind
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Warning,
                 "runtime_binding_target_missing",
-                Some(binding.component_id.clone()),
                 format!(
                     "binding `{}` targets missing component `{}`",
                     binding.id, binding.component_id
@@ -203,14 +200,12 @@ pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<Validatio
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Error,
                 "runtime_binding_id_empty",
-                Some(binding.component_id.clone()),
                 "runtime binding id must not be empty",
             ));
         } else if !ids.insert(binding.id.clone()) {
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Error,
                 "duplicate_runtime_binding_id",
-                Some(binding.component_id.clone()),
                 format!("runtime binding id `{}` is duplicated", binding.id),
             ));
         }
@@ -218,7 +213,6 @@ pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<Validatio
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Error,
                 "runtime_binding_path_empty",
-                Some(binding.component_id.clone()),
                 format!("runtime binding `{}` has an empty context path", binding.id),
             ));
         }
@@ -226,7 +220,6 @@ pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<Validatio
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Error,
                 "runtime_binding_component_missing",
-                Some(binding.component_id.clone()),
                 format!(
                     "runtime binding `{}` targets missing component `{}`",
                     binding.id, binding.component_id
@@ -239,14 +232,16 @@ pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<Validatio
         diagnostics.push(binding_diagnostic(
             ValidationSeverity::Warning,
             "runtime_binding_unknown_entry",
-            None,
             format!("runtime binding entry is not understood and was preserved: {entry}"),
         ));
     }
     diagnostics
 }
 
-fn validate_binding_identity(document: &ProjectDocument, binding: &RuntimeBinding) -> FlyResult<()> {
+fn validate_binding_identity(
+    document: &ProjectDocument,
+    binding: &RuntimeBinding,
+) -> FlyResult<()> {
     if binding.id.trim().is_empty() {
         return Err(FlyError::Decode(
             "runtime binding id must not be empty".to_string(),
@@ -296,7 +291,9 @@ fn apply_value(component: &mut ComponentObject, target: &BindingTarget, value: V
             set_component_field(component, name, value);
         }
         BindingTarget::Style { name } => {
-            let style = component.style.get_or_insert_with(|| Value::Object(Map::new()));
+            let style = component
+                .style
+                .get_or_insert_with(|| Value::Object(Map::new()));
             if !style.is_object() {
                 *style = Value::Object(Map::new());
             }
@@ -313,7 +310,6 @@ fn set_component_field(component: &mut ComponentObject, name: &str, value: Value
         "type" => component.component_type = value.as_str().map(ToString::to_string),
         "tagName" => component.tag_name = value.as_str().map(ToString::to_string),
         "provider" => component.provider = value.as_str().map(ToString::to_string),
-        "schemaVersion" => component.schema_version = value.as_str().map(ToString::to_string),
         "style" => component.style = Some(value),
         "traits" => component.traits = value.as_array().cloned().unwrap_or_default(),
         "components" => {}
@@ -330,10 +326,7 @@ fn transform_value(value: Value, transform: BindingTransform) -> Option<Value> {
             Value::String(value) => value,
             other => other.to_string(),
         })),
-        BindingTransform::Number => value
-            .as_f64()
-            .and_then(Number::from_f64)
-            .map(Value::Number),
+        BindingTransform::Number => value.as_f64().and_then(Number::from_f64).map(Value::Number),
         BindingTransform::Boolean => match value {
             Value::Bool(value) => Some(Value::Bool(value)),
             Value::String(value) if value.eq_ignore_ascii_case("true") => Some(Value::Bool(true)),
@@ -356,14 +349,12 @@ fn transform_value(value: Value, transform: BindingTransform) -> Option<Value> {
 fn binding_diagnostic(
     severity: ValidationSeverity,
     code: impl Into<String>,
-    component_id: Option<String>,
     message: impl Into<String>,
 ) -> ValidationDiagnostic {
     ValidationDiagnostic {
         severity,
         code: code.into(),
         path: format!("project.extensions.{FLY_RUNTIME_BINDINGS_FIELD}"),
-        component_id,
         message: message.into(),
     }
 }

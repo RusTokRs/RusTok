@@ -128,7 +128,7 @@ async fn create_grapesjs_page(
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
                     content: String::new(),
-                    format: Some("grapesjs_v1".to_string()),
+                    format: Some("grapesjs".to_string()),
                     content_json: Some(serde_json::json!({
                         "pages": [{ "name": title, "frames": [] }],
                         "assets": [],
@@ -296,7 +296,7 @@ async fn create_grapesjs_body_returns_feature_disabled_when_builder_toggle_is_fa
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
                     content: "".to_string(),
-                    format: Some("grapesjs_v1".to_string()),
+                    format: Some("grapesjs".to_string()),
                     content_json: Some(serde_json::json!({
                         "components": []
                     })),
@@ -329,7 +329,7 @@ async fn update_grapesjs_body_returns_feature_disabled_when_builder_toggle_is_fa
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
                     content: "".to_string(),
-                    format: Some("grapesjs_v1".to_string()),
+                    format: Some("grapesjs".to_string()),
                     content_json: Some(serde_json::json!({
                         "components": []
                     })),
@@ -514,7 +514,7 @@ async fn publish_grapesjs_page_is_blocked_when_builder_disabled_even_if_publish_
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
                     content: "".to_string(),
-                    format: Some("grapesjs_v1".to_string()),
+                    format: Some("grapesjs".to_string()),
                     content_json: Some(serde_json::json!({
                         "components": []
                     })),
@@ -560,7 +560,7 @@ async fn publish_with_foreign_page_id_returns_page_not_found_before_builder_togg
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
                     content: "".to_string(),
-                    format: Some("grapesjs_v1".to_string()),
+                    format: Some("grapesjs".to_string()),
                     content_json: Some(serde_json::json!({
                         "components": []
                     })),
@@ -604,7 +604,7 @@ async fn update_to_published_is_blocked_for_existing_grapesjs_page_when_builder_
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
                     content: "".to_string(),
-                    format: Some("grapesjs_v1".to_string()),
+                    format: Some("grapesjs".to_string()),
                     content_json: Some(serde_json::json!({
                         "components": []
                     })),
@@ -775,7 +775,7 @@ async fn publish_forbidden_user_gets_forbidden_before_builder_toggle_errors() {
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
                     content: "".to_string(),
-                    format: Some("grapesjs_v1".to_string()),
+                    format: Some("grapesjs".to_string()),
                     content_json: Some(serde_json::json!({
                         "components": []
                     })),
@@ -843,7 +843,7 @@ async fn pages_builder_fallback_all_on_allows_publish_and_keeps_read_list_paths(
     assert_eq!(loaded.id, page.id);
     assert_eq!(
         loaded.body.expect("builder body must stay readable").format,
-        "grapesjs_v1"
+        "grapesjs"
     );
 
     let (items, total) = page_service
@@ -889,7 +889,7 @@ async fn pages_builder_fallback_publish_off_blocks_grapesjs_publish_but_keeps_re
     assert_eq!(loaded.id, page.id);
     assert_eq!(
         loaded.body.expect("builder body must stay readable").format,
-        "grapesjs_v1"
+        "grapesjs"
     );
 
     let (items, total) = page_service
@@ -948,7 +948,7 @@ async fn pages_builder_fallback_preview_off_blocks_preview_publish_but_keeps_rea
     assert_eq!(loaded.id, page.id);
     assert_eq!(
         loaded.body.expect("builder body must stay readable").format,
-        "grapesjs_v1"
+        "grapesjs"
     );
 
     let (items, total) = page_service
@@ -986,7 +986,7 @@ async fn pages_builder_fallback_builder_off_keeps_read_and_list_paths() {
     assert_eq!(loaded.id, page.id);
     assert_eq!(
         loaded.body.expect("builder body must stay readable").format,
-        "grapesjs_v1"
+        "grapesjs"
     );
 
     let (items, total) = page_service

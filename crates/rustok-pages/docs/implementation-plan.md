@@ -7,7 +7,7 @@ publish pipeline. Its admin and storefront packages use the module-owned
 core/transport/Leptos split. Storefront keeps both the native server-function
 and GraphQL selected paths; neither UI package has a legacy `api.rs` facade.
 
-Pages is the reference consumer of the `grapesjs_v1` Page Builder capability.
+Pages is the reference consumer of the `grapesjs` Page Builder capability.
 Its manifest fixes the consumer version, capability set, typed disabled states,
 and four fallback profiles. `pages-wave0-dry-run-evidence.json` is explicitly
 synthetic and the Wave 1 packet is a readiness draft, so neither is production

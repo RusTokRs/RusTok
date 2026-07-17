@@ -1,7 +1,7 @@
 use fly::{
     evaluate_runtime_publish_gate, export_runtime_context_json_schema,
     extract_runtime_context_contract, generate_runtime_context_example, preflight_runtime_context,
-    FlyResult, GrapesJsV1Codec, RuntimeContextContract, RuntimeContextExample,
+    FlyResult, GrapesJsCodec, RuntimeContextContract, RuntimeContextExample,
     RuntimeContextExamplePolicy, RuntimeContextJsonSchema, RuntimeContextPreflight,
     RuntimeContextPreflightPolicy, RuntimeContextScenario, RuntimePublishGateEvaluation,
     RuntimePublishGatePolicy,
@@ -79,7 +79,7 @@ impl PageBuilderRuntimeContextInspector {
         &self,
         request: PageBuilderRuntimeContractRequest,
     ) -> FlyResult<PageBuilderRuntimeContractResponse> {
-        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let document = GrapesJsCodec::decode_value(request.project_data)?;
         Ok(PageBuilderRuntimeContractResponse {
             contract: extract_runtime_context_contract(&document),
         })
@@ -89,7 +89,7 @@ impl PageBuilderRuntimeContextInspector {
         &self,
         request: PageBuilderRuntimeJsonSchemaRequest,
     ) -> FlyResult<PageBuilderRuntimeJsonSchemaResponse> {
-        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let document = GrapesJsCodec::decode_value(request.project_data)?;
         Ok(PageBuilderRuntimeJsonSchemaResponse {
             schema: export_runtime_context_json_schema(&document),
         })
@@ -99,7 +99,7 @@ impl PageBuilderRuntimeContextInspector {
         &self,
         request: PageBuilderRuntimeExampleRequest,
     ) -> FlyResult<PageBuilderRuntimeExampleResponse> {
-        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let document = GrapesJsCodec::decode_value(request.project_data)?;
         Ok(PageBuilderRuntimeExampleResponse {
             example: generate_runtime_context_example(&document, request.policy),
         })
@@ -109,7 +109,7 @@ impl PageBuilderRuntimeContextInspector {
         &self,
         request: PageBuilderRuntimePreflightRequest,
     ) -> FlyResult<PageBuilderRuntimePreflightResponse> {
-        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let document = GrapesJsCodec::decode_value(request.project_data)?;
         Ok(PageBuilderRuntimePreflightResponse {
             preflight: preflight_runtime_context(&document, &request.context, request.policy),
         })
@@ -119,7 +119,7 @@ impl PageBuilderRuntimeContextInspector {
         &self,
         request: PageBuilderRuntimePublishGateRequest,
     ) -> FlyResult<PageBuilderRuntimePublishGateResponse> {
-        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let document = GrapesJsCodec::decode_value(request.project_data)?;
         Ok(PageBuilderRuntimePublishGateResponse {
             evaluation: evaluate_runtime_publish_gate(
                 &document,

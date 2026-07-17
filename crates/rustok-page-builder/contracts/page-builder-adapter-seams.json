@@ -1,6 +1,6 @@
 {
   "module": "page_builder",
-  "contract": "grapesjs_v1",
+  "contract": "grapesjs",
   "adapter_seams_version": "1.0",
   "purpose": "Machine-readable contract for persistence and rendering adapters layered above the reference provider without changing capability DTOs or transport envelopes.",
   "canonical_entrypoints": [
@@ -14,19 +14,24 @@
   "seams": {
     "persistence": {
       "trait": "PageBuilderProjectStore",
-      "methods": ["load_project", "save_project"],
+      "methods": [
+        "load_project",
+        "save_project"
+      ],
       "tenant_context_source": "PortContext",
       "operation_evidence": "PageBuilderAdapterCallEvidence",
       "must_preserve": [
         "tenant isolation",
-        "grapesjs_v1 schema validation",
+        "grapesjs schema validation",
         "PageBuilderCapabilityRequest/Response DTOs",
         "canonical transport envelopes"
       ]
     },
     "rendering": {
       "trait": "PageBuilderRenderingAdapter",
-      "methods": ["render_preview"],
+      "methods": [
+        "render_preview"
+      ],
       "default_adapter": "ReferencePageBuilderRenderingAdapter",
       "operation_evidence": "PageBuilderAdapterCallEvidence",
       "must_preserve": [
@@ -37,7 +42,12 @@
     },
     "adapter_backed_service": {
       "type": "AdapterBackedPageBuilderService",
-      "capabilities": ["preview", "tree", "properties", "publish"],
+      "capabilities": [
+        "preview",
+        "tree",
+        "properties",
+        "publish"
+      ],
       "publish_policy": "host wrappers must continue to use CapabilityGuardedService for PortCallPolicy::write() enforcement",
       "default_telemetry": "NoopPageBuilderAdapterTelemetry",
       "operation_evidence_fields": [

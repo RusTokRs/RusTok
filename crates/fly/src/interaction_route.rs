@@ -41,15 +41,10 @@ impl InteractionRouteCatalog {
         self.routed_pages.contains(&page_index)
     }
 
-    pub(crate) fn slug_for(
-        &self,
-        page_index: usize,
-        locale_candidates: &[String],
-    ) -> Option<&str> {
+    pub(crate) fn slug_for(&self, page_index: usize, locale_candidates: &[String]) -> Option<&str> {
         for locale in locale_candidates {
             if let Some(route) = self.entries.iter().find(|route| {
-                route.page_index == page_index
-                    && route.locale.as_deref() == Some(locale.as_str())
+                route.page_index == page_index && route.locale.as_deref() == Some(locale.as_str())
             }) {
                 return Some(route.slug.as_str());
             }
@@ -57,7 +52,11 @@ impl InteractionRouteCatalog {
         self.entries
             .iter()
             .find(|route| route.page_index == page_index && route.locale.is_none())
-            .or_else(|| self.entries.iter().find(|route| route.page_index == page_index))
+            .or_else(|| {
+                self.entries
+                    .iter()
+                    .find(|route| route.page_index == page_index)
+            })
             .map(|route| route.slug.as_str())
     }
 }
@@ -117,12 +116,12 @@ pub(crate) fn build_interaction_href(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     #[test]
     fn catalog_resolves_identical_locale_fallback_for_all_interactions() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "about",
                 "flyPageMeta": {

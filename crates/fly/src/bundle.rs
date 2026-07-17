@@ -1,11 +1,9 @@
 use crate::{
-    audit_page, validate_project, FlyError, FlyResult, GrapesJsV1Codec, PageLocator,
-    ProjectDocument, ProjectHash, RegistrySet, ValidationLimits, ValidationReport, GRAPESJS_V1,
+    audit_page, validate_project, FlyError, FlyResult, GrapesJsCodec, PageLocator,
+    ProjectDocument, ProjectHash, RegistrySet, ValidationLimits, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-
-pub const FLY_PROJECT_BUNDLE_V1: &str = "fly_project_bundle_v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct BundleMetadata {
@@ -27,8 +25,6 @@ pub struct BundleMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProjectBundle {
-    pub bundle_format: String,
-    pub project_format: String,
     pub project_hash: String,
     pub project_data: Value,
     #[serde(default)]
@@ -41,7 +37,6 @@ pub struct ProjectBundle {
 pub struct BundleDecodePolicy {
     pub allow_raw_project: bool,
     pub allow_hash_mismatch: bool,
-    pub require_supported_project_format: bool,
 }
 
 impl Default for BundleDecodePolicy {
@@ -49,7 +44,6 @@ impl Default for BundleDecodePolicy {
         Self {
             allow_raw_project: true,
             allow_hash_mismatch: false,
-            require_supported_project_format: true,
         }
     }
 }
@@ -64,8 +58,6 @@ pub struct DecodedProjectBundle {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BundleInspection {
-    pub bundle_format: String,
-    pub project_format: String,
     pub declared_hash: String,
     pub actual_hash: String,
     pub hash_matches: bool,
@@ -83,10 +75,8 @@ pub fn export_project_bundle(
     metadata: BundleMetadata,
 ) -> FlyResult<ProjectBundle> {
     Ok(ProjectBundle {
-        bundle_format: FLY_PROJECT_BUNDLE_V1.to_string(),
-        project_format: GRAPESJS_V1.to_string(),
         project_hash: document.hash().hex(),
-        project_data: GrapesJsV1Codec::encode_value(document)?,
+        project_data: GrapesJsCodec::encode_value(document)?,
         metadata,
         extensions: Map::new(),
     })
@@ -115,18 +105,16 @@ pub fn decode_project_bundle_value(
 ) -> FlyResult<DecodedProjectBundle> {
     let imported_from_raw_project = value
         .as_object()
-        .is_some_and(|object| !object.contains_key("bundle_format"));
+        .is_some_and(|object| !object.contains_key("project_hash"));
     let bundle = if imported_from_raw_project {
         if !policy.allow_raw_project {
             return Err(FlyError::InvalidProjectBundle(
                 "raw project import is disabled".to_string(),
             ));
         }
-        let document = GrapesJsV1Codec::decode_value(value.clone())?;
+        let document = GrapesJsCodec::decode_value(value.clone())?;
         ProjectBundle {
-            bundle_format: FLY_PROJECT_BUNDLE_V1.to_string(),
-            project_format: GRAPESJS_V1.to_string(),
-            project_hash: document.hash().hex(),
+                    project_hash: document.hash().hex(),
             project_data: value,
             metadata: BundleMetadata::default(),
             extensions: Map::new(),
@@ -136,14 +124,8 @@ pub fn decode_project_bundle_value(
             .map_err(|error| FlyError::InvalidProjectBundle(error.to_string()))?
     };
 
-    if bundle.bundle_format != FLY_PROJECT_BUNDLE_V1 {
-        return Err(FlyError::UnsupportedBundleFormat(bundle.bundle_format));
-    }
-    if policy.require_supported_project_format && bundle.project_format != GRAPESJS_V1 {
-        return Err(FlyError::UnsupportedProjectFormat(bundle.project_format));
-    }
 
-    let document = GrapesJsV1Codec::decode_value(bundle.project_data.clone())?;
+    let document = GrapesJsCodec::decode_value(bundle.project_data.clone())?;
     let actual_hash = document.hash().hex();
     let hash_matches = constant_time_eq(bundle.project_hash.as_bytes(), actual_hash.as_bytes());
     if !hash_matches && !policy.allow_hash_mismatch {
@@ -175,8 +157,6 @@ pub fn inspect_project_bundle(
         audit_warning_count = audit_warning_count.saturating_add(audit.warning_count);
     }
     BundleInspection {
-        bundle_format: decoded.bundle.bundle_format.clone(),
-        project_format: decoded.bundle.project_format.clone(),
         declared_hash: decoded.bundle.project_hash.clone(),
         actual_hash: decoded.document.hash().hex(),
         hash_matches: decoded.hash_matches,
@@ -191,7 +171,7 @@ pub fn inspect_project_bundle(
 }
 
 pub fn bundle_hash(bundle: &ProjectBundle) -> FlyResult<ProjectHash> {
-    let document = GrapesJsV1Codec::decode_value(bundle.project_data.clone())?;
+    let document = GrapesJsCodec::decode_value(bundle.project_data.clone())?;
     Ok(document.hash())
 }
 
@@ -212,7 +192,7 @@ mod tests {
     use serde_json::json;
 
     fn document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "futureProjectField": { "keep": true },
             "pages": [{
                 "id": "home",
@@ -251,7 +231,7 @@ mod tests {
         assert_eq!(decoded.bundle.metadata.name.as_deref(), Some("Landing"));
         assert_eq!(decoded.bundle.metadata.extensions["futureMeta"], true);
         assert_eq!(
-            GrapesJsV1Codec::encode_value(&decoded.document)
+            GrapesJsCodec::encode_value(&decoded.document)
                 .expect("encode project")["futureProjectField"]["keep"],
             true
         );
@@ -259,12 +239,11 @@ mod tests {
 
     #[test]
     fn raw_project_fallback_wraps_grapesjs_data() {
-        let raw = GrapesJsV1Codec::encode_value(&document()).expect("raw project");
+        let raw = GrapesJsCodec::encode_value(&document()).expect("raw project");
         let decoded = decode_project_bundle_value(raw, &BundleDecodePolicy::default())
             .expect("raw import");
         assert!(decoded.imported_from_raw_project);
         assert!(decoded.hash_matches);
-        assert_eq!(decoded.bundle.bundle_format, FLY_PROJECT_BUNDLE_V1);
     }
 
     #[test]

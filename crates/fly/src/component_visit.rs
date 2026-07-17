@@ -121,12 +121,12 @@ fn visit_node_mut(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::{json, Value};
 
     #[test]
     fn immutable_and_mutable_walks_share_page_depth_and_path_contract() {
-        let mut document = GrapesJsV1Codec::decode_value(json!({
+        let mut document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "component": {

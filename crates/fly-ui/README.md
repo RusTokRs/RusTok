@@ -13,7 +13,6 @@ The crate defines:
 - contribution, renderer, and property-editor descriptors;
 - capability and policy evaluation;
 - deterministic admin/storefront registry factories;
-- owner-safe module manifests with version-pinned target-provider allowlists;
 - a framework-neutral contribution adapter contract;
 - a deterministic state machine suitable for mock-adapter tests.
 

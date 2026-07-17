@@ -1,6 +1,4 @@
-use fly::{
-    normalize_locale_tag, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD,
-};
+use fly::{normalize_locale_tag, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::cmp::Ordering;
@@ -55,7 +53,11 @@ impl PageBuilderLocaleContext {
             .into_iter()
             .skip_while(|candidate| locale.as_deref() == Some(candidate.as_str()))
             .chain(tenant_default_locale.and_then(normalize_locale_tag))
-            .chain(configured_fallbacks.iter().filter_map(|value| normalize_locale_tag(value)))
+            .chain(
+                configured_fallbacks
+                    .iter()
+                    .filter_map(|value| normalize_locale_tag(value)),
+            )
             .collect::<Vec<_>>();
         Self::new(locale.as_deref(), fallback_locales)
     }
@@ -196,10 +198,8 @@ mod tests {
 
     #[test]
     fn invalid_and_duplicate_fallbacks_are_removed() {
-        let locale = PageBuilderLocaleContext::new(
-            Some("ru"),
-            ["ru", "invalid locale", "en", "EN"],
-        );
+        let locale =
+            PageBuilderLocaleContext::new(Some("ru"), ["ru", "invalid locale", "en", "EN"]);
         assert_eq!(locale.fallback_locales, vec!["en"]);
     }
 }

@@ -1438,11 +1438,11 @@ fn context_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     fn document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": { "id": "root", "type": "wrapper" }
             }],
@@ -1504,7 +1504,7 @@ mod tests {
 
     #[test]
     fn validation_detects_dependency_cycles_and_default_type_errors() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": { "id": "root", "type": "wrapper" }
             }],

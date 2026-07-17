@@ -1,6 +1,6 @@
 use fly::{
-    diff_runtime_scenario_render_snapshots, FlyResult, GrapesJsV1Codec, PageSelection,
-    RenderPolicy, RuntimeContextScenario, RuntimeScenarioRenderDiff, RuntimeScenarioRenderSnapshot,
+    diff_runtime_scenario_render_snapshots, FlyResult, GrapesJsCodec, PageSelection, RenderPolicy,
+    RuntimeContextScenario, RuntimeScenarioRenderDiff, RuntimeScenarioRenderSnapshot,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -50,7 +50,7 @@ impl PageBuilderRuntimeScenarioRegressionInspector {
         &self,
         request: PageBuilderRuntimeScenarioSnapshotRequest,
     ) -> FlyResult<PageBuilderRuntimeScenarioSnapshotResponse> {
-        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let document = GrapesJsCodec::decode_value(request.project_data)?;
         Ok(PageBuilderRuntimeScenarioSnapshotResponse {
             snapshot: RuntimeScenarioRenderSnapshot::capture(
                 &document,
@@ -74,7 +74,7 @@ impl PageBuilderRuntimeScenarioRegressionInspector {
         &self,
         request: PageBuilderRuntimeScenarioProjectDiffRequest,
     ) -> FlyResult<PageBuilderRuntimeScenarioDiffResponse> {
-        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let document = GrapesJsCodec::decode_value(request.project_data)?;
         let next = RuntimeScenarioRenderSnapshot::capture(
             &document,
             &request.selection,

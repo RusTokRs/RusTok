@@ -75,11 +75,6 @@ const template = readJson(templatePath);
 const packet = readJson(packetPath);
 const requiredProfiles = template.required_profiles;
 
-if (packet.schema_version !== template.schema_version) {
-  fail(
-    `schema_version mismatch: packet=${packet.schema_version}, template=${template.schema_version}`,
-  );
-}
 if (packet.artifact !== "page_builder_wave_evidence_packet") {
   fail(`unexpected artifact: ${packet.artifact}`);
 }
@@ -245,28 +240,24 @@ const expectedProfileFlags = {
     "builder.preview.enabled": true,
     "builder.properties.enabled": true,
     "builder.publish.enabled": true,
-    "builder.legacy_bridge_readonly": true,
   },
   publish_off: {
     "builder.enabled": true,
     "builder.preview.enabled": true,
     "builder.properties.enabled": true,
     "builder.publish.enabled": false,
-    "builder.legacy_bridge_readonly": true,
   },
   preview_off: {
     "builder.enabled": true,
     "builder.preview.enabled": false,
     "builder.properties.enabled": true,
     "builder.publish.enabled": false,
-    "builder.legacy_bridge_readonly": true,
   },
   builder_off: {
     "builder.enabled": false,
     "builder.preview.enabled": false,
     "builder.properties.enabled": false,
     "builder.publish.enabled": false,
-    "builder.legacy_bridge_readonly": true,
   },
 };
 

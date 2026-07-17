@@ -4,9 +4,8 @@ use crate::{
     materialize_project_locale_context, materialize_project_translations, materialize_runtime,
     materialize_runtime_locale_context, validate_component_actions, validate_internal_page_links,
     ActionMaterialization, BindingMaterialization, ContextMaterialization,
-    InternalLinkMaterialization, LocalePolicyMaterialization,
-    LocalizedPageMetadataMaterialization, ProjectDocument, RuntimeMaterialization,
-    TranslationMaterialization, ValidationDiagnostic,
+    InternalLinkMaterialization, LocalePolicyMaterialization, LocalizedPageMetadataMaterialization,
+    ProjectDocument, RuntimeMaterialization, TranslationMaterialization, ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -180,12 +179,12 @@ pub fn materialize_project_with_runtime_context(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsV1Codec, PageMetadata, ValidationSeverity};
+    use crate::{GrapesJsCodec, PageMetadata, ValidationSeverity};
     use serde_json::json;
 
     #[test]
     fn pipeline_exposes_effective_context_and_materialized_document() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": {
                     "id": "root",
@@ -240,7 +239,7 @@ mod tests {
 
     #[test]
     fn project_locale_policy_defaults_before_translation_materialization() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "flyLocales": {
                 "default_locale": "ru",
                 "supported_locales": ["ru", "en"],
@@ -295,7 +294,7 @@ mod tests {
 
     #[test]
     fn internal_page_links_materialize_after_bindings_and_repeaters() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "flyLocales": {
                 "default_locale": "ru",
                 "supported_locales": ["ru", "en"]
@@ -340,7 +339,7 @@ mod tests {
 
     #[test]
     fn actions_and_forms_materialize_in_the_canonical_runtime_pipeline() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "flyLocales": {
                 "default_locale": "ru",
                 "supported_locales": ["ru", "en"]
@@ -393,7 +392,11 @@ mod tests {
             Some("form")
         );
         assert_eq!(
-            materialized.document.component("submit").unwrap().attributes["form"],
+            materialized
+                .document
+                .component("submit")
+                .unwrap()
+                .attributes["form"],
             "contact"
         );
         assert_eq!(
@@ -410,7 +413,7 @@ mod tests {
 
     #[test]
     fn runtime_binding_can_supply_action_before_native_materialization() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "flyPageMeta": { "slug": "home" },
@@ -457,7 +460,7 @@ mod tests {
 
     #[test]
     fn runtime_bound_navigation_conflict_is_validated_before_materialization() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "flyPageMeta": { "slug": "home" },
@@ -502,7 +505,7 @@ mod tests {
 
     #[test]
     fn locale_resolution_runs_before_computed_values_and_bindings() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": {
                     "id": "root",
@@ -546,7 +549,10 @@ mod tests {
             }),
         );
         assert_eq!(materialized.effective_context["page"]["prefix"], "Привет");
-        assert_eq!(materialized.effective_context["page"]["title"], "Привет мир");
+        assert_eq!(
+            materialized.effective_context["page"]["title"],
+            "Привет мир"
+        );
         assert_eq!(
             materialized
                 .document
@@ -563,7 +569,7 @@ mod tests {
 
     #[test]
     fn project_translation_catalog_materializes_before_bindings() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": {
                     "id": "root",
@@ -592,10 +598,8 @@ mod tests {
             }]
         }))
         .expect("document");
-        let materialized = materialize_project_with_runtime_context(
-            &document,
-            &json!({ "$locale": "ru-RU" }),
-        );
+        let materialized =
+            materialize_project_with_runtime_context(&document, &json!({ "$locale": "ru-RU" }));
         assert_eq!(
             materialized.effective_context["translations"]["hero_title"],
             "Добро пожаловать"
@@ -613,7 +617,7 @@ mod tests {
 
     #[test]
     fn localized_page_metadata_is_materialized_before_render_selection() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "flyPageMeta": {
@@ -634,10 +638,8 @@ mod tests {
             }]
         }))
         .expect("document");
-        let materialized = materialize_project_with_runtime_context(
-            &document,
-            &json!({ "$locale": "ru-RU" }),
-        );
+        let materialized =
+            materialize_project_with_runtime_context(&document, &json!({ "$locale": "ru-RU" }));
         let metadata = PageMetadata::from_page(&materialized.document.project.pages[0]);
         assert_eq!(metadata.title.as_deref(), Some("Главная"));
         assert_eq!(metadata.description.as_deref(), Some("Русское описание"));
@@ -645,7 +647,7 @@ mod tests {
 
     #[test]
     fn invalid_context_contract_does_not_replace_localized_root_context() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": {
                     "id": "root",

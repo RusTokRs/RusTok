@@ -1,7 +1,7 @@
 use super::patch::ComponentPatch;
 use crate::{
     BindingCommand, ComponentNode, ContextCommand, DynamicCommand, FlyError, FlyResult,
-    GrapesJsV1Codec, PageCommand, ProjectDocument, ProjectSnapshot, StyleRuleCommand,
+    GrapesJsCodec, PageCommand, ProjectDocument, ProjectSnapshot, StyleRuleCommand,
     TranslationCommand,
 };
 use serde::{Deserialize, Serialize};
@@ -141,7 +141,7 @@ pub struct ProjectHash(pub u64);
 
 impl ProjectHash {
     pub fn from_document(document: &ProjectDocument) -> Self {
-        let bytes = GrapesJsV1Codec::encode_vec(document)
+        let bytes = GrapesJsCodec::encode_vec(document)
             .unwrap_or_else(|_| serde_json::to_vec(&document.project).unwrap_or_default());
         Self::from_bytes(&bytes)
     }

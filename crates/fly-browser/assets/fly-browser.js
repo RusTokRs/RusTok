@@ -1,5 +1,5 @@
-const FLY_PROTOCOL = "fly_iframe_v1";
-const ADAPTER_VERSION = "fly_browser_v1";
+const FLY_PROTOCOL = "fly_iframe";
+const ADAPTER_VERSION = "fly_browser";
 const ADAPTER_KEY = Symbol.for("fly.browser.adapter");
 const ROOT_SELECTOR = "[data-fly-browser-root]";
 const IFRAME_SELECTOR = "iframe[data-fly-iframe-canvas]";

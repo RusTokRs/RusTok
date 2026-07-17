@@ -1,6 +1,6 @@
 use super::diff::compare_projects;
 use super::model::{ProjectDiffSummary, ProjectSnapshot};
-use crate::{FlyError, FlyResult, GrapesJsV1Codec, ProjectDocument};
+use crate::{FlyError, FlyResult, GrapesJsCodec, ProjectDocument};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::VecDeque;
@@ -45,7 +45,7 @@ impl SnapshotCatalog {
                 label.trim().to_string()
             },
             project_hash: hash,
-            project_data: GrapesJsV1Codec::encode_value(document)?,
+            project_data: GrapesJsCodec::encode_value(document)?,
             metadata,
         });
         while self.snapshots.len() > self.maximum_snapshots {
@@ -59,7 +59,10 @@ impl SnapshotCatalog {
     }
 
     pub fn remove(&mut self, id: &str) -> Option<ProjectSnapshot> {
-        let index = self.snapshots.iter().position(|snapshot| snapshot.id == id)?;
+        let index = self
+            .snapshots
+            .iter()
+            .position(|snapshot| snapshot.id == id)?;
         self.snapshots.remove(index)
     }
 

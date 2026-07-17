@@ -1,10 +1,10 @@
 use fly::{
-    EditorCommand, FlyEditor, GrapesJsV1Codec, PageLocator, PageSummary, ProjectFragment,
+    EditorCommand, FlyEditor, GrapesJsCodec, PageLocator, PageSummary, ProjectFragment,
     ProjectHash, RegistrySet, ValidationReport,
 };
 use fly_ui::{FlyUiStateMachine, Presentation, UiEffect, UiIntent};
 use rustok_page_builder::dto::{
-    PageBuilderCapabilityRequest, PageBuilderContractMetadata, PublishPageBuilderInput,
+    PageBuilderCapabilityRequest, PageBuilderModuleMetadata, PublishPageBuilderInput,
 };
 use serde_json::Value;
 
@@ -27,7 +27,7 @@ impl AdminCanvasController {
         if page_id.trim().is_empty() {
             return Err(AdminCanvasError::InvalidPageId);
         }
-        let document = GrapesJsV1Codec::decode_value(project_data)?;
+        let document = GrapesJsCodec::decode_value(project_data)?;
         let editor = FlyEditor::new(document, RegistrySet::with_builtins());
         let mut ui = FlyUiStateMachine::new(Presentation::Full);
         let summaries = editor.document().page_summaries();
@@ -240,12 +240,11 @@ impl AdminCanvasController {
                 expected_hash,
                 command_sequence,
             } => {
-                let project_data = GrapesJsV1Codec::encode_value(self.editor.document())?;
+                let project_data = GrapesJsCodec::encode_value(self.editor.document())?;
                 outgoing.push(AdminCanvasEffect::Request {
                     request: PageBuilderCapabilityRequest::Publish(PublishPageBuilderInput {
                         page_id: self.page_id.clone(),
                         revision_id: self.revision_id.clone(),
-                        schema_version: PageBuilderContractMetadata::BASELINE.contract.to_string(),
                         project_data,
                     }),
                     expected_hash,

@@ -1,11 +1,14 @@
 use crate::dto::{
     BuilderCapabilityKind, BuilderNodePropertiesInput, BuilderNodePropertiesResult,
     BuilderTreeInput, BuilderTreeNode, BuilderTreeResult, PageBuilderCapabilityRequest,
-    PageBuilderCapabilityResponse, PageBuilderContractMetadata, PageBuilderErrorKind,
-    PreviewPageBuilderInput, PreviewPageBuilderResult, PublishPageBuilderInput,
-    PublishPageBuilderResult, PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
+    PageBuilderCapabilityResponse, PageBuilderErrorKind, PreviewPageBuilderInput,
+    PreviewPageBuilderResult, PublishPageBuilderInput, PublishPageBuilderResult,
+    PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
 };
 use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
+use crate::runtime_telemetry::{
+    NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeCallEvidence, PageBuilderRuntimeTelemetry,
+};
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
 use rustok_api::{PortCallPolicy, PortContext, PortErrorKind};
@@ -274,131 +277,7 @@ impl From<BuilderRolloutError> for PageBuilderServiceError {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PageBuilderAdapterOperation {
-    LoadProject,
-    SaveProject,
-    RenderPreview,
-}
-
-impl PageBuilderAdapterOperation {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::LoadProject => "load_project",
-            Self::SaveProject => "save_project",
-            Self::RenderPreview => "render_preview",
-        }
-    }
-}
-
-impl std::fmt::Display for PageBuilderAdapterOperation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PageBuilderAdapterCallStatus {
-    Started,
-    Succeeded,
-    Failed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct PageBuilderAdapterCallEvidence {
-    pub module_slug: &'static str,
-    pub contract: &'static str,
-    pub operation: PageBuilderAdapterOperation,
-    pub status: PageBuilderAdapterCallStatus,
-    pub tenant_id: String,
-    pub page_id: String,
-    pub revision_id: Option<String>,
-    pub correlation_id: String,
-    pub error_kind: Option<PageBuilderErrorKind>,
-    pub stable_code: Option<&'static str>,
-}
-
-impl PageBuilderAdapterCallEvidence {
-    pub fn load_project(context: &PortContext, page_id: impl Into<String>) -> Self {
-        Self::new(
-            PageBuilderAdapterOperation::LoadProject,
-            context,
-            page_id,
-            None,
-        )
-    }
-
-    pub fn save_project(
-        context: &PortContext,
-        page_id: impl Into<String>,
-        revision_id: impl Into<String>,
-    ) -> Self {
-        Self::new(
-            PageBuilderAdapterOperation::SaveProject,
-            context,
-            page_id,
-            Some(revision_id.into()),
-        )
-    }
-
-    pub fn render_preview(context: &PortContext, page_id: impl Into<String>) -> Self {
-        Self::new(
-            PageBuilderAdapterOperation::RenderPreview,
-            context,
-            page_id,
-            None,
-        )
-    }
-
-    fn new(
-        operation: PageBuilderAdapterOperation,
-        context: &PortContext,
-        page_id: impl Into<String>,
-        revision_id: Option<String>,
-    ) -> Self {
-        Self {
-            module_slug: PageBuilderContractMetadata::BASELINE.module_slug,
-            contract: PageBuilderContractMetadata::BASELINE.contract,
-            operation,
-            status: PageBuilderAdapterCallStatus::Started,
-            tenant_id: context.tenant_id.clone(),
-            page_id: page_id.into(),
-            revision_id,
-            correlation_id: context.correlation_id.clone(),
-            error_kind: None,
-            stable_code: None,
-        }
-    }
-
-    pub fn succeeded(&self) -> Self {
-        let mut evidence = self.clone();
-        evidence.status = PageBuilderAdapterCallStatus::Succeeded;
-        evidence
-    }
-
-    pub fn failed(&self, error: &PageBuilderServiceError) -> Self {
-        let mut evidence = self.clone();
-        evidence.status = PageBuilderAdapterCallStatus::Failed;
-        evidence.error_kind = Some(error.kind());
-        evidence.stable_code = error.stable_code();
-        evidence
-    }
-}
-
-pub trait PageBuilderAdapterTelemetry: Send + Sync {
-    fn record_adapter_call(&self, evidence: &PageBuilderAdapterCallEvidence);
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct NoopPageBuilderAdapterTelemetry;
-
-impl PageBuilderAdapterTelemetry for NoopPageBuilderAdapterTelemetry {
-    fn record_adapter_call(&self, _evidence: &PageBuilderAdapterCallEvidence) {}
-}
-
-/// Minimal persistence seam for hosts that store `grapesjs_v1` project snapshots outside
+/// Minimal persistence seam for hosts that store `grapesjs` project snapshots outside
 /// the reference provider. Implementations must keep tenant isolation in the supplied
 /// [`PortContext`] and must not change the canonical DTO/envelope contract.
 #[async_trait]
@@ -419,7 +298,7 @@ pub trait PageBuilderProjectStore: Send + Sync {
 }
 
 /// Rendering adapter seam for hosts that need production HTML/CSS rendering while keeping
-/// the baseline `grapesjs_v1` validation and sanitize behaviour in this crate.
+/// the baseline `grapesjs` validation and sanitize behaviour in this crate.
 #[async_trait]
 pub trait PageBuilderRenderingAdapter: Send + Sync {
     async fn render_preview(
@@ -443,18 +322,18 @@ impl PageBuilderRenderingAdapter for ReferencePageBuilderRenderingAdapter {
     }
 }
 
-pub struct AdapterBackedPageBuilderService<S, R, T = NoopPageBuilderAdapterTelemetry> {
+pub struct AdapterBackedPageBuilderService<S, R, T = NoopPageBuilderRuntimeTelemetry> {
     store: S,
     renderer: R,
     telemetry: T,
 }
 
-impl<S, R> AdapterBackedPageBuilderService<S, R, NoopPageBuilderAdapterTelemetry> {
+impl<S, R> AdapterBackedPageBuilderService<S, R, NoopPageBuilderRuntimeTelemetry> {
     pub fn new(store: S, renderer: R) -> Self {
         Self {
             store,
             renderer,
-            telemetry: NoopPageBuilderAdapterTelemetry,
+            telemetry: NoopPageBuilderRuntimeTelemetry,
         }
     }
 }
@@ -474,27 +353,27 @@ impl<S, R, T> PageBuilderCapabilityService for AdapterBackedPageBuilderService<S
 where
     S: PageBuilderProjectStore,
     R: PageBuilderRenderingAdapter,
-    T: PageBuilderAdapterTelemetry,
+    T: PageBuilderRuntimeTelemetry,
 {
     async fn preview(
         &self,
         context: &PortContext,
         input: PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
-        validate_grapesjs_payload(&input.page_id, &input.schema_version, &input.project_data)?;
-        let evidence = PageBuilderAdapterCallEvidence::render_preview(context, &input.page_id);
-        self.telemetry.record_adapter_call(&evidence);
+        validate_project_payload(&input.page_id, &input.project_data)?;
+        let evidence = PageBuilderRuntimeCallEvidence::render_preview(context, &input.page_id);
+        self.telemetry.record_runtime_call(&evidence);
         let html = match self
             .renderer
             .render_preview(context, &input.project_data)
             .await
         {
             Ok(html) => {
-                self.telemetry.record_adapter_call(&evidence.succeeded());
+                self.telemetry.record_runtime_call(&evidence.succeeded());
                 html
             }
             Err(error) => {
-                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                self.telemetry.record_runtime_call(&evidence.failed(&error));
                 return Err(error);
             }
         };
@@ -511,15 +390,15 @@ where
         input: BuilderTreeInput,
     ) -> PageBuilderServiceResult<BuilderTreeResult> {
         validate_non_empty("page_id", &input.page_id)?;
-        let evidence = PageBuilderAdapterCallEvidence::load_project(context, &input.page_id);
-        self.telemetry.record_adapter_call(&evidence);
+        let evidence = PageBuilderRuntimeCallEvidence::load_project(context, &input.page_id);
+        self.telemetry.record_runtime_call(&evidence);
         let project_data = match self.store.load_project(context, &input.page_id).await {
             Ok(project_data) => {
-                self.telemetry.record_adapter_call(&evidence.succeeded());
+                self.telemetry.record_runtime_call(&evidence.succeeded());
                 project_data
             }
             Err(error) => {
-                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                self.telemetry.record_runtime_call(&evidence.failed(&error));
                 return Err(error);
             }
         };
@@ -556,13 +435,13 @@ where
         input: PublishPageBuilderInput,
     ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
         validate_non_empty("revision_id", &input.revision_id)?;
-        validate_grapesjs_payload(&input.page_id, &input.schema_version, &input.project_data)?;
-        let evidence = PageBuilderAdapterCallEvidence::save_project(
+        validate_project_payload(&input.page_id, &input.project_data)?;
+        let evidence = PageBuilderRuntimeCallEvidence::save_project(
             context,
             &input.page_id,
             &input.revision_id,
         );
-        self.telemetry.record_adapter_call(&evidence);
+        self.telemetry.record_runtime_call(&evidence);
         match self
             .store
             .save_project(
@@ -573,9 +452,9 @@ where
             )
             .await
         {
-            Ok(()) => self.telemetry.record_adapter_call(&evidence.succeeded()),
+            Ok(()) => self.telemetry.record_runtime_call(&evidence.succeeded()),
             Err(error) => {
-                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                self.telemetry.record_runtime_call(&evidence.failed(&error));
                 return Err(error);
             }
         }
@@ -623,7 +502,7 @@ impl PageBuilderCapabilityService for ReferencePageBuilderService {
         _context: &PortContext,
         input: PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
-        validate_grapesjs_payload(&input.page_id, &input.schema_version, &input.project_data)?;
+        validate_project_payload(&input.page_id, &input.project_data)?;
 
         Ok(PreviewPageBuilderResult {
             page_id: input.page_id,
@@ -666,7 +545,7 @@ impl PageBuilderCapabilityService for ReferencePageBuilderService {
         input: PublishPageBuilderInput,
     ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
         validate_non_empty("revision_id", &input.revision_id)?;
-        validate_grapesjs_payload(&input.page_id, &input.schema_version, &input.project_data)?;
+        validate_project_payload(&input.page_id, &input.project_data)?;
 
         Ok(PublishPageBuilderResult {
             page_id: input.page_id,
@@ -676,18 +555,11 @@ impl PageBuilderCapabilityService for ReferencePageBuilderService {
     }
 }
 
-fn validate_grapesjs_payload(
+fn validate_project_payload(
     page_id: &str,
-    schema_version: &str,
     project_data: &serde_json::Value,
 ) -> PageBuilderServiceResult<()> {
     validate_non_empty("page_id", page_id)?;
-    if schema_version != PageBuilderContractMetadata::BASELINE.contract {
-        return Err(PageBuilderServiceError::Validation(format!(
-            "schema_version must be {}",
-            PageBuilderContractMetadata::BASELINE.contract
-        )));
-    }
     ensure_object_payload("project_data", project_data)
 }
 
@@ -725,7 +597,7 @@ fn render_preview_html(project_data: &serde_json::Value) -> PageBuilderServiceRe
     }
 
     Ok(format!(
-        "<div data-rustok-page-builder=\"grapesjs_v1\">{body}</div>"
+        "<div data-rustok-page-builder=\"grapesjs\">{body}</div>"
     ))
 }
 
@@ -994,7 +866,6 @@ mod tests {
     fn preview_input() -> PreviewPageBuilderInput {
         PreviewPageBuilderInput {
             page_id: "home".to_string(),
-            schema_version: "grapesjs_v1".to_string(),
             project_data: serde_json::json!({}),
         }
     }
@@ -1017,7 +888,6 @@ mod tests {
         PublishPageBuilderInput {
             page_id: "home".to_string(),
             revision_id: "rev-1".to_string(),
-            schema_version: "grapesjs_v1".to_string(),
             project_data: serde_json::json!({}),
         }
     }
@@ -1040,7 +910,6 @@ mod tests {
             preview_enabled: true,
             properties_enabled: true,
             publish_enabled: false,
-            legacy_bridge_readonly: false,
         };
         let service = CapabilityGuardedService::new(StubService, flags);
 
@@ -1325,9 +1194,8 @@ mod tests {
             .await
             .expect("pages:manage grants publish");
     }
-
     #[tokio::test]
-    async fn reference_service_renders_preview_and_validates_schema_contract() {
+    async fn reference_service_renders_current_preview_payload() {
         let service = ReferencePageBuilderService;
 
         let preview = service
@@ -1335,7 +1203,6 @@ mod tests {
                 &read_context(),
                 PreviewPageBuilderInput {
                     page_id: "landing".to_string(),
-                    schema_version: "grapesjs_v1".to_string(),
                     project_data: serde_json::json!({ "html": "<main>Welcome</main>" }),
                 },
             )
@@ -1345,22 +1212,8 @@ mod tests {
         assert_eq!(preview.page_id, "landing");
         assert_eq!(
             preview.html,
-            "<div data-rustok-page-builder=\"grapesjs_v1\"><main>Welcome</main></div>"
+            "<div data-rustok-page-builder=\"grapesjs\"><main>Welcome</main></div>"
         );
-
-        let err = service
-            .preview(
-                &read_context(),
-                PreviewPageBuilderInput {
-                    page_id: "landing".to_string(),
-                    schema_version: "legacy_blocks".to_string(),
-                    project_data: serde_json::json!({}),
-                },
-            )
-            .await
-            .expect_err("unsupported schema should fail validation");
-
-        assert_eq!(err.kind(), PageBuilderErrorKind::Validation);
     }
 
     #[tokio::test]
@@ -1372,7 +1225,6 @@ mod tests {
                 &read_context(),
                 PreviewPageBuilderInput {
                     page_id: "landing".to_string(),
-                    schema_version: "grapesjs_v1".to_string(),
                     project_data: serde_json::json!({ "html": "<script>alert(1)</script>" }),
                 },
             )
@@ -1392,7 +1244,6 @@ mod tests {
                 PublishPageBuilderInput {
                     page_id: "landing".to_string(),
                     revision_id: "rev-2".to_string(),
-                    schema_version: "grapesjs_v1".to_string(),
                     project_data: serde_json::json!({ "html": "<main>Ready</main>" }),
                 },
             )
@@ -1432,12 +1283,14 @@ mod tests {
     #[test]
     fn adapter_call_evidence_carries_port_context_and_contract_markers() {
         let evidence =
-            PageBuilderAdapterCallEvidence::save_project(&write_context(), "home", "rev-1");
+            PageBuilderRuntimeCallEvidence::save_project(&write_context(), "home", "rev-1");
 
         assert_eq!(evidence.module_slug, "page_builder");
-        assert_eq!(evidence.contract, "grapesjs_v1");
         assert_eq!(evidence.operation.as_str(), "save_project");
-        assert_eq!(evidence.status, PageBuilderAdapterCallStatus::Started);
+        assert_eq!(
+            evidence.status,
+            crate::runtime_telemetry::PageBuilderRuntimeCallStatus::Started
+        );
         assert_eq!(evidence.tenant_id, "tenant-a");
         assert_eq!(evidence.page_id, "home");
         assert_eq!(evidence.revision_id.as_deref(), Some("rev-1"));
@@ -1446,7 +1299,10 @@ mod tests {
         let failed = evidence.failed(&PageBuilderServiceError::Sanitize(
             "blocked script".to_string(),
         ));
-        assert_eq!(failed.status, PageBuilderAdapterCallStatus::Failed);
+        assert_eq!(
+            failed.status,
+            crate::runtime_telemetry::PageBuilderRuntimeCallStatus::Failed
+        );
         assert_eq!(failed.error_kind, Some(PageBuilderErrorKind::Sanitize));
     }
 }

@@ -25,11 +25,7 @@ pub fn AuditPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         "Select component",
     );
     let errors_label = t(locale.as_deref(), "page_builder.audit.errors", "errors");
-    let warnings_label = t(
-        locale.as_deref(),
-        "page_builder.audit.warnings",
-        "warnings",
-    );
+    let warnings_label = t(locale.as_deref(), "page_builder.audit.warnings", "warnings");
     let info_label = t(locale.as_deref(), "page_builder.audit.info", "info");
     let components_label = t(
         locale.as_deref(),
@@ -37,11 +33,7 @@ pub fn AuditPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         "components",
     );
     let error_label = t(locale.as_deref(), "page_builder.audit.error", "Error");
-    let warning_label = t(
-        locale.as_deref(),
-        "page_builder.audit.warning",
-        "Warning",
-    );
+    let warning_label = t(locale.as_deref(), "page_builder.audit.warning", "Warning");
     let informational_label = t(
         locale.as_deref(),
         "page_builder.audit.informational",

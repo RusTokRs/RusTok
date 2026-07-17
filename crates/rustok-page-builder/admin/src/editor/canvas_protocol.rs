@@ -1,5 +1,5 @@
 use crate::editor::CanvasComponentGeometry;
-use fly_leptos::{BrowserPoint, PointerSample, FLY_IFRAME_PROTOCOL_V1};
+use fly_leptos::{BrowserPoint, PointerSample, FLY_IFRAME_PROTOCOL};
 use fly_ui::KeyStroke;
 use serde::{Deserialize, Serialize};
 
@@ -49,7 +49,7 @@ pub struct CanvasBridgeEnvelope {
 
 impl CanvasBridgeEnvelope {
     pub fn is_accepted(&self, expected_instance_id: &str, last_sequence: Option<u64>) -> bool {
-        self.protocol == FLY_IFRAME_PROTOCOL_V1
+        self.protocol == FLY_IFRAME_PROTOCOL
             && self.instance_id == expected_instance_id
             && last_sequence.is_none_or(|sequence| self.sequence > sequence)
     }
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn decoder_rejects_replay_and_cross_instance_messages() {
         let payload = serde_json::to_string(&CanvasBridgeEnvelope {
-            protocol: FLY_IFRAME_PROTOCOL_V1.to_string(),
+            protocol: FLY_IFRAME_PROTOCOL.to_string(),
             instance_id: "canvas-a".to_string(),
             sequence: 4,
             message: CanvasBridgeMessage::Ready,
@@ -90,7 +90,7 @@ mod tests {
     #[test]
     fn drag_messages_round_trip() {
         let payload = serde_json::to_string(&CanvasBridgeEnvelope {
-            protocol: FLY_IFRAME_PROTOCOL_V1.to_string(),
+            protocol: FLY_IFRAME_PROTOCOL.to_string(),
             instance_id: "canvas-a".to_string(),
             sequence: 5,
             message: CanvasBridgeMessage::DropRequested {
@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn keyboard_messages_round_trip() {
         let payload = serde_json::to_string(&CanvasBridgeEnvelope {
-            protocol: FLY_IFRAME_PROTOCOL_V1.to_string(),
+            protocol: FLY_IFRAME_PROTOCOL.to_string(),
             instance_id: "canvas-a".to_string(),
             sequence: 6,
             message: CanvasBridgeMessage::KeyStroke {

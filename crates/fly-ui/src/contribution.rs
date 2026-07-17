@@ -15,7 +15,6 @@ pub struct RendererDescriptor {
     pub id: String,
     pub component_type: String,
     pub provider: String,
-    pub schema_version: String,
     pub presentations: BTreeSet<Presentation>,
     pub accessibility: AccessibilityMetadata,
 }
@@ -25,7 +24,6 @@ pub struct PropertyEditorDescriptor {
     pub id: String,
     pub component_type: String,
     pub provider: String,
-    pub schema_version: String,
     pub property_schema: Value,
     pub accessibility: AccessibilityMetadata,
 }
@@ -34,7 +32,6 @@ pub struct PropertyEditorDescriptor {
 pub struct ContributionDescriptor {
     pub id: String,
     pub provider: String,
-    pub provider_version: String,
     #[serde(default)]
     pub required_capabilities: BTreeSet<String>,
     #[serde(default)]
@@ -110,13 +107,11 @@ impl ContributionRegistry {
         &'a self,
         provider: &str,
         component_type: &str,
-        schema_version: &str,
         presentation: Presentation,
         capabilities: &BTreeSet<String>,
     ) -> Option<ResolvedRenderer<'a>> {
         let provider = provider.trim();
         let component_type = component_type.trim();
-        let schema_version = schema_version.trim();
         self.contributions.values().find_map(|contribution| {
             if !contribution_is_available(contribution, capabilities) {
                 return None;
@@ -127,7 +122,6 @@ impl ContributionRegistry {
                 .find(|renderer| {
                     renderer.provider == provider
                         && renderer.component_type == component_type
-                        && renderer.schema_version == schema_version
                         && renderer.presentations.contains(&presentation)
                 })
                 .map(|renderer| ResolvedRenderer {
@@ -141,12 +135,10 @@ impl ContributionRegistry {
         &'a self,
         provider: &str,
         component_type: &str,
-        schema_version: &str,
         capabilities: &BTreeSet<String>,
     ) -> Option<ResolvedPropertyEditor<'a>> {
         let provider = provider.trim();
         let component_type = component_type.trim();
-        let schema_version = schema_version.trim();
         self.contributions.values().find_map(|contribution| {
             if !contribution_is_available(contribution, capabilities) {
                 return None;
@@ -155,9 +147,7 @@ impl ContributionRegistry {
                 .property_editors
                 .iter()
                 .find(|editor| {
-                    editor.provider == provider
-                        && editor.component_type == component_type
-                        && editor.schema_version == schema_version
+                    editor.provider == provider && editor.component_type == component_type
                 })
                 .map(|property_editor| ResolvedPropertyEditor {
                     contribution,
@@ -176,7 +166,6 @@ impl ContributionRegistry {
                     for presentation in &renderer.presentations {
                         if registered.provider == renderer.provider
                             && registered.component_type == renderer.component_type
-                            && registered.schema_version == renderer.schema_version
                             && registered.presentations.contains(presentation)
                         {
                             return Err(UiError::DuplicateRenderer(renderer_contract_id(
@@ -200,8 +189,7 @@ impl ContributionRegistry {
                 for registered in &existing.property_editors {
                     if registered.id == editor.id
                         || (registered.provider == editor.provider
-                            && registered.component_type == editor.component_type
-                            && registered.schema_version == editor.schema_version)
+                            && registered.component_type == editor.component_type)
                     {
                         return Err(UiError::DuplicatePropertyEditor(
                             property_editor_contract_id(editor),
@@ -223,20 +211,10 @@ fn normalize_contribution(
     if contribution.provider.is_empty() {
         return Err(UiError::MissingContributionProvider(contribution.id));
     }
-    contribution.provider_version = required_value(
-        &contribution.provider_version,
-        &contribution.id,
-        "provider_version",
-    )?;
-    contribution.required_capabilities = normalize_capabilities(
-        contribution.required_capabilities,
-        &contribution.id,
-    )?;
-    contribution.blocks = normalize_unique_values(
-        contribution.blocks,
-        &contribution.id,
-        "block id",
-    )?;
+    contribution.required_capabilities =
+        normalize_capabilities(contribution.required_capabilities, &contribution.id)?;
+    contribution.blocks =
+        normalize_unique_values(contribution.blocks, &contribution.id, "block id")?;
     contribution.messages = normalize_messages(contribution.messages, &contribution.id)?;
 
     let mut renderer_ids = BTreeSet::new();
@@ -248,16 +226,8 @@ fn normalize_contribution(
             &contribution.id,
             "renderer component_type",
         )?;
-        renderer.provider = required_value(
-            &renderer.provider,
-            &contribution.id,
-            "renderer provider",
-        )?;
-        renderer.schema_version = required_value(
-            &renderer.schema_version,
-            &contribution.id,
-            "renderer schema_version",
-        )?;
+        renderer.provider =
+            required_value(&renderer.provider, &contribution.id, "renderer provider")?;
         if renderer.provider != contribution.provider {
             return invalid_contribution(
                 &contribution.id,
@@ -302,11 +272,6 @@ fn normalize_contribution(
             &editor.provider,
             &contribution.id,
             "property editor provider",
-        )?;
-        editor.schema_version = required_value(
-            &editor.schema_version,
-            &contribution.id,
-            "property editor schema_version",
         )?;
         if editor.provider != contribution.provider {
             return invalid_contribution(
@@ -354,10 +319,7 @@ fn normalize_unique_values(
     for value in values {
         let value = required_value(&value, contribution_id, label)?;
         if !seen.insert(value.clone()) {
-            return invalid_contribution(
-                contribution_id,
-                format!("duplicate {label} `{value}`"),
-            );
+            return invalid_contribution(contribution_id, format!("duplicate {label} `{value}`"));
         }
         normalized.push(value);
     }
@@ -392,12 +354,10 @@ fn normalize_accessibility(
         contribution_id,
         &format!("{owner} accessibility label_message_id"),
     )?;
-    accessibility.description_message_id = normalize_optional(
-        accessibility.description_message_id.take(),
-    );
-    accessibility.keyboard_hint_message_id = normalize_optional(
-        accessibility.keyboard_hint_message_id.take(),
-    );
+    accessibility.description_message_id =
+        normalize_optional(accessibility.description_message_id.take());
+    accessibility.keyboard_hint_message_id =
+        normalize_optional(accessibility.keyboard_hint_message_id.take());
     Ok(())
 }
 
@@ -413,19 +373,15 @@ fn contribution_is_available(
 
 fn renderer_contract_id(renderer: &RendererDescriptor, presentation: Presentation) -> String {
     format!(
-        "{}:{}:{}:{}",
+        "{}:{}:{}",
         renderer.provider,
         renderer.component_type,
-        renderer.schema_version,
         presentation.as_str()
     )
 }
 
 fn property_editor_contract_id(editor: &PropertyEditorDescriptor) -> String {
-    format!(
-        "{}:{}:{}",
-        editor.provider, editor.component_type, editor.schema_version
-    )
+    format!("{}:{}", editor.provider, editor.component_type)
 }
 
 fn required_value(value: &str, contribution_id: &str, label: &str) -> UiResult<String> {
@@ -451,10 +407,7 @@ fn contribution_id_for_error(id: &str) -> String {
     }
 }
 
-fn invalid_contribution<T>(
-    contribution: &str,
-    message: impl Into<String>,
-) -> UiResult<T> {
+fn invalid_contribution<T>(contribution: &str, message: impl Into<String>) -> UiResult<T> {
     Err(UiError::InvalidContribution {
         contribution: contribution.to_string(),
         message: message.into(),
@@ -478,7 +431,6 @@ mod tests {
         ContributionDescriptor {
             id: id.to_string(),
             provider: "rustok.pages".to_string(),
-            provider_version: "1".to_string(),
             required_capabilities: capability
                 .map(|capability| BTreeSet::from([capability.to_string()]))
                 .unwrap_or_default(),
@@ -487,7 +439,6 @@ mod tests {
                 id: format!("{id}.renderer"),
                 component_type: "hero".to_string(),
                 provider: "rustok.pages".to_string(),
-                schema_version: "1".to_string(),
                 presentations: BTreeSet::from([Presentation::Full, Presentation::Preview]),
                 accessibility: accessibility("hero.label"),
             }],
@@ -495,7 +446,6 @@ mod tests {
                 id: format!("{id}.properties"),
                 component_type: "hero".to_string(),
                 provider: "rustok.pages".to_string(),
-                schema_version: "1".to_string(),
                 property_schema: json!({ "type": "object" }),
                 accessibility: accessibility("hero.properties.label"),
             }],
@@ -518,37 +468,19 @@ mod tests {
             .expect("register");
         let capabilities = BTreeSet::from(["pages.read".to_string()]);
         let renderer = registry
-            .resolve_renderer(
-                "rustok.pages",
-                "hero",
-                "1",
-                Presentation::Preview,
-                &capabilities,
-            )
+            .resolve_renderer("rustok.pages", "hero", Presentation::Preview, &capabilities)
             .expect("renderer");
         assert_eq!(renderer.contribution.id, "rustok.pages.hero");
         assert_eq!(renderer.renderer.id, "rustok.pages.hero.renderer");
         let editor = registry
-            .resolve_property_editor("rustok.pages", "hero", "1", &capabilities)
+            .resolve_property_editor("rustok.pages", "hero", &capabilities)
             .expect("property editor");
         assert_eq!(editor.property_editor.id, "rustok.pages.hero.properties");
         assert!(registry
-            .resolve_renderer(
-                "rustok.pages",
-                "hero",
-                "1",
-                Presentation::Inline,
-                &capabilities,
-            )
+            .resolve_renderer("rustok.pages", "hero", Presentation::Inline, &capabilities,)
             .is_none());
         assert!(registry
-            .resolve_renderer(
-                "rustok.pages",
-                "hero",
-                "1",
-                Presentation::Full,
-                &BTreeSet::new(),
-            )
+            .resolve_renderer("rustok.pages", "hero", Presentation::Full, &BTreeSet::new(),)
             .is_none());
     }
 
@@ -561,7 +493,9 @@ mod tests {
         let mut duplicate = contribution("rustok.pages.hero.alternative", None);
         duplicate.renderers[0].id = "alternative.renderer".to_string();
         duplicate.property_editors.clear();
-        let error = registry.register(duplicate).expect_err("duplicate renderer");
+        let error = registry
+            .register(duplicate)
+            .expect_err("duplicate renderer");
         assert!(matches!(error, UiError::DuplicateRenderer(_)));
         assert_eq!(registry.len(), 1);
         assert!(registry.get("rustok.pages.hero.alternative").is_none());
@@ -604,14 +538,12 @@ mod tests {
         let mut registry = ContributionRegistry::default();
         let mut descriptor = contribution("  rustok.pages.hero  ", None);
         descriptor.provider = "  rustok.pages  ".to_string();
-        descriptor.provider_version = "  1  ".to_string();
         descriptor.renderers[0].provider = "  rustok.pages  ".to_string();
         descriptor.renderers[0].accessibility.description_message_id = Some("  ".to_string());
         descriptor.property_editors[0].provider = "  rustok.pages  ".to_string();
         registry.register(descriptor).expect("register");
         let stored = registry.get("rustok.pages.hero").expect("stored");
         assert_eq!(stored.provider, "rustok.pages");
-        assert_eq!(stored.provider_version, "1");
         assert!(stored.renderers[0]
             .accessibility
             .description_message_id

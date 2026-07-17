@@ -1,12 +1,9 @@
 {
-  "schema_version": 1,
   "status": "boundary_ready",
   "provider": {
     "module_slug": "page_builder",
     "manifest_module": "page-builder",
-    "contract": "grapesjs_v1",
-    "builder_contract_version": "1.0",
-    "consumer_min_version": "1.0",
+    "contract": "grapesjs",
     "capabilities": [
       "preview",
       "tree",
@@ -58,10 +55,7 @@
       "module_slug": "pages",
       "crate": "rustok-pages",
       "provider_module": "page-builder",
-      "contract": "grapesjs_v1",
-      "contract_version": "1.0",
-      "builder_contract_version": "1.0",
-      "consumer_min_version": "1.0",
+      "contract": "grapesjs",
       "capabilities": [
         "preview",
         "tree",
@@ -88,10 +82,7 @@
       "module_slug": "forum",
       "crate": "rustok-forum",
       "provider_module": "page-builder",
-      "contract": "grapesjs_v1",
-      "contract_version": "1.0",
-      "builder_contract_version": "1.0",
-      "consumer_min_version": "1.0",
+      "contract": "grapesjs",
       "capabilities": [
         "preview",
         "tree",

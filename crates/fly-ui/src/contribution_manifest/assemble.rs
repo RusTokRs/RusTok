@@ -70,7 +70,10 @@ fn discover_manifests(
                 "contribution_manifest_duplicate",
                 Some(&manifest.module_id),
                 None,
-                format!("module contribution manifest `{}` is duplicated", manifest.module_id),
+                format!(
+                    "module contribution manifest `{}` is duplicated",
+                    manifest.module_id
+                ),
             ));
             continue;
         }
@@ -134,8 +137,7 @@ fn register_surface_contributions(
         }
 
         let target_provider = contribution.provider.trim();
-        let target_version = contribution.provider_version.trim();
-        if !manifest.allows_target_provider(target_provider, target_version) {
+        if !manifest.allows_target_provider(target_provider) {
             let allowed = allowed_target_summary(manifest);
             skip_contribution(
                 result,
@@ -143,9 +145,7 @@ fn register_surface_contributions(
                 "contribution_target_provider_forbidden",
                 manifest,
                 contribution,
-                format!(
-                    "contribution targets `{target_provider}@{target_version}`; allowed targets: {allowed}"
-                ),
+                format!("contribution targets `{target_provider}`; allowed targets: {allowed}"),
             );
             continue;
         }
@@ -166,8 +166,7 @@ fn register_surface_contributions(
 
         match result.registry.register(contribution.clone()) {
             Ok(()) => {
-                result.registered_contributions =
-                    result.registered_contributions.saturating_add(1);
+                result.registered_contributions = result.registered_contributions.saturating_add(1);
             }
             Err(error) => {
                 result.skipped_contributions = result.skipped_contributions.saturating_add(1);
@@ -203,11 +202,8 @@ fn allowed_target_summary(manifest: &ModuleContributionManifest) -> String {
     manifest
         .target_providers
         .iter()
-        .map(|(provider, version)| format!("{provider}@{version}"))
-        .chain(std::iter::once(format!(
-            "{}@{}",
-            manifest.owner_provider, manifest.owner_version
-        )))
+        .cloned()
+        .chain(std::iter::once(manifest.owner_provider.clone()))
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>()
@@ -219,31 +215,10 @@ fn normalize_manifest(
 ) -> Result<ModuleContributionManifest, String> {
     manifest.module_id = required(&manifest.module_id, "module_id")?;
     manifest.owner_provider = required(&manifest.owner_provider, "owner_provider")?;
-    manifest.owner_version = required(&manifest.owner_version, "owner_version")?;
     manifest.dependencies = normalize_set(manifest.dependencies, "dependency")?;
     manifest.required_permissions =
         normalize_set(manifest.required_permissions, "required permission")?;
-
-    let mut target_providers = BTreeMap::new();
-    for (provider, version) in manifest.target_providers {
-        let provider = required(&provider, "target provider")?;
-        let version = required(&version, "target provider version")?;
-        if provider == manifest.owner_provider {
-            if version != manifest.owner_version {
-                return Err(format!(
-                    "target provider `{provider}@{version}` conflicts with owner version `{}`",
-                    manifest.owner_version
-                ));
-            }
-            continue;
-        }
-        if target_providers.insert(provider.clone(), version).is_some() {
-            return Err(format!(
-                "target provider `{provider}` is duplicated after normalization"
-            ));
-        }
-    }
-    manifest.target_providers = target_providers;
+    manifest.target_providers = normalize_set(manifest.target_providers, "target provider")?;
     Ok(manifest)
 }
 
@@ -261,7 +236,9 @@ fn normalize_set(values: BTreeSet<String>, label: &str) -> Result<BTreeSet<Strin
     for value in values {
         let value = required(&value, label)?;
         if !normalized.insert(value.clone()) {
-            return Err(format!("{label} `{value}` is duplicated after normalization"));
+            return Err(format!(
+                "{label} `{value}` is duplicated after normalization"
+            ));
         }
     }
     Ok(normalized)
@@ -271,12 +248,13 @@ fn manifest_filter(
     manifest: &ModuleContributionManifest,
     policy: &ContributionAssemblyPolicy,
 ) -> Option<(&'static str, String, ContributionAssemblySeverity)> {
-    if !policy.enabled_modules.is_empty()
-        && !policy.enabled_modules.contains(&manifest.module_id)
-    {
+    if !policy.enabled_modules.is_empty() && !policy.enabled_modules.contains(&manifest.module_id) {
         return Some((
             "contribution_module_disabled",
-            format!("module `{}` is not enabled for this tenant", manifest.module_id),
+            format!(
+                "module `{}` is not enabled for this tenant",
+                manifest.module_id
+            ),
             ContributionAssemblySeverity::Info,
         ));
     }
@@ -309,7 +287,10 @@ fn manifest_filter(
     match policy.provider_health.get(&manifest.owner_provider) {
         Some(ContributionProviderHealth::Unavailable) => Some((
             "contribution_owner_provider_unavailable",
-            format!("owner provider `{}` is unavailable", manifest.owner_provider),
+            format!(
+                "owner provider `{}` is unavailable",
+                manifest.owner_provider
+            ),
             ContributionAssemblySeverity::Warning,
         )),
         Some(ContributionProviderHealth::Degraded) if !policy.allow_degraded_providers => Some((

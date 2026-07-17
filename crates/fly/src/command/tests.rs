@@ -1,14 +1,15 @@
 use super::*;
 use crate::{
-    BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ConditionOperator, ContextCommand,
-    ContextFieldDefinition, ContextSchemaCatalog, ContextValueKind, DynamicCatalog, DynamicCommand,
-    FlyError, GrapesJsV1Codec, RegistrySet, RuntimeBinding, RuntimeCondition, SnapshotCatalog,
-    TranslationCatalog, TranslationCommand, TranslationEntry, FLY_RUNTIME_CONDITIONS_FIELD,
+    BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ConditionOperator,
+    ContextCommand, ContextFieldDefinition, ContextSchemaCatalog, ContextValueKind, DynamicCatalog,
+    DynamicCommand, FlyError, GrapesJsCodec, RegistrySet, RuntimeBinding, RuntimeCondition,
+    SnapshotCatalog, TranslationCatalog, TranslationCommand, TranslationEntry,
+    FLY_RUNTIME_CONDITIONS_FIELD,
 };
 use serde_json::{json, Map, Value};
 
 fn editor() -> FlyEditor {
-    let document = GrapesJsV1Codec::decode_value(json!({
+    let document = GrapesJsCodec::decode_value(json!({
         "assets": [],
         "styles": [],
         "pages": [{
@@ -278,7 +279,9 @@ fn snapshot_restore_is_hash_verified_and_participates_in_history() {
         "Updated"
     );
 
-    editor.restore_snapshot(&snapshot).expect("restore snapshot");
+    editor
+        .restore_snapshot(&snapshot)
+        .expect("restore snapshot");
     assert!(editor
         .document()
         .component("hero")

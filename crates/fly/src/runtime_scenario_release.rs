@@ -2,13 +2,12 @@ use crate::{
     diff_runtime_scenario_render_snapshots, PageSelection, ProjectDocument, ProjectHash,
     RenderPolicy, RuntimeContextScenario, RuntimeScenarioRegressionStatus,
     RuntimeScenarioRenderDiff, RuntimeScenarioRenderSnapshot, ValidationDiagnostic,
-    ValidationSeverity, FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT_V1,
+    ValidationSeverity, FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
-pub const FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1: &str =
-    "fly_runtime_scenario_release_baseline_v1";
+pub const FLY_RUNTIME_SCENARIO_RELEASE_BASELINE: &str = "fly_runtime_scenario_release_baseline";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RuntimeScenarioReleaseBaseline {
@@ -29,7 +28,7 @@ impl RuntimeScenarioReleaseBaseline {
         scenarios: &[RuntimeContextScenario],
     ) -> Self {
         let mut baseline = Self {
-            format: FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1.to_string(),
+            format: FLY_RUNTIME_SCENARIO_RELEASE_BASELINE.to_string(),
             baseline_id: baseline_id.into(),
             source_project_hash: document.hash().hex(),
             scenarios: scenarios.to_vec(),
@@ -60,12 +59,12 @@ impl RuntimeScenarioReleaseBaseline {
 
     pub fn validate(&self) -> Vec<ValidationDiagnostic> {
         let mut diagnostics = Vec::new();
-        if self.format != FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1 {
+        if self.format != FLY_RUNTIME_SCENARIO_RELEASE_BASELINE {
             diagnostics.push(release_diagnostic(
                 "runtime_scenario_baseline_format_invalid",
                 "baseline.format",
                 format!(
-                    "runtime scenario baseline format `{}` is unsupported; expected `{FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1}`",
+                    "runtime scenario baseline format `{}` is unsupported; expected `{FLY_RUNTIME_SCENARIO_RELEASE_BASELINE}`",
                     self.format
                 ),
             ));
@@ -107,7 +106,7 @@ impl RuntimeScenarioReleaseBaseline {
                 ));
             }
         }
-        if self.snapshot.format != FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT_V1 {
+        if self.snapshot.format != FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT {
             diagnostics.push(release_diagnostic(
                 "runtime_scenario_baseline_snapshot_format_invalid",
                 "baseline.snapshot.format",
@@ -355,11 +354,11 @@ fn release_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     fn document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "component": {

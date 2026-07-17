@@ -159,9 +159,6 @@ const rolloutSource = readFile(rolloutPath);
 const provider = registry.provider;
 const errors = [];
 
-if (registry.schema_version !== 1) {
-  errors.push(`unsupported schema_version: ${registry.schema_version}`);
-}
 
 assertSame(
   errors,

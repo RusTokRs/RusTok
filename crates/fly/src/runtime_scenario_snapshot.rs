@@ -5,7 +5,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub const FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT_V1: &str = "fly_runtime_scenario_render_snapshot_v1";
+pub const FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT: &str = "fly_runtime_scenario_render_snapshot";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RuntimeScenarioRenderSnapshotCase {
@@ -68,7 +68,7 @@ impl RuntimeScenarioRenderSnapshot {
                 error: case.error,
             })
             .collect::<Vec<_>>();
-        let format = FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT_V1.to_string();
+        let format = FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT.to_string();
         let snapshot_hash =
             snapshot_hash(&format, &selection, &policy, &cases, &matrix.diagnostics);
         Self {
@@ -82,7 +82,7 @@ impl RuntimeScenarioRenderSnapshot {
     }
 
     pub fn is_valid_format(&self) -> bool {
-        self.format == FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT_V1
+        self.format == FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT
     }
 
     pub fn is_renderable(&self) -> bool {
@@ -331,11 +331,11 @@ fn snapshot_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     fn document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "component": {

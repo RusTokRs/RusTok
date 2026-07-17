@@ -44,13 +44,10 @@ const requiredProfiles = [
   "builder_off",
 ];
 
-if (template.schema_version !== 1) {
-  fail(`unsupported schema_version: ${template.schema_version}`);
-}
 if (template.artifact !== "page_builder_wave_evidence_template") {
   fail(`unexpected artifact: ${template.artifact}`);
 }
-if (template.contract !== "grapesjs_v1") {
+if (template.contract !== "grapesjs") {
   fail(`unexpected contract: ${template.contract}`);
 }
 

@@ -1,12 +1,11 @@
 use crate::editor::{
     AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, CapabilityPolicyPanel,
-    ContextCompatibilityPanel, ContextContractToolsPanel, ContextDependencyPanel,
-    ContextSchemaPanel, DynamicRuntimePanel, IsolatedAuthoringCanvas, PageManagerPanel,
-    PaletteLayersPanel, PropertiesAssetsPanel, ResponsiveStylePanel, RuntimePublishGatePanel,
-    RuntimeScenarioMatrixPanel, RuntimeScenarioPanel, RuntimeScenarioRegressionPanel,
-    SsrActionsFormsPanel, SsrAssetPanel, SsrInspectorPanel, SsrInternalPageLinkPanel,
-    SsrLocaleCoveragePanel, SsrLocalePanel, SsrLocalePolicyPanel, SsrLocalizedMetadataPanel,
-    SsrTranslationsPanel, TraitPanel,
+    ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel, DynamicRuntimePanel,
+    IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
+    ResponsiveStylePanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
+    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, SsrActionsFormsPanel, SsrAssetPanel,
+    SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel,
+    SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
@@ -15,9 +14,7 @@ use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
 };
-use fly_ui::{
-    CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation, UiIntent,
-};
+use fly_ui::{CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation, UiIntent};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
@@ -30,17 +27,19 @@ pub fn AdminCanvas(
     controller: AdminCanvasController,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     trait_schemas: Option<Arc<TraitSchemaRegistry>>,
-    #[prop(optional)] contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
-    #[prop(optional)] editor_capabilities: Option<CapabilityState>,
-    #[prop(optional)] editor_capability_evaluation: Option<Arc<EditorCapabilityEvaluation>>,
+    #[prop(optional_no_strip)] contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
+    #[prop(optional_no_strip)] editor_capabilities: Option<CapabilityState>,
+    #[prop(optional_no_strip)] editor_capability_evaluation: Option<
+        Arc<EditorCapabilityEvaluation>,
+    >,
     runtime_context: Option<Value>,
     runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
     on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
-    #[prop(optional)] browser_intent_endpoint: Option<String>,
-    #[prop(optional)] browser_csrf_token: Option<String>,
+    #[prop(optional_no_strip)] browser_intent_endpoint: Option<String>,
+    #[prop(optional_no_strip)] browser_csrf_token: Option<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
@@ -111,7 +110,6 @@ pub fn AdminCanvas(
     let dynamic_runtime = runtime.clone();
     let context_runtime = runtime.clone();
     let contract_tools_runtime = runtime.clone();
-    let compatibility_runtime = runtime.clone();
     let dependency_runtime = runtime.clone();
     let binding_runtime = runtime.clone();
     let trait_runtime = runtime.clone();
@@ -180,7 +178,6 @@ pub fn AdminCanvas(
                     <DynamicRuntimePanel runtime=dynamic_runtime />
                     <ContextSchemaPanel runtime=context_runtime />
                     <ContextContractToolsPanel runtime=contract_tools_runtime />
-                    <ContextCompatibilityPanel runtime=compatibility_runtime />
                     <ContextDependencyPanel runtime=dependency_runtime />
                     <BindingPanel runtime=binding_runtime />
                     <TraitPanel runtime=trait_runtime />

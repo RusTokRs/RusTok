@@ -20,7 +20,6 @@ const checks = [
   "verify-page-builder-correlation-evidence.mjs",
   "verify-page-builder-runtime-fallback-gate.mjs",
   "verify-page-builder-pages-fallback-gate.mjs",
-  "verify-page-builder-pages-legacy-bridge.mjs",
   "verify-page-builder-pages-rbac-readiness.mjs",
   "verify-page-builder-pages-contract-surface.mjs",
   "verify-page-builder-next-admin-parity.mjs",
@@ -32,7 +31,6 @@ const checks = [
   "verify-page-builder-transport-bridge.mjs",
   "verify-page-builder-endpoint-adapters.mjs",
   "verify-page-builder-adapter-seams.mjs",
-  "verify-page-builder-terminology.mjs",
 ];
 
 const moduleSlug = process.argv[2] ?? "pages";

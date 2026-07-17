@@ -1,5 +1,5 @@
 use fly::{
-    render_page_with_runtime_context, resolve_localized_page_route, GrapesJsV1Codec,
+    render_page_with_runtime_context, resolve_localized_page_route, GrapesJsCodec,
     LocalizedPageRouteResolution, RenderPolicy, RuntimeRenderResult,
 };
 use leptos::prelude::*;
@@ -30,7 +30,7 @@ pub fn render_storefront_localized_slug(
     context: Value,
 ) -> fly::FlyResult<StorefrontLocalizedRouteOutput> {
     policy.instrument_components = false;
-    let document = GrapesJsV1Codec::decode_value(project_data)?;
+    let document = GrapesJsCodec::decode_value(project_data)?;
     let route = resolve_localized_page_route(&document, requested_slug, &context)?;
     let result = render_page_with_runtime_context(
         &document,

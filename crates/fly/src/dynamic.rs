@@ -884,11 +884,11 @@ fn runtime_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsV1Codec, StyleRuleCatalog};
+    use crate::{GrapesJsCodec, StyleRuleCatalog};
     use serde_json::json;
 
     fn document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "styles": [{
                 "selectors": [{ "name": "card", "type": 2 }],
                 "style": { "padding": "12px" },

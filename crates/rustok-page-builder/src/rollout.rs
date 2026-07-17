@@ -7,7 +7,6 @@ pub struct BuilderCapabilityFlags {
     pub preview_enabled: bool,
     pub properties_enabled: bool,
     pub publish_enabled: bool,
-    pub legacy_bridge_readonly: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,28 +42,24 @@ impl BuilderToggleProfile {
                 preview_enabled: true,
                 properties_enabled: true,
                 publish_enabled: true,
-                legacy_bridge_readonly: true,
             },
             Self::PublishOff => BuilderCapabilityFlags {
                 builder_enabled: true,
                 preview_enabled: true,
                 properties_enabled: true,
                 publish_enabled: false,
-                legacy_bridge_readonly: true,
             },
             Self::PreviewOff => BuilderCapabilityFlags {
                 builder_enabled: true,
                 preview_enabled: false,
                 properties_enabled: true,
                 publish_enabled: false,
-                legacy_bridge_readonly: true,
             },
             Self::BuilderOff => BuilderCapabilityFlags {
                 builder_enabled: false,
                 preview_enabled: false,
                 properties_enabled: false,
                 publish_enabled: false,
-                legacy_bridge_readonly: true,
             },
         }
     }
@@ -133,7 +128,6 @@ impl Default for BuilderCapabilityFlags {
             preview_enabled: true,
             properties_enabled: true,
             publish_enabled: true,
-            legacy_bridge_readonly: false,
         }
     }
 }
@@ -219,13 +213,12 @@ impl BuilderControlPlaneChangeSet {
         })
     }
 
-    pub fn atomic_flag_keys() -> [&'static str; 5] {
+    pub fn atomic_flag_keys() -> [&'static str; 4] {
         [
             "builder.enabled",
             "builder.preview.enabled",
             "builder.properties.enabled",
             "builder.publish.enabled",
-            "builder.legacy_bridge_readonly",
         ]
     }
 }

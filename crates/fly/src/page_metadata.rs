@@ -44,8 +44,7 @@ impl PageMetadata {
         let open_graph_title = take_plain_or_localized_preview(&mut fields, "open_graph_title");
         let open_graph_description =
             take_plain_or_localized_preview(&mut fields, "open_graph_description");
-        let open_graph_image =
-            take_plain_or_localized_preview(&mut fields, "open_graph_image");
+        let open_graph_image = take_plain_or_localized_preview(&mut fields, "open_graph_image");
         let no_index = fields
             .remove("no_index")
             .and_then(|value| value.as_bool())
@@ -78,12 +77,7 @@ impl PageMetadata {
         } = self;
 
         merge_text_field(&mut extensions, "title", title, normalize_text);
-        merge_text_field(
-            &mut extensions,
-            "description",
-            description,
-            normalize_text,
-        );
+        merge_text_field(&mut extensions, "description", description, normalize_text);
         merge_text_field(&mut extensions, "slug", slug, |value| {
             normalize_slug(value.to_string())
         });
@@ -165,10 +159,7 @@ pub fn normalize_slug(value: String) -> String {
     slug
 }
 
-fn take_plain_or_localized_preview(
-    fields: &mut Map<String, Value>,
-    field: &str,
-) -> Option<String> {
+fn take_plain_or_localized_preview(fields: &mut Map<String, Value>, field: &str) -> Option<String> {
     match fields.get(field) {
         Some(Value::String(_)) => fields
             .remove(field)
@@ -266,14 +257,14 @@ mod tests {
             "providerFuture": { "enabled": true }
         });
         let page = ProjectPage {
-            extensions: Map::from_iter([(
-                FLY_PAGE_METADATA_FIELD.to_string(),
-                source.clone(),
-            )]),
+            extensions: Map::from_iter([(FLY_PAGE_METADATA_FIELD.to_string(), source.clone())]),
             ..ProjectPage::default()
         };
         let metadata = PageMetadata::from_page(&page);
-        assert!(matches!(metadata.title.as_deref(), Some("Home" | "Главная")));
+        assert!(matches!(
+            metadata.title.as_deref(),
+            Some("Home" | "Главная")
+        ));
         assert!(metadata.slug.is_some());
         let value = metadata.normalized().into_value();
         assert_eq!(value["title"], source["title"]);

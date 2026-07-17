@@ -1,5 +1,4 @@
 {
-  "schema_version": 1,
   "artifact": "page_builder_wave_evidence_packet",
   "template": "../page-builder-wave-evidence-template.json",
   "module_slug": "pages",
@@ -9,8 +8,6 @@
   "metadata": {
     "provider": {
       "module_slug": "page_builder",
-      "builder_contract_version": "1.0",
-      "consumer_min_version": "1.0",
       "health_profile": "ready",
       "degraded_modes": [
         "builder_disabled",
@@ -60,15 +57,13 @@
         "builder.enabled": false,
         "builder.preview.enabled": false,
         "builder.properties.enabled": false,
-        "builder.publish.enabled": false,
-        "builder.legacy_bridge_readonly": true
+        "builder.publish.enabled": false
       },
       "flags_after": {
         "builder.enabled": true,
         "builder.preview.enabled": true,
         "builder.properties.enabled": true,
-        "builder.publish.enabled": true,
-        "builder.legacy_bridge_readonly": true
+        "builder.publish.enabled": true
       },
       "module_health_before": "ready",
       "module_health_after": "ready"
@@ -82,8 +77,7 @@
           "builder.enabled": true,
           "builder.preview.enabled": true,
           "builder.properties.enabled": true,
-          "builder.publish.enabled": true,
-          "builder.legacy_bridge_readonly": true
+          "builder.publish.enabled": true
         },
         "smoke": {
           "list": "pass",
@@ -105,8 +99,7 @@
           "builder.enabled": true,
           "builder.preview.enabled": true,
           "builder.properties.enabled": true,
-          "builder.publish.enabled": false,
-          "builder.legacy_bridge_readonly": true
+          "builder.publish.enabled": false
         },
         "smoke": {
           "list": "pass",
@@ -128,8 +121,7 @@
           "builder.enabled": true,
           "builder.preview.enabled": false,
           "builder.properties.enabled": true,
-          "builder.publish.enabled": false,
-          "builder.legacy_bridge_readonly": true
+          "builder.publish.enabled": false
         },
         "smoke": {
           "list": "pass",
@@ -151,8 +143,7 @@
           "builder.enabled": false,
           "builder.preview.enabled": false,
           "builder.properties.enabled": false,
-          "builder.publish.enabled": false,
-          "builder.legacy_bridge_readonly": true
+          "builder.publish.enabled": false
         },
         "smoke": {
           "list": "pass",

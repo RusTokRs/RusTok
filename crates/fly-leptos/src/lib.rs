@@ -7,7 +7,7 @@ use fly_ui::{CanvasRect, DropPosition, HitTestCandidate};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-pub const FLY_IFRAME_PROTOCOL_V1: &str = "fly_iframe_v1";
+pub const FLY_IFRAME_PROTOCOL: &str = "fly_iframe";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct BrowserPoint {
@@ -379,7 +379,7 @@ impl IframeBridgeEnvelope {
         message: IframeBridgeMessage,
     ) -> Self {
         Self {
-            protocol: FLY_IFRAME_PROTOCOL_V1.to_string(),
+            protocol: FLY_IFRAME_PROTOCOL.to_string(),
             instance_id: instance_id.into(),
             sequence,
             message,
@@ -389,7 +389,7 @@ impl IframeBridgeEnvelope {
     /// Reject cross-instance, wrong-protocol, and replayed messages before browser adapters turn
     /// them into editor intents.
     pub fn is_accepted(&self, expected_instance_id: &str, last_sequence: Option<u64>) -> bool {
-        self.protocol == FLY_IFRAME_PROTOCOL_V1
+        self.protocol == FLY_IFRAME_PROTOCOL
             && self.instance_id == expected_instance_id
             && last_sequence.is_none_or(|sequence| self.sequence > sequence)
     }

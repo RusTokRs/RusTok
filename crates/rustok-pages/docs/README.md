@@ -16,7 +16,7 @@ block and menu contracts.
 - module-owned storage for `pages`, `page_translations`, `page_bodies`, `page_blocks`, `page_channel_visibility`, `menus`, `menu_translations`, `menu_items`, `menu_item_translations`;
 - GraphQL/REST adapters and Leptos admin/storefront packages;
 - REST page/block handlers consume narrow `PagesHttpRuntime` state with explicit DB/event bus handles; `controllers::axum_router` builds it from `HostRuntimeContext` and generated host composition mounts it without a framework adapter;
-- canonical write-path for visual builder via `body.format = "grapesjs_v1"`;
+- canonical write-path for visual builder via `body.format = "grapesjs"`;
 - typed relation `page_channel_visibility` for publication-level visibility.
 
 ## Integration
@@ -27,7 +27,7 @@ block and menu contracts.
 - host applications connect pages UI through manifest-driven generated wiring;
 - `rustok-pages/admin` already embeds owner-side page SEO panel via `rustok-seo-admin-support`
   and the shared capability contract of the `rustok-seo` module;
-- block endpoints remain a migration-compatible surface and must not implicitly synthesize `body`; legacy `blocks` are considered read/bridge compatibility for visual-builder rollout: import/create is preserved, but `grapesjs_v1` body writes do not delete blocks and do not extend the block write surface;
+- block endpoints remain a migration-compatible surface and must not implicitly synthesize `body`; legacy `blocks` are considered read/bridge compatibility for visual-builder rollout: import/create is preserved, but `grapesjs` body writes do not delete blocks and do not extend the block write surface;
 - FBA rollout policy for the builder capability layer is stored in `rustok-module.toml`: tenant flags `builder.enabled`, `builder.preview.enabled`, `builder.properties.enabled`, `builder.publish.enabled` switch without redeploying pages runtime; `control_plane_builder_wave_audit` must store before/after snapshots, keep/rollback decision, owner sign-off, SLO rollback triggers and pilot smoke `preview -> properties -> publish(dry)`.
 - The pages runtime contour remains owner of the page/menu/visibility/publish contract, while the external `rustok-page-builder` remains the provider of visual capability surfaces; reverting to pages-local ownership of the editor runtime is prohibited by module metadata and FBA baseline gate.
 

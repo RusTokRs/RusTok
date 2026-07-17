@@ -81,7 +81,7 @@
     },
     "capabilityPolicy": {
       "title": "Editor access policy",
-      "legacy": "No detailed host policy was supplied. The effective profile still remains enforced by the state machine.",
+      "summary": "No detailed host policy was supplied. The effective profile still remains enforced by the state machine.",
       "provider": "Provider state",
       "capability": "Capability",
       "requested": "Requested",

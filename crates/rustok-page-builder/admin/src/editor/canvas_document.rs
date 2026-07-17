@@ -3,7 +3,7 @@ use fly::render_page;
 use fly::{
     render_page_with_runtime_context, PageSelection, ProjectDocument, RenderPolicy, RenderedPage,
 };
-use fly_leptos::FLY_IFRAME_PROTOCOL_V1;
+use fly_leptos::FLY_IFRAME_PROTOCOL;
 use serde_json::Value;
 
 const CANVAS_SCRIPT: &str = include_str!("canvas_runtime.js");
@@ -61,8 +61,8 @@ fn render_srcdoc(
         ),
     };
 
-    let protocol = serde_json::to_string(FLY_IFRAME_PROTOCOL_V1)
-        .unwrap_or_else(|_| "\"fly_iframe_v1\"".to_string());
+    let protocol =
+        serde_json::to_string(FLY_IFRAME_PROTOCOL).unwrap_or_else(|_| "\"fly_iframe\"".to_string());
     let instance =
         serde_json::to_string(instance_id).unwrap_or_else(|_| "\"fly-canvas\"".to_string());
     let script = CANVAS_SCRIPT
@@ -91,12 +91,12 @@ fn canvas_styles() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::GrapesJsV1Codec;
+    use fly::GrapesJsCodec;
     use serde_json::json;
 
     #[test]
     fn renderer_instruments_components_and_escapes_script_content() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "component": {
@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn runtime_renderer_materializes_conditions_and_repeaters() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": {
                     "id": "root",
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn renderer_rejects_event_attributes_and_javascript_urls() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": {
                     "id": "root",
@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn renderer_applies_component_media_rules_from_shared_renderer() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "styles": [{
                 "selectors": [{ "name": "hero", "type": 2 }],
                 "style": { "padding": "24px" },

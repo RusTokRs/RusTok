@@ -36,7 +36,7 @@
   authenticated/admin flows intentionally bypass this publication gate.
 - `rustok-pages` deliberately has no default integration with `rustok-comments`; commentable
   page-like surfaces, if needed later, must be explicit opt-in product slices.
-- Page builder compatibility is explicit: `body.format = "grapesjs_v1"` is the canonical
+- Page builder compatibility is explicit: `body.format = "grapesjs"` is the canonical
   visual-builder payload, while legacy `blocks` remain an independent migration surface.
 - Pages may legitimately exist with legacy blocks and no `body`; adding or updating a body does
   not auto-convert, overwrite, or delete existing blocks. This read/bridge invariant is checked

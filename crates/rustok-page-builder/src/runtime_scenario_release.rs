@@ -1,4 +1,4 @@
-use fly::{evaluate_runtime_scenario_release, FlyResult, GrapesJsV1Codec};
+use fly::{evaluate_runtime_scenario_release, FlyResult, GrapesJsCodec};
 pub use fly::{
     RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleaseMode,
     RuntimeScenarioReleasePolicy, RuntimeScenarioReleaseStatus, RuntimeScenarioRenderChange,
@@ -54,7 +54,7 @@ impl PageBuilderRuntimeScenarioReleaseInspector {
         &self,
         request: PageBuilderRuntimeScenarioReleaseRequest,
     ) -> FlyResult<PageBuilderRuntimeScenarioReleaseResponse> {
-        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let document = GrapesJsCodec::decode_value(request.project_data)?;
         Ok(PageBuilderRuntimeScenarioReleaseResponse {
             evaluation: evaluate_runtime_scenario_release(
                 &document,
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn consumer_can_evaluate_persisted_release_baseline() {
         let project_data = project();
-        let document = GrapesJsV1Codec::decode_value(project_data.clone()).expect("document");
+        let document = GrapesJsCodec::decode_value(project_data.clone()).expect("document");
         let baseline = RuntimeScenarioReleaseBaseline::capture(
             "baseline-1",
             &document,
@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn baseline_change_carries_review_note_separately() {
-        let document = GrapesJsV1Codec::decode_value(project()).expect("document");
+        let document = GrapesJsCodec::decode_value(project()).expect("document");
         let baseline = RuntimeScenarioReleaseBaseline::capture(
             "baseline-1",
             &document,

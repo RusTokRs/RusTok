@@ -20,12 +20,12 @@ const checks = [
   },
   {
     file: "crates/rustok-pages/tests/page_builder_roundtrip.rs",
-    label: "visual builder and legacy block bridge contract tests",
+    label: "visual builder and page content bridge contract tests",
     tokens: [
       "grapesjs_body_round_trips_on_create_and_get",
       "grapesjs_body_round_trips_on_update",
-      "legacy_block_driven_page_round_trips_without_body",
-      "grapesjs_body_update_preserves_legacy_blocks",
+      "current_block_driven_page_round_trips_without_body",
+      "grapesjs_body_update_preserves_current_blocks",
     ],
   },
   {

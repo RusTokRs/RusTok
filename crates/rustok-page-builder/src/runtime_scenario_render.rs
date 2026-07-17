@@ -1,5 +1,5 @@
 use fly::{
-    render_runtime_scenario_matrix, FlyResult, GrapesJsV1Codec, PageSelection, RenderPolicy,
+    render_runtime_scenario_matrix, FlyResult, GrapesJsCodec, PageSelection, RenderPolicy,
     RuntimeContextScenario, RuntimeScenarioRenderMatrix,
 };
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,7 @@ impl PageBuilderRuntimeScenarioRenderer {
         &self,
         request: PageBuilderRuntimeScenarioRenderRequest,
     ) -> FlyResult<PageBuilderRuntimeScenarioRenderResponse> {
-        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let document = GrapesJsCodec::decode_value(request.project_data)?;
         Ok(PageBuilderRuntimeScenarioRenderResponse {
             matrix: render_runtime_scenario_matrix(
                 &document,

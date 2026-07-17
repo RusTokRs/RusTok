@@ -94,7 +94,7 @@ pub fn ProjectBundlePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <div class="mt-2 space-y-2">
                     <textarea
                         class="min-h-48 w-full rounded border border-input bg-background px-2 py-1 font-mono text-xs"
-                        placeholder="Paste fly_project_bundle_v1 or raw grapesjs_v1 JSON"
+                        placeholder="Paste fly_project_bundle or raw grapesjs JSON"
                         prop:value=move || import_json.get()
                         on:input=move |event| {
                             import_json.set(event_target_value(&event));

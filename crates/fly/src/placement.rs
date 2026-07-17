@@ -190,11 +190,11 @@ fn find_location(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsV1Codec, RegistrySet};
+    use crate::{GrapesJsCodec, RegistrySet};
     use serde_json::json;
 
     fn document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": {
                     "id": "root",

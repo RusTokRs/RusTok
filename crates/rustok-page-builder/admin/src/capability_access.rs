@@ -163,10 +163,9 @@ fn capability_requirements(
         BrowserIntentKind::UpsertAsset | BrowserIntentKind::RemoveAsset => {
             command_requirements(asset_command())
         }
-        BrowserIntentKind::SelectAsset => command_requirements(EditorCommand::batch([
-            asset_command(),
-            property_command(),
-        ])),
+        BrowserIntentKind::SelectAsset => {
+            command_requirements(EditorCommand::batch([asset_command(), property_command()]))
+        }
         BrowserIntentKind::KeyStroke => return Ok(Some((kind, shortcut_requirements(envelope)?))),
         BrowserIntentKind::InsertBlock
         | BrowserIntentKind::RemoveSelected
@@ -255,21 +254,18 @@ fn asset_command() -> EditorCommand {
 }
 
 fn property_kind(payload: &Value) -> Option<&str> {
-    payload
-        .get("kind")
-        .and_then(Value::as_str)
-        .map(str::trim)
+    payload.get("kind").and_then(Value::as_str).map(str::trim)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly_browser::FLY_BROWSER_PROTOCOL_V1;
+    use fly_browser::FLY_BROWSER_PROTOCOL;
     use serde_json::json;
 
     fn envelope(intent: &str, payload: Value) -> BrowserIntentEnvelope {
         BrowserIntentEnvelope {
-            protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
+            protocol: FLY_BROWSER_PROTOCOL.to_string(),
             instance_id: "capability-test".to_string(),
             intent: intent.to_string(),
             payload,
@@ -295,11 +291,9 @@ mod tests {
             ("undo", BrowserIntentKind::Undo, EditorCapability::History),
             ("copy", BrowserIntentKind::Copy, EditorCapability::Clipboard),
         ] {
-            let error = validate_browser_capability_access(
-                &envelope(intent, json!({})),
-                capabilities,
-            )
-            .expect_err("capability denial");
+            let error =
+                validate_browser_capability_access(&envelope(intent, json!({})), capabilities)
+                    .expect_err("capability denial");
             assert_eq!(
                 browser_capability_denial(&error),
                 Some(&BrowserCapabilityDenial {
@@ -325,18 +319,12 @@ mod tests {
             ..CapabilityState::full()
         };
         assert!(validate_browser_capability_access(
-            &envelope(
-                "patch_component_property",
-                json!({ "kind": "field" }),
-            ),
+            &envelope("patch_component_property", json!({ "kind": "field" }),),
             capabilities,
         )
         .is_ok());
         let error = validate_browser_capability_access(
-            &envelope(
-                "patch_component_property",
-                json!({ "kind": "style" }),
-            ),
+            &envelope("patch_component_property", json!({ "kind": "style" })),
             capabilities,
         )
         .expect_err("style capability denial");
@@ -393,7 +381,10 @@ mod tests {
             ..CapabilityState::full()
         };
         let error = validate_browser_capability_access(
-            &envelope(BrowserIntentKind::SelectAsset.as_str(), json!({ "asset_id": "logo" })),
+            &envelope(
+                BrowserIntentKind::SelectAsset.as_str(),
+                json!({ "asset_id": "logo" }),
+            ),
             missing_properties,
         )
         .expect_err("asset application changes component properties");
@@ -411,7 +402,10 @@ mod tests {
             ..CapabilityState::full()
         };
         let error = validate_browser_capability_access(
-            &envelope(BrowserIntentKind::SelectAsset.as_str(), json!({ "asset_id": "logo" })),
+            &envelope(
+                BrowserIntentKind::SelectAsset.as_str(),
+                json!({ "asset_id": "logo" }),
+            ),
             missing_assets,
         )
         .expect_err("asset access is required before application");
@@ -426,7 +420,10 @@ mod tests {
             ..CapabilityState::full()
         };
         let error = validate_browser_capability_access(
-            &envelope(BrowserIntentKind::SelectAsset.as_str(), json!({ "asset_id": "logo" })),
+            &envelope(
+                BrowserIntentKind::SelectAsset.as_str(),
+                json!({ "asset_id": "logo" }),
+            ),
             missing_both,
         )
         .expect_err("all missing capabilities are returned");
@@ -490,7 +487,10 @@ mod tests {
     #[test]
     fn malformed_shortcut_remains_a_typed_dispatch_error() {
         let error = validate_browser_capability_access(
-            &envelope(BrowserIntentKind::KeyStroke.as_str(), json!({ "stroke": "invalid" })),
+            &envelope(
+                BrowserIntentKind::KeyStroke.as_str(),
+                json!({ "stroke": "invalid" }),
+            ),
             CapabilityState::full(),
         )
         .expect_err("malformed shortcut");
@@ -509,7 +509,10 @@ mod tests {
         }
         .normalized();
         let error = validate_browser_capability_access(
-            &envelope(BrowserIntentKind::InsertBlock.as_str(), json!({ "block_id": "text" })),
+            &envelope(
+                BrowserIntentKind::InsertBlock.as_str(),
+                json!({ "block_id": "text" }),
+            ),
             capabilities,
         )
         .expect_err("edit capability denial");

@@ -1,8 +1,8 @@
 use crate::dto::{BuilderTreeNode, PageBuilderCapabilityRequest};
 use crate::transport::{PageBuilderTransportError, PageBuilderTransportSuccess};
 use fly::{
-    validate_project, ComponentNode, GrapesJsV1Codec, ProjectDocument, RegistrySet,
-    ValidationDiagnostic, ValidationLimits, ValidationReport, GRAPESJS_V1,
+    validate_project, ComponentNode, GrapesJsCodec, ProjectDocument, RegistrySet,
+    ValidationDiagnostic, ValidationLimits, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -36,59 +36,26 @@ pub struct FlyProjectInspection {
 }
 
 impl FlyProjectInspection {
-    /// Decode and validate through the current, versionless adapter API.
-    pub fn decode_current(project_data: &Value) -> FlyProjectAdapterResult<Self> {
-        Self::decode_current_with(
+    pub fn decode(project_data: &Value) -> FlyProjectAdapterResult<Self> {
+        Self::decode_with(
             project_data,
             &RegistrySet::with_builtins(),
             ValidationLimits::default(),
         )
     }
 
-    /// Decode and validate through the current API with caller-supplied registries and limits.
-    ///
-    /// Unknown component providers remain warnings and their payloads remain lossless. Structural
-    /// errors such as duplicate IDs or configured resource-limit violations are retained in the
-    /// report and can be rejected with [`Self::require_valid`].
-    pub fn decode_current_with(
+    pub fn decode_with(
         project_data: &Value,
         registries: &RegistrySet,
         limits: ValidationLimits,
     ) -> FlyProjectAdapterResult<Self> {
-        let document = GrapesJsV1Codec::decode_value(project_data.clone())
+        let document = GrapesJsCodec::decode_value(project_data.clone())
             .map_err(|error| FlyProjectAdapterError::Decode(error.to_string()))?;
         let validation = validate_project(&document, registries, limits);
-
         Ok(Self {
             document,
             validation,
         })
-    }
-
-    /// Compatibility entrypoint retained for the existing browser transport until the next major.
-    pub fn decode(schema_version: &str, project_data: &Value) -> FlyProjectAdapterResult<Self> {
-        Self::decode_with(
-            schema_version,
-            project_data,
-            &RegistrySet::with_builtins(),
-            ValidationLimits::default(),
-        )
-    }
-
-    /// Compatibility entrypoint retained for the existing browser transport until the next major.
-    pub fn decode_with(
-        schema_version: &str,
-        project_data: &Value,
-        registries: &RegistrySet,
-        limits: ValidationLimits,
-    ) -> FlyProjectAdapterResult<Self> {
-        if schema_version != GRAPESJS_V1 {
-            return Err(FlyProjectAdapterError::UnsupportedSchema {
-                expected: GRAPESJS_V1,
-                actual: schema_version.to_string(),
-            });
-        }
-        Self::decode_current_with(project_data, registries, limits)
     }
 
     pub fn document(&self) -> &ProjectDocument {
@@ -181,10 +148,6 @@ pub type FlyProjectAdapterResult<T> = Result<T, FlyProjectAdapterError>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FlyProjectAdapterError {
-    UnsupportedSchema {
-        expected: &'static str,
-        actual: String,
-    },
     Decode(String),
     Encode(String),
     Validation {
@@ -196,10 +159,6 @@ pub enum FlyProjectAdapterError {
 impl std::fmt::Display for FlyProjectAdapterError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnsupportedSchema { expected, actual } => write!(
-                formatter,
-                "unsupported compatibility schema `{actual}`; expected `{expected}`"
-            ),
             Self::Decode(message) => write!(formatter, "Fly project decode failed: {message}"),
             Self::Encode(message) => write!(formatter, "Fly project encode failed: {message}"),
             Self::Validation { diagnostics } => {
@@ -262,11 +221,8 @@ impl<S> FlyValidatedPageBuilderService<S> {
     }
 
     fn validate_project(&self, project_data: &Value) -> Result<(), PageBuilderServiceError> {
-        let inspection = FlyProjectInspection::decode_current_with(
-            project_data,
-            &self.registries,
-            self.limits,
-        )?;
+        let inspection =
+            FlyProjectInspection::decode_with(project_data, &self.registries, self.limits)?;
         inspection.require_valid()?;
         Ok(())
     }
@@ -404,8 +360,8 @@ mod tests {
 
     #[test]
     fn fly_inspection_reads_real_grapesjs_tree() {
-        let inspection = FlyProjectInspection::decode_current(&baseline())
-            .expect("fixture must decode through Fly");
+        let inspection =
+            FlyProjectInspection::decode(&baseline()).expect("fixture must decode through Fly");
         inspection.require_valid().expect("fixture must be valid");
 
         let tree = inspection.tree_nodes();
@@ -418,8 +374,8 @@ mod tests {
 
     #[test]
     fn fly_inspection_exposes_properties_without_children() {
-        let inspection = FlyProjectInspection::decode_current(&baseline())
-            .expect("fixture must decode through Fly");
+        let inspection =
+            FlyProjectInspection::decode(&baseline()).expect("fixture must decode through Fly");
         let properties = inspection
             .component_properties("hero")
             .expect("hero component must exist");
@@ -444,28 +400,12 @@ mod tests {
                 }
             }]
         });
-        let inspection = FlyProjectInspection::decode_current(&project)
-            .expect("structural decode should succeed");
+        let inspection =
+            FlyProjectInspection::decode(&project).expect("structural decode should succeed");
         let error = inspection
             .require_valid()
             .expect_err("duplicate IDs must fail validation");
 
         assert!(matches!(error, FlyProjectAdapterError::Validation { .. }));
-    }
-
-    #[test]
-    fn compatibility_decode_is_retained_for_the_current_major() {
-        FlyProjectInspection::decode(GRAPESJS_V1, &baseline())
-            .expect("compatibility selector must continue to work");
-    }
-
-    #[test]
-    fn compatibility_decode_rejects_unknown_selector() {
-        let error = FlyProjectInspection::decode("fly_v2", &baseline())
-            .expect_err("unknown compatibility selector must fail");
-        assert!(matches!(
-            error,
-            FlyProjectAdapterError::UnsupportedSchema { .. }
-        ));
     }
 }

@@ -6,7 +6,6 @@
 
 The module has one current API and one current domain model. Their version is the crate/module
 semver (`CARGO_PKG_VERSION`). Documents, commands, artifacts, component manifests, capabilities,
-errors and telemetry do not carry independent `v1`, `v2` or schema-contract versions.
 
 The API evolves additively during a module major. Existing compatibility fields and entrypoints stay
 operational until the next module major, where they may be removed after consumers have migrated.
@@ -75,16 +74,12 @@ No current step branches on a document version.
 
 ## Compatibility surface
 
-The original browser transport can still deserialize `schema_version` and existing code can still
 call version-selector decode methods. These surfaces are compatibility adapters only:
 
-- current constructors omit `schema_version`;
 - current services ignore it;
 - Pages publish does not gate on it;
 - Fly's domain model never receives it;
-- current runtime telemetry does not record a contract or schema version.
 
-`PageBuilderContractMetadata`, the old reference service checks and historical GrapesJS selector
 constants remain available for existing consumers during the current module major. New code must use
 `PageBuilderModuleMetadata`, `decode_current`, `inspect_current` and the Fly-backed service.
 

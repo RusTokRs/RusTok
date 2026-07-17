@@ -126,7 +126,6 @@ impl TraitSchema {
             TraitTarget::Field { name } => match name.as_str() {
                 "tagName" => component.tag_name.clone().map(Value::String),
                 "provider" => component.provider.clone().map(Value::String),
-                "schemaVersion" => component.schema_version.clone().map(Value::String),
                 _ => component.extensions.get(name).cloned(),
             },
         }

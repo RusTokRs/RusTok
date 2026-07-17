@@ -126,7 +126,7 @@ pub struct OverlayState {
     pub resize_handles_visible: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CapabilityState {
     pub edit: bool,
     pub drag_drop: bool,

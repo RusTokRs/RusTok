@@ -20,7 +20,7 @@ module = "page-builder"
 version_req = ">=0.1.0"
 mode = "capability_provider"
 required_capabilities = ["preview", "tree", "properties", "publish"]
-contract = "grapesjs_v1"
+contract = "grapesjs"
 contract_version = "1.0"
 
 [crate]
@@ -66,7 +66,7 @@ leptos_locales_path = "storefront/locales"
 
 [fba.builder_consumer]
 provider_module = "page-builder"
-contract = "grapesjs_v1"
+contract = "grapesjs"
 contract_version = "1.0"
 builder_contract_version = "1.0"
 consumer_min_version = "1.0"

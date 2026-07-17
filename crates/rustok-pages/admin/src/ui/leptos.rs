@@ -109,7 +109,7 @@ pub fn PagesAdmin() -> impl IntoView {
     let validation_issue_guidance = t(
         route_context.locale.as_deref(),
         "pages.error.validationGuidance",
-        "Check required page fields and ensure project data is valid grapesjs_v1 JSON.",
+        "Check required page fields and ensure project data is valid grapesjs JSON.",
     );
     let sanitize_issue_guidance = t(
         route_context.locale.as_deref(),
@@ -168,12 +168,12 @@ pub fn PagesAdmin() -> impl IntoView {
     let project_data_label = t(
         route_context.locale.as_deref(),
         "pages.form.projectData",
-        "Project data (grapesjs_v1)",
+        "Project data (grapesjs)",
     );
     let project_data_help = t(
         route_context.locale.as_deref(),
         "pages.form.projectDataHelp",
-        "Vendor-neutral project JSON passed into body.contentJson with format grapesjs_v1.",
+        "Vendor-neutral project JSON passed into body.contentJson with format grapesjs.",
     );
     let publish_now_label = t(
         route_context.locale.as_deref(),
@@ -188,7 +188,7 @@ pub fn PagesAdmin() -> impl IntoView {
     let preview_surface_body = t(
         route_context.locale.as_deref(),
         "pages.surface.preview.body",
-        "Contract-safe host preview generated from grapesjs_v1 project data.",
+        "Contract-safe host preview generated from grapesjs project data.",
     );
     let tree_surface_title = t(
         route_context.locale.as_deref(),
@@ -293,12 +293,12 @@ pub fn PagesAdmin() -> impl IntoView {
     let compatibility_non_grapes = t(
         route_context.locale.as_deref(),
         "pages.compat.nonGrapes",
-        "Current body format is not grapesjs_v1. Save once to migrate this page body while keeping existing blocks untouched.",
+        "Current body format is not grapesjs. Save once to migrate this page body while keeping existing blocks untouched.",
     );
     let compatibility_existing_blocks = t(
         route_context.locale.as_deref(),
         "pages.compat.existingBlocks",
-        "Existing blocks remain attached and are not deleted automatically by grapesjs_v1 writes.",
+        "Existing blocks remain attached and are not deleted automatically by grapesjs writes.",
     );
     let compatibility_title = StoredValue::new(compatibility_title);
     let compatibility_non_grapes = StoredValue::new(compatibility_non_grapes);
@@ -784,7 +784,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                                     .get()
                                                     .into_iter()
                                                     .map(|block| {
-                                                        let label = core::legacy_block_snapshot_label(&block);
+                                                        let label = core::current_block_snapshot_label(&block);
                                                         view! {
                                                             <li>{label}</li>
                                                         }

@@ -1,6 +1,7 @@
 use crate::{
-    visit_project_components, ComponentAction, ComponentForm, ContextValueKind, FlyError, FlyResult,
-    ProjectDocument, ValidationDiagnostic, ValidationSeverity, FLY_ACTION_FIELD, FLY_FORM_FIELD,
+    visit_project_components, ComponentAction, ComponentForm, ContextValueKind, FlyError,
+    FlyResult, ProjectDocument, ValidationDiagnostic, ValidationSeverity, FLY_ACTION_FIELD,
+    FLY_FORM_FIELD,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -193,7 +194,9 @@ pub fn validate_component_actions_with_capabilities(
     policy: InteractionCapabilityPolicy,
 ) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = crate::validate_component_actions(document);
-    diagnostics.extend(validate_interaction_capabilities(document, registry, policy));
+    diagnostics.extend(validate_interaction_capabilities(
+        document, registry, policy,
+    ));
     diagnostics
 }
 
@@ -293,11 +296,11 @@ fn capability_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     fn document() -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(json!({
+        GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": {
                     "id": "root",

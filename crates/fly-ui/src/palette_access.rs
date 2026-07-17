@@ -92,7 +92,6 @@ mod tests {
             .register(ContributionDescriptor {
                 id: "pages.blocks".to_string(),
                 provider: "fly.builtin".to_string(),
-                provider_version: "1".to_string(),
                 required_capabilities: BTreeSet::new(),
                 blocks: blocks.iter().map(|block| (*block).to_string()).collect(),
                 renderers: Vec::new(),
@@ -109,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_surface_is_unrestricted() {
+    fn current_surface_is_unrestricted() {
         let access = PaletteBlockAccess::unrestricted();
         assert!(access.allows("text"));
         assert!(access.allows("fly.hero"));

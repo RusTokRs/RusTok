@@ -292,12 +292,12 @@ fn stable_source_id(source: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     #[test]
     fn catalog_normalizes_grapesjs_asset_shapes_without_losing_raw_data() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "assets": [{
                 "id": "hero",
                 "src": "https://cdn.example.com/hero.webp",

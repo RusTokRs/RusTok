@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rustok_api::{Action, Resource};
-use rustok_core::{SecurityContext, CONTENT_FORMAT_GRAPESJS_V1};
+use rustok_core::{SecurityContext, CONTENT_FORMAT_GRAPESJS_FORMAT};
 use rustok_page_builder::runtime_scenario_release::{
     evaluate_page_builder_runtime_scenario_release, PageBuilderRuntimeScenarioReleaseRequest,
     RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleasePolicy,
@@ -331,13 +331,13 @@ impl PageBuilderScenarioBaselineService {
         };
         let body = page_body::Entity::find()
             .filter(page_body::Column::PageId.eq(page_id))
-            .filter(page_body::Column::Format.eq(CONTENT_FORMAT_GRAPESJS_V1))
+            .filter(page_body::Column::Format.eq(CONTENT_FORMAT_GRAPESJS_FORMAT))
             .order_by_desc(page_body::Column::UpdatedAt)
             .one(&self.db)
             .await?
             .ok_or_else(|| {
                 PagesError::validation(
-                    "Page Builder scenario baseline exists but no grapesjs_v1 body is available",
+                    "Page Builder scenario baseline exists but no grapesjs body is available",
                 )
             })?;
         let project_data = serde_json::from_str(&body.content).map_err(|error| {

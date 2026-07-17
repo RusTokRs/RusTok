@@ -1,11 +1,10 @@
 use crate::{
     materialize_project_locale_context, normalize_locale_tag, normalize_slug, FlyError, FlyResult,
     PageSelection, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
-    ValidationSeverity, FLY_PAGE_METADATA_FIELD, LOCALIZED_VALUES_FIELD,
-    RUNTIME_LOCALE_FIELD,
+    ValidationSeverity, FLY_PAGE_METADATA_FIELD, LOCALIZED_VALUES_FIELD, RUNTIME_LOCALE_FIELD,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -40,9 +39,7 @@ impl LocalizedPageRouteResolution {
     }
 }
 
-pub fn localized_page_route_index(
-    document: &ProjectDocument,
-) -> Vec<LocalizedPageRouteEntry> {
+pub fn localized_page_route_index(document: &ProjectDocument) -> Vec<LocalizedPageRouteEntry> {
     let mut entries = Vec::new();
     for (page_index, page) in document.project.pages.iter().enumerate() {
         let Some(metadata) = page
@@ -56,13 +53,9 @@ pub fn localized_page_route_index(
             continue;
         };
         match slug {
-            Value::String(slug) => push_route_entry(
-                &mut entries,
-                page_index,
-                page.id.clone(),
-                None,
-                slug,
-            ),
+            Value::String(slug) => {
+                push_route_entry(&mut entries, page_index, page.id.clone(), None, slug)
+            }
             Value::Object(wrapper) => {
                 if let Some(localized) = wrapper
                     .get(LOCALIZED_VALUES_FIELD)
@@ -163,9 +156,7 @@ pub fn resolve_localized_page_route(
     })
 }
 
-pub fn validate_localized_page_routes(
-    document: &ProjectDocument,
-) -> Vec<ValidationDiagnostic> {
+pub fn validate_localized_page_routes(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = Vec::new();
     let entries = localized_page_route_index(document);
     let mut exact = BTreeMap::<(Option<String>, String), BTreeSet<usize>>::new();
@@ -409,11 +400,11 @@ fn raw_slug_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     fn document(project: Value) -> ProjectDocument {
-        GrapesJsV1Codec::decode_value(project).expect("project document")
+        GrapesJsCodec::decode_value(project).expect("project document")
     }
 
     #[test]
@@ -431,12 +422,9 @@ mod tests {
                 "component": { "id": "root", "type": "wrapper" }
             }]
         }));
-        let resolution = resolve_localized_page_route(
-            &document,
-            "glavnaya",
-            &json!({ "$locale": "ru-RU" }),
-        )
-        .expect("localized route");
+        let resolution =
+            resolve_localized_page_route(&document, "glavnaya", &json!({ "$locale": "ru-RU" }))
+                .expect("localized route");
         assert_eq!(resolution.page_id.as_deref(), Some("home"));
         assert_eq!(resolution.matched_locale.as_deref(), Some("ru"));
         assert_eq!(resolution.context[RUNTIME_LOCALE_FIELD], "ru");
@@ -475,11 +463,7 @@ mod tests {
             }]
         }));
         assert!(matches!(
-            resolve_localized_page_route(
-                &document,
-                "shared",
-                &json!({ "$locale": "en" })
-            ),
+            resolve_localized_page_route(&document, "shared", &json!({ "$locale": "en" })),
             Err(FlyError::Decode(_))
         ));
         assert!(validate_localized_page_routes(&document)

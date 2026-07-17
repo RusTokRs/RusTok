@@ -3,7 +3,7 @@ use crate::editor::{
     SsrLocalePolicyRequest, SsrLocalizedPageMetadataRequest,
 };
 use crate::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
-use fly::{GrapesJsV1Codec, ProjectHash};
+use fly::{GrapesJsCodec, ProjectHash};
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentError};
 use fly_ui::{resolve_editor_shortcut, EditorShortcut, KeyStroke, UiIntent};
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
@@ -88,8 +88,9 @@ fn dispatch_named_intent(
             None => Vec::new(),
         },
         "upsert_localized_page_metadata" => {
-            let request = serde_json::from_value::<SsrLocalizedPageMetadataRequest>(payload.clone())
-                .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
+            let request =
+                serde_json::from_value::<SsrLocalizedPageMetadataRequest>(payload.clone())
+                    .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
             let intent = controller
                 .ssr_localized_page_metadata_intent(request)
                 .map_err(BrowserIntentDispatchError::Authoring)?;
@@ -303,7 +304,7 @@ fn result(
         command_sequence: revision.command_sequence,
         dirty: revision.dirty,
         selected_component_id: controller.ui().state.selection.component_id.clone(),
-        project_data: GrapesJsV1Codec::encode_value(controller.editor().document())?,
+        project_data: GrapesJsCodec::encode_value(controller.editor().document())?,
         effects: effects.into_iter().map(effect).collect(),
     })
 }
@@ -380,7 +381,7 @@ pub enum BrowserIntentDispatchError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly_browser::FLY_BROWSER_PROTOCOL_V1;
+    use fly_browser::FLY_BROWSER_PROTOCOL;
     use serde_json::json;
 
     fn controller() -> AdminCanvasController {
@@ -410,7 +411,7 @@ mod tests {
 
     fn intent(intent: &str, payload: Value) -> BrowserIntentEnvelope {
         BrowserIntentEnvelope {
-            protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
+            protocol: FLY_BROWSER_PROTOCOL.to_string(),
             instance_id: "canvas-a".to_string(),
             intent: intent.to_string(),
             payload,
@@ -460,10 +461,7 @@ mod tests {
         .expect("drop");
         assert!(result.dirty);
         assert_eq!(
-            controller
-                .editor()
-                .document()
-                .component_child_count("hero"),
+            controller.editor().document().component_child_count("hero"),
             Some(1)
         );
     }
@@ -516,8 +514,7 @@ mod tests {
         .expect("locale policy");
         assert!(result.dirty);
         assert_eq!(
-            controller.editor().document().project.extensions["flyLocales"]
-                ["default_locale"],
+            controller.editor().document().project.extensions["flyLocales"]["default_locale"],
             "ru"
         );
     }
@@ -525,11 +522,9 @@ mod tests {
     #[test]
     fn clearing_missing_locale_policy_is_a_clean_no_op() {
         let mut controller = controller();
-        let result = dispatch_browser_intent(
-            &mut controller,
-            intent("clear_locale_policy", json!({})),
-        )
-        .expect("clear missing locale policy");
+        let result =
+            dispatch_browser_intent(&mut controller, intent("clear_locale_policy", json!({})))
+                .expect("clear missing locale policy");
         assert!(!result.dirty);
         assert_eq!(controller.editor().history().undo_len(), 0);
     }
@@ -550,9 +545,11 @@ mod tests {
         )
         .expect("localized metadata");
         assert!(result.dirty);
-        assert!(controller.editor().document().project.pages[0].extensions["flyPageMeta"]
-            ["title"]["$localized"]
-            .is_object());
+        assert!(
+            controller.editor().document().project.pages[0].extensions["flyPageMeta"]["title"]
+                ["$localized"]
+                .is_object()
+        );
     }
 
     #[test]
@@ -594,10 +591,13 @@ mod tests {
 
     #[test]
     fn stale_mutation_is_rejected_before_command_dispatch() {
-        let mut request = intent("remove_selected", json!({ "selected_component_id": "hero" }));
+        let mut request = intent(
+            "remove_selected",
+            json!({ "selected_component_id": "hero" }),
+        );
         request.revision = Some("old".to_string());
-        let error = dispatch_browser_intent(&mut controller(), request)
-            .expect_err("revision conflict");
+        let error =
+            dispatch_browser_intent(&mut controller(), request).expect_err("revision conflict");
         assert!(matches!(
             error,
             BrowserIntentDispatchError::RevisionConflict { .. }

@@ -1,7 +1,7 @@
 # Fly
 
 `fly` is the framework-neutral editor engine defined by the Page Builder implementation plan.
-It owns the canonical editor state, a lossless `grapesjs_v1` codec, component-tree commands,
+It owns the canonical editor state, a lossless `grapesjs` codec, component-tree commands,
 undo/redo history, registries, validation, clipboard fragments, revision tracking, and
 missing-provider preservation.
 
@@ -10,7 +10,7 @@ transport selection, persistence, or rich-text implementations.
 
 ## Compatibility contract
 
-`GrapesJsV1Codec` decodes the project object produced by GrapesJS `getProjectData()` and emits a
+`GrapesJsCodec` decodes the project object produced by GrapesJS `getProjectData()` and emits a
 semantically equivalent object suitable for `loadProjectData()`. Known fields have typed accessors;
 unknown top-level, page, component, provider, plugin, and future fields are retained through
 `serde(flatten)` or opaque values.
@@ -22,10 +22,10 @@ captures; real captures remain a Phase 0 gate in the programme plan.
 
 ```text
 project JSON
-  -> GrapesJsV1Codec
+  -> GrapesJsCodec
   -> ProjectDocument
   -> FlyEditor commands/history/validation
-  -> GrapesJsV1Codec
+  -> GrapesJsCodec
   -> project JSON
 ```
 

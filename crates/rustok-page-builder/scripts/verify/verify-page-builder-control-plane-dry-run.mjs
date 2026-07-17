@@ -45,7 +45,6 @@ const expectedFlagKeys = [
   "builder.preview.enabled",
   "builder.properties.enabled",
   "builder.publish.enabled",
-  "builder.legacy_bridge_readonly",
 ];
 
 expect(contract.artifact === "page_builder_control_plane_dry_run_contract", "unexpected artifact");

@@ -249,15 +249,6 @@ fn validate_components(
                 ),
             ));
         }
-
-        if component.provider.is_some() && component.schema_version.is_none() {
-            report.diagnostics.push(diagnostic(
-                ValidationSeverity::Warning,
-                "missing_provider_schema_version",
-                path,
-                "provider-owned component should carry schemaVersion",
-            ));
-        }
     });
 }
 
@@ -390,12 +381,12 @@ fn diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsV1Codec, RegistrySet};
+    use crate::{GrapesJsCodec, RegistrySet};
     use serde_json::json;
 
     #[test]
     fn validates_pages_assets_orphan_rules_and_runtime_extensions() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "assets": [
                 { "id": "asset", "src": "/one.png" },
                 { "id": "asset", "src": "/two.png" }
@@ -448,7 +439,7 @@ mod tests {
 
     #[test]
     fn empty_project_is_invalid() {
-        let document = GrapesJsV1Codec::decode_value(json!({ "pages": [] })).expect("document");
+        let document = GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
         let report = validate_project(
             &document,
             &RegistrySet::with_builtins(),

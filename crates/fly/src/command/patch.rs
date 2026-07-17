@@ -5,7 +5,6 @@ use serde_json::{Map, Value};
 const COMPONENT_TYPE_FIELD: &str = "type";
 const TAG_NAME_FIELD: &str = "tagName";
 const PROVIDER_FIELD: &str = "provider";
-const SCHEMA_VERSION_FIELD: &str = "schemaVersion";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct ComponentPatch {
@@ -57,17 +56,6 @@ impl ComponentPatch {
         self.remove_reserved_field(PROVIDER_FIELD);
         self
     }
-
-    pub fn set_schema_version(mut self, value: impl Into<String>) -> Self {
-        self.set_reserved_string(SCHEMA_VERSION_FIELD, value.into());
-        self
-    }
-
-    pub fn clear_schema_version(mut self) -> Self {
-        self.remove_reserved_field(SCHEMA_VERSION_FIELD);
-        self
-    }
-
     pub fn set_field(mut self, name: impl Into<String>, value: Value) -> Self {
         let name = name.into();
         self.remove_fields.retain(|candidate| candidate != &name);
@@ -155,7 +143,6 @@ impl ComponentPatch {
                 COMPONENT_TYPE_FIELD => component.component_type = None,
                 TAG_NAME_FIELD => component.tag_name = None,
                 PROVIDER_FIELD => component.provider = None,
-                SCHEMA_VERSION_FIELD => component.schema_version = None,
                 _ => {
                     component.extensions.remove(&field);
                 }
@@ -168,9 +155,6 @@ impl ComponentPatch {
                 }
                 TAG_NAME_FIELD => component.tag_name = value.as_str().map(ToString::to_string),
                 PROVIDER_FIELD => component.provider = value.as_str().map(ToString::to_string),
-                SCHEMA_VERSION_FIELD => {
-                    component.schema_version = value.as_str().map(ToString::to_string)
-                }
                 _ => {
                     component.extensions.insert(key, value);
                 }
@@ -180,8 +164,7 @@ impl ComponentPatch {
 
     fn set_reserved_string(&mut self, field: &str, value: String) {
         self.remove_fields.retain(|candidate| candidate != field);
-        self.fields
-            .insert(field.to_string(), Value::String(value));
+        self.fields.insert(field.to_string(), Value::String(value));
     }
 
     fn remove_reserved_field(&mut self, field: &str) {
@@ -223,24 +206,20 @@ mod tests {
             .set_component_type("button")
             .set_tag_name("button")
             .set_provider("provider.demo")
-            .set_schema_version("2")
             .apply(&mut component);
         assert_eq!(component.component_type.as_deref(), Some("button"));
         assert_eq!(component.tag_name.as_deref(), Some("button"));
         assert_eq!(component.provider.as_deref(), Some("provider.demo"));
-        assert_eq!(component.schema_version.as_deref(), Some("2"));
         assert!(!component.extensions.contains_key(COMPONENT_TYPE_FIELD));
 
         ComponentPatch::default()
             .clear_component_type()
             .clear_tag_name()
             .clear_provider()
-            .clear_schema_version()
             .apply(&mut component);
         assert!(component.component_type.is_none());
         assert!(component.tag_name.is_none());
         assert!(component.provider.is_none());
-        assert!(component.schema_version.is_none());
     }
 
     #[test]

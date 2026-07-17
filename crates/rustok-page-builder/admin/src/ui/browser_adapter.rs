@@ -99,8 +99,8 @@ for (const adapter of __flyAdapters) {
 /// permissions, and persistence remain in Rust.
 #[component]
 pub fn PageBuilderBrowserAdapter(
-    #[prop(optional)] intent_endpoint: Option<String>,
-    #[prop(optional)] csrf_token: Option<String>,
+    #[prop(optional_no_strip)] intent_endpoint: Option<String>,
+    #[prop(optional_no_strip)] csrf_token: Option<String>,
 ) -> impl IntoView {
     #[cfg(feature = "browser-js")]
     {
@@ -122,7 +122,7 @@ pub fn PageBuilderBrowserAdapter(
         view! {
             <script
                 type="module"
-                data-fly-browser-adapter="fly_browser_v1"
+                data-fly-browser-adapter="fly_browser"
                 inner_html=source
             ></script>
         }

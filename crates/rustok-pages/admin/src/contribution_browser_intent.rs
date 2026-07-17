@@ -6,9 +6,9 @@ use crate::contributions::{
 use fly_browser::BrowserIntentEnvelope;
 use fly_ui::{CapabilityState, PaletteBlockAccess};
 use rustok_page_builder_admin::{
-    browser_capability_denial, validate_browser_capability_access,
-    validate_browser_palette_access, BrowserCapabilityAccessError, BrowserCapabilityDenial,
-    BrowserIntentDispatchError, SsrDraftSessionStore,
+    browser_capability_denial, validate_browser_capability_access, validate_browser_palette_access,
+    BrowserCapabilityAccessError, BrowserCapabilityDenial, BrowserIntentDispatchError,
+    SsrDraftSessionStore,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -37,12 +37,8 @@ pub async fn dispatch_pages_browser_intent(
     snapshot: PagesBuilderSaveSnapshot,
     envelope: BrowserIntentEnvelope,
 ) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentAccessError> {
-    dispatch_pages_browser_intent_with_capabilities(
-        snapshot,
-        envelope,
-        CapabilityState::full(),
-    )
-    .await
+    dispatch_pages_browser_intent_with_capabilities(snapshot, envelope, CapabilityState::full())
+        .await
 }
 
 pub async fn dispatch_pages_browser_intent_with_capabilities(
@@ -98,13 +94,13 @@ fn preflight_pages_intent(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly_browser::FLY_BROWSER_PROTOCOL_V1;
+    use fly_browser::FLY_BROWSER_PROTOCOL;
     use fly_ui::EditorCapability;
     use serde_json::{json, Value};
 
     fn envelope(intent: &str, payload: Value) -> BrowserIntentEnvelope {
         BrowserIntentEnvelope {
-            protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
+            protocol: FLY_BROWSER_PROTOCOL.to_string(),
             instance_id: "pages-test".to_string(),
             intent: intent.to_string(),
             payload,
@@ -171,9 +167,7 @@ mod tests {
         let error = preflight_pages_intent(envelope("save", json!({})), capabilities)
             .expect_err("publish capability denial");
         assert_eq!(
-            error
-                .capability_denial()
-                .map(|denial| denial.capability),
+            error.capability_denial().map(|denial| denial.capability),
             Some(EditorCapability::Publish)
         );
         assert!(matches!(
@@ -202,9 +196,7 @@ mod tests {
         )
         .expect_err("properties capability denial");
         assert_eq!(
-            error
-                .capability_denial()
-                .map(|denial| denial.capability),
+            error.capability_denial().map(|denial| denial.capability),
             Some(EditorCapability::Properties)
         );
     }

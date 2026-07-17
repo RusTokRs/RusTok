@@ -2,7 +2,7 @@
 
 ## Current state
 
-`rustok-page-builder` owns the `grapesjs_v1` capability provider for preview,
+`rustok-page-builder` owns the `grapesjs` capability provider for preview,
 tree, properties, and publish. The provider has a versioned registry,
 permission map, typed error catalog, fallback profiles, control-plane evidence
 contracts, and framework-neutral endpoint adapter seam in `src/adapters.rs`.
@@ -48,11 +48,8 @@ and waiver policy before a tenant can be promoted.
    evidence.
    Dependency: priority 1 and Pages reference-consumer readiness. Verification:
    `npm run verify:page-builder:fba:baseline`.
-3. Agree the legacy-block bridge exit with the Pages owner. Done when supported
    migration, removal preconditions, and an owner outcome are recorded without
    deleting existing blocks through builder body writes.
-   Dependency: legacy content inventory and Pages migration approval.
-   Verification: `npm run verify:page-builder:pages:legacy-bridge`.
 
 ## Verification
 
@@ -63,6 +60,5 @@ and waiver policy before a tenant can be promoted.
 
 - Page Builder owns capability delivery, provider contracts, endpoint envelopes,
   feature profiles, and rollout mechanics.
-- Pages owns page lifecycle and legacy block migration safety; forum remains a
   later consumer of the public capability contract.
 - Hosts compose provider endpoints and do not define provider-local contracts.

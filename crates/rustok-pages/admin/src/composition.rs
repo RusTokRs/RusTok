@@ -167,7 +167,12 @@ fn PagesFlyBuilder(
     };
     let restored_draft = draft_token
         .as_deref()
-        .and_then(|token| pages_browser_draft_store().load(token, &page.id).ok().flatten())
+        .and_then(|token| {
+            pages_browser_draft_store()
+                .load(token, &page.id)
+                .ok()
+                .flatten()
+        })
         .filter(|draft| draft.controller.revision_id() == revision_id);
     let (controller, runtime_context) = match restored_draft {
         Some(draft) => (Ok(draft.controller), draft.runtime_context),

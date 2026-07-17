@@ -4,9 +4,9 @@
 
 ## Project inspection
 
-`FlyProjectInspection` is the transport-neutral bridge for one canonical `grapesjs_v1` value. It:
+`FlyProjectInspection` is the transport-neutral bridge for one canonical `grapesjs` value. It:
 
-- decodes through `fly::GrapesJsV1Codec` without dropping unknown fields;
+- decodes through `fly::GrapesJsCodec` without dropping unknown fields;
 - validates through Fly registries and configurable node/depth limits;
 - exposes validation diagnostics without converting missing providers into destructive migrations;
 - builds the layers tree from the real GrapesJS hierarchy at `pages[].component.components`;
@@ -26,7 +26,6 @@ Use `require_valid()` before preview or publish. Warnings such as an unavailable
 - `PageBuilderAdapterTelemetry` evidence port;
 - canonical DTOs, authorization handlers, rollout guards and transport envelopes.
 
-Unlike the legacy reference adapter, its `tree` capability traverses actual GrapesJS pages and components. Its `properties` capability verifies that the requested node exists in the stored project before accepting the property payload.
 
 A typical composition keeps the existing guard order:
 

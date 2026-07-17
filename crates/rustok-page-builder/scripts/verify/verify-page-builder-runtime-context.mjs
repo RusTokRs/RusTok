@@ -73,7 +73,7 @@ const required = [
   [runtimePipeline, 'pub fn materialize_project_with_runtime_context', 'effective context pipeline is missing'],
   [scenarioRender, 'pub fn render_runtime_scenario_matrix', 'scenario render matrix is missing'],
   [scenarioRender, 'duplicate_html_groups', 'scenario duplicate-output detection is missing'],
-  [scenarioSnapshot, 'FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT_V1', 'scenario snapshot format marker is missing'],
+  [scenarioSnapshot, 'FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT', 'scenario snapshot format marker is missing'],
   [scenarioSnapshot, 'pub fn diff_runtime_scenario_render_snapshots', 'scenario regression diff is missing'],
   [pageBuilderLib, 'pub mod runtime_context;', 'consumer runtime context API is not exported'],
   [pageBuilderLib, 'pub mod runtime_scenario_render;', 'consumer scenario render API is not exported'],

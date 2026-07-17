@@ -139,7 +139,7 @@ async fn grapesjs_body_round_trips_on_create_and_get() {
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
                     content: String::new(),
-                    format: Some("grapesjs_v1".to_string()),
+                    format: Some("grapesjs".to_string()),
                     content_json: Some(project.clone()),
                 }),
                 blocks: None,
@@ -151,7 +151,7 @@ async fn grapesjs_body_round_trips_on_create_and_get() {
         .expect("page with grapesjs body should be created");
 
     let body = created.body.expect("body should be present after create");
-    assert_eq!(body.format, "grapesjs_v1");
+    assert_eq!(body.format, "grapesjs");
     assert_eq!(body.content_json, Some(project.clone()));
     assert_eq!(
         created.channel_slugs,
@@ -163,7 +163,7 @@ async fn grapesjs_body_round_trips_on_create_and_get() {
         .await
         .expect("page should be readable after create");
     let loaded_body = loaded.body.expect("body should be present after get");
-    assert_eq!(loaded_body.format, "grapesjs_v1");
+    assert_eq!(loaded_body.format, "grapesjs");
     assert_eq!(loaded_body.content_json, Some(project));
     assert_eq!(
         loaded.channel_slugs,
@@ -213,7 +213,7 @@ async fn grapesjs_body_round_trips_on_update() {
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
                     content: String::new(),
-                    format: Some("grapesjs_v1".to_string()),
+                    format: Some("grapesjs".to_string()),
                     content_json: Some(updated_project.clone()),
                 }),
                 channel_slugs: Some(vec!["app".to_string(), "app".to_string()]),
@@ -224,7 +224,7 @@ async fn grapesjs_body_round_trips_on_update() {
         .expect("page should accept grapesjs update");
 
     let body = updated.body.expect("body should be present after update");
-    assert_eq!(body.format, "grapesjs_v1");
+    assert_eq!(body.format, "grapesjs");
     assert_eq!(body.content_json, Some(updated_project));
     assert_eq!(updated.template, "builder");
     assert_eq!(updated.channel_slugs, vec!["app".to_string()]);
@@ -332,7 +332,7 @@ async fn grapesjs_body_update_preserves_legacy_blocks() {
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
                     content: String::new(),
-                    format: Some("grapesjs_v1".to_string()),
+                    format: Some("grapesjs".to_string()),
                     content_json: Some(updated_project.clone()),
                 }),
                 channel_slugs: None,
@@ -343,7 +343,7 @@ async fn grapesjs_body_update_preserves_legacy_blocks() {
         .expect("page should accept grapesjs body without deleting legacy blocks");
 
     let body = updated.body.expect("grapesjs body should be present");
-    assert_eq!(body.format, "grapesjs_v1");
+    assert_eq!(body.format, "grapesjs");
     assert_eq!(body.content_json, Some(updated_project.clone()));
     assert_eq!(updated.blocks.len(), 1);
     assert_eq!(updated.blocks[0].data["text"], "Legacy block payload");
@@ -353,7 +353,7 @@ async fn grapesjs_body_update_preserves_legacy_blocks() {
         .await
         .expect("hybrid page should stay readable");
     let loaded_body = loaded.body.expect("body should survive reload");
-    assert_eq!(loaded_body.format, "grapesjs_v1");
+    assert_eq!(loaded_body.format, "grapesjs");
     assert_eq!(loaded_body.content_json, Some(updated_project));
     assert_eq!(loaded.blocks.len(), 1);
     assert_eq!(loaded.blocks[0].data["text"], "Legacy block payload");

@@ -1,7 +1,5 @@
 {
-  "schema_version": 1,
   "artifact": "page_builder_correlation_contract",
-  "contract_version": "1.0",
   "scope": "builder_write_to_pages_publish_to_storefront_read",
   "required_path": [
     "builder_write",

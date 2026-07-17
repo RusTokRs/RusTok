@@ -1,4 +1,4 @@
-use crate::{FlyError, FlyResult, GrapesJsV1Codec};
+use crate::{FlyError, FlyResult, GrapesJsCodec};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -14,7 +14,7 @@ pub struct ProjectSnapshot {
 
 impl ProjectSnapshot {
     pub fn restore(&self) -> FlyResult<crate::ProjectDocument> {
-        let document = GrapesJsV1Codec::decode_value(self.project_data.clone())?;
+        let document = GrapesJsCodec::decode_value(self.project_data.clone())?;
         let actual = document.hash().hex();
         if actual != self.project_hash {
             return Err(FlyError::SnapshotHashMismatch {

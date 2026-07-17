@@ -1,5 +1,5 @@
 use crate::{dispatch_browser_intent, AdminCanvasController};
-use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL_V1};
+use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL};
 use serde_json::{json, Value};
 
 fn controller() -> AdminCanvasController {
@@ -29,13 +29,9 @@ fn controller() -> AdminCanvasController {
     .expect("controller")
 }
 
-fn intent(
-    controller: &AdminCanvasController,
-    name: &str,
-    payload: Value,
-) -> BrowserIntentEnvelope {
+fn intent(controller: &AdminCanvasController, name: &str, payload: Value) -> BrowserIntentEnvelope {
     BrowserIntentEnvelope {
-        protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
+        protocol: FLY_BROWSER_PROTOCOL.to_string(),
         instance_id: "ssr-actions-forms".to_string(),
         intent: name.to_string(),
         payload,
@@ -64,8 +60,12 @@ fn browser_dispatches_action_form_and_native_field_contracts() {
     let action = dispatch_browser_intent(&mut controller, request).expect("action dispatch");
     assert!(action.dirty);
     assert_eq!(
-        controller.editor().document().component("cta").unwrap().extensions["flyAction"]
-            ["page_id"],
+        controller
+            .editor()
+            .document()
+            .component("cta")
+            .unwrap()
+            .extensions["flyAction"]["page_id"],
         "about"
     );
 
@@ -83,7 +83,12 @@ fn browser_dispatches_action_form_and_native_field_contracts() {
     );
     dispatch_browser_intent(&mut controller, request).expect("form dispatch");
     assert_eq!(
-        controller.editor().document().component("form").unwrap().extensions["flyForm"]["id"],
+        controller
+            .editor()
+            .document()
+            .component("form")
+            .unwrap()
+            .extensions["flyForm"]["id"],
         "contact"
     );
 

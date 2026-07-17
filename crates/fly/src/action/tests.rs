@@ -1,9 +1,9 @@
 use super::*;
-use crate::{GrapesJsV1Codec, ProjectDocument};
+use crate::{GrapesJsCodec, ProjectDocument};
 use serde_json::json;
 
 fn document() -> ProjectDocument {
-    GrapesJsV1Codec::decode_value(json!({
+    GrapesJsCodec::decode_value(json!({
         "flyLocales": {
             "default_locale": "ru",
             "supported_locales": ["ru", "en"]
@@ -76,7 +76,7 @@ fn actions_and_forms_materialize_to_native_and_custom_contracts() {
 
 #[test]
 fn materialization_clears_stale_interaction_attributes() {
-    let document = GrapesJsV1Codec::decode_value(json!({
+    let document = GrapesJsCodec::decode_value(json!({
         "pages": [{
             "component": {
                 "id": "root",
@@ -85,10 +85,10 @@ fn materialization_clears_stale_interaction_attributes() {
                     "id": "search-form",
                     "type": "wrapper",
                     "attributes": {
-                        "action": "/legacy",
+                        "action": "/current",
                         "enctype": "multipart/form-data",
                         "novalidate": "",
-                        "data-fly-form-provider": "legacy",
+                        "data-fly-form-provider": "current",
                         "data-fly-form-action": "send",
                         "data-fly-form-input": "{}",
                         "href": "/stale",
@@ -101,16 +101,16 @@ fn materialization_clears_stale_interaction_attributes() {
                     "type": "button",
                     "tagName": "a",
                     "attributes": {
-                        "href": "/legacy",
+                        "href": "/current",
                         "target": "_blank",
                         "rel": "opener",
-                        "form": "legacy-form",
-                        "action": "/legacy-submit",
+                        "form": "current-form",
+                        "action": "/current-submit",
                         "method": "post",
                         "enctype": "multipart/form-data",
                         "novalidate": "",
-                        "data-fly-form-provider": "legacy",
-                        "data-fly-action": "legacy"
+                        "data-fly-form-provider": "current",
+                        "data-fly-action": "current"
                     },
                     "flyAction": {
                         "kind": "emit_event",
@@ -162,7 +162,7 @@ fn materialization_clears_stale_interaction_attributes() {
 
 #[test]
 fn missing_form_and_unsafe_url_are_blocking_validation() {
-    let document = GrapesJsV1Codec::decode_value(json!({
+    let document = GrapesJsCodec::decode_value(json!({
         "pages": [{
             "component": {
                 "id": "root",
@@ -192,7 +192,7 @@ fn missing_form_and_unsafe_url_are_blocking_validation() {
 
 #[test]
 fn network_paths_and_backslash_urls_are_blocking_validation() {
-    let document = GrapesJsV1Codec::decode_value(json!({
+    let document = GrapesJsCodec::decode_value(json!({
         "pages": [{
             "component": {
                 "id": "root",
@@ -229,7 +229,7 @@ fn network_paths_and_backslash_urls_are_blocking_validation() {
 
 #[test]
 fn duplicate_forms_and_interaction_conflicts_are_rejected() {
-    let document = GrapesJsV1Codec::decode_value(json!({
+    let document = GrapesJsCodec::decode_value(json!({
         "pages": [{
             "id": "home",
             "flyPageMeta": { "slug": "home" },
@@ -263,17 +263,17 @@ fn duplicate_forms_and_interaction_conflicts_are_rejected() {
     assert!(diagnostics
         .iter()
         .any(|diagnostic| diagnostic.code == "duplicate_form_id"));
-    assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "component_navigation_contract_conflict"
-    }));
-    assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "component_form_interaction_contract_conflict"
-    }));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| { diagnostic.code == "component_navigation_contract_conflict" }));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| { diagnostic.code == "component_form_interaction_contract_conflict" }));
 }
 
 #[test]
 fn non_post_encoding_is_rejected() {
-    let document = GrapesJsV1Codec::decode_value(json!({
+    let document = GrapesJsCodec::decode_value(json!({
         "pages": [{
             "component": {
                 "id": "root",
@@ -300,7 +300,7 @@ fn non_post_encoding_is_rejected() {
 
 #[test]
 fn anonymous_action_diagnostics_use_the_shared_canonical_path() {
-    let document = GrapesJsV1Codec::decode_value(json!({
+    let document = GrapesJsCodec::decode_value(json!({
         "pages": [{
             "component": {
                 "id": "root",
@@ -314,7 +314,7 @@ fn anonymous_action_diagnostics_use_the_shared_canonical_path() {
     }))
     .expect("document");
     let diagnostics = validate_component_actions(&document);
-    assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.path == "project.pages[0].component.components[0]"
-    }));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| { diagnostic.path == "project.pages[0].component.components[0]" }));
 }

@@ -67,7 +67,7 @@ pub fn PaletteLayersPanel(
                                     role=role
                                     data-fly-contribution-diagnostic=diagnostic.code.clone()
                                 >
-                                    <code>{diagnostic.code}</code>
+                                    <code>{diagnostic.code.clone()}</code>
                                     {format!(": {}", diagnostic.message)}
                                 </p>
                             }
@@ -240,7 +240,6 @@ mod tests {
             .register(ContributionDescriptor {
                 id: "pages.blocks".to_string(),
                 provider: "fly.builtin".to_string(),
-                provider_version: "1".to_string(),
                 required_capabilities: BTreeSet::new(),
                 blocks: vec!["fly.hero".to_string()],
                 renderers: Vec::new(),

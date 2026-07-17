@@ -4,7 +4,7 @@ use rustok_ui_core::{normalize_ui_text, parse_ui_csv};
 use rustok_ui_core::{ui_busy_key, ui_busy_key_matches_action, ui_busy_key_with_id};
 use serde_json::{json, Value};
 
-pub const GRAPESJS_FORMAT: &str = "grapesjs_v1";
+pub const GRAPESJS_FORMAT: &str = "grapesjs";
 
 pub fn slugify(value: &str) -> String {
     value
@@ -355,7 +355,7 @@ pub fn default_project_data(title: &str) -> Value {
                                 },
                                 {
                                     "type": "text",
-                                    "content": "<p>Contract-safe starter project for grapesjs_v1.</p>",
+                                    "content": "<p>Contract-safe starter project for grapesjs.</p>",
                                 }
                             ]
                         }
@@ -442,7 +442,7 @@ pub fn preview_html(title: &str, slug: &str, locale: &str, project: &Value) -> S
         .collect::<String>();
 
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\" /><style>body{{font-family:Inter,Segoe UI,sans-serif;margin:0;padding:1rem;background:#f8fafc;color:#0f172a;}}h1{{margin:0 0 .5rem;}}.meta{{font-size:.85rem;color:#475569;margin-bottom:.75rem;}}ul{{margin:.5rem 0 0 1rem;padding:0;}}li{{margin:.2rem 0;}}</style></head><body><h1>{}</h1><div class=\"meta\">slug: {} · locale: {} · format: {}</div><p>Contract-safe preview surface for grapesjs_v1. Tree snapshot:</p><ul>{}</ul></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\" /><style>body{{font-family:Inter,Segoe UI,sans-serif;margin:0;padding:1rem;background:#f8fafc;color:#0f172a;}}h1{{margin:0 0 .5rem;}}.meta{{font-size:.85rem;color:#475569;margin-bottom:.75rem;}}ul{{margin:.5rem 0 0 1rem;padding:0;}}li{{margin:.2rem 0;}}</style></head><body><h1>{}</h1><div class=\"meta\">slug: {} · locale: {} · format: {}</div><p>Contract-safe preview surface for grapesjs. Tree snapshot:</p><ul>{}</ul></body></html>",
         if safe_title.is_empty() {
             "New page"
         } else {
@@ -525,7 +525,7 @@ pub fn channel_count_label(channel_slugs_text: &str) -> String {
     parse_channel_slugs(channel_slugs_text).len().to_string()
 }
 
-pub fn legacy_block_snapshot_label(block: &PageBlock) -> String {
+pub fn current_block_snapshot_label(block: &PageBlock) -> String {
     format!(
         "#{} · {} · position {}",
         block.id, block.block_type, block.position
@@ -994,7 +994,7 @@ mod tests {
             position: 3,
         };
         assert_eq!(
-            legacy_block_snapshot_label(&block),
+            current_block_snapshot_label(&block),
             "#block_1 · hero · position 3"
         );
     }

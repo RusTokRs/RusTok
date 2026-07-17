@@ -37,7 +37,7 @@ for (const marker of [
   'hydrate_page_components_from_frames',
   'canonical_project',
   'synchronize_first_frame',
-  'GrapesJsV1Codec::encode_vec',
+  'GrapesJsCodec::encode_vec',
 ]) {
   requireMarker('flyCodec', marker, `Fly GrapesJS codec is missing ${marker}`);
 }
@@ -52,7 +52,7 @@ for (const marker of [
   requireMarker('flyCommandFacade', marker, `Fly command facade is missing ${marker}`);
 }
 for (const marker of [
-  'GrapesJsV1Codec::encode_vec(document)',
+  'GrapesJsCodec::encode_vec(document)',
   'pub fn from_bytes(bytes: &[u8])',
   'RestoreSnapshot',
 ]) {
