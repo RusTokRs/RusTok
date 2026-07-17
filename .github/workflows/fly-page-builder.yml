@@ -92,6 +92,9 @@ jobs:
           -p rustok-pages-admin
           --lib -- -D warnings
 
+      - name: Verify SSR-first architecture
+        run: node scripts/verify/verify-fly-ssr-first.mjs
+
       - name: Verify Fly contribution access
         run: node scripts/verify/verify-fly-ui-contributions.mjs
 
