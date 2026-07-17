@@ -48,10 +48,14 @@ fn redis_feature_is_compatibility_only_in_core_and_owned_by_cache() {
 }
 
 #[test]
-fn shared_redis_backend_connects_lazily_and_keeps_startup_outage_visible() {
+fn shared_redis_backend_connects_lazily_and_recovers_generation_through_monitor() {
     let cache_lib = include_str!("../../rustok-cache/src/lib.rs");
     let shared = include_str!("../../rustok-cache/src/shared_backend.rs");
-    let recovery = include_str!("../../rustok-cache/src/startup_recovery_tests.rs");
+    let weighted = include_str!("../../rustok-cache/src/weighted.rs");
+    let generation_recovery =
+        include_str!("../../rustok-cache/src/backend_generation_recovery.rs");
+    let redis_status = include_str!("../../rustok-cache/src/redis_status.rs");
+    let recovery_test = include_str!("../../rustok-cache/src/startup_recovery_tests.rs");
 
     assert!(shared.contains("manager: AsyncMutex<Option<redis::aio::ConnectionManager>>"));
     assert!(shared.contains("async fn connection_manager(&self)"));
@@ -60,13 +64,33 @@ fn shared_redis_backend_connects_lazily_and_keeps_startup_outage_visible() {
     assert!(shared.contains(
         "configured_redis_outage_remains_visible_and_local_writes_stay_bounded"
     ));
+
+    assert!(cache_lib.contains("include!(\"backend_generation_recovery.rs\");"));
+    assert!(shared.contains("self.wrap_generation_recovery_health(prefix, backend)"));
+    assert!(weighted.contains("self.wrap_generation_recovery_health(prefix, backend)"));
+    assert!(generation_recovery.contains("MAX_GENERATION_RECOVERIES_PER_PROBE"));
+    assert!(generation_recovery.contains("generation_store_identity()"));
+    assert!(generation_recovery.contains("CacheGenerationSource::SharedRedis"));
+    assert!(generation_recovery.contains("self.ensure_owner()?;"));
+    assert!(generation_recovery.contains(
+        "different_services_cannot_claim_the_same_generation_state"
+    ));
+    assert!(generation_recovery.contains(
+        "aliased_untrusted_generation_requires_domain_recovery"
+    ));
+    assert!(redis_status.contains("self.recover_registered_backend_generations().await"));
+
     assert!(cache_lib.contains("#[cfg(all(test, feature = \"redis-cache\"))]"));
     assert!(cache_lib.contains("mod startup_recovery_tests;"));
-    assert!(recovery.contains(
-        "raw_backend_created_during_startup_outage_connects_after_redis_recovers"
+    assert!(recovery_test.contains(
+        "backend_created_during_startup_outage_recovers_shared_generation"
     ));
-    assert!(recovery.contains("RUSTOK_CACHE_REDIS_SERVER_BIN"));
-    assert!(recovery.contains("existing backend did not connect after Redis startup"));
+    assert!(recovery_test.contains("RUSTOK_CACHE_REDIS_SERVER_BIN"));
+    assert!(recovery_test.contains("service.redis_status().await.is_healthy()"));
+    assert!(recovery_test.contains(
+        "Redis status monitor path did not recover shared generation after startup"
+    ));
+    assert!(recovery_test.contains("format!(\"{prefix}:g-0:shared\")"));
 }
 
 #[test]
@@ -86,8 +110,12 @@ fn memory_only_cache_feature_matrix_remains_enforced() {
     assert!(weighted.contains(
         "#[cfg(feature = \"redis-cache\")]\nuse crate::fallback::DegradationAwareFallbackBackend;"
     ));
-    assert!(shared.contains("#[cfg(not(feature = \"redis-cache\"))]\n        let _ = (prefix, options);"));
-    assert!(weighted.contains("#[cfg(not(feature = \"redis-cache\"))]\n        let _ = (prefix, options);"));
+    assert!(shared.contains(
+        "#[cfg(not(feature = \"redis-cache\"))]\n        let _ = (prefix, options);"
+    ));
+    assert!(weighted.contains(
+        "#[cfg(not(feature = \"redis-cache\"))]\n        let _ = (prefix, options);"
+    ));
     for target in ["fallback_cas_live", "real_redis_hardening"] {
         assert!(cache_manifest.contains(&format!("name = \"{target}\"")));
     }
