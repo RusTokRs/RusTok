@@ -148,9 +148,13 @@ impl MarketplaceSellerReadPort for crate::MarketplaceSellerService {
         request: ReadMarketplaceSellerRequest,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        self.get_seller(parse_tenant_id(&context)?, request.seller_id)
-            .await
-            .map_err(map_owner_error)
+        self.get_seller(
+            parse_tenant_id(&context)?,
+            request.seller_id,
+            context.locale.as_str(),
+        )
+        .await
+        .map_err(map_owner_error)
     }
 
     async fn list_sellers(
@@ -160,7 +164,11 @@ impl MarketplaceSellerReadPort for crate::MarketplaceSellerService {
     ) -> Result<MarketplaceSellerListResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let (items, total) = self
-            .list_sellers(parse_tenant_id(&context)?, request)
+            .list_sellers(
+                parse_tenant_id(&context)?,
+                context.locale.as_str(),
+                request,
+            )
             .await
             .map_err(map_owner_error)?;
         Ok(MarketplaceSellerListResponse { items, total })
@@ -205,6 +213,7 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
             parse_idempotency_key(&context)?,
+            context.locale.as_str(),
             request,
         )
         .await
@@ -221,6 +230,7 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
             parse_idempotency_key(&context)?,
+            context.locale.as_str(),
             request.seller_id,
             request.input,
         )
@@ -238,6 +248,7 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
             parse_idempotency_key(&context)?,
+            context.locale.as_str(),
             request.seller_id,
             request.input,
         )
@@ -255,6 +266,7 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
             parse_idempotency_key(&context)?,
+            context.locale.as_str(),
             request.seller_id,
             request.input,
         )
@@ -272,6 +284,7 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
             parse_idempotency_key(&context)?,
+            context.locale.as_str(),
             request.seller_id,
             request.input,
         )
@@ -289,6 +302,7 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
             parse_idempotency_key(&context)?,
+            context.locale.as_str(),
             request.seller_id,
         )
         .await
@@ -369,6 +383,10 @@ fn map_owner_error(error: MarketplaceSellerError) -> PortError {
         MarketplaceSellerError::SellerNotFound(id) => PortError::not_found(
             "marketplace_seller.seller_not_found",
             format!("marketplace seller {id} not found"),
+        ),
+        MarketplaceSellerError::TranslationNotFound { .. } => PortError::invariant_violation(
+            "marketplace_seller.translation_missing",
+            "marketplace seller translation is missing for the effective locale",
         ),
         MarketplaceSellerError::MemberNotFound(id) => PortError::not_found(
             "marketplace_seller.member_not_found",
