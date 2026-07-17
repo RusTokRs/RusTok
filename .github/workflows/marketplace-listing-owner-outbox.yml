@@ -45,8 +45,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: marketplace-listing-owner-outbox
-      - name: Format listing crate
-        run: cargo fmt --package rustok-marketplace-listing -- --check
+      - name: Capture listing rustfmt patch
+        run: |
+          cargo fmt --package rustok-marketplace-listing
+          git diff -- crates/rustok-marketplace-listing > rustfmt.patch
+      - name: Upload listing rustfmt patch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketplace-listing-rustfmt-patch
+          path: rustfmt.patch
+          if-no-files-found: error
+          retention-days: 3
       - name: Compile listing crate
         run: cargo check -p rustok-marketplace-listing --all-targets
       - name: Test listing owner atomicity
@@ -55,3 +65,9 @@ jobs:
         run: cargo clippy -p rustok-marketplace-listing --all-targets -- -D warnings
       - name: Verify sealed event and outbox source contract
         run: node scripts/verify/verify-marketplace-listing-event-contract.mjs
+      - name: Enforce clean listing rustfmt
+        run: |
+          if test -s rustfmt.patch; then
+            cat rustfmt.patch
+            exit 1
+          fi
