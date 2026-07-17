@@ -13,7 +13,7 @@ use crate::common::{
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum TenantRouteScope {
+pub(crate) enum TenantRouteScope {
     TenantBound,
     GlobalOperator,
     SelfResolvingHandshake,
@@ -26,7 +26,7 @@ fn path_is_or_descendant(path: &str, root: &str) -> bool {
             .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
-pub fn tenant_route_scope(path: &str) -> TenantRouteScope {
+pub(crate) fn tenant_route_scope(path: &str) -> TenantRouteScope {
     if path == "/api/graphql/ws" {
         return TenantRouteScope::SelfResolvingHandshake;
     }
@@ -44,19 +44,16 @@ pub fn tenant_route_scope(path: &str) -> TenantRouteScope {
     }
 }
 
-pub fn tenant_path_requires_resolution(path: &str) -> bool {
-    tenant_route_scope(path) == TenantRouteScope::TenantBound
-}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum TenantIdentifierKind {
+pub(crate) enum TenantIdentifierKind {
     Uuid,
     Slug,
     Host,
 }
 
 impl TenantIdentifierKind {
-    pub const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::Uuid => "uuid",
             Self::Slug => "slug",
@@ -66,14 +63,14 @@ impl TenantIdentifierKind {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum ResolvedTenantIdentifier {
+pub(crate) enum ResolvedTenantIdentifier {
     Uuid(Uuid),
     Slug(String),
     Host(String),
 }
 
 impl ResolvedTenantIdentifier {
-    pub const fn kind(&self) -> TenantIdentifierKind {
+    pub(crate) const fn kind(&self) -> TenantIdentifierKind {
         match self {
             Self::Uuid(_) => TenantIdentifierKind::Uuid,
             Self::Slug(_) => TenantIdentifierKind::Slug,
@@ -81,23 +78,17 @@ impl ResolvedTenantIdentifier {
         }
     }
 
-    pub fn value(&self) -> String {
+    pub(crate) fn value(&self) -> String {
         match self {
             Self::Uuid(value) => value.to_string(),
             Self::Slug(value) | Self::Host(value) => value.clone(),
         }
     }
 
-    pub const fn uuid(&self) -> Option<Uuid> {
-        match self {
-            Self::Uuid(value) => Some(*value),
-            Self::Slug(_) | Self::Host(_) => None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum TenantResolutionSource {
+pub(crate) enum TenantResolutionSource {
     SingleTenantDefault,
     Header,
     CompatibilitySlugHeader,
@@ -108,7 +99,7 @@ pub enum TenantResolutionSource {
 }
 
 impl TenantResolutionSource {
-    pub const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::SingleTenantDefault => "single_tenant_default",
             Self::Header => "header",
@@ -121,18 +112,16 @@ impl TenantResolutionSource {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct TenantResolutionSourceExtension(pub TenantResolutionSource);
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct TenantResolution {
-    pub identifier: ResolvedTenantIdentifier,
-    pub source: TenantResolutionSource,
-    pub asserted_slug: Option<String>,
+pub(crate) struct TenantResolution {
+    pub(crate) identifier: ResolvedTenantIdentifier,
+    pub(crate) source: TenantResolutionSource,
+    pub(crate) asserted_slug: Option<String>,
 }
 
 impl TenantResolution {
-    pub fn validate_resolved_slug(&self, resolved_slug: &str) -> Result<(), TenantResolutionError> {
+    pub(crate) fn validate_resolved_slug(&self, resolved_slug: &str) -> Result<(), TenantResolutionError> {
         let Some(asserted_slug) = self.asserted_slug.as_deref() else {
             return Ok(());
         };
@@ -147,7 +136,7 @@ impl TenantResolution {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum TenantResolutionError {
+pub(crate) enum TenantResolutionError {
     InvalidPolicy(String),
     MissingHeader {
         header_name: String,
@@ -182,7 +171,7 @@ pub enum TenantResolutionError {
 }
 
 impl TenantResolutionError {
-    pub const fn status_code(&self) -> StatusCode {
+    pub(crate) const fn status_code(&self) -> StatusCode {
         match self {
             Self::InvalidPolicy(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::NoBaseDomainMatch { .. } => StatusCode::NOT_FOUND,
@@ -239,7 +228,7 @@ impl fmt::Display for TenantResolutionError {
 
 impl std::error::Error for TenantResolutionError {}
 
-pub fn resolve_request(
+pub(crate) fn resolve_request(
     req: &Request<Body>,
     settings: &RustokSettings,
 ) -> Result<TenantResolution, TenantResolutionError> {
@@ -401,6 +390,12 @@ pub(crate) fn subdomain_identifier(
     Err(TenantResolutionError::NoBaseDomainMatch {
         host: host.to_string(),
     })
+}
+
+pub(crate) fn validated_slug_identifier(
+    value: &str,
+) -> Result<ResolvedTenantIdentifier, TenantResolutionError> {
+    validate_slug(value).map(ResolvedTenantIdentifier::Slug)
 }
 
 fn validate_slug(value: &str) -> Result<String, TenantResolutionError> {
