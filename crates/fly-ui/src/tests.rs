@@ -51,6 +51,80 @@ fn presentation_switch_restores_edit_capabilities() {
 }
 
 #[test]
+fn restricted_capabilities_survive_presentation_round_trip() {
+    let restricted = CapabilityState {
+        assets: false,
+        publish: false,
+        ..CapabilityState::full()
+    };
+    let mut machine = FlyUiStateMachine::new(Presentation::Full)
+        .with_editable_capabilities(restricted);
+    assert_eq!(machine.editable_capabilities(), restricted);
+    assert!(!machine.state.capabilities.assets);
+    assert!(!machine.state.capabilities.publish);
+
+    machine
+        .dispatch(UiIntent::SetPresentation(Presentation::Preview))
+        .expect("preview");
+    assert_eq!(machine.state.capabilities, CapabilityState::read_only());
+
+    machine
+        .dispatch(UiIntent::SetPresentation(Presentation::Inline))
+        .expect("inline");
+    assert_eq!(machine.state.capabilities, restricted);
+    assert!(!machine.state.capabilities.assets);
+    assert!(!machine.state.capabilities.publish);
+}
+
+#[test]
+fn withdrawing_drag_capability_cancels_active_drag_and_overlay() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine
+        .dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
+            block_id: "section".to_string(),
+            component: ComponentNode::object("section"),
+        }))
+        .expect("begin drag");
+    machine
+        .dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()]))
+        .expect("hit test");
+    assert!(machine.state.drag.is_some());
+    assert!(machine.state.overlays.insertion.is_some());
+
+    machine
+        .dispatch(UiIntent::SetEditableCapabilities(CapabilityState {
+            drag_drop: false,
+            ..CapabilityState::full()
+        }))
+        .expect("withdraw drag capability");
+    assert!(machine.state.drag.is_none());
+    assert!(machine.state.overlays.insertion.is_none());
+    assert!(!machine.state.capabilities.drag_drop);
+}
+
+#[test]
+fn reviewer_profile_can_publish_but_cannot_mutate() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full)
+        .with_editable_capabilities(CapabilityState {
+            edit: false,
+            publish: true,
+            ..CapabilityState::full()
+        });
+    let mutation = machine.dispatch(UiIntent::execute(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: Default::default(),
+    }));
+    assert_eq!(
+        mutation,
+        Err(UiError::CapabilityUnavailable("edit".to_string()))
+    );
+    assert!(matches!(
+        machine.dispatch(UiIntent::RequestSave),
+        Ok(effects) if matches!(effects.first(), Some(UiEffect::Persist { .. }))
+    ));
+}
+
+#[test]
 fn read_only_mode_rejects_mutation() {
     let mut machine = FlyUiStateMachine::new(Presentation::ReadOnly);
     let error = machine
