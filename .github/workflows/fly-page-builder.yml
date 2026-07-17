@@ -48,7 +48,7 @@ jobs:
           node-version: 22
 
       - name: Check focused formatting
-        run: cargo fmt -p fly -p rustok-page-builder-admin -- --check
+        run: cargo fmt -p fly -p fly-browser -p rustok-page-builder-admin -- --check
 
       - name: Run Fly unit tests
         run: cargo test -p fly --lib
