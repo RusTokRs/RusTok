@@ -44,12 +44,42 @@
           "idempotency_key"
         ],
         "request_identity": "canonical_sha256_v1",
+        "request_identity_includes": [
+          "command_kind",
+          "actor_id",
+          "effective_locale_for_localized_commands",
+          "normalized_request"
+        ],
         "result_snapshot": "normalized_owner_response_json",
         "atomic_with_owner_write": true,
         "conflicting_payload": "marketplace_seller.idempotency_conflict"
       }
     }
   ],
+  "localized_storage": {
+    "base_table": "marketplace_sellers",
+    "translation_table": "marketplace_seller_translations",
+    "localized_fields": [
+      "display_name"
+    ],
+    "translation_identity": [
+      "tenant_id",
+      "seller_id",
+      "locale"
+    ],
+    "locale_source": "PortContext.locale_effective",
+    "locale_normalizer": "rustok_api::normalize_locale_tag",
+    "locale_max_bytes": 32,
+    "resolution": "exact_effective_locale",
+    "resolved_locale_projection": "resolved_locale",
+    "missing_translation": "marketplace_seller.translation_missing",
+    "write_strategy": "transactional_on_conflict_upsert",
+    "forbidden": [
+      "localized_fields_in_marketplace_sellers",
+      "localized_json_maps",
+      "owner_invented_locale_fallback"
+    ]
+  },
   "consumers": [
     {
       "module": "marketplace",
@@ -80,6 +110,9 @@
     "central_plan": "crates/rustok-commerce/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs",
+    "base_entity": "crates/rustok-marketplace-seller/src/entities/seller.rs",
+    "translation_entity": "crates/rustok-marketplace-seller/src/entities/seller_translation.rs",
+    "localized_storage": "crates/rustok-marketplace-seller/src/localized_sellers.rs",
     "receipt_entity": "crates/rustok-marketplace-seller/src/entities/seller_command_receipt.rs",
     "receipt_executor": "crates/rustok-marketplace-seller/src/command_receipts.rs",
     "receipted_commands": "crates/rustok-marketplace-seller/src/receipted_commands.rs",
@@ -105,7 +138,10 @@
         "assertions": [
           "tenant_scope_preserved",
           "typed_not_found",
-          "context_deadline_preserved"
+          "context_deadline_preserved",
+          "effective_locale_read_exact",
+          "resolved_locale_returned",
+          "missing_translation_is_invariant_violation"
         ]
       },
       {
@@ -113,7 +149,8 @@
         "assertions": [
           "bounded_pagination",
           "tenant_scope_preserved",
-          "context_deadline_preserved"
+          "context_deadline_preserved",
+          "localized_search_uses_effective_locale_only"
         ]
       },
       {
@@ -129,11 +166,21 @@
         "assertions": [
           "deadline_required",
           "idempotency_key_required",
-          "seller_and_owner_membership_atomic",
+          "seller_translation_and_owner_membership_atomic",
           "receipt_and_owner_write_atomic",
+          "effective_locale_in_request_identity",
           "lost_response_replay_returns_saved_result",
           "conflicting_payload_rejected",
           "duplicate_handle_conflict"
+        ]
+      },
+      {
+        "operation": "update_seller_profile",
+        "assertions": [
+          "effective_locale_in_request_identity",
+          "translation_upsert_uses_database_conflict_handling",
+          "translation_update_and_receipt_atomic",
+          "parallel_locales_do_not_overwrite_each_other"
         ]
       },
       {
@@ -159,12 +206,14 @@
         "operation": "admin_transport_parity",
         "assertions": [
           "native_and_graphql_share_command_envelope",
+          "native_and_graphql_use_request_effective_locale",
+          "native_and_graphql_return_resolved_locale",
           "native_and_graphql_require_same_idempotency_key",
           "selected_transport_never_implicitly_falls_back",
           "retry_reuses_original_idempotency_key"
         ]
       }
     ],
-    "known_gap": "compiled migration, replay contention, mounted native and GraphQL execution, and remote-profile evidence are not yet retained"
+    "known_gap": "compiled migration, locale-row contention, replay contention, mounted native and GraphQL execution, and remote-profile evidence are not yet retained"
   }
 }
