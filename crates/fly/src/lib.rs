@@ -9,6 +9,7 @@ mod audit;
 mod binding;
 mod codec;
 mod command;
+mod component_visit;
 mod context_compatibility;
 mod context_contract;
 mod context_dependency;
