@@ -1,25 +1,77 @@
 use crate::BrowserIntentDispatchError;
+use fly::{AssetCommand, ComponentPatch, EditorCommand};
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};
 use fly_ui::{
-    resolve_editor_shortcut, CapabilityState, EditorCapability, EditorShortcut, KeyStroke,
+    resolve_editor_shortcut, CapabilityState, CommandCapabilityRequirement, EditorCapability,
+    EditorShortcut, KeyStroke,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::fmt;
+use serde_json::{Map, Value};
+use std::{collections::BTreeSet, fmt};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BrowserCapabilityDenial {
     pub intent: String,
+    /// Backward-compatible primary capability. New clients should use `required` and `missing`.
     pub capability: EditorCapability,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required: Vec<EditorCapability>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing: Vec<EditorCapability>,
+}
+
+impl BrowserCapabilityDenial {
+    fn from_requirements(
+        intent: impl Into<String>,
+        requirements: impl IntoIterator<Item = EditorCapability>,
+        capabilities: CapabilityState,
+    ) -> Option<Self> {
+        let required = requirements
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let missing = required
+            .iter()
+            .copied()
+            .filter(|capability| !capabilities.allows(*capability))
+            .collect::<Vec<_>>();
+        let capability = missing.first().copied()?;
+        Some(Self {
+            intent: intent.into(),
+            capability,
+            required,
+            missing,
+        })
+    }
 }
 
 impl fmt::Display for BrowserCapabilityDenial {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.missing.len() <= 1 {
+            return write!(
+                formatter,
+                "browser intent `{}` requires editor capability `{}`",
+                self.intent,
+                self.capability.as_str()
+            );
+        }
+        let required = self
+            .required
+            .iter()
+            .map(|capability| capability.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let missing = self
+            .missing
+            .iter()
+            .map(|capability| capability.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
         write!(
             formatter,
-            "browser intent `{}` requires editor capability `{}`",
-            self.intent,
-            self.capability.as_str()
+            "browser intent `{}` requires editor capabilities [{}]; missing [{}]",
+            self.intent, required, missing
         )
     }
 }
@@ -48,16 +100,15 @@ pub fn validate_browser_capability_access(
     capabilities: CapabilityState,
 ) -> Result<(), BrowserCapabilityAccessError> {
     let capabilities = capabilities.normalized();
-    for capability in capability_requirements(envelope)? {
-        if !capabilities.allows(capability) {
-            return Err(BrowserCapabilityDenial {
-                intent: envelope.intent.clone(),
-                capability,
-            }
-            .into());
-        }
-    }
-    Ok(())
+    let requirements = capability_requirements(envelope)?;
+    let Some(denial) = BrowserCapabilityDenial::from_requirements(
+        envelope.intent.clone(),
+        requirements,
+        capabilities,
+    ) else {
+        return Ok(());
+    };
+    Err(denial.into())
 }
 
 fn capability_requirements(
@@ -86,11 +137,7 @@ fn capability_requirements(
         | BrowserIntentKind::DropRequested
         | BrowserIntentKind::DragMoved => vec![EditorCapability::DragDrop],
         BrowserIntentKind::PatchComponentProperty => {
-            if property_kind(&envelope.payload) == Some("style") {
-                vec![EditorCapability::Styles]
-            } else {
-                vec![EditorCapability::Properties]
-            }
+            command_requirements(component_patch_command(&envelope.payload))
         }
         BrowserIntentKind::PatchPageMetadata
         | BrowserIntentKind::RenamePage
@@ -107,13 +154,14 @@ fn capability_requirements(
         | BrowserIntentKind::RemoveComponentForm
         | BrowserIntentKind::SetNativeFormField
         | BrowserIntentKind::SetRuntimeContext
-        | BrowserIntentKind::SetRuntimeLocale => vec![EditorCapability::Properties],
+        | BrowserIntentKind::SetRuntimeLocale => command_requirements(property_command()),
         BrowserIntentKind::UpsertAsset | BrowserIntentKind::RemoveAsset => {
-            vec![EditorCapability::Assets]
+            command_requirements(asset_command())
         }
-        BrowserIntentKind::SelectAsset => {
-            vec![EditorCapability::Assets, EditorCapability::Properties]
-        }
+        BrowserIntentKind::SelectAsset => command_requirements(EditorCommand::batch([
+            asset_command(),
+            property_command(),
+        ])),
         BrowserIntentKind::KeyStroke => return shortcut_requirements(envelope),
         BrowserIntentKind::InsertBlock
         | BrowserIntentKind::RemoveSelected
@@ -122,7 +170,7 @@ fn capability_requirements(
         | BrowserIntentKind::MoveSelectedDown
         | BrowserIntentKind::PatchSelected
         | BrowserIntentKind::CreatePage
-        | BrowserIntentKind::RemovePage => vec![EditorCapability::Edit],
+        | BrowserIntentKind::RemovePage => command_requirements(structural_command()),
     };
     Ok(requirements)
 }
@@ -148,9 +196,57 @@ fn shortcut_requirements(
         | EditorShortcut::Duplicate => vec![EditorCapability::Clipboard],
         EditorShortcut::DeleteSelection
         | EditorShortcut::MoveSelectionUp
-        | EditorShortcut::MoveSelectionDown => vec![EditorCapability::Edit],
+        | EditorShortcut::MoveSelectionDown => command_requirements(structural_command()),
         EditorShortcut::Cancel => Vec::new(),
     })
+}
+
+fn command_requirements(command: EditorCommand) -> Vec<EditorCapability> {
+    CommandCapabilityRequirement::for_command(&command)
+        .capabilities()
+        .collect()
+}
+
+fn structural_command() -> EditorCommand {
+    EditorCommand::Remove {
+        component_id: "__capability_probe__".to_string(),
+    }
+}
+
+fn property_command() -> EditorCommand {
+    EditorCommand::Patch {
+        component_id: "__capability_probe__".to_string(),
+        patch: ComponentPatch {
+            fields: Map::from_iter([("__capability_probe__".to_string(), Value::Null)]),
+            ..ComponentPatch::default()
+        },
+    }
+}
+
+fn component_patch_command(payload: &Value) -> EditorCommand {
+    let patch = if property_kind(payload) == Some("style") {
+        ComponentPatch {
+            style: Some(Value::Object(Map::new())),
+            ..ComponentPatch::default()
+        }
+    } else {
+        ComponentPatch {
+            fields: Map::from_iter([("__capability_probe__".to_string(), Value::Null)]),
+            ..ComponentPatch::default()
+        }
+    };
+    EditorCommand::Patch {
+        component_id: "__capability_probe__".to_string(),
+        patch,
+    }
+}
+
+fn asset_command() -> EditorCommand {
+    EditorCommand::Asset {
+        command: AssetCommand::Remove {
+            asset_id: "__capability_probe__".to_string(),
+        },
+    }
 }
 
 fn property_kind(payload: &Value) -> Option<&str> {
@@ -204,6 +300,8 @@ mod tests {
                 Some(&BrowserCapabilityDenial {
                     intent: intent.to_string(),
                     capability,
+                    required: vec![capability],
+                    missing: vec![capability],
                 })
             );
         }
@@ -296,10 +394,13 @@ mod tests {
             missing_properties,
         )
         .expect_err("asset application changes component properties");
+        let denial = browser_capability_denial(&error).expect("typed denial");
+        assert_eq!(denial.capability, EditorCapability::Properties);
         assert_eq!(
-            browser_capability_denial(&error).map(|denial| denial.capability),
-            Some(EditorCapability::Properties)
+            denial.required,
+            vec![EditorCapability::Properties, EditorCapability::Assets]
         );
+        assert_eq!(denial.missing, vec![EditorCapability::Properties]);
 
         let missing_assets = CapabilityState {
             assets: false,
@@ -313,6 +414,21 @@ mod tests {
         assert_eq!(
             browser_capability_denial(&error).map(|denial| denial.capability),
             Some(EditorCapability::Assets)
+        );
+
+        let missing_both = CapabilityState {
+            properties: false,
+            assets: false,
+            ..CapabilityState::full()
+        };
+        let error = validate_browser_capability_access(
+            &envelope(BrowserIntentKind::SelectAsset.as_str(), json!({ "asset_id": "logo" })),
+            missing_both,
+        )
+        .expect_err("all missing capabilities are returned");
+        assert_eq!(
+            browser_capability_denial(&error).map(|denial| denial.missing.clone()),
+            Some(vec![EditorCapability::Properties, EditorCapability::Assets])
         );
     }
 
