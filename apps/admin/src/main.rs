@@ -14,6 +14,7 @@ async fn main() {
     use axum::{
         extract::Path,
         http::{header::AUTHORIZATION, HeaderMap, StatusCode},
+        middleware,
         routing::post,
         Json, Router,
     };
@@ -22,7 +23,13 @@ async fn main() {
     use leptos_auth::{provide_server_auth_snapshot, AuthError};
     use leptos_axum::{generate_route_list, LeptosRoutes};
     use rustok_admin::app::{
-        auth_ssr::auth_snapshot_from_headers, request_auth_snapshot, shell, App,
+        admin_security_headers,
+        auth_ssr::auth_snapshot_from_headers,
+        request_auth_snapshot,
+        request_csp_nonce,
+        shell,
+        validate_admin_security_profile,
+        App,
     };
     use rustok_pages_admin::{
         dispatch_pages_browser_intent_with_capabilities,
@@ -143,6 +150,7 @@ async fn main() {
         }
     }
 
+    validate_admin_security_profile().expect("valid standalone admin security profile");
     let configuration = get_configuration(None).expect("Leptos SSR configuration");
     let address = configuration.leptos_options.site_addr;
     let options = configuration.leptos_options;
@@ -155,14 +163,20 @@ async fn main() {
         .leptos_routes_with_context(
             &options,
             routes,
-            || provide_server_auth_snapshot(request_auth_snapshot()),
+            || {
+                provide_server_auth_snapshot(request_auth_snapshot());
+                if let Some(nonce) = request_csp_nonce() {
+                    provide_context(nonce);
+                }
+            },
             {
                 let options = options.clone();
                 move || shell(options.clone())
             },
         )
         .fallback(leptos_axum::file_and_error_handler(shell))
-        .with_state(options);
+        .with_state(options)
+        .layer(middleware::from_fn(admin_security_headers));
 
     log!("RusTok admin SSR listening on http://{address}");
     let listener = tokio::net::TcpListener::bind(address)
