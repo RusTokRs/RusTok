@@ -1,8 +1,8 @@
-use crate::dto::{BuilderTreeNode, PageBuilderCapabilityRequest, PageBuilderContractMetadata};
+use crate::dto::{BuilderTreeNode, PageBuilderCapabilityRequest};
 use crate::transport::{PageBuilderTransportError, PageBuilderTransportSuccess};
 use fly::{
     validate_project, ComponentNode, GrapesJsV1Codec, ProjectDocument, RegistrySet,
-    ValidationDiagnostic, ValidationLimits, ValidationReport,
+    ValidationDiagnostic, ValidationLimits, ValidationReport, GRAPESJS_V1,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -24,10 +24,11 @@ pub mod fly_service;
 #[cfg(feature = "server")]
 pub use fly_service::FlyAdapterBackedPageBuilderService;
 
-/// Decoded Fly view of a canonical `grapesjs_v1` project.
+/// Decoded Fly view of the current page-builder project.
 ///
 /// The inspection keeps the original lossless Fly document and its validation report together so
-/// callers cannot accidentally validate one value and traverse another value.
+/// callers cannot accidentally validate one value and traverse another value. External format
+/// decoding stays at this adapter boundary and does not version the domain model.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlyProjectInspection {
     document: ProjectDocument,
@@ -35,7 +36,36 @@ pub struct FlyProjectInspection {
 }
 
 impl FlyProjectInspection {
-    /// Decode and validate a project using the generic Fly registries and default resource limits.
+    /// Decode and validate through the current, versionless adapter API.
+    pub fn decode_current(project_data: &Value) -> FlyProjectAdapterResult<Self> {
+        Self::decode_current_with(
+            project_data,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        )
+    }
+
+    /// Decode and validate through the current API with caller-supplied registries and limits.
+    ///
+    /// Unknown component providers remain warnings and their payloads remain lossless. Structural
+    /// errors such as duplicate IDs or configured resource-limit violations are retained in the
+    /// report and can be rejected with [`Self::require_valid`].
+    pub fn decode_current_with(
+        project_data: &Value,
+        registries: &RegistrySet,
+        limits: ValidationLimits,
+    ) -> FlyProjectAdapterResult<Self> {
+        let document = GrapesJsV1Codec::decode_value(project_data.clone())
+            .map_err(|error| FlyProjectAdapterError::Decode(error.to_string()))?;
+        let validation = validate_project(&document, registries, limits);
+
+        Ok(Self {
+            document,
+            validation,
+        })
+    }
+
+    /// Compatibility entrypoint retained for the existing browser transport until the next major.
     pub fn decode(schema_version: &str, project_data: &Value) -> FlyProjectAdapterResult<Self> {
         Self::decode_with(
             schema_version,
@@ -45,33 +75,20 @@ impl FlyProjectInspection {
         )
     }
 
-    /// Decode and validate a project using caller-supplied registries and limits.
-    ///
-    /// Unknown component providers remain warnings and their payloads remain lossless. Structural
-    /// errors such as duplicate IDs or configured resource-limit violations are retained in the
-    /// report and can be rejected with [`Self::require_valid`].
+    /// Compatibility entrypoint retained for the existing browser transport until the next major.
     pub fn decode_with(
         schema_version: &str,
         project_data: &Value,
         registries: &RegistrySet,
         limits: ValidationLimits,
     ) -> FlyProjectAdapterResult<Self> {
-        let expected = PageBuilderContractMetadata::BASELINE.contract;
-        if schema_version != expected {
+        if schema_version != GRAPESJS_V1 {
             return Err(FlyProjectAdapterError::UnsupportedSchema {
-                expected,
+                expected: GRAPESJS_V1,
                 actual: schema_version.to_string(),
             });
         }
-
-        let document = GrapesJsV1Codec::decode_value(project_data.clone())
-            .map_err(|error| FlyProjectAdapterError::Decode(error.to_string()))?;
-        let validation = validate_project(&document, registries, limits);
-
-        Ok(Self {
-            document,
-            validation,
-        })
+        Self::decode_current_with(project_data, registries, limits)
     }
 
     pub fn document(&self) -> &ProjectDocument {
@@ -181,7 +198,7 @@ impl std::fmt::Display for FlyProjectAdapterError {
         match self {
             Self::UnsupportedSchema { expected, actual } => write!(
                 formatter,
-                "unsupported page-builder schema `{actual}`; expected `{expected}`"
+                "unsupported compatibility schema `{actual}`; expected `{expected}`"
             ),
             Self::Decode(message) => write!(formatter, "Fly project decode failed: {message}"),
             Self::Encode(message) => write!(formatter, "Fly project encode failed: {message}"),
@@ -244,13 +261,8 @@ impl<S> FlyValidatedPageBuilderService<S> {
         &self.inner
     }
 
-    fn validate_project(
-        &self,
-        schema_version: &str,
-        project_data: &Value,
-    ) -> Result<(), PageBuilderServiceError> {
-        let inspection = FlyProjectInspection::decode_with(
-            schema_version,
+    fn validate_project(&self, project_data: &Value) -> Result<(), PageBuilderServiceError> {
+        let inspection = FlyProjectInspection::decode_current_with(
             project_data,
             &self.registries,
             self.limits,
@@ -271,7 +283,7 @@ where
         context: &PortContext,
         input: crate::dto::PreviewPageBuilderInput,
     ) -> crate::service::PageBuilderServiceResult<crate::dto::PreviewPageBuilderResult> {
-        self.validate_project(&input.schema_version, &input.project_data)?;
+        self.validate_project(&input.project_data)?;
         self.inner.preview(context, input).await
     }
 
@@ -296,7 +308,7 @@ where
         context: &PortContext,
         input: crate::dto::PublishPageBuilderInput,
     ) -> crate::service::PageBuilderServiceResult<crate::dto::PublishPageBuilderResult> {
-        self.validate_project(&input.schema_version, &input.project_data)?;
+        self.validate_project(&input.project_data)?;
         self.inner.publish(context, input).await
     }
 }
@@ -392,7 +404,7 @@ mod tests {
 
     #[test]
     fn fly_inspection_reads_real_grapesjs_tree() {
-        let inspection = FlyProjectInspection::decode("grapesjs_v1", &baseline())
+        let inspection = FlyProjectInspection::decode_current(&baseline())
             .expect("fixture must decode through Fly");
         inspection.require_valid().expect("fixture must be valid");
 
@@ -406,7 +418,7 @@ mod tests {
 
     #[test]
     fn fly_inspection_exposes_properties_without_children() {
-        let inspection = FlyProjectInspection::decode("grapesjs_v1", &baseline())
+        let inspection = FlyProjectInspection::decode_current(&baseline())
             .expect("fixture must decode through Fly");
         let properties = inspection
             .component_properties("hero")
@@ -432,7 +444,7 @@ mod tests {
                 }
             }]
         });
-        let inspection = FlyProjectInspection::decode("grapesjs_v1", &project)
+        let inspection = FlyProjectInspection::decode_current(&project)
             .expect("structural decode should succeed");
         let error = inspection
             .require_valid()
@@ -442,9 +454,15 @@ mod tests {
     }
 
     #[test]
-    fn fly_inspection_rejects_contract_drift() {
+    fn compatibility_decode_is_retained_for_the_current_major() {
+        FlyProjectInspection::decode(GRAPESJS_V1, &baseline())
+            .expect("compatibility selector must continue to work");
+    }
+
+    #[test]
+    fn compatibility_decode_rejects_unknown_selector() {
         let error = FlyProjectInspection::decode("fly_v2", &baseline())
-            .expect_err("unknown contract must fail");
+            .expect_err("unknown compatibility selector must fail");
         assert!(matches!(
             error,
             FlyProjectAdapterError::UnsupportedSchema { .. }
