@@ -2,7 +2,6 @@ use std::net::TcpListener;
 use std::process::Stdio;
 use std::time::Duration;
 
-use rustok_core::CacheBackend;
 use tokio::process::{Child, Command};
 
 use crate::{CacheBackendOptions, CacheService};
