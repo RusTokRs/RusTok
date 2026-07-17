@@ -42,7 +42,7 @@ fn capability_denied(
     capability: EditorCapability,
 ) -> BrowserIntentDispatchError {
     let payload = serde_json::json!({
-        "intent": envelope.intent,
+        "intent": envelope.intent.as_str(),
         "capability": capability,
     });
     BrowserIntentDispatchError::Authoring(format!(
@@ -78,6 +78,7 @@ fn capability_requirements(
             }
         }
         "patch_page_metadata"
+        | "rename_page"
         | "set_locale_policy"
         | "clear_locale_policy"
         | "upsert_localized_page_metadata"
@@ -98,7 +99,6 @@ fn capability_requirements(
         | "move_selected_up"
         | "move_selected_down"
         | "create_page"
-        | "rename_page"
         | "remove_page" => vec![EditorCapability::Edit],
         _ if envelope.is_mutating() => vec![EditorCapability::Edit],
         _ => Vec::new(),
@@ -220,6 +220,27 @@ mod tests {
             browser_capability_denial(&error)
                 .map(|denial| denial.capability),
             Some(EditorCapability::Styles)
+        );
+    }
+
+    #[test]
+    fn page_rename_uses_properties_capability() {
+        let capabilities = CapabilityState {
+            properties: false,
+            ..CapabilityState::full()
+        };
+        let error = validate_browser_capability_access(
+            &envelope(
+                "rename_page",
+                json!({ "page_id": "home", "new_page_id": "landing" }),
+            ),
+            capabilities,
+        )
+        .expect_err("page rename is a PageCommand::Patch");
+        assert_eq!(
+            browser_capability_denial(&error)
+                .map(|denial| denial.capability),
+            Some(EditorCapability::Properties)
         );
     }
 
