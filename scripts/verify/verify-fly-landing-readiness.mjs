@@ -22,6 +22,23 @@ function rejectText(relativePath, text) {
   }
 }
 
+function requireOrder(relativePath, fragments) {
+  const contents = source(relativePath);
+  let previous = -1;
+  for (const fragment of fragments) {
+    const index = contents.indexOf(fragment, previous + 1);
+    if (index < 0) {
+      throw new Error(`${relativePath} must contain ${JSON.stringify(fragment)}`);
+    }
+    if (index <= previous) {
+      throw new Error(
+        `${relativePath} must keep ${JSON.stringify(fragments)} in runtime order`,
+      );
+    }
+    previous = index;
+  }
+}
+
 requireText("crates/fly/src/lib.rs", "mod landing_readiness;");
 requireText("crates/fly/src/lib.rs", "pub use landing_readiness::*;");
 requireText("crates/fly/src/lib.rs", "mod action;");
@@ -32,15 +49,29 @@ requireText(
 );
 requireText(
   "crates/fly/src/runtime_pipeline.rs",
-  "materialize_component_actions",
+  "pub materialized_forms: usize",
 );
+requireOrder("crates/fly/src/runtime_pipeline.rs", [
+  "materialize_bindings(&localized_document, &effective_context)",
+  "materialize_runtime(&bound_document, &effective_context)",
+  "materialize_internal_page_links(&dynamic_document, &effective_context)",
+  "materialize_component_actions(&linked_document, &effective_context)",
+]);
 requireText(
   "crates/fly/src/runtime_pipeline.rs",
-  "pub materialized_forms: usize",
+  "runtime_binding_can_supply_action_before_native_materialization",
 );
 requireText(
   "crates/fly/src/runtime_render.rs",
   "pub native_actions: usize",
+);
+requireText(
+  "crates/fly/src/runtime_scenario_render.rs",
+  "pub materialized_forms: usize",
+);
+requireText(
+  "crates/fly/src/runtime_scenario_render.rs",
+  "pub unresolved_actions: usize",
 );
 requireText(
   "crates/fly/src/landing_readiness/evaluate.rs",
@@ -53,6 +84,14 @@ requireText(
 requireText(
   "crates/fly/src/landing_readiness/evaluate.rs",
   "materialize_structural_document",
+);
+requireText(
+  "crates/fly/src/landing_readiness/evaluate.rs",
+  "publish_materialization_failure",
+);
+requireText(
+  "crates/fly/src/landing_readiness/evaluate.rs",
+  '"runtime_action_unresolved"',
 );
 requireText(
   "crates/fly/src/runtime_gate.rs",
