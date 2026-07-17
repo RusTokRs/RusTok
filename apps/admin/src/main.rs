@@ -98,10 +98,10 @@ async fn main() {
     }
 
     fn auth_transport_error(error: AuthError) -> (StatusCode, Json<Value>) {
-        let status = match error {
+        let status = match &error {
             AuthError::Unauthorized | AuthError::InvalidCredentials => StatusCode::UNAUTHORIZED,
             AuthError::Network => StatusCode::BAD_GATEWAY,
-            AuthError::Http(status) => StatusCode::from_u16(status)
+            AuthError::Http(status) => StatusCode::from_u16(*status)
                 .unwrap_or(StatusCode::BAD_GATEWAY),
         };
         auth_error(status, error.to_string())
