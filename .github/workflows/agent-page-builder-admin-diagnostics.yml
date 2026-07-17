@@ -1,4 +1,4 @@
-name: Agent Page Builder Admin Diagnostics
+name: Agent Baseline Failure Diagnostics
 
 on:
   pull_request:
@@ -12,32 +12,41 @@ jobs:
   diagnose:
     if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-page-builder-diagnostics' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@1.93.1
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - uses: dtolnay/rust-toolchain@1.93.1
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: agent-page-builder-admin-diagnostics
-      - name: Capture formatter and Page Builder admin tests
+          shared-key: agent-baseline-failure-diagnostics
+      - name: Capture formatter, workspace compile, and Page Builder tests
         shell: bash
         run: |
-          mkdir -p /tmp/page-builder-admin
+          mkdir -p /tmp/baseline-failures
           set +e
-          cargo fmt --all -- --check > /tmp/page-builder-admin/fmt.log 2>&1
-          echo $? > /tmp/page-builder-admin/fmt.status
-          cargo test -p rustok-page-builder-admin --lib -- --nocapture \
-            > /tmp/page-builder-admin/test.log 2>&1
-          echo $? > /tmp/page-builder-admin/test.status
+          cargo +stable fmt --all -- --check > /tmp/baseline-failures/fmt.log 2>&1
+          echo $? > /tmp/baseline-failures/fmt.status
+          cargo +stable check --workspace --all-targets --all-features \
+            > /tmp/baseline-failures/check.log 2>&1
+          echo $? > /tmp/baseline-failures/check.status
+          cargo +1.93.1 test -p rustok-page-builder-admin --lib -- --nocapture \
+            > /tmp/baseline-failures/page-builder.log 2>&1
+          echo $? > /tmp/baseline-failures/page-builder.status
           exit 0
       - uses: actions/upload-artifact@v7
         with:
-          name: agent-page-builder-admin-diagnostics
-          path: /tmp/page-builder-admin
+          name: agent-baseline-failure-diagnostics
+          path: /tmp/baseline-failures
       - name: Fail on diagnostics
         shell: bash
         run: |
-          test "$(cat /tmp/page-builder-admin/fmt.status)" = 0
-          test "$(cat /tmp/page-builder-admin/test.status)" = 0
+          failed=0
+          for status in /tmp/baseline-failures/*.status; do
+            code=$(cat "$status")
+            echo "$(basename "$status"): $code"
+            if [[ "$code" != "0" ]]; then failed=1; fi
+          done
+          exit "$failed"
