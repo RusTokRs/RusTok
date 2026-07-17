@@ -33,7 +33,8 @@ pub fn css_hex_accent_class(value: Option<&str>) -> &'static str {
 
     if maximum == red {
         if green >= blue {
-            if green >= red.saturating_mul(3) / 4 {
+            let warm_threshold = ((u16::from(red) * 3) / 4) as u8;
+            if green >= warm_threshold {
                 "bg-amber-500"
             } else {
                 "bg-rose-500"
