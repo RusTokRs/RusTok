@@ -7,7 +7,10 @@ const paths = {
   contribution: 'crates/fly-ui/src/contribution.rs',
   adapter: 'crates/fly-ui/src/contribution_adapter.rs',
   factory: 'crates/fly-ui/src/contribution_factory.rs',
-  manifest: 'crates/fly-ui/src/contribution_manifest.rs',
+  manifestFacade: 'crates/fly-ui/src/contribution_manifest.rs',
+  manifestModel: 'crates/fly-ui/src/contribution_manifest/model.rs',
+  manifestAssembly: 'crates/fly-ui/src/contribution_manifest/assemble.rs',
+  manifestTests: 'crates/fly-ui/src/contribution_manifest/tests.rs',
   paletteAccess: 'crates/fly-ui/src/palette_access.rs',
   pageBuilderLib: 'crates/rustok-page-builder/admin/src/lib.rs',
   pageBuilderHost: 'crates/rustok-page-builder/admin/src/ui/leptos.rs',
@@ -120,22 +123,48 @@ requireMarker(
   'let code = match &error',
   'factory diagnostics must not move UiError before formatting it',
 );
-requireMarkers('manifest', [
+requireMarkers('manifestFacade', [
+  'mod assemble;',
+  'mod model;',
+  'pub use assemble::*;',
+  'pub use model::*;',
+  '#[cfg(test)]\nmod tests;',
+], 'contribution manifest facade');
+requireMarkers('manifestModel', [
   'pub struct ModuleContributionManifest',
   'pub owner_provider: String',
   'pub owner_version: String',
   'pub target_providers: BTreeMap<String, String>',
   'pub fn allows_target_provider',
+  'self.owner_provider.trim()',
+  'self.owner_version.trim()',
+], 'owner-safe manifest model');
+requireMarkers('manifestAssembly', [
   'pub fn build_admin_contribution_registry_from_manifests(',
   'pub fn build_storefront_contribution_registry_from_manifests(',
   'pub fn assemble_contribution_manifests(',
+  'fn discover_manifests(',
+  'fn filter_manifests(',
+  'fn register_surface_contributions(',
+  'fn remove_missing_dependencies(',
+  'fn dependency_order(',
+  'fn provider_is_enabled(',
   'contribution_target_provider_forbidden',
+  'contribution_target_provider_disabled',
   'contribution_target_provider_unavailable',
+  'contribution_dependency_missing',
+  'contribution_dependency_cycle',
+], 'manifest assembly engine');
+requireMarkers('manifestTests', [
   'owner_provider_is_the_only_implicit_target',
   'explicit_versioned_target_provider_is_allowed',
   'target_provider_version_mismatch_is_rejected',
+  'target_provider_must_be_tenant_enabled',
+  'owner_and_target_provider_allowlist_enables_cross_provider_extension',
   'admin_and_storefront_surfaces_remain_separate',
-], 'owner-safe contribution manifests');
+  'target_provider_health_can_block_cross_provider_extensions',
+  'direct_target_lookup_trims_owner_and_versions',
+], 'manifest assembly regression coverage');
 requireMarkers('paletteAccess', [
   'pub struct PaletteBlockAccess',
   'pub fn unrestricted()',
@@ -198,6 +227,8 @@ requireMarkers('pagesContributions', [
   'FLY_BUILTIN_PROVIDER',
   'FLY_BUILTIN_PROVIDER_VERSION',
   'PAGES_LANDING_BLOCK_IDS',
+  'PAGES_OWNER_PROVIDER.to_string(),',
+  'FLY_BUILTIN_PROVIDER.to_string(),',
   '"preview"',
   '"tree"',
   '"properties"',
@@ -210,6 +241,7 @@ requireMarkers('pagesContributions', [
   'renderers: Vec::new()',
   'property_editors: Vec::new()',
   'contributed_block_ids_exist_in_the_fly_registry',
+  'contribution_policy_enables_owner_and_target_providers',
   'capability_constants_match_the_module_manifest',
   'storefront_surface_stays_empty_until_a_real_adapter_exists',
 ], 'Pages Fly contribution manifest and policy');
@@ -256,7 +288,10 @@ for (const forbidden of [
     'contribution',
     'adapter',
     'factory',
-    'manifest',
+    'manifestFacade',
+    'manifestModel',
+    'manifestAssembly',
+    'manifestTests',
     'paletteAccess',
     'flyUiCargo',
   ]) {
