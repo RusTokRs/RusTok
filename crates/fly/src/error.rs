@@ -43,6 +43,8 @@ pub enum FlyError {
     DuplicateRegistryItem(String),
     #[error("registry item id `{0}` must be namespaced or one of the built-in ids")]
     InvalidRegistryId(String),
+    #[error("interaction capability contract is invalid: {0}")]
+    InvalidInteractionCapability(String),
     #[error("plugin dependency `{dependency}` required by `{plugin}` is missing")]
     MissingPluginDependency { plugin: String, dependency: String },
     #[error("plugin dependency cycle contains `{0}`")]
