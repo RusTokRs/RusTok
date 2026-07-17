@@ -71,7 +71,7 @@ pub fn dispatch_browser_intent_with_palette_access(
     dispatch_browser_intent(controller, envelope)
 }
 
-fn validate_browser_palette_access(
+pub fn validate_browser_palette_access(
     envelope: &BrowserIntentEnvelope,
     access: &PaletteBlockAccess,
 ) -> Result<(), BrowserIntentDispatchError> {
