@@ -3,6 +3,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use leptos::prelude::*;
 use leptos_auth::{AuthSession, AuthUser, ServerAuthSnapshot};
+use rustok_web::CspNonce;
 
 pub const ADMIN_SESSION_COOKIE: &str = "rustok-admin-session-v1";
 pub const ADMIN_USER_COOKIE: &str = "rustok-admin-user-v1";
@@ -66,8 +67,10 @@ pub const AUTH_COOKIE_BOOTSTRAP_JS: &str = r#"
 
 #[component]
 pub fn AuthCookieBootstrap() -> impl IntoView {
+    let nonce = use_context::<CspNonce>().map(|nonce| nonce.as_str().to_string());
     view! {
         <script
+            nonce=nonce
             data-rustok-auth-bootstrap="local-storage-cookie-v1"
             inner_html=AUTH_COOKIE_BOOTSTRAP_JS
         ></script>
