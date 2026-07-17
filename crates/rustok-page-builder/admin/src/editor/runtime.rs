@@ -18,6 +18,7 @@ pub struct AdminEditorRuntime {
     pub last_announcement: RwSignal<Option<String>>,
     pub trait_schemas: Arc<TraitSchemaRegistry>,
     pub runtime_context: RwSignal<Value>,
+    pub runtime_context_configured: RwSignal<bool>,
     pub runtime_scenarios: Arc<Vec<RuntimeContextScenario>>,
     pub active_runtime_scenario: RwSignal<Option<String>>,
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
@@ -42,6 +43,7 @@ impl AdminEditorRuntime {
             last_announcement: RwSignal::new(None),
             trait_schemas: Arc::new(TraitSchemaRegistry::with_builtins()),
             runtime_context: RwSignal::new(Value::Object(Map::new())),
+            runtime_context_configured: RwSignal::new(false),
             runtime_scenarios: Arc::new(Vec::new()),
             active_runtime_scenario: RwSignal::new(None),
             runtime_publish_gate_policy: None,
@@ -60,6 +62,7 @@ impl AdminEditorRuntime {
 
     pub fn with_runtime_context(mut self, runtime_context: Value) -> Self {
         self.runtime_context = RwSignal::new(runtime_context);
+        self.runtime_context_configured = RwSignal::new(true);
         self.active_runtime_scenario = RwSignal::new(None);
         self.runtime_publish_gate_evaluation = RwSignal::new(None);
         self
@@ -95,6 +98,7 @@ impl AdminEditorRuntime {
             return false;
         };
         self.runtime_context.set(scenario.context.clone());
+        self.runtime_context_configured.set(true);
         self.active_runtime_scenario.set(Some(scenario.id.clone()));
         self.runtime_publish_gate_evaluation.set(None);
         self.last_error.set(None);
@@ -104,6 +108,7 @@ impl AdminEditorRuntime {
 
     pub fn set_runtime_context(&self, runtime_context: Value) {
         self.runtime_context.set(runtime_context);
+        self.runtime_context_configured.set(true);
         self.active_runtime_scenario.set(None);
         self.runtime_publish_gate_evaluation.set(None);
     }
@@ -111,10 +116,11 @@ impl AdminEditorRuntime {
     pub fn evaluate_runtime_publish_gate(&self) -> Option<RuntimePublishGateEvaluation> {
         let policy = self.runtime_publish_gate_policy.as_ref()?;
         let context = self.runtime_context.get_untracked();
+        let configured = self.runtime_context_configured.get_untracked();
         Some(self.controller.with(|controller| {
             evaluate_runtime_publish_gate(
                 controller.editor().document(),
-                Some(&context),
+                configured.then_some(&context),
                 self.runtime_scenarios.as_slice(),
                 policy.as_ref(),
             )
