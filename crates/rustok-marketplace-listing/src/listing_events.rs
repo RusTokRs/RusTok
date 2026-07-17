@@ -1,10 +1,16 @@
 use chrono::Utc;
 use rustok_api::normalize_locale_tag;
 use rustok_core::generate_id;
-use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
+};
 use uuid::Uuid;
 
-use crate::dto::{MarketplaceListingEventKind, MarketplaceListingEventResponse};
+use crate::dto::{
+    MarketplaceListingEventKind, MarketplaceListingEventProvenance,
+    MarketplaceListingEventResponse,
+};
 use crate::entities::listing_event;
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
 
@@ -25,9 +31,12 @@ pub(crate) async fn append_listing_event<C: ConnectionTrait>(
         id: Set(generate_id()),
         tenant_id: Set(tenant_id),
         listing_id: Set(listing_id),
-        actor_id: Set(actor_id),
+        actor_id: Set(Some(actor_id)),
         event_kind: Set(event_kind.as_str().to_string()),
-        locale: Set(locale),
+        locale: Set(Some(locale)),
+        provenance: Set(MarketplaceListingEventProvenance::Command
+            .as_str()
+            .to_string()),
         note: Set(note),
         metadata: Set(object_or_empty(metadata)?),
         created_at: Set(Utc::now().into()),
@@ -76,6 +85,31 @@ fn map_listing_event(
             model.event_kind
         ))
     })?;
+    let provenance = MarketplaceListingEventProvenance::parse(model.provenance.as_str())
+        .ok_or_else(|| {
+            MarketplaceListingError::Validation(format!(
+                "unknown marketplace listing event provenance `{}`",
+                model.provenance
+            ))
+        })?;
+    match provenance {
+        MarketplaceListingEventProvenance::Command
+            if model.actor_id.is_none() || model.locale.is_none() =>
+        {
+            return Err(MarketplaceListingError::Validation(
+                "command listing event is missing actor or locale attribution".to_string(),
+            ));
+        }
+        MarketplaceListingEventProvenance::LegacySnapshot
+            if model.actor_id.is_some() || model.locale.is_some() =>
+        {
+            return Err(MarketplaceListingError::Validation(
+                "legacy listing snapshot must not fabricate actor or locale attribution"
+                    .to_string(),
+            ));
+        }
+        _ => {}
+    }
     Ok(MarketplaceListingEventResponse {
         id: model.id,
         tenant_id: model.tenant_id,
@@ -83,6 +117,7 @@ fn map_listing_event(
         actor_id: model.actor_id,
         event_kind,
         locale: model.locale,
+        provenance,
         note: model.note,
         metadata: model.metadata,
         created_at: model.created_at,
