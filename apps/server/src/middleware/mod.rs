@@ -68,10 +68,24 @@ pub mod tenant {
         req: &Request<Body>,
         settings: &RustokSettings,
     ) -> Result<(), StatusCode> {
+        let path = req.uri().path();
+        if !tenant_path_requires_resolution(path) {
+            return Ok(());
+        }
+
+        if let Err(error) = unix_ms_at(SystemTime::now()) {
+            tracing::error!(
+                %error,
+                path,
+                "Rejecting tenant-bound request because system time is before the Unix epoch"
+            );
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+
         if settings.tenant.enabled && !tenant_resolution_mode_supported(settings) {
             tracing::error!(
                 resolution = %settings.tenant.resolution,
-                path = %req.uri().path(),
+                path,
                 "Rejecting request because tenant resolution mode is invalid"
             );
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
@@ -84,7 +98,7 @@ pub mod tenant {
                 "default_tenant",
             );
             tracing::warn!(
-                path = %req.uri().path(),
+                path,
                 header_name = %settings.tenant.header_name,
                 tenant_id = %settings.tenant.default_id,
                 "Using explicitly configured development default-tenant fallback"
@@ -92,6 +106,19 @@ pub mod tenant {
         }
 
         Ok(())
+    }
+
+    fn tenant_path_requires_resolution(path: &str) -> bool {
+        !(matches!(path, "/metrics" | "/api/openapi.json" | "/api/openapi.yaml")
+            || path == "/api/graphql/schema.graphql"
+            || path == "/api/graphql/ws"
+            || path == "/api/install"
+            || path.starts_with("/api/install/")
+            || path == "/v1/catalog"
+            || path.starts_with("/v1/catalog/")
+            || path == "/catalog"
+            || path.starts_with("/catalog/")
+            || path.starts_with("/health"))
     }
 
     fn tenant_resolution_mode_supported(settings: &RustokSettings) -> bool {
@@ -105,7 +132,8 @@ pub mod tenant {
         req: &Request<Body>,
         settings: &RustokSettings,
     ) -> bool {
-        if !settings.tenant.enabled
+        if !tenant_path_requires_resolution(req.uri().path())
+            || !settings.tenant.enabled
             || settings.tenant.resolution != "header"
             || !matches!(
                 settings.tenant.fallback_mode,
@@ -270,7 +298,7 @@ pub mod tenant {
     mod tests {
         use super::{
             default_tenant_fallback_will_be_used, resolve_identifier,
-            tenant_resolution_mode_supported, unix_ms_at,
+            tenant_path_requires_resolution, tenant_resolution_mode_supported, unix_ms_at,
         };
         use crate::common::settings::{RustokSettings, TenantFallbackMode};
         use axum::{body::Body, http::Request};
@@ -324,6 +352,31 @@ pub mod tenant {
                 .body(Body::empty())
                 .expect("request");
             assert!(!default_tenant_fallback_will_be_used(&present, &settings));
+        }
+
+        #[test]
+        fn operator_and_global_routes_never_count_as_tenant_fallbacks() {
+            let mut settings = RustokSettings::default();
+            settings.tenant.resolution = "header".to_string();
+            settings.tenant.fallback_mode = TenantFallbackMode::DefaultTenant;
+
+            for path in ["/metrics", "/health/ready", "/v1/catalog", "/catalog/module"] {
+                let request = Request::builder()
+                    .uri(path)
+                    .body(Body::empty())
+                    .expect("request");
+                assert!(!default_tenant_fallback_will_be_used(&request, &settings));
+            }
+        }
+
+        #[test]
+        fn only_read_only_registry_catalog_bypasses_tenant_resolution() {
+            assert!(!tenant_path_requires_resolution("/v1/catalog"));
+            assert!(!tenant_path_requires_resolution("/v1/catalog/blog"));
+            assert!(tenant_path_requires_resolution("/v2/catalog/publish"));
+            assert!(tenant_path_requires_resolution(
+                "/v2/catalog/publish/request/approve"
+            ));
         }
     }
 }
