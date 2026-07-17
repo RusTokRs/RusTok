@@ -1,0 +1,82 @@
+name: Agent Final Multiline Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  patterns:
+    if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-final-clean' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/ci-baseline-final-clean
+          fetch-depth: 0
+      - name: Inspect exact multiline patterns
+        shell: bash
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+          python - <<'PY' > /tmp/multiline.log
+          from pathlib import Path
+          import re
+
+          checks = [
+              ("fly.dynamic", "crates/fly/src/dynamic.rs", '''    trimmed
+                  .strip_prefix("{{")
+                  .and_then(|value| value.strip_suffix("}}"))
+                  .map(str::trim)
+                  .filter(|value| !value.is_empty())
+          '''),
+              ("core.results", "crates/rustok-core/src/utils/mod.rs", '''        match result {
+                      Ok(value) => results.push(value),
+                      Err(e) => return Err(e),
+                  }
+          '''),
+              ("page-builder.accessor", "crates/rustok-page-builder/admin/src/model.rs", '''    pub fn editor(&self) -> &FlyEditor {
+                      &self.editor
+                  }
+          '''),
+          ]
+          for label, path, pattern in checks:
+              source = Path(path).read_text()
+              print(f"{label}: exact={source.count(pattern)}")
+
+          generation = Path("apps/server/src/services/channel_cache_invalidation.rs").read_text()
+          generation_pattern = re.compile(
+              r'(?P<indent> +)if let Some\(previous\) = previous\n'
+              r'(?P=indent)    && generation < previous\n'
+              r'(?P=indent)\{\n'
+              r'(?P<body>.*?)'
+              r'(?P=indent)\}\n'
+              r'(?P=indent)Ok\(Some\(generation\)\)',
+              re.DOTALL,
+          )
+          print(f"channel.generation.regex={len(generation_pattern.findall(generation))}")
+
+          two = re.compile(
+              r'(?P<indent> +)if let Ok\(client\) = redis::Client::open\((?P<arg>[^\n]+)\)\n'
+              r'(?P=indent)    && let Ok\(mut connection\) = client\.get_multiplexed_async_connection\(\)\.await\n'
+              r'(?P=indent)\{\n'
+              r'(?P<body>.*?)'
+              r'(?P=indent)\}\n'
+              r'(?P=indent)tokio::time::sleep',
+              re.DOTALL,
+          )
+          for path in [
+              "apps/server/tests/channel_cache_resolved_value.rs",
+              "apps/server/src/services/tenant_locale_generation_tests.rs",
+              "crates/rustok-cache/tests/fallback_cas_live.rs",
+              "crates/rustok-cache/tests/real_redis_hardening.rs",
+          ]:
+              print(f"{path}: regex={len(two.findall(Path(path).read_text()))}")
+          PY
+          cat /tmp/multiline.log
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agent-final-multiline-patterns
+          path: /tmp/multiline.log
