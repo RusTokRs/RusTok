@@ -1,9 +1,9 @@
 use crate::{FlyError, FlyResult, GrapesProject, ProjectDocument};
 use serde_json::{Map, Value};
 
-pub struct GrapesJsV1Codec;
+pub struct GrapesJsCodec;
 
-impl GrapesJsV1Codec {
+impl GrapesJsCodec {
     pub fn decode_slice(input: &[u8]) -> FlyResult<ProjectDocument> {
         let value: Value =
             serde_json::from_slice(input).map_err(|error| FlyError::Decode(error.to_string()))?;
@@ -103,10 +103,7 @@ fn synchronize_first_frame(frames: &mut Option<Value>, component: Value) {
                 component,
             )]))]));
         }
-        Some(_) => {
-            // Preserve malformed/unknown future frame payloads losslessly. The typed canonical
-            // `page.component` remains available to Fly and is still serialized.
-        }
+        Some(_) => {}
     }
 }
 
@@ -118,7 +115,7 @@ mod tests {
 
     #[test]
     fn decode_hydrates_canonical_component_from_grapesjs_frame() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "id": "home",
                 "frames": [{
@@ -144,7 +141,7 @@ mod tests {
 
     #[test]
     fn encode_refreshes_frame_component_from_canonical_tree() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": {
                     "id": "root",
@@ -162,7 +159,7 @@ mod tests {
             }]
         }))
         .expect("decode");
-        let encoded = GrapesJsV1Codec::encode_value(&document).expect("encode");
+        let encoded = GrapesJsCodec::encode_value(&document).expect("encode");
 
         assert_eq!(
             encoded["pages"][0]["frames"][0]["component"]["components"][0]["id"],
@@ -173,7 +170,7 @@ mod tests {
 
     #[test]
     fn project_hash_matches_encoded_bytes_after_component_mutation() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+        let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
                 "component": {
                     "id": "root",
@@ -201,7 +198,7 @@ mod tests {
             })
             .expect("patch");
 
-        let bytes = GrapesJsV1Codec::encode_vec(editor.document()).expect("encode");
+        let bytes = GrapesJsCodec::encode_vec(editor.document()).expect("encode");
         assert_eq!(
             editor.revision().project_hash,
             crate::ProjectHash::from_bytes(&bytes)
