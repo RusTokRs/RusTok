@@ -2,6 +2,7 @@ use super::ssr_actions_forms::{
     SsrComponentActionRemoveRequest, SsrComponentActionRequest, SsrComponentFormRemoveRequest,
     SsrComponentFormRequest, SsrNativeFormFieldRequest,
 };
+use super::ssr_assets::{SsrAssetApplyRequest, SsrAssetRemoveRequest, SsrAssetUpsertRequest};
 use crate::{AdminCanvasController, AdminCanvasEffect};
 use fly::{
     blank_page, BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ComponentPatch,
@@ -124,6 +125,18 @@ impl AdminCanvasController {
             "remove_translation" => self.ssr_remove_translation_intent(
                 serde_json::from_value(payload.clone())
                     .map_err(|error| format!("invalid remove translation form: {error}"))?,
+            )?,
+            "upsert_asset" => self.ssr_asset_upsert_intent(
+                serde_json::from_value::<SsrAssetUpsertRequest>(payload.clone())
+                    .map_err(|error| format!("invalid asset form: {error}"))?,
+            )?,
+            "remove_asset" => self.ssr_asset_remove_intent(
+                serde_json::from_value::<SsrAssetRemoveRequest>(payload.clone())
+                    .map_err(|error| format!("invalid remove asset form: {error}"))?,
+            )?,
+            "select_asset" => self.ssr_asset_apply_intent(
+                serde_json::from_value::<SsrAssetApplyRequest>(payload.clone())
+                    .map_err(|error| format!("invalid asset assignment form: {error}"))?,
             )?,
             "set_component_action" => self.ssr_component_action_intent(
                 serde_json::from_value::<SsrComponentActionRequest>(payload.clone())
