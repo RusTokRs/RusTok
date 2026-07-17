@@ -186,4 +186,26 @@ mod tests {
         )
         .is_ok());
     }
+
+    #[test]
+    fn pages_preflight_rejects_capability_bypass() {
+        let capabilities = CapabilityState {
+            properties: false,
+            ..CapabilityState::full()
+        };
+        let error = preflight_pages_intent(
+            envelope(
+                "rename_page",
+                json!({ "page_id": "home", "new_page_id": "landing" }),
+            ),
+            capabilities,
+        )
+        .expect_err("properties capability denial");
+        assert_eq!(
+            error
+                .capability_denial()
+                .map(|denial| denial.capability),
+            Some(EditorCapability::Properties)
+        );
+    }
 }
