@@ -51,6 +51,20 @@ fn bypasses_operator_endpoints_from_tenant_resolution() {
 }
 
 #[test]
+fn bypasses_only_read_only_global_registry_catalog_routes() {
+    assert!(should_bypass_tenant_resolution("/v1/catalog"));
+    assert!(should_bypass_tenant_resolution("/v1/catalog/pages"));
+    assert!(should_bypass_tenant_resolution("/catalog"));
+    assert!(should_bypass_tenant_resolution("/catalog/pages"));
+
+    assert!(!should_bypass_tenant_resolution("/v2/catalog/publish"));
+    assert!(!should_bypass_tenant_resolution(
+        "/v2/catalog/publish/request-id/approve"
+    ));
+    assert!(!should_bypass_tenant_resolution("/api/catalog"));
+}
+
+#[test]
 fn strict_header_resolution_requires_tenant_header() {
     let mut settings = RustokSettings::default();
     settings.tenant.enabled = true;
