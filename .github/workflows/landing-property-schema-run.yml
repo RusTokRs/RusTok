@@ -1,5 +1,6 @@
 name: Run landing property schema validation
 
+# Registered runner for the current typed landing property contract.
 on:
   push:
     branches: [main]
