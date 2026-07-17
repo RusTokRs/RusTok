@@ -102,8 +102,10 @@ jobs:
           ]
           for raw_path in paths:
               path = Path(raw_path)
-              text = path.read_text()
-              path.write_text("\n".join(line.rstrip() for line in text.splitlines()) + "\n")
+              lines = [line.rstrip() for line in path.read_text().splitlines()]
+              while lines and not lines[-1]:
+                  lines.pop()
+              path.write_text("\n".join(lines) + "\n")
           PY
 
       - name: Verify tenant architecture
