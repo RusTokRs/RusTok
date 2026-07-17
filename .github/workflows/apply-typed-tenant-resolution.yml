@@ -1,0 +1,45 @@
+name: Apply typed tenant resolution refactor
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/migrations/apply_typed_tenant_resolution.py
+      - .github/workflows/apply-typed-tenant-resolution.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-typed-tenant-resolution-main
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply canonical tenant resolution refactor
+        run: python3 scripts/migrations/apply_typed_tenant_resolution.py
+
+      - name: Reject malformed patch output
+        run: git diff --check
+
+      - name: Commit atomically to main
+        shell: bash
+        run: |
+          rm scripts/migrations/apply_typed_tenant_resolution.py
+          rm .github/workflows/apply-typed-tenant-resolution.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "refactor(tenant): make resolution typed and canonical"
+          git pull --rebase origin main
+          git push origin HEAD:main
