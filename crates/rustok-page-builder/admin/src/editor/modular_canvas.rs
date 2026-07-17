@@ -14,7 +14,7 @@ use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
 };
-use fly_ui::ContributionAssemblyResult;
+use fly_ui::{CapabilityState, ContributionAssemblyResult, UiIntent};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
@@ -28,6 +28,7 @@ pub fn AdminCanvas(
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     #[prop(optional)] contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
+    #[prop(optional)] editor_capabilities: Option<CapabilityState>,
     runtime_context: Option<Value>,
     runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
@@ -72,6 +73,9 @@ pub fn AdminCanvas(
         Some(policy) => runtime.with_runtime_publish_gate_policy(policy),
         None => runtime,
     };
+    if let Some(capabilities) = editor_capabilities {
+        runtime.dispatch(UiIntent::SetEditableCapabilities(capabilities));
+    }
     let browser_page_id = runtime
         .controller
         .with(|controller| controller.page_id().to_string());
