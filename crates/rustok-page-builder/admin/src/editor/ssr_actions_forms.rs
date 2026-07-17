@@ -211,25 +211,13 @@ impl AdminCanvasController {
             }
         };
         let name = validate_token(&request.name, "field name")?;
-        let dom_id = optional_token(request.dom_id, "DOM id")?;
         let field_type = if tag_name == "input" {
             validate_input_type(&request.field_type)?
         } else {
             None
         };
-        validate_text(&request.min, "minimum value", 256)?;
-        validate_text(&request.max, "maximum value", 256)?;
-        validate_text(&request.pattern, "pattern", MAX_PATTERN_BYTES)?;
-        validate_autocomplete(&request.autocomplete)?;
-        validate_text(&request.placeholder, "placeholder", 1024)?;
-        validate_text(&request.aria_label, "aria label", 1024)?;
-        if request
-            .min_length
-            .zip(request.max_length)
-            .is_some_and(|(minimum, maximum)| minimum > maximum)
-        {
-            return Err("minimum length cannot exceed maximum length".to_string());
-        }
+        validate_native_field_constraints(tag_name, field_type.as_deref(), &request)?;
+        let dom_id = optional_token(request.dom_id, "DOM id")?;
 
         let mut patch = ComponentPatch::default();
         patch
@@ -788,6 +776,105 @@ fn validate_input_type(value: &str) -> Result<Option<String>, String> {
         .ok_or_else(|| format!("input type `{value}` is unsupported"))
 }
 
+fn validate_native_field_constraints(
+    tag_name: &str,
+    input_type: Option<&str>,
+    request: &SsrNativeFormFieldRequest,
+) -> Result<(), String> {
+    validate_text(&request.min, "minimum value", 256)?;
+    validate_text(&request.max, "maximum value", 256)?;
+    validate_text(&request.pattern, "pattern", MAX_PATTERN_BYTES)?;
+    validate_autocomplete(&request.autocomplete)?;
+    validate_text(&request.placeholder, "placeholder", 1024)?;
+    validate_text(&request.aria_label, "aria label", 1024)?;
+    if request
+        .min_length
+        .zip(request.max_length)
+        .is_some_and(|(minimum, maximum)| minimum > maximum)
+    {
+        return Err("minimum length cannot exceed maximum length".to_string());
+    }
+
+    let has_range = !request.min.trim().is_empty() || !request.max.trim().is_empty();
+    let has_length = request.min_length.is_some() || request.max_length.is_some();
+    let has_pattern = !request.pattern.trim().is_empty();
+
+    match tag_name {
+        "select" => {
+            if has_range || has_length || has_pattern {
+                return Err(
+                    "select fields do not support min, max, minlength, maxlength, or pattern"
+                        .to_string(),
+                );
+            }
+        }
+        "textarea" => {
+            if has_range {
+                return Err("textarea fields do not support min or max".to_string());
+            }
+            if has_pattern {
+                return Err("textarea fields do not support pattern".to_string());
+            }
+        }
+        "input" => {
+            let input_type = input_type.unwrap_or("text");
+            const TEXTUAL_TYPES: &[&str] = &["email", "password", "search", "tel", "text", "url"];
+            const RANGE_TYPES: &[&str] = &[
+                "date",
+                "datetime-local",
+                "month",
+                "number",
+                "range",
+                "time",
+                "week",
+            ];
+            const REQUIRED_IGNORED_TYPES: &[&str] =
+                &["button", "hidden", "image", "reset", "submit"];
+
+            if has_length && !TEXTUAL_TYPES.contains(&input_type) {
+                return Err(format!(
+                    "input type `{input_type}` does not support minlength or maxlength"
+                ));
+            }
+            if has_pattern && !TEXTUAL_TYPES.contains(&input_type) {
+                return Err(format!("input type `{input_type}` does not support pattern"));
+            }
+            if has_range && !RANGE_TYPES.contains(&input_type) {
+                return Err(format!("input type `{input_type}` does not support min or max"));
+            }
+            if request.required && REQUIRED_IGNORED_TYPES.contains(&input_type) {
+                return Err(format!("input type `{input_type}` does not support required"));
+            }
+            if matches!(input_type, "number" | "range") {
+                let minimum = parse_numeric_bound(&request.min, "minimum value")?;
+                let maximum = parse_numeric_bound(&request.max, "maximum value")?;
+                if minimum
+                    .zip(maximum)
+                    .is_some_and(|(minimum, maximum)| minimum > maximum)
+                {
+                    return Err("minimum value cannot exceed maximum value".to_string());
+                }
+            }
+        }
+        _ => unreachable!("native field tag was normalized before validation"),
+    }
+    Ok(())
+}
+
+fn parse_numeric_bound(value: &str, label: &str) -> Result<Option<f64>, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    let parsed = value
+        .parse::<f64>()
+        .map_err(|_| format!("{label} `{value}` is not a valid number"))?;
+    if !parsed.is_finite() {
+        return Err(format!("{label} `{value}` must be finite"));
+    }
+    Ok(Some(parsed))
+}
+
 fn validate_token(value: &str, label: &str) -> Result<String, String> {
     let value = required(value, label)?;
     if !value.chars().all(|character| {
@@ -1053,5 +1140,84 @@ mod tests {
         assert!(!field.attributes.contains_key("type"));
         assert!(!field.attributes.contains_key("required"));
         assert!(!field.attributes.contains_key("pattern"));
+    }
+
+    #[test]
+    fn native_field_editor_rejects_inapplicable_constraints() {
+        let controller = controller();
+        let number_length = controller
+            .ssr_native_form_field_intent(SsrNativeFormFieldRequest {
+                component_id: "field".to_string(),
+                tag_name: "input".to_string(),
+                name: "quantity".to_string(),
+                field_type: "number".to_string(),
+                min_length: Some(2),
+                ..SsrNativeFormFieldRequest::default()
+            })
+            .expect_err("number minlength must fail");
+        assert!(number_length.contains("does not support minlength"));
+
+        let textarea_pattern = controller
+            .ssr_native_form_field_intent(SsrNativeFormFieldRequest {
+                component_id: "field".to_string(),
+                tag_name: "textarea".to_string(),
+                name: "message".to_string(),
+                pattern: ".+".to_string(),
+                ..SsrNativeFormFieldRequest::default()
+            })
+            .expect_err("textarea pattern must fail");
+        assert!(textarea_pattern.contains("do not support pattern"));
+
+        let select_range = controller
+            .ssr_native_form_field_intent(SsrNativeFormFieldRequest {
+                component_id: "field".to_string(),
+                tag_name: "select".to_string(),
+                name: "country".to_string(),
+                min: "1".to_string(),
+                ..SsrNativeFormFieldRequest::default()
+            })
+            .expect_err("select min must fail");
+        assert!(select_range.contains("select fields do not support"));
+
+        let hidden_required = controller
+            .ssr_native_form_field_intent(SsrNativeFormFieldRequest {
+                component_id: "field".to_string(),
+                tag_name: "input".to_string(),
+                name: "token".to_string(),
+                field_type: "hidden".to_string(),
+                required: true,
+                ..SsrNativeFormFieldRequest::default()
+            })
+            .expect_err("hidden required must fail");
+        assert!(hidden_required.contains("does not support required"));
+    }
+
+    #[test]
+    fn numeric_field_editor_rejects_invalid_or_inverted_bounds() {
+        let controller = controller();
+        let invalid = controller
+            .ssr_native_form_field_intent(SsrNativeFormFieldRequest {
+                component_id: "field".to_string(),
+                tag_name: "input".to_string(),
+                name: "amount".to_string(),
+                field_type: "number".to_string(),
+                min: "not-a-number".to_string(),
+                ..SsrNativeFormFieldRequest::default()
+            })
+            .expect_err("invalid number bound must fail");
+        assert!(invalid.contains("is not a valid number"));
+
+        let inverted = controller
+            .ssr_native_form_field_intent(SsrNativeFormFieldRequest {
+                component_id: "field".to_string(),
+                tag_name: "input".to_string(),
+                name: "amount".to_string(),
+                field_type: "number".to_string(),
+                min: "10".to_string(),
+                max: "2".to_string(),
+                ..SsrNativeFormFieldRequest::default()
+            })
+            .expect_err("inverted numeric range must fail");
+        assert!(inverted.contains("minimum value cannot exceed maximum value"));
     }
 }
