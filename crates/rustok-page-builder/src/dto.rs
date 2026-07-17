@@ -1,8 +1,7 @@
-use fly::{FLY_LANDING_DOCUMENT_V1, GRAPESJS_V1};
+use fly::GRAPESJS_V1;
 use serde::{Deserialize, Serialize};
 
-pub const PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS: [&str; 2] =
-    [GRAPESJS_V1, FLY_LANDING_DOCUMENT_V1];
+pub const PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS: [&str; 1] = [GRAPESJS_V1];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PageBuilderContractMetadata {
@@ -18,14 +17,6 @@ impl PageBuilderContractMetadata {
         module_slug: "page_builder",
         contract: GRAPESJS_V1,
         builder_contract_version: "1.0",
-        consumer_min_version: "1.0",
-        capabilities: &["preview", "tree", "properties", "publish"],
-    };
-
-    pub const LANDING_V1: Self = Self {
-        module_slug: "page_builder",
-        contract: FLY_LANDING_DOCUMENT_V1,
-        builder_contract_version: "1.1",
         consumer_min_version: "1.0",
         capabilities: &["preview", "tree", "properties", "publish"],
     };
