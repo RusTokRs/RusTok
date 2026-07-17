@@ -1,3 +1,4 @@
+use crate::access::pages_editor_capability_policy;
 use crate::browser_intent::pages_browser_draft_store;
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::contributions::{
@@ -9,7 +10,7 @@ use crate::model::{PageBuilderScenarioReleaseStatus, PageDetail};
 use crate::transport;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use leptos_ui_routing::use_route_query_value;
 use rustok_page_builder::runtime_context::{
     generate_page_builder_runtime_example, PageBuilderRuntimeExampleRequest,
@@ -129,6 +130,7 @@ fn PagesFlyBuilder(
     default_locale: String,
     draft_token: Option<String>,
 ) -> impl IntoView {
+    let current_user = use_current_user();
     let seed = core::edit_form_seed_from_page(&page, &default_locale);
     let revision_id = builder::page_revision(&page);
     let fallback_page_id = page.id.clone();
@@ -156,6 +158,13 @@ fn PagesFlyBuilder(
     let contribution_assembly = Arc::new(build_pages_admin_contribution_registry(
         &pages_admin_contribution_policy(),
     ));
+    let editor_policy = {
+        let user = current_user.get();
+        pages_editor_capability_policy(
+            user.as_ref().map(|user| user.role.as_str()),
+            contribution_assembly.as_ref(),
+        )
+    };
     let restored_draft = draft_token
         .as_deref()
         .and_then(|token| pages_browser_draft_store().load(token, &page.id).ok().flatten())
@@ -247,6 +256,7 @@ fn PagesFlyBuilder(
             let mut host = PageBuilderAdminHostContext::new(controller)
                 .with_facade(facade)
                 .with_contribution_assembly(contribution_assembly)
+                .with_editor_capability_policy(editor_policy)
                 .with_runtime_context(runtime_context)
                 .with_runtime_scenarios(scenarios)
                 .with_browser_intent_endpoint(browser_endpoint)
