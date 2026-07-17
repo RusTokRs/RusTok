@@ -12,12 +12,7 @@ use fly::{LandingReadinessPolicy, RegistrySet, RenderPolicy, ValidationLimits};
 use rustok_api::PortContext;
 use serde_json::Value;
 
-/// Service decorator for the current landing pipeline.
-///
-/// Preview decodes the browser payload into Fly's evolving domain model and validates structure plus
-/// registry compatibility. Publish additionally requires landing readiness and a deterministic
-/// static artifact to be buildable before the wrapped persistence/provider service is called.
-/// Versioned transport fields are accepted for compatibility but never participate in this path.
+/// Service decorator for the active landing pipeline.
 pub struct LandingValidatedPageBuilderService<S> {
     inner: S,
     registries: RegistrySet,
@@ -57,45 +52,22 @@ impl<S> LandingValidatedPageBuilderService<S> {
         &self.inner
     }
 
-    /// Inspect through the current, versionless module API.
-    pub fn inspect_current(
-        &self,
-        project_data: &Value,
-    ) -> LandingProjectResult<LandingProjectInspection> {
-        LandingProjectInspection::decode_current_with(
-            project_data,
-            &self.registries,
-            self.limits,
-        )
-    }
-
-    /// Compatibility entrypoint retained until the next module major.
     pub fn inspect(
         &self,
-        schema_version: &str,
         project_data: &Value,
     ) -> LandingProjectResult<LandingProjectInspection> {
-        LandingProjectInspection::decode_with(
-            schema_version,
-            project_data,
-            &self.registries,
-            self.limits,
-        )
+        LandingProjectInspection::decode_with(project_data, &self.registries, self.limits)
     }
 
     fn validate_preview(&self, project_data: &Value) -> PageBuilderServiceResult<()> {
-        let inspection = self
-            .inspect_current(project_data)
-            .map_err(validation_error)?;
+        let inspection = self.inspect(project_data).map_err(validation_error)?;
         inspection
             .require_contract_valid()
             .map_err(validation_error)
     }
 
     fn validate_publish(&self, project_data: &Value) -> PageBuilderServiceResult<()> {
-        let inspection = self
-            .inspect_current(project_data)
-            .map_err(validation_error)?;
+        let inspection = self.inspect(project_data).map_err(validation_error)?;
         inspection
             .require_contract_valid()
             .map_err(validation_error)?;
