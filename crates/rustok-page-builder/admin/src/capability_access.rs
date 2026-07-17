@@ -5,8 +5,7 @@ use fly_ui::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
-const CAPABILITY_DENIAL_PREFIX: &str = "FLY_CAPABILITY_DENIED:";
+use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BrowserCapabilityDenial {
@@ -14,46 +13,56 @@ pub struct BrowserCapabilityDenial {
     pub capability: EditorCapability,
 }
 
+impl fmt::Display for BrowserCapabilityDenial {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "browser intent `{}` requires editor capability `{}`",
+            self.intent,
+            self.capability.as_str()
+        )
+    }
+}
+
+impl std::error::Error for BrowserCapabilityDenial {}
+
+#[derive(Debug, thiserror::Error)]
+pub enum BrowserCapabilityAccessError {
+    #[error(transparent)]
+    Denied(#[from] BrowserCapabilityDenial),
+    #[error(transparent)]
+    Dispatch(#[from] BrowserIntentDispatchError),
+}
+
 pub fn browser_capability_denial(
-    error: &BrowserIntentDispatchError,
-) -> Option<BrowserCapabilityDenial> {
-    let BrowserIntentDispatchError::Authoring(message) = error else {
-        return None;
-    };
-    let payload = message.strip_prefix(CAPABILITY_DENIAL_PREFIX)?;
-    serde_json::from_str(payload).ok()
+    error: &BrowserCapabilityAccessError,
+) -> Option<&BrowserCapabilityDenial> {
+    match error {
+        BrowserCapabilityAccessError::Denied(denial) => Some(denial),
+        BrowserCapabilityAccessError::Dispatch(_) => None,
+    }
 }
 
 pub fn validate_browser_capability_access(
     envelope: &BrowserIntentEnvelope,
     capabilities: CapabilityState,
-) -> Result<(), BrowserIntentDispatchError> {
+) -> Result<(), BrowserCapabilityAccessError> {
     let capabilities = capabilities.normalized();
     for capability in capability_requirements(envelope)? {
         if !capabilities.allows(capability) {
-            return Err(capability_denied(envelope, capability));
+            return Err(BrowserCapabilityDenial {
+                intent: envelope.intent.clone(),
+                capability,
+            }
+            .into());
         }
     }
     Ok(())
 }
 
-fn capability_denied(
-    envelope: &BrowserIntentEnvelope,
-    capability: EditorCapability,
-) -> BrowserIntentDispatchError {
-    let payload = serde_json::json!({
-        "intent": envelope.intent.as_str(),
-        "capability": capability,
-    });
-    BrowserIntentDispatchError::Authoring(format!(
-        "{CAPABILITY_DENIAL_PREFIX}{}",
-        payload
-    ))
-}
-
 fn capability_requirements(
     envelope: &BrowserIntentEnvelope,
-) -> Result<Vec<EditorCapability>, BrowserIntentDispatchError> {
+) -> Result<Vec<EditorCapability>, BrowserCapabilityAccessError> {
     let requirements = match envelope.intent.as_str() {
         "select"
         | "focus_requested"
@@ -108,7 +117,7 @@ fn capability_requirements(
 
 fn shortcut_requirements(
     envelope: &BrowserIntentEnvelope,
-) -> Result<Vec<EditorCapability>, BrowserIntentDispatchError> {
+) -> Result<Vec<EditorCapability>, BrowserCapabilityAccessError> {
     let stroke_value = envelope
         .payload
         .get("stroke")
@@ -180,7 +189,7 @@ mod tests {
             .expect_err("capability denial");
             assert_eq!(
                 browser_capability_denial(&error),
-                Some(BrowserCapabilityDenial {
+                Some(&BrowserCapabilityDenial {
                     intent: intent.to_string(),
                     capability,
                 })
@@ -217,8 +226,7 @@ mod tests {
         )
         .expect_err("style capability denial");
         assert_eq!(
-            browser_capability_denial(&error)
-                .map(|denial| denial.capability),
+            browser_capability_denial(&error).map(|denial| denial.capability),
             Some(EditorCapability::Styles)
         );
     }
@@ -238,8 +246,7 @@ mod tests {
         )
         .expect_err("page rename is a PageCommand::Patch");
         assert_eq!(
-            browser_capability_denial(&error)
-                .map(|denial| denial.capability),
+            browser_capability_denial(&error).map(|denial| denial.capability),
             Some(EditorCapability::Properties)
         );
     }
@@ -256,8 +263,7 @@ mod tests {
         )
         .expect_err("asset application changes component properties");
         assert_eq!(
-            browser_capability_denial(&error)
-                .map(|denial| denial.capability),
+            browser_capability_denial(&error).map(|denial| denial.capability),
             Some(EditorCapability::Properties)
         );
 
@@ -271,8 +277,7 @@ mod tests {
         )
         .expect_err("asset access is required before application");
         assert_eq!(
-            browser_capability_denial(&error)
-                .map(|denial| denial.capability),
+            browser_capability_denial(&error).map(|denial| denial.capability),
             Some(EditorCapability::Assets)
         );
     }
@@ -320,10 +325,23 @@ mod tests {
         )
         .expect_err("publish shortcut capability denial");
         assert_eq!(
-            browser_capability_denial(&error)
-                .map(|denial| denial.capability),
+            browser_capability_denial(&error).map(|denial| denial.capability),
             Some(EditorCapability::Publish)
         );
+    }
+
+    #[test]
+    fn malformed_shortcut_remains_a_typed_dispatch_error() {
+        let error = validate_browser_capability_access(
+            &envelope("key_stroke", json!({ "stroke": "invalid" })),
+            CapabilityState::full(),
+        )
+        .expect_err("malformed shortcut");
+        assert!(matches!(
+            error,
+            BrowserCapabilityAccessError::Dispatch(BrowserIntentDispatchError::Payload(_))
+        ));
+        assert!(browser_capability_denial(&error).is_none());
     }
 
     #[test]
@@ -339,8 +357,7 @@ mod tests {
         )
         .expect_err("edit capability denial");
         assert_eq!(
-            browser_capability_denial(&error)
-                .map(|denial| denial.capability),
+            browser_capability_denial(&error).map(|denial| denial.capability),
             Some(EditorCapability::Edit)
         );
     }
