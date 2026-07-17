@@ -79,6 +79,20 @@
       "noIndex": "Prevent search indexing",
       "projectHash": "Project hash"
     },
+    "capabilityPolicy": {
+      "title": "Editor access policy",
+      "legacy": "No detailed host policy was supplied. The effective profile still remains enforced by the state machine.",
+      "provider": "Provider state",
+      "capability": "Capability",
+      "requested": "Requested",
+      "tenant": "Tenant",
+      "permission": "Permission",
+      "effective": "Effective",
+      "enabled": "enabled",
+      "disabled": "disabled",
+      "yes": "yes",
+      "no": "no"
+    },
     "ssrInspector": {
       "title": "Classic SSR inspector",
       "description": "These forms submit directly to the consumer-owned Fly intent endpoint. No hydration or WASM is required.",
