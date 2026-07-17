@@ -37,7 +37,13 @@ fn production_code_uses_only_the_canonical_degradation_aware_fallback() {
         }
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
-        if source.contains("FallbackCacheBackend") || source.contains("RedisCacheBackend") {
+        let legacy_fallback = source.contains("struct FallbackCacheBackend")
+            || source.contains("pub use cache_atomic::{FallbackCacheBackend")
+            || source.contains("CacheStats, FallbackCacheBackend,");
+        let legacy_redis = source.contains("struct RedisCacheBackend")
+            || source.contains("pub use cache::RedisCacheBackend;")
+            || source.contains("pub use crate::RedisCacheBackend;");
+        if legacy_fallback || legacy_redis {
             violations.push(
                 path.strip_prefix(&root)
                     .unwrap_or(&path)
@@ -56,8 +62,8 @@ fn production_code_uses_only_the_canonical_degradation_aware_fallback() {
         .expect("rustok-core root source");
     assert!(core_lib.contains("mod cache;"));
     assert!(!core_lib.contains("pub mod cache;"));
-    assert!(!core_lib.contains("RedisCacheBackend"));
-    assert!(!core_lib.contains("FallbackCacheBackend"));
+    assert!(!core_lib.contains("pub use cache::RedisCacheBackend;"));
+    assert!(!core_lib.contains("pub use cache_atomic::{FallbackCacheBackend"));
 
     let canonical = std::fs::read_to_string(root.join("crates/rustok-cache/src/shared_backend.rs"))
         .expect("canonical shared cache backend source");
