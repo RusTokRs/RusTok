@@ -1,4 +1,5 @@
 use sea_orm::entity::prelude::*;
+use sea_orm::ActiveValue;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -39,4 +40,59 @@ impl Related<super::forum_topic::Entity> for Entity {
     }
 }
 
-impl ActiveModelBehavior for ActiveModel {}
+#[async_trait::async_trait]
+impl ActiveModelBehavior for ActiveModel {
+    async fn before_save<C>(mut self, _db: &C, _insert: bool) -> Result<Self, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if let ActiveValue::Set(Some(color)) = &mut self.color {
+            let normalized = normalize_category_color(color).ok_or_else(|| {
+                DbErr::Custom(
+                    "Forum category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA"
+                        .to_string(),
+                )
+            })?;
+            *color = normalized;
+        }
+
+        Ok(self)
+    }
+}
+
+fn normalize_category_color(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let digits = trimmed.strip_prefix('#')?;
+    if !matches!(digits.len(), 3 | 4 | 6 | 8)
+        || !digits.chars().all(|character| character.is_ascii_hexdigit())
+    {
+        return None;
+    }
+
+    Some(format!("#{digits}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_category_color;
+
+    #[test]
+    fn normalizes_supported_category_color_tokens() {
+        assert_eq!(normalize_category_color(" #0EA5E9 ").as_deref(), Some("#0EA5E9"));
+        assert_eq!(normalize_category_color("#fff").as_deref(), Some("#fff"));
+        assert_eq!(normalize_category_color("#abcd").as_deref(), Some("#abcd"));
+    }
+
+    #[test]
+    fn rejects_css_declaration_injection_before_persistence() {
+        for value in [
+            "red",
+            "rgb(1 2 3)",
+            "#ggg",
+            "#fff;background:url(https://attacker.invalid/x)",
+            "#fff;--owned:1",
+        ] {
+            assert_eq!(normalize_category_color(value), None, "accepted {value:?}");
+        }
+    }
+}
