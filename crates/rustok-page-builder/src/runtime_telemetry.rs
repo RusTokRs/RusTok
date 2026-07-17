@@ -1,5 +1,10 @@
-use crate::dto::{PageBuilderErrorKind, PageBuilderModuleMetadata};
-use crate::service::PageBuilderServiceError;
+use crate::dto::{
+    PageBuilderContractMetadata, PageBuilderErrorKind, PageBuilderModuleMetadata,
+};
+use crate::service::{
+    PageBuilderAdapterCallEvidence, PageBuilderAdapterCallStatus, PageBuilderAdapterOperation,
+    PageBuilderAdapterTelemetry, PageBuilderServiceError,
+};
 use rustok_api::PortContext;
 use serde::Serialize;
 
@@ -129,10 +134,48 @@ impl PageBuilderRuntimeTelemetry for NoopPageBuilderRuntimeTelemetry {
     fn record_runtime_call(&self, _evidence: &PageBuilderRuntimeCallEvidence) {}
 }
 
+/// Compatibility bridge for host recorders implemented against the original telemetry trait.
+///
+/// The current pipeline remains versionless. The historical contract marker is introduced only
+/// while adapting to the old recorder and disappears when that compatibility API is removed in a
+/// future module major.
+impl<T> PageBuilderRuntimeTelemetry for T
+where
+    T: PageBuilderAdapterTelemetry,
+{
+    fn record_runtime_call(&self, evidence: &PageBuilderRuntimeCallEvidence) {
+        let operation = match evidence.operation {
+            PageBuilderRuntimeOperation::LoadProject => PageBuilderAdapterOperation::LoadProject,
+            PageBuilderRuntimeOperation::SaveProject => PageBuilderAdapterOperation::SaveProject,
+            PageBuilderRuntimeOperation::RenderPreview => {
+                PageBuilderAdapterOperation::RenderPreview
+            }
+        };
+        let status = match evidence.status {
+            PageBuilderRuntimeCallStatus::Started => PageBuilderAdapterCallStatus::Started,
+            PageBuilderRuntimeCallStatus::Succeeded => PageBuilderAdapterCallStatus::Succeeded,
+            PageBuilderRuntimeCallStatus::Failed => PageBuilderAdapterCallStatus::Failed,
+        };
+        self.record_adapter_call(&PageBuilderAdapterCallEvidence {
+            module_slug: evidence.module_slug,
+            contract: PageBuilderContractMetadata::BASELINE.contract,
+            operation,
+            status,
+            tenant_id: evidence.tenant_id.clone(),
+            page_id: evidence.page_id.clone(),
+            revision_id: evidence.revision_id.clone(),
+            correlation_id: evidence.correlation_id.clone(),
+            error_kind: evidence.error_kind,
+            stable_code: evidence.stable_code,
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rustok_api::PortActor;
+    use std::sync::Mutex;
 
     #[test]
     fn runtime_evidence_has_no_contract_or_schema_version() {
@@ -152,5 +195,35 @@ mod tests {
         assert!(value.get("contract").is_none());
         assert!(value.get("schema_version").is_none());
         assert!(value.get("version").is_none());
+    }
+
+    #[derive(Default)]
+    struct CompatibilityRecorder {
+        evidence: Mutex<Vec<PageBuilderAdapterCallEvidence>>,
+    }
+
+    impl PageBuilderAdapterTelemetry for CompatibilityRecorder {
+        fn record_adapter_call(&self, evidence: &PageBuilderAdapterCallEvidence) {
+            self.evidence.lock().expect("recorder lock").push(evidence.clone());
+        }
+    }
+
+    #[test]
+    fn original_telemetry_implementations_remain_usable() {
+        let context = PortContext::new(
+            "tenant-a",
+            PortActor::user("editor-a"),
+            "en",
+            "correlation-a",
+        );
+        let recorder = CompatibilityRecorder::default();
+        recorder.record_runtime_call(&PageBuilderRuntimeCallEvidence::load_project(
+            &context,
+            "home",
+        ));
+
+        let evidence = recorder.evidence.lock().expect("recorder lock");
+        assert_eq!(evidence.len(), 1);
+        assert_eq!(evidence[0].page_id, "home");
     }
 }
