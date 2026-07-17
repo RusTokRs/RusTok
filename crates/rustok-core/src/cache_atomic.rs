@@ -464,7 +464,7 @@ mod tests {
             if state.value.as_deref() != Some(expected) {
                 return Ok(CacheCompareAndSetOutcome::Mismatch);
             }
-            state.value = if ttl.is_some_and(Duration::is_zero) {
+            state.value = if ttl.is_some_and(|ttl| ttl.is_zero()) {
                 None
             } else {
                 Some(value)
