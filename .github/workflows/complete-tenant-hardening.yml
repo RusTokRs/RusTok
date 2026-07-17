@@ -3,6 +3,8 @@ name: Complete tenant hardening contract
 on:
   push:
     branches: [main]
+    paths:
+      - scripts/migrations/complete_tenant_hardening.trigger
   workflow_dispatch:
 
 permissions:
