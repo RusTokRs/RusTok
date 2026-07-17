@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rustok_core::generate_id;
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, Set, TransactionTrait,
@@ -8,7 +8,6 @@ use sea_orm::{
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::dto::MarketplaceListingResponse;
@@ -85,6 +84,7 @@ pub(crate) async fn replay_existing<R: DeserializeOwned>(
 
 pub(crate) async fn admit(
     db: &DatabaseConnection,
+    event_bus: TransactionalEventBus,
     tenant_id: Uuid,
     actor_id: Uuid,
     idempotency_key: String,
@@ -117,7 +117,7 @@ pub(crate) async fn admit(
             tenant_id,
             actor_id,
             command_kind: command_kind.to_string(),
-            event_bus: TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
+            event_bus,
         })),
         Err(error) if is_unique_constraint(&error) => {
             transaction.rollback().await?;
