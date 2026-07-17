@@ -31,6 +31,8 @@ migration, contention, mounted-transport, and remote-profile evidence.
   actor, locale, provider, or financial attribution during migration.
 - [x] Allow hosts to provide request-scoped typed port/runtime composition without
   constructing owner dependencies inside FFA packages.
+- [x] Keep owner workflow-to-permission mapping inside owner FFA packages and platform
+  allow/deny decisions inside RBAC.
 - [ ] Retain compiled in-process/remote-profile evidence before FBA
   `transport_verified`.
 - [ ] Retain mounted native/GraphQL parity before FFA `phase_b_ready`.
@@ -46,6 +48,8 @@ migration, contention, mounted-transport, and remote-profile evidence.
   default-enabled.
 - [x] Add family, seller transport, listing lifecycle, provenance, and listing FFA
   source guards.
+- [x] Aggregate listing boundary/lifecycle/provenance/FFA source verification into the
+  Marketplace and ecommerce verifier chains.
 
 ## Owner boundaries
 
@@ -76,15 +80,18 @@ migration, contention, mounted-transport, and remote-profile evidence.
   nullable actor/locale and source-column metadata.
 - [x] Remove `approval_note` and `suspension_reason` from final listing storage and
   DTOs without fabricating legacy attribution.
-- [x] Publish the initial `rustok-marketplace-listing-admin` owner FFA package with
-  model/core/transport/i18n/Leptos boundaries.
+- [x] Publish `rustok-marketplace-listing-admin` with model/core/transport/i18n/Leptos
+  boundaries.
 - [x] Preserve command idempotency across explicit UI retry and render legacy history
   as unknown attribution.
-- [x] Require request-scoped typed ports for native FFA composition and fail closed for
-  the currently unmounted GraphQL profile.
+- [x] Register the listing FFA crate in the workspace and admin hydrate/SSR feature
+  graph while keeping Marketplace backend modules opt-in.
+- [x] Add platform `marketplace_listings` permissions and publish the owner-supported
+  create/read/list/update/moderate/publish/manage set.
+- [x] Require request-scoped typed ports for native FFA composition, return a stable
+  error when runtime is unmounted, and fail closed for the unmounted GraphQL profile.
 - [ ] Publish listing events through transactional outbox ownership.
-- [ ] Register listing FFA in workspace/hosts, add platform permissions, and mount real
-  native/GraphQL transports.
+- [ ] Mount authenticated native provider composition and real GraphQL transports.
 - [ ] Retain compiled/mounted FBA and FFA evidence.
 
 ### Future owners
@@ -111,22 +118,23 @@ by owner modules. A future Marketplace control room may only compose owner view
 models and transport facades.
 
 - [ ] Seller FFA: retain mounted native/GraphQL parity and localized errors.
-- [ ] Listing FFA: register and mount the owner package, add listing permissions and
-  real GraphQL roots, then retain native/GraphQL parity.
+- [ ] Listing FFA: mount authenticated native provider composition, add real GraphQL
+  roots, and retain native/GraphQL parity.
 - [ ] Keep vendor portal, platform admin, and storefront hosts as composition shells.
 
 ## Immediate execution order
 
 1. [x] Complete immutable listing events and remove direct write bypasses.
 2. [x] Backfill truthful legacy snapshots and remove mutable note columns.
-3. [x] Publish the initial listing FFA source package.
+3. [x] Publish listing FFA source, workspace/admin wiring, and listing RBAC.
 4. [ ] Define and atomically publish the versioned listing outbox event.
 5. [ ] Complete immutable seller lifecycle/moderation events.
-6. [ ] Add listing permissions, workspace/host composition, and real GraphQL roots.
-7. [ ] Compile seller/listing/root contracts and apply SQLite/PostgreSQL migrations.
-8. [ ] Execute idempotency, provenance, locale, tenant, outbox, contention, restart,
+6. [ ] Mount authenticated listing native provider composition and real GraphQL roots.
+7. [ ] Synchronize the central module readiness board safely.
+8. [ ] Compile seller/listing/root contracts and apply SQLite/PostgreSQL migrations.
+9. [ ] Execute idempotency, provenance, locale, tenant, outbox, contention, restart,
    and mounted transport scenarios.
-9. [ ] Start seller order allocation, commission, ledger, and payout owners in order.
+10. [ ] Start seller order allocation, commission, ledger, and payout owners in order.
 
 ## Source evidence
 
@@ -141,6 +149,8 @@ models and transport facades.
 - `../rustok-marketplace-listing/admin/src/transport/native_server_adapter.rs`
 - `../rustok-marketplace-listing/admin/src/transport/graphql_adapter.rs`
 - `../rustok-marketplace-listing/admin/src/ui/leptos.rs`
+- `../../Cargo.toml`
+- `../../apps/admin/Cargo.toml`
 - `../../apps/server/tests/marketplace_family_boundary_guard.rs`
 - `../../apps/server/tests/marketplace_seller_transport_guard.rs`
 - `../../apps/server/tests/marketplace_listing_boundary_guard.rs`
@@ -152,3 +162,4 @@ models and transport facades.
 - `../../scripts/verify/verify-marketplace-listing-boundary.mjs`
 - `../../scripts/verify/verify-marketplace-listing-lifecycle-events.mjs`
 - `../../scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
+- `../../scripts/verify/verify-marketplace-listing-admin-ffa.mjs`
