@@ -1,0 +1,64 @@
+name: Apply current Page Builder cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/migrations/cleanup_page_builder_current.py
+      - .github/workflows/cleanup-page-builder-current.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cleanup-page-builder-current-main
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.96
+          components: rustfmt
+
+      - name: Apply cleanup
+        run: python3 scripts/migrations/cleanup_page_builder_current.py
+
+      - name: Format
+        run: cargo fmt --all
+
+      - name: Check Fly and Page Builder
+        run: cargo check -p fly -p rustok-page-builder --all-features
+
+      - name: Test Fly
+        run: cargo test -p fly --lib
+
+      - name: Test Page Builder
+        run: cargo test -p rustok-page-builder --lib --all-features
+
+      - name: Verify diff
+        run: git diff --check
+
+      - name: Remove one-time migration
+        run: rm -f scripts/migrations/cleanup_page_builder_current.py .github/workflows/cleanup-page-builder-current.yml
+
+      - name: Commit directly to main
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "refactor(page-builder): keep only the current API"
+          git pull --rebase origin main
+          git push origin HEAD:main
