@@ -271,6 +271,14 @@ fn map_owner_error(error: MarketplaceListingError) -> PortError {
             "marketplace_listing.command_receipt_corrupt",
             "marketplace listing command receipt requires operator review",
         ),
+        MarketplaceListingError::EventContractInvariant(_) => PortError::invariant_violation(
+            "marketplace_listing.event_contract_invariant",
+            "marketplace listing event contract requires operator review",
+        ),
+        MarketplaceListingError::EventPublication(_) => PortError::unavailable(
+            "marketplace_listing.event_publication_unavailable",
+            "marketplace listing event publication is temporarily unavailable",
+        ),
         MarketplaceListingError::Validation(message) => {
             PortError::validation("marketplace_listing.validation", message)
         }
