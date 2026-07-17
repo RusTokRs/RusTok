@@ -142,26 +142,50 @@ enum OverlayKind {
     Insertion,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct OverlayGeometry {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
 #[component]
 fn OverlayLayer(runtime: AdminEditorRuntime, kind: OverlayKind) -> impl IntoView {
-    let class = match kind {
-        OverlayKind::Hovered => "border border-dashed border-blue-400",
-        OverlayKind::Selected => "border-2 border-blue-600 shadow-[0_0_0_1px_rgba(255,255,255,.8)]",
-        OverlayKind::Insertion => "border-[3px] border-green-600 bg-green-600/10",
+    let geometry = Memo::new(move |_| {
+        runtime.controller.with(|controller| {
+            let rect = match kind {
+                OverlayKind::Hovered => controller.ui().state.overlays.hovered,
+                OverlayKind::Selected => controller.ui().state.overlays.selected,
+                OverlayKind::Insertion => controller.ui().state.overlays.insertion,
+            };
+            overlay_geometry(rect, controller.ui().state.viewport)
+        })
+    });
+    let rect_class = match kind {
+        OverlayKind::Hovered => {
+            "fill-transparent stroke-blue-400 stroke-1 [stroke-dasharray:4_4]"
+        }
+        OverlayKind::Selected => {
+            "fill-transparent stroke-blue-600 stroke-2 drop-shadow-[0_0_1px_rgba(255,255,255,.8)]"
+        }
+        OverlayKind::Insertion => "fill-green-600/10 stroke-green-600 stroke-[3]",
     };
+
     view! {
-        <div
+        <svg
             aria-hidden="true"
-            class=format!("pointer-events-none absolute {class}")
-            style=move || runtime.controller.with(|controller| {
-                let rect = match kind {
-                    OverlayKind::Hovered => controller.ui().state.overlays.hovered,
-                    OverlayKind::Selected => controller.ui().state.overlays.selected,
-                    OverlayKind::Insertion => controller.ui().state.overlays.insertion,
-                };
-                overlay_style(rect, controller.ui().state.viewport)
-            })
-        ></div>
+            class="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
+            class:hidden=move || geometry.get().is_none()
+        >
+            <rect
+                class=rect_class
+                x=move || geometry.get().map(|value| value.x).unwrap_or_default()
+                y=move || geometry.get().map(|value| value.y).unwrap_or_default()
+                width=move || geometry.get().map(|value| value.width).unwrap_or_default()
+                height=move || geometry.get().map(|value| value.height).unwrap_or_default()
+            ></rect>
+        </svg>
     }
 }
 
@@ -317,18 +341,15 @@ fn canvas_rect(rect: fly_leptos::BrowserRect) -> CanvasRect {
     }
 }
 
-fn overlay_style(rect: Option<CanvasRect>, viewport: ViewportState) -> String {
-    let Some(rect) = rect else {
-        return "display:none".to_string();
-    };
+fn overlay_geometry(rect: Option<CanvasRect>, viewport: ViewportState) -> Option<OverlayGeometry> {
+    let rect = rect?;
     let zoom = f64::from(viewport.zoom.max(0.01));
-    format!(
-        "display:block;left:{}px;top:{}px;width:{}px;height:{}px",
-        rect.x * zoom,
-        rect.y * zoom,
-        rect.width * zoom,
-        rect.height * zoom,
-    )
+    Some(OverlayGeometry {
+        x: rect.x * zoom,
+        y: rect.y * zoom,
+        width: rect.width * zoom,
+        height: rect.height * zoom,
+    })
 }
 
 fn dom_id(value: &str) -> String {
@@ -342,4 +363,32 @@ fn dom_id(value: &str) -> String {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overlay_geometry_uses_svg_coordinates_without_css_text() {
+        let geometry = overlay_geometry(
+            Some(CanvasRect {
+                x: 10.0,
+                y: 20.0,
+                width: 30.0,
+                height: 40.0,
+            }),
+            ViewportState {
+                zoom: 0.5,
+                ..ViewportState::default()
+            },
+        )
+        .expect("geometry");
+
+        assert_eq!(geometry.x, 5.0);
+        assert_eq!(geometry.y, 10.0);
+        assert_eq!(geometry.width, 15.0);
+        assert_eq!(geometry.height, 20.0);
+        assert!(overlay_geometry(None, ViewportState::default()).is_none());
+    }
 }
