@@ -2,9 +2,10 @@ use crate::dto::PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS;
 use fly::{
     build_static_landing_artifact_v1, migrate_landing_document_v1, validate_project,
     ComponentRegistryManifest, FlyError, GrapesJsV1Codec, LandingDocumentV1,
-    LandingReadinessPolicy, RegistryCompatibilityReport, RegistrySet, RenderPolicy,
-    StaticLandingBuildResult, ValidationDiagnostic, ValidationLimits, ValidationReport,
-    FLY_LANDING_DOCUMENT_V1, GRAPESJS_V1,
+    LandingReadinessPolicy, RegistryCompatibilityIssue, RegistryCompatibilityIssueKind,
+    RegistryCompatibilityReport, RegistrySet, RenderPolicy, StaticLandingBuildResult,
+    ValidationDiagnostic, ValidationLimits, ValidationReport, FLY_LANDING_DOCUMENT_V1,
+    GRAPESJS_V1,
 };
 use serde_json::Value;
 
@@ -60,7 +61,7 @@ impl LandingProjectInspection {
             }
         };
         let validation = validate_project(&landing.document, registries, limits);
-        let registry_compatibility = landing.registry.compatibility_with(registries);
+        let registry_compatibility = registry_compatibility(&landing, registries);
         Ok(Self {
             landing,
             validation,
@@ -116,6 +117,65 @@ impl LandingProjectInspection {
 
     pub fn encode_landing_v1(&self) -> LandingProjectResult<Value> {
         self.landing.encode_value().map_err(LandingProjectError::Fly)
+    }
+}
+
+fn registry_compatibility(
+    landing: &LandingDocumentV1,
+    registries: &RegistrySet,
+) -> RegistryCompatibilityReport {
+    let mut report = landing.registry.compatibility_with(registries);
+    landing.document.project.visit_components(|component, _, _| {
+        let component_type = component.component_type();
+        let Some(available) = registries.components.get(component_type) else {
+            return;
+        };
+        if let Some(provider) = component.provider.as_deref() {
+            push_registry_issue(
+                &mut report,
+                (provider != available.provider).then(|| RegistryCompatibilityIssue {
+                    component_type: component_type.to_string(),
+                    kind: RegistryCompatibilityIssueKind::ProviderMismatch,
+                    expected: Some(provider.to_string()),
+                    actual: Some(available.provider.clone()),
+                }),
+            );
+            push_registry_issue(
+                &mut report,
+                (component.schema_version.as_deref() != Some(available.schema_version.as_str()))
+                    .then(|| RegistryCompatibilityIssue {
+                        component_type: component_type.to_string(),
+                        kind: RegistryCompatibilityIssueKind::SchemaVersionMismatch,
+                        expected: component.schema_version.clone(),
+                        actual: Some(available.schema_version.clone()),
+                    }),
+            );
+        } else if let Some(schema_version) = component.schema_version.as_deref() {
+            push_registry_issue(
+                &mut report,
+                (schema_version != available.schema_version).then(|| {
+                    RegistryCompatibilityIssue {
+                        component_type: component_type.to_string(),
+                        kind: RegistryCompatibilityIssueKind::SchemaVersionMismatch,
+                        expected: Some(schema_version.to_string()),
+                        actual: Some(available.schema_version.clone()),
+                    }
+                }),
+            );
+        }
+    });
+    report.compatible = report.issues.is_empty();
+    report
+}
+
+fn push_registry_issue(
+    report: &mut RegistryCompatibilityReport,
+    issue: Option<RegistryCompatibilityIssue>,
+) {
+    if let Some(issue) = issue {
+        if !report.issues.contains(&issue) {
+            report.issues.push(issue);
+        }
     }
 }
 
@@ -192,6 +252,26 @@ mod tests {
         assert!(matches!(
             error,
             LandingProjectError::ContractPayloadMismatch { .. }
+        ));
+    }
+
+    #[test]
+    fn declared_provider_schema_drift_blocks_contract_validity() {
+        let mut project = project_value();
+        project["pages"][0]["component"]["components"][0]["provider"] =
+            json!("legacy.provider");
+        project["pages"][0]["component"]["components"][0]["schemaVersion"] = json!("0");
+        let inspection = LandingProjectInspection::decode(GRAPESJS_V1, &project)
+            .expect("structural inspection");
+        assert!(!inspection.registry_compatibility().compatible);
+        assert!(inspection
+            .registry_compatibility()
+            .issues
+            .iter()
+            .any(|issue| issue.kind == RegistryCompatibilityIssueKind::ProviderMismatch));
+        assert!(matches!(
+            inspection.require_contract_valid(),
+            Err(LandingProjectError::RegistryIncompatible { .. })
         ));
     }
 
