@@ -2,6 +2,8 @@
 
 #[cfg(test)]
 mod context_contract;
+#[cfg(test)]
+mod ssr_actions_forms_browser_tests;
 
 pub mod browser_intent;
 pub mod draft_session;
