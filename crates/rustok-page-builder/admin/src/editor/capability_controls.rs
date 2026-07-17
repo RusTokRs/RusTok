@@ -4,13 +4,6 @@ use fly_ui::{EditorCapability, EditorProviderState};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
-pub(crate) fn capability_disabled(
-    runtime: AdminEditorRuntime,
-    capability: EditorCapability,
-) -> Signal<bool> {
-    Signal::derive(move || !runtime.capability_enabled(capability))
-}
-
 #[component]
 pub(crate) fn CapabilityFieldset(
     runtime: AdminEditorRuntime,
@@ -86,14 +79,28 @@ pub(crate) fn CapabilityPolicyPanel(runtime: AdminEditorRuntime) -> impl IntoVie
         "page_builder.capabilityPolicy.disabled",
         "disabled",
     );
+    let yes_label = t(
+        locale.as_deref(),
+        "page_builder.capabilityPolicy.yes",
+        "yes",
+    );
+    let no_label = t(
+        locale.as_deref(),
+        "page_builder.capabilityPolicy.no",
+        "no",
+    );
     let evaluation = runtime.editor_capability_evaluation.clone();
     let provider = evaluation
         .as_ref()
         .map(|evaluation| evaluation.provider_state)
         .unwrap_or(EditorProviderState::Healthy);
     let provider_class = match provider {
-        EditorProviderState::Healthy => "rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-900",
-        EditorProviderState::Degraded => "rounded bg-amber-100 px-2 py-1 text-xs text-amber-900",
+        EditorProviderState::Healthy => {
+            "rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-900"
+        }
+        EditorProviderState::Degraded => {
+            "rounded bg-amber-100 px-2 py-1 text-xs text-amber-900"
+        }
         EditorProviderState::Unavailable => {
             "rounded bg-destructive/10 px-2 py-1 text-xs text-destructive"
         }
@@ -131,6 +138,8 @@ pub(crate) fn CapabilityPolicyPanel(runtime: AdminEditorRuntime) -> impl IntoVie
                             let evaluation = evaluation.clone();
                             let enabled_label = enabled_label.clone();
                             let disabled_label = disabled_label.clone();
+                            let yes_label = yes_label.clone();
+                            let no_label = no_label.clone();
                             let requested = evaluation
                                 .as_ref()
                                 .map(|evaluation| evaluation.requested_allows(capability));
@@ -143,9 +152,9 @@ pub(crate) fn CapabilityPolicyPanel(runtime: AdminEditorRuntime) -> impl IntoVie
                             view! {
                                 <tr class="border-b border-border/60" data-fly-capability-row=capability.as_str()>
                                     <th class="px-1 py-1 font-medium"><code>{capability.as_str()}</code></th>
-                                    <CapabilitySourceCell value=requested />
-                                    <CapabilitySourceCell value=tenant />
-                                    <CapabilitySourceCell value=permission />
+                                    <CapabilitySourceCell value=requested yes_label=yes_label.clone() no_label=no_label.clone() />
+                                    <CapabilitySourceCell value=tenant yes_label=yes_label.clone() no_label=no_label.clone() />
+                                    <CapabilitySourceCell value=permission yes_label=yes_label no_label=no_label />
                                     <td class="px-1 py-1">
                                         {move || if row_runtime.capability_enabled(capability) {
                                             enabled_label.clone()
@@ -164,11 +173,15 @@ pub(crate) fn CapabilityPolicyPanel(runtime: AdminEditorRuntime) -> impl IntoVie
 }
 
 #[component]
-fn CapabilitySourceCell(value: Option<bool>) -> impl IntoView {
+fn CapabilitySourceCell(
+    value: Option<bool>,
+    yes_label: String,
+    no_label: String,
+) -> impl IntoView {
     let (label, class) = match value {
-        Some(true) => ("yes", "px-1 py-1 text-emerald-700"),
-        Some(false) => ("no", "px-1 py-1 text-destructive"),
-        None => ("—", "px-1 py-1 text-muted-foreground"),
+        Some(true) => (yes_label, "px-1 py-1 text-emerald-700"),
+        Some(false) => (no_label, "px-1 py-1 text-destructive"),
+        None => ("—".to_string(), "px-1 py-1 text-muted-foreground"),
     };
     view! { <td class=class>{label}</td> }
 }
