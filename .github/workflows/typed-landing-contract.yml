@@ -1,5 +1,6 @@
 name: Validate typed landing contract
 
+# One-time validation runner for the typed landing section contract.
 on:
   push:
     branches: [main]
