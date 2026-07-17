@@ -3,6 +3,7 @@
 mod contribution;
 mod contribution_adapter;
 mod contribution_factory;
+mod contribution_manifest;
 mod dnd;
 mod error;
 mod keyboard;
@@ -15,6 +16,7 @@ mod viewport;
 pub use contribution::*;
 pub use contribution_adapter::*;
 pub use contribution_factory::*;
+pub use contribution_manifest::*;
 pub use dnd::*;
 pub use error::*;
 pub use keyboard::*;
