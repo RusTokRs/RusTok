@@ -1,3 +1,4 @@
+use crate::dto::PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS;
 use fly::{
     build_static_landing_artifact_v1, migrate_landing_document_v1, validate_project,
     ComponentRegistryManifest, FlyError, GrapesJsV1Codec, LandingDocumentV1,
@@ -6,9 +7,6 @@ use fly::{
     FLY_LANDING_DOCUMENT_V1, GRAPESJS_V1,
 };
 use serde_json::Value;
-
-pub const PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS: [&str; 2] =
-    [GRAPESJS_V1, FLY_LANDING_DOCUMENT_V1];
 
 /// Framework-neutral landing inspection used by Leptos, Dioxus and static-export adapters.
 ///
