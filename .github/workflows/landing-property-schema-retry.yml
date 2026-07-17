@@ -1,0 +1,131 @@
+name: Retry landing property schema validation
+
+# Registered retry for the current landing property contract.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/landing-property-schema-retry.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: landing-property-schema
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.96
+          components: rustfmt
+
+      - name: Apply corrected integration
+        id: integration
+        shell: bash
+        run: |
+          set +e
+          {
+            git show 4fe423b2d6173408a9d0f07a1fb88ebd593e445c:.github/workflows/landing-property-schema.yml > /tmp/landing-property-source.yml
+            python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path('/tmp/landing-property-source.yml').read_text(encoding='utf-8')
+          start_marker = "          python3 - <<'PY'\n"
+          end_marker = "          PY\n\n      - name: Validate contract and consumers"
+          start = source.index(start_marker) + len(start_marker)
+          end = source.index(end_marker, start)
+          lines = source[start:end].splitlines()
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          old = "']\\n    ]\\n    .into_iter()'"
+          new = "'),\\n    ]\\n    .into_iter()'"
+          if script.count(old) != 4:
+              raise SystemExit(f'contact boundary patch expected 4 matches, found {script.count(old)}')
+          script = script.replace(old, new)
+          Path('/tmp/integrate_landing_properties.py').write_text(script, encoding='utf-8')
+          PY
+            python3 /tmp/integrate_landing_properties.py
+          } > /tmp/landing-property-integration.log 2>&1
+          status=$?
+          cat /tmp/landing-property-integration.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Validate contract and consumers
+        id: validation
+        if: steps.integration.outputs.status == '0'
+        shell: bash
+        run: |
+          set +e
+          {
+            cargo fmt --package fly --package rustok-page-builder && \
+            cargo check -p fly --all-features --all-targets && \
+            cargo test -p fly --lib landing_property::tests && \
+            cargo test -p fly --lib landing_contract::tests && \
+            cargo test -p fly --lib registry::tests && \
+            cargo test -p rustok-page-builder --lib --all-features && \
+            cargo check -p rustok-page-builder-admin -p rustok-pages-admin && \
+            git diff --check
+          } > /tmp/landing-property-schema.log 2>&1
+          status=$?
+          cat /tmp/landing-property-schema.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Record failure
+        if: steps.integration.outputs.status != '0' || steps.validation.outputs.status != '0'
+        shell: bash
+        run: |
+          git reset --hard HEAD
+          {
+            echo '# Landing property schema validation failure'
+            echo
+            echo '## Integration'
+            echo
+            echo '```text'
+            cat /tmp/landing-property-integration.log 2>/dev/null || true
+            echo '```'
+            echo
+            echo '## Validation'
+            echo
+            echo '```text'
+            cat /tmp/landing-property-schema.log 2>/dev/null || true
+            echo '```'
+          } > LANDING_PROPERTY_SCHEMA_FAILURE.md
+
+      - name: Clean temporary files
+        run: |
+          rm -f .github/workflows/landing-property-schema-retry.yml
+          if [[ "${{ steps.integration.outputs.status }}" == "0" && "${{ steps.validation.outputs.status }}" == "0" ]]; then
+            rm -f LANDING_PROPERTY_SCHEMA_FAILURE.md
+          fi
+
+      - name: Commit result
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          if [[ "${{ steps.integration.outputs.status }}" == "0" && "${{ steps.validation.outputs.status }}" == "0" ]]; then
+            message="feat(page-builder): expose typed landing properties"
+          else
+            message="chore(page-builder): record landing property schema failure"
+          fi
+          git commit -m "$message"
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep 5
+          done
+          exit 1
