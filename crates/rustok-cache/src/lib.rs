@@ -20,7 +20,12 @@ mod policy;
 mod redis_status;
 mod refresh;
 mod service;
-mod shared_backend;
+mod shared_backend {
+    include!("shared_backend.rs");
+
+    #[cfg(not(feature = "redis-cache"))]
+    const _: usize = std::mem::size_of::<DegradationAwareFallbackBackend>();
+}
 #[cfg(all(test, feature = "redis-cache"))]
 mod startup_recovery_tests;
 mod tenant_generation_observability;
