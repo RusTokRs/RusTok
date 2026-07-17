@@ -314,6 +314,8 @@ jobs:
         run: cargo test -p rustok-cache --lib -- --ignored --nocapture --test-threads=1
       - name: Cache atomic CAS live Redis test
         run: cargo test -p rustok-cache --test atomic_cas -- --ignored --nocapture --test-threads=1
+      - name: Cache fallback CAS outage recovery
+        run: cargo test -p rustok-cache --test fallback_cas_live -- --ignored --nocapture --test-threads=1
       - name: Cache hardening live Redis tests
         run: cargo test -p rustok-cache --test real_redis_hardening -- --ignored --nocapture --test-threads=1
       - name: Tenant locale Redis recovery
