@@ -38,7 +38,7 @@ impl PagesBrowserIntentProblem {
                 status: HTTP_FORBIDDEN,
                 error: error.to_string(),
                 code: Some(BROWSER_CAPABILITY_DENIAL_CODE.to_string()),
-                intent: Some(denial.intent.clone()),
+                intent: Some(denial.intent.as_str().to_string()),
                 capability: Some(denial.capability),
                 required: denial.required.clone(),
                 missing: denial.missing.clone(),
@@ -107,6 +107,7 @@ fn dispatch_status(error: &BrowserIntentDispatchError) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fly_browser::BrowserIntentKind;
     use rustok_page_builder_admin::BrowserCapabilityDenial;
     use serde_json::json;
 
@@ -114,7 +115,7 @@ mod tests {
     fn capability_denial_has_stable_problem_contract() {
         let error = PagesBrowserIntentAccessError::Capability(
             BrowserCapabilityDenial {
-                intent: "save".to_string(),
+                intent: BrowserIntentKind::Save,
                 capability: EditorCapability::Publish,
                 required: vec![EditorCapability::Publish],
                 missing: vec![EditorCapability::Publish],
@@ -149,7 +150,7 @@ mod tests {
     fn multiple_missing_capabilities_are_preserved_for_clients() {
         let error = PagesBrowserIntentAccessError::Capability(
             BrowserCapabilityDenial {
-                intent: "select_asset".to_string(),
+                intent: BrowserIntentKind::SelectAsset,
                 capability: EditorCapability::Properties,
                 required: vec![EditorCapability::Properties, EditorCapability::Assets],
                 missing: vec![EditorCapability::Properties, EditorCapability::Assets],
@@ -158,6 +159,7 @@ mod tests {
         );
         let problem = PagesBrowserIntentProblem::from(&error);
         assert_eq!(problem.status, HTTP_FORBIDDEN);
+        assert_eq!(problem.intent.as_deref(), Some("select_asset"));
         assert_eq!(
             problem.required,
             vec![EditorCapability::Properties, EditorCapability::Assets]
