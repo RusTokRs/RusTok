@@ -6,9 +6,27 @@ use crate::contributions::{
 use fly_browser::BrowserIntentEnvelope;
 use fly_ui::{CapabilityState, PaletteBlockAccess};
 use rustok_page_builder_admin::{
-    validate_browser_capability_access, validate_browser_palette_access,
+    browser_capability_denial, validate_browser_capability_access,
+    validate_browser_palette_access, BrowserCapabilityAccessError, BrowserCapabilityDenial,
     BrowserIntentDispatchError, SsrDraftSessionStore,
 };
+
+#[derive(Debug, thiserror::Error)]
+pub enum PagesBrowserIntentAccessError {
+    #[error(transparent)]
+    Capability(#[from] BrowserCapabilityAccessError),
+    #[error(transparent)]
+    Pages(#[from] PagesBrowserIntentError),
+}
+
+impl PagesBrowserIntentAccessError {
+    pub fn capability_denial(&self) -> Option<&BrowserCapabilityDenial> {
+        match self {
+            Self::Capability(error) => browser_capability_denial(error),
+            Self::Pages(_) => None,
+        }
+    }
+}
 
 pub fn pages_palette_block_access() -> PaletteBlockAccess {
     let assembly = build_pages_admin_contribution_registry(&pages_admin_contribution_policy());
@@ -18,7 +36,7 @@ pub fn pages_palette_block_access() -> PaletteBlockAccess {
 pub async fn dispatch_pages_browser_intent(
     snapshot: PagesBuilderSaveSnapshot,
     envelope: BrowserIntentEnvelope,
-) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
+) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentAccessError> {
     dispatch_pages_browser_intent_with_capabilities(
         snapshot,
         envelope,
@@ -31,16 +49,16 @@ pub async fn dispatch_pages_browser_intent_with_capabilities(
     snapshot: PagesBuilderSaveSnapshot,
     envelope: BrowserIntentEnvelope,
     capabilities: CapabilityState,
-) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
+) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentAccessError> {
     let envelope = preflight_pages_intent(envelope, capabilities)?;
-    browser_intent::dispatch_pages_browser_intent(snapshot, envelope).await
+    Ok(browser_intent::dispatch_pages_browser_intent(snapshot, envelope).await?)
 }
 
 pub async fn dispatch_pages_browser_intent_with_store(
     snapshot: PagesBuilderSaveSnapshot,
     envelope: BrowserIntentEnvelope,
     draft_store: &dyn SsrDraftSessionStore,
-) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
+) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentAccessError> {
     dispatch_pages_browser_intent_with_store_and_capabilities(
         snapshot,
         envelope,
@@ -55,19 +73,24 @@ pub async fn dispatch_pages_browser_intent_with_store_and_capabilities(
     envelope: BrowserIntentEnvelope,
     draft_store: &dyn SsrDraftSessionStore,
     capabilities: CapabilityState,
-) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
+) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentAccessError> {
     let envelope = preflight_pages_intent(envelope, capabilities)?;
-    browser_intent::dispatch_pages_browser_intent_with_store(snapshot, envelope, draft_store).await
+    Ok(
+        browser_intent::dispatch_pages_browser_intent_with_store(snapshot, envelope, draft_store)
+            .await?,
+    )
 }
 
 fn preflight_pages_intent(
     envelope: BrowserIntentEnvelope,
     capabilities: CapabilityState,
-) -> Result<BrowserIntentEnvelope, PagesBrowserIntentError> {
+) -> Result<BrowserIntentEnvelope, PagesBrowserIntentAccessError> {
     let envelope = envelope
         .normalized()
-        .map_err(BrowserIntentDispatchError::from)?;
-    validate_browser_palette_access(&envelope, &pages_palette_block_access())?;
+        .map_err(BrowserIntentDispatchError::from)
+        .map_err(PagesBrowserIntentError::from)?;
+    validate_browser_palette_access(&envelope, &pages_palette_block_access())
+        .map_err(PagesBrowserIntentError::from)?;
     validate_browser_capability_access(&envelope, capabilities)?;
     Ok(envelope)
 }
@@ -77,7 +100,6 @@ mod tests {
     use super::*;
     use fly_browser::FLY_BROWSER_PROTOCOL_V1;
     use fly_ui::EditorCapability;
-    use rustok_page_builder_admin::browser_capability_denial;
     use serde_json::{json, Value};
 
     fn envelope(intent: &str, payload: Value) -> BrowserIntentEnvelope {
@@ -118,7 +140,9 @@ mod tests {
         .expect_err("uncontributed block");
         assert!(matches!(
             error,
-            PagesBrowserIntentError::Dispatch(BrowserIntentDispatchError::Authoring(_))
+            PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Dispatch(
+                BrowserIntentDispatchError::Authoring(_)
+            ))
         ));
     }
 
@@ -139,20 +163,23 @@ mod tests {
     }
 
     #[test]
-    fn pages_preflight_rejects_capability_bypass() {
+    fn pages_preflight_preserves_typed_capability_denial() {
         let capabilities = CapabilityState {
             publish: false,
             ..CapabilityState::full()
         };
         let error = preflight_pages_intent(envelope("save", json!({})), capabilities)
             .expect_err("publish capability denial");
-        let PagesBrowserIntentError::Dispatch(error) = error else {
-            panic!("expected browser dispatch capability denial");
-        };
         assert_eq!(
-            browser_capability_denial(&error).map(|denial| denial.capability),
+            error
+                .capability_denial()
+                .map(|denial| denial.capability),
             Some(EditorCapability::Publish)
         );
+        assert!(matches!(
+            error,
+            PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Denied(_))
+        ));
         assert!(preflight_pages_intent(
             envelope("select", json!({ "component_id": "hero" })),
             capabilities,
