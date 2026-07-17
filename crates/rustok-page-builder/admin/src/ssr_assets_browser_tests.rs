@@ -48,7 +48,7 @@ fn intent(
 }
 
 #[test]
-fn browser_dispatches_asset_upsert_apply_and_remove_contracts() {
+fn browser_dispatches_asset_upsert_apply_and_safe_remove_contracts() {
     let mut controller = controller();
 
     let request = intent(
@@ -89,7 +89,23 @@ fn browser_dispatches_asset_upsert_apply_and_remove_contracts() {
         BrowserIntentKind::RemoveAsset,
         json!({ "asset_id": "hero" }),
     );
-    dispatch_browser_intent(&mut controller, request).expect("remove asset");
+    let error = dispatch_browser_intent(&mut controller, request)
+        .expect_err("referenced asset removal must fail");
+    assert!(matches!(error, BrowserIntentDispatchError::Authoring(_)));
+    assert!(error.to_string().contains("still referenced by component(s): image"));
+
+    let request = intent(&controller, BrowserIntentKind::Undo, json!({}));
+    dispatch_browser_intent(&mut controller, request).expect("undo asset assignment");
+    assert!(controller.editor().document().component("image").unwrap().attributes
+        .get("data-fly-asset-id")
+        .is_none());
+
+    let request = intent(
+        &controller,
+        BrowserIntentKind::RemoveAsset,
+        json!({ "asset_id": "hero" }),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("remove unreferenced asset");
     assert!(AssetCatalog::from_document(controller.editor().document())
         .get("hero")
         .is_none());
