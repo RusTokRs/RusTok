@@ -23,11 +23,11 @@ const API_CSP: &str =
 ///
 /// Inline script/style allowances remain temporarily for the current SSR/bootstrap
 /// path and must be replaced with nonce/hash-based directives before the platform
-/// is declared production-ready. Plaintext browser connections and plugin/object
-/// content are intentionally prohibited now.
-const UI_CSP: &str = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: ws: wss:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+/// is declared production-ready. Dynamic string compilation is prohibited now,
+/// along with plaintext browser connections and plugin/object content.
+const UI_CSP: &str = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: ws: wss:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
-/// Target UI policy used during migration. It intentionally omits all inline/eval
+/// Target UI policy used during migration. It intentionally omits all inline
 /// allowances and plaintext connection schemes, but remains report-only until the
 /// SSR/bootstrap surfaces are nonce/hash compatible.
 const UI_CSP_REPORT_ONLY: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/security/csp-report; report-to rustok-csp";
@@ -170,14 +170,15 @@ mod tests {
     }
 
     #[test]
-    fn enforced_ui_csp_blocks_plaintext_connections_and_plugin_content() {
+    fn enforced_ui_csp_blocks_eval_plaintext_and_plugin_content() {
+        assert!(!UI_CSP.contains("'unsafe-eval'"));
         assert!(!UI_CSP.contains(" http:"));
         assert!(UI_CSP.contains("object-src 'none'"));
         assert!(UI_CSP.contains("form-action 'self'"));
     }
 
     #[test]
-    fn report_only_ui_csp_exposes_inline_eval_and_plaintext_dependencies() {
+    fn report_only_ui_csp_exposes_inline_and_plaintext_dependencies() {
         assert!(!UI_CSP_REPORT_ONLY.contains("'unsafe-inline'"));
         assert!(!UI_CSP_REPORT_ONLY.contains("'unsafe-eval'"));
         assert!(!UI_CSP_REPORT_ONLY.contains(" http:"));
