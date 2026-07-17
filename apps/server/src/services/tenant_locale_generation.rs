@@ -155,6 +155,13 @@ impl TenantLocaleGenerationListener {
         let result = async {
             let event = VersionedCacheInvalidation::from_message(&message)
                 .map_err(|error| Error::Cache(error.to_string()))?;
+            if event.channel != TENANT_CACHE_GENERATION_CHANNEL {
+                return Err(Error::Validation(format!(
+                    "unexpected tenant locale invalidation channel {}",
+                    event.channel
+                )));
+            }
+
             let durable = self.current_generation().await?;
             if durable < event.generation {
                 return Err(Error::Cache(format!(
@@ -177,15 +184,14 @@ impl TenantLocaleGenerationListener {
         event: VersionedCacheInvalidation,
         durable: u64,
     ) -> Result<()> {
-        if event.channel != TENANT_CACHE_GENERATION_CHANNEL {
-            return Err(Error::Validation(format!(
-                "unexpected tenant locale invalidation channel {}",
-                event.channel
-            )));
-        }
-
         match self.tracker.observe(&event) {
             CacheInvalidationObservation::InOrder { generation } => {
+                if durable > generation {
+                    invalidate_all_tenant_locale_cache(&self.ctx).await;
+                    acknowledge_locale_recovery(&self.tracker, durable)?;
+                    return Ok(());
+                }
+
                 if event.key == "*" {
                     invalidate_all_tenant_locale_cache(&self.ctx).await;
                 } else {
@@ -199,10 +205,21 @@ impl TenantLocaleGenerationListener {
                 }
                 acknowledge_locale_applied(&self.tracker, generation)?;
             }
-            CacheInvalidationObservation::Duplicate { .. } => {}
+            CacheInvalidationObservation::Duplicate { generation } => {
+                if durable > generation {
+                    invalidate_all_tenant_locale_cache(&self.ctx).await;
+                    acknowledge_locale_recovery(&self.tracker, durable)?;
+                }
+            }
             CacheInvalidationObservation::Stale { last, .. } => {
                 if durable < last {
-                    self.recover_if_advanced().await?;
+                    return Err(Error::Cache(format!(
+                        "shared tenant locale generation {durable} regressed below applied {last}"
+                    )));
+                }
+                if durable > last {
+                    invalidate_all_tenant_locale_cache(&self.ctx).await;
+                    acknowledge_locale_recovery(&self.tracker, durable)?;
                 }
             }
             CacheInvalidationObservation::UnverifiedFirst { .. }
@@ -536,3 +553,7 @@ async fn run_periodic_reconciliation_with_interval(
 #[cfg(test)]
 #[path = "tenant_locale_generation_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tenant_locale_generation_durable_ahead_tests.rs"]
+mod durable_ahead_tests;
