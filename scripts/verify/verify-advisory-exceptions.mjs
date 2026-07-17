@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-// Enforces that every cargo-deny advisory ignore has a complete, time-bounded
-// active register entry. Cargo-audit legacy waivers are tracked separately
-// until they are migrated into the same exception policy.
+// Enforces that every advisory ignore in repository dependency policy has a
+// complete, time-bounded active register entry, and rejects orphan entries.
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -90,7 +89,7 @@ function parseIsoDate(value) {
   return Date.UTC(Number(year), Number(month) - 1, Number(day));
 }
 
-const policyFiles = ["deny.toml"];
+const policyFiles = ["deny.toml", ".cargo/audit.toml"];
 const ignoredByPolicy = new Map(
   policyFiles.map((relativePath) => [
     relativePath,
@@ -151,7 +150,7 @@ for (const id of ignored) {
 
 for (const id of active.keys()) {
   if (!ignored.has(id)) {
-    fail(`${id}: active register entry is not present in deny.toml ignore list`);
+    fail(`${id}: active register entry is not present in any advisory policy ignore list`);
   }
 }
 
@@ -161,4 +160,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log(`✔ ${ignored.size} cargo-deny advisory exception(s) are registered and unexpired`);
+console.log(`✔ ${ignored.size} advisory exception(s) are registered and unexpired`);
