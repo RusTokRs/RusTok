@@ -24,21 +24,20 @@ fn collect_rust_files(root: &Path, files: &mut Vec<PathBuf>) {
 #[test]
 fn production_code_uses_only_the_canonical_degradation_aware_fallback() {
     let root = repo_root();
-    let legacy_definition = root.join("crates/rustok-core/src/cache.rs");
-    let legacy_reexport = root.join("crates/rustok-core/src/lib.rs");
     let this_guard = root.join("apps/server/tests/cache_legacy_fallback_guard.rs");
+    let core_guard = root.join("crates/rustok-core/tests/cache_atomic_backend_guard.rs");
     let mut files = Vec::new();
     collect_rust_files(&root.join("apps"), &mut files);
     collect_rust_files(&root.join("crates"), &mut files);
 
     let mut violations = Vec::new();
     for path in files {
-        if path == legacy_definition || path == legacy_reexport || path == this_guard {
+        if path == this_guard || path == core_guard {
             continue;
         }
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
-        if source.contains("FallbackCacheBackend") {
+        if source.contains("FallbackCacheBackend") || source.contains("RedisCacheBackend") {
             violations.push(
                 path.strip_prefix(&root)
                     .unwrap_or(&path)
@@ -50,8 +49,15 @@ fn production_code_uses_only_the_canonical_degradation_aware_fallback() {
 
     assert!(
         violations.is_empty(),
-        "legacy rustok-core fallback must not gain production call sites: {violations:?}"
+        "legacy rustok-core cache backends must remain removed: {violations:?}"
     );
+
+    let core_lib = std::fs::read_to_string(root.join("crates/rustok-core/src/lib.rs"))
+        .expect("rustok-core root source");
+    assert!(core_lib.contains("mod cache;"));
+    assert!(!core_lib.contains("pub mod cache;"));
+    assert!(!core_lib.contains("RedisCacheBackend"));
+    assert!(!core_lib.contains("FallbackCacheBackend"));
 
     let canonical = std::fs::read_to_string(root.join("crates/rustok-cache/src/shared_backend.rs"))
         .expect("canonical shared cache backend source");
