@@ -12832,6 +12832,7 @@ dependencies = [
  "rustok-tenant",
  "rustok-ui-core",
  "rustok-ui-transport",
+ "rustok-web",
  "serde",
  "serde_json",
  "serde_urlencoded",
