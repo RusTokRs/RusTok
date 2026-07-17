@@ -45,15 +45,30 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: marketplace-listing-owner-outbox
-      - name: Capture listing rustfmt patch
+      - name: Capture owner outbox rustfmt patch
         run: |
-          cargo fmt --package rustok-marketplace-listing
-          git diff -- crates/rustok-marketplace-listing > rustfmt.patch
-      - name: Upload listing rustfmt patch
+          rustfmt --edition 2021 \
+            apps/server/tests/marketplace_listing_event_contract_guard.rs \
+            crates/rustok-marketplace-listing/src/command_receipts.rs \
+            crates/rustok-marketplace-listing/src/command_receipts_tests.rs \
+            crates/rustok-marketplace-listing/src/error.rs \
+            crates/rustok-marketplace-listing/src/external_events.rs \
+            crates/rustok-marketplace-listing/src/lib.rs \
+            crates/rustok-marketplace-listing/src/ports.rs
+          git diff -- \
+            apps/server/tests/marketplace_listing_event_contract_guard.rs \
+            crates/rustok-marketplace-listing/src/command_receipts.rs \
+            crates/rustok-marketplace-listing/src/command_receipts_tests.rs \
+            crates/rustok-marketplace-listing/src/error.rs \
+            crates/rustok-marketplace-listing/src/external_events.rs \
+            crates/rustok-marketplace-listing/src/lib.rs \
+            crates/rustok-marketplace-listing/src/ports.rs \
+            > rustfmt.patch
+      - name: Upload owner outbox rustfmt patch
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: marketplace-listing-rustfmt-patch
+          name: marketplace-listing-owner-outbox-rustfmt-patch
           path: rustfmt.patch
           if-no-files-found: error
           retention-days: 3
@@ -65,7 +80,7 @@ jobs:
         run: cargo clippy -p rustok-marketplace-listing --all-targets -- -D warnings
       - name: Verify sealed event and outbox source contract
         run: node scripts/verify/verify-marketplace-listing-event-contract.mjs
-      - name: Enforce clean listing rustfmt
+      - name: Enforce clean owner outbox rustfmt
         run: |
           if test -s rustfmt.patch; then
             cat rustfmt.patch
