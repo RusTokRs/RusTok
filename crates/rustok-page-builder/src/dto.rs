@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+pub const PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS: [&str; 2] =
+    ["grapesjs_v1", "fly_landing_v1"];
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PageBuilderContractMetadata {
     pub module_slug: &'static str,
@@ -17,6 +20,18 @@ impl PageBuilderContractMetadata {
         consumer_min_version: "1.0",
         capabilities: &["preview", "tree", "properties", "publish"],
     };
+
+    pub const LANDING_V1: Self = Self {
+        module_slug: "page_builder",
+        contract: "fly_landing_v1",
+        builder_contract_version: "1.1",
+        consumer_min_version: "1.0",
+        capabilities: &["preview", "tree", "properties", "publish", "static_export"],
+    };
+
+    pub fn supports_document_contract(contract: &str) -> bool {
+        PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS.contains(&contract)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
