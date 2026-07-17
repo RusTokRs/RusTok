@@ -1,6 +1,8 @@
 use crate::editor::{dispatch_shortcut, AdminEditorRuntime};
 use crate::i18n::t;
-use fly_ui::{builtin_viewport_presets, viewport_preset, EditorShortcut, UiIntent};
+use fly_ui::{
+    builtin_viewport_presets, viewport_preset, CapabilityState, EditorShortcut, UiIntent,
+};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
@@ -65,7 +67,9 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
                 ssr_intent="undo"
                 disabled=Signal::derive({
                     let runtime = runtime.clone();
-                    move || !runtime.controller.with(|controller| controller.can_undo())
+                    move || runtime.controller.with(|controller| {
+                        !controller.ui().state.capabilities.history || !controller.can_undo()
+                    })
                 })
                 on_click=Callback::new({
                     let runtime = runtime.clone();
@@ -77,7 +81,9 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
                 ssr_intent="redo"
                 disabled=Signal::derive({
                     let runtime = runtime.clone();
-                    move || !runtime.controller.with(|controller| controller.can_redo())
+                    move || runtime.controller.with(|controller| {
+                        !controller.ui().state.capabilities.history || !controller.can_redo()
+                    })
                 })
                 on_click=Callback::new({
                     let runtime = runtime.clone();
@@ -91,7 +97,8 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
                 disabled=Signal::derive({
                     let runtime = runtime.clone();
                     move || runtime.controller.with(|controller| {
-                        controller.ui().state.has_blocking_diagnostics()
+                        !controller.ui().state.capabilities.publish
+                            || controller.ui().state.has_blocking_diagnostics()
                             || !controller.ui().state.dirty.dirty
                             || controller.ui().state.dirty.save_in_progress
                     })
@@ -105,13 +112,13 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
             <ToolbarButton
                 label=copy
                 ssr_intent="copy"
-                disabled=selection_disabled(runtime.clone(), true)
+                disabled=selection_disabled(runtime.clone(), true, |capabilities| capabilities.clipboard)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::Copy)
             />
             <ToolbarButton
                 label=cut
                 ssr_intent="cut"
-                disabled=selection_disabled(runtime.clone(), true)
+                disabled=selection_disabled(runtime.clone(), true, |capabilities| capabilities.clipboard)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::Cut)
             />
             <ToolbarButton
@@ -119,40 +126,42 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
                 ssr_intent="paste"
                 disabled=Signal::derive({
                     let runtime = runtime.clone();
-                    move || !runtime.controller.with(|controller| controller.has_clipboard())
+                    move || runtime.controller.with(|controller| {
+                        !controller.ui().state.capabilities.clipboard || !controller.has_clipboard()
+                    })
                 })
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::Paste)
             />
             <ToolbarButton
                 label=duplicate
                 ssr_intent="duplicate"
-                disabled=selection_disabled(runtime.clone(), true)
+                disabled=selection_disabled(runtime.clone(), true, |capabilities| capabilities.clipboard)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::Duplicate)
             />
             <ToolbarButton
                 label=remove
                 ssr_intent="remove_selected"
                 destructive=true
-                disabled=selection_disabled(runtime.clone(), true)
+                disabled=selection_disabled(runtime.clone(), true, |capabilities| capabilities.edit)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::DeleteSelection)
             />
             <span class="mx-1 h-6 w-px bg-border"></span>
             <ToolbarButton
                 label=move_up
                 ssr_intent="move_selected_up"
-                disabled=selection_disabled(runtime.clone(), true)
+                disabled=selection_disabled(runtime.clone(), true, |capabilities| capabilities.edit)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::MoveSelectionUp)
             />
             <ToolbarButton
                 label=move_down
                 ssr_intent="move_selected_down"
-                disabled=selection_disabled(runtime.clone(), true)
+                disabled=selection_disabled(runtime.clone(), true, |capabilities| capabilities.edit)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::MoveSelectionDown)
             />
             <ToolbarButton
                 label=move_mode
                 ssr_intent="begin_selected_move"
-                disabled=selection_disabled(runtime.clone(), true)
+                disabled=selection_disabled(runtime.clone(), true, |capabilities| capabilities.drag_drop)
                 on_click=Callback::new({
                     let runtime = runtime.clone();
                     move |_| {
@@ -241,12 +250,17 @@ fn ToolbarButton(
     }
 }
 
-fn selection_disabled(runtime: AdminEditorRuntime, reject_root: bool) -> Signal<bool> {
+fn selection_disabled(
+    runtime: AdminEditorRuntime,
+    reject_root: bool,
+    capability: fn(&CapabilityState) -> bool,
+) -> Signal<bool> {
     Signal::derive(move || {
         runtime.controller.with(|controller| {
-            controller
-                .selected_component_view()
-                .is_none_or(|selected| reject_root && selected.is_root)
+            !capability(&controller.ui().state.capabilities)
+                || controller
+                    .selected_component_view()
+                    .is_none_or(|selected| reject_root && selected.is_root)
         })
     })
 }
