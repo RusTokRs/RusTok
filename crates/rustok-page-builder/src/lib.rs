@@ -15,6 +15,8 @@ pub mod runtime_scenario_release;
 pub mod runtime_scenario_render;
 pub mod runtime_scenario_snapshot;
 #[cfg(feature = "server")]
+pub mod runtime_telemetry;
+#[cfg(feature = "server")]
 pub mod service;
 pub mod transport;
 
