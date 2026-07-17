@@ -1,7 +1,7 @@
 use crate::{
-    localized_page_route_index, normalize_locale_tag, ComponentNode, InternalPageLink,
-    LocalizedPageRouteEntry, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
-    ValidationSeverity, FLY_PAGE_LINK_FIELD,
+    localized_page_route_index, normalize_locale_tag, ComponentNode, LocalizedPageRouteEntry,
+    ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic, ValidationSeverity,
+    FLY_PAGE_LINK_FIELD,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
