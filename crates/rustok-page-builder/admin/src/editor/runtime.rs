@@ -287,7 +287,7 @@ fn gate_error_message(evaluation: &RuntimePublishGateEvaluation) -> String {
         "Runtime publish gate rejected the current project".to_string()
     } else {
         format!(
-            "Runtime publish gate rejected save: {}",
+            "Runtime publish gate rejected publish: {}",
             messages.join("; ")
         )
     }
