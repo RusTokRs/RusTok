@@ -13,6 +13,7 @@ use axum::http::HeaderValue;
 ///
 /// Mounted globally in application router composition via `axum::middleware::from_fn`.
 use axum::{extract::Request, middleware::Next, response::Response};
+use rustok_web::CspNonce;
 
 use super::csp_reports;
 
@@ -21,16 +22,15 @@ const API_CSP: &str =
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 /// UI-compatible enforced CSP for embedded admin/storefront shells.
 ///
-/// Inline script/style allowances remain temporarily for the current SSR/bootstrap
-/// path and must be replaced with nonce/hash-based directives before the platform
-/// is declared production-ready. Dynamic string compilation is prohibited now,
-/// along with plaintext browser connections and plugin/object content.
-const UI_CSP: &str = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: ws: wss:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+/// Trusted inline scripts receive one per-response nonce. Inline event handlers and all dynamic
+/// string compilation are prohibited. Inline styles remain temporary migration debt until the
+/// SSR and component style paths are nonce/hash compatible.
+const UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: ws: wss:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
-/// Target UI policy used during migration. It intentionally omits all inline
-/// allowances and plaintext connection schemes, but remains report-only until the
-/// SSR/bootstrap surfaces are nonce/hash compatible.
-const UI_CSP_REPORT_ONLY: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/security/csp-report; report-to rustok-csp";
+/// Target UI policy used during style migration. It carries the same trusted script nonce as the
+/// enforced policy, omits inline style allowances and plaintext connection schemes, and remains
+/// report-only until the style inventory is clean.
+const UI_CSP_REPORT_ONLY_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/security/csp-report; report-to rustok-csp";
 const REPORTING_ENDPOINTS: &str = "rustok-csp=\"/api/security/csp-report\"";
 
 /// HSTS: 1 year, include subdomains.
@@ -38,8 +38,13 @@ const REPORTING_ENDPOINTS: &str = "rustok-csp=\"/api/security/csp-report\"";
 /// executable host rejects production startup without the same declaration.
 const HSTS: &str = "max-age=31536000; includeSubDomains";
 
-pub async fn security_headers(request: Request, next: Next) -> Response {
+pub async fn security_headers(mut request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
+    let csp_nonce = (!is_api_surface(&path)).then(CspNonce::generate);
+    if let Some(nonce) = csp_nonce.as_ref() {
+        request.extensions_mut().insert(nonce.clone());
+    }
+
     // This middleware is the outermost application layer, so the fixed report
     // endpoint is handled before tenant/auth routing and never inherits a tenant.
     let mut response = if csp_reports::is_report_request(&request) {
@@ -49,18 +54,20 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
     };
     let headers = response.headers_mut();
 
-    // Content-Security-Policy
+    // Content-Security-Policy. Missing nonce state on a UI path falls back to the API deny policy
+    // rather than restoring an inline-script allowance.
+    let enforced_policy = select_csp(&path, csp_nonce.as_ref());
     headers.insert(
         "content-security-policy",
-        HeaderValue::from_static(select_csp(&path)),
+        policy_header(enforced_policy.as_str()),
     );
 
-    // Run the future nonce/hash-compatible UI policy without blocking users. API
+    // Run the future style-compatible UI policy without blocking users. API
     // surfaces already use the stricter enforced policy and do not need a duplicate.
-    if let Some(policy) = select_report_only_csp(&path) {
+    if let Some(policy) = select_report_only_csp(&path, csp_nonce.as_ref()) {
         headers.insert(
             "content-security-policy-report-only",
-            HeaderValue::from_static(policy),
+            policy_header(policy.as_str()),
         );
         headers.insert(
             "reporting-endpoints",
@@ -103,6 +110,16 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
     response
 }
 
+fn policy_header(policy: &str) -> HeaderValue {
+    match HeaderValue::try_from(policy) {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::error!(%error, "Generated CSP policy was not a valid HTTP header");
+            HeaderValue::from_static(API_CSP)
+        }
+    }
+}
+
 pub(crate) fn hsts_enabled() -> bool {
     std::env::var("RUSTOK_HTTPS")
         .map(|value| parse_env_flag(&value))
@@ -124,72 +141,136 @@ fn is_api_surface(path: &str) -> bool {
         || path.starts_with("/api/openapi")
 }
 
-fn select_csp(path: &str) -> &'static str {
+fn select_csp(path: &str, csp_nonce: Option<&CspNonce>) -> String {
     if is_api_surface(path) {
-        API_CSP
+        API_CSP.to_string()
+    } else if let Some(csp_nonce) = csp_nonce {
+        UI_CSP_TEMPLATE.replace("{nonce}", csp_nonce.source_expression().as_str())
     } else {
-        UI_CSP
+        API_CSP.to_string()
     }
 }
 
-fn select_report_only_csp(path: &str) -> Option<&'static str> {
-    (!is_api_surface(path)).then_some(UI_CSP_REPORT_ONLY)
+fn select_report_only_csp(path: &str, csp_nonce: Option<&CspNonce>) -> Option<String> {
+    if is_api_surface(path) {
+        None
+    } else {
+        csp_nonce.map(|nonce| {
+            UI_CSP_REPORT_ONLY_TEMPLATE.replace("{nonce}", nonce.source_expression().as_str())
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         parse_env_flag, security_headers, select_csp, select_report_only_csp, API_CSP,
-        REPORTING_ENDPOINTS, UI_CSP, UI_CSP_REPORT_ONLY,
+        REPORTING_ENDPOINTS,
     };
     use crate::middleware::csp_reports::CSP_REPORT_PATH;
     use axum::{
-        body::Body,
+        body::{to_bytes, Body},
         http::{Request, StatusCode},
         middleware,
         routing::get,
-        Router,
+        Extension, Router,
     };
+    use rustok_web::CspNonce;
     use tower::ServiceExt;
 
-    #[test]
-    fn api_and_operator_paths_use_strict_csp() {
-        assert_eq!(select_csp("/api/graphql"), API_CSP);
-        assert_eq!(select_csp("/metrics"), API_CSP);
-        assert_eq!(select_csp("/health/ready"), API_CSP);
-        assert_eq!(select_csp("/swagger/index.html"), API_CSP);
-        assert_eq!(select_report_only_csp("/api/graphql"), None);
+    fn directive<'a>(policy: &'a str, name: &str) -> Option<&'a str> {
+        policy
+            .split(';')
+            .map(str::trim)
+            .find(|directive| directive.starts_with(name))
     }
 
     #[test]
-    fn ui_paths_use_enforced_and_report_only_policies() {
+    fn api_and_operator_paths_use_strict_csp() {
+        assert_eq!(select_csp("/api/graphql", None), API_CSP);
+        assert_eq!(select_csp("/metrics", None), API_CSP);
+        assert_eq!(select_csp("/health/ready", None), API_CSP);
+        assert_eq!(select_csp("/swagger/index.html", None), API_CSP);
+        assert_eq!(select_report_only_csp("/api/graphql", None), None);
+    }
+
+    #[test]
+    fn ui_paths_use_nonce_backed_enforced_and_report_only_policies() {
         for path in ["/admin", "/", "/assets/app.js"] {
-            assert_eq!(select_csp(path), UI_CSP);
-            assert_eq!(select_report_only_csp(path), Some(UI_CSP_REPORT_ONLY));
+            let nonce = CspNonce::generate();
+            let enforced = select_csp(path, Some(&nonce));
+            let report_only = select_report_only_csp(path, Some(&nonce)).expect("UI policy");
+            let script = directive(enforced.as_str(), "script-src").expect("script-src");
+
+            assert!(script.contains(nonce.source_expression().as_str()));
+            assert!(!script.contains("'unsafe-inline'"));
+            assert!(!script.contains("'unsafe-eval'"));
+            assert!(enforced.contains("script-src-attr 'none'"));
+            assert!(report_only.contains(nonce.source_expression().as_str()));
         }
     }
 
     #[test]
     fn enforced_ui_csp_blocks_eval_plaintext_and_plugin_content() {
-        assert!(!UI_CSP.contains("'unsafe-eval'"));
-        assert!(!UI_CSP.contains(" http:"));
-        assert!(UI_CSP.contains("object-src 'none'"));
-        assert!(UI_CSP.contains("form-action 'self'"));
+        let nonce = CspNonce::generate();
+        let policy = select_csp("/admin", Some(&nonce));
+
+        assert!(!policy.contains("'unsafe-eval'"));
+        assert!(!policy.contains(" http:"));
+        assert!(policy.contains("object-src 'none'"));
+        assert!(policy.contains("form-action 'self'"));
     }
 
     #[test]
-    fn report_only_ui_csp_exposes_inline_and_plaintext_dependencies() {
-        assert!(!UI_CSP_REPORT_ONLY.contains("'unsafe-inline'"));
-        assert!(!UI_CSP_REPORT_ONLY.contains("'unsafe-eval'"));
-        assert!(!UI_CSP_REPORT_ONLY.contains(" http:"));
-        assert!(!UI_CSP_REPORT_ONLY.contains(" ws:"));
-        assert!(UI_CSP_REPORT_ONLY.contains("worker-src 'self' blob:"));
-        assert!(UI_CSP_REPORT_ONLY.contains("report-uri /api/security/csp-report"));
-        assert!(UI_CSP_REPORT_ONLY.contains("report-to rustok-csp"));
+    fn report_only_ui_csp_exposes_style_and_plaintext_dependencies() {
+        let nonce = CspNonce::generate();
+        let policy = select_report_only_csp("/", Some(&nonce)).expect("report-only policy");
+
+        assert!(!policy.contains("'unsafe-inline'"));
+        assert!(!policy.contains("'unsafe-eval'"));
+        assert!(!policy.contains(" http:"));
+        assert!(!policy.contains(" ws:"));
+        assert!(policy.contains("worker-src 'self' blob:"));
+        assert!(policy.contains("report-uri /api/security/csp-report"));
+        assert!(policy.contains("report-to rustok-csp"));
         assert_eq!(
             REPORTING_ENDPOINTS,
             "rustok-csp=\"/api/security/csp-report\""
         );
+    }
+
+    #[tokio::test]
+    async fn outer_security_layer_shares_one_nonce_with_ui_handler_and_header() {
+        let app = Router::new()
+            .route(
+                "/ui",
+                get(|Extension(nonce): Extension<CspNonce>| async move {
+                    nonce.as_str().to_string()
+                }),
+            )
+            .layer(middleware::from_fn(security_headers));
+        let response = app
+            .oneshot(Request::builder().uri("/ui").body(Body::empty()).unwrap())
+            .await
+            .expect("UI response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let policy = response
+            .headers()
+            .get("content-security-policy")
+            .expect("UI CSP header")
+            .to_str()
+            .expect("valid CSP")
+            .to_string();
+        let nonce = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("nonce response")
+                .to_vec(),
+        )
+        .expect("UTF-8 nonce");
+
+        assert!(policy.contains(format!("'nonce-{nonce}'").as_str()));
     }
 
     #[tokio::test]
