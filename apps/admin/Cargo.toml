@@ -82,6 +82,7 @@ ssr = [
   "dep:rustok-search",
   "dep:rustok-storage",
   "dep:rustok-tenant",
+  "dep:rustok-web",
   "dep:rustok-workflow",
   "dep:toml",
   "leptos-auth/ssr",
@@ -161,6 +162,7 @@ rustok-rbac = { workspace = true, optional = true }
 rustok-search = { workspace = true, optional = true }
 rustok-storage = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
+rustok-web = { workspace = true, optional = true }
 rustok-workflow = { workspace = true, optional = true }
 toml = { workspace = true, optional = true }
 rustok-blog-admin = { path = "../../crates/rustok-blog/admin", default-features = false }
@@ -193,6 +195,9 @@ rustok-auth-admin = { path = "../../crates/rustok-auth/admin", default-features 
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 gloo-storage = { workspace = true }
+
+[dev-dependencies]
+tower.workspace = true
 
 [build-dependencies]
 leptos_i18n_build = { workspace = true }
