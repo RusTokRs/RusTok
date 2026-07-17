@@ -61,6 +61,14 @@ function requireNonEmpty(value, label) {
   }
 }
 
+function requireMarkers(file, markers) {
+  const source = read(file);
+  for (const marker of markers) {
+    if (!source.includes(marker)) failures.push(`${file}: missing required marker ${marker}`);
+  }
+  return source;
+}
+
 if (!exists(registerPath)) {
   console.error(`Inline-style exception register is missing: ${registerPath}`);
   process.exit(1);
@@ -185,16 +193,21 @@ for (const relativePath of registered.keys()) {
   }
 }
 
-const sharedCssPolicy = read("crates/rustok-ui-core/src/css.rs");
-for (const marker of [
+requireMarkers("crates/rustok-ui-core/src/css.rs", [
   "normalize_css_hex_color",
   "matches!(digits.len(), 3 | 4 | 6 | 8)",
   "character.is_ascii_hexdigit()",
-]) {
-  if (!sharedCssPolicy.includes(marker)) {
-    failures.push(`crates/rustok-ui-core/src/css.rs: missing strict color marker ${marker}`);
-  }
-}
+  "#fff;background:url(https://attacker.invalid/x)",
+]);
+requireMarkers("crates/rustok-forum/src/entities/forum_category.rs", [
+  "async fn before_save",
+  "ActiveValue::Set(Some(color))",
+  "normalize_category_color",
+  "matches!(digits.len(), 3 | 4 | 6 | 8)",
+  "character.is_ascii_hexdigit()",
+  "DbErr::Custom",
+  "#fff;background:url(https://attacker.invalid/x)",
+]);
 
 for (const [file, required] of [
   [
