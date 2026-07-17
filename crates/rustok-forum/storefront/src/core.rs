@@ -1,4 +1,5 @@
 use crate::i18n::t;
+use rustok_ui_core::normalize_css_hex_color;
 
 const DEFAULT_CATEGORY_ACCENT_STYLE: &str =
     "background:linear-gradient(180deg,#0ea5e9 0%,#f59e0b 100%);";
@@ -63,8 +64,8 @@ pub fn forum_storefront_topic_card_class(is_active: bool) -> &'static str {
 
 pub fn forum_storefront_accent_style(color: Option<&str>) -> String {
     color
-        .filter(|value| !value.trim().is_empty())
-        .map(|value| format!("background:{};", value))
+        .and_then(normalize_css_hex_color)
+        .map(|value| format!("background:{value};"))
         .unwrap_or_else(|| DEFAULT_CATEGORY_ACCENT_STYLE.to_string())
 }
 
@@ -221,11 +222,22 @@ mod tests {
         );
         assert!(forum_storefront_category_card_class(true).contains("border-primary/40"));
         assert!(forum_storefront_topic_card_class(false).contains("hover:shadow-sm"));
-        assert!(forum_storefront_accent_style(Some(" #fff ")).contains(" #fff "));
+        assert_eq!(
+            forum_storefront_accent_style(Some(" #fff ")),
+            "background:#fff;"
+        );
         assert!(forum_storefront_accent_style(Some(" ")).contains("linear-gradient"));
         assert!(forum_storefront_status_badge_class("success").contains("emerald"));
         assert!(forum_storefront_status_badge_class("warning").contains("amber"));
         assert!(forum_storefront_status_badge_class("muted").contains("bg-muted"));
         assert!(forum_storefront_status_badge_class("default").contains("border-border"));
+    }
+
+    #[test]
+    fn rejects_persisted_css_declaration_injection() {
+        let style = forum_storefront_accent_style(Some(
+            "#fff;background:url(https://attacker.invalid/x)",
+        ));
+        assert_eq!(style, DEFAULT_CATEGORY_ACCENT_STYLE);
     }
 }
