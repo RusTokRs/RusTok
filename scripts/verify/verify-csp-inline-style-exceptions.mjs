@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 const registerPath = "docs/security/csp-inline-style-attribute-exceptions.json";
-const maxRegisteredSites = 4;
-const maxRegisteredFiles = 3;
+const maxRegisteredSites = 2;
+const maxRegisteredFiles = 2;
 const failures = [];
 
 function read(relativePath) {
@@ -294,15 +294,21 @@ forbidMarkers("crates/rustok-page-builder/admin/src/editor/palette_layers.rs", [
   'style=format!("padding-left:',
 ]);
 requireMarkers("crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs", [
+  "struct ViewportSvgGeometry",
+  "fn viewport_svg_geometry",
+  "data-fly-svg-viewport",
+  "<foreignObject",
+  'xmlns="http://www.w3.org/1999/xhtml"',
+  "viewBox=move || viewport_geometry.get().view_box",
+  "viewport_geometry_preserves_source_dimensions_and_applies_zoom",
   "struct OverlayGeometry",
   "fn overlay_geometry",
-  "<svg",
-  "<rect",
   "overlay_geometry_uses_svg_coordinates_without_css_text",
 ]);
 forbidMarkers("crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs", [
+  "style=",
+  "transform:scale",
   "fn overlay_style",
-  "style=move || runtime.controller.with",
 ]);
 requireMarkers("crates/rustok-page-builder/admin/src/editor/resize_handles.rs", [
   "struct SvgRectGeometry",
