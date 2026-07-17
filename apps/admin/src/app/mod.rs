@@ -12,8 +12,6 @@ pub mod shell;
 pub use auth_ssr::{request_auth_snapshot, AuthCookieBootstrap};
 pub use router::App;
 #[cfg(feature = "ssr")]
-pub use security::{
-    admin_security_headers, request_csp_nonce, validate_admin_security_profile,
-};
+pub use security::{admin_security_headers, request_csp_nonce, validate_admin_security_profile};
 #[cfg(feature = "ssr")]
 pub use shell::shell;

@@ -126,7 +126,7 @@ mod tests {
             .any(|diagnostic| { diagnostic.code == "runtime_context_path_shadowed_by_computed" }));
         assert!(diagnostics
             .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_binding_target_missing"));
+            .any(|diagnostic| diagnostic.code == "runtime_binding_component_missing"));
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_repeater_targets_page_root"));

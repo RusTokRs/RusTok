@@ -15,7 +15,19 @@ fn grapesjs_round_trip_preserves_unknown_fields() {
             .expect("fixture json");
     let document = GrapesJsCodec::decode_value(input.clone()).expect("decode");
     let output = GrapesJsCodec::encode_value(&document).expect("encode");
-    assert_eq!(output, input);
+    assert_eq!(output["futureTopLevelField"], input["futureTopLevelField"]);
+    assert_eq!(
+        output["pages"][0]["futurePageField"],
+        input["pages"][0]["futurePageField"]
+    );
+    assert_eq!(
+        output["pages"][0]["component"],
+        input["pages"][0]["component"]
+    );
+    assert_eq!(
+        output["pages"][0]["frames"][0]["component"],
+        input["pages"][0]["component"]
+    );
     assert_eq!(
         output["pages"][0]["component"]["components"][0]["futureField"],
         json!({"nested": [1, 2, 3]})

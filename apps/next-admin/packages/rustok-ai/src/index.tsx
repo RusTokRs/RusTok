@@ -215,7 +215,11 @@ type RunStreamEvent = {
   accumulatedContent?: string | null;
   errorMessage?: string | null;
   toolCall?: { id: string; name: string; arguments: string } | null;
-  usage?: { inputTokens: number; outputTokens: number; totalTokens: number } | null;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  } | null;
   sequence: number;
   createdAt: string;
 };
@@ -521,9 +525,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
   const [providerCatalog, setProviderCatalog] = React.useState<
     ProviderCatalogEntry[]
   >([]);
-  const [providerTargets, setProviderTargets] = React.useState<ProviderTarget[]>(
-    []
-  );
+  const [providerTargets, setProviderTargets] = React.useState<
+    ProviderTarget[]
+  >([]);
   const [providers, setProviders] = React.useState<Provider[]>([]);
   const [taskProfiles, setTaskProfiles] = React.useState<TaskProfile[]>([]);
   const [toolProfiles, setToolProfiles] = React.useState<ToolProfile[]>([]);
@@ -1108,7 +1112,10 @@ export function AiAdminPage(props: AiAdminPageProps) {
       const streamEvent = payload.payload?.data?.aiSessionEvents;
       if (payload.type === 'next' && streamEvent) {
         setLiveStream((current) => {
-          if (current?.runId === streamEvent.runId && streamEvent.sequence <= current.sequence) {
+          if (
+            current?.runId === streamEvent.runId &&
+            streamEvent.sequence <= current.sequence
+          ) {
             return current;
           }
           return {
@@ -1333,10 +1340,10 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     >
                       <option value=''>Select a deployment target</option>
                       {providerTargets.map((target) => (
-                          <option key={target.id} value={target.id}>
-                            {target.displayName}
-                          </option>
-                        ))}
+                        <option key={target.id} value={target.id}>
+                          {target.displayName}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <Input
@@ -1356,7 +1363,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                         <Input
                           label='Resolver alias'
                           value={
-                            providerForm.credentialRefs[field.key]?.resolver ?? ''
+                            providerForm.credentialRefs[field.key]?.resolver ??
+                            ''
                           }
                           onChange={(resolver) =>
                             setProviderForm((current) => ({
@@ -1366,8 +1374,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                                 [field.key]: {
                                   resolver,
                                   secretKey:
-                                    current.credentialRefs[field.key]?.secretKey ??
-                                    ''
+                                    current.credentialRefs[field.key]
+                                      ?.secretKey ?? ''
                                 }
                               }
                             }))
@@ -1387,8 +1395,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                                 ...current.credentialRefs,
                                 [field.key]: {
                                   resolver:
-                                    current.credentialRefs[field.key]?.resolver ??
-                                    '',
+                                    current.credentialRefs[field.key]
+                                      ?.resolver ?? '',
                                   secretKey
                                 }
                               }
@@ -1489,12 +1497,13 @@ export function AiAdminPage(props: AiAdminPageProps) {
                           UPDATE_PROVIDER_MUTATION,
                           {
                             id: providerForm.id,
-                          input: {
-                            displayName: providerForm.displayName,
-                            providerTargetId: providerForm.providerTargetId,
-                            model: providerForm.model,
+                            input: {
+                              displayName: providerForm.displayName,
+                              providerTargetId: providerForm.providerTargetId,
+                              model: providerForm.model,
                               credentialRefs: providerCredentialInputs(
-                                selectedProviderDescriptor?.credentialSchema ?? [],
+                                selectedProviderDescriptor?.credentialSchema ??
+                                  [],
                                 providerForm.credentialRefs
                               ),
                               temperature: Number(providerForm.temperature),
@@ -3727,7 +3736,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                           <div className='text-muted-foreground'>
                             {new Date(event.createdAt).toLocaleString()}
                           </div>
-                          {event.accumulatedContent || event.contentDelta || event.toolCall ? (
+                          {event.accumulatedContent ||
+                          event.contentDelta ||
+                          event.toolCall ? (
                             <div className='mt-1 whitespace-pre-wrap'>
                               {event.accumulatedContent ??
                                 event.contentDelta ??
@@ -3735,7 +3746,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                             </div>
                           ) : null}
                           {event.usage ? (
-                            <div className='mt-1 text-muted-foreground'>
+                            <div className='text-muted-foreground mt-1'>
                               {formatStreamUsage(event.usage)}
                             </div>
                           ) : null}

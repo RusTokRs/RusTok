@@ -64,9 +64,7 @@ async fn drop_generation_table(db: &DatabaseConnection) {
 }
 
 async fn seed_stale(cache: &FieldDefinitionCache, tenant_id: Uuid, marker: &str) {
-    cache
-        .set(tenant_id, "user", vec![mock_view(marker)])
-        .await;
+    cache.set(tenant_id, "user", vec![mock_view(marker)]).await;
     assert!(cache.get(tenant_id, "user").await.is_some());
 }
 

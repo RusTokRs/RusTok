@@ -727,12 +727,7 @@ fn build_resolution_order_change(
     Ok(CreateOrderChangeInput {
         change_type: change_type.to_string(),
         description,
-        preview: attach_return_order_change_context(
-            preview,
-            return_id,
-            operation_id,
-            change_type,
-        )?,
+        preview: attach_return_order_change_context(preview, return_id, operation_id, change_type)?,
         metadata: attach_return_order_change_context(
             metadata,
             return_id,
@@ -825,10 +820,7 @@ fn canonical_json(value: &Value) -> Value {
     }
 }
 
-fn normalize_object_or_empty(
-    value: Value,
-    field: &str,
-) -> PostOrderOrchestrationResult<Value> {
+fn normalize_object_or_empty(value: Value, field: &str) -> PostOrderOrchestrationResult<Value> {
     match value {
         Value::Null => Ok(serde_json::json!({})),
         Value::Object(_) => Ok(value),

@@ -74,7 +74,9 @@ async fn refund_insert_without_creation_identity_is_rejected_by_schema() {
     .expect_err("identity-less refund insert must be rejected");
 
     assert!(
-        error.to_string().contains("refund creation identity is required"),
+        error
+            .to_string()
+            .contains("refund creation identity is required"),
         "unexpected error: {error}"
     );
 }

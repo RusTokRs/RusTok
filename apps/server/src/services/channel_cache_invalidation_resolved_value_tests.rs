@@ -121,10 +121,7 @@ fn invalidation_message(generation: u64) -> CacheInvalidationMessage {
     .expect("invalidation message should encode")
 }
 
-async fn wait_for_readiness(
-    handle: &ChannelCacheInvalidationListenerHandle,
-    expected: bool,
-) {
+async fn wait_for_readiness(handle: &ChannelCacheInvalidationListenerHandle, expected: bool) {
     tokio::time::timeout(Duration::from_secs(2), async {
         while handle.is_ready() != expected {
             tokio::task::yield_now().await;

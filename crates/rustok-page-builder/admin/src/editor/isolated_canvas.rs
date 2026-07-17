@@ -96,9 +96,9 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
 
     let viewport_runtime = runtime.clone();
     let viewport_geometry = Memo::new(move |_| {
-        viewport_runtime.controller.with(|controller| {
-            viewport_svg_geometry(controller.ui().state.viewport)
-        })
+        viewport_runtime
+            .controller
+            .with(|controller| viewport_svg_geometry(controller.ui().state.viewport))
     });
     let hovered_runtime = runtime.clone();
     let selected_runtime = runtime.clone();
@@ -178,9 +178,7 @@ fn OverlayLayer(runtime: AdminEditorRuntime, kind: OverlayKind) -> impl IntoView
         })
     });
     let rect_class = match kind {
-        OverlayKind::Hovered => {
-            "fill-transparent stroke-blue-400 stroke-1 [stroke-dasharray:4_4]"
-        }
+        OverlayKind::Hovered => "fill-transparent stroke-blue-400 stroke-1 [stroke-dasharray:4_4]",
         OverlayKind::Selected => {
             "fill-transparent stroke-blue-600 stroke-2 drop-shadow-[0_0_1px_rgba(255,255,255,.8)]"
         }

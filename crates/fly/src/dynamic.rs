@@ -733,7 +733,7 @@ fn exact_template_path(value: &str) -> Option<&str> {
         .strip_prefix("{{")
         .and_then(|value| value.strip_suffix("}}"))
         .map(str::trim)
-        .filter(|value| !value.is_empty())
+        .filter(|value| !value.is_empty() && !value.contains("{{") && !value.contains("}}"))
 }
 
 fn interpolate_text(value: &str, context: &Value) -> String {

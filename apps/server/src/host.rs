@@ -327,7 +327,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn production_requires_explicit_https_declaration() {
         let error = validate_https_deployment(true, false)
@@ -337,8 +336,7 @@ mod tests {
 
     #[test]
     fn non_production_can_run_without_hsts() {
-        validate_https_deployment(false, false)
-            .expect("local development may use plaintext HTTP");
+        validate_https_deployment(false, false).expect("local development may use plaintext HTTP");
     }
 
     #[test]

@@ -63,6 +63,11 @@ impl AdminCanvasController {
         &self.editor
     }
 
+    #[cfg(test)]
+    pub(crate) fn editor_mut_for_tests(&mut self) -> &mut FlyEditor {
+        &mut self.editor
+    }
+
     pub fn ui(&self) -> &FlyUiStateMachine {
         &self.ui
     }

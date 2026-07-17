@@ -15,8 +15,8 @@ use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
 use rustok_core::{
-    normalize_content_format, prepare_content_payload, SecurityContext, CONTENT_FORMAT_GRAPESJS_FORMAT,
-    CONTENT_FORMAT_RT_JSON_V1,
+    normalize_content_format, prepare_content_payload, SecurityContext,
+    CONTENT_FORMAT_GRAPESJS_FORMAT, CONTENT_FORMAT_RT_JSON_V1,
 };
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -1287,12 +1287,13 @@ fn page_translation_response(translation: &page_translation::Model) -> PageTrans
 }
 
 fn page_body_response(body: &page_body::Model) -> PageBodyResponse {
-    let content_json =
-        if body.format == CONTENT_FORMAT_RT_JSON_V1 || body.format == CONTENT_FORMAT_GRAPESJS_FORMAT {
-            serde_json::from_str(&body.content).ok()
-        } else {
-            None
-        };
+    let content_json = if body.format == CONTENT_FORMAT_RT_JSON_V1
+        || body.format == CONTENT_FORMAT_GRAPESJS_FORMAT
+    {
+        serde_json::from_str(&body.content).ok()
+    } else {
+        None
+    };
     PageBodyResponse {
         locale: body.locale.clone(),
         content: body.content.clone(),

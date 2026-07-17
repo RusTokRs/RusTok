@@ -8,7 +8,9 @@ pub fn normalize_css_hex_color(value: &str) -> Option<String> {
     let trimmed = value.trim();
     let digits = trimmed.strip_prefix('#')?;
     if !matches!(digits.len(), 3 | 4 | 6 | 8)
-        || !digits.chars().all(|character| character.is_ascii_hexdigit())
+        || !digits
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
     {
         return None;
     }

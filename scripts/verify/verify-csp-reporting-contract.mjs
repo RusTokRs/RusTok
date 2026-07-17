@@ -285,7 +285,7 @@ for (const marker of [
   "## Collection Contract",
   "## Telemetry Contract",
   "## Target Policy Inventory",
-  "## Trusted Script Nonce Boundary",
+  "## Trusted Script and Style Element Nonce Boundary",
   "## Connection Profile Boundary",
   "## Current Migration Debt",
   "## Enforcement Exit Criteria",

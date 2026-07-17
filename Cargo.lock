@@ -12087,7 +12087,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
- "hmac 0.12.1",
+ "hmac 0.13.0",
  "reqwest 0.13.4",
  "rust_decimal",
  "rustok-api",

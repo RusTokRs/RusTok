@@ -241,9 +241,7 @@ fn safe_recovery_error_code(error: &PaymentError) -> &'static str {
         PaymentError::Database(_) => "payment.webhook_recovery_storage_unavailable",
         PaymentError::InvalidTransition { .. } => "payment.webhook_recovery_state_conflict",
         PaymentError::Validation(_) => "payment.webhook_recovery_validation_failed",
-        PaymentError::ProviderUnavailable { .. } => {
-            "payment.webhook_recovery_provider_unavailable"
-        }
+        PaymentError::ProviderUnavailable { .. } => "payment.webhook_recovery_provider_unavailable",
         PaymentError::ProviderRejected { .. } => "payment.webhook_recovery_provider_rejected",
         PaymentError::ProviderInvalidResponse { .. } => {
             "payment.webhook_recovery_provider_invalid_response"

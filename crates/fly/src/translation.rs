@@ -438,7 +438,7 @@ mod tests {
                 policy: Box::new(ProjectLocalePolicy {
                     default_locale: Some("RU_ru".to_string()),
                     supported_locales: vec!["ru-RU".to_string(), "en".to_string()],
-                    required_locales: vec!["ru".to_string()],
+                    required_locales: vec!["ru-RU".to_string()],
                     fallback_locales: vec!["en".to_string()],
                     enforce_required_locales: false,
                     extensions: Map::from_iter([("future".to_string(), json!(true))]),

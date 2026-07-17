@@ -8,8 +8,7 @@ use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTranspo
 use crate::core::MarketplaceSellerAdminTransportProfile;
 use crate::model::{
     MarketplaceSellerAdminCommand, MarketplaceSellerAdminCommandResult,
-    MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory,
-    MarketplaceSellerAdminFilters,
+    MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory, MarketplaceSellerAdminFilters,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

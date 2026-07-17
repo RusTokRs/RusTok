@@ -56,10 +56,7 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(ReturnCompletionOperations::LeaseExpiresAt)
                             .timestamp_with_time_zone(),
                     )
-                    .col(
-                        ColumnDef::new(ReturnCompletionOperations::LastErrorCode)
-                            .string_len(100),
-                    )
+                    .col(ColumnDef::new(ReturnCompletionOperations::LastErrorCode).string_len(100))
                     .col(
                         ColumnDef::new(ReturnCompletionOperations::LastErrorMessage)
                             .string_len(2000),

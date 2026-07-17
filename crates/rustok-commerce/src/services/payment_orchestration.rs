@@ -503,12 +503,8 @@ impl PaymentOrchestrationService {
                 existing.status.as_str(),
                 PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             ) {
-                mark_journal_committed(
-                    &self.provider_operation_journal,
-                    existing.id,
-                    operation,
-                )
-                .await?;
+                mark_journal_committed(&self.provider_operation_journal, existing.id, operation)
+                    .await?;
             }
         }
         Ok(())

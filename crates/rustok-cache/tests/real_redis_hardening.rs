@@ -42,14 +42,14 @@ fn reserve_loopback_port() -> u16 {
 async fn wait_for_redis(url: &str) {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            if let Ok(client) = redis::Client::open(url)
-                && let Ok(mut connection) = client.get_multiplexed_async_connection().await
-            {
-                let pong = redis::cmd("PING")
-                    .query_async::<String>(&mut connection)
-                    .await;
-                if pong.as_deref() == Ok("PONG") {
-                    return;
+            if let Ok(client) = redis::Client::open(url) {
+                if let Ok(mut connection) = client.get_multiplexed_async_connection().await {
+                    let pong = redis::cmd("PING")
+                        .query_async::<String>(&mut connection)
+                        .await;
+                    if pong.as_deref() == Ok("PONG") {
+                        return;
+                    }
                 }
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -308,11 +308,9 @@ async fn shared_backend_times_out_opens_circuit_and_recovers_after_latency() {
         .await
         .expect_err("paused Redis health must hit the bounded operation timeout");
     let timeout_elapsed = timed_out_at.elapsed();
-    assert!(
-        timeout_error
-            .to_string()
-            .contains("shared Redis cache operation timed out after 2000 ms")
-    );
+    assert!(timeout_error
+        .to_string()
+        .contains("shared Redis cache operation timed out after 2000 ms"));
     assert!(timeout_elapsed < Duration::from_millis(2_500));
 
     let rejected_at = Instant::now();
@@ -320,11 +318,9 @@ async fn shared_backend_times_out_opens_circuit_and_recovers_after_latency() {
         .health()
         .await
         .expect_err("opened Redis circuit must reject the next health probe");
-    assert!(
-        open_error
-            .to_string()
-            .contains("Redis unavailable (circuit breaker open)")
-    );
+    assert!(open_error
+        .to_string()
+        .contains("Redis unavailable (circuit breaker open)"));
     assert!(rejected_at.elapsed() < Duration::from_millis(250));
 
     tokio::time::sleep(Duration::from_millis(800)).await;
@@ -376,11 +372,9 @@ async fn shared_backend_recovers_across_two_redis_restarts() {
             .health()
             .await
             .expect_err("opened Redis circuit must reject while Redis is stopped");
-        assert!(
-            open_error
-                .to_string()
-                .contains("Redis unavailable (circuit breaker open)")
-        );
+        assert!(open_error
+            .to_string()
+            .contains("Redis unavailable (circuit breaker open)"));
         assert!(rejected_at.elapsed() < Duration::from_millis(250));
 
         redis_process = spawn_redis(binary.as_str(), port).await;

@@ -17,14 +17,14 @@ fn reserve_loopback_port() -> u16 {
 async fn wait_for_redis(url: &str) {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            if let Ok(client) = redis::Client::open(url)
-                && let Ok(mut connection) = client.get_multiplexed_async_connection().await
-            {
-                let pong = redis::cmd("PING")
-                    .query_async::<String>(&mut connection)
-                    .await;
-                if pong.as_deref() == Ok("PONG") {
-                    return;
+            if let Ok(client) = redis::Client::open(url) {
+                if let Ok(mut connection) = client.get_multiplexed_async_connection().await {
+                    let pong = redis::cmd("PING")
+                        .query_async::<String>(&mut connection)
+                        .await;
+                    if pong.as_deref() == Ok("PONG") {
+                        return;
+                    }
                 }
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -114,12 +114,7 @@ async fn fallback_cas_fails_closed_during_redis_outage_and_recovers() {
     stop_redis(&mut redis_process).await;
 
     backend
-        .compare_and_set(
-            "primary-cas",
-            &original,
-            replacement.clone(),
-            None,
-        )
+        .compare_and_set("primary-cas", &original, replacement.clone(), None)
         .await
         .expect_err("CAS must fail while the shared primary is unavailable");
     assert_eq!(

@@ -102,12 +102,12 @@ impl RefundReconciliationService {
             self.provider_operation_journal
                 .mark_committed(operation.id)
                 .await
-                .map_err(|_| {
-                    PaymentOrchestrationError::ProviderAfterRefundReservation {
+                .map_err(
+                    |_| PaymentOrchestrationError::ProviderAfterRefundReservation {
                         refund_id,
                         source: PaymentError::provider_outcome_unknown(&provider_id, "refund"),
-                    }
-                })?;
+                    },
+                )?;
             return self
                 .payment_service
                 .get_refund(tenant_id, refund_id)

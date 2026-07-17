@@ -6,7 +6,8 @@ use serde_json::Value;
 pub const GRAPESJS_FORMAT_BODY_FORMAT: &str = "grapesjs";
 
 pub fn is_page_builder_body(body: &PageBody) -> bool {
-    body.format.eq_ignore_ascii_case(GRAPESJS_FORMAT_BODY_FORMAT)
+    body.format
+        .eq_ignore_ascii_case(GRAPESJS_FORMAT_BODY_FORMAT)
 }
 
 pub fn decode_page_builder_body(body: &PageBody) -> Result<Value, serde_json::Error> {
@@ -92,9 +93,10 @@ mod tests {
 
     #[test]
     fn invalid_builder_json_is_rejected() {
-        assert!(
-            decode_page_builder_body(&body(GRAPESJS_FORMAT_BODY_FORMAT, "{invalid".to_string(),))
-                .is_err()
-        );
+        assert!(decode_page_builder_body(&body(
+            GRAPESJS_FORMAT_BODY_FORMAT,
+            "{invalid".to_string(),
+        ))
+        .is_err());
     }
 }

@@ -1,26 +1,17 @@
 #[test]
 fn marketplace_seller_graphql_and_admin_transports_share_owner_ports() {
-    let owner_graphql = include_str!(
-        "../../../crates/rustok-marketplace-seller/src/graphql.rs"
-    );
-    let owner_ports = include_str!(
-        "../../../crates/rustok-marketplace-seller/src/ports.rs"
-    );
+    let owner_graphql = include_str!("../../../crates/rustok-marketplace-seller/src/graphql.rs");
+    let owner_ports = include_str!("../../../crates/rustok-marketplace-seller/src/ports.rs");
     let native_adapter = include_str!(
         "../../../crates/rustok-marketplace-seller/admin/src/transport/native_server_adapter.rs"
     );
     let graphql_adapter = include_str!(
         "../../../crates/rustok-marketplace-seller/admin/src/transport/graphql_adapter.rs"
     );
-    let transport = include_str!(
-        "../../../crates/rustok-marketplace-seller/admin/src/transport.rs"
-    );
-    let admin_model = include_str!(
-        "../../../crates/rustok-marketplace-seller/admin/src/model.rs"
-    );
-    let admin_ui = include_str!(
-        "../../../crates/rustok-marketplace-seller/admin/src/ui/leptos.rs"
-    );
+    let transport =
+        include_str!("../../../crates/rustok-marketplace-seller/admin/src/transport.rs");
+    let admin_model = include_str!("../../../crates/rustok-marketplace-seller/admin/src/model.rs");
+    let admin_ui = include_str!("../../../crates/rustok-marketplace-seller/admin/src/ui/leptos.rs");
 
     for marker in [
         "MarketplaceSellerReadPort::list_sellers",
@@ -109,16 +100,11 @@ fn marketplace_seller_graphql_and_admin_transports_share_owner_ports() {
 
 #[test]
 fn marketplace_seller_transport_is_manifest_and_feature_wired_without_default_enablement() {
-    let module_manifest = include_str!(
-        "../../../crates/rustok-marketplace-seller/rustok-module.toml"
-    );
+    let module_manifest =
+        include_str!("../../../crates/rustok-marketplace-seller/rustok-module.toml");
     let modules_manifest = include_str!("../../../modules.toml");
-    let distribution_manifest = include_str!(
-        "../../../crates/rustok-distribution/Cargo.toml"
-    );
-    let distribution_source = include_str!(
-        "../../../crates/rustok-distribution/src/lib.rs"
-    );
+    let distribution_manifest = include_str!("../../../crates/rustok-distribution/Cargo.toml");
+    let distribution_source = include_str!("../../../crates/rustok-distribution/src/lib.rs");
     let server_manifest = include_str!("../../../apps/server/Cargo.toml");
     let admin_manifest = include_str!("../../../apps/admin/Cargo.toml");
 

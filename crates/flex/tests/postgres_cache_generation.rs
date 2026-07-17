@@ -2,8 +2,7 @@ use std::time::Duration;
 
 use flex::cache_generation::{
     create_field_definition_cache_generation_table,
-    create_field_definition_cache_generation_trigger,
-    drop_field_definition_cache_generation_table,
+    create_field_definition_cache_generation_trigger, drop_field_definition_cache_generation_table,
     drop_field_definition_cache_generation_trigger, FIELD_DEFINITION_CACHE_GENERATION_TABLE,
 };
 use sea_orm::{
@@ -127,9 +126,7 @@ async fn postgres_flex_generation_is_transactional_concurrent_and_replay_safe() 
 
     for (table, _) in OWNERS {
         writer
-            .execute_unprepared(&format!(
-                "UPDATE {table} SET position = position + 1"
-            ))
+            .execute_unprepared(&format!("UPDATE {table} SET position = position + 1"))
             .await
             .expect("owner reorder should commit");
     }

@@ -1,33 +1,24 @@
 #[test]
 fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
     let lib = include_str!("../../../crates/rustok-marketplace-listing/src/lib.rs");
-    let listing_entity = include_str!(
-        "../../../crates/rustok-marketplace-listing/src/entities/listing.rs"
-    );
-    let terms_entity = include_str!(
-        "../../../crates/rustok-marketplace-listing/src/entities/listing_terms.rs"
-    );
-    let event_entity = include_str!(
-        "../../../crates/rustok-marketplace-listing/src/entities/listing_event.rs"
-    );
+    let listing_entity =
+        include_str!("../../../crates/rustok-marketplace-listing/src/entities/listing.rs");
+    let terms_entity =
+        include_str!("../../../crates/rustok-marketplace-listing/src/entities/listing_terms.rs");
+    let event_entity =
+        include_str!("../../../crates/rustok-marketplace-listing/src/entities/listing_event.rs");
     let migration = include_str!(
         "../../../crates/rustok-marketplace-listing/src/migrations/m20260716_000001_create_marketplace_listings.rs"
     );
     let event_migration = include_str!(
         "../../../crates/rustok-marketplace-listing/src/migrations/m20260717_000002_create_marketplace_listing_events.rs"
     );
-    let service = include_str!(
-        "../../../crates/rustok-marketplace-listing/src/service.rs"
-    );
-    let receipt = include_str!(
-        "../../../crates/rustok-marketplace-listing/src/command_receipts.rs"
-    );
-    let provider_events = include_str!(
-        "../../../crates/rustok-marketplace-listing/src/replay_safe_commands.rs"
-    );
-    let ports = include_str!(
-        "../../../crates/rustok-marketplace-listing/src/ports.rs"
-    );
+    let service = include_str!("../../../crates/rustok-marketplace-listing/src/service.rs");
+    let receipt =
+        include_str!("../../../crates/rustok-marketplace-listing/src/command_receipts.rs");
+    let provider_events =
+        include_str!("../../../crates/rustok-marketplace-listing/src/replay_safe_commands.rs");
+    let ports = include_str!("../../../crates/rustok-marketplace-listing/src/ports.rs");
     let registry = include_str!(
         "../../../crates/rustok-marketplace-listing/contracts/marketplace-listing-fba-registry.json"
     );
@@ -50,7 +41,10 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "fk_marketplace_listing_terms_tenant_listing",
         "uq_marketplace_listing_command_receipt_key",
     ] {
-        assert!(migration.contains(marker), "listing schema is missing {marker}");
+        assert!(
+            migration.contains(marker),
+            "listing schema is missing {marker}"
+        );
     }
     for marker in [
         "marketplace_listing_events",
@@ -59,7 +53,10 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "MarketplaceListingEvents::Locale",
         ".string_len(32)",
     ] {
-        assert!(event_migration.contains(marker), "event schema is missing {marker}");
+        assert!(
+            event_migration.contains(marker),
+            "event schema is missing {marker}"
+        );
     }
     for marker in [
         "table_name = \"marketplace_listing_events\"",
@@ -68,7 +65,10 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "pub locale: String",
         "pub note: Option<String>",
     ] {
-        assert!(event_entity.contains(marker), "event entity is missing {marker}");
+        assert!(
+            event_entity.contains(marker),
+            "event entity is missing {marker}"
+        );
     }
     for forbidden in [
         "fk_marketplace_listings_seller",
@@ -76,7 +76,10 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "fk_marketplace_listing_terms_pricing",
         "fk_marketplace_listing_terms_inventory",
     ] {
-        assert!(!migration.contains(forbidden), "cross-module FK forbidden: {forbidden}");
+        assert!(
+            !migration.contains(forbidden),
+            "cross-module FK forbidden: {forbidden}"
+        );
     }
     for source in [listing_entity, terms_entity] {
         for forbidden in [
@@ -87,7 +90,10 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
             "pub translations_json:",
             "pub localized_fields_json:",
         ] {
-            assert!(!source.contains(forbidden), "localized product copy forbidden: {forbidden}");
+            assert!(
+                !source.contains(forbidden),
+                "localized product copy forbidden: {forbidden}"
+            );
         }
     }
 
@@ -104,7 +110,10 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "seller_unavailable",
         "order_by_asc(listing::Column::SellerId)",
     ] {
-        assert!(service.contains(marker), "listing read service is missing {marker}");
+        assert!(
+            service.contains(marker),
+            "listing read service is missing {marker}"
+        );
     }
     for forbidden in [
         "pub async fn create_listing(",
@@ -118,7 +127,10 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "ListingCommandAdmission",
         "append_listing_event(",
     ] {
-        assert!(!service.contains(forbidden), "read service contains write bypass: {forbidden}");
+        assert!(
+            !service.contains(forbidden),
+            "read service contains write bypass: {forbidden}"
+        );
     }
     assert!(!service.contains("rustok_marketplace_seller::entities"));
     assert!(!service.contains("rustok_product::entities"));
@@ -133,7 +145,10 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "transaction.commit().await?",
         "IdempotencyConflict",
     ] {
-        assert!(receipt.contains(marker), "listing receipt is missing {marker}");
+        assert!(
+            receipt.contains(marker),
+            "listing receipt is missing {marker}"
+        );
     }
     for marker in [
         "create_listing_replay_safe",
@@ -150,14 +165,20 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "complete(receipt, &response).await",
         "rollback(receipt, error).await",
     ] {
-        assert!(provider_events.contains(marker), "provider event path is missing {marker}");
+        assert!(
+            provider_events.contains(marker),
+            "provider event path is missing {marker}"
+        );
     }
     for forbidden in [
         "self.create_listing(context, input).await",
         "self.publish_listing(context, listing_id).await",
         "self.reactivate_listing(context, listing_id).await",
     ] {
-        assert!(!provider_events.contains(forbidden), "provider event path bypasses events: {forbidden}");
+        assert!(
+            !provider_events.contains(forbidden),
+            "provider event path bypasses events: {forbidden}"
+        );
     }
 
     for marker in [
@@ -193,16 +214,17 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "reactivated_event_and_receipt_atomic",
         "lost_response_replay_returns_saved_result",
     ] {
-        assert!(registry.contains(marker), "listing registry is missing {marker}");
+        assert!(
+            registry.contains(marker),
+            "listing registry is missing {marker}"
+        );
     }
 }
 
 #[test]
 fn marketplace_root_consumes_listing_projection_without_owner_internals() {
     let root = include_str!("../../../crates/rustok-marketplace/src/lib.rs");
-    let consumer = include_str!(
-        "../../../crates/rustok-marketplace/src/listing_directory.rs"
-    );
+    let consumer = include_str!("../../../crates/rustok-marketplace/src/listing_directory.rs");
     let root_manifest = include_str!("../../../crates/rustok-marketplace/rustok-module.toml");
     let modules = include_str!("../../../modules.toml");
     let distribution_manifest = include_str!("../../../crates/rustok-distribution/Cargo.toml");

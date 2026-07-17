@@ -226,9 +226,8 @@ mod tests {
 
     #[test]
     fn rejects_persisted_css_declaration_injection() {
-        let class = forum_storefront_accent_class(Some(
-            "#fff;background:url(https://attacker.invalid/x)",
-        ));
+        let class =
+            forum_storefront_accent_class(Some("#fff;background:url(https://attacker.invalid/x)"));
         assert!(class.contains("from-sky-500"));
     }
 }

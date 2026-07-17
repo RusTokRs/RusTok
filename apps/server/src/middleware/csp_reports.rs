@@ -111,7 +111,8 @@ fn content_type_is_supported(request: &Request) -> bool {
 }
 
 fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseError> {
-    let value: Value = serde_json::from_slice(body).map_err(|_| CspReportParseError::InvalidJson)?;
+    let value: Value =
+        serde_json::from_slice(body).map_err(|_| CspReportParseError::InvalidJson)?;
 
     if let Some(report) = value.get("csp-report") {
         let violation = serde_json::from_value(report.clone())
@@ -135,8 +136,8 @@ fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseErro
             .get("body")
             .cloned()
             .ok_or(CspReportParseError::UnsupportedShape)?;
-        let violation = serde_json::from_value(body)
-            .map_err(|_| CspReportParseError::UnsupportedShape)?;
+        let violation =
+            serde_json::from_value(body).map_err(|_| CspReportParseError::UnsupportedShape)?;
         reports.push(ParsedCspReport {
             format: "reporting_api",
             violation,
@@ -223,7 +224,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_legacy_csp_report_without_script_sample() {
+    fn parses_legacy_csp_report_without_recording_sensitive_sample() {
         let reports = parse_reports(
             br#"{"csp-report":{"document-uri":"https://admin.example.com/orders?token=secret","blocked-uri":"inline","violated-directive":"script-src-elem","script-sample":"secret()"}}"#,
         )

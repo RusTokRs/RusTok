@@ -105,7 +105,10 @@ mod tests {
         let nonce = CspNonce::generate();
 
         assert_eq!(nonce.as_str().len(), 32);
-        assert!(nonce.as_str().chars().all(|character| character.is_ascii_hexdigit()));
+        assert!(nonce
+            .as_str()
+            .chars()
+            .all(|character| character.is_ascii_hexdigit()));
         assert_eq!(
             nonce.source_expression(),
             format!("'nonce-{}'", nonce.as_str())

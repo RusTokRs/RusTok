@@ -17,7 +17,11 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(MarketplaceSellers::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(MarketplaceSellers::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(MarketplaceSellers::Handle)
                             .string_len(80)
@@ -230,7 +234,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_marketplace_seller_members_tenant_seller")
-                            .from(MarketplaceSellerMembers::Table, MarketplaceSellerMembers::TenantId)
+                            .from(
+                                MarketplaceSellerMembers::Table,
+                                MarketplaceSellerMembers::TenantId,
+                            )
                             .from_col(MarketplaceSellerMembers::SellerId)
                             .to(MarketplaceSellers::Table, MarketplaceSellers::TenantId)
                             .to_col(MarketplaceSellers::Id)

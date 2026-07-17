@@ -48,8 +48,7 @@ pub fn MarketplaceListingAdmin() -> impl IntoView {
     let busy = RwSignal::new(false);
     let error = RwSignal::new(Option::<String>::None);
     let notice = RwSignal::new(Option::<String>::None);
-    let pending_command =
-        RwSignal::new(Option::<(String, MarketplaceListingAdminCommand)>::None);
+    let pending_command = RwSignal::new(Option::<(String, MarketplaceListingAdminCommand)>::None);
 
     let create_seller_id = RwSignal::new(String::new());
     let create_variant_id = RwSignal::new(String::new());
