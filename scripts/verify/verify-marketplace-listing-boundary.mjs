@@ -7,6 +7,9 @@ const files = {
   modules: "modules.toml",
   manifest: "crates/rustok-marketplace-listing/rustok-module.toml",
   registry: "crates/rustok-marketplace-listing/contracts/marketplace-listing-fba-registry.json",
+  lib: "crates/rustok-marketplace-listing/src/lib.rs",
+  listingEntity: "crates/rustok-marketplace-listing/src/entities/listing.rs",
+  termsEntity: "crates/rustok-marketplace-listing/src/entities/listing_terms.rs",
   migration: "crates/rustok-marketplace-listing/src/migrations/m20260716_000001_create_marketplace_listings.rs",
   service: "crates/rustok-marketplace-listing/src/service.rs",
   receipt: "crates/rustok-marketplace-listing/src/command_receipts.rs",
@@ -15,6 +18,9 @@ const files = {
   rootManifest: "crates/rustok-marketplace/rustok-module.toml",
   rootRegistry: "crates/rustok-marketplace/contracts/marketplace-fba-registry.json",
   rootConsumer: "crates/rustok-marketplace/src/listing_directory.rs",
+  distributionManifest: "crates/rustok-distribution/Cargo.toml",
+  distributionSource: "crates/rustok-distribution/src/lib.rs",
+  serverManifest: "apps/server/Cargo.toml",
 };
 
 const failures = [];
@@ -36,6 +42,9 @@ const assertNotContains = (source, marker, file) => {
 const modules = read(files.modules);
 const manifest = read(files.manifest);
 const registry = read(files.registry);
+const lib = read(files.lib);
+const listingEntity = read(files.listingEntity);
+const termsEntity = read(files.termsEntity);
 const migration = read(files.migration);
 const service = read(files.service);
 const receipt = read(files.receipt);
@@ -44,6 +53,9 @@ const ports = read(files.ports);
 const rootManifest = read(files.rootManifest);
 const rootRegistry = read(files.rootRegistry);
 const rootConsumer = read(files.rootConsumer);
+const distributionManifest = read(files.distributionManifest);
+const distributionSource = read(files.distributionSource);
+const serverManifest = read(files.serverManifest);
 
 for (const marker of [
   "marketplace_listing =",
@@ -65,12 +77,17 @@ for (const marker of [
   '"MarketplaceListingReadPort"',
   '"MarketplaceListingCommandPort"',
   '"canonical_product_content_copied": false',
+  '"localized_business_copy_owned": false',
+  '"localized_business_copy_provider": "rustok-product"',
+  '"operator_prose_target": "immutable_marketplace_listing_events_with_actor_and_effective_locale"',
   '"cross_module_foreign_keys": false',
   '"buy_box_ranking_owned": false',
   '"atomic_with_owner_write": true',
+  "replay_checked_before_provider_reads",
   "lost_response_replay_returns_saved_result",
 ]) assertContains(registry, marker, files.registry);
 
+assertContains(lib, "mod replay_safe_commands;", files.lib);
 for (const marker of [
   "marketplace_listings",
   "marketplace_listing_terms",
@@ -87,6 +104,16 @@ for (const marker of [
   "fk_marketplace_listing_terms_pricing",
   "fk_marketplace_listing_terms_inventory",
 ]) assertNotContains(migration, marker, files.migration);
+for (const source of [listingEntity, termsEntity]) {
+  for (const marker of [
+    "pub title:",
+    "pub description:",
+    "pub localized_title:",
+    "pub localized_description:",
+    "pub translations_json:",
+    "pub localized_fields_json:",
+  ]) assertNotContains(source, marker, "marketplace listing entities");
+}
 
 for (const marker of [
   "Arc<dyn MarketplaceSellerReadPort>",
@@ -122,7 +149,11 @@ for (const marker of [
   "publish_listing_replay_safe",
   "reactivate_listing_replay_safe",
   "replay_existing",
+  "replay_safe_lifecycle(&context",
+  "self.create_listing(context, input).await",
 ]) assertContains(replaySafe, marker, files.replaySafe);
+assertNotContains(replaySafe, "map_or_else(\n                || async", files.replaySafe);
+
 for (const marker of [
   "pub trait MarketplaceListingReadPort",
   "pub trait MarketplaceListingCommandPort",
@@ -132,6 +163,7 @@ for (const marker of [
   "marketplace listing storage is temporarily unavailable",
 ]) assertContains(ports, marker, files.ports);
 assertNotContains(ports, "storage unavailable: {error}", files.ports);
+assertNotContains(ports, "self.create_listing(context, request)", files.ports);
 
 assertContains(rootManifest, "marketplace_listing", files.rootManifest);
 assertContains(rootRegistry, '"provider": "marketplace_listing"', files.rootRegistry);
@@ -140,6 +172,22 @@ assertContains(rootConsumer, "Arc<dyn MarketplaceListingReadPort>", files.rootCo
 assertContains(rootConsumer, "list_eligibility", files.rootConsumer);
 assertNotContains(rootConsumer, "sea_orm", files.rootConsumer);
 assertNotContains(rootConsumer, "entities::", files.rootConsumer);
+
+for (const marker of [
+  "mod-marketplace_listing",
+  "rustok-marketplace-listing",
+]) assertContains(distributionManifest, marker, files.distributionManifest);
+assertContains(distributionSource, "rustok_marketplace_listing::MarketplaceListingModule", files.distributionSource);
+for (const marker of [
+  "mod-marketplace_listing",
+  "rustok-marketplace-listing",
+  "rustok-distribution/mod-marketplace_listing",
+]) assertContains(serverManifest, marker, files.serverManifest);
+const serverDefaults = serverManifest
+  .split("default = [")[1]
+  ?.split("]")[0] ?? "";
+assertNotContains(serverDefaults, "mod-marketplace_listing", files.serverManifest);
+assertNotContains(serverDefaults, 'mod-marketplace"', files.serverManifest);
 
 if (failures.length > 0) {
   console.error("marketplace listing boundary verification failed:");
