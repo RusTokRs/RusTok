@@ -21,7 +21,7 @@ mod redis_status;
 mod refresh;
 mod service;
 mod shared_backend;
-#[cfg(test)]
+#[cfg(all(test, feature = "redis-cache"))]
 mod startup_recovery_tests;
 mod tenant_generation_observability;
 mod typed;
