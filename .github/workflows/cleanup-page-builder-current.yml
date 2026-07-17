@@ -1,9 +1,10 @@
 name: Apply current Page Builder cleanup
 
 on:
-  pull_request:
+  push:
     branches: [main]
-    types: [opened, synchronize, reopened]
+    paths:
+      - .github/workflows/cleanup-page-builder-current.yml
 
 permissions:
   contents: write
