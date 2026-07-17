@@ -1,4 +1,5 @@
-use super::{compare_projects, ProjectDiffSummary, ProjectSnapshot};
+use super::diff::compare_projects;
+use super::model::{ProjectDiffSummary, ProjectSnapshot};
 use crate::{FlyError, FlyResult, GrapesJsV1Codec, ProjectDocument};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
