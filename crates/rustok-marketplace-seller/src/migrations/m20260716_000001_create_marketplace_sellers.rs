@@ -23,11 +23,6 @@ impl MigrationTrait for Migration {
                             .string_len(80)
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(MarketplaceSellers::DisplayName)
-                            .string_len(160)
-                            .not_null(),
-                    )
                     .col(ColumnDef::new(MarketplaceSellers::LegalName).string_len(240))
                     .col(
                         ColumnDef::new(MarketplaceSellers::Status)
@@ -67,39 +62,111 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        for index in [
+            Index::create()
+                .name("ux_marketplace_sellers_tenant_handle")
+                .table(MarketplaceSellers::Table)
+                .col(MarketplaceSellers::TenantId)
+                .col(MarketplaceSellers::Handle)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("ux_marketplace_sellers_tenant_id")
+                .table(MarketplaceSellers::Table)
+                .col(MarketplaceSellers::TenantId)
+                .col(MarketplaceSellers::Id)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("idx_marketplace_sellers_tenant_status")
+                .table(MarketplaceSellers::Table)
+                .col(MarketplaceSellers::TenantId)
+                .col(MarketplaceSellers::Status)
+                .col(MarketplaceSellers::UpdatedAt)
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
+
         manager
-            .create_index(
-                Index::create()
-                    .name("ux_marketplace_sellers_tenant_handle")
-                    .table(MarketplaceSellers::Table)
-                    .col(MarketplaceSellers::TenantId)
-                    .col(MarketplaceSellers::Handle)
-                    .unique()
+            .create_table(
+                Table::create()
+                    .table(MarketplaceSellerTranslations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MarketplaceSellerTranslations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerTranslations::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerTranslations::SellerId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerTranslations::Locale)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerTranslations::DisplayName)
+                            .string_len(160)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerTranslations::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceSellerTranslations::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_marketplace_seller_translations_tenant_seller")
+                            .from(
+                                MarketplaceSellerTranslations::Table,
+                                MarketplaceSellerTranslations::TenantId,
+                            )
+                            .from_col(MarketplaceSellerTranslations::SellerId)
+                            .to(MarketplaceSellers::Table, MarketplaceSellers::TenantId)
+                            .to_col(MarketplaceSellers::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
                     .to_owned(),
             )
             .await?;
-        manager
-            .create_index(
-                Index::create()
-                    .name("ux_marketplace_sellers_tenant_id")
-                    .table(MarketplaceSellers::Table)
-                    .col(MarketplaceSellers::TenantId)
-                    .col(MarketplaceSellers::Id)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_marketplace_sellers_tenant_status")
-                    .table(MarketplaceSellers::Table)
-                    .col(MarketplaceSellers::TenantId)
-                    .col(MarketplaceSellers::Status)
-                    .col(MarketplaceSellers::UpdatedAt)
-                    .to_owned(),
-            )
-            .await?;
+
+        for index in [
+            Index::create()
+                .name("ux_marketplace_seller_translations_locale")
+                .table(MarketplaceSellerTranslations::Table)
+                .col(MarketplaceSellerTranslations::TenantId)
+                .col(MarketplaceSellerTranslations::SellerId)
+                .col(MarketplaceSellerTranslations::Locale)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("idx_marketplace_seller_translations_search")
+                .table(MarketplaceSellerTranslations::Table)
+                .col(MarketplaceSellerTranslations::TenantId)
+                .col(MarketplaceSellerTranslations::Locale)
+                .col(MarketplaceSellerTranslations::DisplayName)
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
 
         manager
             .create_table(
@@ -174,29 +241,25 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_index(
-                Index::create()
-                    .name("ux_marketplace_seller_members_scope_user")
-                    .table(MarketplaceSellerMembers::Table)
-                    .col(MarketplaceSellerMembers::TenantId)
-                    .col(MarketplaceSellerMembers::SellerId)
-                    .col(MarketplaceSellerMembers::UserId)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_marketplace_seller_members_tenant_user")
-                    .table(MarketplaceSellerMembers::Table)
-                    .col(MarketplaceSellerMembers::TenantId)
-                    .col(MarketplaceSellerMembers::UserId)
-                    .col(MarketplaceSellerMembers::Status)
-                    .to_owned(),
-            )
-            .await?;
+        for index in [
+            Index::create()
+                .name("ux_marketplace_seller_members_scope_user")
+                .table(MarketplaceSellerMembers::Table)
+                .col(MarketplaceSellerMembers::TenantId)
+                .col(MarketplaceSellerMembers::SellerId)
+                .col(MarketplaceSellerMembers::UserId)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("idx_marketplace_seller_members_tenant_user")
+                .table(MarketplaceSellerMembers::Table)
+                .col(MarketplaceSellerMembers::TenantId)
+                .col(MarketplaceSellerMembers::UserId)
+                .col(MarketplaceSellerMembers::Status)
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
 
         Ok(())
     }
@@ -206,6 +269,13 @@ impl MigrationTrait for Migration {
             .drop_table(
                 Table::drop()
                     .table(MarketplaceSellerMembers::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(MarketplaceSellerTranslations::Table)
                     .to_owned(),
             )
             .await?;
@@ -222,7 +292,6 @@ enum MarketplaceSellers {
     Id,
     TenantId,
     Handle,
-    DisplayName,
     LegalName,
     Status,
     OnboardingStatus,
@@ -233,6 +302,18 @@ enum MarketplaceSellers {
     UpdatedAt,
     ActivatedAt,
     SuspendedAt,
+}
+
+#[derive(Iden)]
+enum MarketplaceSellerTranslations {
+    Table,
+    Id,
+    TenantId,
+    SellerId,
+    Locale,
+    DisplayName,
+    CreatedAt,
+    UpdatedAt,
 }
 
 #[derive(Iden)]
