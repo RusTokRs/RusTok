@@ -16,9 +16,68 @@ pub fn normalize_css_hex_color(value: &str) -> Option<String> {
     Some(format!("#{digits}"))
 }
 
+/// Maps a validated hex color to a finite, build-time-visible utility-class palette.
+///
+/// This preserves a rough hue relationship without emitting a runtime CSS declaration. Invalid,
+/// absent or nearly neutral values use the reviewed default gradient. Alpha components are ignored
+/// because the host class owns opacity.
+pub fn css_hex_accent_class(value: Option<&str>) -> &'static str {
+    let Some((red, green, blue)) = value.and_then(css_hex_rgb) else {
+        return "bg-gradient-to-b from-sky-500 to-amber-500";
+    };
+    let maximum = red.max(green).max(blue);
+    let minimum = red.min(green).min(blue);
+    if maximum.saturating_sub(minimum) <= 24 {
+        return "bg-slate-500";
+    }
+
+    if maximum == red {
+        if green >= blue {
+            if green >= red.saturating_mul(3) / 4 {
+                "bg-amber-500"
+            } else {
+                "bg-rose-500"
+            }
+        } else {
+            "bg-fuchsia-500"
+        }
+    } else if maximum == green {
+        if blue > red {
+            "bg-cyan-500"
+        } else {
+            "bg-emerald-500"
+        }
+    } else if red > green {
+        "bg-violet-500"
+    } else {
+        "bg-sky-500"
+    }
+}
+
+fn css_hex_rgb(value: &str) -> Option<(u8, u8, u8)> {
+    let normalized = normalize_css_hex_color(value)?;
+    let digits = normalized.strip_prefix('#')?;
+    match digits.len() {
+        3 | 4 => {
+            let mut values = digits.chars().take(3).map(|character| {
+                character
+                    .to_digit(16)
+                    .map(|nibble| (nibble as u8).saturating_mul(17))
+            });
+            Some((values.next()??, values.next()??, values.next()??))
+        }
+        6 | 8 => Some((
+            u8::from_str_radix(&digits[0..2], 16).ok()?,
+            u8::from_str_radix(&digits[2..4], 16).ok()?,
+            u8::from_str_radix(&digits[4..6], 16).ok()?,
+        )),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::normalize_css_hex_color;
+    use super::{css_hex_accent_class, normalize_css_hex_color};
 
     #[test]
     fn accepts_only_bounded_hex_color_tokens() {
@@ -46,5 +105,23 @@ mod tests {
         ] {
             assert_eq!(normalize_css_hex_color(raw), None, "accepted {raw:?}");
         }
+    }
+
+    #[test]
+    fn maps_hex_colors_to_a_finite_accent_palette() {
+        for (raw, expected) in [
+            (Some("#ff0000"), "bg-rose-500"),
+            (Some("#ffff00"), "bg-amber-500"),
+            (Some("#00ff00"), "bg-emerald-500"),
+            (Some("#00ffff"), "bg-cyan-500"),
+            (Some("#0000ff"), "bg-sky-500"),
+            (Some("#8000ff"), "bg-violet-500"),
+            (Some("#ff00ff"), "bg-fuchsia-500"),
+            (Some("#777"), "bg-slate-500"),
+        ] {
+            assert_eq!(css_hex_accent_class(raw), expected, "mapped {raw:?}");
+        }
+        assert!(css_hex_accent_class(None).contains("from-sky-500"));
+        assert!(css_hex_accent_class(Some("#fff;--owned:1")).contains("from-sky-500"));
     }
 }
