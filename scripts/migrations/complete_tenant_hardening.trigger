@@ -1,1 +1,1 @@
-Run the split tenant hardening checks with all staging migrations present and publish the validated result branch.
+Publish the tenant hardening result after formatting, architecture, SEO compile and telemetry verification.
