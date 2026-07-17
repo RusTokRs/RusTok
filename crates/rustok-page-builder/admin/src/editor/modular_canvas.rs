@@ -1,11 +1,12 @@
 use crate::editor::{
-    AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, ContextCompatibilityPanel,
-    ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel, DynamicRuntimePanel,
-    IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
-    ResponsiveStylePanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
-    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, SsrActionsFormsPanel, SsrInspectorPanel,
-    SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel, SsrLocalePolicyPanel,
-    SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
+    AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, CapabilityPolicyPanel,
+    ContextCompatibilityPanel, ContextContractToolsPanel, ContextDependencyPanel,
+    ContextSchemaPanel, DynamicRuntimePanel, IsolatedAuthoringCanvas, PageManagerPanel,
+    PaletteLayersPanel, PropertiesAssetsPanel, ResponsiveStylePanel, RuntimePublishGatePanel,
+    RuntimeScenarioMatrixPanel, RuntimeScenarioPanel, RuntimeScenarioRegressionPanel,
+    SsrActionsFormsPanel, SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel,
+    SsrLocalePanel, SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel,
+    TraitPanel,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
@@ -14,7 +15,9 @@ use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
 };
-use fly_ui::{CapabilityState, ContributionAssemblyResult, UiIntent};
+use fly_ui::{
+    CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation, UiIntent,
+};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
@@ -29,6 +32,7 @@ pub fn AdminCanvas(
     trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     #[prop(optional)] contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
     #[prop(optional)] editor_capabilities: Option<CapabilityState>,
+    #[prop(optional)] editor_capability_evaluation: Option<Arc<EditorCapabilityEvaluation>>,
     runtime_context: Option<Value>,
     runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
@@ -50,6 +54,9 @@ pub fn AdminCanvas(
         "page_builder.status.saveSucceeded",
         "Project saved",
     );
+    let evaluated_capabilities = editor_capability_evaluation
+        .as_ref()
+        .map(|evaluation| evaluation.effective);
     let runtime = AdminEditorRuntime::new(
         controller,
         facade,
@@ -59,6 +66,10 @@ pub fn AdminCanvas(
     );
     let runtime = match trait_schemas {
         Some(trait_schemas) => runtime.with_trait_schemas(trait_schemas),
+        None => runtime,
+    };
+    let runtime = match editor_capability_evaluation {
+        Some(evaluation) => runtime.with_editor_capability_evaluation(evaluation),
         None => runtime,
     };
     let runtime = match runtime_context {
@@ -73,7 +84,7 @@ pub fn AdminCanvas(
         Some(policy) => runtime.with_runtime_publish_gate_policy(policy),
         None => runtime,
     };
-    if let Some(capabilities) = editor_capabilities {
+    if let Some(capabilities) = editor_capabilities.or(evaluated_capabilities) {
         runtime.dispatch(UiIntent::SetEditableCapabilities(capabilities));
     }
     let browser_page_id = runtime
@@ -91,6 +102,7 @@ pub fn AdminCanvas(
     let page_runtime = runtime.clone();
     let palette_runtime = runtime.clone();
     let canvas_runtime = runtime.clone();
+    let capability_runtime = runtime.clone();
     let audit_runtime = runtime.clone();
     let gate_runtime = runtime.clone();
     let scenario_runtime = runtime.clone();
@@ -145,6 +157,7 @@ pub fn AdminCanvas(
                 </div>
                 <IsolatedAuthoringCanvas runtime=canvas_runtime />
                 <div class="space-y-3 overflow-auto">
+                    <CapabilityPolicyPanel runtime=capability_runtime />
                     <SsrLocalePanel runtime=ssr_locale_runtime />
                     <SsrLocalePolicyPanel runtime=ssr_locale_policy_runtime />
                     <SsrLocaleCoveragePanel runtime=ssr_locale_coverage_runtime />
