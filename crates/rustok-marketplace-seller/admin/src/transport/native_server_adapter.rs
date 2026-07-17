@@ -57,10 +57,12 @@ async fn marketplace_seller_directory_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
+        use rustok_api::{
+            request::RequestContext, AuthContext, HostRuntimeContext, Permission, TenantContext,
+        };
         use rustok_marketplace_seller::{
-            ListMarketplaceSellersInput, MarketplaceSellerReadPort, MarketplaceSellerService,
-            MarketplaceSellerStatus, MarketplaceSellerOnboardingStatus,
+            ListMarketplaceSellersInput, MarketplaceSellerOnboardingStatus,
+            MarketplaceSellerReadPort, MarketplaceSellerService, MarketplaceSellerStatus,
         };
 
         let runtime = expect_context::<HostRuntimeContext>();
@@ -68,6 +70,9 @@ async fn marketplace_seller_directory_native(
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let request = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
         ensure_permission(
@@ -84,7 +89,7 @@ async fn marketplace_seller_directory_native(
         let service = MarketplaceSellerService::new(runtime.db_clone());
         let response = MarketplaceSellerReadPort::list_sellers(
             &service,
-            port_context(&auth, &tenant, None),
+            port_context(&auth, &tenant, &request, None),
             ListMarketplaceSellersInput {
                 page,
                 per_page,
@@ -105,6 +110,7 @@ async fn marketplace_seller_directory_native(
                 .map(|seller| MarketplaceSellerAdminListItem {
                     id: seller.id.to_string(),
                     handle: seller.handle,
+                    resolved_locale: seller.resolved_locale,
                     display_name: seller.display_name,
                     status: seller.status.as_str().to_string(),
                     onboarding_status: seller.onboarding_status.as_str().to_string(),
@@ -131,7 +137,9 @@ async fn marketplace_seller_detail_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
+        use rustok_api::{
+            request::RequestContext, AuthContext, HostRuntimeContext, Permission, TenantContext,
+        };
         use rustok_marketplace_seller::{
             ListMarketplaceSellerMembersRequest, MarketplaceSellerReadPort,
             MarketplaceSellerService, ReadMarketplaceSellerRequest,
@@ -144,11 +152,14 @@ async fn marketplace_seller_detail_native(
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        let request = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
         ensure_permission(&auth, &[Permission::MARKETPLACE_SELLERS_READ])?;
         ensure_tenant(&auth, &tenant)?;
         let seller_id = parse_uuid(seller_id.as_str(), "seller_id")?;
         let service = MarketplaceSellerService::new(runtime.db_clone());
-        let context = port_context(&auth, &tenant, None);
+        let context = port_context(&auth, &tenant, &request, None);
         let seller = MarketplaceSellerReadPort::read_seller(
             &service,
             context.clone(),
@@ -186,11 +197,12 @@ async fn marketplace_seller_command_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
+        use rustok_api::{
+            request::RequestContext, AuthContext, HostRuntimeContext, Permission, TenantContext,
+        };
         use rustok_marketplace_seller::{
             AddMarketplaceSellerMemberInput, AddMarketplaceSellerMemberRequest,
             CreateMarketplaceSellerInput, MarketplaceSellerCommandPort,
-            MarketplaceSellerMemberRole, MarketplaceSellerMemberStatus,
             MarketplaceSellerService, ReactivateMarketplaceSellerRequest,
             ReviewMarketplaceSellerOnboardingInput,
             ReviewMarketplaceSellerOnboardingRequest,
@@ -206,6 +218,9 @@ async fn marketplace_seller_command_native(
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let request = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
         let required = match &command {
@@ -226,7 +241,7 @@ async fn marketplace_seller_command_native(
         };
         ensure_permission(&auth, &[required])?;
         ensure_tenant(&auth, &tenant)?;
-        let context = port_context(&auth, &tenant, Some(idempotency_key));
+        let context = port_context(&auth, &tenant, &request, Some(idempotency_key));
         let service = MarketplaceSellerService::new(runtime.db_clone());
 
         match command {
@@ -420,15 +435,19 @@ fn ensure_tenant(
 fn port_context(
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
+    request: &rustok_api::request::RequestContext,
     idempotency_key: Option<String>,
 ) -> rustok_api::PortContext {
     let mut context = rustok_api::PortContext::new(
         tenant.id.to_string(),
         rustok_api::PortActor::user(auth.user_id.to_string()),
-        tenant.default_locale.clone(),
+        request.locale.clone(),
         format!("native-marketplace-seller-{}", uuid::Uuid::new_v4()),
     )
     .with_deadline(std::time::Duration::from_secs(5));
+    if let Some(channel) = request.channel_slug.clone() {
+        context = context.with_channel(channel);
+    }
     if let Some(key) = idempotency_key {
         context = context.with_idempotency_key(key);
     }
@@ -534,6 +553,7 @@ fn map_seller(
         id: value.id.to_string(),
         tenant_id: value.tenant_id.to_string(),
         handle: value.handle,
+        resolved_locale: value.resolved_locale,
         display_name: value.display_name,
         legal_name: value.legal_name,
         status: value.status.as_str().to_string(),
