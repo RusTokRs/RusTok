@@ -25,6 +25,9 @@ const failures = [];
 const requireMarker = (key, marker, message) => {
   if (!source[key].includes(marker)) failures.push(message);
 };
+const rejectMarker = (key, marker, message) => {
+  if (source[key].includes(marker)) failures.push(message);
+};
 const requireMarkers = (key, markers, label) => {
   for (const marker of markers) requireMarker(key, marker, `${label} is missing ${marker}`);
 };
@@ -60,7 +63,20 @@ requireMarkers('action', [
   'pub struct ComponentForm',
   'pub fn materialize_component_actions',
   'pub fn validate_component_actions',
+  'GENERATED_INTERACTION_ATTRIBUTES',
+  'clear_interaction_materialization',
+  'component_form_interaction_contract_conflict',
+  'non-default form encoding requires post method',
+  'root.visit(0, "page.component", &mut |component, _, _|',
+  'materialization_clears_stale_interaction_attributes',
+  'duplicate_forms_and_interaction_conflicts_are_rejected',
+  'non_post_encoding_is_rejected',
 ], 'Fly action and form contract');
+rejectMarker(
+  'action',
+  'let Some(component) = node.as_object()',
+  'form collection must use the ComponentObject visitor directly',
+);
 requireOrder('runtimePipeline', [
   'validate_component_actions(&dynamic_document)',
   'materialize_component_actions(&linked_document, &effective_context)',
@@ -113,9 +129,12 @@ requireMarkers('ssrEditor', [
   'form_from_request(request.clone(), extensions)',
   'preserved_action_extensions',
   'validate_component_actions(&candidate)',
+  'validate_native_field_constraints',
   'action_editor_preserves_unknown_extensions',
   'form_editor_preserves_unknown_extensions',
   'native_field_editor_sets_and_clears_html_constraints',
+  'native_field_editor_rejects_inapplicable_constraints',
+  'numeric_field_editor_rejects_invalid_or_inverted_bounds',
 ], 'typed SSR action/form/field editor');
 requireMarkers('adminLib', [
   '#[cfg(test)]\nmod ssr_actions_forms_browser_tests;',
