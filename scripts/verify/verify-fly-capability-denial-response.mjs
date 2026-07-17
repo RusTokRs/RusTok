@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
+  vocabulary: 'crates/fly-browser/src/lib.rs',
   access: 'crates/rustok-page-builder/admin/src/capability_access.rs',
   exports: 'crates/rustok-page-builder/admin/src/lib.rs',
   pages: 'crates/rustok-pages/admin/src/contribution_browser_intent.rs',
@@ -23,6 +24,17 @@ const rejectMarker = (key, marker, message) => {
 };
 
 for (const marker of [
+  'pub enum BrowserIntentKind',
+  'pub const ALL: [Self; 48]',
+  'pub fn parse(value: &str)',
+  'pub const fn as_str(self)',
+  'pub const fn is_mutating(self)',
+  'pub fn kind(&self) -> Option<BrowserIntentKind>',
+  'intent_kind_names_are_unique_and_round_trip',
+]) {
+  requireMarker('vocabulary', marker, `browser intent vocabulary is missing ${marker}`);
+}
+for (const marker of [
   'pub struct BrowserCapabilityDenial',
   'impl std::error::Error for BrowserCapabilityDenial {}',
   'pub enum BrowserCapabilityAccessError',
@@ -30,8 +42,11 @@ for (const marker of [
   'Dispatch(#[from] BrowserIntentDispatchError)',
   'pub fn browser_capability_denial(',
   'Result<(), BrowserCapabilityAccessError>',
-  '"select_asset" => vec![EditorCapability::Assets, EditorCapability::Properties]',
-  '| "rename_page"',
+  'let Some(kind) = envelope.kind()',
+  'BrowserIntentKind::SelectAsset =>',
+  'BrowserIntentKind::RenamePage',
+  'BrowserIntentKind::SetRuntimeContext',
+  'runtime_preview_context_uses_properties_capability',
   'page_rename_uses_properties_capability',
   'selecting_an_asset_requires_asset_and_property_capabilities',
   'malformed_shortcut_remains_a_typed_dispatch_error',
@@ -42,14 +57,13 @@ for (const forbidden of [
   'CAPABILITY_DENIAL_PREFIX',
   'FLY_CAPABILITY_DENIED:',
   'serde_json::from_str(payload)',
-  'BrowserIntentDispatchError::Authoring(format!',
+  'match envelope.intent.as_str()',
 ]) {
-  rejectMarker('access', forbidden, `capability denial must not use string envelope ${forbidden}`);
+  rejectMarker('access', forbidden, `capability access must not use ${forbidden}`);
 }
 for (const marker of [
   'pub const BROWSER_CAPABILITY_DENIAL_CODE: &str = "FLY_CAPABILITY_DENIED";',
   'BrowserCapabilityAccessError, BrowserCapabilityDenial,',
-  'browser_capability_denial, validate_browser_capability_access,',
 ]) {
   requireMarker('exports', marker, `Page Builder admin export is missing ${marker}`);
 }
@@ -57,9 +71,7 @@ for (const marker of [
   'pub enum PagesBrowserIntentAccessError',
   'Capability(#[from] BrowserCapabilityAccessError)',
   'Pages(#[from] PagesBrowserIntentError)',
-  'pub fn capability_denial(&self)',
   'pages_preflight_preserves_typed_capability_denial',
-  'PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Denied(_))',
 ]) {
   requireMarker('pages', marker, `Pages typed access boundary is missing ${marker}`);
 }
@@ -67,8 +79,6 @@ for (const marker of [
   'pub struct PagesBrowserIntentProblem',
   'pub fn from_error(error: &PagesBrowserIntentAccessError)',
   'code: Some(BROWSER_CAPABILITY_DENIAL_CODE.to_string())',
-  'fn status_for_error(',
-  'fn dispatch_status(',
   'capability_denial_has_stable_problem_contract',
   'revision_conflict_maps_to_conflict_without_capability_fields',
   'page_not_found_maps_to_not_found',
@@ -78,14 +88,13 @@ for (const marker of [
 }
 for (const marker of [
   'mod browser_problem;',
-  'PagesBrowserIntentProblem,',
+  'pub use browser_problem::PagesBrowserIntentProblem;',
   'PagesBrowserIntentAccessError,',
 ]) {
   requireMarker('pagesExports', marker, `Pages admin export is missing ${marker}`);
 }
 for (const marker of [
   'leptos_auth::api::fetch_current_user(',
-  'PagesBrowserIntentAccessError',
   'PagesBrowserIntentProblem',
   'let problem = PagesBrowserIntentProblem::from(&error);',
   'StatusCode::from_u16(problem.status)',
@@ -95,13 +104,11 @@ for (const marker of [
 }
 for (const forbidden of [
   'message.contains("requires editor capability")',
-  'rustok_page_builder_admin::browser_capability_denial(error)',
-  '"code": "FLY_CAPABILITY_DENIED"',
   'BrowserCapabilityAccessError::Denied(_)',
   'PagesBrowserIntentError::PageNotFound',
-  'PagesBrowserIntentError::RevisionConflict',
+  '"code": "FLY_CAPABILITY_DENIED"',
 ]) {
-  rejectMarker('server', forbidden, `admin host must not own domain problem mapping through ${forbidden}`);
+  rejectMarker('server', forbidden, `admin host must not own domain mapping through ${forbidden}`);
 }
 rejectMarker(
   'server',
