@@ -85,13 +85,12 @@ The enforced UI policies now isolate their remaining exception to:
 
 The broader `style-src 'unsafe-inline'` source, `script-src 'unsafe-inline'`, `unsafe-eval`, plaintext HTTP and production plaintext WebSocket have been removed from enforcement and are protected by the CSP verification gate. The remaining attribute-level entry is migration debt, not an approved permanent production exception. The strict main-server report-only policy uses `style-src-attr 'none'` to expose the affected components.
 
-The machine-readable register is `docs/security/csp-inline-style-attribute-exceptions.json`. It now records exactly **4 source sites across 3 Rust-hosted UI files**, down from 15 sites across 7 files, and must be reviewed no later than **2026-08-14**. The verification gate fails on an unregistered file, a changed occurrence count, missing constraint evidence, stale entries, an expired review date or an increase above the 4-site/3-file ratchet.
+The machine-readable register is `docs/security/csp-inline-style-attribute-exceptions.json`. It now records exactly **2 source sites across 2 Rust-hosted UI files**, down from 15 sites across 7 files, and must be reviewed no later than **2026-08-14**. The verification gate fails on an unregistered file, a changed occurrence count, missing constraint evidence, stale entries, an expired review date or an increase above the 2-site/2-file ratchet.
 
 | Source | Sites | Reviewed constraint | Exit path |
 |---|---:|---|---|
 | `apps/admin/src/features/modules/components/modules_list.rs` | 1 | Percent width is formatted from typed `BuildJob.progress: i32`, never from a CSS string | Move to a native progress or finite class contract |
 | `crates/rustok-forum/admin/src/ui/leptos.rs` | 1 | The entity hook rejects invalid colors before persistence, and the admin JSON boundary normalizes valid hex tokens again | Reuse the finite storefront palette class |
-| `crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs` | 2 | Custom viewport dimensions and continuous zoom emit only typed numeric width, height and zoom | Replace iframe sizing and zoom with a CSP-compatible viewport adapter |
 
 Completed attribute migrations in this batch:
 
@@ -100,7 +99,8 @@ Completed attribute migrations in this batch:
 - hover, selection and insertion overlays now use SVG `x`, `y`, `width` and `height` attributes;
 - resize preview geometry now uses an SVG `<rect>`;
 - the eight resize handles now use SVG `<circle>` positions and a closed cursor-class mapping while retaining pointer capture;
-- storefront forum accents now map validated colors to a finite eight-color utility-class palette or reviewed gradient fallback and no longer emit a runtime CSS declaration.
+- storefront forum accents now map validated colors to a finite eight-color utility-class palette or reviewed gradient fallback and no longer emit a runtime CSS declaration;
+- Page Builder custom viewport width, height and continuous zoom now use an SVG `viewBox` plus an explicit XHTML `<foreignObject>` integration point; the iframe retains native width/height attributes and no longer requires CSS sizing or `transform:scale`.
 
 The static modular Page Builder three-column layout had already moved from an inline attribute to a Tailwind arbitrary grid class and remains outside the exception register.
 
