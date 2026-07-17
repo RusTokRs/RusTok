@@ -168,3 +168,41 @@ fn localized_slug_diagnostics_are_classified_as_routes() {
             && issue.diagnostic.code == "localized_page_slug_empty"
     }));
 }
+
+#[test]
+fn unresolved_runtime_bound_action_is_a_publish_blocker() {
+    let mut source =
+        GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
+    source["pages"][0]["component"]["components"].as_array_mut()
+        .expect("components")
+        .push(json!({
+            "id": "cta",
+            "type": "button",
+            "content": "Open page"
+        }));
+    source["flyRuntimeBindings"] = json!([{
+        "id": "cta-action",
+        "component_id": "cta",
+        "path": "cta.action",
+        "target": "field",
+        "name": "flyAction"
+    }]);
+    let document = GrapesJsV1Codec::decode_value(source).expect("document");
+    let context = json!({
+        "cta": {
+            "action": { "kind": "navigate_page", "page_id": "missing" }
+        }
+    });
+
+    let report = evaluate_landing_readiness_with_context(
+        &document,
+        Some(&context),
+        LandingReadinessPolicy::default(),
+    );
+    assert!(!report.ready);
+    assert!(report.issues.iter().any(|issue| {
+        issue.category == LandingReadinessCategory::RuntimeContracts
+            && issue.diagnostic.code == "runtime_action_unresolved"
+            && issue.diagnostic.severity == ValidationSeverity::Error
+    }));
+}
