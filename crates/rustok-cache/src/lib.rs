@@ -6,6 +6,7 @@ mod durable_invalidation_service;
 mod durable_invalidation_transport;
 mod envelope;
 mod event_dedupe;
+#[cfg(feature = "redis-cache")]
 mod fallback;
 mod generation;
 mod invalidation;
@@ -20,12 +21,7 @@ mod policy;
 mod redis_status;
 mod refresh;
 mod service;
-mod shared_backend {
-    include!("shared_backend.rs");
-
-    #[cfg(not(feature = "redis-cache"))]
-    const _: usize = std::mem::size_of::<DegradationAwareFallbackBackend>();
-}
+mod shared_backend;
 #[cfg(all(test, feature = "redis-cache"))]
 mod startup_recovery_tests;
 mod tenant_generation_observability;
