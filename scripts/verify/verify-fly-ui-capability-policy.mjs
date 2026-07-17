@@ -182,8 +182,10 @@ requireMarkers('browserCapabilities', [
   'capabilities.allows(capability)',
   '"undo" | "redo" => vec![EditorCapability::History]',
   '"save" => vec![EditorCapability::Publish]',
+  '| "rename_page"',
   '"select_asset" => vec![EditorCapability::Assets, EditorCapability::Properties]',
   '_ if envelope.is_mutating() => vec![EditorCapability::Edit]',
+  'page_rename_uses_properties_capability',
   'selecting_an_asset_requires_asset_and_property_capabilities',
   'supplied_profile_is_authoritative',
 ], 'browser capability preflight');
@@ -216,6 +218,8 @@ requireMarkers('pagesBrowser', [
   'dispatch_pages_browser_intent_with_store_and_capabilities(',
   'validate_browser_capability_access(&envelope, capabilities)',
   'pages_preflight_rejects_capability_bypass',
+  'browser_capability_denial(&error)',
+  'Some(EditorCapability::Publish)',
 ], 'Pages capability-aware browser dispatch');
 requireMarkers('pagesLib', [
   'pages_editor_capability_policy_for_role,',
