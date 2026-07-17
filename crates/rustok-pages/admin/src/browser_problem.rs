@@ -1,4 +1,5 @@
-use crate::{PagesBrowserIntentAccessError, PagesBrowserIntentError};
+use crate::browser_intent::PagesBrowserIntentError;
+use crate::contribution_browser_intent::PagesBrowserIntentAccessError;
 use fly_ui::EditorCapability;
 use rustok_page_builder_admin::{
     BrowserCapabilityAccessError, BrowserIntentDispatchError, SsrDraftSessionError,
@@ -6,12 +7,12 @@ use rustok_page_builder_admin::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const HTTP_BAD_REQUEST: u16 = 400;
-pub const HTTP_FORBIDDEN: u16 = 403;
-pub const HTTP_NOT_FOUND: u16 = 404;
-pub const HTTP_CONFLICT: u16 = 409;
-pub const HTTP_UNPROCESSABLE_ENTITY: u16 = 422;
-pub const HTTP_BAD_GATEWAY: u16 = 502;
+const HTTP_BAD_REQUEST: u16 = 400;
+const HTTP_FORBIDDEN: u16 = 403;
+const HTTP_NOT_FOUND: u16 = 404;
+const HTTP_CONFLICT: u16 = 409;
+const HTTP_UNPROCESSABLE_ENTITY: u16 = 422;
+const HTTP_BAD_GATEWAY: u16 = 502;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PagesBrowserIntentProblem {
