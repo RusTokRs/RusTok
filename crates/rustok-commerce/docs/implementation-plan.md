@@ -178,6 +178,12 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - [x] Register listing in modules, distribution, and server as opt-in backend owner.
 - [x] Restore evented module registration and FBA command routing after parallel source
   drift.
+- [x] Define the sealed, typed nine-event `MarketplaceListingEvent` family and preserve
+  it through transactional outbox relay and Iggy transport.
+- [x] Publish one external contract event from receipt completion in the same owner
+  transaction as state/terms, internal event, and completed receipt.
+- [x] Keep moderation notes, reasons, arbitrary metadata, and imported legacy snapshots
+  out of the external contract payload and live relay path.
 
 ### Listing FFA source completed
 
@@ -192,15 +198,11 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - [x] Fail the declared GraphQL profile closed while listing GraphQL roots are absent;
   do not silently fall back to native or fabricate schema operations.
 - [x] Register the module-owned admin package and locale path in the listing manifest.
+- [x] Register the nested admin crate in workspace/admin hydrate and SSR feature graphs.
+- [x] Add platform `marketplace_listings` permissions and module-owned workflow mapping.
 
 ### Listing remaining
 
-- [ ] Define versioned `marketplace.listing.changed` in the platform event contract and
-  publish through `TransactionalEventBus::publish_in_tx` in the same owner transaction.
-- [ ] Do not expose moderation notes/arbitrary metadata in external listing events and
-  do not relay imported legacy snapshots as live commands.
-- [ ] Register the nested admin crate in workspace/host feature graphs.
-- [ ] Add platform `marketplace_listings` permissions and host authorization mapping.
 - [ ] Publish listing GraphQL roots over the same typed ports and replace the
   declared-unmounted FFA adapter.
 - [ ] Provide authenticated request-scoped native runtime composition in admin hosts.
@@ -208,8 +210,8 @@ the explicit `rustok-marketplace-*` family and must never be folded into
   deduplication, or buy-box ranking.
 - [ ] Compile listing/root/provider/admin contracts and execute clean/upgraded
   migrations, replay, provider-preflight races, locale/provenance constraints, tenant
-  isolation, event/outbox atomicity, contention, rollback, restart, and mounted
-  transport evidence.
+  isolation, PostgreSQL event/outbox atomicity, contention, rollback, relay, restart,
+  and mounted transport evidence.
 
 ### Marketplace order allocation and finance
 
@@ -251,8 +253,8 @@ Source inspection is not execution evidence.
 - [ ] `cargo fmt --all -- --check`
 - [ ] `npm run verify:ecommerce:fba`
 - [ ] `npm run verify:marketplace`
+- [ ] `node scripts/verify/verify-marketplace-listing-event-contract.mjs`
 - [ ] `node scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
-- [ ] Source inspect `marketplace_listing_admin_ffa_guard.rs` until it is aggregated.
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate payment`
 - [ ] `cargo xtask module validate marketplace`
@@ -267,11 +269,12 @@ Source inspection is not execution evidence.
 - [ ] `cargo check -p rustok-marketplace-seller --lib`
 - [ ] `cargo check -p rustok-marketplace-seller-admin --all-features`
 - [ ] `cargo check -p rustok-marketplace-listing --lib`
-- [ ] Register and check `rustok-marketplace-listing-admin --all-features`.
+- [ ] `cargo test -p rustok-marketplace-listing`
+- [ ] `cargo check -p rustok-marketplace-listing-admin --all-features`
 - [ ] `cargo check -p rustok-server --features mod-marketplace`
 - [ ] Targeted checkout, return-completion, payment, seller/listing lifecycle,
-  localization, event provenance/timeline, replay, recovery, and tenant-isolation
-  tests.
+  localization, event provenance/timeline, outbox replay/rollback, recovery, and
+  tenant-isolation tests.
 
 ### Database/runtime
 
@@ -293,20 +296,20 @@ Source inspection is not execution evidence.
 5. [x] Add complete listing lifecycle events and remove direct write bypasses.
 6. [x] Backfill truthful legacy listing snapshots and remove mutable note columns.
 7. [x] Publish the initial module-owned listing FFA source package.
-8. [ ] Define and atomically publish the listing transactional outbox event.
-9. [ ] Add immutable seller lifecycle/moderation events and timeline reads.
-10. [ ] Add listing permissions, workspace/host registration, and request-scoped native
-    composition.
-11. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
-12. [ ] Run static verifiers and fix remaining source drift.
-13. [ ] Compile commerce/payment/Marketplace packages and server features.
-14. [ ] Apply clean/upgraded migrations and targeted regression tests.
-15. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, and
+8. [x] Define and atomically publish the sealed listing transactional outbox events.
+9. [x] Add listing permissions and workspace/admin feature registration.
+10. [ ] Add immutable seller lifecycle/moderation events and timeline reads.
+11. [ ] Mount authenticated request-scoped listing native composition.
+12. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
+13. [ ] Run static verifiers and fix remaining source drift.
+14. [ ] Compile commerce/payment/Marketplace packages and server features.
+15. [ ] Apply clean/upgraded migrations and targeted regression tests.
+16. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, and
     mounted transport scenarios.
-16. [ ] Introduce seller allocations, commission snapshots, double-entry ledger, and
+17. [ ] Introduce seller allocations, commission snapshots, double-entry ledger, and
     payout journals in that order.
-17. [ ] Execute production-like payment provider and mounted worker evidence.
-18. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
+18. [ ] Execute production-like payment provider and mounted worker evidence.
+19. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
 
 ## Change rules
 
