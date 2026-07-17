@@ -3,14 +3,8 @@
 ## Integration
 
 ```text
-Traceback (most recent call last):
-  File "/tmp/integrate_landing_properties.py", line 213, in <module>
-    text = replace_in_block(text, '"fly.contact_form"', ']\n    ]\n    .into_iter()',
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/tmp/integrate_landing_properties.py", line 168, in replace_in_block
-    end_index = text.index(end, start_index)
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ValueError: substring not found
+contact boundary patch expected 4 matches, found 7
+python3: can't open file '/tmp/integrate_landing_properties.py': [Errno 2] No such file or directory
 ```
 
 ## Validation
