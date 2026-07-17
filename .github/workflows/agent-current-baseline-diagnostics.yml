@@ -1,0 +1,233 @@
+name: Agent Current Baseline Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-current-baseline-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-workspace:
+    if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-current-clean' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: agent-current-baseline
+      - name: Capture workspace diagnostics
+        shell: bash
+        run: |
+          mkdir -p /tmp/agent-current-baseline
+          set +e
+          cargo fmt --all -- --check > /tmp/agent-current-baseline/fmt.log 2>&1
+          echo $? > /tmp/agent-current-baseline/fmt.status
+          cargo check --workspace --all-targets --all-features > /tmp/agent-current-baseline/check.log 2>&1
+          echo $? > /tmp/agent-current-baseline/check.status
+          cargo clippy --workspace --all-targets --no-deps -- -D warnings > /tmp/agent-current-baseline/clippy.log 2>&1
+          echo $? > /tmp/agent-current-baseline/clippy.status
+          cargo doc --no-deps --all-features --workspace > /tmp/agent-current-baseline/doc.log 2>&1
+          echo $? > /tmp/agent-current-baseline/doc.status
+          exit 0
+      - name: Upload workspace diagnostics
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-current-baseline-rust-workspace
+          path: /tmp/agent-current-baseline
+      - name: Fail on workspace diagnostics
+        shell: bash
+        run: |
+          failed=0
+          for status in /tmp/agent-current-baseline/*.status; do
+            code=$(cat "$status")
+            echo "$(basename "$status"): $code"
+            if [[ "$code" != "0" ]]; then failed=1; fi
+          done
+          exit "$failed"
+
+  cache-memory:
+    if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-current-clean' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: agent-current-baseline-cache
+      - name: Capture memory-only cache diagnostics
+        shell: bash
+        run: |
+          mkdir -p /tmp/agent-current-baseline-cache
+          set +e
+          cargo check -p rustok-cache --all-targets --no-default-features > /tmp/agent-current-baseline-cache/check.log 2>&1
+          echo $? > /tmp/agent-current-baseline-cache/check.status
+          cargo test -p rustok-cache --no-default-features > /tmp/agent-current-baseline-cache/test.log 2>&1
+          echo $? > /tmp/agent-current-baseline-cache/test.status
+          cargo clippy -p rustok-cache --all-targets --no-default-features -- -D warnings > /tmp/agent-current-baseline-cache/clippy.log 2>&1
+          echo $? > /tmp/agent-current-baseline-cache/clippy.status
+          exit 0
+      - name: Upload memory-only cache diagnostics
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-current-baseline-cache-memory
+          path: /tmp/agent-current-baseline-cache
+      - name: Fail on memory-only cache diagnostics
+        shell: bash
+        run: |
+          failed=0
+          for status in /tmp/agent-current-baseline-cache/*.status; do
+            code=$(cat "$status")
+            echo "$(basename "$status"): $code"
+            if [[ "$code" != "0" ]]; then failed=1; fi
+          done
+          exit "$failed"
+
+  fly:
+    if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-current-clean' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.93.1
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: agent-current-baseline-fly
+      - name: Capture Fly diagnostics
+        shell: bash
+        run: |
+          mkdir -p /tmp/agent-current-baseline-fly
+          set +e
+          cargo fmt -p fly -p fly-browser -p rustok-page-builder-admin -p rustok-pages-admin -p rustok-admin -- --check > /tmp/agent-current-baseline-fly/fmt.log 2>&1
+          echo $? > /tmp/agent-current-baseline-fly/fmt.status
+          cargo test -p fly --lib > /tmp/agent-current-baseline-fly/test.log 2>&1
+          echo $? > /tmp/agent-current-baseline-fly/test.status
+          cargo clippy -p fly --lib -- -D warnings > /tmp/agent-current-baseline-fly/clippy.log 2>&1
+          echo $? > /tmp/agent-current-baseline-fly/clippy.status
+          exit 0
+      - name: Upload Fly diagnostics
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-current-baseline-fly
+          path: /tmp/agent-current-baseline-fly
+      - name: Fail on Fly diagnostics
+        shell: bash
+        run: |
+          failed=0
+          for status in /tmp/agent-current-baseline-fly/*.status; do
+            code=$(cat "$status")
+            echo "$(basename "$status"): $code"
+            if [[ "$code" != "0" ]]; then failed=1; fi
+          done
+          exit "$failed"
+
+  hardening:
+    if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-current-clean' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Capture hardening diagnostics
+        shell: bash
+        run: |
+          mkdir -p /tmp/agent-current-baseline-hardening
+          set +e
+          node scripts/verify/verify-module-manifest-docs-drift.mjs > /tmp/agent-current-baseline-hardening/module-manifest.log 2>&1
+          echo $? > /tmp/agent-current-baseline-hardening/module-manifest.status
+          node scripts/verify/verify-advisory-exceptions.mjs > /tmp/agent-current-baseline-hardening/advisories.log 2>&1
+          echo $? > /tmp/agent-current-baseline-hardening/advisories.status
+          node scripts/verify/verify-dependency-feature-hygiene.mjs > /tmp/agent-current-baseline-hardening/dependency-features.log 2>&1
+          echo $? > /tmp/agent-current-baseline-hardening/dependency-features.status
+          node scripts/verify/verify-csp-reporting-contract.mjs > /tmp/agent-current-baseline-hardening/csp.log 2>&1
+          echo $? > /tmp/agent-current-baseline-hardening/csp.status
+          exit 0
+      - name: Upload hardening diagnostics
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-current-baseline-hardening
+          path: /tmp/agent-current-baseline-hardening
+      - name: Fail on hardening diagnostics
+        shell: bash
+        run: |
+          failed=0
+          for status in /tmp/agent-current-baseline-hardening/*.status; do
+            code=$(cat "$status")
+            echo "$(basename "$status"): $code"
+            if [[ "$code" != "0" ]]; then failed=1; fi
+          done
+          exit "$failed"
+
+  cache-live:
+    if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-current-clean' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      RUSTOK_CACHE_REAL_REDIS_URL: redis://127.0.0.1:6379/
+      RUSTOK_CACHE_REDIS_SERVER_BIN: /usr/bin/redis-server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: agent-current-baseline-cache-live
+      - name: Install Redis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server redis-tools
+          redis-cli -h 127.0.0.1 -p 6379 ping
+      - name: Capture live Redis diagnostics
+        shell: bash
+        run: |
+          mkdir -p /tmp/agent-current-baseline-cache-live
+          set +e
+          cargo test -p rustok-cache --lib -- --ignored --nocapture --test-threads=1 > /tmp/agent-current-baseline-cache-live/lib.log 2>&1
+          echo $? > /tmp/agent-current-baseline-cache-live/lib.status
+          cargo test -p rustok-cache --test atomic_cas -- --ignored --nocapture --test-threads=1 > /tmp/agent-current-baseline-cache-live/atomic-cas.log 2>&1
+          echo $? > /tmp/agent-current-baseline-cache-live/atomic-cas.status
+          cargo test -p rustok-cache --test fallback_cas_live -- --ignored --nocapture --test-threads=1 > /tmp/agent-current-baseline-cache-live/fallback-cas.log 2>&1
+          echo $? > /tmp/agent-current-baseline-cache-live/fallback-cas.status
+          cargo test -p rustok-cache --test real_redis_hardening -- --ignored --nocapture --test-threads=1 > /tmp/agent-current-baseline-cache-live/hardening.log 2>&1
+          echo $? > /tmp/agent-current-baseline-cache-live/hardening.status
+          exit 0
+      - name: Upload live Redis diagnostics
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-current-baseline-cache-live
+          path: /tmp/agent-current-baseline-cache-live
+      - name: Fail on live Redis diagnostics
+        shell: bash
+        run: |
+          failed=0
+          for status in /tmp/agent-current-baseline-cache-live/*.status; do
+            code=$(cat "$status")
+            echo "$(basename "$status"): $code"
+            if [[ "$code" != "0" ]]; then failed=1; fi
+          done
+          exit "$failed"
