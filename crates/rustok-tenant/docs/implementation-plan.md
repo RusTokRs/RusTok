@@ -19,7 +19,10 @@ durable tenant generation channel. In-order records invalidate the exact tenant
 locale entry, namespace-wide manual rotations carry `*`, and unverified, gapped,
 lagged or reconciled advancement clears every process-local locale entry before
 acknowledgement. Every event is checked against the durable generation before
-cache mutation or tracker acknowledgement. Generation regression clears local
+cache mutation or tracker acknowledgement. When durable state is already ahead
+of an otherwise in-order exact event, the listener treats the difference as a
+missed invalidation, full-clears the locale namespace and records the durable
+offset instead of applying only the event key. Generation regression clears local
 locale values but remains fail-closed; it never lowers the trusted process epoch.
 The listener exposes recovery health, not only task liveness, to the critical
 runtime guardrail.
@@ -31,14 +34,16 @@ Source evidence now covers:
   clear;
 - deterministic overflow of the 256-message local queue with two serving
   listeners and a probe, followed by durable recovery of both locale values;
+- a durable `N+2` state observed while an exact `N+1` event is received, proving
+  both tenant entries are rebuilt and the tracker advances directly to `N+2`;
 - a completely missed Redis publication recovered by the same periodic
   reconciliation loop with a shortened test interval;
 - Redis stop/restart with lost generation state, stale-value clearing while
   readiness remains failed, explicit restoration of the previous epoch, and
   successful delivery of the next `N+1` event to the original replicas;
 - permanent workflow and source guards for path scope, compiled tests, ignored
-  Redis tests, durable-before-apply ordering and the prohibition on tracker
-  rebaselining after regression.
+  Redis tests, durable-before-apply ordering, durable-ahead full recovery and the
+  prohibition on tracker rebaselining after regression.
 
 This evidence is source-complete but is not compiled or live verified on the
 current revision until the cache workflow reports successful compiled and Redis
@@ -61,8 +66,9 @@ jobs.
 ## Open results
 
 1. **Execute multi-replica tenant-locale recovery evidence.** Run exact UUID,
-   wildcard, deterministic lag, missed-publication reconciliation and Redis
-   state-loss/restoration scenarios on the same reconciled `main` revision.
+   wildcard, durable-ahead gap recovery, deterministic lag, missed-publication
+   reconciliation and Redis state-loss/restoration scenarios on the same
+   reconciled `main` revision.
    **Depends on:** the permanent cache workflow or another Rust 1.96 environment
    with isolated Redis 7 and `redis-server`.
    **Done when:** compiled and live Redis jobs pass on one revision, every failure
