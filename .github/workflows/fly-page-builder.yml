@@ -64,3 +64,6 @@ jobs:
 
       - name: Verify landing readiness wiring
         run: node scripts/verify/verify-fly-landing-readiness.mjs
+
+      - name: Verify internal links end to end
+        run: node scripts/verify/verify-fly-internal-links.mjs
