@@ -1,10 +1,5 @@
-use fly::GRAPESJS_V1;
 use serde::{Deserialize, Serialize};
 
-/// Current page-builder metadata.
-///
-/// The module version is `CARGO_PKG_VERSION`; the runtime contract itself is intentionally
-/// versionless and evolves additively inside the module major.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PageBuilderModuleMetadata {
     pub module_slug: &'static str,
@@ -16,39 +11,6 @@ impl PageBuilderModuleMetadata {
         module_slug: "page_builder",
         capabilities: &["preview", "tree", "properties", "publish"],
     };
-}
-
-/// Compatibility selector accepted by the existing browser transport.
-///
-/// This constant is not part of the current domain model. Keep it until the next module major so
-/// existing clients continue to decode.
-pub const PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS: [&str; 1] = [GRAPESJS_V1];
-
-/// Compatibility metadata retained for consumers of the original transport.
-///
-/// New code must use `PageBuilderModuleMetadata`. This type is removed only at the next module
-/// major together with the versioned transport fields.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct PageBuilderContractMetadata {
-    pub module_slug: &'static str,
-    pub contract: &'static str,
-    pub builder_contract_version: &'static str,
-    pub consumer_min_version: &'static str,
-    pub capabilities: &'static [&'static str],
-}
-
-impl PageBuilderContractMetadata {
-    pub const BASELINE: Self = Self {
-        module_slug: "page_builder",
-        contract: GRAPESJS_V1,
-        builder_contract_version: "1.0",
-        consumer_min_version: "1.0",
-        capabilities: PageBuilderModuleMetadata::CURRENT.capabilities,
-    };
-
-    pub fn supports_document_contract(contract: &str) -> bool {
-        PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS.contains(&contract)
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,9 +115,6 @@ pub struct BuilderTreeNode {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreviewPageBuilderInput {
     pub page_id: String,
-    /// Compatibility-only field from the original browser API. The current service ignores it.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub schema_version: String,
     pub project_data: serde_json::Value,
 }
 
@@ -163,7 +122,6 @@ impl PreviewPageBuilderInput {
     pub fn new(page_id: impl Into<String>, project_data: serde_json::Value) -> Self {
         Self {
             page_id: page_id.into(),
-            schema_version: String::new(),
             project_data,
         }
     }
@@ -205,9 +163,6 @@ pub struct BuilderNodePropertiesResult {
 pub struct PublishPageBuilderInput {
     pub page_id: String,
     pub revision_id: String,
-    /// Compatibility-only field from the original browser API. The current service ignores it.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub schema_version: String,
     pub project_data: serde_json::Value,
 }
 
@@ -220,7 +175,6 @@ impl PublishPageBuilderInput {
         Self {
             page_id: page_id.into(),
             revision_id: revision_id.into(),
-            schema_version: String::new(),
             project_data,
         }
     }
