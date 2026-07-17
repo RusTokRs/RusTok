@@ -86,18 +86,19 @@ async fn backend_created_during_startup_outage_recovers_shared_generation() {
     let mut redis_process = spawn_redis(&binary, port).await;
     tokio::time::timeout(Duration::from_secs(8), async {
         loop {
-            if backend.health().await.is_ok() {
+            if service.redis_status().await.is_healthy() {
                 return;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     })
     .await
-    .expect("existing backend did not recover Redis and shared generation after startup");
+    .expect("Redis status monitor path did not recover shared generation after startup");
 
     let snapshot = cache_backend_generation_snapshot(&prefix).unwrap();
     assert!(snapshot.trusted);
     assert_eq!(snapshot.generation, 0);
+    assert!(backend.health().await.is_ok());
 
     backend
         .set("shared".to_string(), b"redis".to_vec())
