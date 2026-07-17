@@ -28,15 +28,16 @@ function addRecord(records, record, sourceName) {
 
 function parseManifest(relativePath) {
   const source = readRepo(relativePath);
-  const modulesStart = source.indexOf("[modules]");
+  const modulesHeading = "[modules]";
+  const modulesStart = source.indexOf(modulesHeading);
   const settingsStart = source.indexOf("[settings]", modulesStart);
-  if (modulesStart === -1 || settingsStart === -1) {
-    fail(`${relativePath}: expected [modules] and [settings] sections`);
+  if (modulesStart === -1 || settingsStart === -1 || settingsStart <= modulesStart) {
+    fail(`${relativePath}: expected ordered [modules] and [settings] sections`);
     return new Map();
   }
 
   const records = new Map();
-  const moduleBlock = source.slice(modulesStart, settingsStart);
+  const moduleBlock = source.slice(modulesStart + modulesHeading.length, settingsStart);
   for (const rawLine of moduleBlock.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) {
