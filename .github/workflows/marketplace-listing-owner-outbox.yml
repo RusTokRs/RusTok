@@ -78,6 +78,21 @@ jobs:
             crates/rustok-marketplace-listing/src/replay_safe_commands.rs \
             crates/rustok-marketplace-listing/src/service.rs \
             > rustfmt.patch
+          mkdir -p formatted
+          cp --parents \
+            apps/server/tests/marketplace_listing_boundary_guard.rs \
+            apps/server/tests/marketplace_listing_event_contract_guard.rs \
+            crates/rustok-marketplace-listing/src/command_receipts.rs \
+            crates/rustok-marketplace-listing/src/command_receipts_tests.rs \
+            crates/rustok-marketplace-listing/src/error.rs \
+            crates/rustok-marketplace-listing/src/evented_commands.rs \
+            crates/rustok-marketplace-listing/src/external_events.rs \
+            crates/rustok-marketplace-listing/src/lib.rs \
+            crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs \
+            crates/rustok-marketplace-listing/src/ports.rs \
+            crates/rustok-marketplace-listing/src/replay_safe_commands.rs \
+            crates/rustok-marketplace-listing/src/service.rs \
+            formatted/
       - name: Compile listing crate
         id: compile
         continue-on-error: true
@@ -111,6 +126,7 @@ jobs:
         with:
           name: marketplace-listing-owner-outbox-diagnostics
           path: |
+            formatted/
             rustfmt.patch
             cargo-check.log
             cargo-test.log
