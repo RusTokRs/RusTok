@@ -20,20 +20,15 @@ async fn completed_receipt_commits_one_contract_event_and_replay_adds_none() {
     let actor_id = Uuid::new_v4();
     let key = "create-listing-once";
     let hash = "request-hash";
-    let receipt = match admit(
+    let receipt = new_receipt(
         &db,
         tenant_id,
         actor_id,
-        key.to_string(),
+        key,
         "create_listing",
         hash,
     )
-    .await
-    .unwrap()
-    {
-        ListingCommandAdmission::New(receipt) => receipt,
-        ListingCommandAdmission::Replay(_) => panic!("first admission must be new"),
-    };
+    .await;
     let response = listing_response(tenant_id);
 
     let completed = complete(receipt, &response).await.unwrap();
@@ -79,21 +74,15 @@ async fn completed_receipt_commits_one_contract_event_and_replay_adds_none() {
 async fn missing_outbox_storage_rolls_back_the_pending_receipt() {
     let db = setup_database(false).await;
     let tenant_id = Uuid::new_v4();
-    let actor_id = Uuid::new_v4();
-    let receipt = match admit(
+    let receipt = new_receipt(
         &db,
         tenant_id,
-        actor_id,
-        "outbox-failure".to_string(),
+        Uuid::new_v4(),
+        "outbox-failure",
         "create_listing",
         "request-hash",
     )
-    .await
-    .unwrap()
-    {
-        ListingCommandAdmission::New(receipt) => receipt,
-        ListingCommandAdmission::Replay(_) => panic!("first admission must be new"),
-    };
+    .await;
 
     let error = complete(receipt, &listing_response(tenant_id))
         .await
@@ -112,6 +101,69 @@ async fn missing_outbox_storage_rolls_back_the_pending_receipt() {
         receipts.is_empty(),
         "pending receipt must roll back with outbox failure"
     );
+}
+
+#[tokio::test]
+async fn receipt_completion_failure_rolls_back_the_inserted_outbox_event() {
+    let db = setup_database(true).await;
+    let tenant_id = Uuid::new_v4();
+    let receipt = new_receipt(
+        &db,
+        tenant_id,
+        Uuid::new_v4(),
+        "receipt-failure",
+        "create_listing",
+        "request-hash",
+    )
+    .await;
+    listing_command_receipt::Entity::delete_by_id(receipt.receipt_id)
+        .exec(&receipt.transaction)
+        .await
+        .unwrap();
+
+    let error = complete(receipt, &listing_response(tenant_id))
+        .await
+        .expect_err("missing pending receipt must fail completion");
+    assert!(matches!(
+        error,
+        MarketplaceListingError::CommandReceiptCorrupt
+    ));
+    assert_eq!(
+        rustok_outbox::SysEvents::find().count(&db).await.unwrap(),
+        0,
+        "outbox insert must roll back when receipt completion fails"
+    );
+    assert_eq!(
+        listing_command_receipt::Entity::find()
+            .count(&db)
+            .await
+            .unwrap(),
+        0
+    );
+}
+
+async fn new_receipt(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    key: &str,
+    command_kind: &str,
+    hash: &str,
+) -> crate::command_receipts::NewListingCommandReceipt {
+    match admit(
+        db,
+        tenant_id,
+        actor_id,
+        key.to_string(),
+        command_kind,
+        hash,
+    )
+    .await
+    .unwrap()
+    {
+        ListingCommandAdmission::New(receipt) => receipt,
+        ListingCommandAdmission::Replay(_) => panic!("first admission must be new"),
+    }
 }
 
 async fn setup_database(with_outbox: bool) -> DatabaseConnection {
