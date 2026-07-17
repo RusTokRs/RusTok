@@ -20,6 +20,8 @@ An advisory may be ignored by automated dependency policy only when every field 
 - evidence link to a test, issue, commit or threat-model note.
 
 Exceptions expire automatically. An expired or incomplete entry must fail the dependency gate.
+The repository-level enforcement entry point is `scripts/verify/verify-advisory-exceptions.mjs`,
+which is also executed by `.github/workflows/hardening-gates.yml`.
 
 ## Active Exceptions
 
@@ -39,6 +41,7 @@ Exceptions expire automatically. An expired or incomplete entry must fail the de
 | Approved | 2026-07-17, temporary stabilization exception |
 | Expires | 2026-07-24 |
 | Evidence required | Dependency-path output, parser call-site inventory and a regression test or proof that vulnerable APIs are unreachable |
+| Automated gate | `scripts/verify/verify-advisory-exceptions.mjs` |
 | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0194.html> |
 
 ### RUSTSEC-2026-0195 — `quick-xml` unbounded namespace allocation
@@ -57,11 +60,13 @@ Exceptions expire automatically. An expired or incomplete entry must fail the de
 | Approved | 2026-07-17, temporary stabilization exception |
 | Expires | 2026-07-24 |
 | Evidence required | Dependency-path output, parser call-site inventory and a regression test or proof that `NsReader` is unreachable |
+| Automated gate | `scripts/verify/verify-advisory-exceptions.mjs` |
 | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0195.html> |
 
 ## Required Verification
 
 ```bash
+node scripts/verify/verify-advisory-exceptions.mjs
 cargo tree -i quick-xml --workspace --all-features
 cargo deny check advisories --all-features
 cargo audit
