@@ -80,7 +80,8 @@ jobs:
             .github/workflows/complete-tenant-hardening.yml \
             scripts/migrations/complete_tenant_profile_contract.py \
             scripts/migrations/complete_tenant_resolution_telemetry.py \
-            scripts/migrations/complete_tenant_isolation_coverage.py
+            scripts/migrations/complete_tenant_isolation_coverage.py \
+            scripts/migrations/complete_tenant_hardening.trigger
 
       - name: Commit atomically to main
         shell: bash
