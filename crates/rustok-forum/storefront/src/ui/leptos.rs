@@ -185,7 +185,7 @@ fn ForumCategoryRail(
                             )
                             href=card.href
                         >
-                            <span class="absolute inset-y-0 left-0 w-1.5" style=card.accent_style></span>
+                            <span class=format!("absolute inset-y-0 left-0 w-1.5 {}", card.accent_class)></span>
                             <div class="pl-3">
                                 <div class="flex items-start justify-between gap-3">
                                     <div>
