@@ -51,6 +51,7 @@ impl MarketplaceListingService {
 
         match admit(
             self.database(),
+            self.event_bus().clone(),
             tenant_id,
             actor_id,
             key,
@@ -100,6 +101,7 @@ impl MarketplaceListingService {
 
         match admit(
             self.database(),
+            self.event_bus().clone(),
             tenant_id,
             actor_id,
             key,
@@ -148,6 +150,7 @@ impl MarketplaceListingService {
 
         match admit(
             self.database(),
+            self.event_bus().clone(),
             tenant_id,
             actor_id,
             key,
