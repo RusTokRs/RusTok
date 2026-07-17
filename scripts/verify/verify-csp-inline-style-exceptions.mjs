@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 const registerPath = "docs/security/csp-inline-style-attribute-exceptions.json";
-const maxRegisteredSites = 5;
-const maxRegisteredFiles = 4;
+const maxRegisteredSites = 4;
+const maxRegisteredFiles = 3;
 const failures = [];
 
 function read(relativePath) {
@@ -249,8 +249,11 @@ if (exists(legacyCanvas)) {
 
 requireMarkers("crates/rustok-ui-core/src/css.rs", [
   "normalize_css_hex_color",
+  "css_hex_accent_class",
+  "let warm_threshold = ((u16::from(red) * 3) / 4) as u8",
   "matches!(digits.len(), 3 | 4 | 6 | 8)",
   "character.is_ascii_hexdigit()",
+  "bg-gradient-to-b from-sky-500 to-amber-500",
   "#fff;background:url(https://attacker.invalid/x)",
 ]);
 requireMarkers("crates/rustok-forum/src/entities/forum_category.rs", [
@@ -261,6 +264,25 @@ requireMarkers("crates/rustok-forum/src/entities/forum_category.rs", [
   "character.is_ascii_hexdigit()",
   "DbErr::Custom",
   "#fff;background:url(https://attacker.invalid/x)",
+]);
+requireMarkers("crates/rustok-forum/storefront/src/core.rs", [
+  "pub accent_class: &'static str",
+  "pub fn forum_storefront_accent_class",
+  "css_hex_accent_class(color)",
+  "accent_class: forum_storefront_accent_class",
+]);
+forbidMarkers("crates/rustok-forum/storefront/src/core.rs", [
+  "accent_style",
+  "forum_storefront_accent_style",
+  "background:{value}",
+]);
+requireMarkers("crates/rustok-forum/storefront/src/ui/leptos.rs", [
+  "card.accent_class",
+  "absolute inset-y-0 left-0 w-1.5",
+]);
+forbidMarkers("crates/rustok-forum/storefront/src/ui/leptos.rs", [
+  "style=card.accent_style",
+  "card.accent_style",
 ]);
 requireMarkers("crates/rustok-page-builder/admin/src/editor/palette_layers.rs", [
   "fn layer_indent_class",
