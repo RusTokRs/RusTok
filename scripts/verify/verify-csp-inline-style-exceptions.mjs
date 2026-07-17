@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 const registerPath = "docs/security/csp-inline-style-attribute-exceptions.json";
+const maxRegisteredSites = 5;
+const maxRegisteredFiles = 4;
 const failures = [];
 
 function read(relativePath) {
@@ -96,6 +98,14 @@ function requireMarkers(file, markers) {
   return source;
 }
 
+function forbidMarkers(file, markers) {
+  const source = read(file);
+  for (const marker of markers) {
+    if (source.includes(marker)) failures.push(`${file}: forbidden legacy marker ${marker}`);
+  }
+  return source;
+}
+
 if (!exists(registerPath)) {
   console.error(`Inline-style exception register is missing: ${registerPath}`);
   process.exit(1);
@@ -137,6 +147,11 @@ if (!Number.isFinite(reviewBy)) {
 const entries = Array.isArray(register.exceptions) ? register.exceptions : [];
 if (entries.length === 0) {
   failures.push(`${registerPath}: exceptions must contain at least one reviewed entry`);
+}
+if (entries.length > maxRegisteredFiles) {
+  failures.push(
+    `${registerPath}: exception file count ${entries.length} exceeds ratchet ${maxRegisteredFiles}`,
+  );
 }
 
 const registered = new Map();
@@ -220,6 +235,18 @@ for (const relativePath of registered.keys()) {
   }
 }
 
+const totalSites = [...observed.values()].reduce((sum, value) => sum + value, 0);
+if (totalSites > maxRegisteredSites) {
+  failures.push(
+    `${registerPath}: observed ${totalSites} inline-style sites exceeds ratchet ${maxRegisteredSites}`,
+  );
+}
+
+const legacyCanvas = "crates/rustok-page-builder/admin/src/editor/admin_canvas.rs";
+if (exists(legacyCanvas)) {
+  failures.push(`${legacyCanvas}: dead legacy canvas must not be restored`);
+}
+
 requireMarkers("crates/rustok-ui-core/src/css.rs", [
   "normalize_css_hex_color",
   "matches!(digits.len(), 3 | 4 | 6 | 8)",
@@ -234,6 +261,38 @@ requireMarkers("crates/rustok-forum/src/entities/forum_category.rs", [
   "character.is_ascii_hexdigit()",
   "DbErr::Custom",
   "#fff;background:url(https://attacker.invalid/x)",
+]);
+requireMarkers("crates/rustok-page-builder/admin/src/editor/palette_layers.rs", [
+  "fn layer_indent_class",
+  '0 => "pl-2"',
+  '_ => "pl-[120px]"',
+  "layer_indent_uses_a_bounded_class_scale",
+]);
+forbidMarkers("crates/rustok-page-builder/admin/src/editor/palette_layers.rs", [
+  'style=format!("padding-left:',
+]);
+requireMarkers("crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs", [
+  "struct OverlayGeometry",
+  "fn overlay_geometry",
+  "<svg",
+  "<rect",
+  "overlay_geometry_uses_svg_coordinates_without_css_text",
+]);
+forbidMarkers("crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs", [
+  "fn overlay_style",
+  "style=move || runtime.controller.with",
+]);
+requireMarkers("crates/rustok-page-builder/admin/src/editor/resize_handles.rs", [
+  "struct SvgRectGeometry",
+  "fn svg_handle_position",
+  "fn resize_handle_cursor_class",
+  "<circle",
+  "resize_geometry_uses_svg_attributes_and_bounded_cursor_classes",
+]);
+forbidMarkers("crates/rustok-page-builder/admin/src/editor/resize_handles.rs", [
+  "fn rect_style",
+  "fn handle_style",
+  "style=move ||",
 ]);
 
 for (const [file, required] of [
@@ -261,7 +320,6 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-const totalSites = [...observed.values()].reduce((sum, value) => sum + value, 0);
 console.log(
-  `✔ ${totalSites} inline style attribute source site(s) are exactly registered across ${observed.size} Rust-hosted UI file(s); review due ${register.policy.review_by}`,
+  `✔ ${totalSites} inline style attribute source site(s) are exactly registered across ${observed.size} Rust-hosted UI file(s); ratchet ${maxRegisteredSites}/${maxRegisteredFiles}; review due ${register.policy.review_by}`,
 );
