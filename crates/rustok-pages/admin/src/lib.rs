@@ -17,8 +17,9 @@ pub use browser_intent::{
 pub use builder::PagesBuilderSaveSnapshot;
 pub use composition::PagesAdmin;
 pub use contribution_browser_intent::{
-    dispatch_pages_browser_intent, dispatch_pages_browser_intent_with_store,
-    pages_palette_block_access,
+    dispatch_pages_browser_intent, dispatch_pages_browser_intent_with_capabilities,
+    dispatch_pages_browser_intent_with_store,
+    dispatch_pages_browser_intent_with_store_and_capabilities, pages_palette_block_access,
 };
 pub use contributions::{
     build_pages_admin_contribution_registry, pages_admin_contribution_policy,
