@@ -51,6 +51,16 @@ pub enum FlyError {
     RecursiveMove { component: String, parent: String },
     #[error("project validation failed")]
     Validation(Vec<ValidationDiagnostic>),
+    #[error("snapshot `{0}` was not found")]
+    SnapshotNotFound(String),
+    #[error(
+        "snapshot `{snapshot_id}` hash mismatch: declared `{declared}`, restored `{actual}`"
+    )]
+    SnapshotHashMismatch {
+        snapshot_id: String,
+        declared: String,
+        actual: String,
+    },
     #[error("undo history is empty")]
     UndoHistoryEmpty,
     #[error("redo history is empty")]
