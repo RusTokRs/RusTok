@@ -38,11 +38,13 @@ const localeValue = (locale, path) => path
 requireMarkers('flyLib', [
   'mod component_visit;',
   'mod safe_url;',
-], 'Fly private infrastructure');
+  'pub use component_visit::{visit_project_components, ComponentVisit};',
+], 'Fly traversal and URL infrastructure');
 requireMarkers('componentVisit', [
-  'pub(crate) struct ComponentVisit',
-  'pub(crate) fn visit_project_components(',
+  'pub struct ComponentVisit',
+  'pub fn visit_project_components(',
   'pub(crate) fn visit_project_components_mut(',
+  'Mutation stays crate-private',
   'project.pages[{page_index}].component',
   'immutable_and_mutable_walks_share_page_depth_and_path_contract',
 ], 'shared component visitor');
