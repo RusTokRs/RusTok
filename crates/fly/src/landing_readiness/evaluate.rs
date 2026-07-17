@@ -223,11 +223,30 @@ fn materialize_structural_document(
     action_materialization.document
 }
 
-fn classified_issue(diagnostic: ValidationDiagnostic) -> LandingReadinessIssue {
+fn classified_issue(mut diagnostic: ValidationDiagnostic) -> LandingReadinessIssue {
+    if publish_materialization_failure(&diagnostic.code) {
+        diagnostic.severity = ValidationSeverity::Error;
+    }
     LandingReadinessIssue {
         category: classify_validation_diagnostic(&diagnostic),
         diagnostic,
     }
+}
+
+fn publish_materialization_failure(code: &str) -> bool {
+    matches!(
+        code,
+        "runtime_action_invalid"
+            | "runtime_action_unresolved"
+            | "runtime_form_invalid"
+            | "internal_page_link_slug_unresolved"
+            | "internal_page_link_target_missing"
+            | "internal_page_link_invalid"
+            | "runtime_binding_transform_failed"
+            | "runtime_binding_target_missing"
+            | "runtime_condition_target_missing"
+            | "runtime_repeater_failed"
+    )
 }
 
 fn metadata_has_text(metadata: Option<&serde_json::Map<String, Value>>, field: &str) -> bool {
