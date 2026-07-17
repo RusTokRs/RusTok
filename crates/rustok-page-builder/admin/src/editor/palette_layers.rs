@@ -76,6 +76,11 @@ pub fn PaletteLayersPanel(
                 })}
                 {move || {
                     let access = Arc::clone(&palette_access);
+                    let capabilities = palette_runtime.controller.with(|controller| {
+                        controller.ui().state.capabilities
+                    });
+                    let can_insert = capabilities.edit;
+                    let can_drag = capabilities.drag_drop;
                     let mut groups = BTreeMap::<String, Vec<_>>::new();
                     for block in palette_runtime.controller.with(|controller| {
                         controller.palette_blocks_with_access(&access)
@@ -119,9 +124,12 @@ pub fn PaletteLayersPanel(
                                         view! {
                                             <article
                                                 class="rounded-lg border border-border bg-background p-2"
-                                                draggable="true"
+                                                draggable=can_drag
+                                                aria-disabled=(!can_insert).then_some("true")
                                                 data-fly-block-id=browser_block_id
                                                 data-fly-contribution-ids=contribution_attr
+                                                data-fly-can-insert=can_insert
+                                                data-fly-can-drag=can_drag
                                                 on:dragstart=move |_| {
                                                     let intent = html_drag_runtime.controller.with(|controller| {
                                                         controller.begin_palette_drag_intent_with_access(
@@ -139,8 +147,9 @@ pub fn PaletteLayersPanel(
                                                 <div class="mt-2 flex gap-2">
                                                     <button
                                                         type="button"
-                                                        class="rounded border border-border px-2 py-1 text-xs"
+                                                        class="rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
                                                         data-fly-action="insert-block"
+                                                        disabled=!can_insert
                                                         on:click=move |_| {
                                                             let intent = insert_runtime.controller.with(|controller| {
                                                                 controller.insert_palette_block_intent_with_access(
@@ -153,8 +162,9 @@ pub fn PaletteLayersPanel(
                                                     >{add_label}</button>
                                                     <button
                                                         type="button"
-                                                        class="rounded border border-border px-2 py-1 text-xs"
+                                                        class="rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
                                                         data-fly-action="begin-block-drag"
+                                                        disabled=!can_drag
                                                         on:click=move |_| {
                                                             let intent = drag_runtime.controller.with(|controller| {
                                                                 controller.begin_palette_drag_intent_with_access(
