@@ -70,6 +70,9 @@ fn marketplace_seller_owner_and_ports_preserve_contracts() {
     let translation_entity = include_str!(
         "../../../crates/rustok-marketplace-seller/src/entities/seller_translation.rs"
     );
+    let localized = include_str!(
+        "../../../crates/rustok-marketplace-seller/src/localized_sellers.rs"
+    );
     let service = include_str!("../../../crates/rustok-marketplace-seller/src/service.rs");
     let dto = include_str!("../../../crates/rustok-marketplace-seller/src/dto.rs");
     let ports = include_str!("../../../crates/rustok-marketplace-seller/src/ports.rs");
@@ -118,7 +121,6 @@ fn marketplace_seller_owner_and_ports_preserve_contracts() {
     assert!(translation_entity.contains("pub display_name: String"));
     assert!(!seller_entity.contains("pub display_name:"));
     assert!(!owner_migration.contains("MarketplaceSellers::DisplayName"));
-    assert!(!owner_migration.contains("json_binary().not_null().default(\"{}\") // localized"));
 
     for marker in [
         "marketplace_seller_command_receipts",
@@ -135,16 +137,19 @@ fn marketplace_seller_owner_and_ports_preserve_contracts() {
 
     for marker in [
         "normalize_locale_tag",
-        "build_locale_candidates",
-        "PLATFORM_FALLBACK_LOCALE",
-        "upsert_translation",
+        "Column::Locale.eq(locale.as_str())",
+        "OnConflict::columns",
+        "update_column(Alias::new(\"display_name\"))",
         "MISSING_TRANSLATION_PREFIX",
         "resolved_locale: translation.locale",
-        "owner membership role cannot be changed",
-        "owner membership cannot be disabled",
     ] {
-        assert!(service.contains(marker), "seller localized read service is missing {marker}");
+        assert!(localized.contains(marker), "localized seller storage is missing {marker}");
     }
+    assert!(!localized.contains("build_locale_candidates"));
+    assert!(!localized.contains("PLATFORM_FALLBACK_LOCALE"));
+    assert!(service.contains("localized_seller_ids_for_search"));
+    assert!(service.contains("owner membership role cannot be changed"));
+    assert!(service.contains("owner membership cannot be disabled"));
     for forbidden in [
         "pub async fn create_seller(",
         "pub async fn update_profile(",
