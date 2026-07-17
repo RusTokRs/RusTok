@@ -29,9 +29,12 @@ jobs:
           components: rustfmt
 
       - name: Apply integration block
+        id: integration
         shell: bash
         run: |
-          python3 - <<'PY'
+          set +e
+          {
+            python3 - <<'PY'
           from pathlib import Path
 
           source = Path('.github/workflows/landing-property-schema.yml').read_text(encoding='utf-8')
@@ -43,10 +46,16 @@ jobs:
           script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
           Path('/tmp/integrate_landing_properties.py').write_text(script, encoding='utf-8')
           PY
-          python3 /tmp/integrate_landing_properties.py
+            python3 /tmp/integrate_landing_properties.py
+          } > /tmp/landing-property-integration.log 2>&1
+          status=$?
+          cat /tmp/landing-property-integration.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Validate contract and consumers
         id: validation
+        if: steps.integration.outputs.status == '0'
         shell: bash
         run: |
           set +e
@@ -66,15 +75,23 @@ jobs:
           exit 0
 
       - name: Record failure
-        if: steps.validation.outputs.status != '0'
+        if: steps.integration.outputs.status != '0' || steps.validation.outputs.status != '0'
         shell: bash
         run: |
           git reset --hard HEAD
           {
             echo '# Landing property schema validation failure'
             echo
+            echo '## Integration'
+            echo
             echo '```text'
-            cat /tmp/landing-property-schema.log
+            cat /tmp/landing-property-integration.log 2>/dev/null || true
+            echo '```'
+            echo
+            echo '## Validation'
+            echo
+            echo '```text'
+            cat /tmp/landing-property-schema.log 2>/dev/null || true
             echo '```'
           } > LANDING_PROPERTY_SCHEMA_FAILURE.md
 
@@ -91,7 +108,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          if [[ "${{ steps.validation.outputs.status }}" == "0" ]]; then
+          if [[ "${{ steps.integration.outputs.status }}" == "0" && "${{ steps.validation.outputs.status }}" == "0" ]]; then
             message="feat(page-builder): expose typed landing properties"
           else
             message="chore(page-builder): record landing property schema failure"
