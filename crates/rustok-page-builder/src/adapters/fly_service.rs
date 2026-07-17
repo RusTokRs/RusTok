@@ -1,5 +1,4 @@
 use super::FlyProjectInspection;
-use crate::dto::PageBuilderContractMetadata;
 use crate::runtime_scenario_release::{
     release_gate_error, NoopPageBuilderScenarioBaselineStore, PageBuilderScenarioBaselineStore,
 };
@@ -92,13 +91,8 @@ impl<S, R, T, B> FlyAdapterBackedPageBuilderService<S, R, T, B> {
         }
     }
 
-    fn inspect(
-        &self,
-        schema_version: &str,
-        project_data: &Value,
-    ) -> PageBuilderServiceResult<FlyProjectInspection> {
-        let inspection = FlyProjectInspection::decode_with(
-            schema_version,
+    fn inspect(&self, project_data: &Value) -> PageBuilderServiceResult<FlyProjectInspection> {
+        let inspection = FlyProjectInspection::decode_current_with(
             project_data,
             &self.registries,
             self.limits,
@@ -121,7 +115,7 @@ where
         context: &PortContext,
         input: crate::dto::PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<crate::dto::PreviewPageBuilderResult> {
-        self.inspect(&input.schema_version, &input.project_data)?;
+        self.inspect(&input.project_data)?;
         let evidence = PageBuilderAdapterCallEvidence::render_preview(context, &input.page_id);
         self.telemetry.record_adapter_call(&evidence);
         let html = match self
@@ -168,12 +162,7 @@ where
             }
         };
         let nodes = match project_data {
-            Some(project_data) => self
-                .inspect(
-                    PageBuilderContractMetadata::BASELINE.contract,
-                    &project_data,
-                )?
-                .tree_nodes(),
+            Some(project_data) => self.inspect(&project_data)?.tree_nodes(),
             None => Vec::new(),
         };
 
@@ -211,11 +200,8 @@ where
                 return Err(error);
             }
         } {
-            self.inspect(
-                PageBuilderContractMetadata::BASELINE.contract,
-                &project_data,
-            )?
-            .component_properties(&input.node_id)?;
+            self.inspect(&project_data)?
+                .component_properties(&input.node_id)?;
         }
 
         Ok(crate::dto::BuilderNodePropertiesResult {
@@ -235,7 +221,7 @@ where
                 "revision_id must not be empty".to_string(),
             ));
         }
-        let inspection = self.inspect(&input.schema_version, &input.project_data)?;
+        let inspection = self.inspect(&input.project_data)?;
         if self.release_policy.mode != RuntimeScenarioReleaseMode::Disabled {
             let baseline = self
                 .baseline_store
