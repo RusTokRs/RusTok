@@ -52,7 +52,34 @@ function isRustHostedUiPath(relativePath) {
 }
 
 function styleAttributeCount(source) {
-  return [...source.matchAll(/\bstyle\s*=/g)].length;
+  let count = 0;
+  for (const line of source.split(/\r?\n/)) {
+    // Multiline Leptos attributes conventionally start their own line. Rust bindings such as
+    // `let style = ...` do not match because `style` is not the first token on the line.
+    if (/^\s*style\s*=/.test(line)) {
+      count += 1;
+      continue;
+    }
+    // Also cover compact tags such as `<div class="..." style="...">` without treating
+    // identifiers like `accent_style =` or ordinary Rust assignments as HTML attributes.
+    count += [...line.matchAll(/<[^>\n]*\sstyle\s*=/g)].length;
+  }
+  return count;
+}
+
+for (const [fixture, expected] of [
+  ["let style = String::new();", 0],
+  ["let accent_style = format!(\"background:{}\", color);", 0],
+  ["    style=move || runtime.style()", 1],
+  ["    style = progress_width", 1],
+  ['<div class="meter" style="width:50%"></div>', 1],
+]) {
+  const actual = styleAttributeCount(fixture);
+  if (actual !== expected) {
+    failures.push(
+      `inline-style parser fixture ${JSON.stringify(fixture)} expected ${expected}, found ${actual}`,
+    );
+  }
 }
 
 function requireNonEmpty(value, label) {
