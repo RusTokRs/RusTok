@@ -139,9 +139,18 @@ fn select_report_only_csp(path: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_env_flag, select_csp, select_report_only_csp, API_CSP, REPORTING_ENDPOINTS, UI_CSP,
-        UI_CSP_REPORT_ONLY,
+        parse_env_flag, security_headers, select_csp, select_report_only_csp, API_CSP,
+        REPORTING_ENDPOINTS, UI_CSP, UI_CSP_REPORT_ONLY,
     };
+    use crate::middleware::csp_reports::CSP_REPORT_PATH;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+        middleware,
+        routing::get,
+        Router,
+    };
+    use tower::ServiceExt;
 
     #[test]
     fn api_and_operator_paths_use_strict_csp() {
@@ -179,6 +188,35 @@ mod tests {
         assert_eq!(
             REPORTING_ENDPOINTS,
             "rustok-csp=\"/api/security/csp-report\""
+        );
+    }
+
+    #[tokio::test]
+    async fn outer_security_layer_collects_report_without_registered_route() {
+        let app = Router::new()
+            .route("/probe", get(|| async { StatusCode::OK }))
+            .layer(middleware::from_fn(security_headers));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(CSP_REPORT_PATH)
+                    .header("content-type", "application/csp-report")
+                    .body(Body::from(
+                        r#"{"csp-report":{"document-uri":"https://admin.example.com/orders?token=secret","blocked-uri":"inline","violated-directive":"script-src-elem"}}"#,
+                    ))
+                    .expect("CSP report request"),
+            )
+            .await
+            .expect("security middleware response");
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            response
+                .headers()
+                .get("content-security-policy")
+                .expect("API CSP header"),
+            API_CSP
         );
     }
 
