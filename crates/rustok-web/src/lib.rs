@@ -1,6 +1,28 @@
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use uuid::Uuid;
+
+/// Per-response Content Security Policy nonce shared by HTTP hosts and trusted UI renderers.
+///
+/// The value is generated from UUIDv4 randomness and encoded as lowercase hexadecimal, which is a
+/// valid subset of the CSP `base64-value` grammar and safe to place in HTML attributes and headers.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CspNonce(String);
+
+impl CspNonce {
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4().simple().to_string())
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    pub fn source_expression(&self) -> String {
+        format!("'nonce-{}'", self.0)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ErrorBody {
@@ -72,4 +94,21 @@ where
     T: Serialize,
 {
     Json(value).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CspNonce;
+
+    #[test]
+    fn generated_csp_nonce_is_attribute_and_header_safe() {
+        let nonce = CspNonce::generate();
+
+        assert_eq!(nonce.as_str().len(), 32);
+        assert!(nonce.as_str().chars().all(|character| character.is_ascii_hexdigit()));
+        assert_eq!(
+            nonce.source_expression(),
+            format!("'nonce-{}'", nonce.as_str())
+        );
+    }
 }
