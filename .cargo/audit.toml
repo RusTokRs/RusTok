@@ -5,7 +5,4 @@
 ignore = [
   "RUSTSEC-2023-0071", # rsa timing side-channel; no patched release currently available; expires 2026-07-24
   "RUSTSEC-2023-0089", # atomic-polyfill unmaintained; replace parent path with portable-atomic; expires 2026-07-24
-  "RUSTSEC-2026-0098", # rustls-webpki URI name constraints; upgrade AWS Smithy/rustls lane; expires 2026-07-24
-  "RUSTSEC-2026-0099", # rustls-webpki wildcard constraints; upgrade AWS Smithy/rustls lane; expires 2026-07-24
-  "RUSTSEC-2026-0104", # rustls-webpki CRL parsing panic; upgrade AWS Smithy/rustls lane; expires 2026-07-24
 ]
