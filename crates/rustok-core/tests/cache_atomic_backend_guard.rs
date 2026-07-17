@@ -46,3 +46,16 @@ fn redis_feature_is_compatibility_only_in_core_and_owned_by_cache() {
     ));
     assert!(cache_manifest.contains("\nredis = {"));
 }
+
+#[test]
+fn shared_redis_backend_connects_lazily_and_keeps_startup_outage_visible() {
+    let shared = include_str!("../../rustok-cache/src/shared_backend.rs");
+
+    assert!(shared.contains("manager: AsyncMutex<Option<redis::aio::ConnectionManager>>"));
+    assert!(shared.contains("async fn connection_manager(&self)"));
+    assert!(shared.contains("let mut manager = self.connection_manager().await?;"));
+    assert!(!shared.contains("client.get_connection_manager()\n                .await?"));
+    assert!(shared.contains(
+        "configured_redis_outage_remains_visible_and_local_writes_stay_bounded"
+    ));
+}
