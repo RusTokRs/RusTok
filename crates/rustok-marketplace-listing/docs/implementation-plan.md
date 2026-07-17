@@ -15,16 +15,18 @@ migration, contention, mounted-transport, and remote-profile evidence.
 
 ## FBA/FFA architecture contract
 
-- [x] Keep listing identity, versioned terms, lifecycle, receipts, moderation events,
-  and eligibility inside `rustok-marketplace-listing`.
+- [x] Keep listing identity, versioned terms, lifecycle, receipts, events, and
+  eligibility inside `rustok-marketplace-listing`.
 - [x] Resolve seller and product facts through typed FBA ports; do not import foreign
   entities or add cross-module database foreign keys.
 - [x] Keep product-owned localized title/description/translations outside listing
   storage.
-- [x] Carry effective locale through `PortContext` for every event-producing command.
+- [x] Carry effective locale through `PortContext` for every command-origin event.
 - [x] Keep the Marketplace root and future FFA hosts as composition surfaces only.
 - [x] Keep `MarketplaceListingService` read-only; owner writes live only in
   receipt/event executors.
+- [x] Preserve unknown legacy attribution as explicit nullable facts with typed
+  provenance instead of fabricating actor or locale.
 - [ ] Publish module-owned listing FFA core/model/transport/i18n/Leptos package before
   adding listing UI to hosts.
 - [ ] Retain compiled remote-profile contract evidence before FBA
@@ -50,28 +52,29 @@ migration, contention, mounted-transport, and remote-profile evidence.
   normalized response snapshots.
 - [x] Publish deterministic eligibility reason codes without implementing buy-box
   ranking.
-- [x] Add append-only `marketplace_listing_events` with tenant/listing scope, actor,
-  typed event kind, normalized effective locale, note, metadata, timestamp, and
-  bounded newest-first timeline reads.
-- [x] Register event migration
-  `m20260717_000002_create_marketplace_listing_events` with composite tenant/listing
-  FK and timeline/kind/actor indexes.
+- [x] Add append-only `marketplace_listing_events` with tenant/listing scope, typed
+  event kind, provenance, note, metadata, timestamp, and bounded newest-first reads.
+- [x] Require actor and normalized effective locale for `command` events.
+- [x] Allow nullable actor/locale only for explicit `legacy_snapshot` provenance and
+  reject fabricated attribution in the read mapper and database constraint.
 - [x] Persist `created`, `terms_updated`, `submitted_for_review`, `approved`,
   `rejected`, `published`, `suspended`, `reactivated`, and `archived` events
   atomically with owner state/terms and the durable command receipt.
-- [x] Include effective locale in the canonical request identity of every listing
-  command.
 - [x] Preserve replay admission before seller/product provider reads for create,
   publish, and reactivate.
 - [x] Remove all direct write methods from the read/provider composition service.
+- [x] Add irreversible migration
+  `m20260717_000003_backfill_listing_event_provenance`.
+- [x] Import non-empty legacy `approval_note` and `suspension_reason` values as typed
+  legacy snapshot events with source-column metadata and no fabricated actor/locale.
+- [x] Remove mutable `approval_note` and `suspension_reason` from the final entity,
+  response DTO, write paths, and post-cutover database schema.
 
 ## Ownership remaining
 
-- [ ] Backfill events from mutable `approval_note` and `suspension_reason`
-  compatibility snapshots.
-- [ ] Drop mutable compatibility snapshot columns after backfill and retained
-  migration evidence.
 - [ ] Publish listing lifecycle/moderation events through the transactional outbox.
+- [ ] Define event payload versioning and consumer compatibility before external
+  Marketplace consumers subscribe.
 - [ ] Add product matching/approval workflow before automated EAN/GTIN matching,
   deduplication, or buy-box ranking.
 
@@ -88,23 +91,26 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Compose root Marketplace listing directory/eligibility consumers without owner
   entities or database access.
 - [x] Route all eight FBA write operations through durable receipt/event executors.
+- [x] Include effective locale in every command request identity.
 - [x] Check completed receipt replay before provider reads for create, publish, and
   reactivate; re-check admission after provider preflight to handle races.
 - [x] Register `marketplace_listing` in `modules.toml`, distribution, and server as an
   opt-in owner module; Marketplace remains excluded from default module sets.
 - [x] Add source guards for schema ownership, absence of localized catalog copy,
   versioned terms, durable receipts, provider-preflight replay, complete immutable
-  events, read-service non-bypass, deterministic eligibility, and module composition.
+  events, truthful provenance cutover, read-service non-bypass, deterministic
+  eligibility, and module composition.
 
 ## FBA remaining
 
-- [ ] Backfill/drop compatibility snapshot columns without changing normalized
-  response semantics unexpectedly.
+- [ ] Publish owner events through the transactional outbox without coupling listing
+  persistence to a specific transport.
 - [ ] Compile owner/provider/root consumer contracts.
-- [ ] Apply clean and upgraded SQLite/PostgreSQL migrations.
+- [ ] Apply clean and upgraded SQLite/PostgreSQL migrations, including the
+  intentionally irreversible provenance cutover.
 - [ ] Execute receipt replay, conflicting payload, same-key contention, provider
   preflight races, scope/SKU conflicts, terms-version races, lifecycle contention,
-  locale-bound event atomicity, bounded timeline isolation, rollback, and restart
+  locale/provenance constraints, bounded timeline isolation, rollback, and restart
   scenarios.
 - [ ] Retain remote-profile timeout/degraded/fallback evidence before promotion.
 
@@ -112,9 +118,11 @@ migration, contention, mounted-transport, and remote-profile evidence.
 
 - [ ] Add `rustok-marketplace-listing-admin` with framework-neutral models/core,
   explicit native/GraphQL transport selection, i18n, and a thin Leptos adapter.
-- [ ] Add directory/detail, terms history, moderation/lifecycle event history, review,
+- [ ] Add directory/detail, terms history, lifecycle/moderation history, review,
   publication, suspension, reactivation, archive, and eligibility explanation
   workflows.
+- [ ] Show legacy snapshots as unknown-attribution history rather than pretending they
+  are command events.
 - [ ] Add platform `marketplace_listings` permissions without moving owner policy into
   host code.
 - [ ] Preserve idempotency keys across retryable command errors.
@@ -123,14 +131,14 @@ migration, contention, mounted-transport, and remote-profile evidence.
 
 ## Immediate execution order
 
-1. [ ] Add compatibility backfill/drop migration for `approval_note` and
-   `suspension_reason`.
-2. [ ] Publish listing lifecycle events through transactional outbox ownership.
-3. [ ] Publish the listing FFA package and explicit native/GraphQL transports.
-4. [ ] Add platform listing permissions and module-owned admin workflows.
-5. [ ] Compile and execute database, contention, replay, tenant, locale, restart, and
-   mounted transport evidence.
-6. [ ] Start product matching/approval only after owner/runtime evidence is retained.
+1. [x] Complete immutable events for all FBA write commands.
+2. [x] Backfill truthful legacy snapshots and remove mutable note columns.
+3. [ ] Publish listing lifecycle events through transactional outbox ownership.
+4. [ ] Publish the listing FFA package and explicit native/GraphQL transports.
+5. [ ] Add platform listing permissions and module-owned admin workflows.
+6. [ ] Compile and execute database, contention, replay, tenant, locale, provenance,
+   restart, and mounted transport evidence.
+7. [ ] Start product matching/approval only after owner/runtime evidence is retained.
 
 ## Source evidence
 
@@ -140,6 +148,7 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `src/entities/listing_command_receipt.rs`
 - `src/migrations/m20260716_000001_create_marketplace_listings.rs`
 - `src/migrations/m20260717_000002_create_marketplace_listing_events.rs`
+- `src/migrations/m20260717_000003_backfill_listing_event_provenance.rs`
 - `src/command_receipts.rs`
 - `src/replay_safe_commands.rs`
 - `src/listing_events.rs`
@@ -154,14 +163,15 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `../../apps/server/Cargo.toml`
 - `../../apps/server/tests/marketplace_listing_boundary_guard.rs`
 - `../../apps/server/tests/marketplace_listing_lifecycle_event_guard.rs`
+- `../../apps/server/tests/marketplace_listing_provenance_cutover_guard.rs`
 - `../../scripts/verify/verify-marketplace-listing-boundary.mjs`
 - `../../scripts/verify/verify-marketplace-listing-lifecycle-events.mjs`
+- `../../scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
 
 ## Promotion gates
 
 - [ ] FBA `boundary_ready`: compiled owner/provider-consumer contracts, durable
-  identity tests, compatibility-column cutover, migrations, and source guards are
-  retained.
+  identity/provenance tests, migrations, and source guards are retained.
 - [ ] FBA `transport_verified`: mounted in-process/remote execution and degraded
   behavior are retained.
 - [ ] FFA `phase_b_ready`: module-owned admin package, host composition, and
