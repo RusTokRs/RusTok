@@ -5,6 +5,8 @@ use uuid::Uuid;
 pub enum MarketplaceSellerError {
     #[error("marketplace seller {0} not found")]
     SellerNotFound(Uuid),
+    #[error("marketplace seller {seller_id} has no translation for locale `{locale}`")]
+    TranslationNotFound { seller_id: Uuid, locale: String },
     #[error("marketplace seller member {0} not found")]
     MemberNotFound(Uuid),
     #[error("marketplace seller membership for user {user_id} in seller {seller_id} not found")]
