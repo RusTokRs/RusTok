@@ -3,454 +3,442 @@
 ```text
 [1m[92m    Updating[0m crates.io index
 [1m[92m Downloading[0m crates ...
-[1m[92m  Downloaded[0m aliasable v0.1.3
-[1m[92m  Downloaded[0m crypto-common v0.1.7
-[1m[92m  Downloaded[0m anstyle-parse v1.0.0
-[1m[92m  Downloaded[0m anstyle-query v1.1.5
-[1m[92m  Downloaded[0m anstream v1.0.0
-[1m[92m  Downloaded[0m anstyle v1.0.14
-[1m[92m  Downloaded[0m collection_literals v1.0.3
-[1m[92m  Downloaded[0m async-stream v0.3.6
-[1m[92m  Downloaded[0m cfg_aliases v0.2.1
-[1m[92m  Downloaded[0m openssl-probe v0.2.1
-[1m[92m  Downloaded[0m cfg-if v1.0.4
-[1m[92m  Downloaded[0m allocator-api2 v0.2.21
-[1m[92m  Downloaded[0m codee v0.3.5
-[1m[92m  Downloaded[0m colorchoice v1.0.5
-[1m[92m  Downloaded[0m oco_ref v0.2.1
-[1m[92m  Downloaded[0m concurrent-queue v2.5.0
-[1m[92m  Downloaded[0m ahash v0.7.8
-[1m[92m  Downloaded[0m const_str_slice_concat v0.1.0
-[1m[92m  Downloaded[0m darling_macro v0.20.11
-[1m[92m  Downloaded[0m dunce v1.0.5
-[1m[92m  Downloaded[0m clap_derive v4.6.1
-[1m[92m  Downloaded[0m ptr_meta_derive v0.1.4
-[1m[92m  Downloaded[0m opentelemetry-http v0.32.0
-[1m[92m  Downloaded[0m powerfmt v0.2.0
-[1m[92m  Downloaded[0m proc-macro-crate v3.5.0
-[1m[92m  Downloaded[0m rustc_version v0.4.1
-[1m[92m  Downloaded[0m pkg-config v0.3.33
-[1m[92m  Downloaded[0m once_cell v1.21.4
-[1m[92m  Downloaded[0m atoi v2.0.0
-[1m[92m  Downloaded[0m base16 v0.2.1
-[1m[92m  Downloaded[0m cpufeatures v0.3.0
-[1m[92m  Downloaded[0m crypto-common v0.2.2
-[1m[92m  Downloaded[0m either v1.16.0
-[1m[92m  Downloaded[0m errno v0.3.14
-[1m[92m  Downloaded[0m atomic-waker v1.1.2
-[1m[92m  Downloaded[0m block-buffer v0.10.4
-[1m[92m  Downloaded[0m rand_core v0.6.4
-[1m[92m  Downloaded[0m async-stream-impl v0.3.6
-[1m[92m  Downloaded[0m parking_lot_core v0.9.12
-[1m[92m  Downloaded[0m num-traits v0.2.19
-[1m[92m  Downloaded[0m rustls-pki-types v1.15.0
-[1m[92m  Downloaded[0m attribute-derive-macro v0.10.5
-[1m[92m  Downloaded[0m clap_lex v1.1.0
-[1m[92m  Downloaded[0m flume v0.11.1
-[1m[92m  Downloaded[0m crc v3.4.0
-[1m[92m  Downloaded[0m opentelemetry v0.32.0
-[1m[92m  Downloaded[0m opentelemetry-otlp v0.32.0
-[1m[92m  Downloaded[0m any_spawner v0.3.0
+[1m[92m  Downloaded[0m quote-use v0.8.4
 [1m[92m  Downloaded[0m block-buffer v0.12.1
+[1m[92m  Downloaded[0m parking_lot_core v0.9.12
+[1m[92m  Downloaded[0m futures-executor v0.3.32
+[1m[92m  Downloaded[0m async-lock v3.4.2
+[1m[92m  Downloaded[0m async-stream-impl v0.3.6
+[1m[92m  Downloaded[0m bigdecimal v0.4.10
+[1m[92m  Downloaded[0m rustls-webpki v0.103.13
+[1m[92m  Downloaded[0m ouroboros_macro v0.18.5
+[1m[92m  Downloaded[0m rustc-hash v2.1.3
+[1m[92m  Downloaded[0m rand_chacha v0.3.1
+[1m[92m  Downloaded[0m atomic-waker v1.1.2
+[1m[92m  Downloaded[0m bytecheck_derive v0.6.12
+[1m[92m  Downloaded[0m cfg_aliases v0.2.1
+[1m[92m  Downloaded[0m proc-macro-utils v0.10.0
+[1m[92m  Downloaded[0m rand v0.8.7
+[1m[92m  Downloaded[0m const-oid v0.10.2
+[1m[92m  Downloaded[0m radium v0.7.0
+[1m[92m  Downloaded[0m attribute-derive v0.10.5
+[1m[92m  Downloaded[0m rand_chacha v0.9.0
+[1m[92m  Downloaded[0m ordered-float v4.6.0
 [1m[92m  Downloaded[0m chacha20 v0.10.1
+[1m[92m  Downloaded[0m atoi v2.0.0
+[1m[92m  Downloaded[0m const_format_proc_macros v0.2.34
+[1m[92m  Downloaded[0m foldhash v0.1.5
+[1m[92m  Downloaded[0m futures-channel v0.3.32
+[1m[92m  Downloaded[0m rand_core v0.9.5
+[1m[92m  Downloaded[0m quinn-udp v0.5.15
+[1m[92m  Downloaded[0m aws-lc-rs v1.17.1
+[1m[92m  Downloaded[0m camino v1.2.4
+[1m[92m  Downloaded[0m async-trait v0.1.89
+[1m[92m  Downloaded[0m borsh-derive v1.7.0
+[1m[92m  Downloaded[0m config v0.15.25
+[1m[92m  Downloaded[0m bumpalo v3.20.3
+[1m[92m  Downloaded[0m erased v0.1.2
+[1m[92m  Downloaded[0m cc v1.2.67
+[1m[92m  Downloaded[0m const-str v1.1.0
+[1m[92m  Downloaded[0m crypto-common v0.2.2
+[1m[92m  Downloaded[0m parking v2.2.1
+[1m[92m  Downloaded[0m bitvec v1.1.1
+[1m[92m  Downloaded[0m deranged v0.5.8
+[1m[92m  Downloaded[0m futures v0.3.32
+[1m[92m  Downloaded[0m quote-use-macros v0.8.4
+[1m[92m  Downloaded[0m either_of v0.1.9
+[1m[92m  Downloaded[0m bit-vec v0.8.0
+[1m[92m  Downloaded[0m semver v1.0.28
+[1m[92m  Downloaded[0m concurrent-queue v2.5.0
+[1m[92m  Downloaded[0m email_address v0.2.9
+[1m[92m  Downloaded[0m rsa v0.9.10
+[1m[92m  Downloaded[0m allocator-api2 v0.2.21
+[1m[92m  Downloaded[0m autocfg v1.5.1
+[1m[92m  Downloaded[0m prometheus v0.14.0
+[1m[92m  Downloaded[0m ptr_meta_derive v0.1.4
+[1m[92m  Downloaded[0m ahash v0.7.8
+[1m[92m  Downloaded[0m arrayvec v0.7.8
+[1m[92m  Downloaded[0m async-once-cell v0.5.4
+[1m[92m  Downloaded[0m futures-core v0.3.32
+[1m[92m  Downloaded[0m pathdiff v0.2.3
+[1m[92m  Downloaded[0m pkg-config v0.3.33
+[1m[92m  Downloaded[0m quote v1.0.46
+[1m[92m  Downloaded[0m sea-orm-migration v1.1.20
+[1m[92m  Downloaded[0m either v1.16.0
+[1m[92m  Downloaded[0m rustls-platform-verifier v0.7.0
+[1m[92m  Downloaded[0m drain_filter_polyfill v0.1.3
+[1m[92m  Downloaded[0m sea-orm-macros v1.1.20
+[1m[92m  Downloaded[0m cfg-if v1.0.4
+[1m[92m  Downloaded[0m anyhow v1.0.103
+[1m[92m  Downloaded[0m borsh v1.7.0
+[1m[92m  Downloaded[0m const_str_slice_concat v0.1.0
+[1m[92m  Downloaded[0m ouroboros v0.18.5
+[1m[92m  Downloaded[0m cpufeatures v0.3.0
+[1m[92m  Downloaded[0m errno v0.3.14
+[1m[92m  Downloaded[0m quick-error v1.2.3
+[1m[92m  Downloaded[0m aliasable v0.1.3
+[1m[92m  Downloaded[0m bytes v1.12.1
+[1m[92m  Downloaded[0m codee v0.3.5
+[1m[92m  Downloaded[0m bitflags v2.13.0
+[1m[92m  Downloaded[0m chrono v0.4.45
+[1m[92m  Downloaded[0m pkcs8 v0.10.2
+[1m[92m  Downloaded[0m send_wrapper v0.6.0
+[1m[92m  Downloaded[0m bytecheck v0.6.12
+[1m[92m  Downloaded[0m wasm-bindgen-shared v0.2.126
+[1m[92m  Downloaded[0m equivalent v1.0.2
+[1m[92m  Downloaded[0m event-listener-strategy v0.5.4
+[1m[92m  Downloaded[0m collection_literals v1.0.3
+[1m[92m  Downloaded[0m dunce v1.0.5
+[1m[92m  Downloaded[0m event-listener v5.4.1
+[1m[92m  Downloaded[0m rusty-fork v0.3.1
+[1m[92m  Downloaded[0m pem-rfc7468 v0.7.0
+[1m[92m  Downloaded[0m base64ct v1.8.3
+[1m[92m  Downloaded[0m derive-where v1.6.1
+[1m[92m  Downloaded[0m crossbeam-epoch v0.9.20
+[1m[92m  Downloaded[0m async-stream v0.3.6
+[1m[92m  Downloaded[0m dotenvy v0.15.7
+[1m[92m  Downloaded[0m const-oid v0.9.6
+[1m[92m  Downloaded[0m base16 v0.2.1
 [1m[92m  Downloaded[0m convert_case v0.6.0
 [1m[92m  Downloaded[0m cpufeatures v0.2.17
-[1m[92m  Downloaded[0m async-once-cell v0.5.4
-[1m[92m  Downloaded[0m const-oid v0.9.6
-[1m[92m  Downloaded[0m const_format_proc_macros v0.2.34
-[1m[92m  Downloaded[0m rustversion v1.0.23
-[1m[92m  Downloaded[0m parking v2.2.1
-[1m[92m  Downloaded[0m parking_lot v0.12.5
-[1m[92m  Downloaded[0m percent-encoding v2.3.2
-[1m[92m  Downloaded[0m ptr_meta v0.1.4
-[1m[92m  Downloaded[0m drain_filter_polyfill v0.1.3
-[1m[92m  Downloaded[0m equivalent v1.0.2
-[1m[92m  Downloaded[0m find-msvc-tools v0.1.9
-[1m[92m  Downloaded[0m bytecheck_derive v0.6.12
-[1m[92m  Downloaded[0m either_of v0.1.9
-[1m[92m  Downloaded[0m bytecheck v0.6.12
-[1m[92m  Downloaded[0m want v0.3.1
-[1m[92m  Downloaded[0m wasm_split_macros v0.2.2
-[1m[92m  Downloaded[0m const-oid v0.10.2
-[1m[92m  Downloaded[0m crossbeam-epoch v0.9.20
-[1m[92m  Downloaded[0m erased v0.1.2
-[1m[92m  Downloaded[0m base64ct v1.8.3
-[1m[92m  Downloaded[0m email_address v0.2.9
-[1m[92m  Downloaded[0m bit-vec v0.8.0
-[1m[92m  Downloaded[0m borsh-derive v1.7.0
-[1m[92m  Downloaded[0m byteorder v1.5.0
-[1m[92m  Downloaded[0m digest v0.11.3
-[1m[92m  Downloaded[0m event-listener-strategy v0.5.4
-[1m[92m  Downloaded[0m or_poisoned v0.1.0
-[1m[92m  Downloaded[0m rustls-native-certs v0.8.4
-[1m[92m  Downloaded[0m fastrand v2.4.1
-[1m[92m  Downloaded[0m config v0.15.25
-[1m[92m  Downloaded[0m bytes v1.12.1
-[1m[92m  Downloaded[0m convert_case_extras v0.2.0
-[1m[92m  Downloaded[0m cmake v0.1.58
-[1m[92m  Downloaded[0m convert_case v0.11.0
-[1m[92m  Downloaded[0m bit-set v0.8.0
-[1m[92m  Downloaded[0m deranged v0.5.8
-[1m[92m  Downloaded[0m displaydoc v0.2.6
-[1m[92m  Downloaded[0m dotenvy v0.15.7
-[1m[92m  Downloaded[0m whoami v1.6.1
-[1m[92m  Downloaded[0m digest v0.10.7
-[1m[92m  Downloaded[0m crossbeam-queue v0.3.13
-[1m[92m  Downloaded[0m autocfg v1.5.1
-[1m[92m  Downloaded[0m async-lock v3.4.2
-[1m[92m  Downloaded[0m attribute-derive v0.10.5
-[1m[92m  Downloaded[0m crossbeam-utils v0.8.22
-[1m[92m  Downloaded[0m pathdiff v0.2.3
-[1m[92m  Downloaded[0m same-file v1.0.6
-[1m[92m  Downloaded[0m scopeguard v1.2.0
-[1m[92m  Downloaded[0m camino v1.2.4
-[1m[92m  Downloaded[0m clap v4.6.1
-[1m[92m  Downloaded[0m ouroboros v0.18.5
-[1m[92m  Downloaded[0m paste v1.0.15
-[1m[92m  Downloaded[0m potential_utf v0.1.5
-[1m[92m  Downloaded[0m radium v0.7.0
-[1m[92m  Downloaded[0m rand_pcg v0.10.2
-[1m[92m  Downloaded[0m rend v0.4.2
-[1m[92m  Downloaded[0m rusty-fork v0.3.1
-[1m[92m  Downloaded[0m sea-bae v0.2.1
-[1m[92m  Downloaded[0m arrayvec v0.7.8
-[1m[92m  Downloaded[0m async-trait v0.1.89
-[1m[92m  Downloaded[0m darling v0.20.11
-[1m[92m  Downloaded[0m quick-error v1.2.3
-[1m[92m  Downloaded[0m const-str v1.1.0
-[1m[92m  Downloaded[0m crc-catalog v2.5.0
-[1m[92m  Downloaded[0m bitflags v2.13.0
-[1m[92m  Downloaded[0m event-listener v5.4.1
-[1m[92m  Downloaded[0m fnv v1.0.7
-[1m[92m  Downloaded[0m gloo-utils v0.2.0
-[1m[92m  Downloaded[0m form_urlencoded v1.2.2
-[1m[92m  Downloaded[0m derive-where v1.6.1
-[1m[92m  Downloaded[0m ordered-float v4.6.0
-[1m[92m  Downloaded[0m rustc-hash v2.1.3
-[1m[92m  Downloaded[0m http-body v1.0.1
-[1m[92m  Downloaded[0m mime v0.3.17
+[1m[92m  Downloaded[0m hmac v0.12.1
 [1m[92m  Downloaded[0m pin-project-internal v1.1.13
-[1m[92m  Downloaded[0m protobuf-support v3.7.2
-[1m[92m  Downloaded[0m quote-use-macros v0.8.4
-[1m[92m  Downloaded[0m cc v1.2.67
-[1m[92m  Downloaded[0m darling_core v0.20.11
-[1m[92m  Downloaded[0m proc-macro2-diagnostics v0.10.1
-[1m[92m  Downloaded[0m borsh v1.7.0
-[1m[92m  Downloaded[0m foldhash v0.1.5
-[1m[92m  Downloaded[0m uuid v1.23.5
-[1m[92m  Downloaded[0m anyhow v1.0.103
-[1m[92m  Downloaded[0m throw_error v0.3.1
-[1m[92m  Downloaded[0m base64 v0.22.1
-[1m[92m  Downloaded[0m const_format v0.2.36
-[1m[92m  Downloaded[0m gloo-net v0.6.0
-[1m[92m  Downloaded[0m hashlink v0.10.0
-[1m[92m  Downloaded[0m derive_more v2.1.1
-[1m[92m  Downloaded[0m pkcs8 v0.10.2
-[1m[92m  Downloaded[0m pin-project-lite v0.2.17
-[1m[92m  Downloaded[0m proc-macro-error-attr2 v2.0.0
-[1m[92m  Downloaded[0m quote-use v0.8.4
-[1m[92m  Downloaded[0m rand_chacha v0.9.0
 [1m[92m  Downloaded[0m rand_core v0.10.1
-[1m[92m  Downloaded[0m reactive_stores_macro v0.4.3
-[1m[92m  Downloaded[0m funty v2.0.0
-[1m[92m  Downloaded[0m futures-sink v0.3.32
-[1m[92m  Downloaded[0m rand_chacha v0.3.1
-[1m[92m  Downloaded[0m ppv-lite86 v0.2.21
-[1m[92m  Downloaded[0m syn_derive v0.2.0
-[1m[92m  Downloaded[0m stable_deref_trait v1.2.1
-[1m[92m  Downloaded[0m getrandom v0.2.17
-[1m[92m  Downloaded[0m wasm-bindgen-macro-support v0.2.126
-[1m[92m  Downloaded[0m crossbeam-channel v0.5.16
-[1m[92m  Downloaded[0m der v0.7.10
-[1m[92m  Downloaded[0m derive_more-impl v2.1.1
-[1m[92m  Downloaded[0m jobserver v0.1.35
-[1m[92m  Downloaded[0m ouroboros_macro v0.18.5
-[1m[92m  Downloaded[0m prost-derive v0.14.4
-[1m[92m  Downloaded[0m rand_core v0.9.5
-[1m[92m  Downloaded[0m rand_xorshift v0.4.0
-[1m[92m  Downloaded[0m pem-rfc7468 v0.7.0
-[1m[92m  Downloaded[0m quinn-udp v0.5.15
-[1m[92m  Downloaded[0m quote v1.0.46
-[1m[92m  Downloaded[0m reactive_stores v0.4.3
-[1m[92m  Downloaded[0m ryu v1.0.23
-[1m[92m  Downloaded[0m sea-orm-cli v1.1.20
-[1m[92m  Downloaded[0m num-iter v0.1.46
-[1m[92m  Downloaded[0m pgvector v0.4.2
-[1m[92m  Downloaded[0m sync_wrapper v1.0.2
-[1m[92m  Downloaded[0m thread_local v1.1.10
-[1m[92m  Downloaded[0m aho-corasick v1.1.4
-[1m[92m  Downloaded[0m rkyv_derive v0.7.46
-[1m[92m  Downloaded[0m tracing-serde v0.2.0
-[1m[92m  Downloaded[0m zerotrie v0.2.4
-[1m[92m  Downloaded[0m manyhow-macros v0.11.4
-[1m[92m  Downloaded[0m url v2.5.8
-[1m[92m  Downloaded[0m num-integer v0.1.46
-[1m[92m  Downloaded[0m konst v0.2.20
-[1m[92m  Downloaded[0m pkcs1 v0.7.5
-[1m[92m  Downloaded[0m proc-macro-error2 v2.0.1
 [1m[92m  Downloaded[0m rstml v0.12.1
-[1m[92m  Downloaded[0m sea-orm-macros v1.1.20
-[1m[92m  Downloaded[0m server_fn_macro v0.8.10
-[1m[92m  Downloaded[0m try-lock v0.2.5
-[1m[92m  Downloaded[0m untrusted v0.9.0
-[1m[92m  Downloaded[0m wasm-bindgen-futures v0.4.76
-[1m[92m  Downloaded[0m yoke-derive v0.8.2
-[1m[92m  Downloaded[0m futures-task v0.3.32
-[1m[92m  Downloaded[0m generic-array v0.14.7
-[1m[92m  Downloaded[0m hybrid-array v0.4.13
+[1m[92m  Downloaded[0m rustls-pki-types v1.15.0
+[1m[92m  Downloaded[0m rend v0.4.2
+[1m[92m  Downloaded[0m sea-query-derive v0.4.3
+[1m[92m  Downloaded[0m cmake v0.1.58
+[1m[92m  Downloaded[0m form_urlencoded v1.2.2
+[1m[92m  Downloaded[0m byteorder v1.5.0
+[1m[92m  Downloaded[0m derive_more-impl v2.1.1
+[1m[92m  Downloaded[0m displaydoc v0.2.6
+[1m[92m  Downloaded[0m percent-encoding v2.3.2
+[1m[92m  Downloaded[0m proc-macro-error-attr2 v2.0.0
+[1m[92m  Downloaded[0m reactive_stores_macro v0.4.3
+[1m[92m  Downloaded[0m scopeguard v1.2.0
+[1m[92m  Downloaded[0m sea-query-binder v0.7.0
+[1m[92m  Downloaded[0m any_spawner v0.3.0
+[1m[92m  Downloaded[0m digest v0.10.7
+[1m[92m  Downloaded[0m proc-macro-crate v3.5.0
+[1m[92m  Downloaded[0m proc-macro2-diagnostics v0.10.1
+[1m[92m  Downloaded[0m protobuf-support v3.7.2
+[1m[92m  Downloaded[0m seahash v4.1.0
+[1m[92m  Downloaded[0m wasm-bindgen-macro v0.2.126
+[1m[92m  Downloaded[0m whoami v1.6.1
+[1m[92m  Downloaded[0m pgvector v0.4.2
+[1m[92m  Downloaded[0m find-msvc-tools v0.1.9
+[1m[92m  Downloaded[0m getrandom v0.3.4
+[1m[92m  Downloaded[0m writeable v0.6.3
+[1m[92m  Downloaded[0m base64 v0.22.1
+[1m[92m  Downloaded[0m encoding_rs v0.8.35
+[1m[92m  Downloaded[0m funty v2.0.0
+[1m[92m  Downloaded[0m ppv-lite86 v0.2.21
+[1m[92m  Downloaded[0m manyhow-macros v0.11.4
+[1m[92m  Downloaded[0m powerfmt v0.2.0
+[1m[92m  Downloaded[0m ptr_meta v0.1.4
+[1m[92m  Downloaded[0m fastrand v2.4.1
+[1m[92m  Downloaded[0m fnv v1.0.7
+[1m[92m  Downloaded[0m interpolator v0.5.0
+[1m[92m  Downloaded[0m memoffset v0.9.1
+[1m[92m  Downloaded[0m pin-project-lite v0.2.17
+[1m[92m  Downloaded[0m proc-macro-error2 v2.0.1
+[1m[92m  Downloaded[0m rand_xorshift v0.4.0
+[1m[92m  Downloaded[0m rkyv_derive v0.7.46
+[1m[92m  Downloaded[0m rustc_version v0.4.1
+[1m[92m  Downloaded[0m rustls-native-certs v0.8.4
+[1m[92m  Downloaded[0m rustversion v1.0.23
+[1m[92m  Downloaded[0m sea-orm-cli v1.1.20
+[1m[92m  Downloaded[0m sea-schema-derive v0.3.0
+[1m[92m  Downloaded[0m zmij v1.0.22
+[1m[92m  Downloaded[0m attribute-derive-macro v0.10.5
+[1m[92m  Downloaded[0m crc v3.4.0
+[1m[92m  Downloaded[0m getrandom v0.4.3
+[1m[92m  Downloaded[0m hex v0.4.3
 [1m[92m  Downloaded[0m inherent v1.0.13
-[1m[92m  Downloaded[0m ipnet v2.12.0
-[1m[92m  Downloaded[0m itoa v1.0.18
-[1m[92m  Downloaded[0m konst_macro_rules v0.2.19
+[1m[92m  Downloaded[0m or_poisoned v0.1.0
+[1m[92m  Downloaded[0m paste v1.0.15
+[1m[92m  Downloaded[0m rand_pcg v0.10.2
+[1m[92m  Downloaded[0m reactive_stores v0.4.3
+[1m[92m  Downloaded[0m smallvec v1.15.2
+[1m[92m  Downloaded[0m strum v0.26.3
+[1m[92m  Downloaded[0m thiserror v1.0.69
+[1m[92m  Downloaded[0m crypto-common v0.1.7
+[1m[92m  Downloaded[0m darling_core v0.20.11
+[1m[92m  Downloaded[0m tokio-stream v0.1.18
+[1m[92m  Downloaded[0m walkdir v2.5.0
+[1m[92m  Downloaded[0m crossbeam-channel v0.5.16
+[1m[92m  Downloaded[0m serde_yaml v0.9.34+deprecated
+[1m[92m  Downloaded[0m crc-catalog v2.5.0
+[1m[92m  Downloaded[0m utf8_iter v1.0.4
+[1m[92m  Downloaded[0m crossbeam-queue v0.3.13
+[1m[92m  Downloaded[0m parking_lot v0.12.5
+[1m[92m  Downloaded[0m pkcs1 v0.7.5
+[1m[92m  Downloaded[0m tower-layer v0.3.3
+[1m[92m  Downloaded[0m wasm-streams v0.5.0
+[1m[92m  Downloaded[0m wasm_split_macros v0.2.2
+[1m[92m  Downloaded[0m derive_more v2.1.1
+[1m[92m  Downloaded[0m gloo-net v0.6.0
+[1m[92m  Downloaded[0m icu_provider v2.2.0
+[1m[92m  Downloaded[0m log v0.4.33
 [1m[92m  Downloaded[0m pin-project v1.1.13
+[1m[92m  Downloaded[0m potential_utf v0.1.5
 [1m[92m  Downloaded[0m prettyplease v0.2.37
-[1m[92m  Downloaded[0m proc-macro-utils v0.10.0
 [1m[92m  Downloaded[0m proc-macro2 v1.0.106
 [1m[92m  Downloaded[0m prost v0.14.4
-[1m[92m  Downloaded[0m rustls-platform-verifier v0.7.0
-[1m[92m  Downloaded[0m unicode-segmentation v1.13.3
-[1m[92m  Downloaded[0m lru-slab v0.1.2
-[1m[92m  Downloaded[0m matchers v0.2.0
+[1m[92m  Downloaded[0m prost-derive v0.14.4
 [1m[92m  Downloaded[0m prost-types v0.14.4
-[1m[92m  Downloaded[0m thiserror-impl v2.0.18
-[1m[92m  Downloaded[0m bumpalo v3.20.3
-[1m[92m  Downloaded[0m serde_yaml v0.9.34+deprecated
-[1m[92m  Downloaded[0m procfs v0.17.0
-[1m[92m  Downloaded[0m iana-time-zone v0.1.65
-[1m[92m  Downloaded[0m mac_address v1.1.8
-[1m[92m  Downloaded[0m smallvec v1.15.2
-[1m[92m  Downloaded[0m unsafe-libyaml v0.2.11
-[1m[92m  Downloaded[0m bigdecimal v0.4.10
-[1m[92m  Downloaded[0m icu_locale_core v2.2.0
-[1m[92m  Downloaded[0m procfs-core v0.17.0
 [1m[92m  Downloaded[0m quinn v0.11.11
-[1m[92m  Downloaded[0m rustls-webpki v0.103.13
-[1m[92m  Downloaded[0m serde_core v1.0.228
-[1m[92m  Downloaded[0m signal-hook-registry v1.4.8
+[1m[92m  Downloaded[0m rkyv v0.7.46
+[1m[92m  Downloaded[0m ryu v1.0.23
+[1m[92m  Downloaded[0m same-file v1.0.6
+[1m[92m  Downloaded[0m simdutf8 v0.1.5
+[1m[92m  Downloaded[0m socket2 v0.6.4
+[1m[92m  Downloaded[0m toml v1.1.2+spec-1.1.0
+[1m[92m  Downloaded[0m tracing-opentelemetry v0.33.0
+[1m[92m  Downloaded[0m utoipa v5.5.0
 [1m[92m  Downloaded[0m yoke v0.8.3
-[1m[92m  Downloaded[0m fs_extra v1.3.0
-[1m[92m  Downloaded[0m hyper-timeout v0.5.2
-[1m[92m  Downloaded[0m icu_collections v2.2.0
-[1m[92m  Downloaded[0m prometheus v0.14.0
-[1m[92m  Downloaded[0m rand v0.8.7
+[1m[92m  Downloaded[0m zerotrie v0.2.4
+[1m[92m  Downloaded[0m futures-intrusive v0.5.0
+[1m[92m  Downloaded[0m futures-util v0.3.32
+[1m[92m  Downloaded[0m generic-array v0.14.7
+[1m[92m  Downloaded[0m hashlink v0.10.0
+[1m[92m  Downloaded[0m iana-time-zone v0.1.65
+[1m[92m  Downloaded[0m icu_locale_core v2.2.0
+[1m[92m  Downloaded[0m konst_macro_rules v0.2.19
+[1m[92m  Downloaded[0m leptos_config v0.8.10
+[1m[92m  Downloaded[0m procfs-core v0.17.0
 [1m[92m  Downloaded[0m rand v0.9.5
 [1m[92m  Downloaded[0m rand v0.10.2
 [1m[92m  Downloaded[0m reactive_graph v0.2.14
-[1m[92m  Downloaded[0m rsa v0.9.10
-[1m[92m  Downloaded[0m hyper-rustls v0.27.9
-[1m[92m  Downloaded[0m hyper-util v0.1.20
-[1m[92m  Downloaded[0m rkyv v0.7.46
-[1m[92m  Downloaded[0m rustix v1.1.4
-[1m[92m  Downloaded[0m semver v1.0.28
-[1m[92m  Downloaded[0m server_fn v0.8.13
-[1m[92m  Downloaded[0m sha2 v0.10.9
-[1m[92m  Downloaded[0m spki v0.7.3
-[1m[92m  Downloaded[0m strsim v0.11.1
-[1m[92m  Downloaded[0m strum v0.26.3
-[1m[92m  Downloaded[0m tinyvec_macros v0.1.1
-[1m[92m  Downloaded[0m tonic-types v0.14.6
-[1m[92m  Downloaded[0m tower v0.5.3
-[1m[92m  Downloaded[0m unicode-xid v0.2.6
-[1m[92m  Downloaded[0m utoipa-gen v5.5.0
-[1m[92m  Downloaded[0m wasm-bindgen v0.2.126
-[1m[92m  Downloaded[0m yansi v1.0.1
-[1m[92m  Downloaded[0m clap_builder v4.6.0
-[1m[92m  Downloaded[0m getrandom v0.3.4
-[1m[92m  Downloaded[0m getrandom v0.4.3
-[1m[92m  Downloaded[0m icu_normalizer v2.2.0
-[1m[92m  Downloaded[0m opentelemetry-proto v0.32.0
-[1m[92m  Downloaded[0m opentelemetry_sdk v0.32.1
-[1m[92m  Downloaded[0m portable-atomic v1.13.1
-[1m[92m  Downloaded[0m proptest v1.11.0
-[1m[92m  Downloaded[0m protobuf v3.7.2
-[1m[92m  Downloaded[0m quinn-proto v0.11.16
-[1m[92m  Downloaded[0m regex v1.13.0
 [1m[92m  Downloaded[0m reqwest v0.13.4
-[1m[92m  Downloaded[0m rust_decimal v1.42.1
-[1m[92m  Downloaded[0m sea-orm-migration v1.1.20
-[1m[92m  Downloaded[0m seahash v4.1.0
-[1m[92m  Downloaded[0m sqlx-sqlite v0.8.6
-[1m[92m  Downloaded[0m synstructure v0.13.2
+[1m[92m  Downloaded[0m serde v1.0.228
+[1m[92m  Downloaded[0m serde_derive v1.0.228
+[1m[92m  Downloaded[0m yansi v1.0.1
+[1m[92m  Downloaded[0m aho-corasick v1.1.4
+[1m[92m  Downloaded[0m toml_datetime v1.1.1+spec-1.1.0
+[1m[92m  Downloaded[0m opentelemetry-proto v0.32.0
+[1m[92m  Downloaded[0m tachys v0.2.18
+[1m[92m  Downloaded[0m nu-ansi-term v0.50.3
+[1m[92m  Downloaded[0m getrandom v0.2.17
+[1m[92m  Downloaded[0m server_fn v0.8.13
+[1m[92m  Downloaded[0m futures-io v0.3.32
 [1m[92m  Downloaded[0m tap v1.0.1
-[1m[92m  Downloaded[0m tempfile v3.27.0
+[1m[92m  Downloaded[0m tracing-serde v0.2.0
+[1m[92m  Downloaded[0m heck v0.4.1
+[1m[92m  Downloaded[0m openssl-probe v0.2.1
+[1m[92m  Downloaded[0m tonic-prost v0.14.6
+[1m[92m  Downloaded[0m wait-timeout v0.2.1
+[1m[92m  Downloaded[0m heck v0.5.0
+[1m[92m  Downloaded[0m httparse v1.10.1
+[1m[92m  Downloaded[0m ipnet v2.12.0
+[1m[92m  Downloaded[0m num-bigint-dig v0.8.6
+[1m[92m  Downloaded[0m opentelemetry_sdk v0.32.1
+[1m[92m  Downloaded[0m want v0.3.1
+[1m[92m  Downloaded[0m time-macros v0.2.31
+[1m[92m  Downloaded[0m oco_ref v0.2.1
+[1m[92m  Downloaded[0m slab v0.4.12
+[1m[92m  Downloaded[0m sqlx-sqlite v0.8.6
+[1m[92m  Downloaded[0m tokio-rustls v0.26.4
+[1m[92m  Downloaded[0m futures-sink v0.3.32
+[1m[92m  Downloaded[0m hyper v1.10.1
+[1m[92m  Downloaded[0m once_cell v1.21.4
 [1m[92m  Downloaded[0m thiserror v2.0.18
-[1m[92m  Downloaded[0m time v0.3.53
-[1m[92m  Downloaded[0m tinyvec v1.12.0
+[1m[92m  Downloaded[0m toml_writer v1.1.1+spec-1.1.0
 [1m[92m  Downloaded[0m tonic v0.14.6
-[1m[92m  Downloaded[0m zerocopy v0.8.54
-[1m[92m  Downloaded[0m lazy_static v1.5.0
+[1m[92m  Downloaded[0m convert_case v0.11.0
+[1m[92m  Downloaded[0m num-conv v0.2.2
+[1m[92m  Downloaded[0m tokio-util v0.7.18
+[1m[92m  Downloaded[0m tower v0.5.3
+[1m[92m  Downloaded[0m tower-service v0.3.3
+[1m[92m  Downloaded[0m v_escape-base v0.1.0
+[1m[92m  Downloaded[0m version_check v0.9.5
+[1m[92m  Downloaded[0m home v0.5.12
+[1m[92m  Downloaded[0m mio v1.2.1
+[1m[92m  Downloaded[0m serde_qs v0.15.0
+[1m[92m  Downloaded[0m sha1 v0.10.7
+[1m[92m  Downloaded[0m unicode-xid v0.2.6
+[1m[92m  Downloaded[0m untrusted v0.9.0
+[1m[92m  Downloaded[0m v_htmlescape v0.17.0
+[1m[92m  Downloaded[0m hyper-util v0.1.20
+[1m[92m  Downloaded[0m num-iter v0.1.46
+[1m[92m  Downloaded[0m sha2 v0.10.9
+[1m[92m  Downloaded[0m thiserror-impl v1.0.69
+[1m[92m  Downloaded[0m zerovec-derive v0.11.3
+[1m[92m  Downloaded[0m h2 v0.4.15
+[1m[92m  Downloaded[0m hashbrown v0.15.5
+[1m[92m  Downloaded[0m toml_parser v1.1.2+spec-1.1.0
+[1m[92m  Downloaded[0m gloo-utils v0.2.0
+[1m[92m  Downloaded[0m mime v0.3.17
+[1m[92m  Downloaded[0m next_tuple v0.1.0
+[1m[92m  Downloaded[0m nix v0.29.0
+[1m[92m  Downloaded[0m rust_decimal v1.42.1
+[1m[92m  Downloaded[0m server_fn_macro v0.8.10
+[1m[92m  Downloaded[0m sqlx-mysql v0.8.6
+[1m[92m  Downloaded[0m thiserror-impl v2.0.18
+[1m[92m  Downloaded[0m tonic-types v0.14.6
+[1m[92m  Downloaded[0m hkdf v0.12.4
+[1m[92m  Downloaded[0m litemap v0.8.2
+[1m[92m  Downloaded[0m opentelemetry-http v0.32.0
+[1m[92m  Downloaded[0m leptos_server v0.8.7
+[1m[92m  Downloaded[0m serde_json v1.0.150
+[1m[92m  Downloaded[0m sha2 v0.11.0
+[1m[92m  Downloaded[0m unsafe-libyaml v0.2.11
+[1m[92m  Downloaded[0m lock_api v0.4.14
+[1m[92m  Downloaded[0m sqlx-macros-core v0.8.6
+[1m[92m  Downloaded[0m sync_wrapper v1.0.2
+[1m[92m  Downloaded[0m tokio-macros v2.7.0
+[1m[92m  Downloaded[0m toml_edit v0.25.12+spec-1.1.0
+[1m[92m  Downloaded[0m tracing-attributes v0.1.31
+[1m[92m  Downloaded[0m quinn-proto v0.11.16
+[1m[92m  Downloaded[0m thread_local v1.1.10
+[1m[92m  Downloaded[0m tinyvec_macros v0.1.1
+[1m[92m  Downloaded[0m try-lock v0.2.5
+[1m[92m  Downloaded[0m uuid v1.23.5
+[1m[92m  Downloaded[0m portable-atomic v1.13.1
+[1m[92m  Downloaded[0m protobuf v3.7.2
+[1m[92m  Downloaded[0m synstructure v0.13.2
+[1m[92m  Downloaded[0m url v2.5.8
+[1m[92m  Downloaded[0m icu_collections v2.2.0
+[1m[92m  Downloaded[0m sea-query v0.32.7
+[1m[92m  Downloaded[0m vcpkg v0.2.15
+[1m[92m  Downloaded[0m inventory v0.3.24
+[1m[92m  Downloaded[0m unicode-segmentation v1.13.3
+[1m[92m  Downloaded[0m num-integer v0.1.46
+[1m[92m  Downloaded[0m tagptr v0.2.0
+[1m[92m  Downloaded[0m tempfile v3.27.0
+[1m[92m  Downloaded[0m html-escape v0.2.14
+[1m[92m  Downloaded[0m typed-builder v0.23.2
+[1m[92m  Downloaded[0m typed-builder-macro v0.23.2
+[1m[92m  Downloaded[0m icu_properties v2.2.0
+[1m[92m  Downloaded[0m serde_urlencoded v0.7.1
+[1m[92m  Downloaded[0m hybrid-array v0.4.13
+[1m[92m  Downloaded[0m hydration_context v0.3.1
+[1m[92m  Downloaded[0m leptos v0.8.20
+[1m[92m  Downloaded[0m opentelemetry-otlp v0.32.0
+[1m[92m  Downloaded[0m serde_core v1.0.228
+[1m[92m  Downloaded[0m sqlx-macros v0.8.6
+[1m[92m  Downloaded[0m subtle v2.6.1
+[1m[92m  Downloaded[0m time-core v0.1.9
+[1m[92m  Downloaded[0m ulid v2.0.1
+[1m[92m  Downloaded[0m unicode-normalization v0.1.25
+[1m[92m  Downloaded[0m futures-task v0.3.32
+[1m[92m  Downloaded[0m md-5 v0.10.6
+[1m[92m  Downloaded[0m server_fn_macro_default v0.8.5
+[1m[92m  Downloaded[0m unarray v0.1.4
+[1m[92m  Downloaded[0m hyper-rustls v0.27.9
+[1m[92m  Downloaded[0m signal-hook-registry v1.4.8
+[1m[92m  Downloaded[0m spin v0.9.8
+[1m[92m  Downloaded[0m yoke-derive v0.8.2
+[1m[92m  Downloaded[0m zerofrom-derive v0.1.7
+[1m[92m  Downloaded[0m zerovec v0.11.6
+[1m[92m  Downloaded[0m opentelemetry v0.32.0
+[1m[92m  Downloaded[0m shlex v2.0.1
+[1m[92m  Downloaded[0m static_assertions v1.1.0
+[1m[92m  Downloaded[0m stringprep v0.1.5
+[1m[92m  Downloaded[0m tinyvec v1.12.0
+[1m[92m  Downloaded[0m tracing v0.1.44
+[1m[92m  Downloaded[0m unicode-bidi v0.3.18
+[1m[92m  Downloaded[0m utoipa-gen v5.5.0
+[1m[92m  Downloaded[0m wasm_split_helpers v0.2.3
+[1m[92m  Downloaded[0m convert_case_extras v0.2.0
+[1m[92m  Downloaded[0m hashbrown v0.12.3
+[1m[92m  Downloaded[0m hyper-timeout v0.5.2
+[1m[92m  Downloaded[0m idna_adapter v1.2.2
+[1m[92m  Downloaded[0m jobserver v0.1.35
+[1m[92m  Downloaded[0m libm v0.2.16
+[1m[92m  Downloaded[0m proptest v1.11.0
+[1m[92m  Downloaded[0m time v0.3.53
+[1m[92m  Downloaded[0m unicode-ident v1.0.24
+[1m[92m  Downloaded[0m icu_normalizer v2.2.0
+[1m[92m  Downloaded[0m moka v0.12.15
+[1m[92m  Downloaded[0m sharded-slab v0.1.7
+[1m[92m  Downloaded[0m tower-http v0.6.11
+[1m[92m  Downloaded[0m leptos_hot_reload v0.8.6
+[1m[92m  Downloaded[0m typenum v1.20.1
+[1m[92m  Downloaded[0m unicode-properties v0.1.4
+[1m[92m  Downloaded[0m indexmap v2.14.0
+[1m[92m  Downloaded[0m regex-syntax v0.8.11
 [1m[92m  Downloaded[0m rustix v0.38.44
 [1m[92m  Downloaded[0m rustls v0.23.41
-[1m[92m  Downloaded[0m send_wrapper v0.6.0
-[1m[92m  Downloaded[0m serde_derive v1.0.228
-[1m[92m  Downloaded[0m signature v2.2.0
-[1m[92m  Downloaded[0m stringprep v0.1.5
-[1m[92m  Downloaded[0m thiserror v1.0.69
-[1m[92m  Downloaded[0m thiserror-impl v1.0.69
-[1m[92m  Downloaded[0m time-macros v0.2.31
-[1m[92m  Downloaded[0m tinystr v0.8.3
-[1m[92m  Downloaded[0m zerofrom v0.1.8
-[1m[92m  Downloaded[0m futures-io v0.3.32
-[1m[92m  Downloaded[0m futures-macro v0.3.32
-[1m[92m  Downloaded[0m heck v0.5.0
-[1m[92m  Downloaded[0m http-body-util v0.1.3
-[1m[92m  Downloaded[0m indexmap v2.14.0
-[1m[92m  Downloaded[0m js-sys v0.3.103
-[1m[92m  Downloaded[0m manyhow v0.11.4
-[1m[92m  Downloaded[0m regex-automata v0.4.15
-[1m[92m  Downloaded[0m serde_spanned v1.1.1
-[1m[92m  Downloaded[0m sha2 v0.11.0
-[1m[92m  Downloaded[0m simdutf8 v0.1.5
-[1m[92m  Downloaded[0m tonic-prost v0.14.6
-[1m[92m  Downloaded[0m heck v0.4.1
-[1m[92m  Downloaded[0m tokio-macros v2.7.0
-[1m[92m  Downloaded[0m unicode-properties v0.1.4
-[1m[92m  Downloaded[0m serde v1.0.228
-[1m[92m  Downloaded[0m sqlx-macros v0.8.6
-[1m[92m  Downloaded[0m ulid v2.0.1
-[1m[92m  Downloaded[0m unicode-ident v1.0.24
-[1m[92m  Downloaded[0m idna_adapter v1.2.2
-[1m[92m  Downloaded[0m leptos_server v0.8.7
-[1m[92m  Downloaded[0m regex-syntax v0.8.11
-[1m[92m  Downloaded[0m utoipa v5.5.0
-[1m[92m  Downloaded[0m webpki-roots v0.26.11
-[1m[92m  Downloaded[0m winnow v1.0.3
-[1m[92m  Downloaded[0m zmij v1.0.22
-[1m[92m  Downloaded[0m hashbrown v0.17.1
-[1m[92m  Downloaded[0m icu_normalizer_data v2.2.0
-[1m[92m  Downloaded[0m itertools v0.14.0
-[1m[92m  Downloaded[0m lock_api v0.4.14
-[1m[92m  Downloaded[0m next_tuple v0.1.0
-[1m[92m  Downloaded[0m ring v0.17.14
-[1m[92m  Downloaded[0m sqlx v0.8.6
-[1m[92m  Downloaded[0m time-core v0.1.9
-[1m[92m  Downloaded[0m tokio-rustls v0.26.4
-[1m[92m  Downloaded[0m tokio-stream v0.1.18
-[1m[92m  Downloaded[0m toml_datetime v1.1.1+spec-1.1.0
-[1m[92m  Downloaded[0m v_escape-base v0.1.0
-[1m[92m  Downloaded[0m v_htmlescape v0.17.0
-[1m[92m  Downloaded[0m vcpkg v0.2.15
-[1m[92m  Downloaded[0m bitvec v1.1.1
-[1m[92m  Downloaded[0m glob v0.3.3
-[1m[92m  Downloaded[0m sea-query-derive v0.4.3
-[1m[92m  Downloaded[0m inventory v0.3.24
-[1m[92m  Downloaded[0m memoffset v0.9.1
-[1m[92m  Downloaded[0m futures v0.3.32
-[1m[92m  Downloaded[0m futures-channel v0.3.32
-[1m[92m  Downloaded[0m zerovec-derive v0.11.3
-[1m[92m  Downloaded[0m static_assertions v1.1.0
-[1m[92m  Downloaded[0m sea-schema-derive v0.3.0
-[1m[92m  Downloaded[0m futures-util v0.3.32
-[1m[92m  Downloaded[0m hydration_context v0.3.1
-[1m[92m  Downloaded[0m aws-lc-rs v1.17.1
-[1m[92m  Downloaded[0m chrono v0.4.45
-[1m[92m  Downloaded[0m is_terminal_polyfill v1.70.2
-[1m[92m  Downloaded[0m md-5 v0.10.6
-[1m[92m  Downloaded[0m sqlx-macros-core v0.8.6
-[1m[92m  Downloaded[0m wasm_split_helpers v0.2.3
-[1m[92m  Downloaded[0m guardian v1.3.0
-[1m[92m  Downloaded[0m tagptr v0.2.0
-[1m[92m  Downloaded[0m xxhash-rust v0.8.16
-[1m[92m  Downloaded[0m futures-core v0.3.32
-[1m[92m  Downloaded[0m libm v0.2.16
-[1m[92m  Downloaded[0m sharded-slab v0.1.7
-[1m[92m  Downloaded[0m leptos_hot_reload v0.8.6
-[1m[92m  Downloaded[0m sha1 v0.10.7
-[1m[92m  Downloaded[0m utf8parse v0.2.2
-[1m[92m  Downloaded[0m wasm-bindgen-macro v0.2.126
-[1m[92m  Downloaded[0m zeroize v1.9.0
-[1m[92m  Downloaded[0m futures-executor v0.3.32
-[1m[92m  Downloaded[0m serde_qs v0.15.0
-[1m[92m  Downloaded[0m typed-builder v0.23.2
-[1m[92m  Downloaded[0m writeable v0.6.3
-[1m[92m  Downloaded[0m litemap v0.8.2
-[1m[92m  Downloaded[0m subtle v2.6.1
-[1m[92m  Downloaded[0m interpolator v0.5.0
-[1m[92m  Downloaded[0m zerofrom-derive v0.1.7
-[1m[92m  Downloaded[0m serde_urlencoded v0.7.1
-[1m[92m  Downloaded[0m nu-ansi-term v0.50.3
-[1m[92m  Downloaded[0m shlex v2.0.1
-[1m[92m  Downloaded[0m sqlx-core v0.8.6
-[1m[92m  Downloaded[0m wasm-streams v0.5.0
-[1m[92m  Downloaded[0m ident_case v1.0.1
-[1m[92m  Downloaded[0m slotmap v1.1.1
-[1m[92m  Downloaded[0m sqlx-postgres v0.8.6
-[1m[92m  Downloaded[0m tachys v0.2.18
-[1m[92m  Downloaded[0m toml_edit v0.25.12+spec-1.1.0
-[1m[92m  Downloaded[0m unicode-normalization v0.1.25
-[1m[92m  Downloaded[0m wasm-bindgen-shared v0.2.126
-[1m[92m  Downloaded[0m icu_provider v2.2.0
-[1m[92m  Downloaded[0m leptos_macro v0.8.17
-[1m[92m  Downloaded[0m sea-query v0.32.7
-[1m[92m  Downloaded[0m serde_json v1.0.150
-[1m[92m  Downloaded[0m tower-http v0.6.11
-[1m[92m  Downloaded[0m typenum v1.20.1
-[1m[92m  Downloaded[0m unarray v0.1.4
-[1m[92m  Downloaded[0m utf8_iter v1.0.4
-[1m[92m  Downloaded[0m wyz v0.5.1
-[1m[92m  Downloaded[0m tracing-subscriber v0.3.23
-[1m[92m  Downloaded[0m toml_parser v1.1.2+spec-1.1.0
-[1m[92m  Downloaded[0m walkdir v2.5.0
-[1m[92m  Downloaded[0m zerovec v0.11.6
-[1m[92m  Downloaded[0m tracing-log v0.2.0
+[1m[92m  Downloaded[0m spki v0.7.3
+[1m[92m  Downloaded[0m bit-set v0.8.0
+[1m[92m  Downloaded[0m fs_extra v1.3.0
 [1m[92m  Downloaded[0m leptos_dom v0.8.8
-[1m[92m  Downloaded[0m tracing-core v0.1.36
-[1m[92m  Downloaded[0m server_fn_macro_default v0.8.5
-[1m[92m  Downloaded[0m log v0.4.33
-[1m[92m  Downloaded[0m typed-builder-macro v0.23.2
-[1m[92m  Downloaded[0m idna v1.1.0
-[1m[92m  Downloaded[0m memchr v2.8.3
-[1m[92m  Downloaded[0m toml_writer v1.1.1+spec-1.1.0
-[1m[92m  Downloaded[0m tower-layer v0.3.3
-[1m[92m  Downloaded[0m tower-service v0.3.3
-[1m[92m  Downloaded[0m tracing-attributes v0.1.31
-[1m[92m  Downloaded[0m unicode-bidi v0.3.18
-[1m[92m  Downloaded[0m hex v0.4.3
-[1m[92m  Downloaded[0m leptos v0.8.20
-[1m[92m  Downloaded[0m socket2 v0.6.4
-[1m[92m  Downloaded[0m home v0.5.12
-[1m[92m  Downloaded[0m httparse v1.10.1
-[1m[92m  Downloaded[0m tokio-util v0.7.18
-[1m[92m  Downloaded[0m icu_properties v2.2.0
-[1m[92m  Downloaded[0m mio v1.2.1
-[1m[92m  Downloaded[0m html-escape v0.2.14
-[1m[92m  Downloaded[0m wait-timeout v0.2.1
-[1m[92m  Downloaded[0m sea-orm v1.1.20
-[1m[92m  Downloaded[0m hmac v0.12.1
-[1m[92m  Downloaded[0m num-bigint v0.4.8
-[1m[92m  Downloaded[0m syn v2.0.118
-[1m[92m  Downloaded[0m tokio v1.52.3
-[1m[92m  Downloaded[0m version_check v0.9.5
-[1m[92m  Downloaded[0m hashbrown v0.12.3
-[1m[92m  Downloaded[0m hyper v1.10.1
-[1m[92m  Downloaded[0m nix v0.29.0
-[1m[92m  Downloaded[0m icu_properties_data v2.2.0
-[1m[92m  Downloaded[0m http v1.4.2
-[1m[92m  Downloaded[0m sea-query-binder v0.7.0
-[1m[92m  Downloaded[0m hashbrown v0.15.5
-[1m[92m  Downloaded[0m spin v0.9.8
-[1m[92m  Downloaded[0m moka v0.12.15
-[1m[92m  Downloaded[0m toml v1.1.2+spec-1.1.0
-[1m[92m  Downloaded[0m slab v0.4.12
-[1m[92m  Downloaded[0m tracing-opentelemetry v0.33.0
-[1m[92m  Downloaded[0m hkdf v0.12.4
-[1m[92m  Downloaded[0m sqlx-mysql v0.8.6
-[1m[92m  Downloaded[0m syn v1.0.109
-[1m[92m  Downloaded[0m h2 v0.4.15
-[1m[92m  Downloaded[0m leptos_config v0.8.10
-[1m[92m  Downloaded[0m futures-intrusive v0.5.0
-[1m[92m  Downloaded[0m num-bigint-dig v0.8.6
-[1m[92m  Downloaded[0m webpki-roots v1.0.8
-[1m[92m  Downloaded[0m num-conv v0.2.2
-[1m[92m  Downloaded[0m sea-schema v0.16.2
-[1m[92m  Downloaded[0m tracing v0.1.44
-[1m[92m  Downloaded[0m web-sys v0.3.103
+[1m[92m  Downloaded[0m sqlx v0.8.6
+[1m[92m  Downloaded[0m wyz v0.5.1
+[1m[92m  Downloaded[0m itertools v0.14.0
+[1m[92m  Downloaded[0m itoa v1.0.18
 [1m[92m  Downloaded[0m libc v0.2.186
-[1m[92m  Downloaded[0m encoding_rs v0.8.35
+[1m[92m  Downloaded[0m tracing-subscriber v0.3.23
+[1m[92m  Downloaded[0m http v1.4.2
+[1m[92m  Downloaded[0m icu_properties_data v2.2.0
+[1m[92m  Downloaded[0m lru-slab v0.1.2
+[1m[92m  Downloaded[0m memchr v2.8.3
+[1m[92m  Downloaded[0m syn v1.0.109
+[1m[92m  Downloaded[0m crossbeam-utils v0.8.22
+[1m[92m  Downloaded[0m flume v0.11.1
+[1m[92m  Downloaded[0m stable_deref_trait v1.2.1
+[1m[92m  Downloaded[0m wasm-bindgen-macro-support v0.2.126
+[1m[92m  Downloaded[0m darling v0.20.11
+[1m[92m  Downloaded[0m lazy_static v1.5.0
+[1m[92m  Downloaded[0m mac_address v1.1.8
+[1m[92m  Downloaded[0m regex-automata v0.4.15
+[1m[92m  Downloaded[0m http-body v1.0.1
+[1m[92m  Downloaded[0m zerocopy v0.8.54
+[1m[92m  Downloaded[0m icu_normalizer_data v2.2.0
+[1m[92m  Downloaded[0m const_format v0.2.36
+[1m[92m  Downloaded[0m web-sys v0.3.103
+[1m[92m  Downloaded[0m zeroize v1.9.0
+[1m[92m  Downloaded[0m idna v1.1.0
+[1m[92m  Downloaded[0m webpki-roots v1.0.8
+[1m[92m  Downloaded[0m zerofrom v0.1.8
+[1m[92m  Downloaded[0m syn v2.0.118
+[1m[92m  Downloaded[0m wasm-bindgen-futures v0.4.76
+[1m[92m  Downloaded[0m tokio v1.52.3
+[1m[92m  Downloaded[0m sea-bae v0.2.1
+[1m[92m  Downloaded[0m ring v0.17.14
+[1m[92m  Downloaded[0m digest v0.11.3
+[1m[92m  Downloaded[0m block-buffer v0.10.4
 [1m[92m  Downloaded[0m linux-raw-sys v0.4.15
+[1m[92m  Downloaded[0m procfs v0.17.0
 [1m[92m  Downloaded[0m linux-raw-sys v0.12.1
+[1m[92m  Downloaded[0m sea-schema v0.16.2
+[1m[92m  Downloaded[0m sea-orm v1.1.20
+[1m[92m  Downloaded[0m der v0.7.10
 [1m[92m  Downloaded[0m libsqlite3-sys v0.30.1
+[1m[92m  Downloaded[0m wasm-bindgen v0.2.126
+[1m[92m  Downloaded[0m darling_macro v0.20.11
+[1m[92m  Downloaded[0m rustix v1.1.4
+[1m[92m  Downloaded[0m sqlx-postgres v0.8.6
+[1m[92m  Downloaded[0m syn_derive v0.2.0
+[1m[92m  Downloaded[0m slotmap v1.1.1
+[1m[92m  Downloaded[0m glob v0.3.3
+[1m[92m  Downloaded[0m num-bigint v0.4.8
+[1m[92m  Downloaded[0m konst v0.2.20
+[1m[92m  Downloaded[0m winnow v1.0.3
+[1m[92m  Downloaded[0m futures-macro v0.3.32
+[1m[92m  Downloaded[0m tracing-core v0.1.36
+[1m[92m  Downloaded[0m webpki-roots v0.26.11
+[1m[92m  Downloaded[0m throw_error v0.3.1
+[1m[92m  Downloaded[0m xxhash-rust v0.8.16
+[1m[92m  Downloaded[0m matchers v0.2.0
+[1m[92m  Downloaded[0m tracing-log v0.2.0
+[1m[92m  Downloaded[0m hashbrown v0.17.1
+[1m[92m  Downloaded[0m js-sys v0.3.103
+[1m[92m  Downloaded[0m leptos_macro v0.8.17
+[1m[92m  Downloaded[0m serde_spanned v1.1.1
+[1m[92m  Downloaded[0m ident_case v1.0.1
+[1m[92m  Downloaded[0m http-body-util v0.1.3
+[1m[92m  Downloaded[0m guardian v1.3.0
+[1m[92m  Downloaded[0m manyhow v0.11.4
+[1m[92m  Downloaded[0m signature v2.2.0
+[1m[92m  Downloaded[0m tinystr v0.8.3
+[1m[92m  Downloaded[0m rand_core v0.6.4
 [1m[92m  Downloaded[0m aws-lc-sys v0.42.0
+[1m[92m  Downloaded[0m sqlx-core v0.8.6
+[1m[92m  Downloaded[0m regex v1.13.0
+[1m[92m  Downloaded[0m num-traits v0.2.19
 [1m[92m   Compiling[0m proc-macro2 v1.0.106
 [1m[92m   Compiling[0m quote v1.0.46
 [1m[92m   Compiling[0m unicode-ident v1.0.24
@@ -458,56 +446,59 @@
 [1m[92m   Compiling[0m libc v0.2.186
 [1m[92m    Checking[0m cfg-if v1.0.4
 [1m[92m   Compiling[0m serde v1.0.228
-[1m[92m    Checking[0m pin-project-lite v0.2.17
 [1m[92m    Checking[0m memchr v2.8.3
+[1m[92m    Checking[0m pin-project-lite v0.2.17
 [1m[92m    Checking[0m once_cell v1.21.4
 [1m[92m    Checking[0m futures-core v0.3.32
 [1m[92m    Checking[0m futures-sink v0.3.32
 [1m[92m   Compiling[0m version_check v0.9.5
 [1m[92m   Compiling[0m syn v2.0.118
 [1m[92m    Checking[0m itoa v1.0.18
-[1m[92m    Checking[0m slab v0.4.12
 [1m[92m   Compiling[0m thiserror v2.0.18
+[1m[92m    Checking[0m slab v0.4.12
 [1m[92m    Checking[0m futures-channel v0.3.32
 [1m[92m    Checking[0m futures-io v0.3.32
 [1m[92m    Checking[0m futures-task v0.3.32
 [1m[92m    Checking[0m bytes v1.12.1
 [1m[92m    Checking[0m equivalent v1.0.2
 [1m[92m    Checking[0m scopeguard v1.2.0
-[1m[92m    Checking[0m lock_api v0.4.14
 [1m[92m    Checking[0m hashbrown v0.17.1
+[1m[92m    Checking[0m lock_api v0.4.14
 [1m[92m   Compiling[0m parking_lot_core v0.9.12
 [1m[92m   Compiling[0m zmij v1.0.22
 [1m[92m   Compiling[0m serde_json v1.0.150
 [1m[92m    Checking[0m indexmap v2.14.0
-[1m[92m    Checking[0m stable_deref_trait v1.2.1
 [1m[92m   Compiling[0m jobserver v0.1.35
-[1m[92m    Checking[0m tracing-core v0.1.36
-[1m[92m    Checking[0m log v0.4.33
-[1m[92m    Checking[0m percent-encoding v2.3.2
-[1m[92m   Compiling[0m find-msvc-tools v0.1.9
+[1m[92m    Checking[0m stable_deref_trait v1.2.1
 [1m[92m   Compiling[0m shlex v2.0.1
-[1m[92m    Checking[0m errno v0.3.14
+[1m[92m   Compiling[0m find-msvc-tools v0.1.9
+[1m[92m    Checking[0m tracing-core v0.1.36
 [1m[92m   Compiling[0m cc v1.2.67
-[1m[92m    Checking[0m signal-hook-registry v1.4.8
+[1m[92m    Checking[0m percent-encoding v2.3.2
+[1m[92m    Checking[0m log v0.4.33
+[1m[92m    Checking[0m errno v0.3.14
 [1m[92m    Checking[0m socket2 v0.6.4
+[1m[92m    Checking[0m signal-hook-registry v1.4.8
 [1m[92m    Checking[0m mio v1.2.1
-[1m[92m   Compiling[0m synstructure v0.13.2
 [1m[92m   Compiling[0m generic-array v0.14.7
 [1m[92m   Compiling[0m pkg-config v0.3.33
+[1m[92m   Compiling[0m synstructure v0.13.2
+[1m[92m    Checking[0m base64 v0.22.1
 [1m[92m    Checking[0m litemap v0.8.2
 [1m[92m    Checking[0m writeable v0.6.3
-[1m[92m   Compiling[0m icu_properties_data v2.2.0
-[1m[92m    Checking[0m base64 v0.22.1
-[1m[92m   Compiling[0m icu_normalizer_data v2.2.0
 [1m[92m   Compiling[0m crossbeam-utils v0.8.22
+[1m[92m   Compiling[0m icu_properties_data v2.2.0
 [1m[92m    Checking[0m utf8_iter v1.0.4
-[1m[92m   Compiling[0m autocfg v1.5.1
+[1m[92m   Compiling[0m icu_normalizer_data v2.2.0
 [1m[92m   Compiling[0m cmake v0.1.58
+[1m[92m   Compiling[0m autocfg v1.5.1
 [1m[92m   Compiling[0m fs_extra v1.3.0
 [1m[92m   Compiling[0m dunce v1.0.5
 [1m[92m    Checking[0m http v1.4.2
 [1m[92m    Checking[0m zeroize v1.9.0
+[1m[92m   Compiling[0m aws-lc-sys v0.42.0
+[1m[92m    Checking[0m getrandom v0.2.17
+[1m[92m    Checking[0m typenum v1.20.1
 [1m[92m   Compiling[0m serde_derive v1.0.228
 [1m[92m   Compiling[0m thiserror-impl v2.0.18
 [1m[92m   Compiling[0m futures-macro v0.3.32
@@ -517,212 +508,200 @@
 [1m[92m    Checking[0m zerofrom v0.1.8
 [1m[92m   Compiling[0m zerovec-derive v0.11.3
 [1m[92m    Checking[0m yoke v0.8.3
-[1m[92m   Compiling[0m tokio-macros v2.7.0
-[1m[92m    Checking[0m zerovec v0.11.6
 [1m[92m   Compiling[0m tracing-attributes v0.1.31
+[1m[92m    Checking[0m zerovec v0.11.6
+[1m[92m    Checking[0m smallvec v1.15.2
 [1m[92m   Compiling[0m displaydoc v0.2.6
+[1m[92m   Compiling[0m tokio-macros v2.7.0
+[1m[92m    Checking[0m tracing v0.1.44
+[1m[92m    Checking[0m parking_lot v0.12.5
 [1m[92m    Checking[0m potential_utf v0.1.5
 [1m[92m    Checking[0m futures-executor v0.3.32
-[1m[92m    Checking[0m smallvec v1.15.2
-[1m[92m   Compiling[0m aws-lc-sys v0.42.0
-[1m[92m    Checking[0m parking_lot v0.12.5
+[1m[92m    Checking[0m subtle v2.6.1
 [1m[92m    Checking[0m tinystr v0.8.3
+[1m[92m    Checking[0m zerotrie v0.2.4
 [1m[92m    Checking[0m icu_locale_core v2.2.0
 [1m[92m    Checking[0m tokio v1.52.3
-[1m[92m    Checking[0m tracing v0.1.44
-[1m[92m    Checking[0m zerotrie v0.2.4
 [1m[92m    Checking[0m icu_collections v2.2.0
+[1m[92m    Checking[0m rustls-pki-types v1.15.0
 [1m[92m    Checking[0m icu_provider v2.2.0
 [1m[92m   Compiling[0m num-traits v0.2.19
-[1m[92m    Checking[0m icu_properties v2.2.0
-[1m[92m    Checking[0m icu_normalizer v2.2.0
-[1m[92m    Checking[0m form_urlencoded v1.2.2
-[1m[92m    Checking[0m getrandom v0.2.17
-[1m[92m    Checking[0m subtle v2.6.1
-[1m[92m    Checking[0m typenum v1.20.1
-[1m[92m    Checking[0m idna_adapter v1.2.2
-[1m[92m    Checking[0m idna v1.1.0
-[1m[92m    Checking[0m rustls-pki-types v1.15.0
 [1m[92m   Compiling[0m ring v0.17.14
-[1m[92m    Checking[0m bitflags v2.13.0
-[1m[92m    Checking[0m rand_core v0.10.1
+[1m[92m    Checking[0m icu_normalizer v2.2.0
+[1m[92m    Checking[0m icu_properties v2.2.0
+[1m[92m    Checking[0m form_urlencoded v1.2.2
 [1m[92m   Compiling[0m semver v1.0.28
+[1m[92m    Checking[0m rand_core v0.10.1
 [1m[92m   Compiling[0m aws-lc-rs v1.17.1
 [1m[92m   Compiling[0m getrandom v0.4.3
+[1m[92m    Checking[0m idna_adapter v1.2.2
+[1m[92m    Checking[0m bitflags v2.13.0
+[1m[92m    Checking[0m idna v1.1.0
 [1m[92m   Compiling[0m rustc_version v0.4.1
-[1m[92m    Checking[0m url v2.5.8
 [1m[92m    Checking[0m concurrent-queue v2.5.0
+[1m[92m    Checking[0m parking v2.2.1
 [1m[92m   Compiling[0m zerocopy v0.8.54
 [1m[92m   Compiling[0m wasm-bindgen-shared v0.2.126
-[1m[92m    Checking[0m parking v2.2.1
 [1m[92m    Checking[0m event-listener v5.4.1
+[1m[92m    Checking[0m url v2.5.8
 [1m[92m   Compiling[0m proc-macro-error-attr2 v2.0.0
 [1m[92m    Checking[0m untrusted v0.9.0
 [1m[92m   Compiling[0m proc-macro-error2 v2.0.1
 [1m[92m    Checking[0m fnv v1.0.7
-[1m[92m   Compiling[0m rustversion v1.0.23
-[1m[92m   Compiling[0m anyhow v1.0.103
 [1m[92m   Compiling[0m rustls v0.23.41
+[1m[92m   Compiling[0m anyhow v1.0.103
+[1m[92m   Compiling[0m rustversion v1.0.23
 [1m[92m   Compiling[0m async-trait v0.1.89
 [1m[92m    Checking[0m tokio-stream v0.1.18
 [1m[92m    Checking[0m tokio-util v0.7.18
-[1m[92m    Checking[0m ppv-lite86 v0.2.21
 [1m[92m    Checking[0m either v1.16.0
+[1m[92m    Checking[0m ppv-lite86 v0.2.21
 [1m[92m   Compiling[0m bumpalo v3.20.3
-[1m[92m   Compiling[0m wasm-bindgen v0.2.126
 [1m[92m   Compiling[0m wasm-bindgen-macro-support v0.2.126
+[1m[92m   Compiling[0m wasm-bindgen v0.2.126
 [1m[92m    Checking[0m http-body v1.0.1
-[1m[92m    Checking[0m regex-syntax v0.8.11
 [1m[92m   Compiling[0m httparse v1.10.1
 [1m[92m   Compiling[0m unicode-xid v0.2.6
 [1m[92m   Compiling[0m pin-project-internal v1.1.13
-[1m[92m    Checking[0m try-lock v0.2.5
-[1m[92m    Checking[0m tower-service v0.3.3
 [1m[92m    Checking[0m atomic-waker v1.1.2
-[1m[92m    Checking[0m h2 v0.4.15
+[1m[92m    Checking[0m tower-service v0.3.3
+[1m[92m    Checking[0m try-lock v0.2.5
+[1m[92m    Checking[0m regex-syntax v0.8.11
 [1m[92m    Checking[0m pin-project v1.1.13
 [1m[92m    Checking[0m want v0.3.1
+[1m[92m    Checking[0m h2 v0.4.15
 [1m[92m   Compiling[0m itertools v0.14.0
 [1m[92m   Compiling[0m wasm-bindgen-macro v0.2.126
 [1m[92m    Checking[0m crypto-common v0.1.7
 [1m[92m    Checking[0m block-buffer v0.10.4
 [1m[92m    Checking[0m futures v0.3.32
-[1m[92m    Checking[0m aho-corasick v1.1.4
-[1m[92m   Compiling[0m thiserror v1.0.69
 [1m[92m   Compiling[0m getrandom v0.3.4
+[1m[92m   Compiling[0m thiserror v1.0.69
 [1m[92m    Checking[0m ryu v1.0.23
-[1m[92m    Checking[0m js-sys v0.3.103
-[1m[92m    Checking[0m regex-automata v0.4.15
-[1m[92m    Checking[0m hyper v1.10.1
 [1m[92m    Checking[0m digest v0.10.7
+[1m[92m    Checking[0m js-sys v0.3.103
+[1m[92m    Checking[0m hyper v1.10.1
 [1m[92m    Checking[0m uuid v1.23.5
 [1m[92m   Compiling[0m thiserror-impl v1.0.69
 [1m[92m   Compiling[0m proc-macro2-diagnostics v0.10.1
-[1m[92m    Checking[0m iana-time-zone v0.1.65
-[1m[92m    Checking[0m ipnet v2.12.0
+[1m[92m    Checking[0m aho-corasick v1.1.4
 [1m[92m   Compiling[0m libm v0.2.16
+[1m[92m    Checking[0m ipnet v2.12.0
 [1m[92m    Checking[0m hex v0.4.3
 [1m[92m    Checking[0m hyper-util v0.1.20
-[1m[92m    Checking[0m chrono v0.4.45
+[1m[92m    Checking[0m regex-automata v0.4.15
 [1m[92m    Checking[0m serde_urlencoded v0.7.1
 [1m[92m    Checking[0m num-integer v0.1.46
 [1m[92m   Compiling[0m bigdecimal v0.4.10
 [1m[92m    Checking[0m sync_wrapper v1.0.2
-[1m[92m   Compiling[0m rust_decimal v1.42.1
 [1m[92m   Compiling[0m time-core v0.1.9
+[1m[92m    Checking[0m iana-time-zone v0.1.65
+[1m[92m   Compiling[0m rust_decimal v1.42.1
 [1m[92m   Compiling[0m num-conv v0.2.2
-[1m[92m   Compiling[0m heck v0.4.1
-[1m[92m    Checking[0m tower-layer v0.3.3
 [1m[92m   Compiling[0m yansi v1.0.1
+[1m[92m    Checking[0m tower-layer v0.3.3
+[1m[92m   Compiling[0m heck v0.4.1
 [1m[92m    Checking[0m tower v0.5.3
 [1m[92m   Compiling[0m time-macros v0.2.31
+[1m[92m    Checking[0m chrono v0.4.45
 [1m[92m    Checking[0m num-bigint v0.4.8
 [1m[92m    Checking[0m rand_core v0.9.5
 [1m[92m    Checking[0m event-listener-strategy v0.5.4
 [1m[92m    Checking[0m deranged v0.5.8
-[1m[92m    Checking[0m foldhash v0.1.5
-[1m[92m    Checking[0m arrayvec v0.7.8
+[1m[92m   Compiling[0m unicode-segmentation v1.13.3
 [1m[92m    Checking[0m powerfmt v0.2.0
 [1m[92m    Checking[0m allocator-api2 v0.2.21
-[1m[92m   Compiling[0m unicode-segmentation v1.13.3
+[1m[92m    Checking[0m arrayvec v0.7.8
+[1m[92m    Checking[0m foldhash v0.1.5
+[1m[92m    Checking[0m time v0.3.53
 [1m[92m    Checking[0m hashbrown v0.15.5
 [1m[92m   Compiling[0m convert_case v0.11.0
-[1m[92m    Checking[0m time v0.3.53
 [1m[92m    Checking[0m async-lock v3.4.2
 [1m[92m    Checking[0m http-body-util v0.1.3
 [1m[92m    Checking[0m webpki-roots v1.0.8
-[1m[92m    Checking[0m cpufeatures v0.2.17
-[1m[92m   Compiling[0m ident_case v1.0.1
-[1m[92m   Compiling[0m vcpkg v0.2.15
 [1m[92m    Checking[0m crc-catalog v2.5.0
 [1m[92m    Checking[0m tinyvec_macros v0.1.1
+[1m[92m   Compiling[0m vcpkg v0.2.15
+[1m[92m    Checking[0m cpufeatures v0.2.17
+[1m[92m   Compiling[0m ident_case v1.0.1
+[1m[92m   Compiling[0m darling_core v0.20.11
+[1m[92m   Compiling[0m libsqlite3-sys v0.30.1
+[1m[92m    Checking[0m sha2 v0.10.9
 [1m[92m    Checking[0m tinyvec v1.12.0
 [1m[92m    Checking[0m crc v3.4.0
-[1m[92m   Compiling[0m libsqlite3-sys v0.30.1
-[1m[92m   Compiling[0m darling_core v0.20.11
 [1m[92m    Checking[0m webpki-roots v0.26.11
-[1m[92m    Checking[0m sha2 v0.10.9
 [1m[92m    Checking[0m hashlink v0.10.0
 [1m[92m    Checking[0m rand_chacha v0.9.0
 [1m[92m    Checking[0m wasm-bindgen-futures v0.4.76
 [1m[92m   Compiling[0m prost-derive v0.14.4
-[1m[92m    Checking[0m rand_core v0.6.4
 [1m[92m    Checking[0m futures-intrusive v0.5.0
+[1m[92m    Checking[0m rand_core v0.6.4
 [1m[92m    Checking[0m crossbeam-queue v0.3.13
-[1m[92m    Checking[0m lazy_static v1.5.0
 [1m[92m    Checking[0m rand_chacha v0.3.1
 [1m[92m    Checking[0m rand v0.9.5
-[1m[92m    Checking[0m prost v0.14.4
 [1m[92m    Checking[0m unicode-normalization v0.1.25
 [1m[92m   Compiling[0m darling_macro v0.20.11
+[1m[92m    Checking[0m prost v0.14.4
 [1m[92m    Checking[0m hyper-timeout v0.5.2
 [1m[92m    Checking[0m hmac v0.12.1
 [1m[92m    Checking[0m atoi v2.0.0
 [1m[92m    Checking[0m opentelemetry v0.32.0
 [1m[92m    Checking[0m spin v0.9.8
 [1m[92m    Checking[0m openssl-probe v0.2.1
-[1m[92m    Checking[0m or_poisoned v0.1.0
 [1m[92m    Checking[0m winnow v1.0.3
-[1m[92m    Checking[0m unicode-properties v0.1.4
+[1m[92m    Checking[0m lazy_static v1.5.0
 [1m[92m   Compiling[0m paste v1.0.15
-[1m[92m    Checking[0m dotenvy v0.15.7
+[1m[92m    Checking[0m unicode-properties v0.1.4
 [1m[92m    Checking[0m unicode-bidi v0.3.18
-[1m[92m    Checking[0m toml_parser v1.1.2+spec-1.1.0
+[1m[92m    Checking[0m or_poisoned v0.1.0
 [1m[92m    Checking[0m stringprep v0.1.5
-[1m[92m   Compiling[0m proc-macro-utils v0.10.0
+[1m[92m    Checking[0m toml_parser v1.1.2+spec-1.1.0
 [1m[92m    Checking[0m rustls-native-certs v0.8.4
+[1m[92m   Compiling[0m proc-macro-utils v0.10.0
 [1m[92m    Checking[0m flume v0.11.1
 [1m[92m    Checking[0m tonic v0.14.6
 [1m[92m    Checking[0m hkdf v0.12.4
 [1m[92m   Compiling[0m darling v0.20.11
 [1m[92m    Checking[0m rand v0.8.7
-[1m[92m    Checking[0m sharded-slab v0.1.7
 [1m[92m    Checking[0m web-sys v0.3.103
-[1m[92m    Checking[0m regex v1.13.0
-[1m[92m    Checking[0m matchers v0.2.0
 [1m[92m    Checking[0m md-5 v0.10.6
 [1m[92m   Compiling[0m const_format_proc_macros v0.2.34
-[1m[92m    Checking[0m tracing-serde v0.2.0
-[1m[92m    Checking[0m tracing-log v0.2.0
 [1m[92m    Checking[0m serde_spanned v1.1.1
 [1m[92m    Checking[0m toml_datetime v1.1.1+spec-1.1.0
 [1m[92m   Compiling[0m slotmap v1.1.1
 [1m[92m    Checking[0m throw_error v0.3.1
-[1m[92m    Checking[0m thread_local v1.1.10
-[1m[92m    Checking[0m home v0.5.12
-[1m[92m   Compiling[0m heck v0.5.0
 [1m[92m    Checking[0m toml_writer v1.1.1+spec-1.1.0
 [1m[92m   Compiling[0m rustix v0.38.44
-[1m[92m    Checking[0m byteorder v1.5.0
-[1m[92m    Checking[0m nu-ansi-term v0.50.3
-[1m[92m    Checking[0m utf8parse v0.2.2
-[1m[92m    Checking[0m whoami v1.6.1
-[1m[92m    Checking[0m cpufeatures v0.3.0
 [1m[92m   Compiling[0m konst_macro_rules v0.2.19
+[1m[92m    Checking[0m cpufeatures v0.3.0
+[1m[92m    Checking[0m byteorder v1.5.0
+[1m[92m    Checking[0m home v0.5.12
+[1m[92m    Checking[0m whoami v1.6.1
+[1m[92m    Checking[0m dotenvy v0.15.7
 [1m[92m   Compiling[0m konst v0.2.20
-[1m[92m    Checking[0m anstyle-parse v1.0.0
-[1m[92m    Checking[0m tracing-subscriber v0.3.23
 [1m[92m    Checking[0m toml v1.1.2+spec-1.1.0
 [1m[92m   Compiling[0m sea-query-derive v0.4.3
+[1m[92m    Checking[0m sharded-slab v0.1.7
 [1m[92m    Checking[0m tower-http v0.6.11
+[1m[92m    Checking[0m matchers v0.2.0
 [1m[92m    Checking[0m ordered-float v4.6.0
-[1m[92m   Compiling[0m server_fn_macro v0.8.10
 [1m[92m   Compiling[0m reactive_graph v0.2.14
+[1m[92m   Compiling[0m server_fn_macro v0.8.10
+[1m[92m    Checking[0m tracing-serde v0.2.0
 [1m[92m    Checking[0m hybrid-array v0.4.13
-[1m[92m   Compiling[0m inherent v1.0.13
 [1m[92m   Compiling[0m derive-where v1.6.1
+[1m[92m   Compiling[0m inherent v1.0.13
+[1m[92m    Checking[0m tracing-log v0.2.0
 [1m[92m    Checking[0m send_wrapper v0.6.0
 [1m[92m    Checking[0m encoding_rs v0.8.35
-[1m[92m    Checking[0m linux-raw-sys v0.4.15
-[1m[92m    Checking[0m anstyle-query v1.1.5
+[1m[92m    Checking[0m thread_local v1.1.10
 [1m[92m   Compiling[0m protobuf v3.7.2
-[1m[92m    Checking[0m is_terminal_polyfill v1.70.2
-[1m[92m    Checking[0m mime v0.3.17
-[1m[92m    Checking[0m anstyle v1.0.14
-[1m[92m    Checking[0m colorchoice v1.0.5
+[1m[92m    Checking[0m nu-ansi-term v0.50.3
+[1m[92m    Checking[0m linux-raw-sys v0.4.15
 [1m[92m   Compiling[0m camino v1.2.4
+[1m[92m    Checking[0m mime v0.3.17
 [1m[92m   Compiling[0m procfs v0.17.0
-[1m[92m    Checking[0m anstream v1.0.0
+[1m[92m    Checking[0m tracing-subscriber v0.3.23
 [1m[92m    Checking[0m sea-query v0.32.7
 [1m[92m   Compiling[0m const_format v0.2.36
 [1m[92m    Checking[0m hydration_context v0.3.1
@@ -730,24 +709,21 @@
 [1m[92m    Checking[0m opentelemetry_sdk v0.32.1
 [1m[92m    Checking[0m prost-types v0.14.4
 [1m[92m    Checking[0m any_spawner v0.3.0
+[1m[92m    Checking[0m regex v1.13.0
 [1m[92m    Checking[0m protobuf-support v3.7.2
 [1m[92m    Checking[0m procfs-core v0.17.0
 [1m[92m   Compiling[0m syn_derive v0.2.0
-[1m[92m   Compiling[0m xxhash-rust v0.8.16
-[1m[92m    Checking[0m strsim v0.11.1
 [1m[92m    Checking[0m guardian v1.3.0
-[1m[92m    Checking[0m clap_lex v1.1.0
-[1m[92m    Checking[0m rustc-hash v2.1.3
 [1m[92m   Compiling[0m prometheus v0.14.0
-[1m[92m    Checking[0m clap_builder v4.6.0
+[1m[92m    Checking[0m rustc-hash v2.1.3
+[1m[92m   Compiling[0m xxhash-rust v0.8.16
 [1m[92m    Checking[0m opentelemetry-proto v0.32.0
 [1m[92m    Checking[0m tonic-types v0.14.6
 [1m[92m    Checking[0m crypto-common v0.2.2
 [1m[92m    Checking[0m block-buffer v0.12.1
 [1m[92m    Checking[0m chacha20 v0.10.1
-[1m[92m   Compiling[0m clap_derive v4.6.1
-[1m[92m   Compiling[0m quote-use-macros v0.8.4
 [1m[92m   Compiling[0m manyhow-macros v0.11.4
+[1m[92m   Compiling[0m quote-use-macros v0.8.4
 [1m[92m   Compiling[0m reactive_stores_macro v0.4.3
 [1m[92m   Compiling[0m ouroboros_macro v0.18.5
 [1m[92m   Compiling[0m sea-bae v0.2.1
@@ -755,43 +731,41 @@
 [1m[92m   Compiling[0m tachys v0.2.18
 [1m[92m    Checking[0m fly v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly)
 [1m[92m   Compiling[0m async-stream-impl v0.3.6
-[1m[92m   Compiling[0m crossbeam-epoch v0.9.20
-[1m[92m   Compiling[0m portable-atomic v1.13.1
-[1m[92m    Checking[0m aliasable v0.1.3
-[1m[92m   Compiling[0m prettyplease v0.2.37
 [1m[92m    Checking[0m static_assertions v1.1.0
+[1m[92m   Compiling[0m prettyplease v0.2.37
+[1m[92m   Compiling[0m portable-atomic v1.13.1
+[1m[92m   Compiling[0m heck v0.5.0
 [1m[92m    Checking[0m const-oid v0.10.2
-[1m[92m    Checking[0m digest v0.11.3
+[1m[92m   Compiling[0m crossbeam-epoch v0.9.20
+[1m[92m    Checking[0m aliasable v0.1.3
 [1m[92m    Checking[0m ouroboros v0.18.5
-[1m[92m    Checking[0m async-stream v0.3.6
-[1m[92m    Checking[0m reactive_stores v0.4.3
-[1m[92m    Checking[0m derive_more v2.1.1
+[1m[92m    Checking[0m digest v0.11.3
 [1m[92m   Compiling[0m sea-orm-macros v1.1.20
-[1m[92m    Checking[0m clap v4.6.1
-[1m[92m   Compiling[0m manyhow v0.11.4
+[1m[92m    Checking[0m reactive_stores v0.4.3
+[1m[92m    Checking[0m async-stream v0.3.6
+[1m[92m    Checking[0m derive_more v2.1.1
 [1m[92m   Compiling[0m quote-use v0.8.4
+[1m[92m   Compiling[0m manyhow v0.11.4
 [1m[92m    Checking[0m rand v0.10.2
 [1m[92m    Checking[0m gloo-utils v0.2.0
-[1m[92m    Checking[0m either_of v0.1.9
 [1m[92m    Checking[0m tracing-opentelemetry v0.33.0
+[1m[92m    Checking[0m either_of v0.1.9
 [1m[92m   Compiling[0m sea-schema-derive v0.3.0
 [1m[92m   Compiling[0m server_fn v0.8.13
 [1m[92m    Checking[0m oco_ref v0.2.1
-[1m[92m    Checking[0m glob v0.3.3
-[1m[92m   Compiling[0m rustix v1.1.4
-[1m[92m   Compiling[0m interpolator v0.5.0
-[1m[92m   Compiling[0m collection_literals v1.0.3
-[1m[92m    Checking[0m next_tuple v0.1.0
 [1m[92m    Checking[0m strum v0.26.3
 [1m[92m    Checking[0m erased v0.1.2
-[1m[92m   Compiling[0m same-file v1.0.6
-[1m[92m    Checking[0m drain_filter_polyfill v0.1.3
-[1m[92m    Checking[0m html-escape v0.2.14
 [1m[92m    Checking[0m const_str_slice_concat v0.1.0
-[1m[92m   Compiling[0m walkdir v2.5.0
-[1m[92m   Compiling[0m attribute-derive-macro v0.10.5
+[1m[92m   Compiling[0m same-file v1.0.6
+[1m[92m   Compiling[0m interpolator v0.5.0
+[1m[92m    Checking[0m drain_filter_polyfill v0.1.3
+[1m[92m   Compiling[0m rustix v1.1.4
+[1m[92m    Checking[0m next_tuple v0.1.0
+[1m[92m   Compiling[0m collection_literals v1.0.3
+[1m[92m    Checking[0m html-escape v0.2.14
 [1m[92m    Checking[0m convert_case v0.6.0
-[1m[92m    Checking[0m sea-orm-cli v1.1.20
+[1m[92m   Compiling[0m attribute-derive-macro v0.10.5
+[1m[92m   Compiling[0m walkdir v2.5.0
 [1m[92m    Checking[0m gloo-net v0.6.0
 [1m[92m    Checking[0m ulid v2.0.1
 [1m[92m    Checking[0m sha2 v0.11.0
@@ -800,23 +774,23 @@
 [1m[92m    Checking[0m wasm-streams v0.5.0
 [1m[92m   Compiling[0m leptos_macro v0.8.17
 [1m[92m    Checking[0m serde_qs v0.15.0
-[1m[92m   Compiling[0m utoipa-gen v5.5.0
 [1m[92m   Compiling[0m typed-builder-macro v0.23.2
+[1m[92m   Compiling[0m utoipa-gen v5.5.0
 [1m[92m    Checking[0m crossbeam-channel v0.5.16
+[1m[92m    Checking[0m const-str v1.1.0
 [1m[92m    Checking[0m tagptr v0.2.0
-[1m[92m    Checking[0m unsafe-libyaml v0.2.11
 [1m[92m    Checking[0m linux-raw-sys v0.12.1
+[1m[92m    Checking[0m v_escape-base v0.1.0
+[1m[92m    Checking[0m unsafe-libyaml v0.2.11
+[1m[92m    Checking[0m pathdiff v0.2.3
 [1m[92m   Compiling[0m base16 v0.2.1
 [1m[92m    Checking[0m inventory v0.3.24
-[1m[92m    Checking[0m v_escape-base v0.1.0
-[1m[92m    Checking[0m pathdiff v0.2.3
-[1m[92m    Checking[0m const-str v1.1.0
 [1m[92m   Compiling[0m leptos_hot_reload v0.8.6
+[1m[92m   Compiling[0m wasm_split_macros v0.2.2
 [1m[92m    Checking[0m config v0.15.25
+[1m[92m    Checking[0m serde_yaml v0.9.34+deprecated
 [1m[92m    Checking[0m utoipa v5.5.0
 [1m[92m    Checking[0m v_htmlescape v0.17.0
-[1m[92m   Compiling[0m wasm_split_macros v0.2.2
-[1m[92m    Checking[0m serde_yaml v0.9.34+deprecated
 [1m[92m    Checking[0m moka v0.12.15
 [1m[92m    Checking[0m typed-builder v0.23.2
 [1m[92m    Checking[0m rustok-api v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-api)
@@ -825,23 +799,24 @@
 [1m[92m   Compiling[0m leptos v0.8.20
 [1m[92m    Checking[0m email_address v0.2.9
 [1m[92m    Checking[0m codee v0.3.5
-[1m[92m    Checking[0m fastrand v2.4.1
 [1m[92m    Checking[0m async-once-cell v0.5.4
-[1m[92m    Checking[0m tempfile v3.27.0
+[1m[92m    Checking[0m fastrand v2.4.1
 [1m[92m    Checking[0m wasm_split_helpers v0.2.3
 [1m[92m    Checking[0m leptos_server v0.8.7
-[1m[92m    Checking[0m leptos_config v0.8.10
+[1m[92m    Checking[0m tempfile v3.27.0
 [1m[92m    Checking[0m leptos_dom v0.8.8
+[1m[92m    Checking[0m leptos_config v0.8.10
 [1m[92m    Checking[0m wait-timeout v0.2.1
-[1m[92m    Checking[0m quick-error v1.2.3
 [1m[92m    Checking[0m bit-vec v0.8.0
+[1m[92m    Checking[0m quick-error v1.2.3
 [1m[92m    Checking[0m rusty-fork v0.3.1
-[1m[92m    Checking[0m fly-ui v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-ui)
 [1m[92m    Checking[0m bit-set v0.8.0
+[1m[92m    Checking[0m fly-ui v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-ui)
 [1m[92m    Checking[0m rand_xorshift v0.4.0
 [1m[92m    Checking[0m unarray v0.1.4
 [1m[92m    Checking[0m proptest v1.11.0
 [1m[92m    Checking[0m fly-leptos v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-leptos)
+[1m[92m    Checking[0m fly-browser v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-browser)
 [1m[92m    Checking[0m rustls-webpki v0.103.13
 [1m[92m    Checking[0m sqlx-core v0.8.6
 [1m[92m    Checking[0m tokio-rustls v0.26.4
@@ -850,545 +825,599 @@
 [1m[92m    Checking[0m reqwest v0.13.4
 [1m[92m    Checking[0m opentelemetry-http v0.32.0
 [1m[92m    Checking[0m opentelemetry-otlp v0.32.0
-[1m[92m    Checking[0m sqlx-postgres v0.8.6
 [1m[92m    Checking[0m sqlx-sqlite v0.8.6
+[1m[92m    Checking[0m sqlx-postgres v0.8.6
 [1m[92m    Checking[0m rustok-telemetry v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-telemetry)
 [1m[92m    Checking[0m rustok-events v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-events)
 [1m[92m    Checking[0m sqlx v0.8.6
 [1m[92m    Checking[0m sea-query-binder v0.7.0
-[1m[92m    Checking[0m sea-schema v0.16.2
 [1m[92m    Checking[0m sea-orm v1.1.20
+[1m[92m    Checking[0m sea-schema v0.16.2
 [1m[92m    Checking[0m sea-orm-migration v1.1.20
 [1m[92m    Checking[0m rustok-core v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-core)
 [1m[92m    Checking[0m rustok-page-builder v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-page-builder)
-[1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 1m 46s
+[1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 1m 38s
 [1m[33mwarning[0m: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
 [1m[92mnote[0m: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
-[1m[92m   Compiling[0m libc v0.2.186
-[1m[92m   Compiling[0m cfg-if v1.0.4
-[1m[92m   Compiling[0m proc-macro2 v1.0.106
-[1m[92m   Compiling[0m quote v1.0.46
+[1m[92m Downloading[0m crates ...
+[1m[92m  Downloaded[0m async-graphql-value v7.2.1
+[1m[92m  Downloaded[0m num-modular v0.6.4
+[1m[92m  Downloaded[0m ucd-trie v0.1.7
+[1m[92m  Downloaded[0m futures-lite v2.6.1
+[1m[92m  Downloaded[0m gloo-timers v0.4.0
+[1m[92m  Downloaded[0m http-range-header v0.4.2
+[1m[92m  Downloaded[0m serde_path_to_error v0.1.20
+[1m[92m  Downloaded[0m strum_macros v0.27.2
+[1m[92m  Downloaded[0m tungstenite v0.29.0
+[1m[92m  Downloaded[0m axum-core v0.5.6
+[1m[92m  Downloaded[0m mime_guess v2.0.5
+[1m[92m  Downloaded[0m pest_generator v2.8.7
+[1m[92m  Downloaded[0m data-encoding v2.11.0
+[1m[92m  Downloaded[0m async-graphql v7.2.1
+[1m[92m  Downloaded[0m async-io v2.6.0
+[1m[92m  Downloaded[0m darling v0.23.0
+[1m[92m  Downloaded[0m async-graphql-parser v7.2.1
+[1m[92m  Downloaded[0m leptos-use v0.19.0
+[1m[92m  Downloaded[0m leptos_axum v0.8.10
+[1m[92m  Downloaded[0m static_assertions_next v1.1.2
+[1m[92m  Downloaded[0m multer v3.1.0
+[1m[92m  Downloaded[0m handlebars v6.4.3
+[1m[92m  Downloaded[0m httpdate v1.0.3
+[1m[92m  Downloaded[0m derive_builder v0.20.2
+[1m[92m  Downloaded[0m matchit v0.8.4
+[1m[92m  Downloaded[0m derive_builder_core v0.20.2
+[1m[92m  Downloaded[0m darling_macro v0.23.0
+[1m[92m  Downloaded[0m asynk-strim v0.1.5
+[1m[92m  Downloaded[0m async-graphql-derive v7.2.1
+[1m[92m  Downloaded[0m strsim v0.11.1
+[1m[92m  Downloaded[0m strum v0.27.2
+[1m[92m  Downloaded[0m pest v2.8.7
+[1m[92m  Downloaded[0m unicase v2.9.0
+[1m[92m  Downloaded[0m cookie v0.18.1
+[1m[92m  Downloaded[0m num-order v1.2.0
+[1m[92m  Downloaded[0m axum v0.8.9
+[1m[92m  Downloaded[0m pest_derive v2.8.7
+[1m[92m  Downloaded[0m pest_meta v2.8.7
+[1m[92m  Downloaded[0m ascii_utils v0.9.3
+[1m[92m  Downloaded[0m tokio-tungstenite v0.29.0
+[1m[92m  Downloaded[0m polling v3.11.0
+[1m[92m  Downloaded[0m fast_chemail v0.9.6
+[1m[92m  Downloaded[0m Inflector v0.11.4
+[1m[92m  Downloaded[0m default-struct-builder v0.5.1
+[1m[92m  Downloaded[0m unic-langid v0.9.6
+[1m[92m  Downloaded[0m darling_core v0.23.0
+[1m[92m  Downloaded[0m unic-langid-impl v0.9.6
+[1m[92m  Downloaded[0m leptos_integration_utils v0.8.8
+[1m[92m  Downloaded[0m leptos_meta v0.8.6
+[1m[92m  Downloaded[0m leptos_router_macro v0.8.6
+[1m[92m  Downloaded[0m leptos_router v0.8.14
+[1m[92m  Downloaded[0m derive_builder_macro v0.20.2
+[1m[92m    Checking[0m futures-io v0.3.32
+[1m[92m    Checking[0m bytes v1.12.1
+[1m[92m   Compiling[0m serde_json v1.0.150
+[1m[92m    Checking[0m zerovec v0.11.6
+[1m[92m    Checking[0m futures-util v0.3.32
+[1m[92m    Checking[0m http v1.4.2
+[1m[92m    Checking[0m tokio v1.52.3
+[1m[92m   Compiling[0m serde_core v1.0.228
+[1m[92m    Checking[0m log v0.4.33
+[1m[92m    Checking[0m tinystr v0.8.3
+[1m[92m   Compiling[0m crossbeam-utils v0.8.22
+[1m[92m    Checking[0m smallvec v1.15.2
+[1m[92m    Checking[0m icu_locale_core v2.2.0
+[1m[92m    Checking[0m concurrent-queue v2.5.0
+[1m[92m    Checking[0m js-sys v0.3.103
+[1m[92m    Checking[0m potential_utf v0.1.5
+[1m[92m    Checking[0m icu_collections v2.2.0
+[1m[92m    Checking[0m icu_provider v2.2.0
+[1m[92m    Checking[0m http-body v1.0.1
+[1m[92m    Checking[0m tracing-core v0.1.36
+[1m[92m   Compiling[0m serde v1.0.228
+[1m[92m   Compiling[0m indexmap v2.14.0
+[1m[92m    Checking[0m tracing v0.1.44
+[1m[92m    Checking[0m futures-executor v0.3.32
+[1m[92m    Checking[0m futures v0.3.32
+[1m[92m    Checking[0m icu_properties v2.2.0
+[1m[92m    Checking[0m icu_normalizer v2.2.0
+[1m[92m    Checking[0m httpdate v1.0.3
+[1m[92m    Checking[0m crypto-common v0.1.7
+[1m[92m    Checking[0m http-body-util v0.1.3
+[1m[92m    Checking[0m event-listener v5.4.1
+[1m[92m   Compiling[0m multer v3.1.0
+[1m[92m    Checking[0m idna_adapter v1.2.2
 [1m[92m   Compiling[0m getrandom v0.4.3
-[1m[92m   Compiling[0m linux-raw-sys v0.12.1
-[1m[92m   Compiling[0m bitflags v2.13.0
+[1m[92m    Checking[0m hyper v1.10.1
+[1m[92m    Checking[0m idna v1.1.0
+[1m[92m    Checking[0m event-listener-strategy v0.5.4
+[1m[92m    Checking[0m digest v0.10.7
+[1m[92m    Checking[0m tower v0.5.3
+[1m[92m   Compiling[0m reactive_graph v0.2.14
+[1m[92m   Compiling[0m server_fn_macro v0.8.10
+[1m[92m    Checking[0m spin v0.9.8
+[1m[92m    Checking[0m sha1 v0.10.7
+[1m[92m    Checking[0m hyper-util v0.1.20
+[1m[92m    Checking[0m rand v0.9.5
+[1m[92m    Checking[0m async-lock v3.4.2
+[1m[92m    Checking[0m url v2.5.8
+[1m[92m    Checking[0m data-encoding v2.11.0
+[1m[92m   Compiling[0m strsim v0.11.1
+[1m[92m   Compiling[0m libc v0.2.186
+[1m[92m    Checking[0m either v1.16.0
+[1m[92m    Checking[0m regex-automata v0.4.15
+[1m[92m    Checking[0m tungstenite v0.29.0
+[1m[92m    Checking[0m itertools v0.14.0
+[1m[92m   Compiling[0m tachys v0.2.18
+[1m[92m   Compiling[0m proc-macro2-diagnostics v0.10.1
+[1m[92m    Checking[0m toml_parser v1.1.2+spec-1.1.0
+[1m[92m    Checking[0m tokio-tungstenite v0.29.0
+[1m[92m    Checking[0m regex v1.13.0
+[1m[92m    Checking[0m axum-core v0.5.6
+[1m[92m   Compiling[0m server_fn v0.8.13
+[1m[92m    Checking[0m wasm-bindgen-futures v0.4.76
+[1m[92m    Checking[0m web-sys v0.3.103
+[1m[92m    Checking[0m any_spawner v0.3.0
+[1m[92m    Checking[0m hydration_context v0.3.1
+[1m[92m    Checking[0m serde_path_to_error v0.1.20
+[1m[92m    Checking[0m toml_datetime v1.1.1+spec-1.1.0
+[1m[92m    Checking[0m serde_spanned v1.1.1
+[1m[92m    Checking[0m matchit v0.8.4
+[1m[92m    Checking[0m toml v1.1.2+spec-1.1.0
+[1m[92m    Checking[0m axum v0.8.9
+[1m[92m   Compiling[0m rstml v0.12.1
+[1m[92m    Checking[0m reactive_stores v0.4.3
+[1m[92m   Compiling[0m server_fn_macro_default v0.8.5
+[1m[92m   Compiling[0m leptos_macro v0.8.17
+[1m[92m   Compiling[0m leptos_hot_reload v0.8.6
+[1m[92m    Checking[0m config v0.15.25
+[1m[92m   Compiling[0m uuid v1.23.5
+[1m[92m    Checking[0m codee v0.3.5
+[1m[92m   Compiling[0m leptos v0.8.20
+[1m[92m   Compiling[0m darling_core v0.20.11
+[1m[92m    Checking[0m leptos_config v0.8.10
+[1m[92m   Compiling[0m memchr v2.8.3
+[1m[92m   Compiling[0m ucd-trie v0.1.7
+[1m[92m   Compiling[0m pest v2.8.7
+[1m[92m   Compiling[0m darling_macro v0.20.11
+[1m[92m   Compiling[0m unicase v2.9.0
+[1m[92m   Compiling[0m mime_guess v2.0.5
+[1m[92m   Compiling[0m darling v0.20.11
 [1m[92m   Compiling[0m num-traits v0.2.19
 [1m[92m   Compiling[0m rustix v1.1.4
-[1m[92m   Compiling[0m serde_core v1.0.228
-[1m[92m   Compiling[0m zerocopy v0.8.54
-[1m[92m   Compiling[0m getrandom v0.3.4
-[1m[92m   Compiling[0m syn v2.0.118
-[1m[92m   Compiling[0m rand_core v0.9.5
-[1m[92m   Compiling[0m once_cell v1.21.4
-[1m[92m   Compiling[0m fastrand v2.4.1
-[1m[92m   Compiling[0m wait-timeout v0.2.1
-[1m[92m   Compiling[0m tempfile v3.27.0
-[1m[92m   Compiling[0m quick-error v1.2.3
-[1m[92m   Compiling[0m serde_json v1.0.150
-[1m[92m   Compiling[0m bit-vec v0.8.0
-[1m[92m   Compiling[0m fnv v1.0.7
-[1m[92m   Compiling[0m rusty-fork v0.3.1
-[1m[92m   Compiling[0m bit-set v0.8.0
-[1m[92m   Compiling[0m thiserror-impl v2.0.18
-[1m[92m   Compiling[0m serde_derive v1.0.228
-[1m[92m   Compiling[0m ppv-lite86 v0.2.21
-[1m[92m   Compiling[0m rand_chacha v0.9.0
-[1m[92m   Compiling[0m serde v1.0.228
+[1m[92m   Compiling[0m leptos_router v0.8.14
 [1m[92m   Compiling[0m zmij v1.0.22
-[1m[92m   Compiling[0m rand v0.9.5
-[1m[92m   Compiling[0m rand_xorshift v0.4.0
-[1m[92m   Compiling[0m memchr v2.8.3
-[1m[92m   Compiling[0m regex-syntax v0.8.11
-[1m[92m   Compiling[0m unarray v0.1.4
+[1m[92m    Checking[0m linux-raw-sys v0.12.1
 [1m[92m   Compiling[0m itoa v1.0.18
-[1m[92m   Compiling[0m thiserror v2.0.18
-[1m[92m   Compiling[0m proptest v1.11.0
-[1m[92m   Compiling[0m fly v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly)
-[1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 18.08s
-[1m[92m     Running[0m unittests src/lib.rs (target/debug/deps/fly-494faf045f0adba3)
-
-running 3 tests
-test codec::tests::decode_hydrates_canonical_component_from_grapesjs_frame ... ok
-test codec::tests::encode_refreshes_frame_component_from_canonical_tree ... ok
-test codec::tests::project_hash_matches_encoded_bytes_after_component_mutation ... ok
-
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 172 filtered out; finished in 0.00s
-
-[1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 0.36s
-[1m[92m     Running[0m unittests src/lib.rs (target/debug/deps/fly-494faf045f0adba3)
-
-running 3 tests
-test landing_contract::tests::registry_manifest_contains_only_used_components_in_stable_order ... ok
-test landing_contract::tests::static_artifact_is_not_emitted_for_unready_project ... ok
-test landing_contract::tests::static_artifact_is_deterministic_and_contains_complete_html ... ok
-
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 172 filtered out; finished in 0.01s
-
-[1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 0.35s
-[1m[92m     Running[0m unittests src/lib.rs (target/debug/deps/fly-494faf045f0adba3)
-
-running 2 tests
-test registry::tests::landing_templates_have_visible_nested_content ... ok
-test registry::tests::form_and_list_children_are_explicitly_allowed ... ok
-
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 173 filtered out; finished in 0.00s
-
-[1m[92m   Compiling[0m fly v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly)
-[1m[92m   Compiling[0m fly-ui v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-ui)
-[1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 9.41s
-[1m[92m     Running[0m unittests src/lib.rs (target/debug/deps/fly_ui-d4717a9061fedd21)
-
-running 7 tests
-test contribution_manifest::tests::direct_target_lookup_trims_provider_names ... ok
-test contribution_manifest::tests::owner_and_target_provider_allowlist_enables_cross_provider_extension ... ok
-test contribution_manifest::tests::explicit_target_provider_is_allowed ... ok
-test contribution_manifest::tests::admin_and_storefront_surfaces_remain_separate ... ok
-test contribution_manifest::tests::owner_provider_is_the_only_implicit_target ... ok
-test contribution_manifest::tests::target_provider_health_can_block_cross_provider_extensions ... ok
-test contribution_manifest::tests::target_provider_must_be_tenant_enabled ... ok
-
-test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.00s
-
-[1m[92m   Compiling[0m serde_core v1.0.228
-[1m[92m   Compiling[0m syn v2.0.118
-[1m[92m   Compiling[0m pin-project-lite v0.2.17
-[1m[92m   Compiling[0m memchr v2.8.3
-[1m[92m   Compiling[0m futures-core v0.3.32
-[1m[92m   Compiling[0m once_cell v1.21.4
-[1m[92m   Compiling[0m scopeguard v1.2.0
-[1m[92m   Compiling[0m lock_api v0.4.14
-[1m[92m   Compiling[0m bytes v1.12.1
-[1m[92m   Compiling[0m futures-sink v0.3.32
-[1m[92m   Compiling[0m tracing-core v0.1.36
-[1m[92m   Compiling[0m jobserver v0.1.35
-[1m[92m   Compiling[0m log v0.4.33
-[1m[92m   Compiling[0m cc v1.2.67
-[1m[92m   Compiling[0m errno v0.3.14
-[1m[92m   Compiling[0m signal-hook-registry v1.4.8
-[1m[92m   Compiling[0m socket2 v0.6.4
-[1m[92m   Compiling[0m mio v1.2.1
-[1m[92m   Compiling[0m equivalent v1.0.2
-[1m[92m   Compiling[0m slab v0.4.12
-[1m[92m   Compiling[0m futures-channel v0.3.32
-[1m[92m   Compiling[0m stable_deref_trait v1.2.1
-[1m[92m   Compiling[0m futures-io v0.3.32
-[1m[92m   Compiling[0m futures-task v0.3.32
-[1m[92m   Compiling[0m hashbrown v0.17.1
-[1m[92m   Compiling[0m percent-encoding v2.3.2
-[1m[92m   Compiling[0m cmake v0.1.58
-[1m[92m   Compiling[0m zeroize v1.9.0
-[1m[92m   Compiling[0m getrandom v0.2.17
-[1m[92m   Compiling[0m aws-lc-sys v0.42.0
-[1m[92m   Compiling[0m typenum v1.20.1
-[1m[92m   Compiling[0m synstructure v0.13.2
-[1m[92m   Compiling[0m indexmap v2.14.0
-[1m[92m   Compiling[0m litemap v0.8.2
-[1m[92m   Compiling[0m writeable v0.6.3
-[1m[92m   Compiling[0m subtle v2.6.1
-[1m[92m   Compiling[0m rustls-pki-types v1.15.0
-[1m[92m   Compiling[0m ring v0.17.14
-[1m[92m   Compiling[0m serde_derive v1.0.228
-[1m[92m   Compiling[0m tracing-attributes v0.1.31
-[1m[92m   Compiling[0m tokio-macros v2.7.0
-[1m[92m   Compiling[0m zerofrom-derive v0.1.7
-[1m[92m   Compiling[0m tracing v0.1.44
-[1m[92m   Compiling[0m yoke-derive v0.8.2
-[1m[92m   Compiling[0m zerofrom v0.1.8
-[1m[92m   Compiling[0m futures-macro v0.3.32
-[1m[92m   Compiling[0m futures-util v0.3.32
-[1m[92m   Compiling[0m yoke v0.8.3
-[1m[92m   Compiling[0m zerovec-derive v0.11.3
-[1m[92m   Compiling[0m serde v1.0.228
-[1m[92m   Compiling[0m zerovec v0.11.6
-[1m[92m   Compiling[0m smallvec v1.15.2
-[1m[92m   Compiling[0m parking_lot_core v0.9.12
-[1m[92m   Compiling[0m parking_lot v0.12.5
-[1m[92m   Compiling[0m displaydoc v0.2.6
-[1m[92m   Compiling[0m tokio v1.52.3
-[1m[92m   Compiling[0m thiserror-impl v2.0.18
-[1m[92m   Compiling[0m tinystr v0.8.3
-[1m[92m   Compiling[0m icu_locale_core v2.2.0
-[1m[92m   Compiling[0m zerotrie v0.2.4
-[1m[92m   Compiling[0m potential_utf v0.1.5
-[1m[92m   Compiling[0m utf8_iter v1.0.4
-[1m[92m   Compiling[0m base64 v0.22.1
-[1m[92m   Compiling[0m icu_collections v2.2.0
-[1m[92m   Compiling[0m icu_provider v2.2.0
-[1m[92m   Compiling[0m serde_json v1.0.150
-[1m[92m   Compiling[0m thiserror v2.0.18
-[1m[92m   Compiling[0m icu_properties_data v2.2.0
-[1m[92m   Compiling[0m icu_normalizer_data v2.2.0
-[1m[92m   Compiling[0m untrusted v0.9.0
-[1m[92m   Compiling[0m icu_normalizer v2.2.0
-[1m[92m   Compiling[0m icu_properties v2.2.0
-[1m[92m   Compiling[0m num-traits v0.2.19
-[1m[92m   Compiling[0m idna_adapter v1.2.2
-[1m[92m   Compiling[0m form_urlencoded v1.2.2
-[1m[92m   Compiling[0m http v1.4.2
-[1m[92m   Compiling[0m rand_core v0.10.1
-[1m[92m   Compiling[0m idna v1.1.0
-[1m[92m   Compiling[0m crossbeam-utils v0.8.22
-[1m[92m   Compiling[0m tokio-util v0.7.18
-[1m[92m   Compiling[0m tokio-stream v0.1.18
-[1m[92m   Compiling[0m ppv-lite86 v0.2.21
-[1m[92m   Compiling[0m url v2.5.8
-[1m[92m   Compiling[0m generic-array v0.14.7
-[1m[92m   Compiling[0m getrandom v0.4.3
-[1m[92m   Compiling[0m http-body v1.0.1
-[1m[92m   Compiling[0m atomic-waker v1.1.2
-[1m[92m   Compiling[0m tower-service v0.3.3
-[1m[92m   Compiling[0m try-lock v0.2.5
-[1m[92m   Compiling[0m h2 v0.4.15
-[1m[92m   Compiling[0m httparse v1.10.1
-[1m[92m   Compiling[0m want v0.3.1
-[1m[92m   Compiling[0m crypto-common v0.1.7
-[1m[92m   Compiling[0m block-buffer v0.10.4
-[1m[92m   Compiling[0m ryu v1.0.23
-[1m[92m   Compiling[0m digest v0.10.7
-[1m[92m   Compiling[0m uuid v1.23.5
-[1m[92m   Compiling[0m concurrent-queue v2.5.0
-[1m[92m   Compiling[0m futures-executor v0.3.32
-[1m[92m   Compiling[0m ipnet v2.12.0
-[1m[92m   Compiling[0m parking v2.2.1
-[1m[92m   Compiling[0m hex v0.4.3
-[1m[92m   Compiling[0m iana-time-zone v0.1.65
-[1m[92m   Compiling[0m chrono v0.4.45
-[1m[92m   Compiling[0m event-listener v5.4.1
-[1m[92m   Compiling[0m serde_urlencoded v0.7.1
-[1m[92m   Compiling[0m num-integer v0.1.46
-[1m[92m   Compiling[0m async-trait v0.1.89
-[1m[92m   Compiling[0m sync_wrapper v1.0.2
-[1m[92m   Compiling[0m time-core v0.1.9
-[1m[92m   Compiling[0m tower-layer v0.3.3
-[1m[92m   Compiling[0m num-conv v0.2.2
-[1m[92m   Compiling[0m tower v0.5.3
-[1m[92m   Compiling[0m time-macros v0.2.31
-[1m[92m   Compiling[0m hyper v1.10.1
-[1m[92m   Compiling[0m anyhow v1.0.103
-[1m[92m   Compiling[0m num-bigint v0.4.8
-[1m[92m   Compiling[0m hyper-util v0.1.20
-[1m[92m   Compiling[0m libm v0.2.16
-[1m[92m   Compiling[0m deranged v0.5.8
-[1m[92m   Compiling[0m powerfmt v0.2.0
-[1m[92m   Compiling[0m foldhash v0.1.5
-[1m[92m   Compiling[0m arrayvec v0.7.8
-[1m[92m   Compiling[0m allocator-api2 v0.2.21
-[1m[92m   Compiling[0m rust_decimal v1.42.1
-[1m[92m   Compiling[0m time v0.3.53
-[1m[92m   Compiling[0m hashbrown v0.15.5
-[1m[92m   Compiling[0m bigdecimal v0.4.10
-[1m[92m   Compiling[0m http-body-util v0.1.3
-[1m[92m   Compiling[0m webpki-roots v1.0.8
-[1m[92m   Compiling[0m aho-corasick v1.1.4
-[1m[92m   Compiling[0m cpufeatures v0.2.17
-[1m[92m   Compiling[0m crc-catalog v2.5.0
-[1m[92m   Compiling[0m tinyvec_macros v0.1.1
-[1m[92m   Compiling[0m darling_core v0.20.11
-[1m[92m   Compiling[0m regex-automata v0.4.15
-[1m[92m   Compiling[0m tinyvec v1.12.0
-[1m[92m   Compiling[0m crc v3.4.0
-[1m[92m   Compiling[0m sha2 v0.10.9
-[1m[92m   Compiling[0m libsqlite3-sys v0.30.1
-[1m[92m   Compiling[0m webpki-roots v0.26.11
-[1m[92m   Compiling[0m prost-derive v0.14.4
-[1m[92m   Compiling[0m hashlink v0.10.0
-[1m[92m   Compiling[0m crossbeam-queue v0.3.13
-[1m[92m   Compiling[0m futures-intrusive v0.5.0
-[1m[92m   Compiling[0m either v1.16.0
-[1m[92m   Compiling[0m pin-project-internal v1.1.13
-[1m[92m   Compiling[0m rand_core v0.6.4
-[1m[92m   Compiling[0m lazy_static v1.5.0
-[1m[92m   Compiling[0m rand_chacha v0.3.1
-[1m[92m   Compiling[0m pin-project v1.1.13
-[1m[92m   Compiling[0m prost v0.14.4
-[1m[92m   Compiling[0m darling_macro v0.20.11
-[1m[92m   Compiling[0m unicode-normalization v0.1.25
-[1m[92m   Compiling[0m hyper-timeout v0.5.2
-[1m[92m   Compiling[0m hmac v0.12.1
-[1m[92m   Compiling[0m atoi v2.0.0
-[1m[92m   Compiling[0m opentelemetry v0.32.0
-[1m[92m   Compiling[0m spin v0.9.8
-[1m[92m   Compiling[0m unicode-properties v0.1.4
-[1m[92m   Compiling[0m dotenvy v0.15.7
-[1m[92m   Compiling[0m openssl-probe v0.2.1
-[1m[92m   Compiling[0m unicode-bidi v0.3.18
-[1m[92m   Compiling[0m stringprep v0.1.5
-[1m[92m   Compiling[0m rustls-native-certs v0.8.4
-[1m[92m   Compiling[0m flume v0.11.1
-[1m[92m   Compiling[0m tonic v0.14.6
-[1m[92m   Compiling[0m hkdf v0.12.4
-[1m[92m   Compiling[0m darling v0.20.11
-[1m[92m   Compiling[0m rand_chacha v0.9.0
-[1m[92m   Compiling[0m rand v0.8.7
-[1m[92m   Compiling[0m sharded-slab v0.1.7
-[1m[92m   Compiling[0m matchers v0.2.0
-[1m[92m   Compiling[0m md-5 v0.10.6
-[1m[92m   Compiling[0m tracing-serde v0.2.0
-[1m[92m   Compiling[0m thiserror-impl v1.0.69
-[1m[92m   Compiling[0m tracing-log v0.2.0
-[1m[92m   Compiling[0m thread_local v1.1.10
-[1m[92m   Compiling[0m nu-ansi-term v0.50.3
-[1m[92m   Compiling[0m utf8parse v0.2.2
-[1m[92m   Compiling[0m cpufeatures v0.3.0
-[1m[92m   Compiling[0m byteorder v1.5.0
-[1m[92m   Compiling[0m home v0.5.12
-[1m[92m   Compiling[0m whoami v1.6.1
-[1m[92m   Compiling[0m anstyle-parse v1.0.0
-[1m[92m   Compiling[0m tracing-subscriber v0.3.23
-[1m[92m   Compiling[0m thiserror v1.0.69
-[1m[92m   Compiling[0m sea-query-derive v0.4.3
-[1m[92m   Compiling[0m rand v0.9.5
-[1m[92m   Compiling[0m tower-http v0.6.11
-[1m[92m   Compiling[0m ordered-float v4.6.0
-[1m[92m   Compiling[0m inherent v1.0.13
-[1m[92m   Compiling[0m hybrid-array v0.4.13
-[1m[92m   Compiling[0m proc-macro-error-attr2 v2.0.0
-[1m[92m   Compiling[0m encoding_rs v0.8.35
-[1m[92m   Compiling[0m anstyle v1.0.14
-[1m[92m   Compiling[0m colorchoice v1.0.5
-[1m[92m   Compiling[0m mime v0.3.17
-[1m[92m   Compiling[0m is_terminal_polyfill v1.70.2
-[1m[92m   Compiling[0m anstyle-query v1.1.5
-[1m[92m   Compiling[0m linux-raw-sys v0.4.15
-[1m[92m   Compiling[0m proc-macro2-diagnostics v0.10.1
-[1m[92m   Compiling[0m rustix v0.38.44
-[1m[92m   Compiling[0m anstream v1.0.0
-[1m[92m   Compiling[0m proc-macro-error2 v2.0.1
-[1m[92m   Compiling[0m sea-query v0.32.7
-[1m[92m   Compiling[0m opentelemetry_sdk v0.32.1
-[1m[92m   Compiling[0m protobuf-support v3.7.2
-[1m[92m   Compiling[0m tonic-prost v0.14.6
-[1m[92m   Compiling[0m prost-types v0.14.4
-[1m[92m   Compiling[0m procfs-core v0.17.0
-[1m[92m   Compiling[0m strsim v0.11.1
-[1m[92m   Compiling[0m clap_lex v1.1.0
-[1m[92m   Compiling[0m clap_builder v4.6.0
-[1m[92m   Compiling[0m derive_more-impl v2.1.1
-[1m[92m   Compiling[0m procfs v0.17.0
-[1m[92m   Compiling[0m tonic-types v0.14.6
-[1m[92m   Compiling[0m opentelemetry-proto v0.32.0
-[1m[92m   Compiling[0m protobuf v3.7.2
-[1m[92m   Compiling[0m sea-bae v0.2.1
-[1m[92m   Compiling[0m ouroboros_macro v0.18.5
-[1m[92m   Compiling[0m crypto-common v0.2.2
-[1m[92m   Compiling[0m block-buffer v0.12.1
-[1m[92m   Compiling[0m chacha20 v0.10.1
-[1m[92m   Compiling[0m clap_derive v4.6.1
-[1m[92m   Compiling[0m async-stream-impl v0.3.6
-[1m[92m   Compiling[0m aliasable v0.1.3
-[1m[92m   Compiling[0m static_assertions v1.1.0
-[1m[92m   Compiling[0m const-oid v0.10.2
-[1m[92m   Compiling[0m digest v0.11.3
-[1m[92m   Compiling[0m ouroboros v0.18.5
-[1m[92m   Compiling[0m async-stream v0.3.6
-[1m[92m   Compiling[0m rand v0.10.2
-[1m[92m   Compiling[0m clap v4.6.1
-[1m[92m   Compiling[0m prometheus v0.14.0
-[1m[92m   Compiling[0m sea-orm-macros v1.1.20
-[1m[92m   Compiling[0m derive_more v2.1.1
-[1m[92m   Compiling[0m tracing-opentelemetry v0.33.0
-[1m[92m   Compiling[0m regex v1.13.0
-[1m[92m   Compiling[0m sea-schema-derive v0.3.0
-[1m[92m   Compiling[0m event-listener-strategy v0.5.4
-[1m[92m   Compiling[0m futures v0.3.32
-[1m[92m   Compiling[0m glob v0.3.3
 [1m[92m   Compiling[0m winnow v1.0.3
-[1m[92m   Compiling[0m strum v0.26.3
-[1m[92m   Compiling[0m toml_parser v1.1.2+spec-1.1.0
-[1m[92m   Compiling[0m sea-orm-cli v1.1.20
-[1m[92m   Compiling[0m async-lock v3.4.2
-[1m[92m   Compiling[0m ulid v2.0.1
-[1m[92m   Compiling[0m crossbeam-epoch v0.9.20
-[1m[92m   Compiling[0m portable-atomic v1.13.1
-[1m[92m   Compiling[0m sha2 v0.11.0
-[1m[92m   Compiling[0m crossbeam-channel v0.5.16
-[1m[92m   Compiling[0m utoipa-gen v5.5.0
-[1m[92m   Compiling[0m toml_datetime v1.1.1+spec-1.1.0
-[1m[92m   Compiling[0m serde_spanned v1.1.1
-[1m[92m   Compiling[0m unsafe-libyaml v0.2.11
-[1m[92m   Compiling[0m tagptr v0.2.0
-[1m[92m   Compiling[0m toml_writer v1.1.1+spec-1.1.0
-[1m[92m   Compiling[0m v_escape-base v0.1.0
-[1m[92m   Compiling[0m v_htmlescape v0.17.0
-[1m[92m   Compiling[0m serde_yaml v0.9.34+deprecated
-[1m[92m   Compiling[0m toml v1.1.2+spec-1.1.0
-[1m[92m   Compiling[0m moka v0.12.15
-[1m[92m   Compiling[0m rustok-api v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-api)
-[1m[92m   Compiling[0m email_address v0.2.9
-[1m[92m   Compiling[0m fly v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly)
-[1m[92m   Compiling[0m utoipa v5.5.0
-[1m[92m   Compiling[0m aws-lc-rs v1.17.1
-[1m[92m   Compiling[0m rustls v0.23.41
-[1m[92m   Compiling[0m rustls-webpki v0.103.13
-[1m[92m   Compiling[0m sqlx-core v0.8.6
-[1m[92m   Compiling[0m tokio-rustls v0.26.4
-[1m[92m   Compiling[0m rustls-platform-verifier v0.7.0
-[1m[92m   Compiling[0m hyper-rustls v0.27.9
-[1m[92m   Compiling[0m reqwest v0.13.4
-[1m[92m   Compiling[0m sqlx-postgres v0.8.6
-[1m[92m   Compiling[0m sqlx-sqlite v0.8.6
-[1m[92m   Compiling[0m opentelemetry-http v0.32.0
-[1m[92m   Compiling[0m opentelemetry-otlp v0.32.0
-[1m[92m   Compiling[0m rustok-telemetry v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-telemetry)
-[1m[92m   Compiling[0m sqlx v0.8.6
-[1m[92m   Compiling[0m sea-query-binder v0.7.0
-[1m[92m   Compiling[0m sea-orm v1.1.20
-[1m[92m   Compiling[0m sea-schema v0.16.2
-[1m[92m   Compiling[0m rustok-events v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-events)
-[1m[92m   Compiling[0m sea-orm-migration v1.1.20
-[1m[92m   Compiling[0m rustok-core v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-core)
-[1m[92m   Compiling[0m rustok-page-builder v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-page-builder)
-[1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 1m 37s
-[1m[33mwarning[0m: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
-[1m[92mnote[0m: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
-[1m[92m     Running[0m unittests src/lib.rs (target/debug/deps/rustok_page_builder-9d255b215a147cba)
+[1m[92m   Compiling[0m pest_meta v2.8.7
+[1m[92m   Compiling[0m derive_builder_core v0.20.2
+[1m[92m   Compiling[0m darling_core v0.23.0
+[1m[92m    Checking[0m tokio-util v0.7.18
+[1m[92m   Compiling[0m leptos_router_macro v0.8.6
+[1m[92m    Checking[0m http-range-header v0.4.2
+[1m[92m   Compiling[0m time-macros v0.2.31
+[1m[92m    Checking[0m chrono v0.4.45
+[1m[92m    Checking[0m tower-http v0.6.11
+[1m[92m   Compiling[0m darling_macro v0.23.0
+[1m[92m   Compiling[0m toml_edit v0.25.12+spec-1.1.0
+[1m[92m   Compiling[0m strum_macros v0.27.2
+[1m[92m   Compiling[0m async-graphql-value v7.2.1
+[1m[92m   Compiling[0m derive_builder_macro v0.20.2
+[1m[92m   Compiling[0m pest_generator v2.8.7
+[1m[92m   Compiling[0m async-io v2.6.0
+[1m[92m   Compiling[0m cookie v0.18.1
+[1m[92m    Checking[0m deranged v0.5.8
+[1m[92m    Checking[0m num-modular v0.6.4
+[1m[92m    Checking[0m gloo-utils v0.2.0
+[1m[92m    Checking[0m gloo-net v0.6.0
+[1m[92m    Checking[0m wasm-streams v0.5.0
+[1m[92m    Checking[0m rustok-api v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-api)
+[1m[92m    Checking[0m time v0.3.53
+[1m[92m    Checking[0m num-order v1.2.0
+[1m[92m   Compiling[0m strum v0.27.2
+[1m[92m   Compiling[0m pest_derive v2.8.7
+[1m[92m    Checking[0m derive_builder v0.20.2
+[1m[92m   Compiling[0m async-graphql-parser v7.2.1
+[1m[92m   Compiling[0m proc-macro-crate v3.5.0
+[1m[92m   Compiling[0m darling v0.23.0
+[1m[92m    Checking[0m polling v3.11.0
+[1m[92m    Checking[0m unic-langid-impl v0.9.6
+[1m[92m    Checking[0m fly v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly)
+[1m[92m    Checking[0m futures-lite v2.6.1
+[1m[92m   Compiling[0m Inflector v0.11.4
+[1m[92m   Compiling[0m leptos-use v0.19.0
+[1m[92m    Checking[0m ascii_utils v0.9.3
+[1m[92m    Checking[0m tempfile v3.27.0
+[1m[92m    Checking[0m fast_chemail v0.9.6
+[1m[92m   Compiling[0m async-graphql-derive v7.2.1
+[1m[92m    Checking[0m unic-langid v0.9.6
+[1m[92m    Checking[0m handlebars v6.4.3
+[1m[92m    Checking[0m reqwest v0.13.4
+[1m[92m   Compiling[0m default-struct-builder v0.5.1
+[1m[92m    Checking[0m gloo-timers v0.4.0
+[1m[92m    Checking[0m asynk-strim v0.1.5
+[1m[92m    Checking[0m rustok-ui-core v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-ui-core)
+[1m[92m    Checking[0m static_assertions_next v1.1.2
+[1m[92m    Checking[0m rustok-graphql v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-graphql)
+[1m[92m    Checking[0m rustok-ui-i18n v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-ui-i18n)
+[1m[92m    Checking[0m rustok-ui-transport v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-ui-transport)
+[1m[92m    Checking[0m fly-browser v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-browser)
+[1m[92m    Checking[0m fly-ui v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-ui)
+[1m[92m    Checking[0m rustok-page-builder v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-page-builder)
+[1m[92m    Checking[0m async-graphql v7.2.1
+[1m[92m    Checking[0m leptos_server v0.8.7
+[1m[92m    Checking[0m leptos_dom v0.8.8
+[1m[92m    Checking[0m leptos_meta v0.8.6
+[1m[92m    Checking[0m rustok-seo-targets v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-seo-targets)
+[1m[92m    Checking[0m rustok-ui-i18n-leptos v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-ui-i18n-leptos)
+[1m[92m    Checking[0m fly-leptos v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-leptos)
+[1m[92m    Checking[0m rustok-page-builder-admin v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-page-builder/admin)
+[1m[33mwarning[0m[1m: unused import: `Value`[0m
+ [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/ssr_internal_link.rs:9:23
+  [1m[94m|[0m
+[1m[94m9[0m [1m[94m|[0m use serde_json::{Map, Value};
+  [1m[94m|[0m                       [1m[33m^^^^^[0m
+  [1m[94m|[0m
+  [1m[94m= [0m[1mnote[0m: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
-running 46 tests
-test landing::tests::api_decodes_to_the_domain_document ... ok
-test adapters::tests::fly_inspection_exposes_properties_without_children ... ok
-test adapters::tests::fly_inspection_rejects_duplicate_ids ... ok
-test adapters::tests::fly_inspection_reads_real_grapesjs_tree ... ok
-test locale::tests::accept_language_is_sorted_by_quality_and_stable_order ... ok
-test locale::tests::applying_locale_preserves_business_context ... ok
-test locale::tests::invalid_and_duplicate_fallbacks_are_removed ... ok
-test locale::tests::request_locale_prefers_route_then_header_then_tenant_default ... ok
-test render::tests::render_api_decodes_selects_and_renders_project_data ... ok
-test render::tests::render_api_rejects_unknown_page_selection ... ok
-test render::tests::localized_runtime_render_uses_project_translation_catalog ... ok
-test render::tests::runtime_api_materializes_conditions_and_repeaters ... ok
-test runtime_context::tests::consumer_can_export_json_schema_and_generated_example ... ok
-test landing::tests::declared_provider_drift_blocks_contract_validity ... ok
-test runtime_context::tests::consumer_can_extract_contract_without_rendering ... ok
-test runtime_context::tests::preflight_returns_effective_context_for_valid_input ... ok
-test runtime_context::tests::consumer_publish_gate_matches_admin_runtime_policy ... ok
-test runtime_context::tests::strict_preflight_rejects_missing_required_context ... ok
-test runtime_context_dependency::tests::consumer_can_inspect_runtime_dependency_graph ... ok
-test runtime_scenario_release::tests::baseline_change_carries_review_note_separately ... ok
-test runtime_scenario_render::tests::consumer_can_render_runtime_scenario_matrix ... ok
-test runtime_context::tests::consumer_can_enable_publish_only_landing_readiness ... ok
-test runtime_scenario_release::tests::consumer_can_evaluate_persisted_release_baseline ... ok
-test runtime_telemetry::tests::runtime_evidence_contains_only_current_fields ... ok
-test runtime_scenario_snapshot::tests::consumer_can_snapshot_and_diff_scenario_outputs ... ok
-test runtime_scenario_snapshot::tests::snapshot_response_roundtrips ... ok
-test service::tests::adapter_call_evidence_carries_port_context_and_contract_markers ... ok
-test service::tests::authorizer_maps_capabilities_to_stable_page_permissions ... ok
-test service::tests::guarded_service_blocks_disabled_publish_before_write_semantics ... ok
-test service::tests::authorized_handlers_honor_manage_as_effective_permission ... ok
-test service::tests::authorized_handlers_enforce_permissions_before_service_call ... ok
-test service::tests::port_policy_names_match_fba_registry_contract ... ok
-test service::tests::guarded_service_fallback_profiles_enforce_capability_outcomes ... ok
-test service::tests::read_capabilities_require_deadline_semantics ... ok
-test service::tests::publish_requires_write_port_semantics ... ok
-test service::tests::reference_service_exposes_sanitize_error_for_script_payloads ... ok
-test service::tests::reference_service_publishes_only_valid_contract_payloads ... ok
-test service::tests::service_errors_expose_typed_catalog_kind_and_code ... ok
-test service::tests::reference_service_renders_current_preview_payload ... ok
-test service::tests::transport_neutral_handler_dispatches_tagged_capability_requests ... ok
-test tests::disabled_capability_returns_typed_error ... ok
-test tests::dto_contract_roundtrip_is_stable ... ok
-test tests::fallback_matrix_keeps_read_paths_alive ... ok
-test tests::health_snapshot_roundtrip_is_stable ... ok
-test tests::module_metadata_is_stable ... ok
-test landing::tests::inspection_builds_static_publish_artifact ... ok
+[1m[33mwarning[0m[1m: unused import: `asset_section::AssetSection`[0m
+  [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/mod.rs:47:16
+   [1m[94m|[0m
+[1m[94m47[0m [1m[94m|[0m pub(crate) use asset_section::AssetSection;
+   [1m[94m|[0m                [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
 
-test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+[1m[33mwarning[0m[1m: unused import: `properties_section::PropertiesSection`[0m
+  [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/mod.rs:69:16
+   [1m[94m|[0m
+[1m[94m69[0m [1m[94m|[0m pub(crate) use properties_section::PropertiesSection;
+   [1m[94m|[0m                [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
 
-forbidden Page Builder version/legacy markers remain:
-crates/rustok-page-builder/src/lib.rs:110: assert!(encoded.get("schema_version").is_none());
-crates/rustok-page-builder/src/lib.rs:115: "schema_version": "grapesjs",
-crates/rustok-page-builder/src/runtime_telemetry.rs:148: assert!(value.get("schema_version").is_none());
-crates/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json:26: "builder.legacy_bridge_readonly"
-crates/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json:11: "builder.legacy_bridge_readonly"
-crates/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json:49: "builder.legacy_bridge_readonly": true,
-crates/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json:57: "builder.legacy_bridge_readonly": true,
-crates/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json:65: "builder.legacy_bridge_readonly": true,
-crates/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json:73: "builder.legacy_bridge_readonly": true,
-crates/rustok-page-builder/admin/README.md:28: `rustok-pages/admin` is the reference consumer. It resolves the selected page, migrates legacy
-crates/rustok-page-builder/docs/README.md:78: The original browser transport can still deserialize `schema_version` and existing code can still
-crates/rustok-page-builder/docs/README.md:81: - current constructors omit `schema_version`;
-crates/rustok-page-builder/docs/README.md:87: `PageBuilderContractMetadata`, the old reference service checks and historical GrapesJS selector
-crates/rustok-page-builder/docs/implementation-plan.md:51: 3. Agree the legacy-block bridge exit with the Pages owner. Done when supported
-crates/rustok-page-builder/docs/implementation-plan.md:54: Dependency: legacy content inventory and Pages migration approval.
-crates/rustok-page-builder/docs/implementation-plan.md:55: Verification: `npm run verify:page-builder:pages:legacy-bridge`.
-crates/rustok-page-builder/docs/implementation-plan.md:66: - Pages owns page lifecycle and legacy block migration safety; forum remains a
-crates/rustok-page-builder/docs/fly-runtime.md:29: Unlike the legacy reference adapter, its `tree` capability traverses actual GrapesJS pages and components. Its `properties` capability verifies that the requested node exists in the stored project before accepting the property payload.
-crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json:61: "builder.legacy_bridge_readonly": true
-crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json:68: "builder.legacy_bridge_readonly": true
-crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json:83: "builder.legacy_bridge_readonly": true
-crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json:106: "builder.legacy_bridge_readonly": true
-crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json:129: "builder.legacy_bridge_readonly": true
-crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json:152: "builder.legacy_bridge_readonly": true
-crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json:61: "builder.legacy_bridge_readonly": true
-crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json:68: "builder.legacy_bridge_readonly": true
-crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json:83: "builder.legacy_bridge_readonly": true
-crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json:106: "builder.legacy_bridge_readonly": true
-crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json:129: "builder.legacy_bridge_readonly": true
-crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json:152: "builder.legacy_bridge_readonly": true
-crates/rustok-page-builder/admin/src/palette_access.rs:164: protocol: fly_browser::FLY_BROWSER_PROTOCOL_V1.to_string(),
-crates/rustok-page-builder/admin/src/browser_intent.rs:383: use fly_browser::FLY_BROWSER_PROTOCOL_V1;
-crates/rustok-page-builder/admin/src/browser_intent.rs:413: protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
-crates/rustok-page-builder/admin/src/ssr_actions_forms_browser_tests.rs:2: use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL_V1};
-crates/rustok-page-builder/admin/src/ssr_actions_forms_browser_tests.rs:38: protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
-crates/rustok-page-builder/admin/src/capability_access.rs:267: use fly_browser::FLY_BROWSER_PROTOCOL_V1;
-crates/rustok-page-builder/admin/src/capability_access.rs:272: protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
-crates/rustok-page-builder/admin/src/ssr_assets_browser_tests.rs:3: use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind, FLY_BROWSER_PROTOCOL_V1};
-crates/rustok-page-builder/admin/src/ssr_assets_browser_tests.rs:37: protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
-crates/rustok-page-builder/admin/locales/ru.json:84: "legacy": "Подробная политика host не передана. Эффективный профиль всё равно применяется машиной состояний.",
-crates/rustok-page-builder/admin/locales/en.json:84: "legacy": "No detailed host policy was supplied. The effective profile still remains enforced by the state machine.",
-crates/rustok-page-builder/admin/src/ui/browser_adapter.rs:125: data-fly-browser-adapter="fly_browser_v1"
-crates/rustok-page-builder/admin/src/editor/canvas_document.rs:6: use fly_leptos::FLY_IFRAME_PROTOCOL_V1;
-crates/rustok-page-builder/admin/src/editor/canvas_document.rs:64: let protocol = serde_json::to_string(FLY_IFRAME_PROTOCOL_V1)
-crates/rustok-page-builder/admin/src/editor/canvas_document.rs:65: .unwrap_or_else(|_| "\"fly_iframe_v1\"".to_string());
-crates/rustok-page-builder/admin/src/editor/context_compatibility_panel.rs:6: RuntimeContextMigrationResult, RuntimeContractCompatibility, FLY_RUNTIME_CONTEXT_CONTRACT_V1,
-crates/rustok-page-builder/admin/src/editor/context_compatibility_panel.rs:81: Ok(snapshot) if snapshot.format == FLY_RUNTIME_CONTEXT_CONTRACT_V1 => {
-crates/rustok-page-builder/admin/src/editor/context_compatibility_panel.rs:110: placeholder="Paste fly_runtime_context_contract_v1 snapshot JSON"
-crates/rustok-page-builder/admin/src/editor/ssr_actions_forms.rs:1052: "href": "/legacy",
-crates/rustok-page-builder/admin/src/editor/capability_controls.rs:37: let legacy = t(
-crates/rustok-page-builder/admin/src/editor/capability_controls.rs:39: "page_builder.capabilityPolicy.legacy",
-crates/rustok-page-builder/admin/src/editor/capability_controls.rs:121: {legacy}
-crates/rustok-page-builder/admin/src/editor/runtime_scenario_regression.rs:6: RuntimeScenarioRenderChangeImpact, FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1,
-crates/rustok-page-builder/admin/src/editor/runtime_scenario_regression.rs:142: == FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1
-crates/rustok-page-builder/admin/src/editor/runtime_scenario_regression.rs:199: placeholder="Paste fly_runtime_scenario_release_baseline_v1 JSON"
-crates/rustok-page-builder/admin/src/editor/canvas_protocol.rs:2: use fly_leptos::{BrowserPoint, PointerSample, FLY_IFRAME_PROTOCOL_V1};
-crates/rustok-page-builder/admin/src/editor/canvas_protocol.rs:52: self.protocol == FLY_IFRAME_PROTOCOL_V1
-crates/rustok-page-builder/admin/src/editor/canvas_protocol.rs:78: protocol: FLY_IFRAME_PROTOCOL_V1.to_string(),
-crates/rustok-page-builder/admin/src/editor/canvas_protocol.rs:93: protocol: FLY_IFRAME_PROTOCOL_V1.to_string(),
-crates/rustok-page-builder/admin/src/editor/canvas_protocol.rs:108: protocol: FLY_IFRAME_PROTOCOL_V1.to_string(),
-crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-packet.mjs:78: if (packet.schema_version !== template.schema_version) {
-crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-packet.mjs:80: `schema_version mismatch: packet=${packet.schema_version}, template=${template.schema_version}`,
-crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-packet.mjs:248: "builder.legacy_bridge_readonly": true,
-crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-packet.mjs:255: "builder.legacy_bridge_readonly": true,
-crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-packet.mjs:262: "builder.legacy_bridge_readonly": true,
-crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-packet.mjs:269: "builder.legacy_bridge_readonly": true,
-crates/rustok-page-builder/scripts/verify/verify-page-builder-scenario-release.mjs:32: [releaseCore, 'FLY_RUNTIME_SCENARIO_RELEASE_BASELINE_V1', 'release baseline format marker is missing'],
-crates/rustok-page-builder/scripts/verify/verify-page-builder-terminology.mjs:14: forbidden: ["Legacy content warning", "Legacy markdown detected"],
-crates/rustok-page-builder/scripts/verify/verify-page-builder-terminology.mjs:18: forbidden: ["hasLegacyBlocks", "Legacy block payload"],
-crates/rustok-page-builder/scripts/verify/verify-page-builder-terminology.mjs:22: forbidden: ["Example (legacy):"],
-crates/rustok-page-builder/scripts/verify/verify-page-builder-terminology.mjs:30: "Legacy blocks",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-terminology.mjs:31: "legacy blocks",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-terminology.mjs:40: "Legacy blocks",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-terminology.mjs:41: "legacy blocks",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-terminology.mjs:50: "Legacy blocks",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-terminology.mjs:51: "legacy blocks",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-pages-contract-surface.mjs:23: label: "visual builder and legacy block bridge contract tests",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-template.mjs:47: if (template.schema_version !== 1) {
-crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-template.mjs:48: fail(`unsupported schema_version: ${template.schema_version}`);
-crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs:162: if (registry.schema_version !== 1) {
-crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs:163: errors.push(`unsupported schema_version: ${registry.schema_version}`);
-crates/rustok-page-builder/scripts/verify/verify-page-builder-runtime-context.mjs:76: [scenarioSnapshot, 'FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT_V1', 'scenario snapshot format marker is missing'],
-crates/rustok-page-builder/scripts/verify/verify-page-builder-control-plane-dry-run.mjs:48: "builder.legacy_bridge_readonly",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-fly-runtime.mjs:25: [browser, 'FLY_IFRAME_PROTOCOL_V1', 'iframe protocol marker is missing'],
-crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs:43: "builder.legacy_bridge_readonly": "true",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs:50: "builder.legacy_bridge_readonly": "true",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs:57: "builder.legacy_bridge_readonly": "true",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs:64: "builder.legacy_bridge_readonly": "true",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-flutter-handoff.mjs:61: "builder.legacy_bridge_readonly",
-crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs:23: "verify-page-builder-pages-legacy-bridge.mjs",
-crates/rustok-pages/admin/src/contributions.rs:11: pub const FLY_BUILTIN_PROVIDER_VERSION: &str = "1";
-crates/rustok-pages/admin/src/contributions.rs:42: FLY_BUILTIN_PROVIDER_VERSION.to_string(),
-crates/rustok-pages/admin/src/contributions.rs:118: FLY_BUILTIN_PROVIDER_VERSION,
-crates/rustok-pages/admin/src/lib.rs:35: FLY_BUILTIN_PROVIDER_VERSION, PAGES_BUILDER_CAPABILITIES,
-crates/rustok-pages/admin/src/browser_intent.rs:7: use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL_V1};
-crates/rustok-pages/admin/src/browser_intent.rs:140: protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
-crates/rustok-pages/admin/src/contribution_browser_intent.rs:101: use fly_browser::FLY_BROWSER_PROTOCOL_V1;
-crates/rustok-pages/admin/src/contribution_browser_intent.rs:107: protocol: FLY_BROWSER_PROTOCOL_V1.to_string(),
+[1m[33mwarning[0m[1m: unused imports: `SsrComponentActionRemoveRequest`, `SsrComponentActionRequest`, `SsrComponentFormRemoveRequest`, `SsrComponentFormRequest`, and `SsrNativeFormFieldRequest`[0m
+  [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/mod.rs:79:27
+   [1m[94m|[0m
+[1m[94m79[0m [1m[94m|[0m     SsrActionsFormsPanel, SsrComponentActionRemoveRequest, SsrComponentActionRequest,
+   [1m[94m|[0m                           [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m  [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[94m80[0m [1m[94m|[0m     SsrComponentFormRemoveRequest, SsrComponentFormRequest, SsrNativeFormFieldRequest,
+   [1m[94m|[0m     [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m  [1m[33m^^^^^^^^^^^^^^^^^^^^^^^[0m  [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m: unused imports: `SsrAssetApplyRequest`, `SsrAssetRemoveRequest`, and `SsrAssetUpsertRequest`[0m
+  [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/mod.rs:83:5
+   [1m[94m|[0m
+[1m[94m83[0m [1m[94m|[0m     SsrAssetApplyRequest, SsrAssetPanel, SsrAssetRemoveRequest, SsrAssetUpsertRequest,
+   [1m[94m|[0m     [1m[33m^^^^^^^^^^^^^^^^^^^^[0m                 [1m[33m^^^^^^^^^^^^^^^^^^^^^[0m  [1m[33m^^^^^^^^^^^^^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m: unused import: `SsrDropSource`[0m
+  [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/mod.rs:85:43
+   [1m[94m|[0m
+[1m[94m85[0m [1m[94m|[0m pub(crate) use ssr_drop::{SsrDropRequest, SsrDropSource};
+   [1m[94m|[0m                                           [1m[33m^^^^^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m: unused imports: `SsrComponentPropertyKind`, `SsrComponentPropertyRequest`, `SsrPageCreateRequest`, `SsrPageMetadataRequest`, `SsrPageRenameRequest`, `SsrTranslationRemoveRequest`, and `SsrTranslationUpsertRequest`[0m
+  [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/mod.rs:87:5
+   [1m[94m|[0m
+[1m[94m87[0m [1m[94m|[0m     SsrComponentPropertyKind, SsrComponentPropertyRequest, SsrPageCreateRequest,
+   [1m[94m|[0m     [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^[0m  [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m  [1m[33m^^^^^^^^^^^^^^^^^^^^[0m
+[1m[94m88[0m [1m[94m|[0m     SsrPageMetadataRequest, SsrPageRenameRequest, SsrTranslationRemoveRequest,
+   [1m[94m|[0m     [1m[33m^^^^^^^^^^^^^^^^^^^^^^[0m  [1m[33m^^^^^^^^^^^^^^^^^^^^[0m  [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[94m89[0m [1m[94m|[0m     SsrTranslationUpsertRequest,
+   [1m[94m|[0m     [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m: unused import: `style_section::StyleSection`[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/mod.rs:102:16
+    [1m[94m|[0m
+[1m[94m102[0m [1m[94m|[0m pub(crate) use style_section::StyleSection;
+    [1m[94m|[0m                [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m: unused import: `PageBuilderModuleMetadata`[0m
+ [1m[94m--> [0mcrates/rustok-page-builder/admin/src/model.rs:7:35
+  [1m[94m|[0m
+[1m[94m7[0m [1m[94m|[0m     PageBuilderCapabilityRequest, PageBuilderModuleMetadata, PublishPageBuilderInput,
+  [1m[94m|[0m                                   [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[1m[92m    Checking[0m leptos_integration_utils v0.8.8
+[1m[92m    Checking[0m leptos-ui-routing v0.1.0 (/home/runner/work/RusTok/RusTok/crates/leptos-ui-routing)
+[1m[92m    Checking[0m leptos_axum v0.8.10
+[1m[92m    Checking[0m leptos-auth v0.1.0 (/home/runner/work/RusTok/RusTok/crates/leptos-auth)
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/modular_canvas.rs:140:33
+    [1m[94m|[0m
+[1m[94m140[0m [1m[94m|[0m                 intent_endpoint=browser_intent_endpoint
+    [1m[94m|[0m                                 [1m[91m^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `String`, found `Option<String>`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: expected struct `std::string::String`
+                 found enum `[1m[35mstd::option::Option[0m[1m[35m<[0mstd::string::String[1m[35m>[0m`
+[1m[96mhelp[0m: consider using `Option::expect` to unwrap the `std::option::Option<std::string::String>` value, panicking if the value is an `Option::None`
+    [1m[94m|[0m
+[1m[94m140[0m [1m[94m| [0m                intent_endpoint=browser_intent_endpoint[92m.expect("REASON")[0m
+    [1m[94m|[0m                                                        [92m+++++++++++++++++[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/modular_canvas.rs:141:28
+    [1m[94m|[0m
+[1m[94m141[0m [1m[94m|[0m                 csrf_token=browser_csrf_token
+    [1m[94m|[0m                            [1m[91m^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `String`, found `Option<String>`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: expected struct `std::string::String`
+                 found enum `[1m[35mstd::option::Option[0m[1m[35m<[0mstd::string::String[1m[35m>[0m`
+[1m[96mhelp[0m: consider using `Option::expect` to unwrap the `std::option::Option<std::string::String>` value, panicking if the value is an `Option::None`
+    [1m[94m|[0m
+[1m[94m141[0m [1m[94m| [0m                csrf_token=browser_csrf_token[92m.expect("REASON")[0m
+    [1m[94m|[0m                                              [92m+++++++++++++++++[0m
+
+[1m[92m    Checking[0m rustok-seo-admin-support v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-seo-admin-support)
+[1m[91merror[E0382][0m[1m: borrow of moved value: `diagnostic.code`[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/palette_layers.rs:68:70
+    [1m[94m|[0m
+[1m[94m 64[0m [1m[94m|[0m [1m[94m/[0m [1m[94m...[0m                   view! {
+[1m[94m 65[0m [1m[94m|[0m [1m[94m|[0m [1m[94m...[0m                       <p
+[1m[94m 66[0m [1m[94m|[0m [1m[94m|[0m [1m[94m...[0m                           class=class
+[1m[94m 67[0m [1m[94m|[0m [1m[94m|[0m [1m[94m...[0m                           role=role
+[1m[94m 68[0m [1m[94m|[0m [1m[94m|[0m [1m[94m...[0m                           data-fly-contribution-diagnostic=diagnostic.code.clone()
+    [1m[94m|[0m [1m[94m|[0m                                                                [1m[91m^^^^^^^^^^^^^^^[0m [1m[91mvalue borrowed here after move[0m
+[1m[94m...[0m   [1m[94m|[0m
+[1m[94m 72[0m [1m[94m|[0m [1m[94m|[0m [1m[94m...[0m                       </p>
+[1m[94m 73[0m [1m[94m|[0m [1m[94m|[0m [1m[94m...[0m                   }
+    [1m[94m|[0m [1m[94m|_______________________-[0m [1m[94m`diagnostic.code` moved due to this method call[0m
+    [1m[94m|[0m
+[1m[92mnote[0m: `into_render` takes ownership of the receiver `self`, which moves `diagnostic.code`
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tachys-0.2.18/src/view/mod.rs:524:20
+    [1m[94m|[0m
+[1m[94m524[0m [1m[94m|[0m     fn into_render(self) -> Self::Output;
+    [1m[94m|[0m                    [1m[92m^^^^[0m
+    [1m[94m= [0m[1mnote[0m: move occurs because `diagnostic.code` has type `std::string::String`, which does not implement the `Copy` trait
+[1m[96mhelp[0m: you can `clone` the value and consume it, but this might not be your desired behavior
+    [1m[94m|[0m
+[1m[94m 70[0m [1m[94m| [0m                                    <code>{diagnostic.code[92m.clone()[0m}</code>
+    [1m[94m|[0m                                                           [92m++++++++[0m
+
+[1m[91merror[E0382][0m[1m: borrow of moved value: `summary.locale`[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/ssr_locale_coverage.rs:201:37
+    [1m[94m|[0m
+[1m[94m198[0m [1m[94m|[0m [1m[94m/[0m     view! {
+[1m[94m199[0m [1m[94m|[0m [1m[94m|[0m         <article
+[1m[94m200[0m [1m[94m|[0m [1m[94m|[0m             class="rounded border border-border px-3 py-2 text-xs"
+[1m[94m201[0m [1m[94m|[0m [1m[94m|[0m             data-fly-locale-summary=summary.locale.clone()
+    [1m[94m|[0m [1m[94m|[0m                                     [1m[91m^^^^^^^^^^^^^^[0m [1m[91mvalue borrowed here after move[0m
+[1m[94m...[0m   [1m[94m|[0m
+[1m[94m223[0m [1m[94m|[0m [1m[94m|[0m         </article>
+[1m[94m224[0m [1m[94m|[0m [1m[94m|[0m     }
+    [1m[94m|[0m [1m[94m|_____-[0m [1m[94m`summary.locale` moved due to this method call[0m
+    [1m[94m|[0m
+[1m[92mnote[0m: `into_render` takes ownership of the receiver `self`, which moves `summary.locale`
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tachys-0.2.18/src/view/mod.rs:524:20
+    [1m[94m|[0m
+[1m[94m524[0m [1m[94m|[0m     fn into_render(self) -> Self::Output;
+    [1m[94m|[0m                    [1m[92m^^^^[0m
+    [1m[94m= [0m[1mnote[0m: move occurs because `summary.locale` has type `std::string::String`, which does not implement the `Copy` trait
+[1m[96mhelp[0m: you can `clone` the value and consume it, but this might not be your desired behavior
+    [1m[94m|[0m
+[1m[94m206[0m [1m[94m| [0m                <strong>{summary.locale[92m.clone()[0m}</strong>
+    [1m[94m|[0m                                        [92m++++++++[0m
+
+[1m[91merror[E0382][0m[1m: borrow of moved value: `gap.locale`[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/ssr_locale_coverage.rs:246:33
+    [1m[94m|[0m
+[1m[94m243[0m [1m[94m|[0m [1m[94m/[0m     view! {
+[1m[94m244[0m [1m[94m|[0m [1m[94m|[0m         <article
+[1m[94m245[0m [1m[94m|[0m [1m[94m|[0m             class="rounded border border-border px-2 py-1.5 text-xs"
+[1m[94m246[0m [1m[94m|[0m [1m[94m|[0m             data-fly-locale-gap=gap.locale.clone()
+    [1m[94m|[0m [1m[94m|[0m                                 [1m[91m^^^^^^^^^^[0m [1m[91mvalue borrowed here after move[0m
+[1m[94m...[0m   [1m[94m|[0m
+[1m[94m256[0m [1m[94m|[0m [1m[94m|[0m         </article>
+[1m[94m257[0m [1m[94m|[0m [1m[94m|[0m     }
+    [1m[94m|[0m [1m[94m|_____-[0m [1m[94m`gap.locale` moved due to this method call[0m
+    [1m[94m|[0m
+[1m[92mnote[0m: `into_render` takes ownership of the receiver `self`, which moves `gap.locale`
+   [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tachys-0.2.18/src/view/mod.rs:524:20
+    [1m[94m|[0m
+[1m[94m524[0m [1m[94m|[0m     fn into_render(self) -> Self::Output;
+    [1m[94m|[0m                    [1m[92m^^^^[0m
+    [1m[94m= [0m[1mnote[0m: move occurs because `gap.locale` has type `std::string::String`, which does not implement the `Copy` trait
+[1m[96mhelp[0m: you can `clone` the value and consume it, but this might not be your desired behavior
+    [1m[94m|[0m
+[1m[94m250[0m [1m[94m| [0m                <strong>{gap.locale[92m.clone()[0m}</strong>
+    [1m[94m|[0m                                    [92m++++++++[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/ui/leptos.rs:168:39
+    [1m[94m|[0m
+[1m[94m168[0m [1m[94m|[0m                 contribution_assembly=context.contribution_assembly
+    [1m[94m|[0m                                       [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `Arc<ContributionAssemblyResult>`, found `Option<Arc<ContributionAssemblyResult>>`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: expected struct `Arc<_>`
+                 found enum `[1m[35mstd::option::Option[0m[1m[35m<[0mArc<_>[1m[35m>[0m`
+[1m[96mhelp[0m: consider using `Option::expect` to unwrap the `std::option::Option<Arc<ContributionAssemblyResult>>` value, panicking if the value is an `Option::None`
+    [1m[94m|[0m
+[1m[94m168[0m [1m[94m| [0m                contribution_assembly=context.contribution_assembly[92m.expect("REASON")[0m
+    [1m[94m|[0m                                                                    [92m+++++++++++++++++[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/ui/leptos.rs:169:37
+    [1m[94m|[0m
+[1m[94m169[0m [1m[94m|[0m                 editor_capabilities=context.editor_capabilities
+    [1m[94m|[0m                                     [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `CapabilityState`, found `Option<CapabilityState>`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: expected struct `CapabilityState`
+                 found enum `[1m[35mstd::option::Option[0m[1m[35m<[0mCapabilityState[1m[35m>[0m`
+[1m[96mhelp[0m: consider using `Option::expect` to unwrap the `std::option::Option<CapabilityState>` value, panicking if the value is an `Option::None`
+    [1m[94m|[0m
+[1m[94m169[0m [1m[94m| [0m                editor_capabilities=context.editor_capabilities[92m.expect("REASON")[0m
+    [1m[94m|[0m                                                                [92m+++++++++++++++++[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/ui/leptos.rs:170:46
+    [1m[94m|[0m
+[1m[94m170[0m [1m[94m|[0m                 editor_capability_evaluation=context.editor_capability_evaluation
+    [1m[94m|[0m                                              [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `Arc<EditorCapabilityEvaluation>`, found `Option<Arc<EditorCapabilityEvaluation>>`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: expected struct `Arc<_>`
+                 found enum `[1m[35mstd::option::Option[0m[1m[35m<[0mArc<_>[1m[35m>[0m`
+[1m[96mhelp[0m: consider using `Option::expect` to unwrap the `std::option::Option<Arc<EditorCapabilityEvaluation>>` value, panicking if the value is an `Option::None`
+    [1m[94m|[0m
+[1m[94m170[0m [1m[94m| [0m                editor_capability_evaluation=context.editor_capability_evaluation[92m.expect("REASON")[0m
+    [1m[94m|[0m                                                                                  [92m+++++++++++++++++[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/ui/leptos.rs:176:41
+    [1m[94m|[0m
+[1m[94m176[0m [1m[94m|[0m                 browser_intent_endpoint=context.browser_intent_endpoint
+    [1m[94m|[0m                                         [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `String`, found `Option<String>`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: expected struct `std::string::String`
+                 found enum `[1m[35mstd::option::Option[0m[1m[35m<[0mstd::string::String[1m[35m>[0m`
+[1m[96mhelp[0m: consider using `Option::expect` to unwrap the `std::option::Option<std::string::String>` value, panicking if the value is an `Option::None`
+    [1m[94m|[0m
+[1m[94m176[0m [1m[94m| [0m                browser_intent_endpoint=context.browser_intent_endpoint[92m.expect("REASON")[0m
+    [1m[94m|[0m                                                                        [92m+++++++++++++++++[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/ui/leptos.rs:177:36
+    [1m[94m|[0m
+[1m[94m177[0m [1m[94m|[0m                 browser_csrf_token=context.browser_csrf_token
+    [1m[94m|[0m                                    [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `String`, found `Option<String>`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: expected struct `std::string::String`
+                 found enum `[1m[35mstd::option::Option[0m[1m[35m<[0mstd::string::String[1m[35m>[0m`
+[1m[96mhelp[0m: consider using `Option::expect` to unwrap the `std::option::Option<std::string::String>` value, panicking if the value is an `Option::None`
+    [1m[94m|[0m
+[1m[94m177[0m [1m[94m| [0m                browser_csrf_token=context.browser_csrf_token[92m.expect("REASON")[0m
+    [1m[94m|[0m                                                              [92m+++++++++++++++++[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/ui/leptos.rs:246:17
+    [1m[94m|[0m
+[1m[94m246[0m [1m[94m|[0m                 contribution_assembly
+    [1m[94m|[0m                 [1m[91m^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `Arc<ContributionAssemblyResult>`, found `Option<Arc<ContributionAssemblyResult>>`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: expected struct `Arc<_>`
+                 found enum `[1m[35mstd::option::Option[0m[1m[35m<[0mArc<_>[1m[35m>[0m`
+[1m[96mhelp[0m: consider using `Option::expect` to unwrap the `std::option::Option<Arc<ContributionAssemblyResult>>` value, panicking if the value is an `Option::None`
+    [1m[94m|[0m
+[1m[94m246[0m [1m[94m| [0m                contribution_assembly[92m.expect("REASON")[0m
+    [1m[94m|[0m                                      [92m+++++++++++++++++[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/ui/leptos.rs:247:17
+    [1m[94m|[0m
+[1m[94m247[0m [1m[94m|[0m                 editor_capabilities
+    [1m[94m|[0m                 [1m[91m^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `CapabilityState`, found `Option<CapabilityState>`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: expected struct `CapabilityState`
+                 found enum `[1m[35mstd::option::Option[0m[1m[35m<[0mCapabilityState[1m[35m>[0m`
+[1m[96mhelp[0m: consider using `Option::expect` to unwrap the `std::option::Option<CapabilityState>` value, panicking if the value is an `Option::None`
+    [1m[94m|[0m
+[1m[94m247[0m [1m[94m| [0m                editor_capabilities[92m.expect("REASON")[0m
+    [1m[94m|[0m                                    [92m+++++++++++++++++[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/ui/leptos.rs:248:17
+    [1m[94m|[0m
+[1m[94m248[0m [1m[94m|[0m                 editor_capability_evaluation
+    [1m[94m|[0m                 [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `Arc<EditorCapabilityEvaluation>`, found `Option<Arc<EditorCapabilityEvaluation>>`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: expected struct `Arc<_>`
+                 found enum `[1m[35mstd::option::Option[0m[1m[35m<[0mArc<_>[1m[35m>[0m`
+[1m[96mhelp[0m: consider using `Option::expect` to unwrap the `std::option::Option<Arc<EditorCapabilityEvaluation>>` value, panicking if the value is an `Option::None`
+    [1m[94m|[0m
+[1m[94m248[0m [1m[94m| [0m                editor_capability_evaluation[92m.expect("REASON")[0m
+    [1m[94m|[0m                                             [92m+++++++++++++++++[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/ui/leptos.rs:255:17
+    [1m[94m|[0m
+[1m[94m255[0m [1m[94m|[0m                 browser_intent_endpoint
+    [1m[94m|[0m                 [1m[91m^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `String`, found `Option<String>`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: expected struct `std::string::String`
+                 found enum `[1m[35mstd::option::Option[0m[1m[35m<[0mstd::string::String[1m[35m>[0m`
+[1m[96mhelp[0m: consider using `Option::expect` to unwrap the `std::option::Option<std::string::String>` value, panicking if the value is an `Option::None`
+    [1m[94m|[0m
+[1m[94m255[0m [1m[94m| [0m                browser_intent_endpoint[92m.expect("REASON")[0m
+    [1m[94m|[0m                                        [92m+++++++++++++++++[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/ui/leptos.rs:256:17
+    [1m[94m|[0m
+[1m[94m256[0m [1m[94m|[0m                 browser_csrf_token
+    [1m[94m|[0m                 [1m[91m^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `String`, found `Option<String>`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: expected struct `std::string::String`
+                 found enum `[1m[35mstd::option::Option[0m[1m[35m<[0mstd::string::String[1m[35m>[0m`
+[1m[96mhelp[0m: consider using `Option::expect` to unwrap the `std::option::Option<std::string::String>` value, panicking if the value is an `Option::None`
+    [1m[94m|[0m
+[1m[94m256[0m [1m[94m| [0m                browser_csrf_token[92m.expect("REASON")[0m
+    [1m[94m|[0m                                   [92m+++++++++++++++++[0m
+
+[1m[91merror[E0599][0m[1m: no method named `with` found for struct `leptos::prelude::RwSignal<T, S>` in the current scope[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/property_helpers.rs:12:10
+    [1m[94m|[0m
+[1m[94m 10[0m [1m[94m|[0m       let component_id = runtime
+    [1m[94m|[0m [1m[94m ________________________-[0m
+[1m[94m 11[0m [1m[94m|[0m [1m[94m|[0m         .controller
+[1m[94m 12[0m [1m[94m|[0m [1m[94m|[0m         .with(|controller| controller.ui().state.selection.component_id.clone())
+    [1m[94m|[0m [1m[94m|_________-[0m[1m[91m^^^^[0m
+    [1m[94m|[0m
+   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reactive_graph-0.2.14/src/traits.rs:327:8
+    [1m[94m|[0m
+[1m[94m327[0m [1m[94m|[0m       fn with<U>(&self, fun: impl FnOnce(&Self::Value) -> U) -> U {
+    [1m[94m|[0m          [1m[94m----[0m [1m[94mthe method is available for `leptos::prelude::RwSignal<AdminCanvasController>` here[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mhelp[0m: items from traits can only be used if the trait is in scope
+[1m[96mhelp[0m: trait `With` which provides `with` is implemented but not in scope; perhaps you want to import it
+    [1m[94m|[0m
+[1m[94m  1[0m [92m+ use leptos::prelude::With;[0m
+    [1m[94m|[0m
+[1m[96mhelp[0m: there is a method `try_with` with a similar name
+    [1m[94m|[0m
+[1m[94m 12[0m [1m[94m| [0m        .[92mtry_[0mwith(|controller| controller.ui().state.selection.component_id.clone())
+    [1m[94m|[0m          [92m++++[0m
+
+[1m[91merror[E0599][0m[1m: no method named `with` found for struct `leptos::prelude::RwSignal<T, S>` in the current scope[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/property_helpers.rs:21:24
+    [1m[94m|[0m
+[1m[94m 21[0m [1m[94m|[0m     runtime.controller.with(|controller| {
+    [1m[94m|[0m     [1m[94m-------------------[0m[1m[91m^^^^[0m
+    [1m[94m|[0m
+   [1m[94m::: [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reactive_graph-0.2.14/src/traits.rs:327:8
+    [1m[94m|[0m
+[1m[94m327[0m [1m[94m|[0m     fn with<U>(&self, fun: impl FnOnce(&Self::Value) -> U) -> U {
+    [1m[94m|[0m        [1m[94m----[0m [1m[94mthe method is available for `leptos::prelude::RwSignal<AdminCanvasController>` here[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mhelp[0m: items from traits can only be used if the trait is in scope
+[1m[96mhelp[0m: trait `With` which provides `with` is implemented but not in scope; perhaps you want to import it
+    [1m[94m|[0m
+[1m[94m  1[0m [92m+ use leptos::prelude::With;[0m
+    [1m[94m|[0m
+[1m[96mhelp[0m: there is a method `try_with` with a similar name
+    [1m[94m|[0m
+[1m[94m 21[0m [1m[94m| [0m    runtime.controller.[92mtry_[0mwith(|controller| {
+    [1m[94m|[0m                        [92m++++[0m
+
+[1m[91merror[E0559][0m[1m: variant `BindingTarget::Style` has no field named `property`[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/ssr_forms.rs:436:13
+    [1m[94m|[0m
+[1m[94m436[0m [1m[94m|[0m             property: normalize_css_property(&name)?,
+    [1m[94m|[0m             [1m[91m^^^^^^^^[0m [1m[91m`BindingTarget::Style` does not have this field[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: available fields are: `name`
+
+[1m[91merror[E0609][0m[1m: no field `label` on type `&LayerItemView`[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/ssr_inspector.rs:377:26
+    [1m[94m|[0m
+[1m[94m377[0m [1m[94m|[0m             label: layer.label.clone(),
+    [1m[94m|[0m                          [1m[91m^^^^^[0m [1m[91munknown field[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: available fields are: `id`, `component_type`, `depth`, `parent_component_id`, `index`, `child_count`
+
+[1m[91merror[E0609][0m[1m: no field `children` on type `&LayerItemView`[0m
+   [1m[94m--> [0mcrates/rustok-page-builder/admin/src/editor/ssr_inspector.rs:380:29
+    [1m[94m|[0m
+[1m[94m380[0m [1m[94m|[0m         for child in &layer.children {
+    [1m[94m|[0m                             [1m[91m^^^^^^^^[0m [1m[91munknown field[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: available fields are: `id`, `component_type`, `depth`, `parent_component_id`, `index`, `child_count`
+
+[1mSome errors have detailed explanations: E0308, E0382, E0559, E0599, E0609.[0m
+[1mFor more information about an error, try `rustc --explain E0308`.[0m
+[1m[33mwarning[0m: `rustok-page-builder-admin` (lib) generated 9 warnings
+[1m[91merror[0m: could not compile `rustok-page-builder-admin` (lib) due to 20 previous errors; 9 warnings emitted
 ```
