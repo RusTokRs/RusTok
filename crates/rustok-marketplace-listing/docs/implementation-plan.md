@@ -4,9 +4,9 @@ Last reviewed: 2026-07-17
 
 ## Status
 
-- FFA status: `not_started`.
+- FFA status: `in_progress`.
 - FBA status: `in_progress`.
-- Structural shape: `no_ui_boundary`.
+- Structural shape: `core_transport_ui`.
 - Owner source gate: `open`.
 - Production promotion gate: `closed`.
 
@@ -22,13 +22,17 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Keep product-owned localized title/description/translations outside listing
   storage.
 - [x] Carry effective locale through `PortContext` for every command-origin event.
-- [x] Keep the Marketplace root and future FFA hosts as composition surfaces only.
+- [x] Keep the Marketplace root and FFA hosts as composition surfaces only.
 - [x] Keep `MarketplaceListingService` read-only; owner writes live only in
   receipt/event executors.
 - [x] Preserve unknown legacy attribution as explicit nullable facts with typed
   provenance instead of fabricating actor or locale.
-- [ ] Publish module-owned listing FFA core/model/transport/i18n/Leptos package before
-  adding listing UI to hosts.
+- [x] Publish a module-owned listing FFA package with framework-neutral
+  model/core/transport/i18n boundaries and a thin Leptos adapter.
+- [x] Require explicit native/GraphQL transport selection; implicit fallback is
+  forbidden.
+- [x] Require native FFA hosts to provide request-scoped typed listing ports,
+  authorization, and canonical `PortContext` construction.
 - [ ] Retain compiled remote-profile contract evidence before FBA
   `transport_verified`.
 - [ ] Retain mounted native/GraphQL parity before FFA `phase_b_ready`.
@@ -73,8 +77,10 @@ migration, contention, mounted-transport, and remote-profile evidence.
 ## Ownership remaining
 
 - [ ] Publish listing lifecycle/moderation events through the transactional outbox.
-- [ ] Define event payload versioning and consumer compatibility before external
-  Marketplace consumers subscribe.
+- [ ] Define a versioned `marketplace.listing.changed` payload in the platform event
+  contract before external Marketplace consumers subscribe.
+- [ ] Keep moderation notes and arbitrary owner metadata out of the external event;
+  consumers refresh through `MarketplaceListingReadPort`.
 - [ ] Add product matching/approval workflow before automated EAN/GTIN matching,
   deduplication, or buy-box ranking.
 
@@ -100,32 +106,53 @@ migration, contention, mounted-transport, and remote-profile evidence.
   versioned terms, durable receipts, provider-preflight replay, complete immutable
   events, truthful provenance cutover, read-service non-bypass, deterministic
   eligibility, and module composition.
+- [x] Restore evented module registration and command-port routing after parallel
+  source drift; compatibility write methods are not an FBA path.
 
 ## FBA remaining
 
-- [ ] Publish owner events through the transactional outbox without coupling listing
-  persistence to a specific transport.
+- [ ] Add the versioned listing event to `rustok-events` and publish it through
+  `TransactionalEventBus::publish_in_tx` in the same owner transaction as listing
+  event/state/receipt completion.
+- [ ] Do not relay imported legacy snapshots as new live business commands.
 - [ ] Compile owner/provider/root consumer contracts.
 - [ ] Apply clean and upgraded SQLite/PostgreSQL migrations, including the
   intentionally irreversible provenance cutover.
 - [ ] Execute receipt replay, conflicting payload, same-key contention, provider
   preflight races, scope/SKU conflicts, terms-version races, lifecycle contention,
-  locale/provenance constraints, bounded timeline isolation, rollback, and restart
-  scenarios.
+  locale/provenance constraints, bounded timeline isolation, outbox atomicity,
+  rollback, and restart scenarios.
 - [ ] Retain remote-profile timeout/degraded/fallback evidence before promotion.
+
+## FFA completed
+
+- [x] Add `rustok-marketplace-listing-admin` with framework-neutral models/core,
+  explicit native/GraphQL transport selection, English/Russian catalogs, and a thin
+  Leptos adapter.
+- [x] Model directory/detail, current terms, immutable lifecycle/moderation history,
+  create, terms update, submit, review, publish, suspend, reactivate, and archive.
+- [x] Show legacy snapshots as unknown-attribution history rather than pretending they
+  are command events.
+- [x] Preserve the original command and idempotency key for explicit retry after a
+  transport error.
+- [x] Keep native UI composition behind a request-scoped host runtime containing typed
+  listing ports, an authorizer, and canonical `PortContext` construction.
+- [x] Declare the GraphQL profile as explicitly unmounted instead of silently falling
+  back to native or inventing unsupported schema operations.
+- [x] Register the module-owned admin package and locale path in
+  `rustok-module.toml`.
+- [x] Add `marketplace_listing_admin_ffa_guard.rs` for ownership, typed ports,
+  provenance rendering, idempotency preservation, and no-fallback rules.
 
 ## FFA remaining
 
-- [ ] Add `rustok-marketplace-listing-admin` with framework-neutral models/core,
-  explicit native/GraphQL transport selection, i18n, and a thin Leptos adapter.
-- [ ] Add directory/detail, terms history, lifecycle/moderation history, review,
-  publication, suspension, reactivation, archive, and eligibility explanation
-  workflows.
-- [ ] Show legacy snapshots as unknown-attribution history rather than pretending they
-  are command events.
-- [ ] Add platform `marketplace_listings` permissions without moving owner policy into
-  host code.
-- [ ] Preserve idempotency keys across retryable command errors.
+- [ ] Register the nested admin crate in the workspace and host feature graphs.
+- [ ] Add platform `marketplace_listings` permissions and map the host authorizer to
+  them without moving listing policy into host code.
+- [ ] Publish module-owned listing GraphQL query/mutation roots over the same typed
+  ports, then replace the declared-unmounted GraphQL adapter with real operations.
+- [ ] Provide the request-scoped native runtime from authenticated admin hosts.
+- [ ] Add eligibility explanation and paginated event/terms history refinements.
 - [ ] Retain mounted native/GraphQL parity, localized errors, route state, and
   authenticated host evidence before `phase_b_ready`.
 
@@ -133,12 +160,14 @@ migration, contention, mounted-transport, and remote-profile evidence.
 
 1. [x] Complete immutable events for all FBA write commands.
 2. [x] Backfill truthful legacy snapshots and remove mutable note columns.
-3. [ ] Publish listing lifecycle events through transactional outbox ownership.
-4. [ ] Publish the listing FFA package and explicit native/GraphQL transports.
-5. [ ] Add platform listing permissions and module-owned admin workflows.
-6. [ ] Compile and execute database, contention, replay, tenant, locale, provenance,
-   restart, and mounted transport evidence.
-7. [ ] Start product matching/approval only after owner/runtime evidence is retained.
+3. [x] Publish the initial module-owned listing FFA source package.
+4. [ ] Define and atomically publish the versioned transactional outbox event.
+5. [ ] Add platform listing permissions, workspace/host registration, and native
+   request runtime composition.
+6. [ ] Add listing GraphQL roots and replace the declared-unmounted adapter.
+7. [ ] Compile and execute database, contention, replay, tenant, locale, provenance,
+   outbox, restart, and mounted transport evidence.
+8. [ ] Start product matching/approval only after owner/runtime evidence is retained.
 
 ## Source evidence
 
@@ -156,14 +185,21 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `src/lifecycle_event_commands.rs`
 - `src/service.rs`
 - `src/ports.rs`
+- `admin/Cargo.toml`
+- `admin/src/model.rs`
+- `admin/src/core.rs`
+- `admin/src/transport.rs`
+- `admin/src/transport/native_server_adapter.rs`
+- `admin/src/transport/graphql_adapter.rs`
+- `admin/src/ui/leptos.rs`
+- `admin/locales/en.json`
+- `admin/locales/ru.json`
 - `contracts/marketplace-listing-fba-registry.json`
 - `../rustok-marketplace/src/listing_directory.rs`
-- `../rustok-distribution/Cargo.toml`
-- `../rustok-distribution/src/lib.rs`
-- `../../apps/server/Cargo.toml`
 - `../../apps/server/tests/marketplace_listing_boundary_guard.rs`
 - `../../apps/server/tests/marketplace_listing_lifecycle_event_guard.rs`
 - `../../apps/server/tests/marketplace_listing_provenance_cutover_guard.rs`
+- `../../apps/server/tests/marketplace_listing_admin_ffa_guard.rs`
 - `../../scripts/verify/verify-marketplace-listing-boundary.mjs`
 - `../../scripts/verify/verify-marketplace-listing-lifecycle-events.mjs`
 - `../../scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
@@ -171,10 +207,10 @@ migration, contention, mounted-transport, and remote-profile evidence.
 ## Promotion gates
 
 - [ ] FBA `boundary_ready`: compiled owner/provider-consumer contracts, durable
-  identity/provenance tests, migrations, and source guards are retained.
+  identity/provenance/outbox tests, migrations, and source guards are retained.
 - [ ] FBA `transport_verified`: mounted in-process/remote execution and degraded
   behavior are retained.
-- [ ] FFA `phase_b_ready`: module-owned admin package, host composition, and
-  native/GraphQL parity evidence are retained.
+- [ ] FFA `phase_b_ready`: workspace/host composition, real native/GraphQL transports,
+  platform permissions, and parity evidence are retained.
 - [ ] Production-ready: migrations, tenant isolation, contention, restart,
   storefront selection, and operator workflow evidence are retained.
