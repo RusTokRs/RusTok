@@ -1,11 +1,8 @@
-# Tenant context loading repair failure
+# Tenant context loading repair v5 failure
 
 ```text
 Traceback (most recent call last):
-  File "/tmp/repair_tenant_context_loading.py", line 26, in <module>
-    resolution = replace_once(
-                 ^^^^^^^^^^^^^
-  File "/tmp/repair_tenant_context_loading.py", line 14, in replace_once
-    raise RuntimeError(f"{label}: expected 1 match, got {count}")
-RuntimeError: reuse canonical slug constructor: expected 1 match, got 2
+  File "<stdin>", line 11, in <module>
+RuntimeError: expected payload length 5024, got 4900
+python3: can't open file '/tmp/repair_tenant_context_loading_v5.py': [Errno 2] No such file or directory
 ```
