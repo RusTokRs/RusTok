@@ -1,7 +1,7 @@
 use crate::browser_intent::{
     dispatch_browser_intent, BrowserIntentDispatchError, BrowserIntentDispatchResult,
 };
-use crate::editor::{PaletteBlockView, SsrDropRequest, SsrDropSource};
+use crate::editor::PaletteBlockView;
 use crate::AdminCanvasController;
 use fly_browser::BrowserIntentEnvelope;
 use fly_ui::{PaletteBlockAccess, UiIntent};
@@ -45,17 +45,6 @@ impl AdminCanvasController {
     ) -> Result<UiIntent, String> {
         require_palette_access(block_id, access)?;
         self.insert_palette_block_intent(block_id)
-    }
-
-    pub(crate) fn ssr_drop_intent_with_palette_access(
-        &self,
-        request: SsrDropRequest,
-        access: &PaletteBlockAccess,
-    ) -> Result<UiIntent, String> {
-        if let SsrDropSource::Block { block_id } = &request.source {
-            require_palette_access(block_id, access)?;
-        }
-        self.ssr_drop_intent(request)
     }
 }
 
