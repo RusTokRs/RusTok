@@ -9,7 +9,7 @@ status: active
 
 ## Purpose
 
-This inventory defines the target browser policy, the report collection boundary and the evidence required before the UI CSP can remove the remaining inline-style allowance from enforcement. Inline scripts already require a per-response nonce, inline event handlers are blocked and `unsafe-eval` is prohibited.
+This inventory defines the target browser policy, the report collection boundary and the evidence required before the UI CSP can remove the remaining inline-style allowance from enforcement. Inline scripts already require a per-response nonce, inline event handlers are blocked, `unsafe-eval` is prohibited and production connections are HTTPS/WSS-only.
 
 No violation in this document is an automatic allowlist request. The preferred resolution is to remove the dependency, move code into a same-origin static asset, or attach a per-response nonce/hash.
 
@@ -50,7 +50,7 @@ The existing Prometheus family `rustok_module_errors_total` records the same bou
 | `style-src` | `'self'` | No inline styles; migrate generated style blocks to hashes, nonces or static CSS |
 | `img-src` | `'self' data: blob: https:` | Remote images remain HTTPS-only |
 | `font-src` | `'self' data:` | No remote font origin is currently approved |
-| `connect-src` | `'self' https: wss:` | No plaintext HTTP or WebSocket connection |
+| `connect-src` | `'self' https: wss:` | Production permits only secure HTTP and WebSocket connections |
 | `worker-src` | `'self' blob:` | Blob workers are retained for current browser runtime support |
 | `object-src` | `'none'` | Plugins and embedded object content forbidden |
 | `frame-ancestors` | `'none'` | Embedding forbidden |
@@ -65,14 +65,20 @@ The existing Prometheus family `rustok_module_errors_total` records the same bou
 - Storefront processing applies the nonce only to the exact JSON-LD opening tag emitted by the typed SEO renderer.
 - Missing nonce state fails closed to the API deny policy rather than restoring `unsafe-inline`.
 
+## Connection Profile Boundary
+
+- Production environments (`RUSTOK_ENV`, `RUST_ENV` or `APP_ENV` set to `prod`/`production`) use `'self' https: wss:`.
+- Non-production profiles may additionally use `ws:` for local development.
+- Plaintext `http:` is absent from every UI policy.
+- The static CSP gate verifies that the secure source set cannot regain `ws:`.
+
 ## Current Migration Debt
 
 The enforced UI policy still contains:
 
-- `style-src 'unsafe-inline'`;
-- plaintext `ws:` for local/development compatibility.
+- `style-src 'unsafe-inline'`.
 
-`script-src 'unsafe-inline'` and `unsafe-eval` have been removed from enforcement and are protected by the CSP verification gate. The remaining entries are migration debt, not approved production exceptions. The strict report-only policy intentionally excludes them.
+`script-src 'unsafe-inline'`, `unsafe-eval`, plaintext HTTP and production plaintext WebSocket have been removed from enforcement and are protected by the CSP verification gate. The remaining inline-style entry is migration debt, not an approved production exception. The strict report-only policy intentionally excludes it.
 
 ## Triage Rules
 
@@ -89,13 +95,12 @@ The enforced UI policy still contains:
 
 The enforced policy may be promoted to the strict target only when:
 
-- browser smoke runs for admin and storefront produce no unexplained `style-src` or `connect-src` violations;
+- browser smoke runs for admin and storefront produce no unexplained `style-src` violations;
 - every required inline style block has a nonce/hash implementation or has moved to static CSS;
 - no production code path requires `eval` or equivalent string compilation;
 - the observed external-origin set matches this inventory;
 - the CSP reporting endpoint remains bounded and unauthenticated without inheriting tenant context;
-- production profiles no longer require plaintext `ws:`;
-- rollback instructions retain the last known safe policy without restoring inline scripts or plaintext HTTP sources.
+- rollback instructions retain the last known safe policy without restoring inline scripts or plaintext connection sources.
 
 ## Verification
 
