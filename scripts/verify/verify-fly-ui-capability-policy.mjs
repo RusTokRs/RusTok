@@ -174,9 +174,12 @@ requireMarkers('palette', [
 ], 'palette capability controls');
 requireMarkers('browserCapabilities', [
   'pub struct BrowserCapabilityDenial',
+  'impl std::error::Error for BrowserCapabilityDenial {}',
+  'pub enum BrowserCapabilityAccessError',
+  'Denied(#[from] BrowserCapabilityDenial)',
+  'Dispatch(#[from] BrowserIntentDispatchError)',
   'pub fn browser_capability_denial(',
-  'CAPABILITY_DENIAL_PREFIX',
-  'pub fn validate_browser_capability_access(',
+  'Result<(), BrowserCapabilityAccessError>',
   'let capabilities = capabilities.normalized();',
   'for capability in capability_requirements(envelope)?',
   'capabilities.allows(capability)',
@@ -187,16 +190,20 @@ requireMarkers('browserCapabilities', [
   '_ if envelope.is_mutating() => vec![EditorCapability::Edit]',
   'page_rename_uses_properties_capability',
   'selecting_an_asset_requires_asset_and_property_capabilities',
+  'malformed_shortcut_remains_a_typed_dispatch_error',
   'supplied_profile_is_authoritative',
 ], 'browser capability preflight');
-rejectMarker(
-  'browserCapabilities',
+for (const forbidden of [
   'capability_requirement(envelope, capabilities)',
-  'browser capability preflight must support multiple requirements',
-);
+  'CAPABILITY_DENIAL_PREFIX',
+  'FLY_CAPABILITY_DENIED:',
+]) {
+  rejectMarker('browserCapabilities', forbidden, `browser capability preflight must not contain ${forbidden}`);
+}
 requireMarkers('pageBuilderLib', [
   'mod capability_access;',
-  'browser_capability_denial, validate_browser_capability_access, BrowserCapabilityDenial,',
+  'browser_capability_denial, validate_browser_capability_access,',
+  'BrowserCapabilityAccessError, BrowserCapabilityDenial,',
 ], 'Page Builder browser capability export');
 requireMarkers('pagesAccess', [
   'pub fn pages_editor_capability_policy(',
@@ -214,35 +221,40 @@ requireMarkers('pagesComposition', [
   '.with_editor_capability_policy(editor_policy)',
 ], 'Pages visual editor capability policy');
 requireMarkers('pagesBrowser', [
+  'pub enum PagesBrowserIntentAccessError',
+  'Capability(#[from] BrowserCapabilityAccessError)',
+  'Pages(#[from] PagesBrowserIntentError)',
+  'pub fn capability_denial(&self)',
   'dispatch_pages_browser_intent_with_capabilities(',
   'dispatch_pages_browser_intent_with_store_and_capabilities(',
   'validate_browser_capability_access(&envelope, capabilities)',
-  'pages_preflight_rejects_capability_bypass',
-  'browser_capability_denial(&error)',
+  'pages_preflight_preserves_typed_capability_denial',
+  'PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Denied(_))',
   'Some(EditorCapability::Publish)',
 ], 'Pages capability-aware browser dispatch');
 requireMarkers('pagesLib', [
   'pages_editor_capability_policy_for_role,',
   'dispatch_pages_browser_intent_with_capabilities,',
+  'PagesBrowserIntentAccessError,',
 ], 'Pages capability exports');
 requireMarkers('adminMain', [
   'leptos_auth::api::fetch_current_user(',
   'pages_editor_capability_policy_for_role(Some(',
   'dispatch_pages_browser_intent_with_capabilities(',
-  'rustok_page_builder_admin::browser_capability_denial(error).is_some()',
+  'PagesBrowserIntentAccessError',
+  'let capability_denial = error.capability_denial();',
+  'BrowserCapabilityAccessError::Denied(_)',
+  '"code": "FLY_CAPABILITY_DENIED"',
   'StatusCode::FORBIDDEN',
   'Page Builder access token is missing',
 ], 'server-verified Page Builder endpoint policy');
-rejectMarker(
-  'adminMain',
+for (const forbidden of [
   'auth.user.as_ref().map(|user| user.role.as_str())',
-  'Page Builder endpoint must not trust the client-mirrored user cookie for authoritative role checks',
-);
-rejectMarker(
-  'adminMain',
   'message.contains("requires editor capability")',
-  'HTTP capability mapping must decode the structured denial envelope',
-);
+  'rustok_page_builder_admin::browser_capability_denial(error)',
+]) {
+  rejectMarker('adminMain', forbidden, `Page Builder endpoint must not contain ${forbidden}`);
+}
 for (const localeKey of ['localeEn', 'localeRu']) {
   requireMarkers(localeKey, [
     '"capabilityPolicy"',
