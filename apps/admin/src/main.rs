@@ -25,7 +25,8 @@ async fn main() {
         auth_ssr::auth_snapshot_from_headers, request_auth_snapshot, shell, App,
     };
     use rustok_pages_admin::{
-        dispatch_pages_browser_intent, BrowserIntentEnvelope, PagesBrowserIntentError,
+        dispatch_pages_browser_intent_with_capabilities,
+        pages_editor_capability_policy_for_role, BrowserIntentEnvelope, PagesBrowserIntentError,
         PagesBrowserIntentResponse, PagesBuilderSaveSnapshot,
     };
     use serde_json::{json, Value};
@@ -36,11 +37,15 @@ async fn main() {
         Json(envelope): Json<BrowserIntentEnvelope>,
     ) -> Result<Json<PagesBrowserIntentResponse>, (StatusCode, Json<Value>)> {
         let auth = auth_snapshot_from_headers(&headers);
+        let editor_capabilities = pages_editor_capability_policy_for_role(
+            auth.user.as_ref().map(|user| user.role.as_str()),
+        )
+        .evaluate();
         let token = bearer_token(&headers)
             .or_else(|| compatibility_token(&headers))
             .or_else(|| auth.session.as_ref().map(|session| session.token.clone()));
         let tenant_slug = header_value(&headers, "x-tenant-slug")
-            .or_else(|| auth.session.map(|session| session.tenant));
+            .or_else(|| auth.session.as_ref().map(|session| session.tenant.clone()));
         let default_locale = header_value(&headers, "accept-language")
             .and_then(|language| language.split(',').next().map(str::to_string))
             .unwrap_or_else(|| "en".to_string());
@@ -50,10 +55,14 @@ async fn main() {
             page_id,
             default_locale,
         };
-        dispatch_pages_browser_intent(snapshot, envelope)
-            .await
-            .map(Json)
-            .map_err(page_builder_error)
+        dispatch_pages_browser_intent_with_capabilities(
+            snapshot,
+            envelope,
+            editor_capabilities,
+        )
+        .await
+        .map(Json)
+        .map_err(page_builder_error)
     }
 
     fn bearer_token(headers: &HeaderMap) -> Option<String> {
@@ -87,6 +96,9 @@ async fn main() {
                 rustok_page_builder_admin::BrowserIntentDispatchError::RevisionConflict { .. }
                 | rustok_page_builder_admin::BrowserIntentDispatchError::ProjectHashConflict { .. },
             ) => StatusCode::CONFLICT,
+            PagesBrowserIntentError::Dispatch(
+                rustok_page_builder_admin::BrowserIntentDispatchError::Authoring(message),
+            ) if message.contains("requires editor capability") => StatusCode::FORBIDDEN,
             PagesBrowserIntentError::Draft(
                 rustok_page_builder_admin::SsrDraftSessionError::GenerationConflict { .. }
                 | rustok_page_builder_admin::SsrDraftSessionError::PageMismatch { .. },
