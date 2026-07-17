@@ -46,6 +46,7 @@ for (const forbidden of [
   rejectMarker('access', forbidden, `capability denial must not use string envelope ${forbidden}`);
 }
 for (const marker of [
+  'pub const BROWSER_CAPABILITY_DENIAL_CODE: &str = "FLY_CAPABILITY_DENIED";',
   'BrowserCapabilityAccessError, BrowserCapabilityDenial,',
   'browser_capability_denial, validate_browser_capability_access,',
 ]) {
@@ -71,7 +72,7 @@ for (const marker of [
   'PagesBrowserIntentAccessError',
   'let capability_denial = error.capability_denial();',
   'BrowserCapabilityAccessError::Denied(_)',
-  '"code": "FLY_CAPABILITY_DENIED"',
+  '"code": rustok_page_builder_admin::BROWSER_CAPABILITY_DENIAL_CODE',
   '"intent": denial.intent.as_str()',
   '"capability": denial.capability.as_str()',
   'StatusCode::FORBIDDEN',
@@ -81,8 +82,9 @@ for (const marker of [
 for (const forbidden of [
   'message.contains("requires editor capability")',
   'rustok_page_builder_admin::browser_capability_denial(error)',
+  '"code": "FLY_CAPABILITY_DENIED"',
 ]) {
-  rejectMarker('server', forbidden, `admin must not recover capability type through ${forbidden}`);
+  rejectMarker('server', forbidden, `admin must not recover or duplicate capability contract through ${forbidden}`);
 }
 rejectMarker(
   'server',
