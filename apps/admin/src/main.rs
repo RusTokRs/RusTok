@@ -19,7 +19,7 @@ async fn main() {
     };
     use leptos::logging::log;
     use leptos::prelude::*;
-    use leptos_auth::provide_server_auth_snapshot;
+    use leptos_auth::{provide_server_auth_snapshot, AuthError};
     use leptos_axum::{generate_route_list, LeptosRoutes};
     use rustok_admin::app::{
         auth_ssr::auth_snapshot_from_headers, request_auth_snapshot, shell, App,
@@ -37,21 +37,30 @@ async fn main() {
         Json(envelope): Json<BrowserIntentEnvelope>,
     ) -> Result<Json<PagesBrowserIntentResponse>, (StatusCode, Json<Value>)> {
         let auth = auth_snapshot_from_headers(&headers);
-        let editor_capabilities = pages_editor_capability_policy_for_role(
-            auth.user.as_ref().map(|user| user.role.as_str()),
-        )
-        .evaluate();
         let token = bearer_token(&headers)
             .or_else(|| compatibility_token(&headers))
-            .or_else(|| auth.session.as_ref().map(|session| session.token.clone()));
+            .or_else(|| auth.session.as_ref().map(|session| session.token.clone()))
+            .ok_or_else(|| auth_error(StatusCode::UNAUTHORIZED, "Page Builder access token is missing"))?;
         let tenant_slug = header_value(&headers, "x-tenant-slug")
-            .or_else(|| auth.session.as_ref().map(|session| session.tenant.clone()));
+            .or_else(|| auth.session.as_ref().map(|session| session.tenant.clone()))
+            .ok_or_else(|| auth_error(StatusCode::BAD_REQUEST, "Page Builder tenant is missing"))?;
+        let verified_user = leptos_auth::api::fetch_current_user(
+            token.clone(),
+            tenant_slug.clone(),
+        )
+        .await
+        .map_err(auth_transport_error)?
+        .ok_or_else(|| auth_error(StatusCode::UNAUTHORIZED, "Authenticated user was not found"))?;
+        let editor_capabilities = pages_editor_capability_policy_for_role(Some(
+            verified_user.role.as_str(),
+        ))
+        .evaluate();
         let default_locale = header_value(&headers, "accept-language")
             .and_then(|language| language.split(',').next().map(str::to_string))
             .unwrap_or_else(|| "en".to_string());
         let snapshot = PagesBuilderSaveSnapshot {
-            token,
-            tenant_slug,
+            token: Some(token),
+            tenant_slug: Some(tenant_slug),
             page_id,
             default_locale,
         };
@@ -86,6 +95,29 @@ async fn main() {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToString::to_string)
+    }
+
+    fn auth_transport_error(error: AuthError) -> (StatusCode, Json<Value>) {
+        let status = match error {
+            AuthError::Unauthorized | AuthError::InvalidCredentials => StatusCode::UNAUTHORIZED,
+            AuthError::Network => StatusCode::BAD_GATEWAY,
+            AuthError::Http(status) => StatusCode::from_u16(status)
+                .unwrap_or(StatusCode::BAD_GATEWAY),
+        };
+        auth_error(status, error.to_string())
+    }
+
+    fn auth_error(
+        status: StatusCode,
+        message: impl Into<String>,
+    ) -> (StatusCode, Json<Value>) {
+        (
+            status,
+            Json(json!({
+                "error": message.into(),
+                "status": status.as_u16(),
+            })),
+        )
     }
 
     fn page_builder_error(error: PagesBrowserIntentError) -> (StatusCode, Json<Value>) {
