@@ -123,8 +123,7 @@ impl AdminCanvasController {
                 "component `{component_id}` already defines `{FLY_PAGE_LINK_FIELD}`; remove the internal link before adding an action"
             ));
         }
-        let action = action_from_request(request)?;
-        let value = serde_json::to_value(action)
+        let value = serde_json::to_value(action_from_request(request)?)
             .map_err(|error| format!("component action cannot be encoded: {error}"))?;
         let patch = validated_contract_patch(self, component_id, FLY_ACTION_FIELD, value)?;
         Ok(UiIntent::execute(EditorCommand::Patch {
@@ -157,8 +156,7 @@ impl AdminCanvasController {
             .and_then(|value| serde_json::from_value::<ComponentForm>(value).ok())
             .map(|form| form.extensions)
             .unwrap_or_default();
-        let form = form_from_request(request, extensions)?;
-        let value = serde_json::to_value(form)
+        let value = serde_json::to_value(form_from_request(request, extensions)?)
             .map_err(|error| format!("component form cannot be encoded: {error}"))?;
         let patch = validated_contract_patch(self, component_id, FLY_FORM_FIELD, value)?;
         Ok(UiIntent::execute(EditorCommand::Patch {
@@ -190,23 +188,23 @@ impl AdminCanvasController {
                 ));
             }
         };
-        let name = validate_field_token(&request.name, "field name")?;
+        let name = validate_token(&request.name, "field name")?;
         let dom_id = optional_token(request.dom_id, "DOM id")?;
         let field_type = if tag_name == "input" {
             validate_input_type(&request.field_type)?
         } else {
             None
         };
-        validate_text_constraint(&request.min, "minimum value", 256)?;
-        validate_text_constraint(&request.max, "maximum value", 256)?;
-        validate_text_constraint(&request.pattern, "pattern", MAX_PATTERN_BYTES)?;
+        validate_text(&request.min, "minimum value", 256)?;
+        validate_text(&request.max, "maximum value", 256)?;
+        validate_text(&request.pattern, "pattern", MAX_PATTERN_BYTES)?;
         validate_autocomplete(&request.autocomplete)?;
-        validate_text_constraint(&request.placeholder, "placeholder", 1024)?;
-        validate_text_constraint(&request.aria_label, "aria label", 1024)?;
+        validate_text(&request.placeholder, "placeholder", 1024)?;
+        validate_text(&request.aria_label, "aria label", 1024)?;
         if request
             .min_length
             .zip(request.max_length)
-            .is_some_and(|(min, max)| min > max)
+            .is_some_and(|(minimum, maximum)| minimum > maximum)
         {
             return Err("minimum length cannot exceed maximum length".to_string());
         }
@@ -232,11 +230,7 @@ impl AdminCanvasController {
             request.max_length.map(|value| value.to_string()),
         );
         set_attribute(&mut patch, "pattern", optional(request.pattern));
-        set_attribute(
-            &mut patch,
-            "autocomplete",
-            optional(request.autocomplete),
-        );
+        set_attribute(&mut patch, "autocomplete", optional(request.autocomplete));
         set_attribute(&mut patch, "placeholder", optional(request.placeholder));
         set_attribute(&mut patch, "aria-label", optional(request.aria_label));
         Ok(UiIntent::execute(EditorCommand::Patch {
@@ -318,13 +312,19 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     .unwrap_or_else(|| "input".to_string());
                 (action, form, attributes, tag_name, controller.page_summaries())
             });
-        let action_values = ActionFormValues::from_action(current_action.as_ref());
-        let form_values = ComponentFormValues::from_form(current_form.as_ref());
+        let action_values = ActionValues::new(current_action.as_ref());
+        let form_values = FormValues::new(current_form.as_ref());
         let has_action = current_action.is_some();
         let has_form = current_form.is_some();
-        let action_component_id = component_id.clone();
-        let form_component_id = component_id.clone();
-        let field_component_id = component_id.clone();
+        let action_component = component_id.clone();
+        let action_remove_component = component_id.clone();
+        let form_component = component_id.clone();
+        let form_remove_component = component_id.clone();
+        let field_component = component_id;
+        let save_action = save.clone();
+        let save_form = save.clone();
+        let remove_action = remove.clone();
+        let remove_form = remove;
 
         view! {
             <section class="space-y-3 rounded-xl border border-border bg-card p-3" data-fly-ssr-actions-forms="true">
@@ -332,16 +332,16 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <details class="rounded border border-border p-2">
                     <summary class="cursor-pointer text-xs font-semibold">{action_title}</summary>
                     <form class="mt-3 grid gap-2" data-fly-intent-form="set_component_action">
-                        <input type="hidden" name="component_id" value=action_component_id.clone() data-fly-selected-component-input="true"/>
+                        <input type="hidden" name="component_id" value=action_component data-fly-selected-component-input="true"/>
                         <select name="kind" class="rounded border border-input bg-background px-2 py-1 text-xs">
-                            {action_option("navigate_page", "Navigate to page", &action_values.kind)}
-                            {action_option("navigate_url", "Navigate to URL", &action_values.kind)}
-                            {action_option("submit_form", "Submit form", &action_values.kind)}
-                            {action_option("emit_event", "Emit event", &action_values.kind)}
-                            {action_option("provider_action", "Provider action", &action_values.kind)}
+                            {option("navigate_page", "Navigate to page", &action_values.kind)}
+                            {option("navigate_url", "Navigate to URL", &action_values.kind)}
+                            {option("submit_form", "Submit form", &action_values.kind)}
+                            {option("emit_event", "Emit event", &action_values.kind)}
+                            {option("provider_action", "Provider action", &action_values.kind)}
                         </select>
                         <select name="page_id" class="rounded border border-input bg-background px-2 py-1 text-xs">
-                            <option value="">"Target page (navigate_page)"</option>
+                            <option value="">"Target page"</option>
                             {page_options.into_iter().filter_map(|page| {
                                 let page_id = page.id?;
                                 let selected = page_id == action_values.page_id;
@@ -352,21 +352,21 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         <input name="query" value=action_values.query placeholder="Query: source=hero" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         <input name="fragment" value=action_values.fragment placeholder="Fragment: pricing" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         <input name="fallback_href" value=action_values.fallback_href placeholder="Fallback href" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
-                        <input name="href" value=action_values.href placeholder="URL (navigate_url)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
-                        <label class="flex items-center gap-2 text-xs"><input type="checkbox" name="new_window" value="true" checked=action_values.new_window/><span>"Open URL in new window"</span></label>
-                        <input name="form_id" value=action_values.form_id placeholder="Form id (submit_form)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
-                        <input name="event" value=action_values.event placeholder="Event name (emit_event)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
+                        <input name="href" value=action_values.href placeholder="Navigation URL" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
+                        <label class="flex items-center gap-2 text-xs"><input type="checkbox" name="new_window" value="true" checked=action_values.new_window/><span>"Open in new window"</span></label>
+                        <input name="form_id" value=action_values.form_id placeholder="Form id" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
+                        <input name="event" value=action_values.event placeholder="Event name" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         <div class="grid grid-cols-2 gap-2">
                             <input name="provider" value=action_values.provider placeholder="Provider" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                             <input name="action" value=action_values.action placeholder="Provider action" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         </div>
                         <textarea name="payload_json" class="min-h-20 rounded border border-input bg-background px-2 py-1 font-mono text-xs" placeholder="Payload/input JSON">{action_values.payload_json}</textarea>
-                        <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">{save.clone()}</button>
+                        <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">{save_action}</button>
                     </form>
                     {has_action.then(|| view! {
                         <form class="mt-2" data-fly-intent-form="remove_component_action">
-                            <input type="hidden" name="component_id" value=action_component_id data-fly-selected-component-input="true"/>
-                            <button type="submit" class="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive">{remove.clone()}</button>
+                            <input type="hidden" name="component_id" value=action_remove_component data-fly-selected-component-input="true"/>
+                            <button type="submit" class="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive">{remove_action}</button>
                         </form>
                     })}
                 </details>
@@ -374,18 +374,18 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <details class="rounded border border-border p-2">
                     <summary class="cursor-pointer text-xs font-semibold">{form_title}</summary>
                     <form class="mt-3 grid gap-2" data-fly-intent-form="set_component_form">
-                        <input type="hidden" name="component_id" value=form_component_id.clone() data-fly-selected-component-input="true"/>
+                        <input type="hidden" name="component_id" value=form_component data-fly-selected-component-input="true"/>
                         <input required name="form_id" value=form_values.id placeholder="Stable form id" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         <div class="grid grid-cols-2 gap-2">
                             <select name="method" class="rounded border border-input bg-background px-2 py-1 text-xs">
-                                {selected_option("get", "GET", &form_values.method)}
-                                {selected_option("post", "POST", &form_values.method)}
-                                {selected_option("dialog", "Dialog", &form_values.method)}
+                                {option("get", "GET", &form_values.method)}
+                                {option("post", "POST", &form_values.method)}
+                                {option("dialog", "Dialog", &form_values.method)}
                             </select>
                             <select name="encoding" class="rounded border border-input bg-background px-2 py-1 text-xs">
-                                {selected_option("url_encoded", "URL encoded", &form_values.encoding)}
-                                {selected_option("multipart", "Multipart", &form_values.encoding)}
-                                {selected_option("text_plain", "Text plain", &form_values.encoding)}
+                                {option("url_encoded", "URL encoded", &form_values.encoding)}
+                                {option("multipart", "Multipart", &form_values.encoding)}
+                                {option("text_plain", "Text plain", &form_values.encoding)}
                             </select>
                         </div>
                         <input name="action_url" value=form_values.action_url placeholder="Native action URL" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
@@ -394,13 +394,13 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             <input name="action" value=form_values.action placeholder="Provider action" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         </div>
                         <textarea name="input_json" class="min-h-20 rounded border border-input bg-background px-2 py-1 font-mono text-xs" placeholder="Provider input JSON">{form_values.input_json}</textarea>
-                        <label class="flex items-center gap-2 text-xs"><input type="checkbox" name="novalidate" value="true" checked=form_values.novalidate/><span>"Disable native browser validation"</span></label>
-                        <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">{save.clone()}</button>
+                        <label class="flex items-center gap-2 text-xs"><input type="checkbox" name="novalidate" value="true" checked=form_values.novalidate/><span>"Disable browser validation"</span></label>
+                        <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">{save_form}</button>
                     </form>
                     {has_form.then(|| view! {
                         <form class="mt-2" data-fly-intent-form="remove_component_form">
-                            <input type="hidden" name="component_id" value=form_component_id data-fly-selected-component-input="true"/>
-                            <button type="submit" class="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive">{remove}</button>
+                            <input type="hidden" name="component_id" value=form_remove_component data-fly-selected-component-input="true"/>
+                            <button type="submit" class="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive">{remove_form}</button>
                         </form>
                     })}
                 </details>
@@ -408,12 +408,12 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <details class="rounded border border-border p-2">
                     <summary class="cursor-pointer text-xs font-semibold">{field_title}</summary>
                     <form class="mt-3 grid gap-2" data-fly-intent-form="set_native_form_field">
-                        <input type="hidden" name="component_id" value=field_component_id data-fly-selected-component-input="true"/>
+                        <input type="hidden" name="component_id" value=field_component data-fly-selected-component-input="true"/>
                         <div class="grid grid-cols-2 gap-2">
                             <select name="tag_name" class="rounded border border-input bg-background px-2 py-1 text-xs">
-                                {selected_option("input", "input", &tag_name)}
-                                {selected_option("textarea", "textarea", &tag_name)}
-                                {selected_option("select", "select", &tag_name)}
+                                {option("input", "input", &tag_name)}
+                                {option("textarea", "textarea", &tag_name)}
+                                {option("select", "select", &tag_name)}
                             </select>
                             <input name="field_type" value=attribute(&attributes, "type") placeholder="email, text, number..." class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         </div>
@@ -448,7 +448,7 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
 }
 
 #[derive(Default)]
-struct ActionFormValues {
+struct ActionValues {
     kind: String,
     page_id: String,
     base_path: String,
@@ -464,8 +464,8 @@ struct ActionFormValues {
     payload_json: String,
 }
 
-impl ActionFormValues {
-    fn from_action(action: Option<&ComponentAction>) -> Self {
+impl ActionValues {
+    fn new(action: Option<&ComponentAction>) -> Self {
         let mut values = Self {
             kind: "navigate_page".to_string(),
             payload_json: "{}".to_string(),
@@ -473,7 +473,6 @@ impl ActionFormValues {
         };
         match action {
             Some(ComponentAction::NavigatePage { page_id, base_path, query, fragment, fallback_href }) => {
-                values.kind = "navigate_page".to_string();
                 values.page_id = page_id.clone();
                 values.base_path = base_path.clone().unwrap_or_default();
                 values.query = query.clone().unwrap_or_default();
@@ -507,7 +506,7 @@ impl ActionFormValues {
 }
 
 #[derive(Default)]
-struct ComponentFormValues {
+struct FormValues {
     id: String,
     method: String,
     encoding: String,
@@ -518,8 +517,8 @@ struct ComponentFormValues {
     novalidate: bool,
 }
 
-impl ComponentFormValues {
-    fn from_form(form: Option<&ComponentForm>) -> Self {
+impl FormValues {
+    fn new(form: Option<&ComponentForm>) -> Self {
         match form {
             Some(form) => Self {
                 id: form.id.clone(),
@@ -547,10 +546,9 @@ impl ComponentFormValues {
 }
 
 fn action_from_request(request: SsrComponentActionRequest) -> Result<ComponentAction, String> {
-    let payload = parse_json(&request.payload_json, "action payload", MAX_ACTION_PAYLOAD_BYTES)?;
     match request.kind.trim().to_ascii_lowercase().as_str() {
         "navigate_page" => Ok(ComponentAction::NavigatePage {
-            page_id: validate_field_token(&request.page_id, "target page id")?,
+            page_id: validate_token(&request.page_id, "target page id")?,
             base_path: optional(request.base_path),
             query: optional(request.query),
             fragment: optional(request.fragment),
@@ -561,16 +559,24 @@ fn action_from_request(request: SsrComponentActionRequest) -> Result<ComponentAc
             new_window: request.new_window,
         }),
         "submit_form" => Ok(ComponentAction::SubmitForm {
-            form_id: validate_field_token(&request.form_id, "form id")?,
+            form_id: validate_token(&request.form_id, "form id")?,
         }),
         "emit_event" => Ok(ComponentAction::EmitEvent {
-            event: validate_field_token(&request.event, "event name")?,
-            payload,
+            event: validate_token(&request.event, "event name")?,
+            payload: parse_json(
+                &request.payload_json,
+                "event payload",
+                MAX_ACTION_PAYLOAD_BYTES,
+            )?,
         }),
         "provider_action" => Ok(ComponentAction::ProviderAction {
-            provider: validate_field_token(&request.provider, "provider")?,
-            action: validate_field_token(&request.action, "provider action")?,
-            input: payload,
+            provider: validate_token(&request.provider, "provider")?,
+            action: validate_token(&request.action, "provider action")?,
+            input: parse_json(
+                &request.payload_json,
+                "provider input",
+                MAX_ACTION_PAYLOAD_BYTES,
+            )?,
         }),
         other => Err(format!("component action kind `{other}` is unsupported")),
     }
@@ -593,7 +599,7 @@ fn form_from_request(
         other => return Err(format!("form encoding `{other}` is unsupported")),
     };
     Ok(ComponentForm {
-        id: validate_field_token(&request.form_id, "form id")?,
+        id: validate_token(&request.form_id, "form id")?,
         method,
         encoding,
         action_url: optional(request.action_url),
@@ -612,7 +618,7 @@ fn validated_contract_patch(
     value: Value,
 ) -> Result<ComponentPatch, String> {
     let before = validate_component_actions(controller.editor().document())
-        .into_iter()
+        .iter()
         .map(diagnostic_identity)
         .collect::<BTreeSet<_>>();
     let mut candidate = controller.editor().document().clone();
@@ -702,21 +708,19 @@ fn set_boolean_attribute(patch: &mut ComponentPatch, name: &str, enabled: bool) 
 
 fn validate_input_type(value: &str) -> Result<Option<String>, String> {
     let value = value.trim().to_ascii_lowercase();
-    if value.is_empty() {
-        return Ok(Some("text".to_string()));
-    }
+    let value = if value.is_empty() { "text" } else { value.as_str() };
     const ALLOWED: &[&str] = &[
         "button", "checkbox", "color", "date", "datetime-local", "email", "file", "hidden",
         "image", "month", "number", "password", "radio", "range", "reset", "search", "submit",
         "tel", "text", "time", "url", "week",
     ];
     ALLOWED
-        .contains(&value.as_str())
-        .then_some(Some(value.clone()))
+        .contains(&value)
+        .then(|| Some(value.to_string()))
         .ok_or_else(|| format!("input type `{value}` is unsupported"))
 }
 
-fn validate_field_token(value: &str, label: &str) -> Result<String, String> {
+fn validate_token(value: &str, label: &str) -> Result<String, String> {
     let value = required(value, label)?;
     if !value.chars().all(|character| {
         character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':' | '[' | ']')
@@ -728,23 +732,26 @@ fn validate_field_token(value: &str, label: &str) -> Result<String, String> {
 
 fn optional_token(value: String, label: &str) -> Result<Option<String>, String> {
     match optional(value) {
-        Some(value) => validate_field_token(&value, label).map(Some),
+        Some(value) => validate_token(&value, label).map(Some),
         None => Ok(None),
     }
 }
 
-fn validate_text_constraint(value: &str, label: &str, maximum_bytes: usize) -> Result<(), String> {
+fn validate_text(value: &str, label: &str, maximum_bytes: usize) -> Result<(), String> {
     if value.len() > maximum_bytes {
         return Err(format!("{label} exceeds {maximum_bytes} bytes"));
     }
-    if value.contains(['\0', '\r', '\n']) {
+    if value
+        .chars()
+        .any(|character| matches!(character, '\0' | '\r' | '\n'))
+    {
         return Err(format!("{label} contains a forbidden control character"));
     }
     Ok(())
 }
 
 fn validate_autocomplete(value: &str) -> Result<(), String> {
-    validate_text_constraint(value, "autocomplete", 256)?;
+    validate_text(value, "autocomplete", 256)?;
     if !value.trim().chars().all(|character| {
         character.is_ascii_alphanumeric() || character.is_ascii_whitespace() || character == '-'
     }) {
@@ -797,25 +804,21 @@ fn attribute(attributes: &Map<String, Value>, name: &str) -> String {
 fn boolean_attribute(attributes: &Map<String, Value>, name: &str) -> bool {
     attributes.get(name).is_some_and(|value| match value {
         Value::Bool(value) => *value,
-        Value::String(value) => !matches!(value.to_ascii_lowercase().as_str(), "false" | "0" | "off"),
+        Value::String(value) => {
+            !matches!(value.to_ascii_lowercase().as_str(), "false" | "0" | "off")
+        }
         _ => false,
     })
 }
 
-fn selected_option(value: &'static str, label: &'static str, selected_value: &str) -> impl IntoView {
+fn option(value: &'static str, label: &'static str, selected_value: &str) -> impl IntoView {
     let selected = value == selected_value;
     view! { <option value=value selected=selected>{label}</option> }
-}
-
-fn action_option(value: &'static str, label: &'static str, selected_value: &str) -> impl IntoView {
-    selected_option(value, label, selected_value)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AdminCanvasController;
-    use fly::GrapesJsV1Codec;
     use serde_json::json;
 
     fn controller() -> AdminCanvasController {
@@ -846,13 +849,14 @@ mod tests {
     }
 
     #[test]
-    fn action_editor_uses_patch_history_and_rejects_navigation_conflicts() {
+    fn action_editor_uses_patch_history() {
         let mut controller = controller();
         let intent = controller
             .ssr_component_action_intent(SsrComponentActionRequest {
                 component_id: "cta".to_string(),
                 kind: "navigate_page".to_string(),
                 page_id: "about".to_string(),
+                payload_json: "not relevant for navigate_page".to_string(),
                 ..SsrComponentActionRequest::default()
             })
             .expect("action intent");
@@ -873,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn form_editor_preserves_unknown_extensions_and_validates_targets() {
+    fn form_editor_preserves_unknown_extensions() {
         let mut controller = controller();
         let intent = controller
             .ssr_component_form_intent(SsrComponentFormRequest {
