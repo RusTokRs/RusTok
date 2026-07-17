@@ -1,6 +1,7 @@
 use crate::{
-    command_for_drop, CanvasRect, CapabilityState, DragSource, DragState, FlyUiState,
-    HitTestCandidate, PanelKind, Presentation, UiError, UiResult, ViewportState,
+    command_for_drop, CanvasRect, CapabilityState, CommandCapabilityRequirement, DragSource,
+    DragState, FlyUiState, HitTestCandidate, PanelKind, Presentation, UiError, UiResult,
+    ViewportState,
 };
 use fly::{EditorCommand, ProjectHash, ValidationDiagnostic};
 use serde::{Deserialize, Serialize};
@@ -245,8 +246,18 @@ impl FlyUiStateMachine {
                 vec![UiEffect::PasteClipboard]
             }
             UiIntent::Execute(command) => {
-                if !matches!(&*command, EditorCommand::Select { .. }) {
-                    self.require_edit_capability("edit", self.state.capabilities.edit)?;
+                let requirement = CommandCapabilityRequirement::for_command(command.as_ref());
+                if !requirement.is_empty() {
+                    if !self.state.presentation.is_editable() {
+                        return Err(UiError::ReadOnly);
+                    }
+                    if let Some(capability) =
+                        requirement.first_missing(self.state.capabilities)
+                    {
+                        return Err(UiError::CapabilityUnavailable(
+                            capability.as_str().to_string(),
+                        ));
+                    }
                     self.mark_dirty();
                 }
                 vec![UiEffect::Command(command)]
