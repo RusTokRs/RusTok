@@ -84,7 +84,7 @@ impl LandingProjectInspection {
         &self.registry_compatibility
     }
 
-    pub fn require_publishable(&self) -> LandingProjectResult<()> {
+    pub fn require_contract_valid(&self) -> LandingProjectResult<()> {
         if !self.validation.is_valid() {
             return Err(LandingProjectError::Validation {
                 diagnostics: self.validation.errors().cloned().collect(),
@@ -104,7 +104,7 @@ impl LandingProjectInspection {
         readiness_policy: LandingReadinessPolicy,
         render_policy: &RenderPolicy,
     ) -> LandingProjectResult<StaticLandingBuildResult> {
-        self.require_publishable()?;
+        self.require_contract_valid()?;
         build_static_landing_artifact_v1(
             &self.landing.document,
             registries,
@@ -181,7 +181,7 @@ mod tests {
         let landing_value = legacy.encode_landing_v1().expect("landing value");
         let typed = LandingProjectInspection::decode(FLY_LANDING_DOCUMENT_V1, &landing_value)
             .expect("typed inspection");
-        assert_eq!(legacy.landing().document, typed.landing().document);
+        assert_eq!(&legacy.landing().document, &typed.landing().document);
         assert_eq!(legacy.registry_manifest(), typed.registry_manifest());
     }
 
@@ -199,7 +199,9 @@ mod tests {
     fn inspection_builds_static_publish_artifact() {
         let inspection = LandingProjectInspection::decode(GRAPESJS_V1, &project_value())
             .expect("inspection");
-        inspection.require_publishable().expect("publishable");
+        inspection
+            .require_contract_valid()
+            .expect("contract-valid");
         let result = inspection
             .build_static(
                 &RegistrySet::with_builtins(),
