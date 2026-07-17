@@ -149,6 +149,12 @@ for (const id of ignored) {
   }
 }
 
+for (const id of active.keys()) {
+  if (!ignored.has(id)) {
+    fail(`${id}: active register entry is not present in deny.toml ignore list`);
+  }
+}
+
 if (failures.length > 0) {
   console.error("Security advisory exception check failed:");
   failures.forEach((failure) => console.error(`✗ ${failure}`));
