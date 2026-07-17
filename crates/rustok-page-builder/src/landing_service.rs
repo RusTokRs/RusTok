@@ -14,9 +14,10 @@ use serde_json::Value;
 
 /// Service decorator for the current landing pipeline.
 ///
-/// Preview decodes the browser adapter payload into Fly's domain model and validates structure plus
+/// Preview decodes the browser payload into Fly's evolving domain model and validates structure plus
 /// registry compatibility. Publish additionally requires landing readiness and a deterministic
 /// static artifact to be buildable before the wrapped persistence/provider service is called.
+/// Versioned transport fields are accepted for compatibility but never participate in this path.
 pub struct LandingValidatedPageBuilderService<S> {
     inner: S,
     registries: RegistrySet,
@@ -56,6 +57,19 @@ impl<S> LandingValidatedPageBuilderService<S> {
         &self.inner
     }
 
+    /// Inspect through the current, versionless module API.
+    pub fn inspect_current(
+        &self,
+        project_data: &Value,
+    ) -> LandingProjectResult<LandingProjectInspection> {
+        LandingProjectInspection::decode_current_with(
+            project_data,
+            &self.registries,
+            self.limits,
+        )
+    }
+
+    /// Compatibility entrypoint retained until the next module major.
     pub fn inspect(
         &self,
         schema_version: &str,
@@ -69,26 +83,18 @@ impl<S> LandingValidatedPageBuilderService<S> {
         )
     }
 
-    fn validate_preview(
-        &self,
-        schema_version: &str,
-        project_data: &Value,
-    ) -> PageBuilderServiceResult<()> {
+    fn validate_preview(&self, project_data: &Value) -> PageBuilderServiceResult<()> {
         let inspection = self
-            .inspect(schema_version, project_data)
+            .inspect_current(project_data)
             .map_err(validation_error)?;
         inspection
             .require_contract_valid()
             .map_err(validation_error)
     }
 
-    fn validate_publish(
-        &self,
-        schema_version: &str,
-        project_data: &Value,
-    ) -> PageBuilderServiceResult<()> {
+    fn validate_publish(&self, project_data: &Value) -> PageBuilderServiceResult<()> {
         let inspection = self
-            .inspect(schema_version, project_data)
+            .inspect_current(project_data)
             .map_err(validation_error)?;
         inspection
             .require_contract_valid()
@@ -131,7 +137,7 @@ where
         context: &PortContext,
         input: PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
-        self.validate_preview(&input.schema_version, &input.project_data)?;
+        self.validate_preview(&input.project_data)?;
         self.inner.preview(context, input).await
     }
 
@@ -156,7 +162,7 @@ where
         context: &PortContext,
         input: PublishPageBuilderInput,
     ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
-        self.validate_publish(&input.schema_version, &input.project_data)?;
+        self.validate_publish(&input.project_data)?;
         self.inner.publish(context, input).await
     }
 }
