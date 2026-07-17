@@ -45,7 +45,12 @@
         "request_identity": "canonical_sha256_v1",
         "result_snapshot": "normalized_listing_response_json",
         "atomic_with_owner_write": true,
-        "conflicting_payload": "marketplace_listing.idempotency_conflict"
+        "conflicting_payload": "marketplace_listing.idempotency_conflict",
+        "provider_preflight_replay": [
+          "create_listing",
+          "publish_listing",
+          "reactivate_listing"
+        ]
       }
     }
   ],
@@ -94,8 +99,35 @@
       "channel_slug"
     ],
     "canonical_product_content_copied": false,
+    "localized_business_copy_owned": false,
+    "localized_business_copy_provider": "rustok-product",
+    "forbidden_listing_columns": [
+      "title",
+      "description",
+      "localized_title",
+      "localized_description",
+      "translations_json",
+      "localized_fields_json"
+    ],
+    "language_agnostic_fields": [
+      "seller_sku",
+      "market_slug",
+      "channel_slug",
+      "pricing_reference",
+      "inventory_reference",
+      "fulfillment_profile_slug"
+    ],
+    "operator_prose_target": "immutable_marketplace_listing_events_with_actor_and_effective_locale",
     "cross_module_foreign_keys": false,
     "buy_box_ranking_owned": false
+  },
+  "composition": {
+    "module_manifest": "modules.toml",
+    "distribution_feature": "mod-marketplace_listing",
+    "server_feature": "mod-marketplace_listing",
+    "default_enabled": false,
+    "graphql_transport": "not_started",
+    "ffa_package": "not_started"
   },
   "evidence": {
     "local_plan": "crates/rustok-marketplace-listing/docs/implementation-plan.md",
@@ -103,7 +135,11 @@
     "schema": "crates/rustok-marketplace-listing/src/migrations/m20260716_000001_create_marketplace_listings.rs",
     "service": "crates/rustok-marketplace-listing/src/service.rs",
     "ports": "crates/rustok-marketplace-listing/src/ports.rs",
-    "receipt_executor": "crates/rustok-marketplace-listing/src/command_receipts.rs"
+    "receipt_executor": "crates/rustok-marketplace-listing/src/command_receipts.rs",
+    "replay_safe_commands": "crates/rustok-marketplace-listing/src/replay_safe_commands.rs",
+    "distribution_manifest": "crates/rustok-distribution/Cargo.toml",
+    "distribution_registry": "crates/rustok-distribution/src/lib.rs",
+    "server_manifest": "apps/server/Cargo.toml"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
@@ -118,10 +154,12 @@
           "seller_resolved_through_port",
           "variant_resolved_through_product_port",
           "seller_and_variant_scope_not_foreign_keyed",
+          "canonical_product_localized_copy_not_persisted",
           "scope_identity_unique",
           "seller_sku_unique",
           "listing_terms_version_one_created_atomically",
           "receipt_and_owner_write_atomic",
+          "replay_checked_before_provider_reads",
           "lost_response_replay_returns_saved_result",
           "conflicting_payload_rejected"
         ]
@@ -142,6 +180,15 @@
           "listing_must_be_approved",
           "pricing_reference_required",
           "inventory_reference_required",
+          "replay_checked_before_seller_read",
+          "expected_state_transition"
+        ]
+      },
+      {
+        "operation": "reactivate_listing",
+        "assertions": [
+          "replay_checked_before_seller_read",
+          "seller_must_be_active",
           "expected_state_transition"
         ]
       },
@@ -153,8 +200,17 @@
           "seller_status_resolved_through_port",
           "no_buy_box_ranking"
         ]
+      },
+      {
+        "operation": "multilingual_storage",
+        "assertions": [
+          "listing_base_has_no_product_title_or_description",
+          "listing_terms_store_owner_references_not_localized_copy",
+          "localized_json_maps_forbidden",
+          "operator_notes_move_to_immutable_locale_tagged_events"
+        ]
       }
     ],
-    "known_gap": "compiled migration, contention/replay, remote-profile, GraphQL/native transport, and FFA evidence are not yet retained"
+    "known_gap": "immutable locale-tagged listing moderation events, compiled migration, contention/replay, remote-profile, GraphQL/native transport, and FFA evidence are not yet retained"
   }
 }
