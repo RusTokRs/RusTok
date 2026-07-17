@@ -16,6 +16,22 @@ use std::collections::BTreeSet;
 const MAX_ACTION_PAYLOAD_BYTES: usize = 64 * 1024;
 const MAX_FORM_INPUT_BYTES: usize = 64 * 1024;
 const MAX_PATTERN_BYTES: usize = 2 * 1024;
+const ACTION_CANONICAL_FIELDS: &[&str] = &[
+    "kind",
+    "page_id",
+    "base_path",
+    "query",
+    "fragment",
+    "fallback_href",
+    "href",
+    "new_window",
+    "form_id",
+    "event",
+    "payload",
+    "provider",
+    "action",
+    "input",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SsrComponentActionRequest {
@@ -123,8 +139,14 @@ impl AdminCanvasController {
                 "component `{component_id}` already defines `{FLY_PAGE_LINK_FIELD}`; remove the internal link before adding an action"
             ));
         }
-        let value = serde_json::to_value(action_from_request(request.clone())?)
+        let preserved_extensions =
+            preserved_action_extensions(component.extensions.get(FLY_ACTION_FIELD));
+        let mut value = serde_json::to_value(action_from_request(request.clone())?)
             .map_err(|error| format!("component action cannot be encoded: {error}"))?;
+        let Value::Object(action) = &mut value else {
+            return Err("component action must encode as a JSON object".to_string());
+        };
+        action.extend(preserved_extensions);
         let patch = validated_contract_patch(self, component_id, FLY_ACTION_FIELD, value)?;
         Ok(UiIntent::execute(EditorCommand::Patch {
             component_id: component_id.to_string(),
@@ -621,6 +643,19 @@ fn form_from_request(
     })
 }
 
+fn preserved_action_extensions(value: Option<&Value>) -> Map<String, Value> {
+    value
+        .and_then(Value::as_object)
+        .map(|action| {
+            action
+                .iter()
+                .filter(|(key, _)| !ACTION_CANONICAL_FIELDS.contains(&key.as_str()))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn validated_contract_patch(
     controller: &AdminCanvasController,
     component_id: &str,
@@ -912,6 +947,43 @@ mod tests {
             .unwrap()
             .extensions
             .contains_key(FLY_ACTION_FIELD));
+    }
+
+    #[test]
+    fn action_editor_preserves_unknown_extensions() {
+        let mut controller = controller();
+        controller
+            .editor_mut_for_tests()
+            .document_mut_for_tests()
+            .component_mut("cta")
+            .unwrap()
+            .extensions
+            .insert(
+                FLY_ACTION_FIELD.to_string(),
+                json!({
+                    "kind": "navigate_url",
+                    "href": "/legacy",
+                    "providerFuture": { "enabled": true }
+                }),
+            );
+        let intent = controller
+            .ssr_component_action_intent(SsrComponentActionRequest {
+                component_id: "cta".to_string(),
+                kind: "navigate_page".to_string(),
+                page_id: "about".to_string(),
+                ..SsrComponentActionRequest::default()
+            })
+            .expect("action intent");
+        controller.dispatch(intent).expect("action patch");
+        let action = &controller
+            .editor()
+            .document()
+            .component("cta")
+            .unwrap()
+            .extensions[FLY_ACTION_FIELD];
+        assert_eq!(action["page_id"], "about");
+        assert_eq!(action["providerFuture"]["enabled"], true);
+        assert!(action.get("href").is_none());
     }
 
     #[test]
