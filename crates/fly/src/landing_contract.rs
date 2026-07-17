@@ -6,13 +6,15 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// Components required by a page document.
+///
+/// Compatibility is owned by the providing module. The landing payload deliberately carries no
+/// independent schema version: module semver is the only version boundary.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ComponentRegistryContract {
     pub component_type: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub schema_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -32,12 +34,10 @@ impl ComponentRegistryManifest {
                 .map(|definition| ComponentRegistryContract {
                     component_type: component_type.clone(),
                     provider: Some(definition.provider.clone()),
-                    schema_version: Some(definition.schema_version.clone()),
                 })
                 .unwrap_or_else(|| ComponentRegistryContract {
                     component_type: component_type.clone(),
                     provider: component.provider.clone(),
-                    schema_version: component.schema_version.clone(),
                 });
             components.entry(component_type).or_insert(contract);
         });
@@ -53,7 +53,7 @@ impl ComponentRegistryManifest {
                 issues.push(RegistryCompatibilityIssue {
                     component_type: required.component_type.clone(),
                     kind: RegistryCompatibilityIssueKind::MissingComponent,
-                    expected: required.schema_version.clone(),
+                    expected: required.provider.clone(),
                     actual: None,
                 });
                 continue;
@@ -70,18 +70,6 @@ impl ComponentRegistryManifest {
                     actual: Some(available.provider.clone()),
                 });
             }
-            if required
-                .schema_version
-                .as_deref()
-                .is_some_and(|version| version != available.schema_version.as_str())
-            {
-                issues.push(RegistryCompatibilityIssue {
-                    component_type: required.component_type.clone(),
-                    kind: RegistryCompatibilityIssueKind::SchemaVersionMismatch,
-                    expected: required.schema_version.clone(),
-                    actual: Some(available.schema_version.clone()),
-                });
-            }
         }
         RegistryCompatibilityReport {
             compatible: issues.is_empty(),
@@ -95,7 +83,6 @@ impl ComponentRegistryManifest {
 pub enum RegistryCompatibilityIssueKind {
     MissingComponent,
     ProviderMismatch,
-    SchemaVersionMismatch,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -239,6 +226,10 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["heading", "wrapper"]
         );
+        assert!(manifest
+            .components
+            .iter()
+            .all(|component| component.provider.is_some()));
     }
 
     #[test]
