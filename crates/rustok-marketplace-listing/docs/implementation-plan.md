@@ -21,8 +21,10 @@ migration, contention, mounted-transport, and remote-profile evidence.
   entities or add cross-module database foreign keys.
 - [x] Keep product-owned localized title/description/translations outside listing
   storage.
-- [x] Carry effective locale through `PortContext` for event-producing commands.
+- [x] Carry effective locale through `PortContext` for every event-producing command.
 - [x] Keep the Marketplace root and future FFA hosts as composition surfaces only.
+- [x] Keep `MarketplaceListingService` read-only; owner writes live only in
+  receipt/event executors.
 - [ ] Publish module-owned listing FFA core/model/transport/i18n/Leptos package before
   adding listing UI to hosts.
 - [ ] Retain compiled remote-profile contract evidence before FBA
@@ -54,20 +56,21 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Register event migration
   `m20260717_000002_create_marketplace_listing_events` with composite tenant/listing
   FK and timeline/kind/actor indexes.
-- [x] Persist terms update, submit-for-review, approval/rejection, suspension, and
-  archive events atomically with owner state and the durable receipt.
-- [x] Include effective locale in the canonical request identity of those evented
-  commands.
+- [x] Persist `created`, `terms_updated`, `submitted_for_review`, `approved`,
+  `rejected`, `published`, `suspended`, `reactivated`, and `archived` events
+  atomically with owner state/terms and the durable command receipt.
+- [x] Include effective locale in the canonical request identity of every listing
+  command.
+- [x] Preserve replay admission before seller/product provider reads for create,
+  publish, and reactivate.
+- [x] Remove all direct write methods from the read/provider composition service.
 
 ## Ownership remaining
 
-- [ ] Add immutable `created`, `published`, and `reactivated` events while preserving
-  replay admission before seller/product provider reads.
-- [ ] Extend event coverage to any future listing matching or moderation commands.
 - [ ] Backfill events from mutable `approval_note` and `suspension_reason`
   compatibility snapshots.
-- [ ] Drop mutable compatibility snapshot columns only after backfill and full event
-  coverage are retained.
+- [ ] Drop mutable compatibility snapshot columns after backfill and retained
+  migration evidence.
 - [ ] Publish listing lifecycle/moderation events through the transactional outbox.
 - [ ] Add product matching/approval workflow before automated EAN/GTIN matching,
   deduplication, or buy-box ranking.
@@ -84,27 +87,25 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Publish stable safe `PortError` mappings without SQL/driver details.
 - [x] Compose root Marketplace listing directory/eligibility consumers without owner
   entities or database access.
-- [x] Compile replay-safe command wrappers into the owner crate and route FBA create,
-  publish, and reactivate through replay admission before seller/product provider
-  reads.
-- [x] Route FBA terms update, submit, review, suspend, and archive through evented
-  command executors rather than direct compatibility service methods.
+- [x] Route all eight FBA write operations through durable receipt/event executors.
+- [x] Check completed receipt replay before provider reads for create, publish, and
+  reactivate; re-check admission after provider preflight to handle races.
 - [x] Register `marketplace_listing` in `modules.toml`, distribution, and server as an
   opt-in owner module; Marketplace remains excluded from default module sets.
 - [x] Add source guards for schema ownership, absence of localized catalog copy,
-  versioned terms, durable receipts, provider-preflight replay, immutable events,
-  deterministic eligibility, and module composition.
+  versioned terms, durable receipts, provider-preflight replay, complete immutable
+  events, read-service non-bypass, deterministic eligibility, and module composition.
 
 ## FBA remaining
 
-- [ ] Combine provider-preflight replay with atomic `created`, `published`, and
-  `reactivated` event persistence.
-- [ ] Remove direct compatibility write paths after complete event coverage.
+- [ ] Backfill/drop compatibility snapshot columns without changing normalized
+  response semantics unexpectedly.
 - [ ] Compile owner/provider/root consumer contracts.
 - [ ] Apply clean and upgraded SQLite/PostgreSQL migrations.
-- [ ] Execute receipt replay, conflicting payload, same-key contention, scope/SKU
-  conflicts, terms-version races, lifecycle contention, locale-bound event atomicity,
-  bounded timeline isolation, rollback, and restart scenarios.
+- [ ] Execute receipt replay, conflicting payload, same-key contention, provider
+  preflight races, scope/SKU conflicts, terms-version races, lifecycle contention,
+  locale-bound event atomicity, bounded timeline isolation, rollback, and restart
+  scenarios.
 - [ ] Retain remote-profile timeout/degraded/fallback evidence before promotion.
 
 ## FFA remaining
@@ -122,15 +123,14 @@ migration, contention, mounted-transport, and remote-profile evidence.
 
 ## Immediate execution order
 
-1. [ ] Add atomic `created` event to listing creation without moving provider reads
-   inside the owner transaction.
-2. [ ] Add atomic `published` and `reactivated` events while preserving replay before
-   seller reads.
-3. [ ] Remove remaining direct FBA compatibility lifecycle paths.
-4. [ ] Backfill and drop mutable note compatibility columns.
-5. [ ] Publish the listing FFA package and explicit native/GraphQL transports.
-6. [ ] Compile and execute database, contention, replay, tenant, locale, restart, and
+1. [ ] Add compatibility backfill/drop migration for `approval_note` and
+   `suspension_reason`.
+2. [ ] Publish listing lifecycle events through transactional outbox ownership.
+3. [ ] Publish the listing FFA package and explicit native/GraphQL transports.
+4. [ ] Add platform listing permissions and module-owned admin workflows.
+5. [ ] Compile and execute database, contention, replay, tenant, locale, restart, and
    mounted transport evidence.
+6. [ ] Start product matching/approval only after owner/runtime evidence is retained.
 
 ## Source evidence
 
@@ -159,9 +159,9 @@ migration, contention, mounted-transport, and remote-profile evidence.
 
 ## Promotion gates
 
-- [ ] FBA `boundary_ready`: compiled owner/provider-consumer contracts, complete
-  immutable event coverage, durable identity tests, migrations, and source guards
-  are retained.
+- [ ] FBA `boundary_ready`: compiled owner/provider-consumer contracts, durable
+  identity tests, compatibility-column cutover, migrations, and source guards are
+  retained.
 - [ ] FBA `transport_verified`: mounted in-process/remote execution and degraded
   behavior are retained.
 - [ ] FFA `phase_b_ready`: module-owned admin package, host composition, and
