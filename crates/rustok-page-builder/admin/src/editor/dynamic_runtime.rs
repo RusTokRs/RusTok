@@ -79,7 +79,7 @@ pub fn DynamicRuntimePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         on:click=move |_| {
                             match serde_json::from_str::<Value>(&context_json.get_untracked()) {
                                 Ok(context) => {
-                                    context_runtime.runtime_context.set(context);
+                                    context_runtime.set_runtime_context(context);
                                     context_runtime.last_error.set(None);
                                     context_runtime.announce("Preview runtime context applied");
                                 }
