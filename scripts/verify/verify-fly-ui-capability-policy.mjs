@@ -173,22 +173,28 @@ requireMarkers('palette', [
   'disabled=!can_drag',
 ], 'palette capability controls');
 requireMarkers('browserCapabilities', [
+  'pub struct BrowserCapabilityDenial',
+  'pub fn browser_capability_denial(',
+  'CAPABILITY_DENIAL_PREFIX',
   'pub fn validate_browser_capability_access(',
   'let capabilities = capabilities.normalized();',
-  'capability_requirement(envelope, capabilities)',
-  '"undo" | "redo" => Some(("history", capabilities.history))',
-  'Some(("clipboard", capabilities.clipboard))',
-  '"save" => Some(("publish", capabilities.publish))',
-  'Some(("drag_drop", capabilities.drag_drop))',
-  'Some(("styles", capabilities.styles))',
-  'Some(("properties", capabilities.properties))',
-  'Some(("assets", capabilities.assets))',
-  '_ if envelope.is_mutating() => Some(("edit", capabilities.edit))',
+  'for capability in capability_requirements(envelope)?',
+  'capabilities.allows(capability)',
+  '"undo" | "redo" => vec![EditorCapability::History]',
+  '"save" => vec![EditorCapability::Publish]',
+  '"select_asset" => vec![EditorCapability::Assets, EditorCapability::Properties]',
+  '_ if envelope.is_mutating() => vec![EditorCapability::Edit]',
+  'selecting_an_asset_requires_asset_and_property_capabilities',
   'supplied_profile_is_authoritative',
 ], 'browser capability preflight');
+rejectMarker(
+  'browserCapabilities',
+  'capability_requirement(envelope, capabilities)',
+  'browser capability preflight must support multiple requirements',
+);
 requireMarkers('pageBuilderLib', [
   'mod capability_access;',
-  'pub use capability_access::validate_browser_capability_access;',
+  'browser_capability_denial, validate_browser_capability_access, BrowserCapabilityDenial,',
 ], 'Page Builder browser capability export');
 requireMarkers('pagesAccess', [
   'pub fn pages_editor_capability_policy(',
@@ -219,6 +225,7 @@ requireMarkers('adminMain', [
   'leptos_auth::api::fetch_current_user(',
   'pages_editor_capability_policy_for_role(Some(',
   'dispatch_pages_browser_intent_with_capabilities(',
+  'rustok_page_builder_admin::browser_capability_denial(error).is_some()',
   'StatusCode::FORBIDDEN',
   'Page Builder access token is missing',
 ], 'server-verified Page Builder endpoint policy');
@@ -226,6 +233,11 @@ rejectMarker(
   'adminMain',
   'auth.user.as_ref().map(|user| user.role.as_str())',
   'Page Builder endpoint must not trust the client-mirrored user cookie for authoritative role checks',
+);
+rejectMarker(
+  'adminMain',
+  'message.contains("requires editor capability")',
+  'HTTP capability mapping must decode the structured denial envelope',
 );
 for (const localeKey of ['localeEn', 'localeRu']) {
   requireMarkers(localeKey, [
