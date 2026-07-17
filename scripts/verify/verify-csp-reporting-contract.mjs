@@ -45,6 +45,7 @@ function verifyNoncePolicy(policy, file, label) {
   if (!policy) return;
   requireMarker(policy, "{nonce}", file);
   requireMarker(policy, "{connect_sources}", file);
+
   const script = directive(policy, "script-src");
   if (!script) {
     failures.push(`${file}: ${label} script-src directive not found`);
@@ -58,8 +59,24 @@ function verifyNoncePolicy(policy, file, label) {
       failures.push(`${file}: ${label} script-src does not carry the response nonce`);
     }
   }
+
+  const style = directive(policy, "style-src");
+  if (!style) {
+    failures.push(`${file}: ${label} style-src directive not found`);
+  } else {
+    if (style.includes("'unsafe-inline'")) {
+      failures.push(`${file}: ${label} style-src contains blanket unsafe-inline`);
+    }
+    if (!style.includes("{nonce}")) {
+      failures.push(`${file}: ${label} style-src does not carry the response nonce`);
+    }
+  }
+
   if (!policy.includes("script-src-attr 'none'")) {
     failures.push(`${file}: ${label} policy does not block inline script attributes`);
+  }
+  if (!policy.includes("style-src-attr 'unsafe-inline'")) {
+    failures.push(`${file}: ${label} policy must isolate temporary inline style attributes`);
   }
   for (const forbidden of ["'unsafe-eval'", " http:"]) {
     if (policy.includes(forbidden)) {
@@ -118,6 +135,7 @@ for (const marker of [
   "CspNonce::generate",
   "request.extensions_mut().insert(nonce.clone())",
   "script-src-attr 'none'",
+  "style-src-attr 'unsafe-inline'",
   "plaintext_websocket_allowed()",
 ]) {
   requireMarker(headers, marker, headersFile);
@@ -145,6 +163,12 @@ if (reportOnly) {
   if (!directive(reportOnly, "script-src")?.includes("{nonce}")) {
     failures.push(`${headersFile}: report-only script-src does not carry the response nonce`);
   }
+  if (!directive(reportOnly, "style-src")?.includes("{nonce}")) {
+    failures.push(`${headersFile}: report-only style-src does not carry the response nonce`);
+  }
+  if (!reportOnly.includes("style-src-attr 'none'")) {
+    failures.push(`${headersFile}: report-only policy does not block inline style attributes`);
+  }
 }
 
 for (const marker of [
@@ -166,7 +190,9 @@ for (const marker of [
 
 for (const marker of [
   'request.extensions().get::<CspNonce>().cloned()',
-  "nonce_trusted_admin_scripts",
+  "nonce_trusted_admin_elements",
+  'html.replace("<script", script_opening.as_str())',
+  '.replace("<style", style_opening.as_str())',
   "immutable bundled index document",
   "if !is_document",
 ]) {
@@ -276,4 +302,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ server-hosted and standalone nonce CSP, production WSS policy and bounded violation collection are aligned");
+console.log("✔ nonce-backed script/style elements, scoped style attributes, production WSS and bounded CSP collection are aligned");
