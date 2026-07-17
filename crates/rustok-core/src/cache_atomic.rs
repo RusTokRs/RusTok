@@ -276,7 +276,13 @@ impl CacheBackend for FallbackCacheBackend {
                 self.warm_fallback(key, value.clone()).await;
                 Ok(Some(value))
             }
-            Ok(None) => Ok(None),
+            Ok(None) => {
+                self.clear_degraded_write(key).await;
+                if let Err(error) = self.fallback.invalidate(key).await {
+                    tracing::warn!(%error, key, "Healthy primary miss could not clear stale local mirror");
+                }
+                Ok(None)
+            }
             Err(error) => {
                 tracing::debug!(%error, key, "Primary cache GET failed, falling back to in-memory");
                 self.fallback.get(key).await
@@ -562,6 +568,20 @@ mod tests {
         assert_eq!(cache.get("key").await.unwrap(), Some(b"shared".to_vec()));
         primary.set_fail_gets(true);
         assert_eq!(cache.get("key").await.unwrap(), Some(b"shared".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn healthy_primary_miss_clears_local_mirror_before_later_outage() {
+        let primary = Arc::new(TestPrimary::new(Some(b"shared".to_vec())));
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(1), 16));
+        let cache = FallbackCacheBackend::new(primary.clone(), fallback);
+
+        assert_eq!(cache.get("key").await.unwrap(), Some(b"shared".to_vec()));
+        primary.invalidate("key").await.unwrap();
+        assert_eq!(cache.get("key").await.unwrap(), None);
+
+        primary.set_fail_gets(true);
+        assert_eq!(cache.get("key").await.unwrap(), None);
     }
 
     #[tokio::test]
