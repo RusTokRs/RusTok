@@ -40,6 +40,7 @@ mod runtime_scenario_release;
 mod runtime_scenario_render;
 mod runtime_scenario_snapshot;
 mod runtime_validation;
+mod safe_url;
 mod style_rule;
 mod trait_model;
 mod translation;
