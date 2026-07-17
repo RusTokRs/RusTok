@@ -201,6 +201,55 @@ fn structural_readiness_applies_schema_defaults_before_audit() {
 }
 
 #[test]
+fn structural_readiness_validates_binding_fallback_contracts() {
+    let document = GrapesJsV1Codec::decode_value(json!({
+        "pages": [{
+            "id": "home",
+            "flyPageMeta": {
+                "title": "Home",
+                "description": "A stable landing page",
+                "slug": "home"
+            },
+            "component": {
+                "id": "root",
+                "type": "wrapper",
+                "tagName": "main",
+                "components": [{
+                    "id": "hero-heading",
+                    "type": "heading",
+                    "tagName": "h1",
+                    "content": "Welcome"
+                }, {
+                    "id": "cta",
+                    "type": "link",
+                    "content": "Home",
+                    "flyPageLink": { "page_id": "home" }
+                }]
+            }
+        }],
+        "flyRuntimeBindings": [{
+            "id": "cta-action",
+            "component_id": "cta",
+            "path": "cta.action",
+            "target": "field",
+            "name": "flyAction",
+            "fallback": { "kind": "navigate_page", "page_id": "home" }
+        }]
+    }))
+    .expect("document");
+
+    let report = evaluate_landing_readiness(
+        &document,
+        LandingReadinessPolicy::default(),
+    );
+    assert!(!report.ready);
+    assert!(report.issues.iter().any(|issue| {
+        issue.diagnostic.code == "component_navigation_contract_conflict"
+            && issue.diagnostic.severity == ValidationSeverity::Error
+    }));
+}
+
+#[test]
 fn localized_slug_diagnostics_are_classified_as_routes() {
     let mut source =
         GrapesJsV1Codec::encode_value(&ready_document()).expect("document value");
