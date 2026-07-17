@@ -3,15 +3,16 @@ use super::model::{
     GENERATED_INTERACTION_ATTRIBUTES, FLY_ACTION_DATA_ATTRIBUTE, FLY_ACTION_FIELD,
     FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD,
 };
-use super::validation::{
-    action_diagnostic, collect_form_ids, decode_form, page_index, FormIndex, PageIndex,
-};
+use super::validation::{action_diagnostic, collect_form_ids, decode_form, FormIndex};
 use crate::{
-    component_visit::visit_project_components_mut, localized_page_route_index,
-    normalize_locale_tag, ComponentObject, LocalizedPageRouteEntry, ProjectDocument,
-    RuntimeLocaleSelection, ValidationDiagnostic, ValidationSeverity,
+    component_visit::visit_project_components_mut,
+    interaction_route::{
+        build_interaction_href, interaction_locale_candidates, InteractionRouteCatalog,
+    },
+    ComponentObject, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
+    ValidationSeverity,
 };
-use serde_json::{Value};
+use serde_json::Value;
 
 #[derive(Default)]
 struct ActionCounters {
@@ -23,9 +24,8 @@ struct ActionCounters {
 }
 
 struct ActionResolution<'a> {
-    route_index: &'a [LocalizedPageRouteEntry],
+    routes: &'a InteractionRouteCatalog,
     locale_candidates: &'a [String],
-    page_ids: &'a PageIndex,
     form_ids: &'a FormIndex,
 }
 
@@ -33,14 +33,13 @@ pub fn materialize_component_actions(
     document: &ProjectDocument,
     context: &Value,
 ) -> ActionMaterialization {
-    let route_index = localized_page_route_index(document);
-    let locale_candidates = action_locale_candidates(&RuntimeLocaleSelection::from_context(context));
-    let page_ids = page_index(document);
+    let routes = InteractionRouteCatalog::from_document(document);
+    let locale_candidates =
+        interaction_locale_candidates(&RuntimeLocaleSelection::from_context(context));
     let form_ids = collect_form_ids(document);
     let resolution = ActionResolution {
-        route_index: &route_index,
+        routes: &routes,
         locale_candidates: &locale_candidates,
-        page_ids: &page_ids,
         form_ids: &form_ids,
     };
     let mut materialized = document.clone();
@@ -208,16 +207,14 @@ fn apply_action(
             fragment,
             fallback_href,
         } => {
-            let Some(page_index) = resolution.page_ids.get(page_id).copied() else {
+            let Some(page_index) = resolution.routes.page_index(page_id) else {
                 return AppliedAction::Unresolved(format!("target page `{page_id}` does not exist"));
             };
-            let slug = action_route_slug(
-                resolution.route_index,
-                page_index,
-                resolution.locale_candidates,
-            );
-            let href = match slug {
-                Some(slug) => build_page_href(
+            let href = match resolution
+                .routes
+                .slug_for(page_index, resolution.locale_candidates)
+            {
+                Some(slug) => build_interaction_href(
                     base_path.as_deref(),
                     slug,
                     query.as_deref(),
@@ -292,75 +289,4 @@ fn apply_action(
             AppliedAction::Custom
         }
     }
-}
-
-fn action_locale_candidates(selection: &RuntimeLocaleSelection) -> Vec<String> {
-    let mut candidates = Vec::new();
-    if let Some(locale) = selection.locale.as_deref() {
-        push_locale(&mut candidates, locale);
-    }
-    for locale in &selection.fallback_locales {
-        push_locale(&mut candidates, locale);
-    }
-    candidates
-}
-
-fn push_locale(candidates: &mut Vec<String>, locale: &str) {
-    let Some(locale) = normalize_locale_tag(locale) else {
-        return;
-    };
-    if !candidates.contains(&locale) {
-        candidates.push(locale.clone());
-    }
-    if let Some((language, _)) = locale.split_once('-') {
-        let language = language.to_string();
-        if !candidates.contains(&language) {
-            candidates.push(language);
-        }
-    }
-}
-
-fn action_route_slug<'a>(
-    routes: &'a [LocalizedPageRouteEntry],
-    page_index: usize,
-    candidates: &[String],
-) -> Option<&'a str> {
-    for locale in candidates {
-        if let Some(route) = routes.iter().find(|route| {
-            route.page_index == page_index && route.locale.as_deref() == Some(locale.as_str())
-        }) {
-            return Some(route.slug.as_str());
-        }
-    }
-    routes
-        .iter()
-        .find(|route| route.page_index == page_index && route.locale.is_none())
-        .or_else(|| routes.iter().find(|route| route.page_index == page_index))
-        .map(|route| route.slug.as_str())
-}
-
-fn build_page_href(
-    base_path: Option<&str>,
-    slug: &str,
-    query: Option<&str>,
-    fragment: Option<&str>,
-) -> String {
-    let base_path = base_path
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("/");
-    let mut href = if base_path == "/" {
-        format!("/{slug}")
-    } else {
-        format!("{}/{slug}", base_path.trim_end_matches('/'))
-    };
-    if let Some(query) = query.map(str::trim).filter(|value| !value.is_empty()) {
-        href.push('?');
-        href.push_str(query.trim_start_matches('?'));
-    }
-    if let Some(fragment) = fragment.map(str::trim).filter(|value| !value.is_empty()) {
-        href.push('#');
-        href.push_str(fragment.trim_start_matches('#'));
-    }
-    href
 }
