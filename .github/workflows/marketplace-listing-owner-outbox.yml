@@ -9,7 +9,9 @@ on:
       - "crates/rustok-marketplace-listing/**"
       - "crates/rustok-outbox/src/transactional.rs"
       - "crates/rustok-outbox/src/transport.rs"
+      - "apps/server/tests/marketplace_listing_boundary_guard.rs"
       - "apps/server/tests/marketplace_listing_event_contract_guard.rs"
+      - "scripts/verify/verify-marketplace-listing-boundary.mjs"
       - "scripts/verify/verify-marketplace-listing-event-contract.mjs"
       - ".github/workflows/marketplace-listing-owner-outbox.yml"
   pull_request:
@@ -19,7 +21,9 @@ on:
       - "crates/rustok-marketplace-listing/**"
       - "crates/rustok-outbox/src/transactional.rs"
       - "crates/rustok-outbox/src/transport.rs"
+      - "apps/server/tests/marketplace_listing_boundary_guard.rs"
       - "apps/server/tests/marketplace_listing_event_contract_guard.rs"
+      - "scripts/verify/verify-marketplace-listing-boundary.mjs"
       - "scripts/verify/verify-marketplace-listing-event-contract.mjs"
       - ".github/workflows/marketplace-listing-owner-outbox.yml"
   workflow_dispatch:
@@ -48,6 +52,7 @@ jobs:
       - name: Capture owner outbox rustfmt patch
         run: |
           rustfmt --edition 2021 \
+            apps/server/tests/marketplace_listing_boundary_guard.rs \
             apps/server/tests/marketplace_listing_event_contract_guard.rs \
             crates/rustok-marketplace-listing/src/command_receipts.rs \
             crates/rustok-marketplace-listing/src/command_receipts_tests.rs \
@@ -60,6 +65,7 @@ jobs:
             crates/rustok-marketplace-listing/src/replay_safe_commands.rs \
             crates/rustok-marketplace-listing/src/service.rs
           git diff -- \
+            apps/server/tests/marketplace_listing_boundary_guard.rs \
             apps/server/tests/marketplace_listing_event_contract_guard.rs \
             crates/rustok-marketplace-listing/src/command_receipts.rs \
             crates/rustok-marketplace-listing/src/command_receipts_tests.rs \
@@ -86,8 +92,10 @@ jobs:
         run: cargo test -p rustok-marketplace-listing
       - name: Clippy listing crate
         run: cargo clippy -p rustok-marketplace-listing --all-targets -- -D warnings
-      - name: Verify sealed event and outbox source contract
-        run: node scripts/verify/verify-marketplace-listing-event-contract.mjs
+      - name: Verify listing owner boundaries
+        run: |
+          node scripts/verify/verify-marketplace-listing-boundary.mjs
+          node scripts/verify/verify-marketplace-listing-event-contract.mjs
       - name: Enforce clean owner outbox rustfmt
         run: |
           if test -s rustfmt.patch; then
