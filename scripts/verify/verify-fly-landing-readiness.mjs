@@ -54,12 +54,18 @@ requireText(
 requireOrder("crates/fly/src/runtime_pipeline.rs", [
   "materialize_bindings(&localized_document, &effective_context)",
   "materialize_runtime(&bound_document, &effective_context)",
+  "validate_internal_page_links(&dynamic_document)",
+  "validate_component_actions(&dynamic_document)",
   "materialize_internal_page_links(&dynamic_document, &effective_context)",
   "materialize_component_actions(&linked_document, &effective_context)",
 ]);
 requireText(
   "crates/fly/src/runtime_pipeline.rs",
   "runtime_binding_can_supply_action_before_native_materialization",
+);
+requireText(
+  "crates/fly/src/runtime_pipeline.rs",
+  "runtime_bound_navigation_conflict_is_validated_before_materialization",
 );
 requireText(
   "crates/fly/src/runtime_render.rs",
@@ -89,6 +95,13 @@ requireText(
   "crates/fly/src/landing_readiness/evaluate.rs",
   "materialize_context(&metadata_materialization.document, &structural_context)",
 );
+requireOrder("crates/fly/src/landing_readiness/evaluate.rs", [
+  "materialize_bindings(&metadata_materialization.document, &effective_context)",
+  "validate_internal_page_links(&binding_materialization.document)",
+  "validate_component_actions(&binding_materialization.document)",
+  "materialize_internal_page_links(&binding_materialization.document, &effective_context)",
+  "materialize_component_actions(&link_materialization.document, &effective_context)",
+]);
 requireText(
   "crates/fly/src/landing_readiness/evaluate.rs",
   '"runtime_context_required_missing"',
