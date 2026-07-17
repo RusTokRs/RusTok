@@ -1,51 +1,80 @@
 use crate::BrowserIntentDispatchError;
 use fly_browser::BrowserIntentEnvelope;
-use fly_ui::{resolve_editor_shortcut, CapabilityState, EditorShortcut, KeyStroke};
+use fly_ui::{
+    resolve_editor_shortcut, CapabilityState, EditorCapability, EditorShortcut, KeyStroke,
+};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+const CAPABILITY_DENIAL_PREFIX: &str = "FLY_CAPABILITY_DENIED:";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BrowserCapabilityDenial {
+    pub intent: String,
+    pub capability: EditorCapability,
+}
+
+pub fn browser_capability_denial(
+    error: &BrowserIntentDispatchError,
+) -> Option<BrowserCapabilityDenial> {
+    let BrowserIntentDispatchError::Authoring(message) = error else {
+        return None;
+    };
+    let payload = message.strip_prefix(CAPABILITY_DENIAL_PREFIX)?;
+    serde_json::from_str(payload).ok()
+}
 
 pub fn validate_browser_capability_access(
     envelope: &BrowserIntentEnvelope,
     capabilities: CapabilityState,
 ) -> Result<(), BrowserIntentDispatchError> {
     let capabilities = capabilities.normalized();
-    if let Some((name, enabled)) = capability_requirement(envelope, capabilities)? {
-        if !enabled {
-            return Err(BrowserIntentDispatchError::Authoring(format!(
-                "browser intent `{}` requires editor capability `{name}`",
-                envelope.intent
-            )));
+    for capability in capability_requirements(envelope)? {
+        if !capabilities.allows(capability) {
+            return Err(capability_denied(envelope, capability));
         }
     }
     Ok(())
 }
 
-fn capability_requirement(
+fn capability_denied(
     envelope: &BrowserIntentEnvelope,
-    capabilities: CapabilityState,
-) -> Result<Option<(&'static str, bool)>, BrowserIntentDispatchError> {
-    let requirement = match envelope.intent.as_str() {
+    capability: EditorCapability,
+) -> BrowserIntentDispatchError {
+    let payload = serde_json::json!({
+        "intent": envelope.intent,
+        "capability": capability,
+    });
+    BrowserIntentDispatchError::Authoring(format!(
+        "{CAPABILITY_DENIAL_PREFIX}{}",
+        payload
+    ))
+}
+
+fn capability_requirements(
+    envelope: &BrowserIntentEnvelope,
+) -> Result<Vec<EditorCapability>, BrowserIntentDispatchError> {
+    let requirements = match envelope.intent.as_str() {
         "select"
         | "focus_requested"
         | "hover"
         | "hover_requested"
         | "activate_page"
         | "cancel_drag"
-        | "cancel_drag_requested" => None,
-        "undo" | "redo" => Some(("history", capabilities.history)),
-        "copy" | "cut" | "paste" | "duplicate" => {
-            Some(("clipboard", capabilities.clipboard))
-        }
-        "save" => Some(("publish", capabilities.publish)),
+        | "cancel_drag_requested" => Vec::new(),
+        "undo" | "redo" => vec![EditorCapability::History],
+        "copy" | "cut" | "paste" | "duplicate" => vec![EditorCapability::Clipboard],
+        "save" => vec![EditorCapability::Publish],
         "begin_palette_drag"
         | "begin_selected_move"
         | "drop"
         | "drop_requested"
-        | "drag_moved" => Some(("drag_drop", capabilities.drag_drop)),
+        | "drag_moved" => vec![EditorCapability::DragDrop],
         "patch_component_property" => {
             if property_kind(&envelope.payload) == Some("style") {
-                Some(("styles", capabilities.styles))
+                vec![EditorCapability::Styles]
             } else {
-                Some(("properties", capabilities.properties))
+                vec![EditorCapability::Properties]
             }
         }
         "patch_page_metadata"
@@ -60,28 +89,26 @@ fn capability_requirement(
         | "remove_component_action"
         | "set_component_form"
         | "remove_component_form"
-        | "set_native_form_field" => Some(("properties", capabilities.properties)),
-        "upsert_asset" | "remove_asset" | "select_asset" => {
-            Some(("assets", capabilities.assets))
-        }
-        "key_stroke" => return shortcut_requirement(envelope, capabilities),
+        | "set_native_form_field" => vec![EditorCapability::Properties],
+        "upsert_asset" | "remove_asset" => vec![EditorCapability::Assets],
+        "select_asset" => vec![EditorCapability::Assets, EditorCapability::Properties],
+        "key_stroke" => return shortcut_requirements(envelope),
         "insert_block"
         | "remove_selected"
         | "move_selected_up"
         | "move_selected_down"
         | "create_page"
         | "rename_page"
-        | "remove_page" => Some(("edit", capabilities.edit)),
-        _ if envelope.is_mutating() => Some(("edit", capabilities.edit)),
-        _ => None,
+        | "remove_page" => vec![EditorCapability::Edit],
+        _ if envelope.is_mutating() => vec![EditorCapability::Edit],
+        _ => Vec::new(),
     };
-    Ok(requirement)
+    Ok(requirements)
 }
 
-fn shortcut_requirement(
+fn shortcut_requirements(
     envelope: &BrowserIntentEnvelope,
-    capabilities: CapabilityState,
-) -> Result<Option<(&'static str, bool)>, BrowserIntentDispatchError> {
+) -> Result<Vec<EditorCapability>, BrowserIntentDispatchError> {
     let stroke_value = envelope
         .payload
         .get("stroke")
@@ -91,18 +118,18 @@ fn shortcut_requirement(
         .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
     let shortcut = resolve_editor_shortcut(&stroke)
         .ok_or_else(|| BrowserIntentDispatchError::Unsupported("key_stroke".to_string()))?;
-    Ok(Some(match shortcut {
-        EditorShortcut::Undo | EditorShortcut::Redo => ("history", capabilities.history),
-        EditorShortcut::Save => ("publish", capabilities.publish),
+    Ok(match shortcut {
+        EditorShortcut::Undo | EditorShortcut::Redo => vec![EditorCapability::History],
+        EditorShortcut::Save => vec![EditorCapability::Publish],
         EditorShortcut::Copy
         | EditorShortcut::Cut
         | EditorShortcut::Paste
-        | EditorShortcut::Duplicate => ("clipboard", capabilities.clipboard),
+        | EditorShortcut::Duplicate => vec![EditorCapability::Clipboard],
         EditorShortcut::DeleteSelection
         | EditorShortcut::MoveSelectionUp
-        | EditorShortcut::MoveSelectionDown => ("edit", capabilities.edit),
-        EditorShortcut::Cancel => return Ok(None),
-    }))
+        | EditorShortcut::MoveSelectionDown => vec![EditorCapability::Edit],
+        EditorShortcut::Cancel => Vec::new(),
+    })
 }
 
 fn property_kind(payload: &Value) -> Option<&str> {
@@ -141,12 +168,23 @@ mod tests {
             clipboard: false,
             ..CapabilityState::full()
         };
-        for intent in ["save", "undo", "copy"] {
-            assert!(validate_browser_capability_access(
+        for (intent, capability) in [
+            ("save", EditorCapability::Publish),
+            ("undo", EditorCapability::History),
+            ("copy", EditorCapability::Clipboard),
+        ] {
+            let error = validate_browser_capability_access(
                 &envelope(intent, json!({})),
                 capabilities,
             )
-            .is_err());
+            .expect_err("capability denial");
+            assert_eq!(
+                browser_capability_denial(&error),
+                Some(BrowserCapabilityDenial {
+                    intent: intent.to_string(),
+                    capability,
+                })
+            );
         }
         assert!(validate_browser_capability_access(
             &envelope("select", json!({ "component_id": "hero" })),
@@ -170,14 +208,52 @@ mod tests {
             capabilities,
         )
         .is_ok());
-        assert!(validate_browser_capability_access(
+        let error = validate_browser_capability_access(
             &envelope(
                 "patch_component_property",
                 json!({ "kind": "style" }),
             ),
             capabilities,
         )
-        .is_err());
+        .expect_err("style capability denial");
+        assert_eq!(
+            browser_capability_denial(&error)
+                .map(|denial| denial.capability),
+            Some(EditorCapability::Styles)
+        );
+    }
+
+    #[test]
+    fn selecting_an_asset_requires_asset_and_property_capabilities() {
+        let missing_properties = CapabilityState {
+            properties: false,
+            ..CapabilityState::full()
+        };
+        let error = validate_browser_capability_access(
+            &envelope("select_asset", json!({ "asset_id": "logo" })),
+            missing_properties,
+        )
+        .expect_err("asset application changes component properties");
+        assert_eq!(
+            browser_capability_denial(&error)
+                .map(|denial| denial.capability),
+            Some(EditorCapability::Properties)
+        );
+
+        let missing_assets = CapabilityState {
+            assets: false,
+            ..CapabilityState::full()
+        };
+        let error = validate_browser_capability_access(
+            &envelope("select_asset", json!({ "asset_id": "logo" })),
+            missing_assets,
+        )
+        .expect_err("asset access is required before application");
+        assert_eq!(
+            browser_capability_denial(&error)
+                .map(|denial| denial.capability),
+            Some(EditorCapability::Assets)
+        );
     }
 
     #[test]
@@ -201,7 +277,7 @@ mod tests {
             publish: false,
             ..CapabilityState::full()
         };
-        assert!(validate_browser_capability_access(
+        let error = validate_browser_capability_access(
             &envelope(
                 "key_stroke",
                 json!({
@@ -221,7 +297,12 @@ mod tests {
             ),
             capabilities,
         )
-        .is_err());
+        .expect_err("publish shortcut capability denial");
+        assert_eq!(
+            browser_capability_denial(&error)
+                .map(|denial| denial.capability),
+            Some(EditorCapability::Publish)
+        );
     }
 
     #[test]
@@ -231,10 +312,15 @@ mod tests {
             ..CapabilityState::full()
         }
         .normalized();
-        assert!(validate_browser_capability_access(
+        let error = validate_browser_capability_access(
             &envelope("insert_block", json!({ "block_id": "text" })),
             capabilities,
         )
-        .is_err());
+        .expect_err("edit capability denial");
+        assert_eq!(
+            browser_capability_denial(&error)
+                .map(|denial| denial.capability),
+            Some(EditorCapability::Edit)
+        );
     }
 }
