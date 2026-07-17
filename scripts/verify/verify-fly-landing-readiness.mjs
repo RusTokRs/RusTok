@@ -115,6 +115,14 @@ requireText(
   '"runtime_action_unresolved"',
 );
 requireText(
+  "crates/fly/src/landing_readiness/evaluate.rs",
+  'code.starts_with("component_form_")',
+);
+requireText(
+  "crates/fly/src/landing_readiness/evaluate.rs",
+  "component_form_conflicts_are_runtime_contracts",
+);
+requireText(
   "crates/fly/src/landing_readiness/tests.rs",
   "structural_readiness_applies_schema_defaults_before_audit",
 );
