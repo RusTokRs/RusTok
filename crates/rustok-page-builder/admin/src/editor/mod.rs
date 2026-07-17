@@ -5,6 +5,7 @@ mod binding_panel;
 mod canvas_document;
 #[cfg(any(target_arch = "wasm32", test))]
 mod canvas_protocol;
+mod capability_controls;
 mod context_compatibility_panel;
 mod context_contract_tools;
 mod context_dependency_panel;
@@ -48,6 +49,9 @@ pub(crate) use canvas_document::render_canvas_srcdoc_with_context;
 pub(crate) use canvas_protocol::decode_canvas_message;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use canvas_protocol::CanvasBridgeMessage;
+pub(crate) use capability_controls::{
+    capability_disabled, CapabilityFieldset, CapabilityPolicyPanel,
+};
 pub(crate) use context_compatibility_panel::ContextCompatibilityPanel;
 pub(crate) use context_contract_tools::ContextContractToolsPanel;
 pub(crate) use context_dependency_panel::ContextDependencyPanel;
