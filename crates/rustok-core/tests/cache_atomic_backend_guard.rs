@@ -49,7 +49,9 @@ fn redis_feature_is_compatibility_only_in_core_and_owned_by_cache() {
 
 #[test]
 fn shared_redis_backend_connects_lazily_and_keeps_startup_outage_visible() {
+    let cache_lib = include_str!("../../rustok-cache/src/lib.rs");
     let shared = include_str!("../../rustok-cache/src/shared_backend.rs");
+    let recovery = include_str!("../../rustok-cache/src/startup_recovery_tests.rs");
 
     assert!(shared.contains("manager: AsyncMutex<Option<redis::aio::ConnectionManager>>"));
     assert!(shared.contains("async fn connection_manager(&self)"));
@@ -58,4 +60,10 @@ fn shared_redis_backend_connects_lazily_and_keeps_startup_outage_visible() {
     assert!(shared.contains(
         "configured_redis_outage_remains_visible_and_local_writes_stay_bounded"
     ));
+    assert!(cache_lib.contains("mod startup_recovery_tests;"));
+    assert!(recovery.contains(
+        "raw_backend_created_during_startup_outage_connects_after_redis_recovers"
+    ));
+    assert!(recovery.contains("RUSTOK_CACHE_REDIS_SERVER_BIN"));
+    assert!(recovery.contains("existing backend did not connect after Redis startup"));
 }
