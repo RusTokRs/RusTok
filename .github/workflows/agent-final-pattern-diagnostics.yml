@@ -1,0 +1,68 @@
+name: Agent Final Pattern Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patterns:
+    if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-final-clean' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/ci-baseline-final-clean
+          fetch-depth: 0
+      - name: Inspect latest-main rewrite patterns
+        shell: bash
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+          python - <<'PY' > /tmp/final-patterns.log
+          from pathlib import Path
+          import re
+
+          def exact(label: str, path: str, old: str, new: str) -> None:
+              source = Path(path).read_text()
+              print(f"{label}: old={source.count(old)} new={source.count(new)}")
+
+          exact("fly.dynamic", "crates/fly/src/dynamic.rs", '.filter(|value| !value.is_empty())', '!value.is_empty() && !value.contains("{{") && !value.contains("}}")')
+          exact("fly.locale", "crates/fly/src/locale_coverage.rs", 'vec!["en", "de-de"]', 'vec!["de-de", "en"]')
+          exact("fly.runtime", "crates/fly/src/runtime_validation.rs", 'runtime_binding_target_missing', 'runtime_binding_component_missing')
+          exact("fly.roundtrip", "crates/fly/src/tests.rs", 'assert_eq!(output, input);', 'output["futureTopLevelField"]')
+          exact("fly.translation", "crates/fly/src/translation.rs", 'required_locales: vec!["ru".to_string()]', 'required_locales: vec!["ru-RU".to_string()]')
+          exact("fly.audit", "crates/fly/src/audit.rs", '.unwrap_or_else(|| match component_type {', '.unwrap_or(match component_type {')
+          exact("cache.guard.loop", "crates/rustok-cache/tests/alert_rules_guard.rs", 'while backend.stats().entries > 1', 'let first_value = backend.get(first.0).await.unwrap();')
+          exact("cache.guard.message", "crates/rustok-cache/tests/alert_rules_guard.rs", 'capacity-one cache retained both entries', 'entry-count cache did not evict either key')
+          exact("core.counter", "crates/rustok-core/src/metrics/mod.rs", 'for (_, counter) in counters.iter()', 'for counter in counters.values()')
+          exact("core.gauge", "crates/rustok-core/src/metrics/mod.rs", 'for (_, gauge) in gauges.iter()', 'for gauge in gauges.values()')
+          exact("core.histogram", "crates/rustok-core/src/metrics/mod.rs", 'for (_, histogram) in histograms.iter()', 'for histogram in histograms.values()')
+          exact("core.results", "crates/rustok-core/src/utils/mod.rs", 'match result {', 'let value = result?;')
+          exact("payment.hmac", "crates/rustok-payment/Cargo.toml", 'hmac = { version = "0.12", optional = true }', 'hmac = { version = "0.13", optional = true }')
+          exact("payment.import", "crates/rustok-payment/src/stripe_provider.rs", 'use hmac::{Hmac, Mac};', 'use hmac::{Hmac, KeyInit, Mac};')
+          exact("csp.heading", "scripts/verify/verify-csp-reporting-contract.mjs", '## Trusted Script Nonce Boundary', '## Trusted Script and Style Element Nonce Boundary')
+          exact("csp.test", "apps/server/src/middleware/csp_reports.rs", 'parses_legacy_csp_report_without_script_sample', 'parses_legacy_csp_report_without_recording_sensitive_sample')
+          exact("page-builder.accessor", "crates/rustok-page-builder/admin/src/model.rs", 'pub fn editor(&self) -> &FlyEditor', 'editor_mut_for_tests')
+          exact("deny.mit0", "deny.toml", '    "MIT",', '    "MIT-0",')
+
+          generation = Path("apps/server/src/services/channel_cache_invalidation.rs").read_text()
+          print(f"channel.generation: old={generation.count('&& generation < previous')} new={generation.count('if generation < previous {')}")
+          for path in [
+              "apps/server/tests/channel_cache_resolved_value.rs",
+              "apps/server/src/services/tenant_locale_generation_tests.rs",
+              "crates/rustok-cache/tests/fallback_cas_live.rs",
+              "crates/rustok-cache/tests/real_redis_hardening.rs",
+              "crates/rustok-cache/src/startup_recovery_tests.rs",
+          ]:
+              source = Path(path).read_text()
+              print(f"{path}: let_chain={source.count('&& let Ok(mut connection)')} nested={source.count('client.get_multiplexed_async_connection().await {')}")
+          PY
+          cat /tmp/final-patterns.log
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agent-final-patterns
+          path: /tmp/final-patterns.log
