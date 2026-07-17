@@ -26,7 +26,6 @@ sea-orm-migration.workspace = true
 rustok-telemetry.workspace = true
 rustok-events.workspace = true
 moka.workspace = true
-redis = { version = "1.2", features = ["tokio-comp", "connection-manager"], optional = true }
 url = "2.5"
 futures = "0.3"
 rand = "0.10"
@@ -38,7 +37,8 @@ reqwest = { workspace = true }
 
 [features]
 server = ["rustok-api/server"]
-redis-cache = ["redis"]
+# Kept as an empty compatibility feature for existing workspace commands.
+redis-cache = []
 
 [dev-dependencies]
 tokio.workspace = true
