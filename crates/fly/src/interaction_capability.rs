@@ -44,8 +44,8 @@ pub struct InteractionCapabilityDefinition {
 
 impl InteractionCapabilityDefinition {
     pub fn normalized(mut self) -> FlyResult<Self> {
-        self.provider = normalize_identifier(&self.provider, "interaction capability provider")?;
-        self.operation = normalize_identifier(&self.operation, "interaction capability operation")?;
+        self.provider = normalize_identifier(&self.provider, "provider")?;
+        self.operation = normalize_identifier(&self.operation, "operation")?;
         self.description = self.description.trim().to_string();
         Ok(self)
     }
@@ -122,6 +122,16 @@ pub struct InteractionCapabilityPolicy {
     pub provider_forms: MissingInteractionCapabilityPolicy,
 }
 
+struct InteractionCapabilityUse<'a> {
+    kind: InteractionCapabilityKind,
+    provider: &'a str,
+    operation: &'a str,
+    input: &'a Value,
+    missing_policy: MissingInteractionCapabilityPolicy,
+    component_id: Option<&'a str>,
+    canonical_path: &'a str,
+}
+
 pub fn validate_interaction_capabilities(
     document: &ProjectDocument,
     registry: &InteractionCapabilityRegistry,
@@ -138,13 +148,15 @@ pub fn validate_interaction_capabilities(
             {
                 validate_provider_interaction(
                     registry,
-                    InteractionCapabilityKind::Action,
-                    &provider,
-                    &action,
-                    &input,
-                    policy.provider_actions,
-                    component.id.as_deref(),
-                    visit.path(),
+                    InteractionCapabilityUse {
+                        kind: InteractionCapabilityKind::Action,
+                        provider: &provider,
+                        operation: &action,
+                        input: &input,
+                        missing_policy: policy.provider_actions,
+                        component_id: component.id.as_deref(),
+                        canonical_path: visit.path(),
+                    },
                     &mut diagnostics,
                 );
             }
@@ -157,13 +169,15 @@ pub fn validate_interaction_capabilities(
                 {
                     validate_provider_interaction(
                         registry,
-                        InteractionCapabilityKind::Form,
-                        provider,
-                        action,
-                        &form.input,
-                        policy.provider_forms,
-                        component.id.as_deref(),
-                        visit.path(),
+                        InteractionCapabilityUse {
+                            kind: InteractionCapabilityKind::Form,
+                            provider,
+                            operation: action,
+                            input: &form.input,
+                            missing_policy: policy.provider_forms,
+                            component_id: component.id.as_deref(),
+                            canonical_path: visit.path(),
+                        },
                         &mut diagnostics,
                     );
                 }
@@ -183,20 +197,17 @@ pub fn validate_component_actions_with_capabilities(
     diagnostics
 }
 
-#[allow(clippy::too_many_arguments)]
 fn validate_provider_interaction(
     registry: &InteractionCapabilityRegistry,
-    kind: InteractionCapabilityKind,
-    provider: &str,
-    operation: &str,
-    input: &Value,
-    missing_policy: MissingInteractionCapabilityPolicy,
-    component_id: Option<&str>,
-    canonical_path: &str,
+    interaction: InteractionCapabilityUse<'_>,
     diagnostics: &mut Vec<ValidationDiagnostic>,
 ) {
-    let Some(capability) = registry.get(kind, provider, operation) else {
-        let severity = match missing_policy {
+    let Some(capability) = registry.get(
+        interaction.kind,
+        interaction.provider,
+        interaction.operation,
+    ) else {
+        let severity = match interaction.missing_policy {
             MissingInteractionCapabilityPolicy::Allow => return,
             MissingInteractionCapabilityPolicy::Warn => ValidationSeverity::Warning,
             MissingInteractionCapabilityPolicy::Error => ValidationSeverity::Error,
@@ -204,30 +215,30 @@ fn validate_provider_interaction(
         diagnostics.push(capability_diagnostic(
             severity,
             "interaction_capability_missing",
-            component_id,
-            canonical_path,
+            interaction.component_id,
+            interaction.canonical_path,
             format!(
                 "{} capability `{}.{}` is not registered",
-                kind.as_str(),
-                provider.trim(),
-                operation.trim()
+                interaction.kind.as_str(),
+                interaction.provider.trim(),
+                interaction.operation.trim()
             ),
         ));
         return;
     };
 
-    if !value_matches_kind(input, capability.input_kind) {
+    if !capability.input_kind.accepts(interaction.input) {
         diagnostics.push(capability_diagnostic(
             ValidationSeverity::Error,
             "interaction_capability_input_kind_mismatch",
-            component_id,
-            canonical_path,
+            interaction.component_id,
+            interaction.canonical_path,
             format!(
-                "{} capability `{}` expects {:?} input, received {}",
-                kind.as_str(),
+                "{} capability `{}` expects {} input, received {}",
+                interaction.kind.as_str(),
                 capability.id(),
-                capability.input_kind,
-                value_kind_name(input)
+                capability.input_kind.as_str(),
+                value_kind_name(interaction.input)
             ),
         ));
     }
@@ -244,21 +255,11 @@ fn normalize_identifier(value: &str, label: &str) -> FlyResult<String> {
             character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':')
         })
     {
-        return Err(FlyError::InvalidRegistryId(format!("{label}:{value}")));
+        return Err(FlyError::InvalidInteractionCapability(format!(
+            "{label} `{value}` contains unsupported characters"
+        )));
     }
     Ok(value.to_string())
-}
-
-fn value_matches_kind(value: &Value, kind: ContextValueKind) -> bool {
-    match kind {
-        ContextValueKind::Any => true,
-        ContextValueKind::Null => value.is_null(),
-        ContextValueKind::Boolean => value.is_boolean(),
-        ContextValueKind::Number => value.is_number(),
-        ContextValueKind::String => value.is_string(),
-        ContextValueKind::Object => value.is_object(),
-        ContextValueKind::Array => value.is_array(),
-    }
 }
 
 fn value_kind_name(value: &Value) -> &'static str {
@@ -405,5 +406,21 @@ mod tests {
             })
             .expect_err("duplicate");
         assert!(matches!(error, FlyError::DuplicateRegistryItem(_)));
+    }
+
+    #[test]
+    fn invalid_capability_identifier_has_domain_error() {
+        let mut registry = InteractionCapabilityRegistry::default();
+        assert!(matches!(
+            registry.register(InteractionCapabilityDefinition {
+                provider: "bad provider".to_string(),
+                operation: "run".to_string(),
+                kind: InteractionCapabilityKind::Action,
+                runtime: InteractionRuntimeTarget::Browser,
+                input_kind: ContextValueKind::Any,
+                description: String::new(),
+            }),
+            Err(FlyError::InvalidInteractionCapability(_))
+        ));
     }
 }
