@@ -5,19 +5,14 @@ use rustok_api::{build_locale_candidates, normalize_locale_tag, PLATFORM_FALLBAC
 use rustok_core::generate_id;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, Set,
 };
-use tracing::instrument;
 use uuid::Uuid;
-use validator::Validate;
 
 use crate::dto::{
-    AddMarketplaceSellerMemberInput, CreateMarketplaceSellerInput, ListMarketplaceSellersInput,
-    MarketplaceSellerMemberResponse, MarketplaceSellerMemberRole, MarketplaceSellerMemberStatus,
-    MarketplaceSellerOnboardingStatus, MarketplaceSellerResponse, MarketplaceSellerStatus,
-    ReviewMarketplaceSellerOnboardingInput, SubmitMarketplaceSellerOnboardingInput,
-    SuspendMarketplaceSellerInput, UpdateMarketplaceSellerMemberInput,
-    UpdateMarketplaceSellerProfileInput,
+    ListMarketplaceSellersInput, MarketplaceSellerMemberResponse, MarketplaceSellerMemberRole,
+    MarketplaceSellerMemberStatus, MarketplaceSellerOnboardingStatus, MarketplaceSellerResponse,
+    MarketplaceSellerStatus, UpdateMarketplaceSellerMemberInput,
 };
 use crate::entities::{seller, seller_member, seller_translation};
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
@@ -33,96 +28,6 @@ impl MarketplaceSellerService {
 
     pub fn database(&self) -> &DatabaseConnection {
         &self.db
-    }
-
-    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, actor_id = %actor_id, locale = %locale))]
-    pub async fn create_seller(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        locale: &str,
-        input: CreateMarketplaceSellerInput,
-    ) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
-        input
-            .validate()
-            .map_err(|error| MarketplaceSellerError::Validation(error.to_string()))?;
-        let locale = normalize_seller_locale(locale)?;
-        let handle = normalize_handle(input.handle.as_str())?;
-        let display_name = required_text(input.display_name, "display_name")?;
-        let legal_name = optional_text(input.legal_name);
-        let metadata = object_or_empty(input.metadata, "metadata")?;
-
-        if seller::Entity::find()
-            .filter(seller::Column::TenantId.eq(tenant_id))
-            .filter(seller::Column::Handle.eq(handle.as_str()))
-            .one(&self.db)
-            .await?
-            .is_some()
-        {
-            return Err(MarketplaceSellerError::DuplicateHandle(handle));
-        }
-
-        let transaction = self.db.begin().await?;
-        let seller_id = generate_id();
-        let member_id = generate_id();
-        let now = Utc::now();
-        let seller_model = seller::ActiveModel {
-            id: Set(seller_id),
-            tenant_id: Set(tenant_id),
-            handle: Set(handle.clone()),
-            legal_name: Set(legal_name),
-            status: Set(MarketplaceSellerStatus::Draft.as_str().to_string()),
-            onboarding_status: Set(
-                MarketplaceSellerOnboardingStatus::Draft
-                    .as_str()
-                    .to_string(),
-            ),
-            onboarding_note: Set(None),
-            suspension_reason: Set(None),
-            metadata: Set(metadata),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-            activated_at: Set(None),
-            suspended_at: Set(None),
-        }
-        .insert(&transaction)
-        .await
-        .map_err(|error| {
-            if is_unique_constraint(&error) {
-                MarketplaceSellerError::DuplicateHandle(handle)
-            } else {
-                error.into()
-            }
-        })?;
-        let translation = seller_translation::ActiveModel {
-            id: Set(generate_id()),
-            tenant_id: Set(tenant_id),
-            seller_id: Set(seller_id),
-            locale: Set(locale),
-            display_name: Set(display_name),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        }
-        .insert(&transaction)
-        .await?;
-        seller_member::ActiveModel {
-            id: Set(member_id),
-            tenant_id: Set(tenant_id),
-            seller_id: Set(seller_id),
-            user_id: Set(input.owner_user_id),
-            role: Set(MarketplaceSellerMemberRole::Owner.as_str().to_string()),
-            status: Set(MarketplaceSellerMemberStatus::Active.as_str().to_string()),
-            invited_by_actor_id: Set(Some(actor_id)),
-            accepted_at: Set(Some(now.into())),
-            metadata: Set(serde_json::json!({"source": "seller_creation"})),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        }
-        .insert(&transaction)
-        .await?;
-        let response = map_seller(seller_model, translation)?;
-        transaction.commit().await?;
-        Ok(response)
     }
 
     pub async fn get_seller(
@@ -166,13 +71,13 @@ impl MarketplaceSellerService {
                 .into_iter()
                 .map(|translation| translation.seller_id)
                 .collect::<HashSet<_>>();
-            let mut search_condition = Condition::any()
+            let mut condition = Condition::any()
                 .add(seller::Column::Handle.contains(search))
                 .add(seller::Column::LegalName.contains(search));
             if !translation_ids.is_empty() {
-                search_condition = search_condition.add(seller::Column::Id.is_in(translation_ids));
+                condition = condition.add(seller::Column::Id.is_in(translation_ids));
             }
-            query = query.filter(search_condition);
+            query = query.filter(condition);
         }
 
         let paginator = query
@@ -182,309 +87,6 @@ impl MarketplaceSellerService {
         let models = paginator.fetch_page(page.saturating_sub(1)).await?;
         let items = load_seller_responses(&self.db, models, locale).await?;
         Ok((items, total))
-    }
-
-    pub async fn update_profile(
-        &self,
-        tenant_id: Uuid,
-        seller_id: Uuid,
-        locale: &str,
-        input: UpdateMarketplaceSellerProfileInput,
-    ) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
-        input
-            .validate()
-            .map_err(|error| MarketplaceSellerError::Validation(error.to_string()))?;
-        let locale = normalize_seller_locale(locale)?;
-        let transaction = self.db.begin().await?;
-        let current = find_seller(&transaction, tenant_id, seller_id).await?;
-        if current.status == MarketplaceSellerStatus::Closed.as_str() {
-            return Err(MarketplaceSellerError::InvalidTransition {
-                from: current.status,
-                to: "profile_updated".to_string(),
-            });
-        }
-
-        let mut active: seller::ActiveModel = current.into();
-        if input.legal_name.is_some() {
-            active.legal_name = Set(optional_text(input.legal_name));
-        }
-        if let Some(metadata) = input.metadata {
-            active.metadata = Set(object_or_empty(metadata, "metadata")?);
-        }
-        active.updated_at = Set(Utc::now().into());
-        active.update(&transaction).await?;
-        if let Some(display_name) = input.display_name {
-            upsert_translation(
-                &transaction,
-                tenant_id,
-                seller_id,
-                locale.as_str(),
-                required_text(display_name, "display_name")?,
-            )
-            .await?;
-        }
-        let response = load_seller_response(&transaction, tenant_id, seller_id, locale.as_str()).await?;
-        transaction.commit().await?;
-        Ok(response)
-    }
-
-    pub async fn submit_onboarding(
-        &self,
-        tenant_id: Uuid,
-        seller_id: Uuid,
-        locale: &str,
-        input: SubmitMarketplaceSellerOnboardingInput,
-    ) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
-        input
-            .validate()
-            .map_err(|error| MarketplaceSellerError::Validation(error.to_string()))?;
-        let result = seller::Entity::update_many()
-            .col_expr(
-                seller::Column::OnboardingStatus,
-                sea_orm::sea_query::Expr::value(
-                    MarketplaceSellerOnboardingStatus::Submitted.as_str(),
-                ),
-            )
-            .col_expr(
-                seller::Column::OnboardingNote,
-                sea_orm::sea_query::Expr::value(optional_text(input.note)),
-            )
-            .col_expr(
-                seller::Column::UpdatedAt,
-                sea_orm::sea_query::Expr::current_timestamp().into(),
-            )
-            .filter(seller::Column::TenantId.eq(tenant_id))
-            .filter(seller::Column::Id.eq(seller_id))
-            .filter(seller::Column::Status.eq(MarketplaceSellerStatus::Draft.as_str()))
-            .filter(
-                seller::Column::OnboardingStatus.is_in([
-                    MarketplaceSellerOnboardingStatus::Draft.as_str(),
-                    MarketplaceSellerOnboardingStatus::Rejected.as_str(),
-                ]),
-            )
-            .exec(&self.db)
-            .await?;
-        self.require_transition(result.rows_affected, tenant_id, seller_id, locale, "submitted")
-            .await
-    }
-
-    pub async fn review_onboarding(
-        &self,
-        tenant_id: Uuid,
-        seller_id: Uuid,
-        locale: &str,
-        input: ReviewMarketplaceSellerOnboardingInput,
-    ) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
-        input
-            .validate()
-            .map_err(|error| MarketplaceSellerError::Validation(error.to_string()))?;
-        let now = Utc::now().fixed_offset();
-        let onboarding = if input.approved {
-            MarketplaceSellerOnboardingStatus::Approved
-        } else {
-            MarketplaceSellerOnboardingStatus::Rejected
-        };
-        let next_status = if input.approved {
-            MarketplaceSellerStatus::Active
-        } else {
-            MarketplaceSellerStatus::Draft
-        };
-        let mut update = seller::Entity::update_many()
-            .col_expr(
-                seller::Column::OnboardingStatus,
-                sea_orm::sea_query::Expr::value(onboarding.as_str()),
-            )
-            .col_expr(
-                seller::Column::Status,
-                sea_orm::sea_query::Expr::value(next_status.as_str()),
-            )
-            .col_expr(
-                seller::Column::OnboardingNote,
-                sea_orm::sea_query::Expr::value(optional_text(input.note)),
-            )
-            .col_expr(
-                seller::Column::UpdatedAt,
-                sea_orm::sea_query::Expr::value(now),
-            )
-            .filter(seller::Column::TenantId.eq(tenant_id))
-            .filter(seller::Column::Id.eq(seller_id))
-            .filter(seller::Column::Status.eq(MarketplaceSellerStatus::Draft.as_str()))
-            .filter(
-                seller::Column::OnboardingStatus
-                    .eq(MarketplaceSellerOnboardingStatus::Submitted.as_str()),
-            );
-        if input.approved {
-            update = update.col_expr(
-                seller::Column::ActivatedAt,
-                sea_orm::sea_query::Expr::value(Some(now)),
-            );
-        }
-        let result = update.exec(&self.db).await?;
-        self.require_transition(
-            result.rows_affected,
-            tenant_id,
-            seller_id,
-            locale,
-            onboarding.as_str(),
-        )
-        .await
-    }
-
-    pub async fn suspend_seller(
-        &self,
-        tenant_id: Uuid,
-        seller_id: Uuid,
-        locale: &str,
-        input: SuspendMarketplaceSellerInput,
-    ) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
-        input
-            .validate()
-            .map_err(|error| MarketplaceSellerError::Validation(error.to_string()))?;
-        let reason = required_text(input.reason, "reason")?;
-        let now = Utc::now().fixed_offset();
-        let result = seller::Entity::update_many()
-            .col_expr(
-                seller::Column::Status,
-                sea_orm::sea_query::Expr::value(MarketplaceSellerStatus::Suspended.as_str()),
-            )
-            .col_expr(
-                seller::Column::SuspensionReason,
-                sea_orm::sea_query::Expr::value(Some(reason)),
-            )
-            .col_expr(
-                seller::Column::SuspendedAt,
-                sea_orm::sea_query::Expr::value(Some(now)),
-            )
-            .col_expr(
-                seller::Column::UpdatedAt,
-                sea_orm::sea_query::Expr::value(now),
-            )
-            .filter(seller::Column::TenantId.eq(tenant_id))
-            .filter(seller::Column::Id.eq(seller_id))
-            .filter(seller::Column::Status.eq(MarketplaceSellerStatus::Active.as_str()))
-            .exec(&self.db)
-            .await?;
-        self.require_transition(result.rows_affected, tenant_id, seller_id, locale, "suspended")
-            .await
-    }
-
-    pub async fn reactivate_seller(
-        &self,
-        tenant_id: Uuid,
-        seller_id: Uuid,
-        locale: &str,
-    ) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
-        let result = seller::Entity::update_many()
-            .col_expr(
-                seller::Column::Status,
-                sea_orm::sea_query::Expr::value(MarketplaceSellerStatus::Active.as_str()),
-            )
-            .col_expr(
-                seller::Column::SuspensionReason,
-                sea_orm::sea_query::Expr::value(Option::<String>::None),
-            )
-            .col_expr(
-                seller::Column::SuspendedAt,
-                sea_orm::sea_query::Expr::value(
-                    Option::<chrono::DateTime<chrono::FixedOffset>>::None,
-                ),
-            )
-            .col_expr(
-                seller::Column::UpdatedAt,
-                sea_orm::sea_query::Expr::current_timestamp().into(),
-            )
-            .filter(seller::Column::TenantId.eq(tenant_id))
-            .filter(seller::Column::Id.eq(seller_id))
-            .filter(seller::Column::Status.eq(MarketplaceSellerStatus::Suspended.as_str()))
-            .filter(
-                seller::Column::OnboardingStatus
-                    .eq(MarketplaceSellerOnboardingStatus::Approved.as_str()),
-            )
-            .exec(&self.db)
-            .await?;
-        self.require_transition(result.rows_affected, tenant_id, seller_id, locale, "active")
-            .await
-    }
-
-    pub async fn add_member(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        seller_id: Uuid,
-        input: AddMarketplaceSellerMemberInput,
-    ) -> MarketplaceSellerResult<MarketplaceSellerMemberResponse> {
-        find_seller(&self.db, tenant_id, seller_id).await?;
-        if seller_member::Entity::find()
-            .filter(seller_member::Column::TenantId.eq(tenant_id))
-            .filter(seller_member::Column::SellerId.eq(seller_id))
-            .filter(seller_member::Column::UserId.eq(input.user_id))
-            .one(&self.db)
-            .await?
-            .is_some()
-        {
-            return Err(MarketplaceSellerError::DuplicateMembership {
-                seller_id,
-                user_id: input.user_id,
-            });
-        }
-        let now = Utc::now();
-        let model = seller_member::ActiveModel {
-            id: Set(generate_id()),
-            tenant_id: Set(tenant_id),
-            seller_id: Set(seller_id),
-            user_id: Set(input.user_id),
-            role: Set(input.role.as_str().to_string()),
-            status: Set(MarketplaceSellerMemberStatus::Invited.as_str().to_string()),
-            invited_by_actor_id: Set(Some(actor_id)),
-            accepted_at: Set(None),
-            metadata: Set(object_or_empty(input.metadata, "metadata")?),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        }
-        .insert(&self.db)
-        .await;
-        match model {
-            Ok(model) => map_member(model),
-            Err(error) if is_unique_constraint(&error) => {
-                Err(MarketplaceSellerError::DuplicateMembership {
-                    seller_id,
-                    user_id: input.user_id,
-                })
-            }
-            Err(error) => Err(error.into()),
-        }
-    }
-
-    pub async fn update_member(
-        &self,
-        tenant_id: Uuid,
-        seller_id: Uuid,
-        member_id: Uuid,
-        input: UpdateMarketplaceSellerMemberInput,
-    ) -> MarketplaceSellerResult<MarketplaceSellerMemberResponse> {
-        let current = seller_member::Entity::find_by_id(member_id)
-            .filter(seller_member::Column::TenantId.eq(tenant_id))
-            .filter(seller_member::Column::SellerId.eq(seller_id))
-            .one(&self.db)
-            .await?
-            .ok_or(MarketplaceSellerError::MemberNotFound(member_id))?;
-        validate_owner_membership_update(&current, &input)?;
-
-        let mut active: seller_member::ActiveModel = current.into();
-        if let Some(role) = input.role {
-            active.role = Set(role.as_str().to_string());
-        }
-        if let Some(status) = input.status {
-            active.status = Set(status.as_str().to_string());
-            if status == MarketplaceSellerMemberStatus::Active {
-                active.accepted_at = Set(Some(Utc::now().into()));
-            }
-        }
-        if let Some(metadata) = input.metadata {
-            active.metadata = Set(object_or_empty(metadata, "metadata")?);
-        }
-        active.updated_at = Set(Utc::now().into());
-        map_member(active.update(&self.db).await?)
     }
 
     pub async fn get_membership(
@@ -518,24 +120,6 @@ impl MarketplaceSellerService {
             .into_iter()
             .map(map_member)
             .collect()
-    }
-
-    async fn require_transition(
-        &self,
-        rows_affected: u64,
-        tenant_id: Uuid,
-        seller_id: Uuid,
-        locale: &str,
-        to: &str,
-    ) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
-        if rows_affected == 1 {
-            return self.get_seller(tenant_id, seller_id, locale).await;
-        }
-        let current = self.get_seller(tenant_id, seller_id, locale).await?;
-        Err(MarketplaceSellerError::InvalidTransition {
-            from: format!("{}:{}", current.status.as_str(), current.onboarding_status.as_str()),
-            to: to.to_string(),
-        })
     }
 }
 
@@ -572,14 +156,14 @@ async fn load_seller_responses<C: ConnectionTrait>(
     }
     let normalized = normalize_seller_locale(locale)?;
     let candidates = seller_locale_candidates(normalized.as_str())?;
+    let tenant_id = models[0].tenant_id;
     let seller_ids = models.iter().map(|model| model.id).collect::<Vec<_>>();
     let translations = seller_translation::Entity::find()
-        .filter(seller_translation::Column::TenantId.eq(models[0].tenant_id))
+        .filter(seller_translation::Column::TenantId.eq(tenant_id))
         .filter(seller_translation::Column::SellerId.is_in(seller_ids))
         .filter(seller_translation::Column::Locale.is_in(candidates.clone()))
         .all(connection)
-        .await?;
-    let translations = translations
+        .await?
         .into_iter()
         .map(|translation| ((translation.seller_id, translation.locale.clone()), translation))
         .collect::<HashMap<_, _>>();
@@ -683,6 +267,7 @@ pub(crate) fn map_seller(
         id: model.id,
         tenant_id: model.tenant_id,
         handle: model.handle,
+        resolved_locale: translation.locale,
         display_name: translation.display_name,
         legal_name: model.legal_name,
         status,
