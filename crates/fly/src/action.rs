@@ -12,6 +12,23 @@ pub const FLY_FORM_FIELD: &str = "flyForm";
 pub const FLY_ACTION_DATA_ATTRIBUTE: &str = "data-fly-action";
 pub const FLY_ACTION_KIND_ATTRIBUTE: &str = "data-fly-action-kind";
 
+const GENERATED_INTERACTION_ATTRIBUTES: &[&str] = &[
+    "href",
+    "target",
+    "rel",
+    "type",
+    "form",
+    "action",
+    "method",
+    "enctype",
+    "novalidate",
+    FLY_ACTION_DATA_ATTRIBUTE,
+    FLY_ACTION_KIND_ATTRIBUTE,
+    "data-fly-form-provider",
+    "data-fly-form-action",
+    "data-fly-form-input",
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ComponentAction {
@@ -224,6 +241,7 @@ fn materialize_node(
     let component_id = component.id.clone();
 
     if let Some(raw) = component.extensions.get(FLY_FORM_FIELD).cloned() {
+        clear_interaction_materialization(component);
         match decode_form(raw) {
             Ok(form) => {
                 apply_form(component, &form);
@@ -240,6 +258,7 @@ fn materialize_node(
     }
 
     if let Some(raw) = component.extensions.get(FLY_ACTION_FIELD).cloned() {
+        clear_interaction_materialization(component);
         match serde_json::from_value::<ComponentAction>(raw) {
             Ok(action) => match apply_action(
                 component,
@@ -314,10 +333,11 @@ fn validate_node(
         return;
     };
     let component_id = component.id.clone();
+    let has_page_link = component.extensions.contains_key(FLY_PAGE_LINK_FIELD);
+    let has_action = component.extensions.contains_key(FLY_ACTION_FIELD);
+    let has_form = component.extensions.contains_key(FLY_FORM_FIELD);
 
-    if component.extensions.contains_key(FLY_PAGE_LINK_FIELD)
-        && component.extensions.contains_key(FLY_ACTION_FIELD)
-    {
+    if has_page_link && has_action {
         diagnostics.push(action_diagnostic(
             ValidationSeverity::Error,
             "component_navigation_contract_conflict",
@@ -325,6 +345,17 @@ fn validate_node(
             component_id.clone(),
             format!(
                 "component cannot define both `{FLY_PAGE_LINK_FIELD}` and `{FLY_ACTION_FIELD}`"
+            ),
+        ));
+    }
+    if has_form && (has_page_link || has_action) {
+        diagnostics.push(action_diagnostic(
+            ValidationSeverity::Error,
+            "component_form_interaction_contract_conflict",
+            path,
+            component_id.clone(),
+            format!(
+                "component cannot combine `{FLY_FORM_FIELD}` with `{FLY_PAGE_LINK_FIELD}` or `{FLY_ACTION_FIELD}`"
             ),
         ));
     }
@@ -395,9 +426,21 @@ fn decode_form(raw: Value) -> Result<ComponentForm, String> {
 
 fn validate_form(form: &ComponentForm) -> Result<(), String> {
     validate_identifier(&form.id, "form id")?;
-    let action_url = form.action_url.as_deref().map(str::trim).filter(|value| !value.is_empty());
-    let provider = form.provider.as_deref().map(str::trim).filter(|value| !value.is_empty());
-    let action = form.action.as_deref().map(str::trim).filter(|value| !value.is_empty());
+    let action_url = form
+        .action_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let provider = form
+        .provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let action = form
+        .action
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     if action_url.is_some() && (provider.is_some() || action.is_some()) {
         return Err("form cannot combine action_url with provider action fields".to_string());
     }
@@ -416,6 +459,9 @@ fn validate_form(form: &ComponentForm) -> Result<(), String> {
     if form.method == FormMethod::Dialog && (action_url.is_some() || provider.is_some()) {
         return Err("dialog form cannot define native or provider submission targets".to_string());
     }
+    if form.method != FormMethod::Post && form.encoding != FormEncoding::UrlEncoded {
+        return Err("non-default form encoding requires post method".to_string());
+    }
     Ok(())
 }
 
@@ -429,39 +475,44 @@ fn validate_action(
     diagnostics: &mut Vec<ValidationDiagnostic>,
 ) {
     let result = match action {
-        ComponentAction::NavigatePage { page_id, base_path, query, fragment, fallback_href } => {
-            validate_identifier(page_id, "target page id")
-                .and_then(|_| {
-                    if let Some(base_path) = base_path.as_deref() {
-                        validate_base_path(base_path)?;
-                    }
-                    validate_suffix(query.as_deref(), "query")?;
-                    validate_suffix(fragment.as_deref(), "fragment")?;
-                    if let Some(href) = fallback_href.as_deref() {
-                        validate_safe_url(href, "fallback href")?;
-                    }
-                    Ok(())
-                })
-                .and_then(|_| match page_ids.get(page_id).copied() {
-                    Some(page_index) if route_pages.contains(&page_index) => Ok(()),
-                    Some(_) if fallback_href.is_some() => Ok(()),
-                    Some(_) => Err(format!("target page `{page_id}` has no explicit slug")),
-                    None => Err(format!("target page `{page_id}` does not exist")),
-                })
-        }
-        ComponentAction::NavigateUrl { href, .. } => validate_safe_url(href, "navigation href"),
-        ComponentAction::SubmitForm { form_id } => validate_identifier(form_id, "form id")
+        ComponentAction::NavigatePage {
+            page_id,
+            base_path,
+            query,
+            fragment,
+            fallback_href,
+        } => validate_identifier(page_id, "target page id")
             .and_then(|_| {
+                if let Some(base_path) = base_path.as_deref() {
+                    validate_base_path(base_path)?;
+                }
+                validate_suffix(query.as_deref(), "query")?;
+                validate_suffix(fragment.as_deref(), "fragment")?;
+                if let Some(href) = fallback_href.as_deref() {
+                    validate_safe_url(href, "fallback href")?;
+                }
+                Ok(())
+            })
+            .and_then(|_| match page_ids.get(page_id).copied() {
+                Some(page_index) if route_pages.contains(&page_index) => Ok(()),
+                Some(_) if fallback_href.is_some() => Ok(()),
+                Some(_) => Err(format!("target page `{page_id}` has no explicit slug")),
+                None => Err(format!("target page `{page_id}` does not exist")),
+            }),
+        ComponentAction::NavigateUrl { href, .. } => validate_safe_url(href, "navigation href"),
+        ComponentAction::SubmitForm { form_id } => {
+            validate_identifier(form_id, "form id").and_then(|_| {
                 form_ids
                     .contains_key(form_id)
                     .then_some(())
                     .ok_or_else(|| format!("form `{form_id}` does not exist"))
-            }),
-        ComponentAction::EmitEvent { event, .. } => validate_identifier(event, "event name"),
-        ComponentAction::ProviderAction { provider, action, .. } => {
-            validate_identifier(provider, "provider")
-                .and_then(|_| validate_identifier(action, "provider action"))
+            })
         }
+        ComponentAction::EmitEvent { event, .. } => validate_identifier(event, "event name"),
+        ComponentAction::ProviderAction {
+            provider, action, ..
+        } => validate_identifier(provider, "provider")
+            .and_then(|_| validate_identifier(action, "provider action")),
     };
     if let Err(message) = result {
         diagnostics.push(action_diagnostic(
@@ -474,6 +525,12 @@ fn validate_action(
     }
 }
 
+fn clear_interaction_materialization(component: &mut crate::ComponentObject) {
+    for attribute in GENERATED_INTERACTION_ATTRIBUTES {
+        component.attributes.remove(*attribute);
+    }
+}
+
 fn apply_form(component: &mut crate::ComponentObject, form: &ComponentForm) {
     component.tag_name = Some("form".to_string());
     component
@@ -483,10 +540,12 @@ fn apply_form(component: &mut crate::ComponentObject, form: &ComponentForm) {
         "method".to_string(),
         Value::String(form.method.as_str().to_string()),
     );
-    component.attributes.insert(
-        "enctype".to_string(),
-        Value::String(form.encoding.as_str().to_string()),
-    );
+    if form.method == FormMethod::Post {
+        component.attributes.insert(
+            "enctype".to_string(),
+            Value::String(form.encoding.as_str().to_string()),
+        );
+    }
     if let Some(action_url) = form.action_url.as_deref() {
         component.attributes.insert(
             "action".to_string(),
@@ -535,24 +594,39 @@ fn apply_action(
         Value::String(action.kind().to_string()),
     );
     match action {
-        ComponentAction::NavigatePage { page_id, base_path, query, fragment, fallback_href } => {
+        ComponentAction::NavigatePage {
+            page_id,
+            base_path,
+            query,
+            fragment,
+            fallback_href,
+        } => {
             let Some(page_index) = page_ids.get(page_id).copied() else {
                 return AppliedAction::Unresolved(format!("target page `{page_id}` does not exist"));
             };
             let slug = action_route_slug(route_index, page_index, locale_candidates);
             let href = match slug {
-                Some(slug) => build_page_href(base_path.as_deref(), slug, query.as_deref(), fragment.as_deref()),
+                Some(slug) => build_page_href(
+                    base_path.as_deref(),
+                    slug,
+                    query.as_deref(),
+                    fragment.as_deref(),
+                ),
                 None => match fallback_href.as_deref() {
                     Some(href) => {
                         component.tag_name = Some("a".to_string());
-                        component.attributes.insert("href".to_string(), Value::String(href.to_string()));
+                        component
+                            .attributes
+                            .insert("href".to_string(), Value::String(href.to_string()));
                         return AppliedAction::Fallback(format!(
                             "target page `{page_id}` has no localized slug; fallback_href was used"
                         ));
                     }
-                    None => return AppliedAction::Unresolved(format!(
-                        "target page `{page_id}` has no route for the active locale"
-                    )),
+                    None => {
+                        return AppliedAction::Unresolved(format!(
+                            "target page `{page_id}` has no route for the active locale"
+                        ));
+                    }
                 },
             };
             component.tag_name = Some("a".to_string());
@@ -587,10 +661,9 @@ fn apply_action(
                 "type".to_string(),
                 Value::String("submit".to_string()),
             );
-            component.attributes.insert(
-                "form".to_string(),
-                Value::String(form_id.clone()),
-            );
+            component
+                .attributes
+                .insert("form".to_string(), Value::String(form_id.clone()));
             AppliedAction::Native
         }
         ComponentAction::EmitEvent { .. } | ComponentAction::ProviderAction { .. } => {
@@ -697,7 +770,10 @@ fn build_page_href(
     query: Option<&str>,
     fragment: Option<&str>,
 ) -> String {
-    let base_path = base_path.map(str::trim).filter(|value| !value.is_empty()).unwrap_or("/");
+    let base_path = base_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("/");
     let mut href = if base_path == "/" {
         format!("/{slug}")
     } else {
@@ -739,7 +815,9 @@ fn validate_base_path(value: &str) -> Result<(), String> {
         || value.contains('\r')
         || value.contains('\n')
     {
-        return Err(format!("base path `{value}` is not a safe absolute path prefix"));
+        return Err(format!(
+            "base path `{value}` is not a safe absolute path prefix"
+        ));
     }
     Ok(())
 }
@@ -861,12 +939,102 @@ mod tests {
         let form = result.document.component("contact-form").unwrap();
         assert_eq!(form.tag_name.as_deref(), Some("form"));
         assert_eq!(form.attributes["data-fly-form-provider"], "crm");
-        assert_eq!(result.document.component("submit").unwrap().attributes["form"], "contact");
-        assert_eq!(result.document.component("about").unwrap().attributes["href"], "/o-nas");
+        assert_eq!(
+            result.document.component("submit").unwrap().attributes["form"],
+            "contact"
+        );
+        assert_eq!(
+            result.document.component("about").unwrap().attributes["href"],
+            "/o-nas"
+        );
         assert_eq!(
             result.document.component("track").unwrap().attributes[FLY_ACTION_KIND_ATTRIBUTE],
             "emit_event"
         );
+    }
+
+    #[test]
+    fn materialization_clears_stale_interaction_attributes() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "search-form",
+                        "type": "wrapper",
+                        "attributes": {
+                            "action": "/legacy",
+                            "enctype": "multipart/form-data",
+                            "novalidate": "",
+                            "data-fly-form-provider": "legacy",
+                            "data-fly-form-action": "send",
+                            "data-fly-form-input": "{}",
+                            "href": "/stale",
+                            "target": "_blank",
+                            "type": "button"
+                        },
+                        "flyForm": { "id": "search", "method": "get" }
+                    }, {
+                        "id": "track",
+                        "type": "button",
+                        "attributes": {
+                            "href": "/legacy",
+                            "target": "_blank",
+                            "rel": "opener",
+                            "form": "legacy-form",
+                            "action": "/legacy-submit",
+                            "method": "post",
+                            "enctype": "multipart/form-data",
+                            "novalidate": "",
+                            "data-fly-form-provider": "legacy",
+                            "data-fly-action": "legacy"
+                        },
+                        "flyAction": {
+                            "kind": "emit_event",
+                            "event": "analytics.track"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+
+        let result = materialize_component_actions(&document, &json!({}));
+        let form = result.document.component("search-form").unwrap();
+        assert_eq!(form.tag_name.as_deref(), Some("form"));
+        assert_eq!(form.attributes["method"], "get");
+        for attribute in [
+            "action",
+            "enctype",
+            "novalidate",
+            "data-fly-form-provider",
+            "data-fly-form-action",
+            "data-fly-form-input",
+            "href",
+            "target",
+            "type",
+        ] {
+            assert!(!form.attributes.contains_key(attribute), "{attribute}");
+        }
+
+        let action = result.document.component("track").unwrap();
+        assert_eq!(action.attributes["type"], "button");
+        assert_eq!(action.attributes[FLY_ACTION_KIND_ATTRIBUTE], "emit_event");
+        assert!(action.attributes.contains_key(FLY_ACTION_DATA_ATTRIBUTE));
+        for attribute in [
+            "href",
+            "target",
+            "rel",
+            "form",
+            "action",
+            "method",
+            "enctype",
+            "novalidate",
+            "data-fly-form-provider",
+        ] {
+            assert!(!action.attributes.contains_key(attribute), "{attribute}");
+        }
     }
 
     #[test]
@@ -900,7 +1068,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_form_ids_and_navigation_contract_conflict_are_rejected() {
+    fn duplicate_forms_and_interaction_conflicts_are_rejected() {
         let document = GrapesJsV1Codec::decode_value(json!({
             "pages": [{
                 "id": "home",
@@ -917,10 +1085,15 @@ mod tests {
                         "type": "wrapper",
                         "flyForm": { "id": "same" }
                     }, {
-                        "id": "conflict",
+                        "id": "navigation-conflict",
                         "type": "link",
                         "flyPageLink": { "page_id": "home" },
                         "flyAction": { "kind": "navigate_page", "page_id": "home" }
+                    }, {
+                        "id": "form-action-conflict",
+                        "type": "wrapper",
+                        "flyForm": { "id": "combined" },
+                        "flyAction": { "kind": "emit_event", "event": "submit" }
                     }]
                 }
             }]
@@ -932,6 +1105,36 @@ mod tests {
             .any(|diagnostic| diagnostic.code == "duplicate_form_id"));
         assert!(diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "component_navigation_contract_conflict"
+        }));
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "component_form_interaction_contract_conflict"
+        }));
+    }
+
+    #[test]
+    fn non_post_encoding_is_rejected() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "invalid-form",
+                        "type": "wrapper",
+                        "flyForm": {
+                            "id": "search",
+                            "method": "get",
+                            "encoding": "multipart"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let diagnostics = validate_component_actions(&document);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "form_definition_invalid"
+                && diagnostic.message.contains("encoding requires post")
         }));
     }
 }
