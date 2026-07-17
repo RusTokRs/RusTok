@@ -19,7 +19,9 @@ const __flyFormPayload = (form) => {
     payload[checkbox.name] = checkbox.checked;
   }
   for (const number of form.querySelectorAll('input[type="number"][name]')) {
-    if (number.value !== "" && Number.isFinite(Number(number.value))) {
+    if (number.value === "") {
+      delete payload[number.name];
+    } else if (Number.isFinite(Number(number.value))) {
       payload[number.name] = Number(number.value);
     }
   }
@@ -167,6 +169,7 @@ mod tests {
     fn ssr_bootstrap_submits_forms_and_synchronizes_draft_routes() {
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("data-fly-intent-form"));
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("__flyFormPayload"));
+        assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("delete payload[number.name]"));
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("fly_draft"));
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("history.replaceState"));
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("data-fly-component-picker"));
