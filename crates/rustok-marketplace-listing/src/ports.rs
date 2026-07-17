@@ -275,7 +275,7 @@ fn map_owner_error(error: MarketplaceListingError) -> PortError {
             "marketplace_listing.event_contract_invariant",
             "marketplace listing event contract requires operator review",
         ),
-        MarketplaceListingError::EventPublication(_) => PortError::unavailable(
+        MarketplaceListingError::EventPublicationUnavailable => PortError::unavailable(
             "marketplace_listing.event_publication_unavailable",
             "marketplace listing event publication is temporarily unavailable",
         ),
