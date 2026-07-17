@@ -127,6 +127,19 @@ mod tests {
     }
 
     #[test]
+    fn auth_bootstrap_renders_the_request_nonce() {
+        let nonce = CspNonce::generate();
+        let owner = Owner::new();
+        let html = owner.with(|| {
+            provide_context(nonce.clone());
+            AuthCookieBootstrap().to_html()
+        });
+
+        assert!(html.contains(format!(r#"nonce="{}""#, nonce.as_str()).as_str()));
+        assert!(html.contains("data-rustok-auth-bootstrap=\"local-storage-cookie-v1\""));
+    }
+
+    #[test]
     fn request_cookie_snapshot_round_trips_auth_models() {
         let session = AuthSession {
             token: "token".to_string(),
