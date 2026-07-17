@@ -109,6 +109,9 @@ jobs:
       - name: Verify actions forms and fields end to end
         run: node scripts/verify/verify-fly-actions-forms.mjs
 
+      - name: Verify SSR assets end to end
+        run: node scripts/verify/verify-fly-ssr-assets.mjs
+
       - name: Verify editor capability policy
         run: node scripts/verify/verify-fly-ui-capability-policy.mjs
 
