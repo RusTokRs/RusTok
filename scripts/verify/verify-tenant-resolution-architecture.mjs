@@ -35,6 +35,7 @@ forbidMatch(integration, /tenant\.resolution\s*=\s*"/, "integration tests must u
 requireMatch(runtime, /pub\(crate\) async fn load_tenant_context\(/, "HTTP tenant context loading must be canonical");
 requireMatch(runtime, /pub\(crate\) async fn load_tenant_context_by_slug\(/, "slug transports must use canonical tenant loading");
 requireMatch(graphql, /tenant::load_tenant_context_by_slug/, "GraphQL WebSocket must use canonical tenant loading");
+requireMatch(graphql, /graphql_ws_payload/, "GraphQL WebSocket tenant resolution must emit source telemetry");
 forbidMatch(graphql, /models::tenants::Entity::find_by_slug/, "GraphQL WebSocket must not query tenants directly");
 forbidMatch(facade, /pub use super::tenant_resolution/, "tenant resolution internals must not be public API");
 forbidMatch(runtime, /TenantResolutionSourceExtension/, "request metadata must not duplicate tenant resolution state");

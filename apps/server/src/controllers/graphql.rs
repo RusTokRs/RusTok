@@ -339,6 +339,11 @@ async fn build_ws_connection_data(
             tracing::warn!(tenant_slug, error = %error, "GraphQL WebSocket tenant resolution failed");
             async_graphql::Error::new(error.client_message())
         })?;
+    rustok_telemetry::metrics::record_cache_operation(
+        "tenant_resolution",
+        "resolve",
+        "graphql_ws_payload",
+    );
 
     let access_token = token
         .trim()
