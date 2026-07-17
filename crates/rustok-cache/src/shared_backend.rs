@@ -302,6 +302,9 @@ impl CacheService {
         max_capacity: u64,
         options: &CacheBackendOptions,
     ) -> Arc<dyn CacheBackend> {
+        #[cfg(not(feature = "redis-cache"))]
+        let _ = (prefix, options);
+
         #[cfg(feature = "redis-cache")]
         if let Some(client) = self.redis_client().cloned() {
             match SharedClientRedisCacheBackend::new(
