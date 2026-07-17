@@ -24,8 +24,10 @@ fn root_fallback_preserves_bounded_degradation_contract() {
 
     assert!(atomic.contains("if self.has_degraded_write(key).await"));
     assert!(atomic.contains("self.warm_fallback(key, value.clone()).await;"));
+    assert!(atomic.contains("Healthy primary miss could not clear stale local mirror"));
     assert!(atomic.contains("Primary cache unhealthy; bounded fallback reads remain available"));
     assert!(atomic.contains("fallback_health_preserves_primary_degradation"));
     assert!(atomic.contains("successful_primary_read_warms_fallback_for_a_later_outage"));
+    assert!(atomic.contains("healthy_primary_miss_clears_local_mirror_before_later_outage"));
     assert!(atomic.contains("degraded_write_wins_over_stale_primary_only_until_marker_expiry"));
 }
