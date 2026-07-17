@@ -1,18 +1,11 @@
-use crate::dto::PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS;
 use fly::{
     build_static_landing_artifact, validate_project, ComponentRegistryManifest, FlyError,
-    GrapesJsV1Codec, LandingReadinessPolicy, ProjectDocument, RegistryCompatibilityIssue,
+    GrapesJsCodec, LandingReadinessPolicy, ProjectDocument, RegistryCompatibilityIssue,
     RegistryCompatibilityIssueKind, RegistryCompatibilityReport, RegistrySet, RenderPolicy,
     StaticLandingBuildResult, ValidationDiagnostic, ValidationLimits, ValidationReport,
-    GRAPESJS_V1,
 };
 use serde_json::Value;
 
-/// Framework-neutral landing inspection used by Leptos, Dioxus and static-export adapters.
-///
-/// The current API accepts a document without a schema/version selector. GrapesJS decoding is an
-/// implementation detail of the adapter boundary and the resulting domain model evolves together
-/// with the `fly` module.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LandingProjectInspection {
     document: ProjectDocument,
@@ -22,22 +15,20 @@ pub struct LandingProjectInspection {
 }
 
 impl LandingProjectInspection {
-    /// Decode through the current, versionless page-builder API.
-    pub fn decode_current(project_data: &Value) -> LandingProjectResult<Self> {
-        Self::decode_current_with(
+    pub fn decode(project_data: &Value) -> LandingProjectResult<Self> {
+        Self::decode_with(
             project_data,
             &RegistrySet::with_builtins(),
             ValidationLimits::default(),
         )
     }
 
-    /// Decode through the current API with an explicit runtime registry and validation policy.
-    pub fn decode_current_with(
+    pub fn decode_with(
         project_data: &Value,
         registries: &RegistrySet,
         limits: ValidationLimits,
     ) -> LandingProjectResult<Self> {
-        let document = GrapesJsV1Codec::decode_value(project_data.clone())
+        let document = GrapesJsCodec::decode_value(project_data.clone())
             .map_err(LandingProjectError::Fly)?;
         let registry = ComponentRegistryManifest::for_document(&document, registries);
         let validation = validate_project(&document, registries, limits);
@@ -48,36 +39,6 @@ impl LandingProjectInspection {
             validation,
             registry_compatibility,
         })
-    }
-
-    /// Compatibility entrypoint for the existing versioned transport.
-    ///
-    /// Keep this API during the current module major. New callers must use `decode_current`.
-    pub fn decode(schema_version: &str, project_data: &Value) -> LandingProjectResult<Self> {
-        Self::decode_with(
-            schema_version,
-            project_data,
-            &RegistrySet::with_builtins(),
-            ValidationLimits::default(),
-        )
-    }
-
-    /// Compatibility entrypoint for the existing versioned transport.
-    ///
-    /// The selector is validated only at the adapter edge and never enters the domain model.
-    pub fn decode_with(
-        schema_version: &str,
-        project_data: &Value,
-        registries: &RegistrySet,
-        limits: ValidationLimits,
-    ) -> LandingProjectResult<Self> {
-        if schema_version != GRAPESJS_V1 {
-            return Err(LandingProjectError::UnsupportedSchema {
-                supported: &PAGE_BUILDER_SUPPORTED_DOCUMENT_CONTRACTS,
-                actual: schema_version.to_string(),
-            });
-        }
-        Self::decode_current_with(project_data, registries, limits)
     }
 
     pub fn document(&self) -> &ProjectDocument {
@@ -169,11 +130,6 @@ pub type LandingProjectResult<T> = Result<T, LandingProjectError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LandingProjectError {
-    #[error("unsupported compatibility schema `{actual}`; supported: {supported:?}")]
-    UnsupportedSchema {
-        supported: &'static [&'static str],
-        actual: String,
-    },
     #[error("page-builder project validation failed")]
     Validation {
         diagnostics: Vec<ValidationDiagnostic>,
@@ -214,25 +170,10 @@ mod tests {
     }
 
     #[test]
-    fn current_api_decodes_to_the_domain_document_without_a_version_selector() {
-        let inspection = LandingProjectInspection::decode_current(&project_value())
-            .expect("inspection");
+    fn api_decodes_to_the_domain_document() {
+        let inspection = LandingProjectInspection::decode(&project_value()).expect("inspection");
         assert_eq!(inspection.document().project.pages.len(), 1);
         assert!(inspection.registry_manifest().components.len() >= 2);
-    }
-
-    #[test]
-    fn compatibility_transport_still_decodes_during_the_current_major() {
-        let inspection = LandingProjectInspection::decode(GRAPESJS_V1, &project_value())
-            .expect("inspection");
-        assert_eq!(inspection.document().project.pages.len(), 1);
-    }
-
-    #[test]
-    fn unsupported_compatibility_schema_is_rejected() {
-        let error = LandingProjectInspection::decode("unknown", &project_value())
-            .expect_err("unknown schema must be rejected");
-        assert!(matches!(error, LandingProjectError::UnsupportedSchema { .. }));
     }
 
     #[test]
@@ -240,8 +181,7 @@ mod tests {
         let mut project = project_value();
         project["pages"][0]["component"]["components"][0]["provider"] =
             json!("other.provider");
-        let inspection = LandingProjectInspection::decode_current(&project)
-            .expect("structural inspection");
+        let inspection = LandingProjectInspection::decode(&project).expect("structural inspection");
         assert!(!inspection.registry_compatibility().compatible);
         assert!(inspection
             .registry_compatibility()
@@ -256,8 +196,7 @@ mod tests {
 
     #[test]
     fn inspection_builds_static_publish_artifact() {
-        let inspection = LandingProjectInspection::decode_current(&project_value())
-            .expect("inspection");
+        let inspection = LandingProjectInspection::decode(&project_value()).expect("inspection");
         inspection
             .require_contract_valid()
             .expect("contract-valid");
