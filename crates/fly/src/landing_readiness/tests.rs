@@ -147,7 +147,57 @@ fn structural_readiness_does_not_require_runtime_instance_data() {
     assert!(!report
         .issues
         .iter()
-        .any(|issue| issue.diagnostic.code == "runtime_context_required_value_missing"));
+        .any(|issue| issue.diagnostic.code == "runtime_context_required_missing"));
+}
+
+#[test]
+fn structural_readiness_applies_schema_defaults_before_audit() {
+    let document = GrapesJsV1Codec::decode_value(json!({
+        "pages": [{
+            "id": "home",
+            "flyPageMeta": {
+                "title": "Home",
+                "description": "A stable landing page",
+                "slug": "home"
+            },
+            "component": {
+                "id": "root",
+                "type": "wrapper",
+                "tagName": "main",
+                "components": [{
+                    "id": "hero-heading",
+                    "type": "heading",
+                    "tagName": "h1",
+                    "content": ""
+                }]
+            }
+        }],
+        "flyRuntimeContextSchema": [{
+            "id": "hero-title",
+            "path": "hero.title",
+            "kind": "string",
+            "required": true,
+            "default": "Default heading"
+        }],
+        "flyRuntimeBindings": [{
+            "id": "hero-heading-content",
+            "component_id": "hero-heading",
+            "path": "hero.title",
+            "target": "field",
+            "name": "content"
+        }]
+    }))
+    .expect("document");
+
+    let report = evaluate_landing_readiness(
+        &document,
+        LandingReadinessPolicy::default(),
+    );
+    assert!(report.ready, "{:?}", report.issues);
+    assert!(!report
+        .issues
+        .iter()
+        .any(|issue| issue.diagnostic.code == "landing_empty_heading"));
 }
 
 #[test]
