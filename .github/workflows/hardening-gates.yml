@@ -77,6 +77,35 @@ jobs:
             crates/rustok-telemetry/src/metrics.rs \
             crates/rustok-telemetry/tests/metrics_test.rs
 
+      - name: Normalize generated text
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          paths = [
+              "crates/rustok-seo/src/services/services_base.rs",
+              "apps/server/src/common/settings.rs",
+              "apps/server/src/middleware/tenant_resolution.rs",
+              "apps/server/src/middleware/tenant.rs",
+              "apps/server/src/controllers/graphql.rs",
+              "apps/server/tests/tenant_resolver_invariants_test.rs",
+              "crates/rustok-telemetry/src/metrics.rs",
+              "crates/rustok-telemetry/tests/metrics_test.rs",
+              "apps/server/config/development.yaml",
+              "apps/server/config/test.yaml",
+              "apps/server/config/production.redis.example.yaml",
+              "DECISIONS/2026-04-03-request-trust-and-tenant-hardening.md",
+              "docs/guides/metrics.md",
+              "docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md",
+              "scripts/verify/verify-tenant-resolution-architecture.mjs",
+          ]
+          for raw_path in paths:
+              path = Path(raw_path)
+              text = path.read_text()
+              path.write_text("\n".join(line.rstrip() for line in text.splitlines()) + "\n")
+          PY
+
       - name: Verify tenant architecture
         run: node scripts/verify/verify-tenant-resolution-architecture.mjs
 
