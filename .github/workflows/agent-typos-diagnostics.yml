@@ -1,4 +1,4 @@
-name: Agent Typos Diagnostics
+name: Agent Quality Diagnostics
 
 on:
   pull_request:
@@ -29,3 +29,26 @@ jobs:
           path: |
             typos.log
             typos.status
+
+  cache-memory:
+    if: ${{ github.event.pull_request.head.ref == 'agent/typos-diagnostics-1777' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: agent-cache-memory-diagnostics-1777
+      - name: Capture memory-only tests
+        shell: bash
+        run: |
+          set +e
+          cargo test -p rustok-cache --no-default-features -- --nocapture > cache-memory.log 2>&1
+          echo $? > cache-memory.status
+          exit 0
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agent-cache-memory-diagnostics
+          path: |
+            cache-memory.log
+            cache-memory.status
