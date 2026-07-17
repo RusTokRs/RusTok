@@ -87,11 +87,23 @@ requireText(
 );
 requireText(
   "crates/fly/src/landing_readiness/evaluate.rs",
+  "materialize_context(&metadata_materialization.document, &structural_context)",
+);
+requireText(
+  "crates/fly/src/landing_readiness/evaluate.rs",
+  '"runtime_context_required_missing"',
+);
+requireText(
+  "crates/fly/src/landing_readiness/evaluate.rs",
   "publish_materialization_failure",
 );
 requireText(
   "crates/fly/src/landing_readiness/evaluate.rs",
   '"runtime_action_unresolved"',
+);
+requireText(
+  "crates/fly/src/landing_readiness/tests.rs",
+  "structural_readiness_applies_schema_defaults_before_audit",
 );
 requireText(
   "crates/fly/src/runtime_gate.rs",
@@ -144,6 +156,10 @@ requireText(
 requireText(
   "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
   "<AuditPanel runtime=audit_runtime />",
+);
+requireText(
+  ".github/workflows/fly-page-builder.yml",
+  "dtolnay/rust-toolchain@1.93.1",
 );
 for (const localePath of [
   "crates/rustok-page-builder/admin/locales/en.json",
