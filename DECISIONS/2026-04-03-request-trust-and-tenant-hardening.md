@@ -28,3 +28,8 @@ These two behaviors weakened tenant isolation and made production safety depend 
 - Installations behind trusted ingress must explicitly declare proxy CIDR ranges before forwarded headers start influencing routing or rate limiting.
 - Dev/test environments can still opt into `default_tenant` fallback when convenient, but this must now be explicit in configuration.
 - Documentation and tests must keep the request-trust contract aligned across tenant, channel, rate limiting and OAuth browser-session flows.
+
+
+## Canonical tenant context loading
+
+HTTP middleware and self-resolving transports such as GraphQL WebSocket use the same cache-aware tenant read-port pipeline. Transport code may choose an identifier, but it must not query tenant persistence directly or reconstruct `TenantContext` independently. Resolution policy remains internal to the server crate; the public middleware facade exposes only the middleware and operational cache controls.

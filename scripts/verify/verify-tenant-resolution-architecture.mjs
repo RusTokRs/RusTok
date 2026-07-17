@@ -6,6 +6,7 @@ const runtime = fs.readFileSync("apps/server/src/middleware/tenant.rs", "utf8");
 const facade = fs.readFileSync("apps/server/src/middleware/mod.rs", "utf8");
 const resolution = fs.readFileSync("apps/server/src/middleware/tenant_resolution.rs", "utf8");
 const integration = fs.readFileSync("apps/server/tests/tenant_resolver_invariants_test.rs", "utf8");
+const graphql = fs.readFileSync("apps/server/src/controllers/graphql.rs", "utf8");
 
 const failures = [];
 const requireMatch = (source, pattern, message) => {
@@ -31,6 +32,12 @@ forbidMatch(facade, /tenant_legacy/, "legacy tenant alias is forbidden");
 forbidMatch(facade, /validate_request_tenant_policy/, "facade must not duplicate tenant policy");
 forbidMatch(facade, /default_tenant_fallback_will_be_used/, "facade must not predict fallback usage");
 forbidMatch(integration, /tenant\.resolution\s*=\s*"/, "integration tests must use typed tenant modes");
+requireMatch(runtime, /pub\(crate\) async fn load_tenant_context\(/, "HTTP tenant context loading must be canonical");
+requireMatch(runtime, /pub\(crate\) async fn load_tenant_context_by_slug\(/, "slug transports must use canonical tenant loading");
+requireMatch(graphql, /tenant::load_tenant_context_by_slug/, "GraphQL WebSocket must use canonical tenant loading");
+forbidMatch(graphql, /models::tenants::Entity::find_by_slug/, "GraphQL WebSocket must not query tenants directly");
+forbidMatch(facade, /pub use super::tenant_resolution/, "tenant resolution internals must not be public API");
+forbidMatch(runtime, /TenantResolutionSourceExtension/, "request metadata must not duplicate tenant resolution state");
 
 if (failures.length) {
   for (const failure of failures) console.error(`✗ ${failure}`);

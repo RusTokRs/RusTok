@@ -126,8 +126,7 @@ fn select_report_only_csp(path: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_env_flag, select_csp, select_report_only_csp, API_CSP, UI_CSP,
-        UI_CSP_REPORT_ONLY,
+        parse_env_flag, select_csp, select_report_only_csp, API_CSP, UI_CSP, UI_CSP_REPORT_ONLY,
     };
 
     #[test]

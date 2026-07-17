@@ -44,7 +44,6 @@ pub(crate) fn tenant_route_scope(path: &str) -> TenantRouteScope {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum TenantIdentifierKind {
     Uuid,
@@ -84,7 +83,6 @@ impl ResolvedTenantIdentifier {
             Self::Slug(value) | Self::Host(value) => value.clone(),
         }
     }
-
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -112,7 +110,6 @@ impl TenantResolutionSource {
     }
 }
 
-
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) struct TenantResolution {
     pub(crate) identifier: ResolvedTenantIdentifier,
@@ -121,7 +118,10 @@ pub(crate) struct TenantResolution {
 }
 
 impl TenantResolution {
-    pub(crate) fn validate_resolved_slug(&self, resolved_slug: &str) -> Result<(), TenantResolutionError> {
+    pub(crate) fn validate_resolved_slug(
+        &self,
+        resolved_slug: &str,
+    ) -> Result<(), TenantResolutionError> {
         let Some(asserted_slug) = self.asserted_slug.as_deref() else {
             return Ok(());
         };

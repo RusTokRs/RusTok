@@ -22,6 +22,7 @@ use crate::context::{AuthContext, TenantContext};
 use crate::extractors::auth::{resolve_current_user_from_access_token, OptionalCurrentUser};
 use crate::graphql::persisted::is_cataloged_admin_hash;
 use crate::graphql::AppSchema;
+use crate::middleware::tenant;
 use crate::services::rbac_request_scope::{with_rbac_request_scope, RbacRequestScope};
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 use rustok_core::ModuleRegistry;
@@ -332,14 +333,12 @@ async fn build_ws_connection_data(
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| async_graphql::Error::new("connection_init.token is required"))?;
 
-    let tenant = crate::models::tenants::Entity::find_by_slug(runtime_ctx.db(), &tenant_slug)
+    let tenant_ctx = tenant::load_tenant_context_by_slug(&runtime_ctx, &tenant_slug)
         .await
-        .map_err(|_| async_graphql::Error::new("Failed to resolve tenant"))?
-        .ok_or_else(|| async_graphql::Error::new("Tenant not found"))?;
-
-    if !tenant.is_enabled() {
-        return Err(async_graphql::Error::new("Tenant is disabled"));
-    }
+        .map_err(|error| {
+            tracing::warn!(tenant_slug, error = %error, "GraphQL WebSocket tenant resolution failed");
+            async_graphql::Error::new(error.client_message())
+        })?;
 
     let access_token = token
         .trim()
@@ -348,7 +347,7 @@ async fn build_ws_connection_data(
         .unwrap_or(token.trim())
         .to_string();
     let current_user =
-        resolve_current_user_from_access_token(&auth_runtime, tenant.id, &access_token)
+        resolve_current_user_from_access_token(&auth_runtime, tenant_ctx.id, &access_token)
             .await
             .map_err(|(_, message)| async_graphql::Error::new(message))?;
 
@@ -360,7 +359,7 @@ async fn build_ws_connection_data(
     );
     auth_lease
         .set(GraphqlWsAuthLease {
-            tenant_id: tenant.id,
+            tenant_id: tenant_ctx.id,
             access_token,
             initial_scope: request_scope.clone(),
         })
@@ -370,17 +369,8 @@ async fn build_ws_connection_data(
         .locale
         .as_deref()
         .and_then(Locale::parse)
-        .or_else(|| Locale::parse(&tenant.default_locale))
+        .or_else(|| Locale::parse(&tenant_ctx.default_locale))
         .unwrap_or_default();
-    let tenant_ctx = TenantContext {
-        id: tenant.id,
-        name: tenant.name,
-        slug: tenant.slug,
-        domain: tenant.domain,
-        settings: tenant.settings,
-        default_locale: tenant.default_locale,
-        is_active: tenant.is_active,
-    };
     let auth_ctx = AuthContext {
         user_id: current_user.user.id,
         session_id: current_user.session_id,

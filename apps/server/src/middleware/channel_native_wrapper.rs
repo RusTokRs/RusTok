@@ -74,9 +74,7 @@ mod wrapper_tests {
 
     #[test]
     fn matcher_accepts_only_channel_mutation_server_functions() {
-        assert!(is_native_channel_mutation(
-            "/api/fn/channel/create-channel"
-        ));
+        assert!(is_native_channel_mutation("/api/fn/channel/create-channel"));
         assert!(is_native_channel_mutation(
             "/api/fn/channel/delete-resolution-rule"
         ));
