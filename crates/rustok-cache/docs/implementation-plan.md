@@ -38,7 +38,8 @@ Last reconciled with `main`: 2026-07-17.
   timeouts that participate in circuit-breaker accounting.
 - [x] Reuse the `CacheService` Redis client in all shared backend factories.
 - [x] Clamp canonical shared-client Redis TTL arguments to the signed Redis range.
-- [x] Reject legacy URL-owned Redis/fallback construction from production wiring.
+- [x] Remove legacy URL-owned Redis/fallback implementations and public exports from `rustok-core`;
+  retain only an empty compatibility feature for existing workspace commands.
 - [x] Retain Redis 7 `CLIENT PAUSE` evidence proving the shared two-second operation deadline,
   immediate circuit-open rejection and successful half-open recovery after the latency clears.
 - [x] Retain a self-hosted Redis fixture that drives one shared backend and connection manager through
@@ -58,9 +59,8 @@ Last reconciled with `main`: 2026-07-17.
 - [x] Keep Redis degradation visible to health/readiness while eligible reads use bounded fallback.
 - [x] Retain a unit scenario where shared health is degraded while an eligible bounded local write is
   still served.
-- [x] Keep the root compatibility fallback aligned for bounded outage-write precedence,
-  authoritative primary-miss cleanup, primary-hit local warming and primary health visibility, with
-  source guards protecting those regression scenarios.
+- [x] Keep one atomic core memory backend and one canonical degradation-aware shared fallback in
+  `rustok-cache`, preventing semantic drift between duplicate implementations.
 
 ### 3. Stampede, refresh and leases
 
@@ -157,6 +157,8 @@ The detailed active-cache contract is maintained in
 - [x] Maintain one permanent path-scoped `Cache hardening` workflow covering format,
   core/cache/channel/Flex-owner/server compilation, regression/architecture tests, Clippy, module
   validation, PostgreSQL 17 channel/Flex generation evidence and isolated Redis 7 jobs.
+- [x] Include the complete `rustok-core` subtree in the workflow path scope so source, tests and
+  manifest changes cannot bypass cache verification.
 - [x] Guard the channel workflow path scope, Channel/Flex Clippy commands, PostgreSQL job, full
   non-ignored resolved-value suite, combined lag/value lib test, live Redis readiness/resolved-value
   commands, self-hosted Redis restart setup and durable recovery sources from accidental removal.
@@ -175,8 +177,8 @@ The detailed active-cache contract is maintained in
   names from accidental narrowing.
 - [x] Guard binary-safe live Redis CAS, self-hosted fallback outage/recovery, unsynchronized mutation
   rejection and both isolated workflow commands from accidental removal.
-- [x] Guard root compatibility fallback outage-write precedence, authoritative miss cleanup,
-  primary-hit warming and health visibility from accidental removal.
+- [x] Guard removal of legacy Redis/fallback definitions and root/prelude exports from accidental
+  reintroduction.
 - [x] Guard Redis, generation, PubSub, refresh and CAS Prometheus alert metric names in
   `tests/alert_rules_guard.rs`.
 - [x] Publish operational alerts for Redis degradation, generation bump failure, PubSub failure,
@@ -194,20 +196,12 @@ The detailed active-cache contract is maintained in
 - [ ] Fix every cache-specific format, compile, test or Clippy failure found by that run.
 - [ ] Record the verified revision and job results here without copying raw logs.
 
-### P0. Legacy compatibility cleanup
-
-- [ ] Clamp the public `rustok-core` Redis TTL helper to Redis’ signed millisecond range and protect
-  the extreme-duration case with a regression test.
-- [ ] Remove the public legacy URL-owned fallback/Redis construction surface or bring its failed
-  invalidation tombstones and fail-closed CAS behavior to parity with the canonical `rustok-cache`
-  backend; production wiring must continue rejecting that surface meanwhile.
-
 ### P0. Live and failure-recovery evidence
 
 - [ ] Execute the source-complete channel SQLite reader, two-server-runtime, listener-lag/value,
   resolved-value, PostgreSQL 17, live Redis, latency/circuit and repeated self-hosted Redis restart
   jobs on the same revision and record their results.
-- [ ] Run ignored `rustok-cache` and `rustok-core` suites against isolated Redis 7.
+- [ ] Run ignored `rustok-cache` suites against isolated Redis 7.
 - [ ] Execute and record the source-complete exact/wildcard tenant-locale, durable-ahead recovery,
   listener-lag, missed-publication, Redis state-loss/restoration and critical-readiness scenarios.
 - [ ] Execute and record the source-complete Flex SQLite owner matrix, PostgreSQL
@@ -267,6 +261,7 @@ cargo test -p rustok-server seo_redirect_cache_reconciliation --lib
 cargo test -p rustok-server field_definition_cache_generation --lib
 cargo test -p rustok-server \
   --test cache_architecture_guard \
+  --test cache_legacy_fallback_guard \
   --test tenant_cache_architecture_guard \
   --test marketplace_cache_architecture_guard \
   --test channel_cache_architecture_guard \
@@ -291,8 +286,6 @@ cargo xtask module validate cache
 cargo xtask module test cache
 RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
   cargo test -p rustok-cache -- --ignored --nocapture --test-threads=1
-RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
-  cargo test -p rustok-core cache -- --ignored --nocapture --test-threads=1
 RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
   cargo test -p rustok-cache --test atomic_cas -- --ignored --nocapture --test-threads=1
 RUSTOK_CACHE_REDIS_SERVER_BIN=/usr/bin/redis-server \
