@@ -15,6 +15,8 @@ mod palette_access;
 pub mod transport;
 pub mod ui;
 
+pub const BROWSER_CAPABILITY_DENIAL_CODE: &str = "FLY_CAPABILITY_DENIED";
+
 pub use browser_intent::{
     dispatch_browser_intent, BrowserIntentDispatchError, BrowserIntentDispatchResult,
     BrowserIntentEffect,
