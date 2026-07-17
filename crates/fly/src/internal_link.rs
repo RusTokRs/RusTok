@@ -1,18 +1,17 @@
 use crate::{
     component_visit::{visit_project_components, visit_project_components_mut},
-    localized_page_route_index, normalize_locale_tag, safe_url::normalize_safe_url,
-    ComponentObject, LocalizedPageRouteEntry, ProjectDocument, RuntimeLocaleSelection,
+    interaction_route::{
+        build_interaction_href, interaction_locale_candidates, InteractionRouteCatalog,
+    },
+    safe_url::normalize_safe_url, ComponentObject, ProjectDocument, RuntimeLocaleSelection,
     ValidationDiagnostic, ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::collections::{BTreeMap, BTreeSet};
 
 pub const FLY_PAGE_LINK_FIELD: &str = "flyPageLink";
 
 const GENERATED_INTERNAL_LINK_ATTRIBUTES: &[&str] = &["href", "target", "rel"];
-
-type PageIndex = BTreeMap<String, usize>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InternalPageLink {
@@ -73,26 +72,19 @@ struct InternalLinkCounters {
 }
 
 struct InternalLinkResolution<'a> {
-    route_index: &'a [LocalizedPageRouteEntry],
-    page_ids: &'a PageIndex,
+    routes: &'a InteractionRouteCatalog,
     locale_candidates: &'a [String],
-}
-
-struct InternalLinkValidation<'a> {
-    page_ids: &'a PageIndex,
-    routed_pages: &'a BTreeSet<usize>,
 }
 
 pub fn materialize_internal_page_links(
     document: &ProjectDocument,
     context: &Value,
 ) -> InternalLinkMaterialization {
-    let route_index = localized_page_route_index(document);
-    let locale_candidates = locale_candidates(&RuntimeLocaleSelection::from_context(context));
-    let page_ids = page_index(document);
+    let routes = InteractionRouteCatalog::from_document(document);
+    let locale_candidates =
+        interaction_locale_candidates(&RuntimeLocaleSelection::from_context(context));
     let resolution = InternalLinkResolution {
-        route_index: &route_index,
-        page_ids: &page_ids,
+        routes: &routes,
         locale_candidates: &locale_candidates,
     };
     let mut materialized = document.clone();
@@ -119,32 +111,13 @@ pub fn materialize_internal_page_links(
 }
 
 pub fn validate_internal_page_links(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
-    let route_index = localized_page_route_index(document);
-    let page_ids = page_index(document);
-    let routed_pages = route_index
-        .iter()
-        .map(|entry| entry.page_index)
-        .collect::<BTreeSet<_>>();
-    let validation = InternalLinkValidation {
-        page_ids: &page_ids,
-        routed_pages: &routed_pages,
-    };
+    let routes = InteractionRouteCatalog::from_document(document);
     let mut diagnostics = Vec::new();
 
     visit_project_components(&document.project, |component, visit| {
-        validate_component(component, visit.path(), &validation, &mut diagnostics);
+        validate_component(component, visit.path(), &routes, &mut diagnostics);
     });
     diagnostics
-}
-
-fn page_index(document: &ProjectDocument) -> PageIndex {
-    document
-        .project
-        .pages
-        .iter()
-        .enumerate()
-        .filter_map(|(index, page)| page.id.as_deref().map(|id| (id.to_string(), index)))
-        .collect()
 }
 
 fn materialize_component(
@@ -187,7 +160,7 @@ fn materialize_component(
         }
     };
 
-    let Some(target_page_index) = resolution.page_ids.get(&link.page_id).copied() else {
+    let Some(target_page_index) = resolution.routes.page_index(&link.page_id) else {
         record_unresolved(
             diagnostics,
             counters,
@@ -199,12 +172,19 @@ fn materialize_component(
         return;
     };
 
-    if let Some(slug) = route_slug(
-        resolution.route_index,
-        target_page_index,
-        resolution.locale_candidates,
-    ) {
-        apply_href(component, build_href(&link, slug));
+    if let Some(slug) = resolution
+        .routes
+        .slug_for(target_page_index, resolution.locale_candidates)
+    {
+        apply_href(
+            component,
+            build_interaction_href(
+                link.base_path.as_deref(),
+                slug,
+                link.query.as_deref(),
+                link.fragment.as_deref(),
+            ),
+        );
         counters.resolved = counters.resolved.saturating_add(1);
         return;
     }
@@ -241,7 +221,7 @@ fn materialize_component(
 fn validate_component(
     component: &ComponentObject,
     path: &str,
-    validation: &InternalLinkValidation<'_>,
+    routes: &InteractionRouteCatalog,
     diagnostics: &mut Vec<ValidationDiagnostic>,
 ) {
     let Some(raw) = component.extensions.get(FLY_PAGE_LINK_FIELD).cloned() else {
@@ -274,8 +254,8 @@ fn validate_component(
         }
     };
 
-    match validation.page_ids.get(&link.page_id).copied() {
-        Some(page_index) if validation.routed_pages.contains(&page_index) => {}
+    match routes.page_index(&link.page_id) {
+        Some(page_index) if routes.has_route(page_index) => {}
         Some(_) if link.fallback_href.is_some() => diagnostics.push(link_diagnostic(
             ValidationSeverity::Info,
             "internal_page_link_route_missing_with_fallback",
@@ -335,69 +315,6 @@ fn clear_internal_link_materialization(component: &mut ComponentObject) {
     for attribute in GENERATED_INTERNAL_LINK_ATTRIBUTES {
         component.attributes.remove(*attribute);
     }
-}
-
-fn route_slug<'a>(
-    route_index: &'a [LocalizedPageRouteEntry],
-    page_index: usize,
-    candidates: &[String],
-) -> Option<&'a str> {
-    for locale in candidates {
-        if let Some(entry) = route_index.iter().find(|entry| {
-            entry.page_index == page_index && entry.locale.as_deref() == Some(locale.as_str())
-        }) {
-            return Some(entry.slug.as_str());
-        }
-    }
-    route_index
-        .iter()
-        .find(|entry| entry.page_index == page_index && entry.locale.is_none())
-        .or_else(|| route_index.iter().find(|entry| entry.page_index == page_index))
-        .map(|entry| entry.slug.as_str())
-}
-
-fn locale_candidates(selection: &RuntimeLocaleSelection) -> Vec<String> {
-    let mut candidates = Vec::new();
-    if let Some(locale) = selection.locale.as_deref() {
-        push_locale_candidate(&mut candidates, locale);
-    }
-    for locale in &selection.fallback_locales {
-        push_locale_candidate(&mut candidates, locale);
-    }
-    candidates
-}
-
-fn push_locale_candidate(candidates: &mut Vec<String>, locale: &str) {
-    let Some(locale) = normalize_locale_tag(locale) else {
-        return;
-    };
-    if !candidates.contains(&locale) {
-        candidates.push(locale.clone());
-    }
-    if let Some((language, _)) = locale.split_once('-') {
-        let language = language.to_string();
-        if !candidates.contains(&language) {
-            candidates.push(language);
-        }
-    }
-}
-
-fn build_href(link: &InternalPageLink, slug: &str) -> String {
-    let base_path = link.base_path.as_deref().unwrap_or("/");
-    let mut href = if base_path == "/" {
-        format!("/{slug}")
-    } else {
-        format!("{base_path}/{slug}")
-    };
-    if let Some(query) = link.query.as_deref() {
-        href.push('?');
-        href.push_str(query);
-    }
-    if let Some(fragment) = link.fragment.as_deref() {
-        href.push('#');
-        href.push_str(fragment);
-    }
-    href
 }
 
 fn normalize_base_path(value: Option<&str>) -> Result<Option<String>, String> {
@@ -637,8 +554,7 @@ mod tests {
         .expect("document");
         let diagnostics = validate_internal_page_links(&document);
         assert!(diagnostics.iter().any(|diagnostic| {
-            diagnostic.path
-                == "project.pages[0].component.components[0].flyPageLink"
+            diagnostic.path == "project.pages[0].component.components[0].flyPageLink"
         }));
     }
 }
