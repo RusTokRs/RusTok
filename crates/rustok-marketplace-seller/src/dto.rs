@@ -195,6 +195,7 @@ pub struct MarketplaceSellerResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub handle: String,
+    pub resolved_locale: String,
     pub display_name: String,
     pub legal_name: Option<String>,
     pub status: MarketplaceSellerStatus,
