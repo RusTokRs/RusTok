@@ -1,6 +1,7 @@
 use crate::{
     ComponentNode, ComponentObject, ComponentPatch, EditorCommand, FlyError, LandingSectionKind,
-    ProjectDocument, TraitOption, TraitSchema, TraitTarget, TraitValueKind, FLY_LANDING_SECTION_FIELD,
+    ProjectDocument, TraitOption, TraitSchema, TraitTarget, TraitValueKind,
+    FLY_LANDING_SECTION_FIELD,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -69,10 +70,7 @@ pub struct LandingPropertySnapshot {
 }
 
 impl LandingPropertySnapshot {
-    pub fn command_from_text(
-        &self,
-        raw: &str,
-    ) -> Result<EditorCommand, LandingPropertyEditError> {
+    pub fn command_from_text(&self, raw: &str) -> Result<EditorCommand, LandingPropertyEditError> {
         let target = self
             .target
             .as_ref()
@@ -183,7 +181,9 @@ pub enum LandingPropertyEditError {
 pub fn landing_property_schemas(kind: LandingSectionKind) -> Vec<LandingPropertySchema> {
     match kind {
         LandingSectionKind::Hero => vec![
-            content_property(kind, "headline", "content", "Headline", "headline", 0, "heading", true),
+            content_property(
+                kind, "headline", "content", "Headline", "headline", 0, "heading", true,
+            ),
             content_property(kind, "body", "content", "Body", "body", 0, "text", true),
             content_property(
                 kind,
@@ -208,7 +208,9 @@ pub fn landing_property_schemas(kind: LandingSectionKind) -> Vec<LandingProperty
             ),
         ],
         LandingSectionKind::TwoColumns => vec![
-            content_property(kind, "headline", "content", "Headline", "headline", 0, "heading", true),
+            content_property(
+                kind, "headline", "content", "Headline", "headline", 0, "heading", true,
+            ),
             content_property(kind, "body", "content", "Body", "body", 0, "text", true),
             content_property(
                 kind,
@@ -231,7 +233,17 @@ pub fn landing_property_schemas(kind: LandingSectionKind) -> Vec<LandingProperty
                 "href",
                 true,
             ),
-            url_property(kind, "media.source", "media", "Image source", "media", 0, "image", "src", true),
+            url_property(
+                kind,
+                "media.source",
+                "media",
+                "Image source",
+                "media",
+                0,
+                "image",
+                "src",
+                true,
+            ),
             text_attribute_property(
                 kind,
                 "media.alt",
@@ -246,14 +258,7 @@ pub fn landing_property_schemas(kind: LandingSectionKind) -> Vec<LandingProperty
         ],
         LandingSectionKind::FeatureGrid => {
             let mut schemas = vec![content_property(
-                kind,
-                "headline",
-                "content",
-                "Headline",
-                "headline",
-                0,
-                "heading",
-                true,
+                kind, "headline", "content", "Headline", "headline", 0, "heading", true,
             )];
             for index in 0..3 {
                 schemas.push(content_property(
@@ -280,7 +285,9 @@ pub fn landing_property_schemas(kind: LandingSectionKind) -> Vec<LandingProperty
             schemas
         }
         LandingSectionKind::CallToAction => vec![
-            content_property(kind, "headline", "content", "Headline", "headline", 0, "heading", true),
+            content_property(
+                kind, "headline", "content", "Headline", "headline", 0, "heading", true,
+            ),
             content_property(kind, "body", "content", "Body", "body", 0, "text", true),
             content_property(
                 kind,
@@ -305,9 +312,21 @@ pub fn landing_property_schemas(kind: LandingSectionKind) -> Vec<LandingProperty
             ),
         ],
         LandingSectionKind::ContactForm => vec![
-            content_property(kind, "headline", "content", "Headline", "headline", 0, "heading", true),
+            content_property(
+                kind, "headline", "content", "Headline", "headline", 0, "heading", true,
+            ),
             content_property(kind, "body", "content", "Body", "body", 0, "text", true),
-            url_property(kind, "form.action", "form", "Form action", "form", 0, "form", "action", false),
+            url_property(
+                kind,
+                "form.action",
+                "form",
+                "Form action",
+                "form",
+                0,
+                "form",
+                "action",
+                false,
+            ),
             select_attribute_property(
                 kind,
                 "form.method",
@@ -409,7 +428,14 @@ fn inspect_section(
 ) -> LandingSectionPropertySnapshot {
     let schemas = landing_property_schemas(kind);
     let mut targets = BTreeMap::<String, Vec<PropertyTarget<'_>>>::new();
-    collect_property_targets(section, section_path, &mut targets, issues, page_index, page_id);
+    collect_property_targets(
+        section,
+        section_path,
+        &mut targets,
+        issues,
+        page_index,
+        page_id,
+    );
 
     let expected_roles = schemas
         .iter()
@@ -427,7 +453,7 @@ fn inspect_section(
                     LandingPropertyIssueKind::UnknownRole,
                     None,
                     Some(target.component.component_type()),
-                    Some(target.path),
+                    Some(target.path.as_str()),
                 ));
             }
         }
@@ -440,19 +466,17 @@ fn inspect_section(
             .and_then(|targets| targets.get(schema.occurrence));
         let snapshot_target = match target {
             None => {
-                if schema.required {
-                    issues.push(issue(
-                        page_index,
-                        page_id,
-                        section_path,
-                        Some(&schema.id),
-                        &schema.role,
-                        LandingPropertyIssueKind::MissingRole,
-                        Some(&schema.component_type),
-                        None,
-                        None,
-                    ));
-                }
+                issues.push(issue(
+                    page_index,
+                    page_id,
+                    section_path,
+                    Some(&schema.id),
+                    &schema.role,
+                    LandingPropertyIssueKind::MissingRole,
+                    Some(&schema.component_type),
+                    None,
+                    None,
+                ));
                 None
             }
             Some(target) if target.component.component_type() != schema.component_type => {
@@ -465,7 +489,7 @@ fn inspect_section(
                     LandingPropertyIssueKind::ComponentTypeMismatch,
                     Some(&schema.component_type),
                     Some(target.component.component_type()),
-                    Some(target.path),
+                    Some(target.path.as_str()),
                 ));
                 None
             }
@@ -495,7 +519,7 @@ fn inspect_section(
                     LandingPropertyIssueKind::UnexpectedRoleOccurrence,
                     None,
                     Some(target.component.component_type()),
-                    Some(target.path),
+                    Some(target.path.as_str()),
                 ));
             }
         }
@@ -513,12 +537,12 @@ fn inspect_section(
 
 struct PropertyTarget<'a> {
     component: &'a ComponentObject,
-    path: &'a str,
+    path: String,
 }
 
 fn collect_property_targets<'a>(
     section: &'a ComponentObject,
-    section_path: &'a str,
+    section_path: &str,
     targets: &mut BTreeMap<String, Vec<PropertyTarget<'a>>>,
     issues: &mut Vec<LandingPropertyIssue>,
     page_index: usize,
@@ -537,7 +561,7 @@ fn collect_property_targets<'a>(
 
 fn collect_property_target<'a>(
     component: &'a ComponentObject,
-    path: &'a str,
+    path: &str,
     targets: &mut BTreeMap<String, Vec<PropertyTarget<'a>>>,
     issues: &mut Vec<LandingPropertyIssue>,
     page_index: usize,
@@ -545,11 +569,18 @@ fn collect_property_target<'a>(
     section_path: &str,
 ) {
     if let Some(marker) = component.extensions.get(FLY_LANDING_PROPERTY_FIELD) {
-        match marker.as_str().map(str::trim).filter(|marker| !marker.is_empty()) {
-            Some(role) => targets.entry(role.to_string()).or_default().push(PropertyTarget {
-                component,
-                path,
-            }),
+        match marker
+            .as_str()
+            .map(str::trim)
+            .filter(|marker| !marker.is_empty())
+        {
+            Some(role) => targets
+                .entry(role.to_string())
+                .or_default()
+                .push(PropertyTarget {
+                    component,
+                    path: path.to_string(),
+                }),
             None => issues.push(issue(
                 page_index,
                 page_id,
@@ -565,10 +596,13 @@ fn collect_property_target<'a>(
     }
     for (index, child) in component.children().iter().enumerate() {
         if let Some(child) = child.as_object() {
+            if child.extensions.contains_key(FLY_LANDING_SECTION_FIELD) {
+                continue;
+            }
             let child_path = format!("{path}.components[{index}]");
             collect_property_target(
                 child,
-                Box::leak(child_path.into_boxed_str()),
+                &child_path,
                 targets,
                 issues,
                 page_index,
@@ -769,7 +803,7 @@ fn property(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Editor, GrapesJsCodec, RegistrySet};
+    use crate::{FlyEditor, GrapesJsCodec, RegistrySet};
     use serde_json::json;
 
     fn section(kind: LandingSectionKind) -> Value {
@@ -805,7 +839,10 @@ mod tests {
             let Some(object) = value.as_object_mut() else {
                 return;
             };
-            object.insert("id".to_string(), Value::String(format!("{prefix}-{}", *sequence)));
+            object.insert(
+                "id".to_string(),
+                Value::String(format!("{prefix}-{}", *sequence)),
+            );
             *sequence += 1;
             if let Some(children) = object.get_mut("components").and_then(Value::as_array_mut) {
                 for child in children {
@@ -838,20 +875,30 @@ mod tests {
             .iter()
             .find(|property| property.schema.id.ends_with(".headline"))
             .expect("headline property");
-        let command = headline.command_from_text("A new headline").expect("command");
-        let mut editor = Editor::new(project);
-        editor.execute(command).expect("patch");
-        assert!(editor
-            .document()
-            .project
-            .pages[0]
-            .component
+        let target_id = headline
+            .target
             .as_ref()
-            .expect("root")
-            .find("node-2")
-            .is_some());
+            .and_then(|target| target.component_id.clone())
+            .expect("target id");
+        let command = headline
+            .command_from_text("A new headline")
+            .expect("command");
+        let mut editor = FlyEditor::new(project, RegistrySet::with_builtins());
+        editor.apply(command).expect("patch");
         assert_eq!(
-            headline.schema.patch_from_text("A new headline").expect("patch").fields["content"],
+            editor
+                .document()
+                .component(&target_id)
+                .expect("patched headline")
+                .extensions["content"],
+            json!("A new headline")
+        );
+        assert_eq!(
+            headline
+                .schema
+                .patch_from_text("A new headline")
+                .expect("patch")
+                .fields["content"],
             json!("A new headline")
         );
     }

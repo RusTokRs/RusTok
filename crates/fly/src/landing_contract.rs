@@ -1,7 +1,7 @@
 use crate::{
     evaluate_landing_readiness, render_page, ComponentNode, ComponentObject, FlyError, FlyResult,
-    LandingReadinessPolicy, LandingReadinessReport, PageHead, PageSelection, ProjectDocument,
-    ProjectHash, RegistrySet, RenderPolicy,
+    LandingPropertyValidationReport, LandingReadinessPolicy, LandingReadinessReport, PageHead,
+    PageSelection, ProjectDocument, ProjectHash, RegistrySet, RenderPolicy,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -401,6 +401,7 @@ pub struct StaticLandingBuildResult {
     pub readiness: LandingReadinessReport,
     pub registry_compatibility: RegistryCompatibilityReport,
     pub landing_sections: LandingSectionValidationReport,
+    pub landing_properties: LandingPropertyValidationReport,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact: Option<StaticLandingArtifact>,
 }
@@ -414,14 +415,19 @@ pub fn build_static_landing_artifact(
     let registry = ComponentRegistryManifest::for_document(document, registries);
     let registry_compatibility = registry.compatibility_with(registries);
     let landing_sections = LandingSectionValidationReport::for_document(document)?;
+    let landing_properties = LandingPropertyValidationReport::for_document(document);
     let readiness = evaluate_landing_readiness(document, readiness_policy);
-    let ready = readiness.ready && registry_compatibility.compatible && landing_sections.valid;
+    let ready = readiness.ready
+        && registry_compatibility.compatible
+        && landing_sections.valid
+        && landing_properties.valid;
     if !ready {
         return Ok(StaticLandingBuildResult {
             ready,
             readiness,
             registry_compatibility,
             landing_sections,
+            landing_properties,
             artifact: None,
         });
     }
@@ -456,6 +462,7 @@ pub fn build_static_landing_artifact(
         readiness,
         registry_compatibility,
         landing_sections,
+        landing_properties,
         artifact: Some(artifact),
     })
 }

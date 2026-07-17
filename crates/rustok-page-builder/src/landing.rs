@@ -1,8 +1,9 @@
 use fly::{
     build_static_landing_artifact, validate_project, ComponentRegistryManifest, FlyError,
-    GrapesJsCodec, LandingReadinessPolicy, ProjectDocument, RegistryCompatibilityIssue,
-    RegistryCompatibilityIssueKind, RegistryCompatibilityReport, RegistrySet, RenderPolicy,
-    StaticLandingBuildResult, ValidationDiagnostic, ValidationLimits, ValidationReport,
+    GrapesJsCodec, LandingPropertyValidationReport, LandingReadinessPolicy, ProjectDocument,
+    RegistryCompatibilityIssue, RegistryCompatibilityIssueKind, RegistryCompatibilityReport,
+    RegistrySet, RenderPolicy, StaticLandingBuildResult, ValidationDiagnostic, ValidationLimits,
+    ValidationReport,
 };
 use serde_json::Value;
 
@@ -11,6 +12,7 @@ pub struct LandingProjectInspection {
     document: ProjectDocument,
     registry: ComponentRegistryManifest,
     validation: ValidationReport,
+    landing_properties: LandingPropertyValidationReport,
     registry_compatibility: RegistryCompatibilityReport,
 }
 
@@ -32,11 +34,13 @@ impl LandingProjectInspection {
             GrapesJsCodec::decode_value(project_data.clone()).map_err(LandingProjectError::Fly)?;
         let registry = ComponentRegistryManifest::for_document(&document, registries);
         let validation = validate_project(&document, registries, limits);
+        let landing_properties = LandingPropertyValidationReport::for_document(&document);
         let registry_compatibility = registry_compatibility(&document, &registry, registries);
         Ok(Self {
             document,
             registry,
             validation,
+            landing_properties,
             registry_compatibility,
         })
     }
@@ -53,6 +57,10 @@ impl LandingProjectInspection {
         &self.validation
     }
 
+    pub fn landing_properties(&self) -> &LandingPropertyValidationReport {
+        &self.landing_properties
+    }
+
     pub fn registry_compatibility(&self) -> &RegistryCompatibilityReport {
         &self.registry_compatibility
     }
@@ -61,6 +69,11 @@ impl LandingProjectInspection {
         if !self.validation.is_valid() {
             return Err(LandingProjectError::Validation {
                 diagnostics: self.validation.errors().cloned().collect(),
+            });
+        }
+        if !self.landing_properties.valid {
+            return Err(LandingProjectError::PropertyContractInvalid {
+                issue_count: self.landing_properties.issues.len(),
             });
         }
         if !self.registry_compatibility.compatible {
@@ -129,6 +142,8 @@ pub enum LandingProjectError {
     Validation {
         diagnostics: Vec<ValidationDiagnostic>,
     },
+    #[error("page-builder landing property contract is invalid ({issue_count} issue(s))")]
+    PropertyContractInvalid { issue_count: usize },
     #[error("page-builder component registry is incompatible ({issue_count} issue(s))")]
     RegistryIncompatible { issue_count: usize },
     #[error(transparent)]

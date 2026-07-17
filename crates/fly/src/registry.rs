@@ -531,9 +531,9 @@ fn landing_templates() -> Vec<BlockDefinition> {
                     "type": "container",
                     "style": { "max-width": "960px", "margin": "0 auto", "text-align": "center" },
                     "components": [
-                        { "type": "heading", "tagName": "h1", "content": "Build your next idea with confidence", "style": { "font-size": "56px", "line-height": "1.05", "margin": "0 0 20px" } },
-                        { "type": "text", "content": "A stable Rust-powered landing page that is easy to compose and evolve.", "style": { "font-size": "20px", "line-height": "1.6", "margin": "0 auto 28px", "max-width": "720px", "color": "#475569" } },
-                        builtin_component_template("button")
+                        { "type": "heading", "flyLandingProperty": "headline", "tagName": "h1", "content": "Build your next idea with confidence", "style": { "font-size": "56px", "line-height": "1.05", "margin": "0 0 20px" } },
+                        { "type": "text", "flyLandingProperty": "body", "content": "A stable Rust-powered landing page that is easy to compose and evolve.", "style": { "font-size": "20px", "line-height": "1.6", "margin": "0 auto 28px", "max-width": "720px", "color": "#475569" } },
+                        landing_component("primary_action", builtin_component_template("button"))
                     ]
                 }]
             }),
@@ -553,8 +553,8 @@ fn landing_templates() -> Vec<BlockDefinition> {
                         "type": "row",
                         "style": { "display": "flex", "gap": "48px", "align-items": "center", "flex-wrap": "wrap" },
                         "components": [
-                            { "type": "column", "style": { "flex": "1 1 420px" }, "components": [builtin_component_template("heading"), builtin_component_template("text"), builtin_component_template("button")] },
-                            { "type": "column", "style": { "flex": "1 1 420px" }, "components": [builtin_component_template("image")] }
+                            { "type": "column", "style": { "flex": "1 1 420px" }, "components": [landing_component("headline", builtin_component_template("heading")), landing_component("body", builtin_component_template("text")), landing_component("primary_action", builtin_component_template("button"))] },
+                            { "type": "column", "style": { "flex": "1 1 420px" }, "components": [landing_component("media", builtin_component_template("image"))] }
                         ]
                     }]
                 }]
@@ -572,7 +572,7 @@ fn landing_templates() -> Vec<BlockDefinition> {
                     "type": "container",
                     "style": { "max-width": "1120px", "margin": "0 auto" },
                     "components": [
-                        { "type": "heading", "content": "Everything you need", "style": { "text-align": "center", "font-size": "40px", "margin": "0 0 40px" } },
+                        { "type": "heading", "flyLandingProperty": "headline", "content": "Everything you need", "style": { "text-align": "center", "font-size": "40px", "margin": "0 0 40px" } },
                         { "type": "grid", "style": { "display": "grid", "grid-template-columns": "repeat(auto-fit,minmax(220px,1fr))", "gap": "24px" }, "components": [
                             feature_card("Fast composition", "Build pages from stable reusable components."),
                             feature_card("Safe persistence", "Keep project data canonical and lossless."),
@@ -594,9 +594,9 @@ fn landing_templates() -> Vec<BlockDefinition> {
                     "type": "container",
                     "style": { "max-width": "960px", "margin": "0 auto", "padding": "48px", "border-radius": "20px", "background": "#0f172a", "color": "#ffffff", "text-align": "center" },
                     "components": [
-                        { "type": "heading", "content": "Ready to launch?", "style": { "font-size": "40px", "margin": "0 0 16px" } },
-                        { "type": "text", "content": "Turn this page into your own production-ready landing experience.", "style": { "font-size": "18px", "margin": "0 0 24px", "color": "#cbd5e1" } },
-                        { "type": "button", "tagName": "a", "attributes": { "href": "#" }, "content": "Start now", "style": { "display": "inline-block", "padding": "12px 20px", "border-radius": "10px", "background": "#ffffff", "color": "#0f172a", "text-decoration": "none", "font-weight": "700" } }
+                        { "type": "heading", "flyLandingProperty": "headline", "content": "Ready to launch?", "style": { "font-size": "40px", "margin": "0 0 16px" } },
+                        { "type": "text", "flyLandingProperty": "body", "content": "Turn this page into your own production-ready landing experience.", "style": { "font-size": "18px", "margin": "0 0 24px", "color": "#cbd5e1" } },
+                        { "type": "button", "flyLandingProperty": "primary_action", "tagName": "a", "attributes": { "href": "#" }, "content": "Start now", "style": { "display": "inline-block", "padding": "12px 20px", "border-radius": "10px", "background": "#ffffff", "color": "#0f172a", "text-decoration": "none", "font-weight": "700" } }
                     ]
                 }]
             }),
@@ -613,13 +613,13 @@ fn landing_templates() -> Vec<BlockDefinition> {
                     "type": "container",
                     "style": { "max-width": "720px", "margin": "0 auto" },
                     "components": [
-                        { "type": "heading", "content": "Talk to us", "style": { "font-size": "40px", "margin": "0 0 12px" } },
-                        { "type": "text", "content": "Tell us what you are building and we will get back to you.", "style": { "color": "#475569", "margin": "0 0 28px" } },
-                        { "type": "form", "tagName": "form", "style": { "display": "grid", "gap": "16px" }, "components": [
-                            { "type": "input", "tagName": "input", "attributes": { "type": "text", "placeholder": "Your name" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
-                            { "type": "input", "tagName": "input", "attributes": { "type": "email", "placeholder": "Email address" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
-                            { "type": "textarea", "tagName": "textarea", "attributes": { "placeholder": "Your message", "rows": 5 }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
-                            builtin_component_template("submit")
+                        { "type": "heading", "flyLandingProperty": "headline", "content": "Talk to us", "style": { "font-size": "40px", "margin": "0 0 12px" } },
+                        { "type": "text", "flyLandingProperty": "body", "content": "Tell us what you are building and we will get back to you.", "style": { "color": "#475569", "margin": "0 0 28px" } },
+                        { "type": "form", "flyLandingProperty": "form", "tagName": "form", "style": { "display": "grid", "gap": "16px" }, "components": [
+                            { "type": "input", "flyLandingProperty": "name_field", "tagName": "input", "attributes": { "type": "text", "placeholder": "Your name" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
+                            { "type": "input", "flyLandingProperty": "email_field", "tagName": "input", "attributes": { "type": "email", "placeholder": "Email address" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
+                            { "type": "textarea", "flyLandingProperty": "message_field", "tagName": "textarea", "attributes": { "placeholder": "Your message", "rows": 5 }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
+                            landing_component("submit", builtin_component_template("submit"))
                         ] }
                     ]
                 }]
@@ -637,13 +637,26 @@ fn landing_templates() -> Vec<BlockDefinition> {
     .collect()
 }
 
+fn landing_component(role: &str, component: ComponentNode) -> serde_json::Value {
+    let mut value = serde_json::to_value(component)
+        .expect("built-in landing property component must serialize");
+    value
+        .as_object_mut()
+        .expect("built-in landing property component must be an object")
+        .insert(
+            "flyLandingProperty".to_string(),
+            serde_json::Value::String(role.to_string()),
+        );
+    value
+}
+
 fn feature_card(title: &str, body: &str) -> serde_json::Value {
     json!({
         "type": "column",
         "style": { "padding": "24px", "border": "1px solid #e2e8f0", "border-radius": "16px", "background": "#ffffff" },
         "components": [
-            { "type": "heading", "tagName": "h3", "content": title, "style": { "font-size": "22px", "margin": "0 0 10px" } },
-            { "type": "text", "content": body, "style": { "margin": "0", "color": "#475569" } }
+            { "type": "heading", "flyLandingProperty": "feature_title", "tagName": "h3", "content": title, "style": { "font-size": "22px", "margin": "0 0 10px" } },
+            { "type": "text", "flyLandingProperty": "feature_body", "content": body, "style": { "margin": "0", "color": "#475569" } }
         ]
     })
 }
