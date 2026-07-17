@@ -1,9 +1,7 @@
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::command_receipts::{
-    normalize_idempotency_key, replay_existing, request_hash,
-};
+use crate::command_receipts::{normalize_idempotency_key, replay_existing, request_hash};
 use crate::dto::{CreateMarketplaceListingInput, MarketplaceListingResponse};
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
 use crate::MarketplaceListingService;
@@ -54,13 +52,13 @@ impl MarketplaceListingService {
         context: rustok_api::PortContext,
         listing_id: Uuid,
     ) -> MarketplaceListingResult<MarketplaceListingResponse> {
-        self.replay_safe_lifecycle(context, "publish_listing", listing_id)
+        if let Some(response) = self
+            .replay_safe_lifecycle(&context, "publish_listing", listing_id)
             .await?
-            .map_or_else(
-                || async { self.publish_listing(context, listing_id).await },
-                |response| async { Ok(response) },
-            )
-            .await
+        {
+            return Ok(response);
+        }
+        self.publish_listing(context, listing_id).await
     }
 
     pub async fn reactivate_listing_replay_safe(
@@ -68,27 +66,27 @@ impl MarketplaceListingService {
         context: rustok_api::PortContext,
         listing_id: Uuid,
     ) -> MarketplaceListingResult<MarketplaceListingResponse> {
-        self.replay_safe_lifecycle(context, "reactivate_listing", listing_id)
+        if let Some(response) = self
+            .replay_safe_lifecycle(&context, "reactivate_listing", listing_id)
             .await?
-            .map_or_else(
-                || async { self.reactivate_listing(context, listing_id).await },
-                |response| async { Ok(response) },
-            )
-            .await
+        {
+            return Ok(response);
+        }
+        self.reactivate_listing(context, listing_id).await
     }
 
     async fn replay_safe_lifecycle(
         &self,
-        context: rustok_api::PortContext,
+        context: &rustok_api::PortContext,
         command_kind: &'static str,
         listing_id: Uuid,
     ) -> MarketplaceListingResult<Option<MarketplaceListingResponse>> {
         context
             .require_write_semantics()
             .map_err(|error| MarketplaceListingError::Validation(error.message))?;
-        let tenant_id = parse_tenant_id(&context)?;
-        let actor_id = parse_actor_id(&context)?;
-        let key = normalize_idempotency_key(required_idempotency_key(&context)?)?;
+        let tenant_id = parse_tenant_id(context)?;
+        let actor_id = parse_actor_id(context)?;
+        let key = normalize_idempotency_key(required_idempotency_key(context)?)?;
         let hash = request_hash(
             command_kind,
             actor_id,
