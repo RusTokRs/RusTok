@@ -9,9 +9,7 @@ use std::collections::BTreeMap;
 
 pub const FLY_LANDING_SECTION_FIELD: &str = "flyLandingSection";
 
-#[derive(
-    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
-)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum LandingSectionKind {
     Hero,
@@ -174,13 +172,7 @@ fn collect_landing_sections(
 
     if let Some(marker) = component.extensions.get(FLY_LANDING_SECTION_FIELD) {
         validate_landing_section(
-            component,
-            marker,
-            page_index,
-            page_id,
-            path,
-            sections,
-            issues,
+            component, marker, page_index, page_id, path, sections, issues,
         )?;
     }
 
@@ -260,7 +252,8 @@ fn validate_landing_section(
         }
     }
 
-    let bytes = serde_json::to_vec(component).map_err(|error| FlyError::Encode(error.to_string()))?;
+    let bytes =
+        serde_json::to_vec(component).map_err(|error| FlyError::Encode(error.to_string()))?;
     sections.push(LandingSectionSnapshot {
         path: path.to_string(),
         component_id: component.id.clone(),
@@ -642,6 +635,9 @@ mod tests {
         let report = LandingSectionValidationReport::for_document(&project).expect("report");
         assert!(!report.valid);
         assert_eq!(report.issues.len(), 1);
-        assert_eq!(report.issues[0].kind, LandingSectionIssueKind::InvalidMarker);
+        assert_eq!(
+            report.issues[0].kind,
+            LandingSectionIssueKind::InvalidMarker
+        );
     }
 }

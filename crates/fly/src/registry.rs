@@ -525,6 +525,7 @@ fn landing_templates() -> Vec<BlockDefinition> {
             "landing",
             json!({
                 "type": "section",
+                "flyLandingSection": "hero",
                 "style": { "padding": "96px 24px", "background": "#f8fafc" },
                 "components": [{
                     "type": "container",
@@ -543,6 +544,7 @@ fn landing_templates() -> Vec<BlockDefinition> {
             "landing",
             json!({
                 "type": "section",
+                "flyLandingSection": "two_columns",
                 "style": { "padding": "72px 24px" },
                 "components": [{
                     "type": "container",
@@ -564,6 +566,7 @@ fn landing_templates() -> Vec<BlockDefinition> {
             "landing",
             json!({
                 "type": "section",
+                "flyLandingSection": "feature_grid",
                 "style": { "padding": "72px 24px", "background": "#f8fafc" },
                 "components": [{
                     "type": "container",
@@ -585,6 +588,7 @@ fn landing_templates() -> Vec<BlockDefinition> {
             "landing",
             json!({
                 "type": "section",
+                "flyLandingSection": "call_to_action",
                 "style": { "padding": "72px 24px" },
                 "components": [{
                     "type": "container",
@@ -603,6 +607,7 @@ fn landing_templates() -> Vec<BlockDefinition> {
             "landing",
             json!({
                 "type": "section",
+                "flyLandingSection": "contact_form",
                 "style": { "padding": "72px 24px" },
                 "components": [{
                     "type": "container",
