@@ -1,12 +1,15 @@
 use crate::{
-    localized_page_route_index, normalize_locale_tag, ComponentNode, LocalizedPageRouteEntry,
-    ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic, ValidationSeverity,
+    localized_page_route_index, normalize_locale_tag, safe_url::normalize_safe_url, ComponentNode,
+    LocalizedPageRouteEntry, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
+    ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
 
 pub const FLY_PAGE_LINK_FIELD: &str = "flyPageLink";
+
+const GENERATED_INTERNAL_LINK_ATTRIBUTES: &[&str] = &["href", "target", "rel"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InternalPageLink {
@@ -37,7 +40,8 @@ impl InternalPageLink {
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .map(ToString::to_string);
+            .map(|value| normalize_safe_url(value, "internal page link fallback_href"))
+            .transpose()?;
         Ok(Self {
             page_id,
             base_path,
@@ -151,22 +155,24 @@ fn materialize_node(
         return;
     };
     if let Some(raw) = component.extensions.get(FLY_PAGE_LINK_FIELD).cloned() {
+        clear_internal_link_materialization(component);
         let component_id = component.id.clone();
         match serde_json::from_value::<InternalPageLink>(raw) {
             Ok(link) => match link.normalized() {
                 Ok(link) => match page_ids.get(&link.page_id).copied() {
                     Some(target_page_index) => {
                         if let Some(slug) = route_slug(route_index, target_page_index, candidates) {
+                            component.tag_name = Some("a".to_string());
                             component.attributes.insert(
                                 "href".to_string(),
                                 Value::String(build_href(&link, slug)),
                             );
                             *resolved_links = resolved_links.saturating_add(1);
                         } else if let Some(fallback_href) = link.fallback_href {
-                            component.attributes.insert(
-                                "href".to_string(),
-                                Value::String(fallback_href),
-                            );
+                            component.tag_name = Some("a".to_string());
+                            component
+                                .attributes
+                                .insert("href".to_string(), Value::String(fallback_href));
                             *fallback_links = fallback_links.saturating_add(1);
                             diagnostics.push(link_diagnostic(
                                 ValidationSeverity::Info,
@@ -321,6 +327,12 @@ fn validate_node(
     }
 }
 
+fn clear_internal_link_materialization(component: &mut crate::ComponentObject) {
+    for attribute in GENERATED_INTERNAL_LINK_ATTRIBUTES {
+        component.attributes.remove(*attribute);
+    }
+}
+
 fn route_slug<'a>(
     route_index: &'a [LocalizedPageRouteEntry],
     page_index: usize,
@@ -389,11 +401,13 @@ fn normalize_base_path(value: Option<&str>) -> Result<Option<String>, String> {
         return Ok(None);
     };
     if !value.starts_with('/')
+        || value.starts_with("//")
         || value.contains("://")
         || value.contains('?')
         || value.contains('#')
-        || value.contains('\r')
-        || value.contains('\n')
+        || value.contains('\\')
+        || value.chars().any(|character| character.is_control())
+        || value.chars().any(char::is_whitespace)
     {
         return Err(format!(
             "internal page link base_path `{value}` must be a safe absolute path prefix"
@@ -415,8 +429,12 @@ fn normalize_suffix(
     let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(None);
     };
-    if value.contains('\r') || value.contains('\n') {
-        return Err(format!("internal page link {label} contains a line break"));
+    if value.contains('\\')
+        || value.chars().any(|character| character.is_control())
+        || value.chars().any(char::is_whitespace)
+        || (prefix == '?' && value.contains('#'))
+    {
+        return Err(format!("internal page link {label} is not safely encoded"));
     }
     let value = value.trim_start_matches(prefix).trim();
     Ok((!value.is_empty()).then(|| value.to_string()))
@@ -464,7 +482,11 @@ mod tests {
                         "id": "about-link",
                         "type": "link",
                         "tagName": "a",
-                        "attributes": { "href": "/old-about" },
+                        "attributes": {
+                            "href": "/old-about",
+                            "target": "_blank",
+                            "rel": "opener"
+                        },
                         "flyPageLink": {
                             "page_id": "about",
                             "base_path": "/site",
@@ -491,11 +513,11 @@ mod tests {
             &document,
             &json!({ "$locale": "ru-RU", "$fallback_locales": ["en"] }),
         );
-        assert_eq!(result.resolved_links, 1);
-        assert_eq!(
-            result.document.component("about-link").unwrap().attributes["href"],
-            "/site/o-nas?source=hero#team"
-        );
+        let link = result.document.component("about-link").unwrap();
+        assert_eq!(link.tag_name.as_deref(), Some("a"));
+        assert_eq!(link.attributes["href"], "/site/o-nas?source=hero#team");
+        assert!(!link.attributes.contains_key("target"));
+        assert!(!link.attributes.contains_key("rel"));
         assert_eq!(
             document.component("about-link").unwrap().attributes["href"],
             "/old-about"
@@ -503,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_target_is_blocking_validation_and_preserves_raw_href_at_runtime() {
+    fn missing_target_is_blocking_validation_and_clears_stale_href_at_runtime() {
         let mut document = document();
         document
             .component_mut("about-link")
@@ -518,10 +540,10 @@ mod tests {
         }));
         let result = materialize_internal_page_links(&document, &json!({ "$locale": "en" }));
         assert_eq!(result.unresolved_links, 1);
-        assert_eq!(
-            result.document.component("about-link").unwrap().attributes["href"],
-            "/old-about"
-        );
+        let link = result.document.component("about-link").unwrap();
+        assert!(!link.attributes.contains_key("href"));
+        assert!(!link.attributes.contains_key("target"));
+        assert!(!link.attributes.contains_key("rel"));
     }
 
     #[test]
@@ -542,5 +564,55 @@ mod tests {
             result.document.component("about-link").unwrap().attributes["href"],
             "/fallback-about"
         );
+    }
+
+    #[test]
+    fn unsafe_fallback_and_network_base_path_are_rejected() {
+        let mut unsafe_fallback = document();
+        unsafe_fallback
+            .component_mut("about-link")
+            .unwrap()
+            .extensions
+            .get_mut(FLY_PAGE_LINK_FIELD)
+            .unwrap()["fallback_href"] = json!("//attacker.example/path");
+        assert!(validate_internal_page_links(&unsafe_fallback)
+            .iter()
+            .any(|diagnostic| diagnostic.code == "internal_page_link_invalid"));
+
+        let mut network_base = document();
+        network_base
+            .component_mut("about-link")
+            .unwrap()
+            .extensions
+            .get_mut(FLY_PAGE_LINK_FIELD)
+            .unwrap()["base_path"] = json!("//cdn.example");
+        assert!(validate_internal_page_links(&network_base)
+            .iter()
+            .any(|diagnostic| diagnostic.code == "internal_page_link_invalid"));
+    }
+
+    #[test]
+    fn unencoded_query_and_backslash_fragment_are_rejected() {
+        let mut query = document();
+        query
+            .component_mut("about-link")
+            .unwrap()
+            .extensions
+            .get_mut(FLY_PAGE_LINK_FIELD)
+            .unwrap()["query"] = json!("source=hero#override");
+        assert!(validate_internal_page_links(&query)
+            .iter()
+            .any(|diagnostic| diagnostic.code == "internal_page_link_invalid"));
+
+        let mut fragment = document();
+        fragment
+            .component_mut("about-link")
+            .unwrap()
+            .extensions
+            .get_mut(FLY_PAGE_LINK_FIELD)
+            .unwrap()["fragment"] = json!("team\\details");
+        assert!(validate_internal_page_links(&fragment)
+            .iter()
+            .any(|diagnostic| diagnostic.code == "internal_page_link_invalid"));
     }
 }
