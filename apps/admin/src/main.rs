@@ -130,6 +130,12 @@ async fn main() {
     }
 
     fn page_builder_error(error: PagesBrowserIntentError) -> (StatusCode, Json<Value>) {
+        let capability_denial = match &error {
+            PagesBrowserIntentError::Dispatch(error) => {
+                rustok_page_builder_admin::browser_capability_denial(error)
+            }
+            _ => None,
+        };
         let status = match &error {
             PagesBrowserIntentError::PageNotFound => StatusCode::NOT_FOUND,
             PagesBrowserIntentError::PageMismatch { .. } => StatusCode::BAD_REQUEST,
@@ -137,9 +143,7 @@ async fn main() {
                 rustok_page_builder_admin::BrowserIntentDispatchError::RevisionConflict { .. }
                 | rustok_page_builder_admin::BrowserIntentDispatchError::ProjectHashConflict { .. },
             ) => StatusCode::CONFLICT,
-            PagesBrowserIntentError::Dispatch(error)
-                if rustok_page_builder_admin::browser_capability_denial(error).is_some() =>
-            {
+            PagesBrowserIntentError::Dispatch(_) if capability_denial.is_some() => {
                 StatusCode::FORBIDDEN
             }
             PagesBrowserIntentError::Draft(
@@ -154,13 +158,20 @@ async fn main() {
             PagesBrowserIntentError::Transport(_) => StatusCode::BAD_GATEWAY,
             _ => StatusCode::UNPROCESSABLE_ENTITY,
         };
-        (
-            status,
-            Json(json!({
+        let payload = match capability_denial {
+            Some(denial) => json!({
                 "error": error.to_string(),
                 "status": status.as_u16(),
-            })),
-        )
+                "code": "FLY_CAPABILITY_DENIED",
+                "intent": denial.intent,
+                "capability": denial.capability.as_str(),
+            }),
+            None => json!({
+                "error": error.to_string(),
+                "status": status.as_u16(),
+            }),
+        };
+        (status, Json(payload))
     }
 
     let configuration = get_configuration(None).expect("Leptos SSR configuration");
