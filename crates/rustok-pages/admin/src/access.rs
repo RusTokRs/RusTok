@@ -6,10 +6,9 @@ use fly_ui::{
     EditorCapabilityPolicy, EditorProviderState,
 };
 
-/// Builds the Pages editor policy from the authenticated canonical RusTok role and the actual
-/// contribution assembly health. This is deliberately role-based rather than permission-id based
-/// because the admin SSR auth snapshot currently exposes a canonical role but no signed permission
-/// claims. Unknown roles fail closed.
+/// Builds the Pages editor policy from a canonical RusTok role and the actual contribution assembly
+/// health. Authoritative callers must supply a role verified by the backend auth service. Unknown
+/// roles fail closed; no local permission identifiers are invented here.
 pub fn pages_editor_capability_policy(
     role: Option<&str>,
     assembly: &ContributionAssemblyResult,
@@ -34,7 +33,7 @@ pub fn pages_editor_permissions_for_role(role: Option<&str>) -> CapabilityState 
         .filter(|role| !role.is_empty())
         .map(str::to_ascii_lowercase);
     match role.as_deref() {
-        Some("super_admin" | "admin") => CapabilityState::full(),
+        Some("super_admin") | Some("admin") => CapabilityState::full(),
         Some("manager") => CapabilityState {
             publish: false,
             ..CapabilityState::full()
