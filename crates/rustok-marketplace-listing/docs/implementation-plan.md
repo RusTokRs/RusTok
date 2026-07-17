@@ -33,6 +33,8 @@ migration, contention, mounted-transport, and remote-profile evidence.
   forbidden.
 - [x] Require native FFA hosts to provide request-scoped typed listing ports,
   authorization, and canonical `PortContext` construction.
+- [x] Keep owner workflow-to-permission mapping inside the listing FFA while platform
+  RBAC remains responsible for the allow/deny decision.
 - [ ] Retain compiled remote-profile contract evidence before FBA
   `transport_verified`.
 - [ ] Retain mounted native/GraphQL parity before FFA `phase_b_ready`.
@@ -137,22 +139,29 @@ migration, contention, mounted-transport, and remote-profile evidence.
   transport error.
 - [x] Keep native UI composition behind a request-scoped host runtime containing typed
   listing ports, an authorizer, and canonical `PortContext` construction.
+- [x] Fail closed with a stable server-function error when the native runtime is not
+  mounted instead of panicking or constructing owner dependencies in the UI package.
 - [x] Declare the GraphQL profile as explicitly unmounted instead of silently falling
   back to native or inventing unsupported schema operations.
 - [x] Register the module-owned admin package and locale path in
   `rustok-module.toml`.
-- [x] Add `marketplace_listing_admin_ffa_guard.rs` for ownership, typed ports,
-  provenance rendering, idempotency preservation, and no-fallback rules.
+- [x] Register the nested admin crate in the workspace and the admin hydrate/SSR
+  feature graph.
+- [x] Add platform `marketplace_listings` permissions and publish the supported
+  permission set from the owner module.
+- [x] Map listing FFA actions to create/read/list/update/moderate/publish/manage
+  permissions; delete is not exposed and archive remains an owner command.
+- [x] Add and aggregate `marketplace_listing_admin_ffa_guard.rs` plus
+  `verify-marketplace-listing-admin-ffa.mjs`.
 
 ## FFA remaining
 
-- [ ] Register the nested admin crate in the workspace and host feature graphs.
-- [ ] Add platform `marketplace_listings` permissions and map the host authorizer to
-  them without moving listing policy into host code.
+- [ ] Provide authenticated request-scoped listing provider/runtime composition from
+  admin hosts.
 - [ ] Publish module-owned listing GraphQL query/mutation roots over the same typed
   ports, then replace the declared-unmounted GraphQL adapter with real operations.
-- [ ] Provide the request-scoped native runtime from authenticated admin hosts.
 - [ ] Add eligibility explanation and paginated event/terms history refinements.
+- [ ] Synchronize `docs/modules/registry.md` after a safe full-document update.
 - [ ] Retain mounted native/GraphQL parity, localized errors, route state, and
   authenticated host evidence before `phase_b_ready`.
 
@@ -161,13 +170,13 @@ migration, contention, mounted-transport, and remote-profile evidence.
 1. [x] Complete immutable events for all FBA write commands.
 2. [x] Backfill truthful legacy snapshots and remove mutable note columns.
 3. [x] Publish the initial module-owned listing FFA source package.
-4. [ ] Define and atomically publish the versioned transactional outbox event.
-5. [ ] Add platform listing permissions, workspace/host registration, and native
-   request runtime composition.
-6. [ ] Add listing GraphQL roots and replace the declared-unmounted adapter.
-7. [ ] Compile and execute database, contention, replay, tenant, locale, provenance,
+4. [x] Add workspace/admin feature wiring and platform listing permissions.
+5. [ ] Define and atomically publish the versioned transactional outbox event.
+6. [ ] Mount authenticated request-scoped native provider composition.
+7. [ ] Add listing GraphQL roots and replace the declared-unmounted adapter.
+8. [ ] Compile and execute database, contention, replay, tenant, locale, provenance,
    outbox, restart, and mounted transport evidence.
-8. [ ] Start product matching/approval only after owner/runtime evidence is retained.
+9. [ ] Start product matching/approval only after owner/runtime evidence is retained.
 
 ## Source evidence
 
@@ -196,6 +205,8 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `admin/locales/ru.json`
 - `contracts/marketplace-listing-fba-registry.json`
 - `../rustok-marketplace/src/listing_directory.rs`
+- `../../Cargo.toml`
+- `../../apps/admin/Cargo.toml`
 - `../../apps/server/tests/marketplace_listing_boundary_guard.rs`
 - `../../apps/server/tests/marketplace_listing_lifecycle_event_guard.rs`
 - `../../apps/server/tests/marketplace_listing_provenance_cutover_guard.rs`
@@ -203,6 +214,7 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `../../scripts/verify/verify-marketplace-listing-boundary.mjs`
 - `../../scripts/verify/verify-marketplace-listing-lifecycle-events.mjs`
 - `../../scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
+- `../../scripts/verify/verify-marketplace-listing-admin-ffa.mjs`
 
 ## Promotion gates
 
@@ -210,7 +222,7 @@ migration, contention, mounted-transport, and remote-profile evidence.
   identity/provenance/outbox tests, migrations, and source guards are retained.
 - [ ] FBA `transport_verified`: mounted in-process/remote execution and degraded
   behavior are retained.
-- [ ] FFA `phase_b_ready`: workspace/host composition, real native/GraphQL transports,
-  platform permissions, and parity evidence are retained.
+- [ ] FFA `phase_b_ready`: authenticated native runtime composition, real GraphQL
+  transport, and parity evidence are retained.
 - [ ] Production-ready: migrations, tenant isolation, contention, restart,
   storefront selection, and operator workflow evidence are retained.
