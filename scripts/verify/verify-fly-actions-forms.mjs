@@ -2,8 +2,13 @@ import { readFile } from 'node:fs/promises';
 
 const paths = {
   flyLib: 'crates/fly/src/lib.rs',
+  componentVisit: 'crates/fly/src/component_visit.rs',
   safeUrl: 'crates/fly/src/safe_url.rs',
-  action: 'crates/fly/src/action.rs',
+  actionFacade: 'crates/fly/src/action.rs',
+  actionModel: 'crates/fly/src/action/model.rs',
+  actionValidation: 'crates/fly/src/action/validation.rs',
+  actionMaterialize: 'crates/fly/src/action/materialize.rs',
+  actionTests: 'crates/fly/src/action/tests.rs',
   runtimePipeline: 'crates/fly/src/runtime_pipeline.rs',
   browserContract: 'crates/fly-browser/src/lib.rs',
   browserIntent: 'crates/rustok-page-builder/admin/src/browser_intent.rs',
@@ -58,37 +63,85 @@ const flattenKeys = (value, prefix = '') => Object.entries(value).flatMap(([key,
     : [path];
 }).sort();
 
-requireMarker('flyLib', 'mod safe_url;', 'Fly must register the shared safe URL boundary');
+requireMarkers('flyLib', [
+  'mod component_visit;',
+  'mod safe_url;',
+  'pub use component_visit::{visit_project_components, ComponentVisit};',
+], 'Fly interaction infrastructure');
+requireMarkers('componentVisit', [
+  'pub struct ComponentVisit',
+  'pub fn visit_project_components(',
+  'pub(crate) fn visit_project_components_mut(',
+  'Mutation stays crate-private',
+  'immutable_and_mutable_walks_share_page_depth_and_path_contract',
+], 'read-only public component visitor');
 requireMarkers('safeUrl', [
   'pub(crate) fn validate_safe_url',
   'pub(crate) fn normalize_safe_url',
   'rejects_network_paths_backslashes_controls_and_unsafe_schemes',
   'rejects_absolute_urls_without_authority_or_scheme_targets',
 ], 'shared safe URL boundary');
-requireMarkers('action', [
+requireMarkers('actionFacade', [
+  'mod materialize;',
+  'mod model;',
+  'mod validation;',
+  'pub use materialize::*;',
+  'pub use model::*;',
+  'pub use validation::*;',
+  '#[cfg(test)]\nmod tests;',
+], 'action domain facade');
+for (const forbidden of [
+  'pub enum ComponentAction',
+  'pub struct ComponentForm',
+  'fn materialize_node(',
+  'fn validate_node(',
+]) {
+  rejectMarker(
+    'actionFacade',
+    forbidden,
+    `action facade must not own implementation marker ${forbidden}`,
+  );
+}
+requireMarkers('actionModel', [
   'pub const FLY_ACTION_FIELD',
   'pub const FLY_FORM_FIELD',
   'pub enum ComponentAction',
   'pub struct ComponentForm',
-  'pub fn materialize_component_actions',
+  'pub struct ActionMaterialization',
+  'GENERATED_INTERACTION_ATTRIBUTES',
+], 'action and form models');
+requireMarkers('actionValidation', [
   'pub fn validate_component_actions',
+  'component_visit::visit_project_components',
   'safe_url::validate_safe_url as validate_shared_safe_url',
   'validate_shared_safe_url(value, label)',
-  'GENERATED_INTERACTION_ATTRIBUTES',
-  'clear_interaction_materialization',
   'component_form_interaction_contract_conflict',
   'non-default form encoding requires post method',
-  'root.visit(0, "page.component", &mut |component, _, _|',
+  'visit_project_components(&document.project',
+], 'action and form validation');
+requireMarkers('actionMaterialize', [
+  'pub fn materialize_component_actions',
+  'component_visit::visit_project_components_mut',
+  'visit_project_components_mut(&mut materialized.project',
+  'clear_interaction_materialization',
+  'ActionResolution',
+], 'action and form materialization');
+for (const [key, forbidden] of [
+  ['actionValidation', 'root.visit(0, "page.component"'],
+  ['actionValidation', 'fn validate_node('],
+  ['actionMaterialize', 'fn materialize_node('],
+  ['actionMaterialize', '#[allow(clippy::too_many_arguments)]'],
+]) {
+  rejectMarker(key, forbidden, `${key} must use the shared component visitor instead of ${forbidden}`);
+}
+requireMarkers('actionTests', [
+  'actions_and_forms_materialize_to_native_and_custom_contracts',
   'materialization_clears_stale_interaction_attributes',
   'network_paths_and_backslash_urls_are_blocking_validation',
   'duplicate_forms_and_interaction_conflicts_are_rejected',
   'non_post_encoding_is_rejected',
-], 'Fly action and form contract');
-rejectMarker(
-  'action',
-  'let Some(component) = node.as_object()',
-  'form collection must use the ComponentObject visitor directly',
-);
+  'anonymous_action_diagnostics_use_the_shared_canonical_path',
+], 'split action and form regression coverage');
 requireOrder('runtimePipeline', [
   'validate_component_actions(&dynamic_document)',
   'materialize_component_actions(&linked_document, &effective_context)',
