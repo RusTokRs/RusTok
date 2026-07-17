@@ -1,0 +1,156 @@
+name: Finalize current-only Page Builder API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/page-builder-current-cleanup-final.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: page-builder-current-only-cleanup
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Load current cleanup scripts
+        shell: bash
+        run: |
+          git fetch origin chore/page-builder-cleanup-stage:refs/remotes/origin/chore/page-builder-cleanup-stage
+          mkdir -p scripts/migrations
+          for script in \
+            cleanup_page_builder_current \
+            cleanup_page_builder_contributions \
+            cleanup_page_builder_compile_fixes \
+            cleanup_page_builder_test_fixtures \
+            cleanup_page_builder_behavior_tests \
+            cleanup_page_builder_markers \
+            cleanup_page_builder_admin_compile
+          do
+            git show "origin/chore/page-builder-cleanup-stage:scripts/migrations/${script}.py" \
+              > "scripts/migrations/${script}.py"
+          done
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.96
+          components: rustfmt
+
+      - name: Apply and validate current API
+        id: cleanup
+        shell: bash
+        run: |
+          set +e
+          {
+            python3 scripts/migrations/cleanup_page_builder_current.py && \
+            python3 scripts/migrations/cleanup_page_builder_contributions.py && \
+            python3 scripts/migrations/cleanup_page_builder_compile_fixes.py && \
+            python3 scripts/migrations/cleanup_page_builder_test_fixtures.py && \
+            python3 scripts/migrations/cleanup_page_builder_behavior_tests.py && \
+            python3 scripts/migrations/cleanup_page_builder_markers.py && \
+            python3 scripts/migrations/cleanup_page_builder_admin_compile.py && \
+            cargo fmt --package fly --package fly-ui --package fly-browser --package fly-leptos --package rustok-page-builder --package rustok-page-builder-admin --package rustok-pages-admin && \
+            cargo check -p fly -p fly-ui -p fly-browser -p fly-leptos -p rustok-page-builder --all-features --all-targets && \
+            cargo check -p rustok-page-builder-admin -p rustok-pages-admin && \
+            cargo test -p fly --lib codec::tests && \
+            cargo test -p fly --lib landing_contract::tests && \
+            cargo test -p fly --lib registry::tests && \
+            cargo test -p fly-ui --lib contribution_manifest::tests && \
+            cargo test -p rustok-page-builder --lib --all-features && \
+            find crates/rustok-page-builder/scripts -name '*.mjs' -print0 | xargs -0 -r -n1 node --check && \
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          roots = [
+              Path('crates/fly'),
+              Path('crates/fly-ui'),
+              Path('crates/fly-browser'),
+              Path('crates/fly-leptos'),
+              Path('crates/rustok-page-builder'),
+              Path('crates/rustok-pages/admin'),
+          ]
+          forbidden = re.compile(
+              r'GrapesJsV1|GRAPESJS_V1|PageBuilderContractMetadata|'
+              r'schema_version|schemaVersion|provider_version|owner_version|'
+              r'legacy_bridge_readonly|FLY_[A-Z0-9_]*_V1|'
+              r'fly_[a-z0-9_]*_v1|\b[A-Za-z][A-Za-z0-9_]*V1\b|\blegacy\b',
+              re.IGNORECASE,
+          )
+          violations = []
+          for root in roots:
+              for path in root.rglob('*'):
+                  if not path.is_file() or path.suffix not in {'.rs', '.md', '.json', '.toml', '.mjs', '.js'}:
+                      continue
+                  for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                      if forbidden.search(line):
+                          violations.append(f'{path}:{number}: {line.strip()}')
+          if violations:
+              raise SystemExit(
+                  'forbidden Page Builder version/compatibility markers remain:\n' + '\n'.join(violations)
+              )
+          PY
+            scan_status=$?
+            test "$scan_status" -eq 0 && git diff --check
+          } > /tmp/page-builder-current-cleanup.log 2>&1
+          status=$?
+          cat /tmp/page-builder-current-cleanup.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Reset partial changes after failure
+        if: steps.cleanup.outputs.status != '0'
+        run: git reset --hard HEAD
+
+      - name: Write failure report
+        if: steps.cleanup.outputs.status != '0'
+        shell: bash
+        run: |
+          {
+            echo '# Final Page Builder current-only cleanup failure'
+            echo
+            echo '```text'
+            cat /tmp/page-builder-current-cleanup.log
+            echo '```'
+          } > PAGE_BUILDER_CURRENT_CLEANUP_FAILURE.md
+
+      - name: Remove temporary cleanup files
+        run: |
+          rm -f \
+            scripts/migrations/cleanup_page_builder_*.py \
+            .github/workflows/page-builder-current-cleanup-final.yml \
+            .github/workflows/cleanup-page-builder-current.yml \
+            PAGE_BUILDER_CLEANUP_FAILURE.md
+
+      - name: Commit atomically to main
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          if [[ "${{ steps.cleanup.outputs.status }}" == "0" ]]; then
+            message="refactor(page-builder): keep only the current API"
+          else
+            message="chore(page-builder): record final current-only cleanup failure"
+          fi
+          git commit -m "$message"
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep 5
+          done
+          exit 1
