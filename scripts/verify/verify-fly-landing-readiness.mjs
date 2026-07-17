@@ -78,6 +78,10 @@ rejectText(
   "crates/rustok-page-builder/admin/src/editor/runtime.rs",
   "UiIntent::Execute(_) | UiIntent::Undo | UiIntent::Redo | UiIntent::RequestSave",
 );
+rejectText(
+  "crates/rustok-page-builder/admin/src/editor/runtime.rs",
+  "Runtime publish gate rejected save",
+);
 requireText(
   "crates/rustok-page-builder/admin/src/editor/runtime_publish_gate.rs",
   "page_builder.runtimePublishGate.readiness",
