@@ -1,23 +1,23 @@
-use std::collections::{HashMap, HashSet};
-
-use chrono::Utc;
-use rustok_api::{build_locale_candidates, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
-use rustok_core::generate_id;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, Set,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder,
 };
 use uuid::Uuid;
 
 use crate::dto::{
     ListMarketplaceSellersInput, MarketplaceSellerMemberResponse, MarketplaceSellerMemberRole,
-    MarketplaceSellerMemberStatus, MarketplaceSellerOnboardingStatus, MarketplaceSellerResponse,
-    MarketplaceSellerStatus, UpdateMarketplaceSellerMemberInput,
+    MarketplaceSellerMemberStatus, MarketplaceSellerResponse, UpdateMarketplaceSellerMemberInput,
 };
-use crate::entities::{seller, seller_member, seller_translation};
+use crate::entities::{seller, seller_member};
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
+use crate::localized_sellers::{
+    load_seller_responses, localized_seller_ids_for_search,
+};
 
-pub(crate) const MISSING_TRANSLATION_PREFIX: &str = "marketplace seller translation missing";
+pub(crate) use crate::localized_sellers::{
+    load_seller_response, normalize_seller_locale, upsert_translation,
+    MISSING_TRANSLATION_PREFIX,
+};
 
 pub struct MarketplaceSellerService {
     db: DatabaseConnection,
@@ -49,7 +49,7 @@ impl MarketplaceSellerService {
     ) -> MarketplaceSellerResult<(Vec<MarketplaceSellerResponse>, u64)> {
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
-        let candidates = seller_locale_candidates(locale)?;
+        let locale = normalize_seller_locale(locale)?;
         let mut query = seller::Entity::find().filter(seller::Column::TenantId.eq(tenant_id));
 
         if let Some(status) = input.status {
@@ -64,15 +64,13 @@ impl MarketplaceSellerService {
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            let translation_ids = seller_translation::Entity::find()
-                .filter(seller_translation::Column::TenantId.eq(tenant_id))
-                .filter(seller_translation::Column::Locale.is_in(candidates.clone()))
-                .filter(seller_translation::Column::DisplayName.contains(search))
-                .all(&self.db)
-                .await?
-                .into_iter()
-                .map(|translation| translation.seller_id)
-                .collect::<HashSet<_>>();
+            let translation_ids = localized_seller_ids_for_search(
+                &self.db,
+                tenant_id,
+                locale.as_str(),
+                search,
+            )
+            .await?;
             let mut condition = Condition::any()
                 .add(seller::Column::Handle.contains(search))
                 .add(seller::Column::LegalName.contains(search));
@@ -87,7 +85,7 @@ impl MarketplaceSellerService {
             .paginate(&self.db, per_page);
         let total = paginator.num_items().await?;
         let models = paginator.fetch_page(page.saturating_sub(1)).await?;
-        let items = load_seller_responses(&self.db, models, locale).await?;
+        let items = load_seller_responses(&self.db, models, locale.as_str()).await?;
         Ok((items, total))
     }
 
@@ -135,153 +133,6 @@ pub(crate) async fn find_seller<C: ConnectionTrait>(
         .one(connection)
         .await?
         .ok_or(MarketplaceSellerError::SellerNotFound(seller_id))
-}
-
-pub(crate) async fn load_seller_response<C: ConnectionTrait>(
-    connection: &C,
-    tenant_id: Uuid,
-    seller_id: Uuid,
-    locale: &str,
-) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
-    let model = find_seller(connection, tenant_id, seller_id).await?;
-    let translation = resolve_translation(connection, tenant_id, seller_id, locale).await?;
-    map_seller(model, translation)
-}
-
-async fn load_seller_responses<C: ConnectionTrait>(
-    connection: &C,
-    models: Vec<seller::Model>,
-    locale: &str,
-) -> MarketplaceSellerResult<Vec<MarketplaceSellerResponse>> {
-    if models.is_empty() {
-        return Ok(Vec::new());
-    }
-    let normalized = normalize_seller_locale(locale)?;
-    let candidates = seller_locale_candidates(normalized.as_str())?;
-    let tenant_id = models[0].tenant_id;
-    let seller_ids = models.iter().map(|model| model.id).collect::<Vec<_>>();
-    let translations = seller_translation::Entity::find()
-        .filter(seller_translation::Column::TenantId.eq(tenant_id))
-        .filter(seller_translation::Column::SellerId.is_in(seller_ids))
-        .filter(seller_translation::Column::Locale.is_in(candidates.clone()))
-        .all(connection)
-        .await?
-        .into_iter()
-        .map(|translation| ((translation.seller_id, translation.locale.clone()), translation))
-        .collect::<HashMap<_, _>>();
-
-    models
-        .into_iter()
-        .map(|model| {
-            let translation = candidates
-                .iter()
-                .find_map(|candidate| translations.get(&(model.id, candidate.clone())).cloned())
-                .ok_or_else(|| missing_translation_error(model.id, normalized.as_str()))?;
-            map_seller(model, translation)
-        })
-        .collect()
-}
-
-async fn resolve_translation<C: ConnectionTrait>(
-    connection: &C,
-    tenant_id: Uuid,
-    seller_id: Uuid,
-    locale: &str,
-) -> MarketplaceSellerResult<seller_translation::Model> {
-    let normalized = normalize_seller_locale(locale)?;
-    let candidates = seller_locale_candidates(normalized.as_str())?;
-    let translations = seller_translation::Entity::find()
-        .filter(seller_translation::Column::TenantId.eq(tenant_id))
-        .filter(seller_translation::Column::SellerId.eq(seller_id))
-        .filter(seller_translation::Column::Locale.is_in(candidates.clone()))
-        .all(connection)
-        .await?
-        .into_iter()
-        .map(|translation| (translation.locale.clone(), translation))
-        .collect::<HashMap<_, _>>();
-    candidates
-        .iter()
-        .find_map(|candidate| translations.get(candidate).cloned())
-        .ok_or_else(|| missing_translation_error(seller_id, normalized.as_str()))
-}
-
-fn missing_translation_error(seller_id: Uuid, locale: &str) -> MarketplaceSellerError {
-    MarketplaceSellerError::Validation(format!(
-        "{MISSING_TRANSLATION_PREFIX}: seller {seller_id}, locale `{locale}`"
-    ))
-}
-
-pub(crate) async fn upsert_translation<C: ConnectionTrait>(
-    connection: &C,
-    tenant_id: Uuid,
-    seller_id: Uuid,
-    locale: &str,
-    display_name: String,
-) -> MarketplaceSellerResult<seller_translation::Model> {
-    let locale = normalize_seller_locale(locale)?;
-    let now = Utc::now();
-    if let Some(existing) = seller_translation::Entity::find()
-        .filter(seller_translation::Column::TenantId.eq(tenant_id))
-        .filter(seller_translation::Column::SellerId.eq(seller_id))
-        .filter(seller_translation::Column::Locale.eq(locale.as_str()))
-        .one(connection)
-        .await?
-    {
-        let mut active: seller_translation::ActiveModel = existing.into();
-        active.display_name = Set(display_name);
-        active.updated_at = Set(now.into());
-        return active.update(connection).await.map_err(Into::into);
-    }
-    seller_translation::ActiveModel {
-        id: Set(generate_id()),
-        tenant_id: Set(tenant_id),
-        seller_id: Set(seller_id),
-        locale: Set(locale),
-        display_name: Set(display_name),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
-    }
-    .insert(connection)
-    .await
-    .map_err(Into::into)
-}
-
-pub(crate) fn map_seller(
-    model: seller::Model,
-    translation: seller_translation::Model,
-) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
-    let status = MarketplaceSellerStatus::parse(model.status.as_str()).ok_or_else(|| {
-        MarketplaceSellerError::Validation(format!(
-            "unknown marketplace seller status `{}`",
-            model.status
-        ))
-    })?;
-    let onboarding_status =
-        MarketplaceSellerOnboardingStatus::parse(model.onboarding_status.as_str()).ok_or_else(
-            || {
-                MarketplaceSellerError::Validation(format!(
-                    "unknown marketplace seller onboarding status `{}`",
-                    model.onboarding_status
-                ))
-            },
-        )?;
-    Ok(MarketplaceSellerResponse {
-        id: model.id,
-        tenant_id: model.tenant_id,
-        handle: model.handle,
-        resolved_locale: translation.locale,
-        display_name: translation.display_name,
-        legal_name: model.legal_name,
-        status,
-        onboarding_status,
-        onboarding_note: model.onboarding_note,
-        suspension_reason: model.suspension_reason,
-        metadata: model.metadata,
-        created_at: model.created_at,
-        updated_at: model.updated_at,
-        activated_at: model.activated_at,
-        suspended_at: model.suspended_at,
-    })
 }
 
 pub(crate) fn map_member(
@@ -336,22 +187,6 @@ pub(crate) fn validate_owner_membership_update(
         ));
     }
     Ok(())
-}
-
-pub(crate) fn normalize_seller_locale(value: &str) -> MarketplaceSellerResult<String> {
-    normalize_locale_tag(value).ok_or_else(|| {
-        MarketplaceSellerError::Validation(
-            "locale must be a normalized BCP47-like tag with at most 32 bytes".to_string(),
-        )
-    })
-}
-
-fn seller_locale_candidates(value: &str) -> MarketplaceSellerResult<Vec<String>> {
-    let normalized = normalize_seller_locale(value)?;
-    Ok(build_locale_candidates(
-        [Some(normalized.as_str()), Some(PLATFORM_FALLBACK_LOCALE)],
-        true,
-    ))
 }
 
 pub(crate) fn normalize_handle(value: &str) -> MarketplaceSellerResult<String> {
