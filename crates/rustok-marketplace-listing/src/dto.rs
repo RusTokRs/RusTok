@@ -80,6 +80,8 @@ pub enum MarketplaceListingEventKind {
     Suspended,
     Reactivated,
     Archived,
+    LegacyApprovalSnapshot,
+    LegacySuspensionSnapshot,
 }
 
 impl MarketplaceListingEventKind {
@@ -94,6 +96,8 @@ impl MarketplaceListingEventKind {
             Self::Suspended => "suspended",
             Self::Reactivated => "reactivated",
             Self::Archived => "archived",
+            Self::LegacyApprovalSnapshot => "legacy_approval_snapshot",
+            Self::LegacySuspensionSnapshot => "legacy_suspension_snapshot",
         }
     }
 
@@ -108,6 +112,32 @@ impl MarketplaceListingEventKind {
             "suspended" => Some(Self::Suspended),
             "reactivated" => Some(Self::Reactivated),
             "archived" => Some(Self::Archived),
+            "legacy_approval_snapshot" => Some(Self::LegacyApprovalSnapshot),
+            "legacy_suspension_snapshot" => Some(Self::LegacySuspensionSnapshot),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketplaceListingEventProvenance {
+    Command,
+    LegacySnapshot,
+}
+
+impl MarketplaceListingEventProvenance {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Command => "command",
+            Self::LegacySnapshot => "legacy_snapshot",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "command" => Some(Self::Command),
+            "legacy_snapshot" => Some(Self::LegacySnapshot),
             _ => None,
         }
     }
@@ -178,9 +208,10 @@ pub struct MarketplaceListingEventResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub listing_id: Uuid,
-    pub actor_id: Uuid,
+    pub actor_id: Option<Uuid>,
     pub event_kind: MarketplaceListingEventKind,
-    pub locale: String,
+    pub locale: Option<String>,
+    pub provenance: MarketplaceListingEventProvenance,
     pub note: Option<String>,
     pub metadata: Value,
     pub created_at: DateTime<FixedOffset>,
@@ -198,10 +229,6 @@ pub struct MarketplaceListingResponse {
     pub channel_slug: String,
     pub status: MarketplaceListingStatus,
     pub approval_status: MarketplaceListingApprovalStatus,
-    /// Compatibility snapshot. Immutable moderation events are the audit source.
-    pub approval_note: Option<String>,
-    /// Compatibility snapshot. Immutable moderation events are the audit source.
-    pub suspension_reason: Option<String>,
     pub current_terms_version: i32,
     pub current_terms: MarketplaceListingTermsResponse,
     pub metadata: Value,
