@@ -2,6 +2,8 @@ pub mod adapters;
 pub mod dto;
 pub mod health;
 pub mod landing;
+#[cfg(feature = "server")]
+pub mod landing_service;
 pub mod locale;
 pub mod render;
 pub mod rollout;
