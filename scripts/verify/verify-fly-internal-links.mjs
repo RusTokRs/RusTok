@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 const paths = {
   flyLib: 'crates/fly/src/lib.rs',
+  componentVisit: 'crates/fly/src/component_visit.rs',
   safeUrl: 'crates/fly/src/safe_url.rs',
   internalLink: 'crates/fly/src/internal_link.rs',
   localizedRoute: 'crates/fly/src/localized_route.rs',
@@ -34,7 +35,17 @@ const localeValue = (locale, path) => path
   .split('.')
   .reduce((value, segment) => value && typeof value === 'object' ? value[segment] : undefined, locale);
 
-requireMarker('flyLib', 'mod safe_url;', 'Fly must register the shared safe URL boundary');
+requireMarkers('flyLib', [
+  'mod component_visit;',
+  'mod safe_url;',
+], 'Fly private infrastructure');
+requireMarkers('componentVisit', [
+  'pub(crate) struct ComponentVisit',
+  'pub(crate) fn visit_project_components(',
+  'pub(crate) fn visit_project_components_mut(',
+  'project.pages[{page_index}].component',
+  'immutable_and_mutable_walks_share_page_depth_and_path_contract',
+], 'shared component visitor');
 requireMarkers('safeUrl', [
   'pub(crate) fn validate_safe_url',
   'pub(crate) fn normalize_safe_url',
@@ -47,15 +58,28 @@ requireMarkers('internalLink', [
   'pub struct InternalLinkMaterialization',
   'pub fn materialize_internal_page_links',
   'pub fn validate_internal_page_links',
+  'component_visit::{visit_project_components, visit_project_components_mut}',
   'safe_url::normalize_safe_url',
   'GENERATED_INTERNAL_LINK_ATTRIBUTES',
   'clear_internal_link_materialization',
+  'anonymous_component_diagnostics_use_the_shared_canonical_path',
   'internal_page_link_materializes_locale_specific_href',
   'missing_target_is_blocking_validation_and_clears_stale_href_at_runtime',
   'fallback_href_is_used_when_target_page_has_no_slug',
   'unsafe_fallback_and_network_base_path_are_rejected',
   'unencoded_query_and_backslash_fragment_are_rejected',
 ], 'Fly internal page link contract');
+for (const forbidden of [
+  'fn materialize_node(',
+  'fn validate_node(',
+  '#[allow(clippy::too_many_arguments)]',
+]) {
+  rejectMarker(
+    'internalLink',
+    forbidden,
+    `internal links must use the shared visitor instead of ${forbidden}`,
+  );
+}
 rejectMarker(
   'internalLink',
   'missing_target_is_blocking_validation_and_preserves_raw_href_at_runtime',
