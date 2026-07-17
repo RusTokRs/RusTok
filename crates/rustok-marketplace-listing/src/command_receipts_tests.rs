@@ -89,7 +89,7 @@ async fn missing_outbox_storage_rolls_back_the_pending_receipt() {
         .expect_err("missing outbox table must fail the owner transaction");
     assert!(matches!(
         error,
-        MarketplaceListingError::EventPublication(_)
+        MarketplaceListingError::EventPublicationUnavailable
     ));
 
     let receipts = listing_command_receipt::Entity::find()
