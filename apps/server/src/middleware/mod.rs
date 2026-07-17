@@ -91,11 +91,17 @@ pub mod tenant {
                 return;
             }
         };
-        let emitted_at_unix_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-            .min(u128::from(u64::MAX)) as u64;
+        let emitted_at_unix_ms = match unix_ms_at(SystemTime::now()) {
+            Ok(timestamp) => timestamp,
+            Err(error) => {
+                tracing::error!(
+                    %error,
+                    cause,
+                    "Tenant cache generation publication aborted because system time is before the Unix epoch"
+                );
+                return;
+            }
+        };
         let invalidation_key = tenant_id
             .map(|tenant_id| tenant_id.to_string())
             .unwrap_or_else(|| "*".to_string());
@@ -142,6 +148,13 @@ pub mod tenant {
         }
     }
 
+    fn unix_ms_at(time: SystemTime) -> Result<u64, std::time::SystemTimeError> {
+        Ok(time
+            .duration_since(UNIX_EPOCH)?
+            .as_millis()
+            .min(u128::from(u64::MAX)) as u64)
+    }
+
     pub async fn tenant_invalidation_listener_snapshot(
         ctx: &ServerRuntimeContext,
     ) -> TenantInvalidationListenerSnapshot {
@@ -154,5 +167,25 @@ pub mod tenant {
         let listener = tenant_invalidation_listener_snapshot(ctx).await;
         stats.invalidation_listener_status = listener.status.metric_value();
         stats
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::unix_ms_at;
+        use std::time::{Duration, UNIX_EPOCH};
+
+        #[test]
+        fn unix_timestamp_conversion_accepts_epoch() {
+            assert_eq!(unix_ms_at(UNIX_EPOCH).expect("epoch timestamp"), 0);
+            assert_eq!(
+                unix_ms_at(UNIX_EPOCH + Duration::from_millis(42)).expect("timestamp"),
+                42
+            );
+        }
+
+        #[test]
+        fn unix_timestamp_conversion_rejects_pre_epoch_clock() {
+            assert!(unix_ms_at(UNIX_EPOCH - Duration::from_secs(1)).is_err());
+        }
     }
 }
