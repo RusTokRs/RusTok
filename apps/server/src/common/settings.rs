@@ -265,12 +265,39 @@ pub enum EventTransportKind {
     Iggy,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TenantResolutionMode {
+    #[default]
+    Header,
+    Host,
+    Domain,
+    Subdomain,
+}
+
+impl TenantResolutionMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Header => "header",
+            Self::Host => "host",
+            Self::Domain => "domain",
+            Self::Subdomain => "subdomain",
+        }
+    }
+}
+
+impl std::fmt::Display for TenantResolutionMode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TenantSettings {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default = "default_resolution")]
-    pub resolution: String,
+    #[serde(default)]
+    pub resolution: TenantResolutionMode,
     #[serde(default = "default_header_name")]
     pub header_name: String,
     #[serde(default = "default_tenant_id")]
@@ -387,6 +414,69 @@ pub enum TenantFallbackMode {
     DefaultTenant,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum TenantSettingsError {
+    InvalidHeaderName(String),
+    MissingSubdomainBaseDomain,
+    FallbackRequiresHeaderMode,
+    FallbackForbiddenInProduction,
+}
+
+impl std::fmt::Display for TenantSettingsError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidHeaderName(value) => {
+                write!(formatter, "rustok.tenant.header_name `{value}` is not a valid HTTP header name")
+            }
+            Self::MissingSubdomainBaseDomain => formatter.write_str(
+                "rustok.tenant.base_domains must contain at least one domain when resolution=subdomain",
+            ),
+            Self::FallbackRequiresHeaderMode => formatter.write_str(
+                "rustok.tenant.fallback_mode=default_tenant is only valid with resolution=header",
+            ),
+            Self::FallbackForbiddenInProduction => formatter.write_str(
+                "rustok.tenant.fallback_mode=default_tenant is forbidden in production",
+            ),
+        }
+    }
+}
+
+impl std::error::Error for TenantSettingsError {}
+
+impl TenantSettings {
+    pub fn validate(&self) -> Result<(), TenantSettingsError> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        axum::http::HeaderName::from_bytes(self.header_name.as_bytes())
+            .map_err(|_| TenantSettingsError::InvalidHeaderName(self.header_name.clone()))?;
+
+        if self.resolution == TenantResolutionMode::Subdomain && self.base_domains.is_empty() {
+            return Err(TenantSettingsError::MissingSubdomainBaseDomain);
+        }
+
+        if self.fallback_mode == TenantFallbackMode::DefaultTenant
+            && self.resolution != TenantResolutionMode::Header
+        {
+            return Err(TenantSettingsError::FallbackRequiresHeaderMode);
+        }
+
+        Ok(())
+    }
+
+    pub fn validate_for_environment(&self, production: bool) -> Result<(), TenantSettingsError> {
+        self.validate()?;
+        if self.enabled
+            && production
+            && self.fallback_mode == TenantFallbackMode::DefaultTenant
+        {
+            return Err(TenantSettingsError::FallbackForbiddenInProduction);
+        }
+        Ok(())
+    }
+}
+
 pub use rustok_build::BuildRuntimeMode as RuntimeHostMode;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -449,7 +539,7 @@ impl Default for TenantSettings {
     fn default() -> Self {
         Self {
             enabled: true,
-            resolution: default_resolution(),
+            resolution: TenantResolutionMode::Header,
             header_name: default_header_name(),
             default_id: default_tenant_id(),
             fallback_mode: TenantFallbackMode::Disabled,
@@ -619,6 +709,12 @@ impl RustokSettings {
             .filter(|value| !value.is_empty())
             .collect();
 
+        parsed
+            .tenant
+            .base_domains
+            .sort_by_key(|domain| std::cmp::Reverse(domain.len()));
+        parsed.tenant.base_domains.dedup();
+
         for base_domain in &parsed.tenant.base_domains {
             TenantIdentifierValidator::validate_host(base_domain).map_err(|error| {
                 serde_json::Error::io(std::io::Error::new(
@@ -627,6 +723,16 @@ impl RustokSettings {
                 ))
             })?;
         }
+
+        parsed
+            .tenant
+            .validate_for_environment(is_production_environment())
+            .map_err(|error| {
+                serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    error.to_string(),
+                ))
+            })?;
 
         for cidr in &parsed.runtime.request_trust.trusted_proxy_cidrs {
             IpNet::from_str(cidr.trim()).map_err(|error| {
@@ -987,10 +1093,6 @@ fn default_tenant_id() -> Uuid {
     DEFAULT_TENANT_ID
 }
 
-fn default_resolution() -> String {
-    "header".to_string()
-}
-
 fn default_header_name() -> String {
     "X-Tenant-ID".to_string()
 }
@@ -1191,7 +1293,7 @@ fn email_delivery_is_disabled(settings: &EmailSettings) -> bool {
 }
 
 fn is_production_environment() -> bool {
-    ["RUST_ENV", "APP_ENV"].iter().any(|key| {
+    ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"].iter().any(|key| {
         std::env::var(key)
             .map(|value| {
                 matches!(
@@ -1218,7 +1320,8 @@ fn email_disabled_production_override_enabled() -> bool {
 mod tests {
     use super::{
         BuildDeploymentBackendKind, EmailProvider, EventTransportKind, GuardrailRolloutMode,
-        RateLimitBackendKind, RelayTargetKind, RustokSettings,
+        RateLimitBackendKind, RelayTargetKind, RustokSettings, TenantFallbackMode,
+        TenantResolutionMode, TenantSettingsError,
     };
     use std::sync::{Mutex, OnceLock};
 
@@ -1931,4 +2034,45 @@ mod tests {
         let settings = RustokSettings::from_settings(&Some(raw)).expect("redis settings parse");
         assert_eq!(settings.rate_limit.backend, RateLimitBackendKind::Redis);
     }
+    #[test]
+    fn tenant_resolution_mode_is_deserialized_strictly() {
+        let raw = serde_json::json!({
+            "rustok": { "tenant": { "resolution": "automatic" } }
+        });
+        let error = RustokSettings::from_settings(&Some(raw)).expect_err("unknown mode");
+        assert!(error.to_string().contains("unknown variant"));
+    }
+
+    #[test]
+    fn tenant_policy_rejects_invalid_fallback_combination() {
+        let mut settings = RustokSettings::default();
+        settings.tenant.resolution = TenantResolutionMode::Host;
+        settings.tenant.fallback_mode = TenantFallbackMode::DefaultTenant;
+        assert_eq!(
+            settings.tenant.validate(),
+            Err(TenantSettingsError::FallbackRequiresHeaderMode)
+        );
+    }
+
+    #[test]
+    fn tenant_policy_rejects_development_fallback_in_production() {
+        let mut settings = RustokSettings::default();
+        settings.tenant.fallback_mode = TenantFallbackMode::DefaultTenant;
+        assert_eq!(
+            settings.tenant.validate_for_environment(true),
+            Err(TenantSettingsError::FallbackForbiddenInProduction)
+        );
+    }
+
+    #[test]
+    fn tenant_policy_requires_subdomain_base_domains() {
+        let mut settings = RustokSettings::default();
+        settings.tenant.resolution = TenantResolutionMode::Subdomain;
+        settings.tenant.base_domains.clear();
+        assert_eq!(
+            settings.tenant.validate(),
+            Err(TenantSettingsError::MissingSubdomainBaseDomain)
+        );
+    }
+
 }

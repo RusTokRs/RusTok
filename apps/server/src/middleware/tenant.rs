@@ -9,7 +9,6 @@ use rustok_cache::{
     CacheEnvelope, CacheKeyBuilder as CanonicalCacheKeyBuilder, CacheLoadPolicy, CacheLoadSource,
     CacheService, CacheTtlPolicy, NegativeCachePolicy,
 };
-use rustok_core::tenant_validation::TenantIdentifierValidator;
 use rustok_core::{CacheBackend, Error as CoreError};
 use rustok_tenant::{
     PortActor, PortContext, PortError, PortErrorKind, TenantReadPort, TenantReadProjection,
@@ -20,12 +19,12 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use crate::common::{
-    extract_effective_host, peer_ip_from_extensions,
-    settings::{RustokSettings, TenantFallbackMode},
-};
 use crate::context::{TenantContext, TenantContextExtension};
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use super::tenant_resolution::{
+    resolve_request, tenant_route_scope, ResolvedTenantIdentifier, TenantIdentifierKind,
+    TenantResolutionSource, TenantResolutionSourceExtension, TenantRouteScope,
+};
 
 const TENANT_CACHE_VERSION: &str = "v2";
 const TENANT_CONTEXT_SCHEMA_VERSION: u32 = 1;
@@ -39,20 +38,6 @@ const TENANT_CACHE_LOADER_TIMEOUT: Duration = Duration::from_secs(10);
 const TENANT_CACHE_JITTER_PERCENT: u8 = 10;
 #[cfg(feature = "redis-cache")]
 const TENANT_CACHE_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
-
-#[derive(Debug, Clone, Copy)]
-pub enum TenantIdentifierKind {
-    Uuid,
-    Slug,
-    Host,
-}
-
-#[derive(Debug, Clone)]
-pub struct ResolvedTenantIdentifier {
-    pub value: String,
-    pub kind: TenantIdentifierKind,
-    pub uuid: Uuid,
-}
 
 #[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize)]
 enum CachedTenantMiss {
@@ -93,10 +78,10 @@ fn tenant_context_from_projection(
 }
 
 fn tenant_read_request(identifier: &ResolvedTenantIdentifier) -> TenantReadRequest {
-    let selector = match identifier.kind {
-        TenantIdentifierKind::Uuid => TenantReadSelector::Id(identifier.uuid),
-        TenantIdentifierKind::Slug => TenantReadSelector::Slug(identifier.value.clone()),
-        TenantIdentifierKind::Host => TenantReadSelector::Domain(identifier.value.clone()),
+    let selector = match identifier {
+        ResolvedTenantIdentifier::Uuid(value) => TenantReadSelector::Id(*value),
+        ResolvedTenantIdentifier::Slug(value) => TenantReadSelector::Slug(value.clone()),
+        ResolvedTenantIdentifier::Host(value) => TenantReadSelector::Domain(value.clone()),
     };
 
     TenantReadRequest {
@@ -106,14 +91,15 @@ fn tenant_read_request(identifier: &ResolvedTenantIdentifier) -> TenantReadReque
 }
 
 fn tenant_read_context(identifier: &ResolvedTenantIdentifier) -> PortContext {
+    let identity = identifier.value();
     PortContext::new(
-        identifier.uuid.to_string(),
+        identity.clone(),
         PortActor::service("rustok-server.tenant-resolver"),
         "und",
         format!(
             "tenant-resolver:{}:{}",
-            identifier.kind.as_str(),
-            identifier.value
+            identifier.kind().as_str(),
+            identity
         ),
     )
     .with_deadline(TENANT_CACHE_LOADER_TIMEOUT)
@@ -192,16 +178,6 @@ fn normalize_identifier_value(kind: TenantIdentifierKind, value: &str) -> String
     match kind {
         TenantIdentifierKind::Host => value.to_lowercase(),
         _ => value.to_string(),
-    }
-}
-
-impl TenantIdentifierKind {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            TenantIdentifierKind::Uuid => "uuid",
-            TenantIdentifierKind::Slug => "slug",
-            TenantIdentifierKind::Host => "host",
-        }
     }
 }
 
@@ -407,7 +383,10 @@ impl TenantCacheInfrastructure {
                 Arc::clone(&self.tenant_negative_cache),
                 cache_key,
                 reason,
-                current_unix_ms(),
+                current_unix_ms().map_err(|error| {
+                    tracing::error!(%error, "Tenant negative cache timestamp creation failed");
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?,
                 None,
                 &self.negative_policy,
             )
@@ -442,7 +421,11 @@ impl TenantCacheInfrastructure {
                 self.load_policy.clone(),
                 || async move {
                     let context = loader().await?;
-                    let generated_at = current_unix_ms();
+                    let generated_at = current_unix_ms().map_err(|error| {
+                        CoreError::Cache(format!(
+                            "tenant cache timestamp creation failed: {error}"
+                        ))
+                    })?;
                     CacheEnvelope::new(TENANT_CONTEXT_SCHEMA_VERSION, generated_at, context)
                         .and_then(|envelope| {
                             envelope.with_expirations(
@@ -498,31 +481,62 @@ pub async fn resolve(
     mut req: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    if should_bypass_tenant_resolution(req.uri().path()) {
-        return Ok(next.run(req).await);
+    match tenant_route_scope(req.uri().path()) {
+        TenantRouteScope::TenantBound => {}
+        TenantRouteScope::GlobalOperator | TenantRouteScope::SelfResolvingHandshake => {
+            return Ok(next.run(req).await);
+        }
     }
 
     let settings = ctx.settings();
-    let identifier = resolve_identifier(&req, settings)?;
+    let resolution = resolve_request(&req, settings).map_err(|error| {
+        tracing::warn!(
+            path = req.uri().path(),
+            error = %error,
+            "Tenant resolution failed"
+        );
+        error.status_code()
+    })?;
 
+    rustok_telemetry::metrics::record_cache_operation(
+        "tenant_resolution",
+        "resolve",
+        resolution.source.as_str(),
+    );
+    if resolution.source == TenantResolutionSource::DevelopmentFallback {
+        rustok_telemetry::metrics::record_cache_operation(
+            "tenant_resolution",
+            "fallback",
+            "default_tenant",
+        );
+        tracing::warn!(
+            path = req.uri().path(),
+            header_name = %settings.tenant.header_name,
+            tenant_id = %settings.tenant.default_id,
+            "Using explicitly configured development default-tenant fallback"
+        );
+    }
+
+    let identifier = &resolution.identifier;
     let Some(infra) = tenant_infra(&ctx) else {
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     };
 
+    let identifier_value = identifier.value();
     let cache_key = infra
         .key_builder
-        .kind_key(identifier.kind, &identifier.value);
+        .kind_key(identifier.kind(), &identifier_value);
     let negative_key = infra
         .key_builder
-        .kind_negative_key(identifier.kind, &identifier.value);
+        .kind_negative_key(identifier.kind(), &identifier_value);
 
     if let Some(reason) = infra.check_negative(&negative_key).await? {
         return Err(reason.status_code());
     }
 
     let tenant_service = TenantService::new(ctx.db_clone());
-    let tenant_request = tenant_read_request(&identifier);
-    let tenant_port_context = tenant_read_context(&identifier);
+    let tenant_request = tenant_read_request(identifier);
+    let tenant_port_context = tenant_read_context(identifier);
     let negative_key_clone = negative_key.clone();
     let infra_clone = infra.clone();
 
@@ -569,187 +583,10 @@ pub async fn resolve(
         })
         .await?;
 
+    req.extensions_mut()
+        .insert(TenantResolutionSourceExtension(resolution.source));
     req.extensions_mut().insert(TenantContextExtension(context));
     Ok(next.run(req).await)
-}
-
-fn should_bypass_tenant_resolution(path: &str) -> bool {
-    matches!(path, "/metrics" | "/api/openapi.json" | "/api/openapi.yaml")
-        || path == "/api/graphql/schema.graphql"
-        || path == "/api/graphql/ws"
-        || path == "/api/install"
-        || path.starts_with("/api/install/")
-        || path == "/v1/catalog"
-        || path.starts_with("/v1/catalog/")
-        || path == "/catalog"
-        || path.starts_with("/catalog/")
-        || path.starts_with("/health")
-}
-
-pub fn resolve_identifier(
-    req: &Request<Body>,
-    settings: &RustokSettings,
-) -> Result<ResolvedTenantIdentifier, StatusCode> {
-    if !settings.tenant.enabled {
-        return Ok(ResolvedTenantIdentifier {
-            value: settings.tenant.default_id.to_string(),
-            kind: TenantIdentifierKind::Uuid,
-            uuid: settings.tenant.default_id,
-        });
-    }
-
-    match settings.tenant.resolution.as_str() {
-        "header" => {
-            let primary_header_value = req
-                .headers()
-                .get(&settings.tenant.header_name)
-                .and_then(|value| value.to_str().ok());
-            let slug_header_value = (settings.tenant.header_name != "X-Tenant-Slug")
-                .then(|| req.headers().get("X-Tenant-Slug"))
-                .flatten()
-                .and_then(|value| value.to_str().ok());
-
-            let identifier = primary_header_value
-                .or(slug_header_value)
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty());
-
-            let identifier = match identifier {
-                Some(identifier) => identifier,
-                None if matches!(
-                    settings.tenant.fallback_mode,
-                    TenantFallbackMode::DefaultTenant
-                ) =>
-                {
-                    settings.tenant.default_id.to_string()
-                }
-                None => {
-                    tracing::warn!(
-                        header_name = %settings.tenant.header_name,
-                        "Missing tenant header in strict header resolution mode"
-                    );
-                    return Err(StatusCode::BAD_REQUEST);
-                }
-            };
-
-            classify_and_validate_identifier(&identifier).map_err(|error| {
-                tracing::warn!(
-                    identifier = %identifier,
-                    error = %error,
-                    "Invalid tenant identifier from header"
-                );
-                StatusCode::BAD_REQUEST
-            })
-        }
-        "host" | "domain" => {
-            let peer_ip = peer_ip_from_extensions(req.extensions());
-            let host =
-                extract_effective_host(req.headers(), peer_ip, &settings.runtime.request_trust)
-                    .ok_or(StatusCode::BAD_REQUEST)?;
-            let host_without_port = host.split(':').next().unwrap_or(host.as_str());
-
-            let validated_host = TenantIdentifierValidator::validate_host(host_without_port)
-                .map_err(|error| {
-                    tracing::warn!(
-                        host = %host_without_port,
-                        error = %error,
-                        "Invalid tenant hostname"
-                    );
-                    StatusCode::BAD_REQUEST
-                })?;
-
-            Ok(ResolvedTenantIdentifier {
-                value: validated_host,
-                kind: TenantIdentifierKind::Host,
-                uuid: settings.tenant.default_id,
-            })
-        }
-        "subdomain" => {
-            let peer_ip = peer_ip_from_extensions(req.extensions());
-            let host =
-                extract_effective_host(req.headers(), peer_ip, &settings.runtime.request_trust)
-                    .ok_or(StatusCode::BAD_REQUEST)?;
-            let host_without_port = host.split(':').next().unwrap_or(host.as_str());
-            let validated_host = TenantIdentifierValidator::validate_host(host_without_port)
-                .map_err(|error| {
-                    tracing::warn!(
-                        host = %host_without_port,
-                        error = %error,
-                        "Invalid tenant hostname"
-                    );
-                    StatusCode::BAD_REQUEST
-                })?;
-
-            let identifier = subdomain_identifier(&validated_host, &settings.tenant.base_domains)?;
-            classify_and_validate_identifier(&identifier).map_err(|error| {
-                tracing::warn!(
-                    host = %validated_host,
-                    identifier = %identifier,
-                    %error,
-                    "Invalid tenant subdomain identifier"
-                );
-                StatusCode::BAD_REQUEST
-            })
-        }
-        _ => Ok(ResolvedTenantIdentifier {
-            value: settings.tenant.default_id.to_string(),
-            kind: TenantIdentifierKind::Uuid,
-            uuid: settings.tenant.default_id,
-        }),
-    }
-}
-
-fn subdomain_identifier(host: &str, base_domains: &[String]) -> Result<String, StatusCode> {
-    for base_domain in base_domains {
-        if host == base_domain {
-            tracing::warn!(
-                host,
-                base_domain,
-                "Subdomain routing requires a tenant slug"
-            );
-            return Err(StatusCode::BAD_REQUEST);
-        }
-
-        let suffix = format!(".{base_domain}");
-        if let Some(candidate) = host.strip_suffix(&suffix) {
-            if candidate.is_empty() || candidate.contains('.') {
-                tracing::warn!(
-                    host,
-                    base_domain,
-                    "Invalid nested subdomain for tenant routing"
-                );
-                return Err(StatusCode::BAD_REQUEST);
-            }
-
-            return Ok(candidate.to_string());
-        }
-    }
-
-    tracing::warn!(
-        host,
-        "No configured base domain matched subdomain tenant resolution"
-    );
-    Err(StatusCode::NOT_FOUND)
-}
-
-fn classify_and_validate_identifier(
-    value: &str,
-) -> Result<ResolvedTenantIdentifier, rustok_core::tenant_validation::TenantValidationError> {
-    if let Ok(uuid) = TenantIdentifierValidator::validate_uuid(value) {
-        return Ok(ResolvedTenantIdentifier {
-            value: uuid.to_string(),
-            kind: TenantIdentifierKind::Uuid,
-            uuid,
-        });
-    }
-
-    let validated_slug = TenantIdentifierValidator::validate_slug(value)?;
-
-    Ok(ResolvedTenantIdentifier {
-        value: validated_slug,
-        kind: TenantIdentifierKind::Slug,
-        uuid: Uuid::nil(),
-    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -802,12 +639,15 @@ fn cache_envelope_error_to_core(error: rustok_cache::CacheEnvelopeError) -> Core
     CoreError::Cache(format!("tenant cache envelope error: {error}"))
 }
 
-fn current_unix_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
+fn current_unix_ms() -> Result<u64, std::time::SystemTimeError> {
+    unix_ms_at(SystemTime::now())
+}
+
+pub(crate) fn unix_ms_at(time: SystemTime) -> Result<u64, std::time::SystemTimeError> {
+    Ok(time
+        .duration_since(UNIX_EPOCH)?
         .as_millis()
-        .min(u128::from(u64::MAX)) as u64
+        .min(u128::from(u64::MAX)) as u64)
 }
 
 fn duration_millis_ceil(duration: Duration) -> u64 {

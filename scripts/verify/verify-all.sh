@@ -25,6 +25,7 @@ usage() {
     echo ""
     echo "Scripts (run individually):"
     echo "  tenant-isolation   Check tenant_id in queries, entities, migrations"
+    echo "  tenant-resolution-architecture  Verify typed tenant resolution ownership"
     echo "  unsafe-code        Check unwrap, panic, blocking ops, println, global state"
     echo "  rbac-coverage      Check RBAC extractors on handlers/resolvers"
     echo "  api-quality        Check GraphQL/REST quality, N+1, OpenAPI, parity"
@@ -65,6 +66,7 @@ done
 
 SCRIPTS=(
     "verify-tenant-isolation.sh:Tenant Isolation"
+    "verify-tenant-resolution-architecture.mjs:Tenant Resolution Architecture"
     "verify-unsafe-code.sh:Unsafe Code Patterns"
     "verify-rbac-coverage.sh:RBAC Coverage"
     "verify-api-quality.sh:API Quality (REST + GraphQL)"

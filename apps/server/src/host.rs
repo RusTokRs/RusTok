@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::{
     channels,
-    common::settings::{RustokSettings, TenantFallbackMode},
+    common::settings::RustokSettings,
     controllers,
     error::{Error, Result},
     middleware::security_headers::hsts_enabled,
@@ -73,7 +73,6 @@ pub async fn run() -> Result<()> {
     let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
         .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
     let production = is_production_environment();
-    validate_tenant_routing_settings(&rustok_settings, production)?;
     validate_https_deployment(production, hsts_enabled())?;
     let runtime_ctx = ServerRuntimeContext::new(db, rustok_settings.clone());
     let auth_config = crate::auth::auth_config_from_host_settings(
@@ -106,52 +105,6 @@ pub async fn run() -> Result<()> {
         .with_graceful_shutdown(shutdown_signal(runtime_ctx))
         .await
         .map_err(Error::Io)
-}
-
-fn validate_tenant_routing_settings(
-    settings: &RustokSettings,
-    production: bool,
-) -> Result<()> {
-    if !settings.tenant.enabled {
-        return Ok(());
-    }
-
-    match settings.tenant.resolution.as_str() {
-        "header" | "host" | "domain" | "subdomain" => {}
-        invalid => {
-            return Err(Error::BadRequest(format!(
-                "Invalid rustok.tenant.resolution `{invalid}`; expected `header`, `host`, `domain`, or `subdomain`"
-            )));
-        }
-    }
-
-    if settings.tenant.resolution == "subdomain" && settings.tenant.base_domains.is_empty() {
-        return Err(Error::BadRequest(
-            "rustok.tenant.base_domains must contain at least one domain when resolution=subdomain"
-                .to_string(),
-        ));
-    }
-
-    if matches!(
-        settings.tenant.fallback_mode,
-        TenantFallbackMode::DefaultTenant
-    ) {
-        if settings.tenant.resolution != "header" {
-            return Err(Error::BadRequest(
-                "rustok.tenant.fallback_mode=default_tenant is only valid with resolution=header"
-                    .to_string(),
-            ));
-        }
-
-        if production {
-            return Err(Error::BadRequest(
-                "rustok.tenant.fallback_mode=default_tenant is forbidden in production; use strict tenant identification"
-                    .to_string(),
-            ));
-        }
-    }
-
-    Ok(())
 }
 
 fn validate_https_deployment(production: bool, https_declared: bool) -> Result<()> {
@@ -246,7 +199,7 @@ fn jwt_secret_looks_like_placeholder(secret: &str) -> bool {
 }
 
 fn is_production_environment() -> bool {
-    ["RUST_ENV", "APP_ENV"].iter().any(|key| {
+    ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"].iter().any(|key| {
         std::env::var(key)
             .map(|value| {
                 matches!(
@@ -346,9 +299,9 @@ async fn shutdown_signal(runtime_ctx: ServerRuntimeContext) {
 mod tests {
     use super::{
         application_router, resolve_database_uri, validate_auth_deployment,
-        validate_https_deployment, validate_tenant_routing_settings,
+        validate_https_deployment,
     };
-    use crate::common::settings::{RuntimeHostMode, RustokSettings, TenantFallbackMode};
+    use crate::common::settings::RuntimeHostMode;
 
     #[test]
     fn registry_only_router_is_composable_without_domain_routes() {
@@ -374,55 +327,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn tenant_routing_rejects_unknown_resolution() {
-        let mut settings = RustokSettings::default();
-        settings.tenant.resolution = "automatic".to_string();
-
-        let error = validate_tenant_routing_settings(&settings, false)
-            .expect_err("unknown tenant resolution must fail closed");
-        assert!(error.to_string().contains("Invalid rustok.tenant.resolution"));
-    }
-
-    #[test]
-    fn tenant_routing_rejects_default_fallback_in_production() {
-        let mut settings = RustokSettings::default();
-        settings.tenant.resolution = "header".to_string();
-        settings.tenant.fallback_mode = TenantFallbackMode::DefaultTenant;
-
-        let error = validate_tenant_routing_settings(&settings, true)
-            .expect_err("production must not silently select the default tenant");
-        assert!(error.to_string().contains("forbidden in production"));
-    }
-
-    #[test]
-    fn tenant_routing_rejects_default_fallback_outside_header_mode() {
-        let mut settings = RustokSettings::default();
-        settings.tenant.resolution = "host".to_string();
-        settings.tenant.fallback_mode = TenantFallbackMode::DefaultTenant;
-
-        let error = validate_tenant_routing_settings(&settings, false)
-            .expect_err("fallback must only apply to header resolution");
-        assert!(error.to_string().contains("only valid with resolution=header"));
-    }
-
-    #[test]
-    fn tenant_routing_requires_base_domains_for_subdomain_mode() {
-        let mut settings = RustokSettings::default();
-        settings.tenant.resolution = "subdomain".to_string();
-        settings.tenant.base_domains.clear();
-
-        let error = validate_tenant_routing_settings(&settings, false)
-            .expect_err("subdomain routing without a base domain is ambiguous");
-        assert!(error.to_string().contains("base_domains"));
-    }
-
-    #[test]
-    fn tenant_routing_allows_strict_header_mode() {
-        let settings = RustokSettings::default();
-        validate_tenant_routing_settings(&settings, true)
-            .expect("strict header routing is valid in production");
-    }
 
     #[test]
     fn production_requires_explicit_https_declaration() {

@@ -8,7 +8,7 @@ use axum::{
 use rustok_cache::CacheService;
 use rustok_migrations::Migrator;
 use rustok_server::{
-    common::settings::RustokSettings, extractors::tenant::CurrentTenant, middleware::tenant,
+    common::settings::{RustokSettings, TenantResolutionMode}, extractors::tenant::CurrentTenant, middleware::tenant,
     services::server_runtime_context::ServerRuntimeContext,
 };
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
@@ -122,7 +122,7 @@ async fn insert_tenant(
 async fn header_resolution_resolves_active_tenant_context() {
     let mut settings = RustokSettings::default();
     settings.tenant.enabled = true;
-    settings.tenant.resolution = "header".to_string();
+    settings.tenant.resolution = TenantResolutionMode::Header;
 
     let (db, _runtime_ctx, app) = setup_tenant_router(settings).await;
     insert_tenant(&db, "resolver-header", None, true).await;
@@ -153,7 +153,7 @@ async fn header_resolution_resolves_active_tenant_context() {
 async fn host_resolution_resolves_tenant_by_domain() {
     let mut settings = RustokSettings::default();
     settings.tenant.enabled = true;
-    settings.tenant.resolution = "host".to_string();
+    settings.tenant.resolution = TenantResolutionMode::Host;
 
     let (db, _runtime_ctx, app) = setup_tenant_router(settings).await;
     insert_tenant(
@@ -190,7 +190,7 @@ async fn host_resolution_resolves_tenant_by_domain() {
 async fn subdomain_resolution_extracts_slug_and_resolves_tenant() {
     let mut settings = RustokSettings::default();
     settings.tenant.enabled = true;
-    settings.tenant.resolution = "subdomain".to_string();
+    settings.tenant.resolution = TenantResolutionMode::Subdomain;
     settings.tenant.base_domains = vec!["example.test".to_string()];
 
     let (db, _runtime_ctx, app) = setup_tenant_router(settings).await;
@@ -222,7 +222,7 @@ async fn subdomain_resolution_extracts_slug_and_resolves_tenant() {
 async fn resolver_returns_not_found_for_unknown_tenant() {
     let mut settings = RustokSettings::default();
     settings.tenant.enabled = true;
-    settings.tenant.resolution = "header".to_string();
+    settings.tenant.resolution = TenantResolutionMode::Header;
 
     let (_db, _runtime_ctx, app) = setup_tenant_router(settings).await;
 
@@ -245,7 +245,7 @@ async fn resolver_returns_not_found_for_unknown_tenant() {
 async fn resolver_returns_forbidden_for_inactive_tenant() {
     let mut settings = RustokSettings::default();
     settings.tenant.enabled = true;
-    settings.tenant.resolution = "header".to_string();
+    settings.tenant.resolution = TenantResolutionMode::Header;
 
     let (db, _runtime_ctx, app) = setup_tenant_router(settings).await;
     insert_tenant(&db, "resolver-disabled", None, false).await;
@@ -269,7 +269,7 @@ async fn resolver_returns_forbidden_for_inactive_tenant() {
 async fn slug_cache_invalidation_refreshes_deactivated_tenant_state() {
     let mut settings = RustokSettings::default();
     settings.tenant.enabled = true;
-    settings.tenant.resolution = "header".to_string();
+    settings.tenant.resolution = TenantResolutionMode::Header;
 
     let (db, runtime_ctx, app) = setup_tenant_router(settings).await;
     let tenant_model = insert_tenant(&db, "resolver-deactivate-cache", None, true).await;
@@ -303,7 +303,7 @@ async fn slug_cache_invalidation_refreshes_deactivated_tenant_state() {
 async fn slug_negative_cache_invalidation_allows_created_tenant_to_resolve() {
     let mut settings = RustokSettings::default();
     settings.tenant.enabled = true;
-    settings.tenant.resolution = "header".to_string();
+    settings.tenant.resolution = TenantResolutionMode::Header;
 
     let (db, runtime_ctx, app) = setup_tenant_router(settings).await;
 
@@ -333,7 +333,7 @@ async fn slug_negative_cache_invalidation_allows_created_tenant_to_resolve() {
 async fn host_cache_invalidation_refreshes_domain_change() {
     let mut settings = RustokSettings::default();
     settings.tenant.enabled = true;
-    settings.tenant.resolution = "host".to_string();
+    settings.tenant.resolution = TenantResolutionMode::Host;
 
     let (db, runtime_ctx, app) = setup_tenant_router(settings).await;
     let tenant_model = insert_tenant(
@@ -383,7 +383,7 @@ async fn host_cache_invalidation_refreshes_domain_change() {
 async fn uuid_cache_invalidation_refreshes_updated_tenant_state() {
     let mut settings = RustokSettings::default();
     settings.tenant.enabled = true;
-    settings.tenant.resolution = "header".to_string();
+    settings.tenant.resolution = TenantResolutionMode::Header;
 
     let (db, runtime_ctx, app) = setup_tenant_router(settings).await;
     let tenant_model = insert_tenant(&db, "resolver-uuid-cache", None, true).await;
