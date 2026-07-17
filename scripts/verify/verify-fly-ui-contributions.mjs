@@ -154,12 +154,19 @@ requireMarker(
   'contribution assembly must remain safe for Leptos owner context',
 );
 requireMarkers('pagesContributions', [
+  'pub const PAGES_BUILDER_CAPABILITIES',
+  'pub const PAGES_LANDING_BLOCK_CAPABILITIES',
   'pub fn pages_contribution_manifest()',
   'pub fn pages_landing_blocks_contribution()',
+  'pub fn pages_admin_contribution_policy()',
   'pub fn build_pages_admin_contribution_registry(',
   'FLY_BUILTIN_PROVIDER',
   'FLY_BUILTIN_PROVIDER_VERSION',
   'PAGES_LANDING_BLOCK_IDS',
+  '"preview"',
+  '"tree"',
+  '"properties"',
+  '"publish"',
   '"fly.hero"',
   '"fly.two_columns"',
   '"fly.feature_grid"',
@@ -168,17 +175,19 @@ requireMarkers('pagesContributions', [
   'renderers: Vec::new()',
   'property_editors: Vec::new()',
   'contributed_block_ids_exist_in_the_fly_registry',
+  'capability_constants_match_the_module_manifest',
   'storefront_surface_stays_empty_until_a_real_adapter_exists',
-], 'Pages Fly contribution manifest');
+], 'Pages Fly contribution manifest and policy');
 requireMarkers('pagesComposition', [
   'build_pages_admin_contribution_registry(',
-  'fn pages_contribution_policy()',
-  '"preview".to_string()',
-  '"properties".to_string()',
-  '"publish".to_string()',
-  '"tree".to_string()',
+  'pages_admin_contribution_policy()',
   '.with_contribution_assembly(contribution_assembly)',
 ], 'Pages generated contribution composition');
+rejectMarker(
+  'pagesComposition',
+  'fn pages_contribution_policy()',
+  'Pages composition must consume the centralized contribution policy',
+);
 for (const forbidden of [
   'leptos',
   'dioxus',
