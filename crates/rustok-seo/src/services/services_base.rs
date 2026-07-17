@@ -1,112 +1,44 @@
-mod bulk;
-mod cross_links;
-mod diagnostics;
-mod events;
-mod meta;
-mod redirects;
-mod robots;
-mod routing;
-mod schema_validation;
-mod sitemaps;
-mod targets;
-mod templates;
-
 use std::sync::Arc;
-use std::time::Duration;
 
-use moka::future::Cache;
-use once_cell::sync::Lazy;
+use chrono::{DateTime, Utc};
+use rustok_content::{ContentProjection, ContentReadPort, ContentReadRequest, ContentSelector};
+use rustok_core::ModuleRuntimeExtensions;
+use rustok_events::TransactionalEventBus;
+use rustok_media::ports::{MediaAssetReadPort, SeoMediaAssetReadProvider};
+use rustok_tenant::PortContext;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use rustok_api::normalize_locale_tag;
-use rustok_content::normalize_locale_code;
-use rustok_core::ModuleRuntimeExtensions;
-#[cfg(test)]
-use rustok_core::{MemoryTransport, RusToKModule};
-use rustok_media::MediaAssetReadPort;
-use rustok_outbox::TransactionalEventBus;
-use rustok_seo_targets::{
-    seo_target_registry_from_extensions, SeoTargetCapabilityKind, SeoTargetRegistry,
-    SeoTargetRegistryEntry, SeoTargetSlug,
+use crate::{
+    entity::tenant_module,
+    error::{SeoError, SeoResult},
+    model::{
+        SeoAlternateLink, SeoMeta, SeoMetaInput, SeoOpenGraph, SeoResolveRequest,
+        SeoResolveResponse, SeoRobots, SeoSettings, SeoSitemapEntry, SeoSitemapSettings,
+        SeoStructuredDataKind,
+    },
+    registry::{
+        built_in_target_registry, seo_target_registry_from_extensions, SeoTargetRegistry,
+    },
+    settings::SeoModuleSettings,
+    MODULE_SLUG,
 };
-use rustok_tenant::entities::tenant_module;
 
-use crate::dto::{SeoAlternateLink, SeoModuleSettings, SeoOpenGraph};
-use crate::entities::{self as seo_meta, meta_translation, seo_redirect};
-use crate::{SeoError, SeoResult};
-
-pub use rustok_blog::PostService;
-pub use rustok_pages::PageService;
-pub use rustok_product::CatalogService;
-
-const MODULE_SLUG: &str = "seo";
-const REDIRECT_CACHE_TTL_SECS: u64 = 30;
-const REDIRECT_CACHE_MAX_WEIGHT_BYTES: u64 = 8 * 1024 * 1024;
-const SITEMAP_CHUNK_SIZE: usize = 500;
-
-static REDIRECT_CACHE: Lazy<Cache<Uuid, Arc<Vec<seo_redirect::Model>>>> = Lazy::new(|| {
-    Cache::builder()
-        .time_to_live(Duration::from_secs(REDIRECT_CACHE_TTL_SECS))
-        .weigher(redirect_cache_entry_weight)
-        .max_capacity(REDIRECT_CACHE_MAX_WEIGHT_BYTES)
-        .build()
-});
-
-fn redirect_cache_entry_weight(
-    _tenant_id: &Uuid,
-    redirects: &Arc<Vec<seo_redirect::Model>>,
-) -> u32 {
-    let mut weight = std::mem::size_of::<Uuid>()
-        .saturating_add(std::mem::size_of::<Arc<Vec<seo_redirect::Model>>>())
-        .saturating_add(std::mem::size_of::<Vec<seo_redirect::Model>>());
-    for redirect in redirects.iter() {
-        weight = weight
-            .saturating_add(std::mem::size_of::<seo_redirect::Model>())
-            .saturating_add(redirect.match_type.len())
-            .saturating_add(redirect.source_pattern.len())
-            .saturating_add(redirect.target_url.len());
-    }
-    weight.clamp(1, u32::MAX as usize) as u32
-}
-
-#[derive(Clone)]
-pub struct SeoService {
-    db: DatabaseConnection,
-    event_bus: TransactionalEventBus,
-    registry: Arc<SeoTargetRegistry>,
-    media_asset_read_port: Option<Arc<dyn MediaAssetReadPort>>,
-}
-
-#[derive(Clone)]
-pub struct SeoMediaAssetReadProvider {
-    port: Arc<dyn MediaAssetReadPort>,
-}
-
-impl SeoMediaAssetReadProvider {
-    pub fn new(port: Arc<dyn MediaAssetReadPort>) -> Self {
-        Self { port }
-    }
-    fn port(&self) -> Arc<dyn MediaAssetReadPort> {
-        Arc::clone(&self.port)
-    }
-}
-
-#[derive(Clone)]
-struct LoadedMeta {
-    meta: seo_meta::Model,
-    translations: Vec<meta_translation::Model>,
-}
-
-#[derive(Clone)]
-struct TargetState {
-    target_kind: SeoTargetSlug,
+#[derive(Debug, Clone)]
+struct ResolvedSeoTarget {
+    tenant_id: Uuid,
+    target_type: String,
     target_id: Uuid,
-    requested_locale: Option<String>,
-    effective_locale: String,
+    route: String,
+    locale: String,
+    published_at: Option<DateTime<Utc>>,
     title: String,
     description: Option<String>,
-    canonical_path: String,
+    keywords: Vec<String>,
+    canonical_path: Option<String>,
+    image_asset_id: Option<Uuid>,
+    noindex: bool,
+    nofollow: bool,
     alternates: Vec<SeoAlternateLink>,
     open_graph: SeoOpenGraph,
     structured_data: serde_json::Value,
@@ -141,10 +73,11 @@ impl SeoService {
         let registry = seo_target_registry_from_extensions(extensions)
             .ok_or_else(|| SeoError::configuration("SEO target registry is not initialized"))?;
         let service = Self::new(db, event_bus, registry);
-        Ok(extensions
-            .get::<SeoMediaAssetReadProvider>()
-            .map(|provider| service.with_media_asset_read_port(provider.port()))
-            .unwrap_or(service))
+        if let Some(provider) = extensions.get::<SeoMediaAssetReadProvider>() {
+            Ok(service.with_media_asset_read_port(provider.port()))
+        } else {
+            Ok(service)
+        }
     }
 
     #[cfg(test)]
@@ -159,7 +92,7 @@ impl SeoService {
     pub(crate) fn new_memory(db: DatabaseConnection) -> Self {
         Self::with_builtin_registry(
             db,
-            TransactionalEventBus::new(Arc::new(MemoryTransport::new())),
+            TransactionalEventBus::new(Arc::new(rustok_events::MemoryTransport::new())),
         )
     }
 
@@ -179,167 +112,178 @@ impl SeoService {
             return Ok(SeoModuleSettings::default());
         };
 
-        Ok(Self::normalize_settings(parse_persisted_settings(
-            module.settings,
-        )?))
+        SeoModuleSettings::from_json(module.settings)
     }
 
-    pub fn normalize_settings(mut settings: SeoModuleSettings) -> SeoModuleSettings {
-        settings.default_robots = robots::normalize_robots(settings.default_robots.as_slice());
-        settings.allowed_redirect_hosts =
-            redirects::normalize_hosts(settings.allowed_redirect_hosts.as_slice());
-        settings.allowed_canonical_hosts =
-            redirects::normalize_hosts(settings.allowed_canonical_hosts.as_slice());
-        settings.x_default_locale = settings
-            .x_default_locale
-            .as_deref()
-            .and_then(normalize_locale_tag);
-        settings.template_defaults = templates::normalize_rule_set(settings.template_defaults);
-        settings.template_overrides = settings
-            .template_overrides
-            .into_iter()
-            .filter_map(|(slug, rules)| {
-                let normalized_slug = slug.trim().to_ascii_lowercase();
-                if normalized_slug.is_empty() {
-                    return None;
-                }
-                Some((normalized_slug, templates::normalize_rule_set(rules)))
-            })
-            .collect();
-        settings.sitemap_submission_endpoints = sitemaps::normalize_sitemap_submission_endpoints(
-            settings.sitemap_submission_endpoints.as_slice(),
-        );
-        settings
+    pub async fn resolve(&self, request: SeoResolveRequest) -> SeoResult<SeoResolveResponse> {
+        let settings = self.load_settings(request.tenant_id).await?;
+        let target = self.resolve_target(&request, &settings).await?;
+        let meta = self
+            .load_target_meta(request.tenant_id, &request.target_type, request.target_id)
+            .await?;
+        self.build_response(target, meta, settings).await
     }
 
-    pub fn target_registry_entries(
+    pub async fn save_meta(
         &self,
-        capability: Option<SeoTargetCapabilityKind>,
-    ) -> Vec<SeoTargetRegistryEntry> {
-        match capability {
-            Some(capability) => self.registry.entries_with_capability(capability),
-            None => self.registry.entries(),
+        tenant_id: Uuid,
+        target_type: &str,
+        target_id: Uuid,
+        input: SeoMetaInput,
+    ) -> SeoResult<SeoMeta> {
+        crate::persistence::save_meta(&self.db, tenant_id, target_type, target_id, input).await
+    }
+
+    pub async fn sitemap_entries(
+        &self,
+        tenant_id: Uuid,
+        settings: &SeoSitemapSettings,
+    ) -> SeoResult<Vec<SeoSitemapEntry>> {
+        let mut entries = Vec::new();
+        for target in self.registry.targets() {
+            let mut target_entries = target.sitemap_entries(tenant_id, settings).await?;
+            entries.append(&mut target_entries);
         }
-    }
-}
-
-fn parse_persisted_settings(value: serde_json::Value) -> SeoResult<SeoModuleSettings> {
-    if !value.is_object() {
-        return Err(SeoError::configuration(
-            "persisted SEO settings must be a JSON object",
-        ));
+        entries.sort_by(|left, right| left.location.cmp(&right.location));
+        entries.dedup_by(|left, right| left.location == right.location);
+        Ok(entries)
     }
 
-    serde_json::from_value(value).map_err(|error| {
-        SeoError::configuration(format!("invalid persisted SEO settings: {error}"))
-    })
-}
-
-#[cfg(test)]
-fn built_in_target_registry() -> Arc<SeoTargetRegistry> {
-    let mut extensions = ModuleRuntimeExtensions::default();
-    rustok_pages::PagesModule.register_runtime_extensions(&mut extensions);
-    rustok_product::ProductModule.register_runtime_extensions(&mut extensions);
-    rustok_blog::BlogModule.register_runtime_extensions(&mut extensions);
-    rustok_forum::ForumModule.register_runtime_extensions(&mut extensions);
-    seo_target_registry_from_extensions(&extensions)
-        .unwrap_or_else(|| Arc::new(SeoTargetRegistry::default()))
-}
-
-pub(super) fn trimmed_option(value: Option<String>) -> Option<String> {
-    value
-        .map(|item| item.trim().to_string())
-        .filter(|item| !item.is_empty())
-}
-
-pub(super) fn normalize_effective_locale(locale: &str, fallback_locale: &str) -> SeoResult<String> {
-    normalize_locale_tag(locale)
-        .or_else(|| normalize_locale_code(locale))
-        .or_else(|| normalize_locale_tag(fallback_locale))
-        .ok_or_else(|| SeoError::validation("invalid locale"))
-}
-
-pub(super) fn normalize_route(route: &str) -> SeoResult<String> {
-    let route = route.trim();
-    if route.is_empty() {
-        return Err(SeoError::validation("route must not be empty"));
-    }
-    if !route.starts_with('/') {
-        return Err(SeoError::validation("route must start with `/`"));
-    }
-    if route.chars().any(char::is_whitespace) {
-        return Err(SeoError::validation("route must not contain whitespace"));
-    }
-    Ok(route.to_string())
-}
-
-#[cfg(test)]
-mod settings_tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn persisted_settings_accept_valid_payload() {
-        let settings = parse_persisted_settings(json!({
-            "default_robots": ["index", "follow"],
-            "sitemap_enabled": false
-        }))
-        .expect("valid settings should load");
-
-        assert_eq!(settings.default_robots, vec!["index", "follow"]);
-        assert!(!settings.sitemap_enabled);
+    async fn resolve_target(
+        &self,
+        request: &SeoResolveRequest,
+        settings: &SeoModuleSettings,
+    ) -> SeoResult<ResolvedSeoTarget> {
+        let target = self
+            .registry
+            .target(&request.target_type)
+            .ok_or_else(|| SeoError::not_found("SEO target resolver is not registered"))?;
+        let projection = target
+            .resolve(
+                PortContext::system(request.tenant_id.to_string()),
+                ContentReadRequest {
+                    selector: ContentSelector::Id(request.target_id),
+                    include_unpublished: request.include_unpublished,
+                },
+            )
+            .await?;
+        self.target_from_projection(request, settings, projection).await
     }
 
-    #[test]
-    fn persisted_settings_reject_malformed_field_types() {
-        let error = parse_persisted_settings(json!({
-            "sitemap_enabled": "yes"
-        }))
-        .expect_err("invalid settings must not silently fall back to defaults");
-
-        assert!(error.to_string().contains("invalid persisted SEO settings"));
-        assert!(error.to_string().contains("sitemap_enabled"));
+    async fn target_from_projection(
+        &self,
+        request: &SeoResolveRequest,
+        settings: &SeoModuleSettings,
+        projection: ContentProjection,
+    ) -> SeoResult<ResolvedSeoTarget> {
+        let route = projection
+            .route
+            .clone()
+            .unwrap_or_else(|| format!("/{}/{}", request.target_type, request.target_id));
+        let image_asset_id = projection.image_asset_id;
+        let image_url = if let (Some(port), Some(asset_id)) =
+            (self.media_asset_read_port.as_ref(), image_asset_id)
+        {
+            port.read_asset_url(
+                PortContext::system(request.tenant_id.to_string()),
+                asset_id,
+            )
+            .await?
+        } else {
+            None
+        };
+        let mut open_graph = SeoOpenGraph::default();
+        open_graph.image = image_url;
+        Ok(ResolvedSeoTarget {
+            tenant_id: request.tenant_id,
+            target_type: request.target_type.clone(),
+            target_id: request.target_id,
+            route,
+            locale: projection.locale,
+            published_at: projection.published_at,
+            title: projection.title,
+            description: projection.description,
+            keywords: projection.keywords,
+            canonical_path: projection.canonical_path,
+            image_asset_id,
+            noindex: projection.noindex,
+            nofollow: projection.nofollow,
+            alternates: projection.alternates,
+            open_graph,
+            structured_data: projection.structured_data,
+            fallback_source: projection.source,
+            template_fields: projection.template_fields,
+        })
     }
 
-    #[test]
-    fn persisted_settings_reject_non_object_payload() {
-        let error = parse_persisted_settings(json!(["index", "follow"]))
-            .expect_err("settings root must remain a JSON object");
-
-        assert!(error.to_string().contains("must be a JSON object"));
+    async fn load_target_meta(
+        &self,
+        tenant_id: Uuid,
+        target_type: &str,
+        target_id: Uuid,
+    ) -> SeoResult<Option<SeoMeta>> {
+        crate::persistence::find_meta(&self.db, tenant_id, target_type, target_id).await
     }
-}
 
-#[cfg(test)]
-mod cache_weight_tests {
-    use super::*;
-    use chrono::Utc;
+    async fn build_response(
+        &self,
+        target: ResolvedSeoTarget,
+        meta: Option<SeoMeta>,
+        settings: SeoModuleSettings,
+    ) -> SeoResult<SeoResolveResponse> {
+        let title = meta
+            .as_ref()
+            .and_then(|value| value.title.clone())
+            .unwrap_or_else(|| target.title.clone());
+        let description = meta
+            .as_ref()
+            .and_then(|value| value.description.clone())
+            .or_else(|| target.description.clone());
+        let keywords = meta
+            .as_ref()
+            .map(|value| value.keywords.clone())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| target.keywords.clone());
+        let canonical_path = meta
+            .as_ref()
+            .and_then(|value| value.canonical_path.clone())
+            .or_else(|| target.canonical_path.clone())
+            .unwrap_or_else(|| target.route.clone());
+        let canonical_url = settings.canonical_url(&canonical_path);
+        let robots = SeoRobots {
+            noindex: meta.as_ref().map(|value| value.noindex).unwrap_or(target.noindex),
+            nofollow: meta
+                .as_ref()
+                .map(|value| value.nofollow)
+                .unwrap_or(target.nofollow),
+        };
+        let structured_data = self.structured_data(&target, &settings);
+        Ok(SeoResolveResponse {
+            title,
+            description,
+            keywords,
+            canonical_url,
+            robots,
+            alternates: target.alternates,
+            open_graph: target.open_graph,
+            structured_data,
+            fallback_source: target.fallback_source,
+        })
+    }
 
-    fn redirect(source_pattern: String) -> seo_redirect::Model {
-        let now = Utc::now().fixed_offset();
-        seo_redirect::Model {
-            id: Uuid::new_v4(),
-            tenant_id: Uuid::new_v4(),
-            match_type: "exact".to_string(),
-            source_pattern,
-            target_url: "/target".to_string(),
-            status_code: 301,
-            expires_at: None,
-            is_active: true,
-            created_at: now,
-            updated_at: now,
+    fn structured_data(
+        &self,
+        target: &ResolvedSeoTarget,
+        settings: &SeoModuleSettings,
+    ) -> serde_json::Value {
+        if target.structured_data != serde_json::Value::Null {
+            return target.structured_data.clone();
         }
-    }
-
-    #[test]
-    fn redirect_cache_weight_accounts_for_dynamic_routes() {
-        let tenant_id = Uuid::new_v4();
-        let short = Arc::new(vec![redirect("/a".to_string())]);
-        let long = Arc::new(vec![redirect(format!("/{}", "x".repeat(2_048)))]);
-
-        assert!(
-            redirect_cache_entry_weight(&tenant_id, &long)
-                > redirect_cache_entry_weight(&tenant_id, &short)
-        );
+        serde_json::json!({
+            "@context": "https://schema.org",
+            "@type": SeoStructuredDataKind::WebPage.as_str(),
+            "url": settings.canonical_url(&target.route),
+            "name": target.title,
+        })
     }
 }
