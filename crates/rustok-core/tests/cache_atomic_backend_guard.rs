@@ -60,6 +60,7 @@ fn shared_redis_backend_connects_lazily_and_keeps_startup_outage_visible() {
     assert!(shared.contains(
         "configured_redis_outage_remains_visible_and_local_writes_stay_bounded"
     ));
+    assert!(cache_lib.contains("#[cfg(all(test, feature = \"redis-cache\"))]"));
     assert!(cache_lib.contains("mod startup_recovery_tests;"));
     assert!(recovery.contains(
         "raw_backend_created_during_startup_outage_connects_after_redis_recovers"
