@@ -1,1 +1,1 @@
-Retry the staged tenant runtime profile, dedicated telemetry and cross-transport isolation coverage after restoring the exact SEO source blob.
+Run the final tenant hardening completion with pull-request-visible diagnostics.
