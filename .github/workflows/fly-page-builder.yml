@@ -67,3 +67,6 @@ jobs:
 
       - name: Verify internal links end to end
         run: node scripts/verify/verify-fly-internal-links.mjs
+
+      - name: Verify actions forms and fields end to end
+        run: node scripts/verify/verify-fly-actions-forms.mjs
