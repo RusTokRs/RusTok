@@ -4,7 +4,7 @@ use fly::{
     RuntimePublishGateEvaluation, RuntimePublishGatePolicy, TraitSchemaRegistry,
     ValidationSeverity,
 };
-use fly_ui::UiIntent;
+use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use rustok_page_builder::dto::{PageBuilderCapabilityRequest, PageBuilderCapabilityResponse};
@@ -17,6 +17,7 @@ pub struct AdminEditorRuntime {
     pub last_error: RwSignal<Option<String>>,
     pub last_announcement: RwSignal<Option<String>>,
     pub trait_schemas: Arc<TraitSchemaRegistry>,
+    pub editor_capability_evaluation: Option<Arc<EditorCapabilityEvaluation>>,
     pub runtime_context: RwSignal<Value>,
     pub runtime_context_configured: RwSignal<bool>,
     pub runtime_scenarios: Arc<Vec<RuntimeContextScenario>>,
@@ -42,6 +43,7 @@ impl AdminEditorRuntime {
             last_error: RwSignal::new(None),
             last_announcement: RwSignal::new(None),
             trait_schemas: Arc::new(TraitSchemaRegistry::with_builtins()),
+            editor_capability_evaluation: None,
             runtime_context: RwSignal::new(Value::Object(Map::new())),
             runtime_context_configured: RwSignal::new(false),
             runtime_scenarios: Arc::new(Vec::new()),
@@ -58,6 +60,19 @@ impl AdminEditorRuntime {
     pub fn with_trait_schemas(mut self, trait_schemas: Arc<TraitSchemaRegistry>) -> Self {
         self.trait_schemas = trait_schemas;
         self
+    }
+
+    pub fn with_editor_capability_evaluation(
+        mut self,
+        evaluation: Arc<EditorCapabilityEvaluation>,
+    ) -> Self {
+        self.editor_capability_evaluation = Some(evaluation);
+        self
+    }
+
+    pub fn capability_enabled(&self, capability: EditorCapability) -> bool {
+        self.controller
+            .with(|controller| controller.ui().state.capabilities.allows(capability))
     }
 
     pub fn with_runtime_context(mut self, runtime_context: Value) -> Self {
