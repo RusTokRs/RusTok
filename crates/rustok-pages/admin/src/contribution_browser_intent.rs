@@ -4,10 +4,10 @@ use crate::contributions::{
     build_pages_admin_contribution_registry, pages_admin_contribution_policy,
 };
 use fly_browser::BrowserIntentEnvelope;
-use fly_ui::{CapabilityState, PaletteBlockAccess};
+use fly_ui::{CapabilityState, EditorCapability, PaletteBlockAccess};
 use rustok_page_builder_admin::{
-    validate_browser_capability_access, validate_browser_palette_access,
-    BrowserIntentDispatchError, SsrDraftSessionStore,
+    browser_capability_denial, validate_browser_capability_access,
+    validate_browser_palette_access, BrowserIntentDispatchError, SsrDraftSessionStore,
 };
 
 pub fn pages_palette_block_access() -> PaletteBlockAccess {
@@ -142,7 +142,15 @@ mod tests {
             publish: false,
             ..CapabilityState::full()
         };
-        assert!(preflight_pages_intent(envelope("save", json!({})), capabilities).is_err());
+        let error = preflight_pages_intent(envelope("save", json!({})), capabilities)
+            .expect_err("publish capability denial");
+        let PagesBrowserIntentError::Dispatch(error) = error else {
+            panic!("expected browser dispatch capability denial");
+        };
+        assert_eq!(
+            browser_capability_denial(&error).map(|denial| denial.capability),
+            Some(EditorCapability::Publish)
+        );
         assert!(preflight_pages_intent(
             envelope("select", json!({ "component_id": "hero" })),
             capabilities,
