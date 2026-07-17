@@ -11,8 +11,10 @@ use axum::http::HeaderValue;
 /// - `Permissions-Policy` — disables unused browser features
 /// - `Strict-Transport-Security` — enforces HTTPS (only in production)
 ///
-/// Mounted globally in `app.rs::after_routes()` via `axum::middleware::from_fn`.
+/// Mounted globally in application router composition via `axum::middleware::from_fn`.
 use axum::{extract::Request, middleware::Next, response::Response};
+
+use super::csp_reports;
 
 /// Default CSP for API/server-only surfaces.
 const API_CSP: &str =
@@ -28,7 +30,8 @@ const UI_CSP: &str = "default-src 'self'; script-src 'self' 'unsafe-inline' 'uns
 /// Target UI policy used during migration. It intentionally omits all inline/eval
 /// allowances and plaintext connection schemes, but remains report-only until the
 /// SSR/bootstrap surfaces are nonce/hash compatible.
-const UI_CSP_REPORT_ONLY: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+const UI_CSP_REPORT_ONLY: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/security/csp-report; report-to rustok-csp";
+const REPORTING_ENDPOINTS: &str = "rustok-csp=\"/api/security/csp-report\"";
 
 /// HSTS: 1 year, include subdomains.
 /// Injected when `RUSTOK_HTTPS` explicitly declares an HTTPS deployment. The
@@ -37,7 +40,13 @@ const HSTS: &str = "max-age=31536000; includeSubDomains";
 
 pub async fn security_headers(request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
-    let mut response = next.run(request).await;
+    // This middleware is the outermost application layer, so the fixed report
+    // endpoint is handled before tenant/auth routing and never inherits a tenant.
+    let mut response = if csp_reports::is_report_request(&request) {
+        csp_reports::handle(request).await
+    } else {
+        next.run(request).await
+    };
     let headers = response.headers_mut();
 
     // Content-Security-Policy
@@ -52,6 +61,10 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
         headers.insert(
             "content-security-policy-report-only",
             HeaderValue::from_static(policy),
+        );
+        headers.insert(
+            "reporting-endpoints",
+            HeaderValue::from_static(REPORTING_ENDPOINTS),
         );
     }
 
@@ -126,7 +139,8 @@ fn select_report_only_csp(path: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_env_flag, select_csp, select_report_only_csp, API_CSP, UI_CSP, UI_CSP_REPORT_ONLY,
+        parse_env_flag, select_csp, select_report_only_csp, API_CSP, REPORTING_ENDPOINTS, UI_CSP,
+        UI_CSP_REPORT_ONLY,
     };
 
     #[test]
@@ -160,6 +174,12 @@ mod tests {
         assert!(!UI_CSP_REPORT_ONLY.contains(" http:"));
         assert!(!UI_CSP_REPORT_ONLY.contains(" ws:"));
         assert!(UI_CSP_REPORT_ONLY.contains("worker-src 'self' blob:"));
+        assert!(UI_CSP_REPORT_ONLY.contains("report-uri /api/security/csp-report"));
+        assert!(UI_CSP_REPORT_ONLY.contains("report-to rustok-csp"));
+        assert_eq!(
+            REPORTING_ENDPOINTS,
+            "rustok-csp=\"/api/security/csp-report\""
+        );
     }
 
     #[test]
