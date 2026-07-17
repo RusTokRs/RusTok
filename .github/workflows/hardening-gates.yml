@@ -1,0 +1,34 @@
+name: Hardening Gates
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  repository-hardening:
+    name: Repository Hardening
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Verify module manifest documentation parity
+        run: node scripts/verify/verify-module-manifest-docs-drift.mjs
+      - name: Verify security advisory exceptions
+        run: node scripts/verify/verify-advisory-exceptions.mjs
