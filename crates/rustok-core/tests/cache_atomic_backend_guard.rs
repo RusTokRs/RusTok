@@ -71,8 +71,20 @@ fn shared_redis_backend_connects_lazily_and_keeps_startup_outage_visible() {
 
 #[test]
 fn memory_only_cache_feature_matrix_remains_enforced() {
+    let cache_lib = include_str!("../../rustok-cache/src/lib.rs");
+    let shared = include_str!("../../rustok-cache/src/shared_backend.rs");
+    let weighted = include_str!("../../rustok-cache/src/weighted.rs");
     let workflow = include_str!("../../../.github/workflows/cache-feature-matrix.yml");
 
+    assert!(cache_lib.contains("#[cfg(feature = \"redis-cache\")]\nmod fallback;"));
+    assert!(cache_lib.contains("mod shared_backend;"));
+    assert!(!cache_lib.contains("include!(\"shared_backend.rs\")"));
+    assert!(shared.contains(
+        "#[cfg(feature = \"redis-cache\")]\nuse crate::fallback::DegradationAwareFallbackBackend;"
+    ));
+    assert!(weighted.contains(
+        "#[cfg(feature = \"redis-cache\")]\nuse crate::fallback::DegradationAwareFallbackBackend;"
+    ));
     assert!(workflow.contains("cargo check -p rustok-cache --lib --no-default-features"));
     assert!(workflow.contains("cargo test -p rustok-cache --lib --no-default-features"));
     assert!(workflow.contains(
