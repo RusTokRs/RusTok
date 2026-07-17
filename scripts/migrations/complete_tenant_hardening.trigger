@@ -1,1 +1,1 @@
-Run the final tenant hardening completion with pull-request-visible diagnostics.
+Start the observable tenant hardening completion through the registered Hardening Gates workflow.
