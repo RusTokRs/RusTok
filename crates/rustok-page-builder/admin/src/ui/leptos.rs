@@ -5,7 +5,10 @@ use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
 };
-use fly_ui::{CapabilityState, ContributionAssemblyResult};
+use fly_ui::{
+    CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation,
+    EditorCapabilityPolicy,
+};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
@@ -28,6 +31,7 @@ pub struct PageBuilderAdminHostContext {
     pub trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     pub contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
     pub editor_capabilities: Option<CapabilityState>,
+    pub editor_capability_evaluation: Option<Arc<EditorCapabilityEvaluation>>,
     pub runtime_context: Option<Value>,
     pub runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
@@ -45,6 +49,7 @@ impl PageBuilderAdminHostContext {
             trait_schemas: None,
             contribution_assembly: None,
             editor_capabilities: None,
+            editor_capability_evaluation: None,
             runtime_context: None,
             runtime_scenarios: None,
             runtime_publish_gate_policy: None,
@@ -75,6 +80,23 @@ impl PageBuilderAdminHostContext {
 
     pub fn with_editor_capabilities(mut self, capabilities: CapabilityState) -> Self {
         self.editor_capabilities = Some(capabilities.normalized());
+        self.editor_capability_evaluation = None;
+        self
+    }
+
+    pub fn with_editor_capability_policy(mut self, policy: EditorCapabilityPolicy) -> Self {
+        let evaluation = Arc::new(policy.evaluate_detailed());
+        self.editor_capabilities = Some(evaluation.effective);
+        self.editor_capability_evaluation = Some(evaluation);
+        self
+    }
+
+    pub fn with_editor_capability_evaluation(
+        mut self,
+        evaluation: Arc<EditorCapabilityEvaluation>,
+    ) -> Self {
+        self.editor_capabilities = Some(evaluation.effective);
+        self.editor_capability_evaluation = Some(evaluation);
         self
     }
 
@@ -146,6 +168,7 @@ pub fn PageBuilderAdmin() -> impl IntoView {
                 trait_schemas=context.trait_schemas
                 contribution_assembly=context.contribution_assembly
                 editor_capabilities=context.editor_capabilities
+                editor_capability_evaluation=context.editor_capability_evaluation
                 runtime_context=context.runtime_context
                 runtime_scenarios=context.runtime_scenarios
                 runtime_publish_gate_policy=context.runtime_publish_gate_policy
@@ -195,6 +218,7 @@ pub fn PageBuilderAdminWithController(
     trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     #[prop(optional)] contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
     #[prop(optional)] editor_capabilities: Option<CapabilityState>,
+    #[prop(optional)] editor_capability_evaluation: Option<Arc<EditorCapabilityEvaluation>>,
     runtime_context: Option<Value>,
     runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
@@ -222,6 +246,7 @@ pub fn PageBuilderAdminWithController(
                 trait_schemas
                 contribution_assembly
                 editor_capabilities
+                editor_capability_evaluation
                 runtime_context
                 runtime_scenarios
                 runtime_publish_gate_policy
