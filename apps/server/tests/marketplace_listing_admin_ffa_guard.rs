@@ -36,7 +36,7 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
         "MarketplaceListingAdminDetail",
         "MarketplaceListingAdminEvent",
         "MarketplaceListingAdminCommand",
-        "LegacySnapshot",
+        "legacy_snapshot",
         "has_unknown_attribution",
     ] {
         assert!(model.contains(marker), "listing admin model is missing {marker}");
