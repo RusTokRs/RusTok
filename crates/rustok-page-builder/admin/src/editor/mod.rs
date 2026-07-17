@@ -1,4 +1,5 @@
 mod admin_shell;
+mod asset_section;
 mod audit_panel;
 mod authoring;
 mod binding_panel;
@@ -10,12 +11,15 @@ mod context_compatibility_panel;
 mod context_contract_tools;
 mod context_dependency_panel;
 mod context_schema_panel;
+mod diagnostics_section;
 mod dynamic_runtime;
 mod isolated_canvas;
 mod modular_canvas;
 mod page_manager;
 mod palette_layers;
 mod properties_assets;
+mod properties_section;
+mod property_helpers;
 mod resize_handles;
 mod responsive_styles;
 mod runtime;
@@ -35,10 +39,12 @@ mod ssr_locale_coverage;
 mod ssr_locale_policy;
 mod ssr_localized_metadata;
 mod ssr_translations;
+mod style_section;
 mod toolbar;
 mod trait_panel;
 
 pub use admin_shell::AdminShell;
+pub(crate) use asset_section::AssetSection;
 pub(crate) use audit_panel::AuditPanel;
 pub use authoring::{
     CanvasComponentGeometry, LayerItemView, PaletteBlockView, SelectedComponentView,
@@ -49,19 +55,19 @@ pub(crate) use canvas_document::render_canvas_srcdoc_with_context;
 pub(crate) use canvas_protocol::decode_canvas_message;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use canvas_protocol::CanvasBridgeMessage;
-pub(crate) use capability_controls::{
-    capability_disabled, CapabilityFieldset, CapabilityPolicyPanel,
-};
+pub(crate) use capability_controls::{CapabilityFieldset, CapabilityPolicyPanel};
 pub(crate) use context_compatibility_panel::ContextCompatibilityPanel;
 pub(crate) use context_contract_tools::ContextContractToolsPanel;
 pub(crate) use context_dependency_panel::ContextDependencyPanel;
 pub(crate) use context_schema_panel::ContextSchemaPanel;
+pub(crate) use diagnostics_section::DiagnosticsSection;
 pub(crate) use dynamic_runtime::DynamicRuntimePanel;
 pub(crate) use isolated_canvas::IsolatedAuthoringCanvas;
 pub use modular_canvas::AdminCanvas;
 pub(crate) use page_manager::PageManagerPanel;
 pub(crate) use palette_layers::PaletteLayersPanel;
 pub(crate) use properties_assets::PropertiesAssetsPanel;
+pub(crate) use properties_section::PropertiesSection;
 pub(crate) use resize_handles::ResizeHandles;
 pub(crate) use responsive_styles::ResponsiveStylePanel;
 pub(crate) use runtime::AdminEditorRuntime;
@@ -91,5 +97,6 @@ pub(crate) use ssr_localized_metadata::{
     SsrLocalizedMetadataPanel, SsrLocalizedPageMetadataRequest,
 };
 pub(crate) use ssr_translations::SsrTranslationsPanel;
+pub(crate) use style_section::StyleSection;
 pub(crate) use toolbar::AuthoringToolbar;
 pub(crate) use trait_panel::TraitPanel;
