@@ -1,5 +1,6 @@
 name: Finalize current-only Page Builder API
 
+# One-time current-only cleanup runner.
 on:
   push:
     branches: [main]
