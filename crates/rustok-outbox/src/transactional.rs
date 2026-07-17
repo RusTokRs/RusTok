@@ -1,7 +1,9 @@
 use crate::transport::OutboxTransport;
 use rustok_core::events::EventTransport;
 use rustok_core::Result;
-use rustok_events::{DomainEvent, EventEnvelope, ValidateEvent};
+use rustok_events::{
+    ContractEventEnvelope, DomainEvent, EventContract, EventEnvelope, ValidateEvent,
+};
 use sea_orm::ConnectionTrait;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -53,13 +55,57 @@ impl TransactionalEventBus {
             }
             #[cfg(not(feature = "test-transport-fallback"))]
             {
-                return Err(rustok_core::Error::Validation(format!(
-                    "transactional event publishing requires OutboxTransport; configured transport reliability is {:?}",
-                    self.transport.reliability_level()
-                )));
+                return Err(transactional_transport_required(&*self.transport));
             }
         }
 
+        Ok(envelope_id)
+    }
+
+    /// Publishes a sealed typed event contract through the same owner transaction.
+    ///
+    /// Unlike the legacy root `DomainEvent` API, this supports module event families
+    /// without reopening a platform-wide enum. External crates cannot implement
+    /// `EventContract`, so arbitrary event names remain impossible.
+    pub async fn publish_contract_in_tx<C, E>(
+        &self,
+        txn: &C,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        event: E,
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+        E: EventContract,
+    {
+        self.publish_contract_in_tx_with_envelope_id(txn, tenant_id, actor_id, event)
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn publish_contract_in_tx_with_envelope_id<C, E>(
+        &self,
+        txn: &C,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        event: E,
+    ) -> Result<Uuid>
+    where
+        C: ConnectionTrait,
+        E: EventContract,
+    {
+        let event_type = event.event_type();
+        let envelope = ContractEventEnvelope::new(tenant_id, actor_id, event).map_err(|error| {
+            tracing::error!(event_type, error = %error, "Event contract encoding failed");
+            rustok_core::Error::Validation(format!("Event contract encoding failed: {error}"))
+        })?;
+        let envelope_id = envelope.id();
+        let outbox = self
+            .transport
+            .as_any()
+            .downcast_ref::<OutboxTransport>()
+            .ok_or_else(|| transactional_transport_required(&*self.transport))?;
+        outbox.write_contract_to_outbox(txn, envelope).await?;
         Ok(envelope_id)
     }
 
@@ -95,6 +141,13 @@ impl TransactionalEventBus {
         validate_event(&event)?;
         Ok(EventEnvelope::new(tenant_id, actor_id, event))
     }
+}
+
+fn transactional_transport_required(transport: &dyn EventTransport) -> rustok_core::Error {
+    rustok_core::Error::Validation(format!(
+        "transactional event publishing requires OutboxTransport; configured transport reliability is {:?}",
+        transport.reliability_level()
+    ))
 }
 
 fn validate_event(event: &DomainEvent) -> Result<()> {

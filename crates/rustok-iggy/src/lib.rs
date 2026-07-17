@@ -59,6 +59,7 @@
 
 pub mod config;
 pub mod consumer;
+pub mod contract_consumer;
 pub mod dlq;
 pub mod health;
 pub mod partitioning;
@@ -73,6 +74,7 @@ pub use config::{
     TopologyConfig,
 };
 pub use consumer::{ConsumedEvent, ConsumerGroup, ConsumerGroupManager, PersistentConsumerGroup};
+pub use contract_consumer::{ConsumedContractEvent, PersistentContractConsumerGroup};
 pub use dlq::{DlqEntry, DlqManager};
 pub use health::{health_check, HealthCheckResult, HealthStatus};
 pub use partitioning::{calculate_partition, partition_key};
