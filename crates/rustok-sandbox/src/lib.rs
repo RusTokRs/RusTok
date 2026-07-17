@@ -4,7 +4,9 @@ mod admission;
 mod capability;
 mod error;
 mod executor;
+mod harness;
 mod policy;
+mod rhai_binding;
 mod runtime;
 mod types;
 
@@ -23,7 +25,11 @@ pub use capability::{
 };
 pub use error::{SandboxError, SandboxResult};
 pub use executor::{ExecutorRegistry, SandboxExecutor};
+pub use harness::{FixtureCapabilityBroker, LocalSandboxHarness};
 pub use policy::{SandboxLimits, SandboxPolicy};
+pub use rhai_binding::{
+    RhaiBindingError, RhaiBindingInput, RhaiBindingOutput, RHAI_BINDING_VERSION,
+};
 pub use runtime::{ExecutionObserver, NoopExecutionObserver, SandboxRuntime};
 pub use types::{
     ExecutionMetrics, ExecutionPhase, ExecutionRecord, ExecutionStatus, SandboxCancellation,

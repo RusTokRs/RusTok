@@ -1,19 +1,102 @@
 use std::{
     collections::{HashMap, VecDeque},
-    sync::Arc,
+    sync::{Arc, Mutex as StdMutex},
 };
 
 use async_trait::async_trait;
+use jsonschema::{Draft, PatternOptions, Validator};
 use serde_json::Value;
 use thiserror::Error;
 use tokio::sync::Mutex;
 
-use rustok_sandbox::{SandboxContext, SandboxOutcome, SandboxPolicy, SandboxRuntime};
+use rustok_sandbox::{
+    RhaiBindingOutput, SandboxContext, SandboxOutcome, SandboxPolicy, SandboxRuntime,
+};
 
 use crate::{
     ArtifactBindingDispatch, ArtifactBindingExecutor, ArtifactBlobStore, ArtifactReleaseRef,
-    InstalledModuleArtifact, ModuleInstallationError, ModuleRuntimeBinding,
+    InstalledModuleArtifact, ModuleArtifactError, ModuleInstallationError, ModuleRuntimeBinding,
 };
+
+const MAX_RUNTIME_SCHEMA_VALIDATORS: usize = 128;
+const MAX_SCHEMA_REGEX_BYTES: usize = 64 * 1024;
+
+/// Bounded node-local cache of validators compiled solely from descriptor-bundled
+/// Draft 2020-12 schemas. It cannot resolve schemas through the filesystem or
+/// network because `jsonschema` is built without either resolver feature.
+struct ArtifactSchemaValidatorCache {
+    state: StdMutex<ArtifactSchemaValidatorCacheState>,
+}
+
+#[derive(Default)]
+struct ArtifactSchemaValidatorCacheState {
+    validators: HashMap<String, Arc<Validator>>,
+    lru: VecDeque<String>,
+}
+
+impl Default for ArtifactSchemaValidatorCache {
+    fn default() -> Self {
+        Self {
+            state: StdMutex::new(ArtifactSchemaValidatorCacheState::default()),
+        }
+    }
+}
+
+impl ArtifactSchemaValidatorCache {
+    fn get_or_compile(
+        &self,
+        schema_digest: &str,
+        schema: &Value,
+    ) -> Result<Arc<Validator>, ArtifactRuntimeError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| ArtifactRuntimeError::SchemaValidatorCachePoisoned)?;
+        if let Some(validator) = state.validators.get(schema_digest).cloned() {
+            state.lru.retain(|digest| digest != schema_digest);
+            state.lru.push_back(schema_digest.to_string());
+            return Ok(validator);
+        }
+        drop(state);
+
+        let validator = Arc::new(
+            jsonschema::options()
+                .with_draft(Draft::Draft202012)
+                .should_validate_formats(true)
+                .should_ignore_unknown_formats(false)
+                .with_pattern_options(
+                    PatternOptions::regex()
+                        .size_limit(MAX_SCHEMA_REGEX_BYTES)
+                        .dfa_size_limit(MAX_SCHEMA_REGEX_BYTES),
+                )
+                .build(schema)
+                .map_err(|_| ArtifactRuntimeError::SchemaCompilation {
+                    schema_digest: schema_digest.to_string(),
+                })?,
+        );
+
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| ArtifactRuntimeError::SchemaValidatorCachePoisoned)?;
+        if let Some(existing) = state.validators.get(schema_digest).cloned() {
+            state.lru.retain(|digest| digest != schema_digest);
+            state.lru.push_back(schema_digest.to_string());
+            return Ok(existing);
+        }
+        while state.validators.len() >= MAX_RUNTIME_SCHEMA_VALIDATORS {
+            let Some(oldest) = state.lru.pop_front() else {
+                break;
+            };
+            state.validators.remove(&oldest);
+        }
+        state
+            .validators
+            .insert(schema_digest.to_string(), Arc::clone(&validator));
+        state.lru.push_back(schema_digest.to_string());
+        Ok(validator)
+    }
+}
 
 /// Bounded node-local cache for already-admitted CAS blobs. It is not a source
 /// of truth: every hit is rehashed and any corrupt entry is discarded before a
@@ -93,6 +176,7 @@ where
 pub struct ArtifactRuntime<B> {
     blobs: B,
     sandbox: SandboxRuntime,
+    schema_validators: ArtifactSchemaValidatorCache,
 }
 
 impl<B> ArtifactRuntime<B>
@@ -100,22 +184,11 @@ where
     B: ArtifactBlobStore,
 {
     pub fn new(blobs: B, sandbox: SandboxRuntime) -> Self {
-        Self { blobs, sandbox }
-    }
-
-    pub async fn execute(
-        &self,
-        artifact: &InstalledModuleArtifact,
-        context: SandboxContext,
-        input: Value,
-        policy: SandboxPolicy,
-    ) -> Result<SandboxOutcome, ArtifactRuntimeError> {
-        let payload = self
-            .blobs
-            .get_verified(&artifact.descriptor.artifact_digest)
-            .await?;
-        let request = artifact.sandbox_request(payload, context, input, policy)?;
-        Ok(self.sandbox.execute(request).await?)
+        Self {
+            blobs,
+            sandbox,
+            schema_validators: ArtifactSchemaValidatorCache::default(),
+        }
     }
 
     pub async fn execute_binding(
@@ -126,6 +199,10 @@ where
         input: Value,
         policy: SandboxPolicy,
     ) -> Result<SandboxOutcome, ArtifactRuntimeError> {
+        artifact
+            .descriptor
+            .validate()
+            .map_err(ArtifactRuntimeError::Descriptor)?;
         if !artifact
             .descriptor
             .bindings
@@ -134,13 +211,80 @@ where
         {
             return Err(ArtifactRuntimeError::BindingNotAdmitted(binding.id.clone()));
         }
+        self.validate_binding_value(artifact, binding, BindingSchemaStage::Input, &input)?;
         let payload = self
             .blobs
             .get_verified(&artifact.descriptor.artifact_digest)
             .await?;
         let mut request = artifact.sandbox_request(payload, context, input, policy)?;
         request.payload.entrypoint = binding.entrypoint.clone();
-        Ok(self.sandbox.execute(request).await?)
+        let outcome = self.sandbox.execute(request).await?;
+        let outcome = self.decode_rhai_output(artifact, outcome)?;
+        self.validate_binding_value(
+            artifact,
+            binding,
+            BindingSchemaStage::Output,
+            &outcome.output,
+        )?;
+        Ok(outcome)
+    }
+
+    fn validate_binding_value(
+        &self,
+        artifact: &InstalledModuleArtifact,
+        binding: &ModuleRuntimeBinding,
+        stage: BindingSchemaStage,
+        value: &Value,
+    ) -> Result<(), ArtifactRuntimeError> {
+        let schema_digest = match stage {
+            BindingSchemaStage::Input => &binding.input_schema_digest,
+            BindingSchemaStage::Output => &binding.output_schema_digest,
+        };
+        let schema = artifact
+            .descriptor
+            .schema_document(schema_digest)
+            .ok_or_else(|| ArtifactRuntimeError::BindingSchemaNotAdmitted {
+                binding: binding.id.clone(),
+                schema_digest: schema_digest.clone(),
+            })?;
+        let validator = self
+            .schema_validators
+            .get_or_compile(schema_digest, schema)?;
+        validator
+            .validate(value)
+            .map_err(|_| ArtifactRuntimeError::BindingSchemaViolation {
+                binding: binding.id.clone(),
+                stage: stage.as_str(),
+                schema_digest: schema_digest.clone(),
+            })
+    }
+
+    fn decode_rhai_output(
+        &self,
+        artifact: &InstalledModuleArtifact,
+        mut outcome: SandboxOutcome,
+    ) -> Result<SandboxOutcome, ArtifactRuntimeError> {
+        if artifact.descriptor.payload_kind == crate::ArtifactPayloadKind::Rhai {
+            outcome.output = RhaiBindingOutput::decode(outcome.output)
+                .map_err(|error| ArtifactRuntimeError::RhaiBinding(error.to_string()))?
+                .output;
+        }
+        Ok(outcome)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum BindingSchemaStage {
+    Input,
+    Output,
+}
+
+impl BindingSchemaStage {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Input => "input",
+            Self::Output => "output",
+        }
     }
 }
 
@@ -216,6 +360,27 @@ where
 pub enum ArtifactRuntimeError {
     #[error("artifact binding `{0}` is not admitted for this installation")]
     BindingNotAdmitted(String),
+    #[error("artifact Rhai binding is invalid: {0}")]
+    RhaiBinding(String),
+    #[error("artifact descriptor is invalid: {0}")]
+    Descriptor(#[source] ModuleArtifactError),
+    #[error("artifact binding `{binding}` references a schema not admitted by its descriptor: `{schema_digest}`")]
+    BindingSchemaNotAdmitted {
+        binding: String,
+        schema_digest: String,
+    },
+    #[error("admitted artifact schema `{schema_digest}` cannot be compiled")]
+    SchemaCompilation { schema_digest: String },
+    #[error(
+        "artifact binding `{binding}` {stage} does not satisfy admitted schema `{schema_digest}`"
+    )]
+    BindingSchemaViolation {
+        binding: String,
+        stage: &'static str,
+        schema_digest: String,
+    },
+    #[error("artifact schema validator cache lock is poisoned")]
+    SchemaValidatorCachePoisoned,
     #[error(transparent)]
     Installation(#[from] ModuleInstallationError),
     #[error(transparent)]
@@ -240,9 +405,11 @@ mod tests {
 
     use super::*;
     use crate::{
-        ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef, InMemoryArtifactBlobStore,
-        ModuleArtifactDescriptor, ModuleArtifactPackage, ModuleDependencyLockGraph,
-        ModuleInstallationScope, OciArtifactReference,
+        canonical_schema_digest, ArtifactModuleKind, ArtifactPayloadKind,
+        ArtifactPermissionDescriptor, ArtifactReleaseRef, ArtifactSchemaDocument,
+        InMemoryArtifactBlobStore, ModuleArtifactPackage, ModuleDependencyLockGraph,
+        ModuleInstallationScope, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+        OciArtifactReference,
     };
 
     struct DenyBroker;
@@ -259,7 +426,16 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct RecordingExecutor(Arc<Mutex<Option<SandboxRequest>>>);
+    struct RecordingExecutor {
+        observed: Arc<Mutex<Option<SandboxRequest>>>,
+        output: Value,
+    }
+
+    impl RecordingExecutor {
+        fn new(observed: Arc<Mutex<Option<SandboxRequest>>>, output: Value) -> Self {
+            Self { observed, output }
+        }
+    }
 
     #[async_trait]
     impl SandboxExecutor for RecordingExecutor {
@@ -272,10 +448,12 @@ mod tests {
             request: &SandboxRequest,
             _host: SandboxHost,
         ) -> SandboxResult<SandboxOutcome> {
-            *self.0.lock().expect("request lock") = Some(request.clone());
+            *self.observed.lock().expect("request lock") = Some(request.clone());
+            let output = serde_json::to_value(RhaiBindingOutput::new(self.output.clone()))
+                .map_err(|error| SandboxError::Internal(error.to_string()))?;
             Ok(SandboxOutcome {
                 execution_id: request.context.execution_id,
-                output: json!({ "executed": true }),
+                output,
                 metrics: ExecutionMetrics::default(),
             })
         }
@@ -284,6 +462,34 @@ mod tests {
     fn package() -> ModuleArtifactPackage {
         let payload = b"artifact runtime payload".to_vec();
         let payload_digest = format!("sha256:{}", hex::encode(Sha256::digest(&payload)));
+        let input_schema = schema_document(json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": ["id"],
+            "properties": { "id": { "type": "integer" } },
+            "additionalProperties": false
+        }));
+        let output_schema = schema_document(json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": ["executed"],
+            "properties": { "executed": { "type": "boolean" } },
+            "additionalProperties": false
+        }));
+        let binding = ModuleRuntimeBinding {
+            id: "event_handler".to_string(),
+            kind: ModuleRuntimeBindingKind::Event,
+            entrypoint: "main".to_string(),
+            input_schema_digest: input_schema.digest.clone(),
+            output_schema_digest: output_schema.digest.clone(),
+            permission: "sample_module.events.handle".to_string(),
+            idempotency: crate::ModuleBindingIdempotency::Required,
+            limit_profile: "event".to_string(),
+            capabilities: Vec::new(),
+            event_topics: vec!["sample.event".to_string()],
+            schedule: None,
+            http: None,
+        };
         ModuleArtifactPackage {
             reference: OciArtifactReference {
                 registry: "registry.example".to_string(),
@@ -302,10 +508,17 @@ mod tests {
                 artifact_digest: payload_digest,
                 entrypoint: "main".to_string(),
                 capabilities: Vec::new(),
-                bindings: Vec::new(),
+                bindings: vec![binding],
                 dependencies: Vec::new(),
-                permissions: Vec::new(),
-                schema_documents: Vec::new(),
+                permissions: vec![ArtifactPermissionDescriptor {
+                    key: "sample_module.events.handle".to_string(),
+                    localizations: vec![rustok_api::ArtifactPermissionLocalization {
+                        locale: "en".to_string(),
+                        label: "Handle sample event".to_string(),
+                        description: "Handle the sample event".to_string(),
+                    }],
+                }],
+                schema_documents: vec![input_schema, output_schema],
                 settings_schema_digest: None,
                 data_schema_digest: None,
                 ui_contributions: Vec::new(),
@@ -316,10 +529,15 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn installed_artifact_is_resolved_verified_and_executed_by_shared_sandbox() {
-        let package = package();
-        let installed = InstalledModuleArtifact {
+    fn schema_document(document: Value) -> ArtifactSchemaDocument {
+        ArtifactSchemaDocument {
+            digest: canonical_schema_digest(&document),
+            document,
+        }
+    }
+
+    fn installed(package: &ModuleArtifactPackage) -> InstalledModuleArtifact {
+        InstalledModuleArtifact {
             installation_id: Uuid::new_v4(),
             scope: ModuleInstallationScope::Platform,
             reference: package.reference.clone(),
@@ -333,11 +551,21 @@ mod tests {
                 .expect("empty dependency lock"),
             capability_grant_revision: 1,
             installed_at: Utc::now(),
-        };
+        }
+    }
+
+    #[tokio::test]
+    async fn installed_artifact_is_resolved_verified_and_executed_by_shared_sandbox() {
+        let package = package();
+        let installed = installed(&package);
+        let binding = installed.descriptor.bindings[0].clone();
         let observed = Arc::new(Mutex::new(None));
         let mut executors = ExecutorRegistry::new();
         executors
-            .register(RecordingExecutor(Arc::clone(&observed)))
+            .register(RecordingExecutor::new(
+                Arc::clone(&observed),
+                json!({ "executed": true }),
+            ))
             .expect("executor registration");
         let sandbox = SandboxRuntime::new(executors, Arc::new(DenyBroker));
         let blobs = InMemoryArtifactBlobStore::default();
@@ -357,8 +585,9 @@ mod tests {
         let context = SandboxContext::new(ExecutionPhase::Event);
 
         let outcome = runtime
-            .execute(
+            .execute_binding(
                 &installed,
+                &binding,
                 context.clone(),
                 json!({ "id": 1 }),
                 SandboxPolicy::default(),
@@ -378,25 +607,19 @@ mod tests {
             request.subject,
             rustok_sandbox::SandboxSubject::ModuleArtifact { .. }
         ));
+        assert_eq!(
+            RhaiBindingInput::decode(request.input)
+                .expect("versioned Rhai input")
+                .input,
+            json!({ "id": 1 })
+        );
     }
 
     #[tokio::test]
     async fn execution_fails_closed_when_admitted_blob_is_unavailable() {
         let package = package();
-        let installed = InstalledModuleArtifact {
-            installation_id: Uuid::new_v4(),
-            scope: ModuleInstallationScope::Platform,
-            reference: package.reference.clone(),
-            release: package.release_ref(),
-            descriptor: ModuleArtifactDescriptor {
-                entrypoint: "other".to_string(),
-                ..package.descriptor.clone()
-            },
-            dependency_lock: ModuleDependencyLockGraph::create(0, Vec::new())
-                .expect("empty dependency lock"),
-            capability_grant_revision: 1,
-            installed_at: Utc::now(),
-        };
+        let installed = installed(&package);
+        let binding = installed.descriptor.bindings[0].clone();
         let runtime = ArtifactRuntime::new(
             InMemoryArtifactBlobStore::default(),
             SandboxRuntime::new(ExecutorRegistry::new(), Arc::new(DenyBroker)),
@@ -404,8 +627,9 @@ mod tests {
 
         assert!(matches!(
             runtime
-                .execute(
+                .execute_binding(
                     &installed,
+                    &binding,
                     SandboxContext::new(ExecutionPhase::Event),
                     Value::Null,
                     SandboxPolicy::default(),
@@ -415,5 +639,85 @@ mod tests {
                 ModuleInstallationError::BlobNotFound(_)
             ))
         ));
+    }
+
+    #[tokio::test]
+    async fn binding_input_schema_rejects_before_payload_read_or_sandbox_execution() {
+        let package = package();
+        let installed = installed(&package);
+        let binding = installed.descriptor.bindings[0].clone();
+        let observed = Arc::new(Mutex::new(None));
+        let mut executors = ExecutorRegistry::new();
+        executors
+            .register(RecordingExecutor::new(
+                Arc::clone(&observed),
+                json!({ "executed": true }),
+            ))
+            .expect("executor registration");
+        let runtime = ArtifactRuntime::new(
+            InMemoryArtifactBlobStore::default(),
+            SandboxRuntime::new(executors, Arc::new(DenyBroker)),
+        );
+
+        assert!(matches!(
+            runtime
+                .execute_binding(
+                    &installed,
+                    &binding,
+                    SandboxContext::new(ExecutionPhase::Event),
+                    json!({ "id": "invalid" }),
+                    SandboxPolicy::default(),
+                )
+                .await,
+            Err(ArtifactRuntimeError::BindingSchemaViolation { stage: "input", .. })
+        ));
+        assert!(observed.lock().expect("request lock").is_none());
+    }
+
+    #[tokio::test]
+    async fn binding_output_schema_rejects_after_sandbox_execution() {
+        let package = package();
+        let installed = installed(&package);
+        let binding = installed.descriptor.bindings[0].clone();
+        let observed = Arc::new(Mutex::new(None));
+        let mut executors = ExecutorRegistry::new();
+        executors
+            .register(RecordingExecutor::new(
+                Arc::clone(&observed),
+                json!({ "executed": "invalid" }),
+            ))
+            .expect("executor registration");
+        let blobs = InMemoryArtifactBlobStore::default();
+        blobs
+            .put_verified(
+                &installed.descriptor.artifact_digest,
+                match &package.payload {
+                    crate::ArtifactPayloadSource::Bytes(payload) => payload,
+                    crate::ArtifactPayloadSource::TemporaryFile(_) => {
+                        panic!("fixture uses an in-memory payload")
+                    }
+                },
+            )
+            .await
+            .expect("admit payload");
+        let runtime =
+            ArtifactRuntime::new(blobs, SandboxRuntime::new(executors, Arc::new(DenyBroker)));
+
+        assert!(matches!(
+            runtime
+                .execute_binding(
+                    &installed,
+                    &binding,
+                    SandboxContext::new(ExecutionPhase::Event),
+                    json!({ "id": 1 }),
+                    SandboxPolicy::default(),
+                )
+                .await,
+            Err(ArtifactRuntimeError::BindingSchemaViolation {
+                stage: "output",
+                ..
+            })
+        ));
+        assert!(observed.lock().expect("request lock").is_some());
     }
 }

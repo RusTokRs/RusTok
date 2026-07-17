@@ -8,6 +8,7 @@ description = "Isolated module build worker process for RusToK"
 
 [dependencies]
 async-trait.workspace = true
+base64.workspace = true
 oci-distribution.workspace = true
 rustok-module-build-transport.workspace = true
 rustok-modules.workspace = true

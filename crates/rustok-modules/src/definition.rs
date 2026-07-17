@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use rustok_api::ArtifactPermissionLocalization;
 use rustok_core::{ModuleKind, ModuleRegistry};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -88,7 +89,11 @@ impl ModuleDefinition {
                 .map(|permission| {
                     let key = permission.to_string();
                     ArtifactPermissionDescriptor {
-                        label: key.clone(),
+                        localizations: vec![ArtifactPermissionLocalization {
+                            locale: "en".to_string(),
+                            label: key.clone(),
+                            description: key.clone(),
+                        }],
                         key,
                     }
                 })

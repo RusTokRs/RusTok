@@ -69,6 +69,7 @@ impl SandboxRuntime {
         request: SandboxRequest,
         cancellation: SandboxCancellation,
     ) -> SandboxResult<SandboxOutcome> {
+        let queue_timer = Instant::now();
         request.validate()?;
         if cancellation.is_cancelled() {
             return Err(crate::SandboxError::Cancelled);
@@ -90,7 +91,8 @@ impl SandboxRuntime {
         })
         .await?;
 
-        let timer = Instant::now();
+        let execution_timer = Instant::now();
+        let queue_time_ms = elapsed_millis(queue_timer);
         let host = SandboxHost::new(
             Arc::new(request.policy.clone()),
             Arc::clone(&self.broker),
@@ -99,13 +101,14 @@ impl SandboxRuntime {
             Arc::clone(&self.capability_observers),
             cancellation,
         );
-        let result = executor.execute(&request, host).await;
+        let result = executor.execute(&request, host.clone()).await;
 
         match result {
             Ok(mut outcome) => {
                 outcome.execution_id = context.execution_id;
-                outcome.metrics.duration_ms =
-                    timer.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+                outcome.metrics.queue_time_ms = queue_time_ms;
+                outcome.metrics.duration_ms = elapsed_millis(execution_timer);
+                outcome.metrics.capability_calls = host.capability_calls();
                 self.observe(ExecutionRecord {
                     execution_id: context.execution_id,
                     subject: request.subject,
@@ -121,6 +124,12 @@ impl SandboxRuntime {
                 Ok(outcome)
             }
             Err(error) => {
+                let metrics = crate::ExecutionMetrics {
+                    queue_time_ms,
+                    duration_ms: elapsed_millis(execution_timer),
+                    capability_calls: host.capability_calls(),
+                    ..Default::default()
+                };
                 self.observe(ExecutionRecord {
                     execution_id: context.execution_id,
                     subject: request.subject,
@@ -129,7 +138,7 @@ impl SandboxRuntime {
                     status: ExecutionStatus::Failed,
                     started_at,
                     finished_at: Some(Utc::now()),
-                    metrics: None,
+                    metrics: Some(metrics),
                     error_code: Some(error.code().to_string()),
                 })
                 .await?;
@@ -144,4 +153,8 @@ impl SandboxRuntime {
         }
         Ok(())
     }
+}
+
+fn elapsed_millis(timer: Instant) -> u64 {
+    timer.elapsed().as_millis().try_into().unwrap_or(u64::MAX)
 }

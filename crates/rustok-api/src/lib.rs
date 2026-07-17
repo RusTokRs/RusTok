@@ -8,6 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+pub mod artifact_permissions;
 pub mod context;
 #[cfg(feature = "server")]
 pub mod graphql;
@@ -24,6 +25,11 @@ pub mod runtime;
 pub mod tenant_rbac;
 pub mod write_path_feedback;
 
+pub use artifact_permissions::{
+    ArtifactPermissionLocalization, ArtifactPermissionRegistration,
+    ArtifactPermissionRegistrationPort, ArtifactPermissionRegistrationRequest,
+    ArtifactPermissionScope,
+};
 #[cfg(feature = "server")]
 pub use context::{
     has_any_effective_permission, has_effective_permission, scope_matches, AuthContext,

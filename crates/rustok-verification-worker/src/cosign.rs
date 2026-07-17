@@ -43,10 +43,11 @@ impl CosignTrustVerifier {
     async fn verify_with_flags(
         &self,
         request: &TrustVerificationRequest,
+        trust_root: &VerificationTrustRoot,
         mut flags: Vec<String>,
     ) -> Result<(), String> {
         let reference = request.reference.canonical();
-        if requires_transparency_bundle(&self.policy.trust_root) {
+        if requires_transparency_bundle(trust_root) {
             flags.push("--offline".to_string());
         }
 
@@ -75,6 +76,55 @@ impl CosignTrustVerifier {
         let expected_digest = expected_sha256(request)?;
         validate_slsa(&attestations[0], expected_digest, &self.policy)?;
         validate_cyclonedx(&attestations[1], expected_digest, &self.policy)
+    }
+
+    async fn verify_trust_root(
+        &self,
+        request: &TrustVerificationRequest,
+        trust_root: &VerificationTrustRoot,
+    ) -> Result<String, String> {
+        match trust_root {
+            VerificationTrustRoot::KeylessSigstore {
+                allowed_signer_identities,
+                allowed_oidc_issuers,
+                ..
+            } => {
+                for identity in allowed_signer_identities {
+                    for issuer in allowed_oidc_issuers {
+                        let flags = vec![
+                            "--certificate-identity".to_string(),
+                            identity.clone(),
+                            "--certificate-oidc-issuer".to_string(),
+                            issuer.clone(),
+                        ];
+                        if self
+                            .verify_with_flags(request, trust_root, flags)
+                            .await
+                            .is_ok()
+                        {
+                            return Ok(identity.clone());
+                        }
+                    }
+                }
+                Err(
+                    "no configured Cosign signer identity and OIDC issuer verified the artifact"
+                        .to_string(),
+                )
+            }
+            VerificationTrustRoot::KmsKey {
+                key_reference,
+                signer_identity,
+                ..
+            } => {
+                self.verify_with_flags(
+                    request,
+                    trust_root,
+                    vec!["--key".to_string(), key_reference.clone()],
+                )
+                .await?;
+                Ok(signer_identity.clone())
+            }
+        }
     }
 }
 
@@ -256,45 +306,19 @@ impl TrustVerifier for CosignTrustVerifier {
         request: TrustVerificationRequest,
     ) -> Result<TrustVerificationDecision, String> {
         self.policy.validate()?;
-        let signer_identity = match &self.policy.trust_root {
-            VerificationTrustRoot::KeylessSigstore {
-                allowed_signer_identities,
-                allowed_oidc_issuers,
-                ..
-            } => {
-                let mut verified = None;
-                for identity in allowed_signer_identities {
-                    for issuer in allowed_oidc_issuers {
-                        let flags = vec![
-                            "--certificate-identity".to_string(),
-                            identity.clone(),
-                            "--certificate-oidc-issuer".to_string(),
-                            issuer.clone(),
-                        ];
-                        if self.verify_with_flags(&request, flags).await.is_ok() {
-                            verified = Some(identity.clone());
-                            break;
-                        }
-                    }
-                    if verified.is_some() {
-                        break;
-                    }
-                }
-                verified.ok_or_else(|| {
-                    "no configured Cosign signer identity and OIDC issuer verified the artifact"
-                        .to_string()
-                })?
+        let mut signer_identity = None;
+        for trust_root in self
+            .policy
+            .trust_roots_at(VerificationPolicy::current_unix_seconds())
+        {
+            if let Ok(identity) = self.verify_trust_root(&request, trust_root).await {
+                signer_identity = Some(identity);
+                break;
             }
-            VerificationTrustRoot::KmsKey {
-                key_reference,
-                signer_identity,
-                ..
-            } => {
-                self.verify_with_flags(&request, vec!["--key".to_string(), key_reference.clone()])
-                    .await?;
-                signer_identity.clone()
-            }
-        };
+        }
+        let signer_identity = signer_identity.ok_or_else(|| {
+            "no active or unexpired retiring Cosign trust root verified the artifact".to_string()
+        })?;
         Ok(TrustVerificationDecision {
             signer_identity,
             trust_policy_revision: request.trust_policy_revision,
@@ -330,7 +354,7 @@ mod tests {
     use serde_json::json;
 
     use super::{validate_cyclonedx, validate_slsa};
-    use crate::{VerificationPolicy, VerificationTrustRoot};
+    use crate::{VerificationPolicy, VerificationTrustRoot, VerificationTrustRoots};
 
     const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
@@ -338,10 +362,13 @@ mod tests {
         VerificationPolicy {
             trust_policy_revision: 1,
             capability_policy_revision: 1,
-            trust_root: VerificationTrustRoot::KeylessSigstore {
-                allowed_signer_identities: vec!["builder@rustok.dev".into()],
-                allowed_oidc_issuers: vec!["https://issuer.rustok.dev".into()],
-                require_transparency_bundle: true,
+            trust_root: VerificationTrustRoots {
+                active: VerificationTrustRoot::KeylessSigstore {
+                    allowed_signer_identities: vec!["builder@rustok.dev".into()],
+                    allowed_oidc_issuers: vec!["https://issuer.rustok.dev".into()],
+                    require_transparency_bundle: true,
+                },
+                retiring: None,
             },
             allowed_builders: vec!["https://build.rustok.dev/worker".into()],
             allowed_source_repositories: vec!["https://github.com/rustok/module".into()],

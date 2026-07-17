@@ -6,8 +6,9 @@ use async_trait::async_trait;
 use rustok_sandbox::rhai::RhaiExecutor;
 use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutionPhase,
-    ExecutorRegistry, SandboxContext, SandboxError, SandboxExecutorKind, SandboxPayload,
-    SandboxPolicy, SandboxRequest, SandboxResult, SandboxRuntime, SandboxSubject,
+    ExecutorRegistry, RhaiBindingInput, RhaiBindingOutput, SandboxContext, SandboxError,
+    SandboxExecutorKind, SandboxPayload, SandboxPolicy, SandboxRequest, SandboxResult,
+    SandboxRuntime, SandboxSubject,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -36,10 +37,12 @@ fn request(source: &str) -> SandboxRequest {
             executor: SandboxExecutorKind::Rhai,
             media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
             digest: "sha256:test".to_string(),
+            runtime_abi: "rustok:module/runtime@1".to_string(),
             entrypoint: "main".to_string(),
             bytes: source.as_bytes().to_vec(),
         },
-        input: json!({ "left": 20, "right": 22 }),
+        input: serde_json::to_value(RhaiBindingInput::new(json!({ "left": 20, "right": 22 })))
+            .expect("serialize Rhai binding"),
         policy: SandboxPolicy::default(),
     }
 }
@@ -59,7 +62,12 @@ async fn executes_alloy_draft_through_neutral_runtime() {
         .await
         .expect("execute Rhai");
 
-    assert_eq!(outcome.output, json!(42));
+    assert_eq!(
+        RhaiBindingOutput::decode(outcome.output)
+            .expect("versioned Rhai output")
+            .output,
+        json!(42)
+    );
     assert!(outcome.metrics.output_bytes.is_some());
 }
 
@@ -75,4 +83,14 @@ async fn maps_operation_pressure_to_common_limit_error() {
         SandboxError::LimitExceeded { ref resource, limit: 100 }
             if resource == "instructions"
     ));
+}
+
+#[tokio::test]
+async fn maps_elapsed_deadline_to_common_timeout_error() {
+    let mut request = request("loop { }");
+    request.policy.limits.wall_clock_ms = 0;
+
+    let error = runtime().execute(request).await.expect_err("deadline");
+
+    assert_eq!(error, SandboxError::Timeout { limit_ms: 0 });
 }

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use http::HeaderValue;
 use oci_distribution::{
-    client::{Config, ImageLayer},
+    client::{ClientConfig, ClientProtocol, Config, ImageLayer},
     manifest::{OciDescriptor, OciImageManifest, OCI_IMAGE_MEDIA_TYPE},
     secrets::RegistryAuth,
     Client, Reference,
@@ -38,6 +38,21 @@ pub const MODULE_ARTIFACT_RELEASE_LINEAGE_MEDIA_TYPE: &str =
 pub const OCI_EMPTY_CONFIG_MEDIA_TYPE: &str = "application/vnd.oci.empty.v1+json";
 
 const OCI_EMPTY_CONFIG_BYTES: &[u8] = b"{}";
+const OCI_REGISTRY_MAX_CONCURRENT_REQUESTS: usize = 1;
+
+/// Constructs the strict subset of registry transport policy that the current
+/// OCI Distribution client can enforce itself. Redirect/proxy enforcement is
+/// intentionally left to the deployment egress boundary until the client is
+/// replaced by a transport with explicit hooks for those policies.
+pub fn strict_oci_distribution_client() -> Result<Client, String> {
+    let mut config = ClientConfig::default();
+    config.protocol = ClientProtocol::Https;
+    config.accept_invalid_certificates = false;
+    config.platform_resolver = None;
+    config.max_concurrent_upload = OCI_REGISTRY_MAX_CONCURRENT_REQUESTS;
+    config.max_concurrent_download = OCI_REGISTRY_MAX_CONCURRENT_REQUESTS;
+    Client::try_from(config).map_err(|error| error.to_string())
+}
 
 /// Referrer evidence classes admitted by the publication and trust pipelines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -295,6 +310,29 @@ impl OciArtifactPublisher for OciDistributionArtifactPublisher {
 }
 
 impl OciDistributionArtifactPublisher {
+    /// Resolves the standard Cosign OCI signature manifest after Cosign has
+    /// signed a digest-pinned artifact. The standard tag is used only for the
+    /// registry lookup; callers receive the resulting manifest digest.
+    pub async fn resolve_cosign_signature(
+        &self,
+        target: &OciArtifactPublicationTarget,
+        artifact: &OciArtifactReference,
+    ) -> Result<OciArtifactReference, OciArtifactPublicationError> {
+        target.validate()?;
+        artifact
+            .validate()
+            .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
+        if artifact.registry != target.registry || artifact.repository != target.repository {
+            return Err(OciArtifactPublicationError::InvalidBundle(
+                "Cosign signature subject does not belong to the publication target".to_string(),
+            ));
+        }
+        let signature_tag = cosign_signature_tag(&artifact.digest)?;
+        let write_reference = target.tag_reference(signature_tag);
+        self.resolve_published_reference(target, &write_reference)
+            .await
+    }
+
     async fn publish_referrer(
         &self,
         target: &OciArtifactPublicationTarget,
@@ -370,7 +408,7 @@ impl OciDistributionArtifactPublisher {
         );
         let (body, digest) = self
             .client
-            .pull_manifest_raw(&image, &self.auth)
+            .pull_manifest_raw(&image, &self.auth, &[])
             .await
             .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         let expected = sha256_digest(&body);
@@ -394,7 +432,7 @@ impl OciDistributionArtifactPublisher {
     ) -> Result<OciArtifactReference, OciArtifactPublicationError> {
         let (body, received) = self
             .client
-            .pull_manifest_raw(write_reference, &self.auth)
+            .pull_manifest_raw(write_reference, &self.auth, &[])
             .await
             .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         let expected = sha256_digest(&body);
@@ -441,7 +479,7 @@ fn validate_publication_bytes(
 }
 
 fn sha256_digest(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 fn derived_tag(kind: &str, fields: &[&str]) -> String {
@@ -452,7 +490,21 @@ fn derived_tag(kind: &str, fields: &[&str]) -> String {
         hasher.update([0]);
         hasher.update(field.as_bytes());
     }
-    format!("rustok-{kind}-{:x}", hasher.finalize())
+    format!("rustok-{kind}-{}", hex::encode(hasher.finalize()))
+}
+
+fn cosign_signature_tag(digest: &str) -> Result<String, OciArtifactPublicationError> {
+    let hex = digest.strip_prefix("sha256:").ok_or_else(|| {
+        OciArtifactPublicationError::InvalidBundle(
+            "Cosign signature subject must use a sha256 digest".to_string(),
+        )
+    })?;
+    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(OciArtifactPublicationError::InvalidBundle(
+            "Cosign signature subject must use a valid sha256 digest".to_string(),
+        ));
+    }
+    Ok(format!("sha256-{hex}.sig"))
 }
 
 /// Resolves a module artifact from an OCI Distribution registry.
@@ -474,6 +526,15 @@ impl OciDistributionArtifactRegistry {
 
     pub fn anonymous() -> Self {
         Self::new(Client::default(), RegistryAuth::Anonymous)
+    }
+
+    /// Creates an anonymous registry adapter with the strict transport subset
+    /// used by production artifact distribution.
+    pub fn strict_anonymous() -> Result<Self, ModuleInstallationError> {
+        Ok(Self::new(
+            strict_oci_distribution_client().map_err(ModuleInstallationError::Registry)?,
+            RegistryAuth::Anonymous,
+        ))
     }
 
     fn image_reference(
@@ -645,7 +706,7 @@ mod tests {
     };
 
     use super::{
-        OciArtifactEvidenceKind, OciDistributionArtifactRegistry,
+        cosign_signature_tag, OciArtifactEvidenceKind, OciDistributionArtifactRegistry,
         MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE,
     };
 
@@ -673,5 +734,14 @@ mod tests {
             OciArtifactEvidenceKind::Provenance.media_type(),
             MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE
         );
+    }
+
+    #[test]
+    fn cosign_signature_tag_is_derived_only_from_a_sha256_subject() {
+        assert_eq!(
+            cosign_signature_tag(&format!("sha256:{}", "a".repeat(64))).expect("sha256 subject"),
+            format!("sha256-{}.sig", "a".repeat(64))
+        );
+        assert!(cosign_signature_tag("sha512:abc").is_err());
     }
 }

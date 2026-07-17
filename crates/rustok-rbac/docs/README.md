@@ -27,6 +27,12 @@ documentation for this module must live inside the crate, not spread across
 - `RbacPermissionDecisionPort` resolves its tenant/user decision through the
   authoritative `PermissionResolver`; request claims are not used as an
   independent permission source;
+- `RbacArtifactPermissionCatalog` is the durable owner adapter for immutable
+  artifact permission vocabulary. It stores localized labels/descriptions by
+  scope and admitted installation identity, is idempotent for retries, and
+  never writes `roles` or `role_permissions` during registration. Its owner
+  migration is aggregated by `rustok-migrations::Migrator`, the installer and
+  CLI schema path used by production hosts;
 - the operator-facing admin overview lives in `rustok-rbac-admin` and is structured as FFA `core` + native-only `transport` + `ui/leptos` adapter;
 - new public RBAC surfaces and event contracts require synchronization of module docs, server docs and verification plan.
 

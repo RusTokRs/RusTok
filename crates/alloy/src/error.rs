@@ -93,6 +93,9 @@ impl From<rustok_sandbox::SandboxError> for ScriptError {
             rustok_sandbox::SandboxError::ExecutorAlreadyRegistered(kind) => {
                 Self::Runtime(format!("sandbox executor `{kind}` is duplicated"))
             }
+            rustok_sandbox::SandboxError::AuditUnavailable(message) => {
+                Self::Runtime(format!("execution audit unavailable: {message}"))
+            }
         }
     }
 }

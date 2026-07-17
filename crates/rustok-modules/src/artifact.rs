@@ -4,13 +4,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use rustok_api::manifest_hash::hash_manifest_snapshot;
+use rustok_api::{
+    is_valid_locale_tag, manifest_hash::hash_manifest_snapshot, ArtifactPermissionLocalization,
+};
 use rustok_sandbox::{CapabilityName, SandboxExecutorKind};
 
 /// The current immutable descriptor contract. Schema documents are bundled in
-/// v2 so no admission or execution path needs to resolve schemas from a
+/// v4 so no admission or execution path needs to resolve schemas from a
 /// network, filesystem, registry tag, or mutable service.
-pub const MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION: u32 = 2;
+pub const MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION: u32 = 4;
 
 const MAX_SCHEMA_DOCUMENTS: usize = 32;
 const MAX_SCHEMA_DOCUMENT_BYTES: usize = 64 * 1024;
@@ -138,7 +140,8 @@ pub struct ModuleDependencyConstraint {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactPermissionDescriptor {
     pub key: String,
-    pub label: String,
+    /// Immutable localized operator metadata registered by the RBAC owner.
+    pub localizations: Vec<ArtifactPermissionLocalization>,
 }
 
 /// One immutable Draft 2020-12 JSON Schema document bundled with the artifact
@@ -213,6 +216,9 @@ pub enum ModuleRuntimeBindingKind {
     Health,
     Readiness,
     ActivationSmoke,
+    /// Owner-invoked transformation for a bounded data-contract upgrade page.
+    /// It is not a generic user command or a lifecycle hook.
+    DataUpgrade,
     BeforeCommit,
     AfterCommit,
     OnCommit,
@@ -440,7 +446,20 @@ impl ModuleArtifactDescriptor {
         }
         let permission_prefix = format!("{}.", self.slug);
         for (index, permission) in self.permissions.iter().enumerate() {
-            if !permission.key.starts_with(&permission_prefix) || permission.label.trim().is_empty()
+            if !permission.key.starts_with(&permission_prefix)
+                || permission.localizations.is_empty()
+                || permission.localizations.iter().any(|localization| {
+                    !is_valid_locale_tag(&localization.locale)
+                        || localization.label.trim().is_empty()
+                        || localization.description.trim().is_empty()
+                })
+                || permission.localizations.iter().enumerate().any(
+                    |(localization_index, localization)| {
+                        permission.localizations[..localization_index]
+                            .iter()
+                            .any(|previous| previous.locale == localization.locale)
+                    },
+                )
             {
                 return Err(ModuleArtifactError::InvalidPermission(
                     permission.key.clone(),
@@ -814,11 +833,13 @@ fn valid_timezone(value: &str) -> bool {
 fn validate_local_schema_references(schema: &Value) -> Result<(), ModuleArtifactError> {
     match schema {
         Value::Object(object) => {
-            if let Some(Value::String(reference)) = object.get("$ref") {
-                if !reference.starts_with('#') {
-                    return Err(ModuleArtifactError::NonLocalSchemaReference(
-                        reference.clone(),
-                    ));
+            for key in ["$ref", "$dynamicRef", "$recursiveRef"] {
+                if let Some(Value::String(reference)) = object.get(key) {
+                    if !reference.starts_with('#') {
+                        return Err(ModuleArtifactError::NonLocalSchemaReference(
+                            reference.clone(),
+                        ));
+                    }
                 }
             }
             for value in object.values() {
@@ -843,6 +864,14 @@ pub fn canonical_schema_digest(schema: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn permission_localization(label: &str) -> ArtifactPermissionLocalization {
+        ArtifactPermissionLocalization {
+            locale: "en".to_string(),
+            label: label.to_string(),
+            description: format!("{label} permission"),
+        }
+    }
 
     fn digest(character: char) -> String {
         format!("sha256:{}", character.to_string().repeat(64))
@@ -957,7 +986,7 @@ mod tests {
         let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
         descriptor.permissions = vec![ArtifactPermissionDescriptor {
             key: "sample_module.lifecycle.manage".to_string(),
-            label: "Manage lifecycle".to_string(),
+            localizations: vec![permission_localization("Manage lifecycle")],
         }];
         descriptor.bindings.push(ModuleRuntimeBinding {
             id: "pre_enable".to_string(),
@@ -1024,7 +1053,7 @@ mod tests {
         let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
         descriptor.permissions = vec![ArtifactPermissionDescriptor {
             key: "platform.admin".to_string(),
-            label: "Admin".to_string(),
+            localizations: vec![permission_localization("Admin")],
         }];
         assert!(matches!(
             descriptor.validate(),
@@ -1033,11 +1062,24 @@ mod tests {
     }
 
     #[test]
-    fn schemas_reject_network_and_file_references() {
+    fn schemas_reject_network_file_and_dynamic_references() {
         let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
         let document = serde_json::json!({
             "$schema": JSON_SCHEMA_DRAFT_2020_12,
             "$ref": "https://schemas.example/settings.json"
+        });
+        descriptor.schema_documents = vec![ArtifactSchemaDocument {
+            digest: canonical_schema_digest(&document),
+            document,
+        }];
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::NonLocalSchemaReference(_))
+        ));
+
+        let document = serde_json::json!({
+            "$schema": JSON_SCHEMA_DRAFT_2020_12,
+            "$dynamicRef": "file:///tmp/untrusted-schema.json"
         });
         descriptor.schema_documents = vec![ArtifactSchemaDocument {
             digest: canonical_schema_digest(&document),
@@ -1054,7 +1096,7 @@ mod tests {
         let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
         descriptor.permissions = vec![ArtifactPermissionDescriptor {
             key: "sample_module.command.execute".to_string(),
-            label: "Execute command".to_string(),
+            localizations: vec![permission_localization("Execute command")],
         }];
         descriptor.bindings = vec![ModuleRuntimeBinding {
             id: "command".to_string(),
@@ -1161,7 +1203,7 @@ mod tests {
         descriptor.bindings.clear();
         descriptor.permissions = vec![ArtifactPermissionDescriptor {
             key: "sample_module.settings.manage".to_string(),
-            label: "Manage settings".to_string(),
+            localizations: vec![permission_localization("Manage settings")],
         }];
         descriptor.ui_contributions = vec![ArtifactUiContribution {
             id: "settings".to_string(),
@@ -1180,7 +1222,7 @@ mod tests {
         let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
         descriptor.permissions = vec![ArtifactPermissionDescriptor {
             key: "sample_module.http.status.read".to_string(),
-            label: "Read status".to_string(),
+            localizations: vec![permission_localization("Read status")],
         }];
         let input_schema = schema_document("http_input");
         let output_schema = schema_document("http_output");

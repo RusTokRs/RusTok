@@ -145,6 +145,8 @@ impl BuildEvidenceInspector {
         let dependency_lock_digest = request.dependency_policy.lock_digest.clone();
         let toolchain_digest = request.toolchain.protocol_digest();
         let wit_digest = request.wit.protocol_digest();
+        let sdk_version = request.authoring.sdk_version.clone();
+        let template_version = request.authoring.template_version.clone();
         let maximum_bytes = request
             .limits
             .disk_bytes
@@ -160,6 +162,8 @@ impl BuildEvidenceInspector {
                 &dependency_lock_digest,
                 &toolchain_digest,
                 &wit_digest,
+                &sdk_version,
+                &template_version,
                 maximum_bytes,
             )
         })
@@ -592,6 +596,8 @@ fn inspect_build_evidence(
     dependency_lock_digest: &str,
     toolchain_digest: &str,
     wit_digest: &str,
+    sdk_version: &str,
+    template_version: &str,
     maximum_bytes: u64,
 ) -> Result<(), BuildEvidenceError> {
     let sbom = read_verified_json_output(
@@ -616,6 +622,8 @@ fn inspect_build_evidence(
         dependency_lock_digest,
         toolchain_digest,
         wit_digest,
+        sdk_version,
+        template_version,
     )
 }
 
@@ -688,6 +696,8 @@ fn inspect_slsa_provenance(
     dependency_lock_digest: &str,
     toolchain_digest: &str,
     wit_digest: &str,
+    sdk_version: &str,
+    template_version: &str,
 ) -> Result<(), BuildEvidenceError> {
     if !document
         .get("_type")
@@ -725,6 +735,8 @@ fn inspect_slsa_provenance(
         ("dependencyLockDigest", dependency_lock_digest),
         ("toolchainDigest", toolchain_digest),
         ("witDigest", wit_digest),
+        ("sdkVersion", sdk_version),
+        ("templateVersion", template_version),
     ] {
         if rustok.get(key).and_then(serde_json::Value::as_str) != Some(expected) {
             return Err(BuildEvidenceError::ProvenanceInvalid);
@@ -784,6 +796,70 @@ fn inspect_component_interface(
         exports: exports.into_iter().collect(),
         imports: imports.into_iter().collect(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn digest(marker: char) -> String {
+        format!("sha256:{}", marker.to_string().repeat(64))
+    }
+
+    fn provenance() -> serde_json::Value {
+        json!({
+            "_type": "https://in-toto.io/Statement/v1",
+            "predicateType": "https://slsa.dev/provenance/v1",
+            "subject": [{ "digest": { "sha256": "c".repeat(64) } }],
+            "predicate": {
+                "buildDefinition": {
+                    "externalParameters": {
+                        "rustok": {
+                            "sourceDigest": digest('a'),
+                            "dependencyLockDigest": digest('b'),
+                            "toolchainDigest": digest('d'),
+                            "witDigest": digest('e'),
+                            "sdkVersion": "1.2.3",
+                            "templateVersion": "4.5.6"
+                        }
+                    }
+                },
+                "runDetails": { "builder": { "id": "rustok.module.build" } }
+            }
+        })
+    }
+
+    #[test]
+    fn provenance_rejects_a_substituted_authoring_version() {
+        let document = provenance();
+        assert!(inspect_slsa_provenance(
+            &document,
+            &digest('c'),
+            &digest('a'),
+            &digest('b'),
+            &digest('d'),
+            &digest('e'),
+            "1.2.3",
+            "4.5.6",
+        )
+        .is_ok());
+
+        assert!(matches!(
+            inspect_slsa_provenance(
+                &document,
+                &digest('c'),
+                &digest('a'),
+                &digest('b'),
+                &digest('d'),
+                &digest('e'),
+                "1.2.4",
+                "4.5.6",
+            ),
+            Err(BuildEvidenceError::ProvenanceInvalid)
+        ));
+    }
 }
 
 fn component_name(

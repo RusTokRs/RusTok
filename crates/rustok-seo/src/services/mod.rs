@@ -143,7 +143,7 @@ impl SeoService {
         let service = Self::new(db, event_bus, registry);
         Ok(extensions
             .get::<SeoMediaAssetReadProvider>()
-            .map(|provider| service.with_media_asset_read_port(provider.port()))
+            .map(|provider| service.clone().with_media_asset_read_port(provider.port()))
             .unwrap_or(service))
     }
 

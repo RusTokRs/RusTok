@@ -45,10 +45,11 @@ pub use artifact::{
 };
 pub use artifact_cas::StorageArtifactBlobStore;
 pub use build::{
-    ModuleBuildComponentInterface, ModuleBuildDependencyPolicy, ModuleBuildEvidence,
-    ModuleBuildFailureCode, ModuleBuildLimits, ModuleBuildMetrics, ModuleBuildNetworkPolicy,
-    ModuleBuildNextAction, ModuleBuildOutcome, ModuleBuildProtocolError,
-    ModuleBuildPublicationReceipt, ModuleBuildRequest, ModuleBuildResult, ModuleBuildResultRecord,
+    ModuleBuildAuthoring, ModuleBuildComponentInterface, ModuleBuildDependencyPolicy,
+    ModuleBuildDiagnostic, ModuleBuildDiagnosticStage, ModuleBuildEvidence, ModuleBuildFailureCode,
+    ModuleBuildLimits, ModuleBuildMetrics, ModuleBuildNetworkPolicy, ModuleBuildNextAction,
+    ModuleBuildOutcome, ModuleBuildProtocolError, ModuleBuildPublicationReceipt,
+    ModuleBuildRequest, ModuleBuildResult, ModuleBuildResultRecord, ModuleBuildSignatureAuthority,
     ModuleBuildSource, ModuleBuildSubmission, ModuleBuildToolchain, ModuleBuildValidationProfile,
     ModuleBuildWitContract, ModuleBuildWorker, SeaOrmModuleBuildService,
     MODULE_BUILD_PROTOCOL_VERSION,
@@ -62,12 +63,16 @@ pub use contracts::{
     ModuleControlPlaneSnapshot, ModuleErrorCode, ModuleSnapshotKind, RevisionedModuleCommand,
 };
 pub use data::{
-    validate_artifact_data_key, validate_artifact_data_prefix, ArtifactDataAccess,
-    ArtifactDataAuthorizer, ArtifactDataBroker, ArtifactDataError, ArtifactDataPage,
-    ArtifactDataPageRequest, ArtifactDataPurgeAuthorizer, ArtifactDataPurgeRequest,
-    ArtifactDataPurgeResult, ArtifactDataRecord, ArtifactDataSchemaValidator, ArtifactDataScope,
-    ArtifactDataWrite, SeaOrmArtifactDataBroker, SeaOrmArtifactDataCapabilityBroker,
-    SeaOrmArtifactDataPurgeService,
+    validate_artifact_data_key, validate_artifact_data_prefix, ArtifactBindingDataUpgradeHook,
+    ArtifactDataAccess, ArtifactDataAuthorizer, ArtifactDataBroker, ArtifactDataError,
+    ArtifactDataMigrationCheckpointStore, ArtifactDataPage, ArtifactDataPageRequest,
+    ArtifactDataPurgeAuthorizer, ArtifactDataPurgeRequest, ArtifactDataPurgeResult,
+    ArtifactDataRecord, ArtifactDataSchemaValidator, ArtifactDataScope, ArtifactDataUpgradeApplier,
+    ArtifactDataUpgradeApplyRequest, ArtifactDataUpgradeApplyResult, ArtifactDataUpgradeHook,
+    ArtifactDataUpgradeInput, ArtifactDataUpgradePlan, ArtifactDataUpgradePlanner,
+    ArtifactDataUpgradeRecord, ArtifactDataUpgradeRequest, ArtifactDataWrite,
+    SeaOrmArtifactDataBroker, SeaOrmArtifactDataCapabilityBroker, SeaOrmArtifactDataPurgeService,
+    SeaOrmArtifactDataSchemaValidator,
 };
 pub use definition::{
     ModuleDefinition, ModuleDefinitionCatalog, ModuleDefinitionError, ModuleDefinitionKind,
@@ -86,7 +91,9 @@ pub use executor::{
     ModuleLifecycleToggleResult,
 };
 pub use governance::{
-    ModuleGovernanceError, ModuleOwnerBindCommand, ModuleOwnerTransferCommand,
+    ModuleBuildServiceAttestationCommand, ModuleGovernanceError, ModuleOwnerBindCommand,
+    ModuleOwnerTransferCommand, ModulePlatformAdmissionCommand, ModulePublicationEvidenceAuthority,
+    ModulePublicationEvidenceCommand, ModulePublicationEvidenceResult,
     ModulePublishApprovalOverride, ModulePublishArtifactAttachCommand,
     ModulePublishArtifactAttachResult, ModulePublishRequestChangesCommand,
     ModulePublishRequestCreateCommand, ModulePublishRequestHoldCommand,
@@ -126,12 +133,13 @@ pub use mcp::{
 };
 #[cfg(feature = "oci-distribution")]
 pub use oci::{
-    OciArtifactEvidence, OciArtifactEvidenceKind, OciArtifactPublicationBundle,
-    OciArtifactPublicationError, OciArtifactPublicationReceipt, OciArtifactPublicationTarget,
-    OciArtifactPublisher, OciDistributionArtifactPublisher, OciDistributionArtifactRegistry,
-    MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE, MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE,
-    MODULE_ARTIFACT_RELEASE_LINEAGE_MEDIA_TYPE, MODULE_ARTIFACT_SBOM_MEDIA_TYPE,
-    MODULE_ARTIFACT_TEST_EVIDENCE_MEDIA_TYPE, OCI_EMPTY_CONFIG_MEDIA_TYPE,
+    strict_oci_distribution_client, OciArtifactEvidence, OciArtifactEvidenceKind,
+    OciArtifactPublicationBundle, OciArtifactPublicationError, OciArtifactPublicationReceipt,
+    OciArtifactPublicationTarget, OciArtifactPublisher, OciDistributionArtifactPublisher,
+    OciDistributionArtifactRegistry, MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE,
+    MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE, MODULE_ARTIFACT_RELEASE_LINEAGE_MEDIA_TYPE,
+    MODULE_ARTIFACT_SBOM_MEDIA_TYPE, MODULE_ARTIFACT_TEST_EVIDENCE_MEDIA_TYPE,
+    OCI_EMPTY_CONFIG_MEDIA_TYPE,
 };
 pub use operation_store::{
     ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRequest, ModuleOperationSnapshot,

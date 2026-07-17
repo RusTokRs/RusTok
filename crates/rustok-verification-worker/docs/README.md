@@ -46,10 +46,11 @@ health port.
    CA material. It refuses plaintext startup, requires mutually authenticated
    TLS, and bounds per-connection concurrency, request duration, and protobuf
    message size through mounted deployment configuration.
-5. Complete: the mounted policy selects exactly one trust root. Keyless Sigstore
-   uses certificate identity and OIDC issuer allow-lists; first-party KMS uses
-   a configured key reference and signer identity. There is no fallback between
-   the two modes.
+5. Complete: the mounted policy has one active trust root and may name one
+   explicitly retiring root with a hard `retire_after_unix_seconds` deadline.
+   Both roots use their own keyless-Sigstore identity/OIDC allow-lists or KMS
+   key reference and signer identity; a retiring root is ignored at and after
+   its deadline. There is no unbounded or implicit fallback between root modes.
 6. Complete: fixture-backed tests cover accepted SLSA/CycloneDX statements and
    denied digest, license, vulnerability, keyless policy, and KMS policy cases.
 7. Complete: the worker exposes a mTLS-protected gRPC readiness RPC on the

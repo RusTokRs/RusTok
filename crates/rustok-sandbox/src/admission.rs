@@ -162,6 +162,7 @@ mod tests {
                 executor: SandboxExecutorKind::Rhai,
                 media_type: "application/test".to_string(),
                 digest: "sha256:sample".to_string(),
+                runtime_abi: "rustok:module/runtime@1".to_string(),
                 entrypoint: "main".to_string(),
                 bytes: Vec::new(),
             },

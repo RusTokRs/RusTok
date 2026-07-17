@@ -45,6 +45,7 @@ mod m20260419_000001_normalize_registry_governance_event_payloads;
 mod m20260426_000001_create_install_sessions;
 mod m20260501_000001_create_platform_composition_state;
 mod m20260522_000001_add_module_operation_correlation_id;
+mod m20260717_000001_create_registry_publication_evidence;
 
 pub struct Migrator;
 
@@ -61,6 +62,10 @@ static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
     ModuleMigrationSource {
         slug: "auth",
         source: &rustok_auth::AuthModule,
+    },
+    ModuleMigrationSource {
+        slug: "rbac",
+        source: &rustok_rbac::RbacModule,
     },
     ModuleMigrationSource {
         slug: "channel",
@@ -216,12 +221,16 @@ impl MigratorTrait for Migrator {
             Box::new(m20260412_000002_split_registry_localized_metadata::Migration),
             Box::new(m20260419_000001_normalize_registry_governance_event_payloads::Migration),
             Box::new(m20260426_000001_create_install_sessions::Migration),
+            Box::new(m20260717_000001_create_registry_publication_evidence::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into
         // the server migrator in chronological order.
         all.extend(alloy::migrations::migrations());
         all.extend(rustok_auth::migrations::migrations());
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_rbac::RbacModule,
+        ));
         all.extend(rustok_channel::migrations::migrations());
         all.extend(rustok_cart::migrations::migrations());
         all.extend(rustok_customer::migrations::migrations());
@@ -536,6 +545,20 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn migrator_includes_rbac_artifact_permission_catalog_migration() {
+        let names = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+        assert!(
+            names
+                .iter()
+                .any(|name| name == "m20260716_000001_artifact_permission_catalog"),
+            "RBAC-owned artifact permission catalog migration must run through the platform migrator"
+        );
     }
 
     #[test]

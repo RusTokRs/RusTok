@@ -2,8 +2,12 @@
 
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
+
+use crate::build::{ModuleBuildPublicationReceipt, ModuleBuildSignatureAuthority};
+use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
 
 /// Stable reason-code vocabulary for a release yank.
 pub const REGISTRY_YANK_REASON_CODES: &[&str] = &[
@@ -80,6 +84,11 @@ pub const REGISTRY_VALIDATION_STAGE_REASON_CODES: &[&str] = &[
 const REMOTE_VALIDATION_FOLLOW_UP_STAGES: &[&str] =
     &["compile_smoke", "targeted_tests", "security_policy_review"];
 const MAX_REMOTE_VALIDATION_CLAIM_CANDIDATES: u64 = 128;
+const MAX_PUBLICATION_EVIDENCE_REFERENCE_BYTES: usize = 512;
+const MAX_PUBLICATION_EVIDENCE_IDENTITY_BYTES: usize = 256;
+const MAX_PUBLICATION_EVIDENCE_POLICY_REVISION_BYTES: usize = 128;
+const MAX_PLATFORM_ADMISSION_MEDIA_TYPE_BYTES: usize = 256;
+const MARKETPLACE_APPROVAL_POLICY_REVISION: &str = "registry-governance-v1";
 
 /// Authenticated host input for a durable release-yank transition.
 /// Authorization is evaluated by the host authority adapter before this owner
@@ -339,6 +348,71 @@ pub struct ModulePublishArtifactAttachResult {
     pub request_id: String,
     pub previous_storage_key: Option<String>,
     pub reuploaded_after_changes_requested: bool,
+}
+
+/// Distinct authorities whose evidence can be attached to a staged release.
+/// These facts deliberately do not imply one another.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModulePublicationEvidenceAuthority {
+    AuthorSignature,
+    BuildServiceAttestation,
+    MarketplaceApproval,
+    PlatformAdmission,
+}
+
+impl ModulePublicationEvidenceAuthority {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::AuthorSignature => "author_signature",
+            Self::BuildServiceAttestation => "build_service_attestation",
+            Self::MarketplaceApproval => "marketplace_approval",
+            Self::PlatformAdmission => "platform_admission",
+        }
+    }
+}
+
+/// Host-authorized immutable evidence for one exact staged artifact subject.
+/// The reference identifies an externally stored signature, attestation, or
+/// decision record; untrusted document contents never enter the ledger.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModulePublicationEvidenceCommand {
+    pub request_id: String,
+    pub authority: ModulePublicationEvidenceAuthority,
+    pub subject_digest_sha256: String,
+    pub evidence_reference: String,
+    pub issuer_identity: String,
+    pub policy_revision: String,
+    pub actor_principal: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModulePublicationEvidenceResult {
+    pub evidence_id: String,
+    pub recorded: bool,
+}
+
+/// Host-authenticated promotion of a verified build-worker receipt into the
+/// publication ledger. Unlike generic evidence, this preserves the exact OCI
+/// subject and signature-manifest identity produced by the build service.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleBuildServiceAttestationCommand {
+    pub request_id: String,
+    pub receipt: ModuleBuildPublicationReceipt,
+    pub issuer_identity: String,
+    pub policy_revision: String,
+    pub actor_principal: serde_json::Value,
+}
+
+/// Host-authenticated registration of one platform trust decision. The
+/// decision evidence remains redacted and immutable; this command only records
+/// its digest-bound admission fact in the marketplace governance ledger.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModulePlatformAdmissionCommand {
+    pub request_id: String,
+    pub reference: OciArtifactReference,
+    pub evidence: ArtifactVerificationEvidence,
+    pub actor_principal: serde_json::Value,
 }
 
 impl ModuleOwnerTransferCommand {
@@ -635,7 +709,7 @@ impl ModulePublishArtifactAttachCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
             || self.artifact_storage_key.trim().is_empty()
-            || self.checksum_sha256.trim().is_empty()
+            || !is_sha256_hex(&self.checksum_sha256)
             || self.artifact_size < 0
             || self.content_type.trim().is_empty()
             || !self.actor_principal.is_object()
@@ -643,6 +717,127 @@ impl ModulePublishArtifactAttachCommand {
             return Err(ModuleGovernanceError::InvalidPublishArtifactAttachCommand);
         }
         Ok(())
+    }
+}
+
+impl ModulePublicationEvidenceCommand {
+    pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        if matches!(
+            self.authority,
+            ModulePublicationEvidenceAuthority::MarketplaceApproval
+                | ModulePublicationEvidenceAuthority::BuildServiceAttestation
+                | ModulePublicationEvidenceAuthority::PlatformAdmission
+        ) {
+            return Err(ModuleGovernanceError::PublicationEvidenceAuthorityReserved);
+        }
+        validate_publication_evidence_fields(
+            &self.request_id,
+            &self.subject_digest_sha256,
+            &self.evidence_reference,
+            &self.issuer_identity,
+            &self.policy_revision,
+            &self.actor_principal,
+        )
+    }
+}
+
+impl ModuleBuildServiceAttestationCommand {
+    pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        if self.receipt.signature_authority != ModuleBuildSignatureAuthority::BuildService {
+            return Err(ModuleGovernanceError::InvalidBuildServiceAttestationCommand);
+        }
+        let references = [
+            &self.receipt.artifact,
+            &self.receipt.sbom_referrer,
+            &self.receipt.provenance_referrer,
+            &self.receipt.signature_manifest,
+        ];
+        if references
+            .iter()
+            .any(|reference| reference.validate().is_err())
+            || references.iter().skip(1).any(|reference| {
+                reference.registry != self.receipt.artifact.registry
+                    || reference.repository != self.receipt.artifact.repository
+            })
+        {
+            return Err(ModuleGovernanceError::InvalidBuildServiceAttestationCommand);
+        }
+        validate_publication_evidence_fields(
+            &self.request_id,
+            receipt_subject_digest_sha256(&self.receipt)?,
+            &format!("oci://{}", self.receipt.signature_manifest.canonical()),
+            &self.issuer_identity,
+            &self.policy_revision,
+            &self.actor_principal,
+        )
+    }
+
+    fn publication_evidence(
+        &self,
+    ) -> Result<ModulePublicationEvidenceCommand, ModuleGovernanceError> {
+        Ok(ModulePublicationEvidenceCommand {
+            request_id: self.request_id.clone(),
+            authority: ModulePublicationEvidenceAuthority::BuildServiceAttestation,
+            subject_digest_sha256: receipt_subject_digest_sha256(&self.receipt)?.to_string(),
+            evidence_reference: format!("oci://{}", self.receipt.signature_manifest.canonical()),
+            issuer_identity: self.issuer_identity.clone(),
+            policy_revision: self.policy_revision.clone(),
+            actor_principal: self.actor_principal.clone(),
+        })
+    }
+}
+
+impl ModulePlatformAdmissionCommand {
+    pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        self.reference
+            .validate()
+            .map_err(|_| ModuleGovernanceError::InvalidPlatformAdmissionCommand)?;
+        if self.request_id.trim().is_empty()
+            || self.evidence.manifest_digest != self.reference.digest
+            || !prefixed_sha256_digest(&self.evidence.payload_digest)
+            || self.evidence.media_type.trim().is_empty()
+            || self.evidence.media_type.len() > MAX_PLATFORM_ADMISSION_MEDIA_TYPE_BYTES
+            || self.evidence.signer_identity.trim().is_empty()
+            || self.evidence.signer_identity.len() > MAX_PUBLICATION_EVIDENCE_IDENTITY_BYTES
+            || !self.evidence.signature_verified
+            || !self.evidence.provenance_verified
+            || !self.evidence.sbom_verified
+            || self.evidence.evidence_references.is_empty()
+            || self.evidence.evidence_references.iter().any(|reference| {
+                reference.trim().is_empty()
+                    || reference.len() > MAX_PUBLICATION_EVIDENCE_REFERENCE_BYTES
+            })
+        {
+            return Err(ModuleGovernanceError::InvalidPlatformAdmissionCommand);
+        }
+        validate_publication_evidence_fields(
+            &self.request_id,
+            receipt_digest_sha256(&self.reference.digest)
+                .map_err(|_| ModuleGovernanceError::InvalidPlatformAdmissionCommand)?,
+            &platform_admission_evidence_reference(&self.reference, &self.evidence),
+            "rustok-platform-admission",
+            &platform_admission_policy_revision(&self.evidence),
+            &self.actor_principal,
+        )
+    }
+
+    fn publication_evidence(
+        &self,
+    ) -> Result<ModulePublicationEvidenceCommand, ModuleGovernanceError> {
+        Ok(ModulePublicationEvidenceCommand {
+            request_id: self.request_id.clone(),
+            authority: ModulePublicationEvidenceAuthority::PlatformAdmission,
+            subject_digest_sha256: receipt_digest_sha256(&self.reference.digest)
+                .map_err(|_| ModuleGovernanceError::InvalidPlatformAdmissionCommand)?
+                .to_string(),
+            evidence_reference: platform_admission_evidence_reference(
+                &self.reference,
+                &self.evidence,
+            ),
+            issuer_identity: "rustok-platform-admission".to_string(),
+            policy_revision: platform_admission_policy_revision(&self.evidence),
+            actor_principal: self.actor_principal.clone(),
+        })
     }
 }
 
@@ -801,6 +996,171 @@ impl SeaOrmModuleGovernanceService {
             request_id: command.request_id,
             previous_storage_key,
             reuploaded_after_changes_requested: reuploaded,
+        })
+    }
+
+    /// Records one authority-scoped immutable publication fact. This ledger is
+    /// intentionally append-only: a later source or artifact can acquire new
+    /// evidence, but it never rewrites an earlier author, build, marketplace,
+    /// or platform-admission decision.
+    pub async fn record_publication_evidence(
+        &self,
+        command: ModulePublicationEvidenceCommand,
+    ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
+        command.validate()?;
+        self.record_publication_evidence_inner(command).await
+    }
+
+    /// Records a build-service attestation only after the receipt's OCI
+    /// identities and declared signature authority have been validated.
+    pub async fn record_build_service_attestation(
+        &self,
+        command: ModuleBuildServiceAttestationCommand,
+    ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
+        command.validate()?;
+        self.record_publication_evidence_inner(command.publication_evidence()?)
+            .await
+    }
+
+    /// Records an admitted platform trust decision only after its exact OCI
+    /// manifest, policy revisions, and all mandatory verification outcomes are
+    /// bound to one immutable evidence fingerprint.
+    pub async fn record_platform_admission(
+        &self,
+        command: ModulePlatformAdmissionCommand,
+    ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
+        command.validate()?;
+        self.record_publication_evidence_inner(command.publication_evidence()?)
+            .await
+    }
+
+    async fn record_publication_evidence_inner(
+        &self,
+        command: ModulePublicationEvidenceCommand,
+    ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
+        let tx = self.db.begin().await.map_err(store_error)?;
+        let backend = tx.get_database_backend();
+        let mark = |n| placeholder(backend, n);
+        let now = database_now(backend);
+        let request = tx
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT slug, status FROM registry_publish_requests WHERE id = {}",
+                    mark(1)
+                ),
+                vec![command.request_id.clone().into()],
+            ))
+            .await
+            .map_err(store_error)?
+            .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        let slug: String = request.try_get("", "slug").map_err(store_error)?;
+        let status: String = request.try_get("", "status").map_err(store_error)?;
+        if status == "rejected" {
+            return Err(
+                ModuleGovernanceError::PublishRequestCannotRecordPublicationEvidence(status),
+            );
+        }
+
+        let authority = command.authority.as_str();
+        let evidence_digest_sha256 = publication_evidence_digest_sha256(&command);
+        let evidence_id = format!("rpe_{}", Uuid::new_v4().simple());
+        let inserted = tx
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO registry_publication_evidence \
+                 (id, request_id, authority, subject_digest_sha256, evidence_reference, \
+                  issuer_identity, policy_revision, evidence_digest_sha256, \
+                  recorded_by_principal, created_at) \
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
+                 ON CONFLICT (request_id, evidence_digest_sha256) DO NOTHING",
+                    mark(1),
+                    mark(2),
+                    mark(3),
+                    mark(4),
+                    mark(5),
+                    mark(6),
+                    mark(7),
+                    mark(8),
+                    mark(9),
+                ),
+                vec![
+                    evidence_id.clone().into(),
+                    command.request_id.clone().into(),
+                    authority.into(),
+                    command.subject_digest_sha256.clone().into(),
+                    command.evidence_reference.into(),
+                    command.issuer_identity.into(),
+                    command.policy_revision.clone().into(),
+                    evidence_digest_sha256.clone().into(),
+                    Value::Json(Some(Box::new(command.actor_principal.clone()))),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
+        if inserted.rows_affected() == 0 {
+            let existing = tx
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT id FROM registry_publication_evidence \
+                         WHERE request_id = {} AND evidence_digest_sha256 = {}",
+                        mark(1),
+                        mark(2),
+                    ),
+                    vec![
+                        command.request_id.clone().into(),
+                        evidence_digest_sha256.into(),
+                    ],
+                ))
+                .await
+                .map_err(store_error)?
+                .ok_or_else(|| {
+                    ModuleGovernanceError::Store(
+                        "publication evidence conflict did not expose its existing record"
+                            .to_string(),
+                    )
+                })?;
+            let evidence_id: String = existing.try_get("", "id").map_err(store_error)?;
+            tx.rollback().await.map_err(store_error)?;
+            return Ok(ModulePublicationEvidenceResult {
+                evidence_id,
+                recorded: false,
+            });
+        }
+        tx.execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO registry_governance_events \
+                 (id, slug, request_id, release_id, event_type, actor_principal, \
+                  publisher_principal, details, created_at) \
+                 VALUES ({}, {}, {}, NULL, 'publication_evidence_recorded', {}, NULL, {}, {now})",
+                mark(1),
+                mark(2),
+                mark(3),
+                mark(4),
+                mark(5),
+            ),
+            vec![
+                format!("rge_{}", Uuid::new_v4().simple()).into(),
+                slug.into(),
+                command.request_id.into(),
+                Value::Json(Some(Box::new(command.actor_principal))),
+                Value::Json(Some(Box::new(serde_json::json!({
+                    "evidence_id": evidence_id.clone(),
+                    "authority": authority,
+                    "subject_digest_sha256": command.subject_digest_sha256,
+                    "policy_revision": command.policy_revision,
+                })))),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+        tx.commit().await.map_err(store_error)?;
+        Ok(ModulePublicationEvidenceResult {
+            evidence_id,
+            recorded: true,
         })
     }
 
@@ -3080,11 +3440,61 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
             .filter(|value| !value.trim().is_empty())
             .ok_or(ModuleGovernanceError::PublishRequestMissingArtifactChecksum)?;
+        if !is_sha256_hex(&checksum_sha256) {
+            return Err(ModuleGovernanceError::PublishRequestInvalidArtifactChecksum);
+        }
         let artifact_size = request
             .try_get::<Option<i64>>("", "artifact_size")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
             .filter(|value| *value >= 0)
             .ok_or(ModuleGovernanceError::PublishRequestMissingArtifactSize)?;
+
+        let author_signature_recorded = tx
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT 1 FROM registry_publication_evidence \
+                     WHERE request_id = {} AND authority = 'author_signature' \
+                     AND subject_digest_sha256 = {} LIMIT 1",
+                    mark(1),
+                    mark(2),
+                ),
+                vec![
+                    command.request_id.clone().into(),
+                    checksum_sha256.clone().into(),
+                ],
+            ))
+            .await
+            .map_err(store_error)?
+            .is_some();
+        if !author_signature_recorded {
+            return Err(ModuleGovernanceError::PublishRequestMissingAuthorSignature);
+        }
+        let matched_build_and_platform_evidence = tx
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT build.subject_digest_sha256 \
+                     FROM registry_publication_evidence AS build \
+                     WHERE build.request_id = {} \
+                       AND build.authority = 'build_service_attestation' \
+                       AND EXISTS ( \
+                           SELECT 1 FROM registry_publication_evidence AS platform \
+                           WHERE platform.request_id = build.request_id \
+                             AND platform.authority = 'platform_admission' \
+                             AND platform.subject_digest_sha256 = build.subject_digest_sha256 \
+                       ) \
+                     LIMIT 1",
+                    mark(1),
+                ),
+                vec![command.request_id.clone().into()],
+            ))
+            .await
+            .map_err(store_error)?
+            .is_some();
+        if !matched_build_and_platform_evidence {
+            return Err(ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission);
+        }
 
         let translations = tx
             .query_all(Statement::from_sql_and_values(
@@ -3100,6 +3510,77 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if translations.is_empty() {
             return Err(ModuleGovernanceError::PublishRequestMissingTranslations);
+        }
+
+        let marketplace_approval = ModulePublicationEvidenceCommand {
+            request_id: command.request_id.clone(),
+            authority: ModulePublicationEvidenceAuthority::MarketplaceApproval,
+            subject_digest_sha256: checksum_sha256.clone(),
+            evidence_reference: format!(
+                "registry://publish-requests/{}/marketplace-approval",
+                command.request_id
+            ),
+            issuer_identity: validation_stage_actor_label(&command.actor_principal)?,
+            policy_revision: MARKETPLACE_APPROVAL_POLICY_REVISION.to_string(),
+            actor_principal: command.actor_principal.clone(),
+        };
+        let marketplace_approval_digest = publication_evidence_digest_sha256(&marketplace_approval);
+        let marketplace_approval_id = format!("rpe_{}", Uuid::new_v4().simple());
+        let marketplace_approval_inserted = tx
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO registry_publication_evidence \
+                 (id, request_id, authority, subject_digest_sha256, evidence_reference, \
+                  issuer_identity, policy_revision, evidence_digest_sha256, \
+                  recorded_by_principal, created_at) \
+                 VALUES ({}, {}, 'marketplace_approval', {}, {}, {}, {}, {}, {}, {now}) \
+                 ON CONFLICT (request_id, evidence_digest_sha256) DO NOTHING",
+                    mark(1),
+                    mark(2),
+                    mark(3),
+                    mark(4),
+                    mark(5),
+                    mark(6),
+                    mark(7),
+                    mark(8),
+                ),
+                vec![
+                    marketplace_approval_id.clone().into(),
+                    command.request_id.clone().into(),
+                    marketplace_approval.subject_digest_sha256.into(),
+                    marketplace_approval.evidence_reference.into(),
+                    marketplace_approval.issuer_identity.into(),
+                    marketplace_approval.policy_revision.clone().into(),
+                    marketplace_approval_digest.into(),
+                    Value::Json(Some(Box::new(command.actor_principal.clone()))),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
+        if marketplace_approval_inserted.rows_affected() == 1 {
+            tx.execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO registry_governance_events \
+                     (id, slug, request_id, release_id, event_type, actor_principal, \
+                      publisher_principal, details, created_at) \
+                     VALUES ({}, {}, {}, NULL, 'marketplace_approval_recorded', {}, NULL, {}, {now})",
+                    mark(1), mark(2), mark(3), mark(4), mark(5),
+                ),
+                vec![
+                    format!("rge_{}", Uuid::new_v4().simple()).into(),
+                    slug.clone().into(),
+                    command.request_id.clone().into(),
+                    Value::Json(Some(Box::new(command.actor_principal.clone()))),
+                    Value::Json(Some(Box::new(serde_json::json!({
+                        "evidence_id": marketplace_approval_id,
+                        "authority": "marketplace_approval",
+                        "subject_digest_sha256": checksum_sha256,
+                        "policy_revision": MARKETPLACE_APPROVAL_POLICY_REVISION,
+                    })))),
+                ],
+            )).await.map_err(store_error)?;
         }
 
         if let Some(override_evidence) = &command.approval_override {
@@ -3508,6 +3989,108 @@ fn dedupe_validation_messages(values: Vec<String>) -> Vec<String> {
     deduped
 }
 
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn receipt_subject_digest_sha256(
+    receipt: &ModuleBuildPublicationReceipt,
+) -> Result<&str, ModuleGovernanceError> {
+    receipt_digest_sha256(&receipt.artifact.digest)
+}
+
+fn receipt_digest_sha256(digest: &str) -> Result<&str, ModuleGovernanceError> {
+    digest
+        .strip_prefix("sha256:")
+        .filter(|digest| is_sha256_hex(digest))
+        .ok_or(ModuleGovernanceError::InvalidBuildServiceAttestationCommand)
+}
+
+fn prefixed_sha256_digest(digest: &str) -> bool {
+    digest.strip_prefix("sha256:").is_some_and(is_sha256_hex)
+}
+
+fn platform_admission_policy_revision(evidence: &ArtifactVerificationEvidence) -> String {
+    format!(
+        "trust:{};capability:{}",
+        evidence.trust_policy_revision, evidence.capability_policy_revision
+    )
+}
+
+fn platform_admission_evidence_reference(
+    reference: &OciArtifactReference,
+    evidence: &ArtifactVerificationEvidence,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rustok.module.platform-admission.v1\0");
+    let mut evidence_references = evidence.evidence_references.clone();
+    evidence_references.sort();
+    for value in [
+        reference.canonical(),
+        evidence.payload_digest.clone(),
+        evidence.media_type.clone(),
+        evidence.signer_identity.clone(),
+        platform_admission_policy_revision(evidence),
+        evidence.signature_verified.to_string(),
+        evidence.provenance_verified.to_string(),
+        evidence.sbom_verified.to_string(),
+        evidence.verified_at.to_rfc3339(),
+    ]
+    .into_iter()
+    .chain(evidence_references)
+    {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    format!(
+        "platform-admission://{}/evidence/{}",
+        reference.canonical(),
+        hex::encode(hasher.finalize())
+    )
+}
+
+fn validate_publication_evidence_fields(
+    request_id: &str,
+    subject_digest_sha256: &str,
+    evidence_reference: &str,
+    issuer_identity: &str,
+    policy_revision: &str,
+    actor_principal: &serde_json::Value,
+) -> Result<(), ModuleGovernanceError> {
+    if request_id.trim().is_empty()
+        || !is_sha256_hex(subject_digest_sha256)
+        || evidence_reference.trim().is_empty()
+        || evidence_reference.len() > MAX_PUBLICATION_EVIDENCE_REFERENCE_BYTES
+        || issuer_identity.trim().is_empty()
+        || issuer_identity.len() > MAX_PUBLICATION_EVIDENCE_IDENTITY_BYTES
+        || policy_revision.trim().is_empty()
+        || policy_revision.len() > MAX_PUBLICATION_EVIDENCE_POLICY_REVISION_BYTES
+        || !actor_principal.is_object()
+    {
+        return Err(ModuleGovernanceError::InvalidPublicationEvidenceCommand);
+    }
+    Ok(())
+}
+
+fn publication_evidence_digest_sha256(command: &ModulePublicationEvidenceCommand) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rustok.module.publication-evidence.v1\0");
+    for value in [
+        command.authority.as_str(),
+        command.subject_digest_sha256.as_str(),
+        command.evidence_reference.as_str(),
+        command.issuer_identity.as_str(),
+        command.policy_revision.as_str(),
+    ] {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
 fn follow_up_validation_stage_detail(stage_key: &str) -> &'static str {
     match stage_key {
         "compile_smoke" => "Compile smoke still runs outside the current registry validator.",
@@ -3604,6 +4187,18 @@ pub enum ModuleGovernanceError {
         "publish artifact attachment requires durable artifact metadata and an actor principal"
     )]
     InvalidPublishArtifactAttachCommand,
+    #[error(
+        "publication evidence requires an exact SHA-256 subject, bounded references, and an actor principal"
+    )]
+    InvalidPublicationEvidenceCommand,
+    #[error(
+        "marketplace approval, build-service, and platform evidence require their owner-only operations"
+    )]
+    PublicationEvidenceAuthorityReserved,
+    #[error("build-service attestation requires one valid build-worker publication receipt")]
+    InvalidBuildServiceAttestationCommand,
+    #[error("platform admission requires one admitted immutable verification decision")]
+    InvalidPlatformAdmissionCommand,
     #[error("unsupported remote validation claim stage `{0}`")]
     InvalidRemoteValidationClaimStage(String),
     #[error("unsupported owner-transfer reason code `{0}`")]
@@ -3644,6 +4239,8 @@ pub enum ModuleGovernanceError {
     PublishRequestCannotBePublished(String),
     #[error("registry publish request in status `{0}` cannot accept an artifact")]
     PublishRequestCannotAttachArtifact(String),
+    #[error("registry publish request in status `{0}` cannot accept publication evidence")]
+    PublishRequestCannotRecordPublicationEvidence(String),
     #[error("registry publish request in status `{0}` cannot accept validation-stage updates")]
     PublishRequestCannotReportValidationStage(String),
     #[error("registry publish request in status `{0}` cannot queue automated validation")]
@@ -3658,8 +4255,18 @@ pub enum ModuleGovernanceError {
     PublishRequestMissingArtifactStorageKey,
     #[error("registry publish request is missing artifact checksum")]
     PublishRequestMissingArtifactChecksum,
+    #[error("registry publish request artifact checksum is not canonical SHA-256")]
+    PublishRequestInvalidArtifactChecksum,
     #[error("registry publish request is missing a valid artifact size")]
     PublishRequestMissingArtifactSize,
+    #[error(
+        "registry publish request is missing author signature evidence for its staged artifact"
+    )]
+    PublishRequestMissingAuthorSignature,
+    #[error(
+        "registry publish request is missing matching build-service and platform-admission evidence"
+    )]
+    PublishRequestMissingBuildOrPlatformAdmission,
     #[error("registry publish request has no localized metadata")]
     PublishRequestMissingTranslations,
     #[error("registry validation stage was not found")]
@@ -3723,6 +4330,47 @@ mod tests {
         assert!(matches!(
             command.validate(),
             Err(ModuleGovernanceError::InvalidPublishRequestPublicationCommand)
+        ));
+    }
+
+    #[test]
+    fn external_evidence_cannot_claim_marketplace_approval_or_noncanonical_subjects() {
+        let marketplace = ModulePublicationEvidenceCommand {
+            request_id: "request-1".to_string(),
+            authority: ModulePublicationEvidenceAuthority::MarketplaceApproval,
+            subject_digest_sha256: "a".repeat(64),
+            evidence_reference: "registry://publish-requests/request-1/marketplace-approval"
+                .to_string(),
+            issuer_identity: "operator".to_string(),
+            policy_revision: "registry-governance-v1".to_string(),
+            actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
+        };
+        assert!(matches!(
+            marketplace.validate(),
+            Err(ModuleGovernanceError::PublicationEvidenceAuthorityReserved)
+        ));
+        let mut build = marketplace;
+        build.authority = ModulePublicationEvidenceAuthority::BuildServiceAttestation;
+        assert!(matches!(
+            build.validate(),
+            Err(ModuleGovernanceError::PublicationEvidenceAuthorityReserved)
+        ));
+        build.authority = ModulePublicationEvidenceAuthority::PlatformAdmission;
+        assert!(matches!(
+            build.validate(),
+            Err(ModuleGovernanceError::PublicationEvidenceAuthorityReserved)
+        ));
+        assert!(matches!(
+            ModulePublishArtifactAttachCommand {
+                request_id: "request-1".to_string(),
+                actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
+                artifact_storage_key: "registry/request-1".to_string(),
+                checksum_sha256: "SHA256:ABC".to_string(),
+                artifact_size: 1,
+                content_type: "application/octet-stream".to_string(),
+            }
+            .validate(),
+            Err(ModuleGovernanceError::InvalidPublishArtifactAttachCommand)
         ));
     }
 
@@ -4102,12 +4750,19 @@ mod tests {
                 event_type TEXT NOT NULL, actor_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
                 details TEXT NOT NULL, created_at TEXT NOT NULL\
              )",
+            "CREATE TABLE registry_publication_evidence (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, authority TEXT NOT NULL,\
+                subject_digest_sha256 TEXT NOT NULL, evidence_reference TEXT NOT NULL,\
+                issuer_identity TEXT NOT NULL, policy_revision TEXT NOT NULL,\
+                evidence_digest_sha256 TEXT NOT NULL, recorded_by_principal TEXT NOT NULL,\
+                created_at TEXT NOT NULL, UNIQUE (request_id, evidence_digest_sha256)\
+             )",
             "INSERT INTO registry_publish_requests (\
                 id, slug, version, crate_name, default_locale, ownership, trust_level, license, entry_type,\
                 marketplace, ui_packages, status, artifact_storage_key, artifact_checksum_sha256, artifact_size, updated_at\
              ) VALUES (\
                 'request-1', 'sample_module', '1.0.0', 'sample_crate', 'en', 'platform', 'verified', 'MIT',\
-                NULL, '{}', '[]', 'approved', 'registry/request-1', 'abc123', 42, datetime('now')\
+                NULL, '{}', '[]', 'approved', 'registry/request-1', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 42, datetime('now')\
              )",
             "INSERT INTO registry_publish_request_translations (request_id, locale, name, description) VALUES (\
                 'request-1', 'en', 'Sample module', 'Sample module description'\
@@ -4119,14 +4774,57 @@ mod tests {
                 .expect("schema or fixture");
         }
 
-        SeaOrmModuleGovernanceService::new(database.clone())
-            .publish_request(ModulePublishRequestPublicationCommand {
-                request_id: "request-1".to_string(),
-                actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
-                publisher_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
-                allow_owner_rebind: false,
-                approval_override: None,
-            })
+        let command = ModulePublishRequestPublicationCommand {
+            request_id: "request-1".to_string(),
+            actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
+            publisher_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
+            allow_owner_rebind: false,
+            approval_override: None,
+        };
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        let blocked = service
+            .publish_request(command.clone())
+            .await
+            .expect_err("publication without author evidence must fail");
+        assert!(matches!(
+            blocked,
+            ModuleGovernanceError::PublishRequestMissingAuthorSignature
+        ));
+
+        let staged_subject = "a".repeat(64);
+        let oci_subject = "b".repeat(64);
+        for (id, authority, subject) in [
+            ("rpe_author", "author_signature", staged_subject.as_str()),
+            (
+                "rpe_build",
+                "build_service_attestation",
+                oci_subject.as_str(),
+            ),
+            ("rpe_platform", "platform_admission", oci_subject.as_str()),
+        ] {
+            database
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "INSERT INTO registry_publication_evidence \
+                     (id, request_id, authority, subject_digest_sha256, evidence_reference, \
+                      issuer_identity, policy_revision, evidence_digest_sha256, \
+                      recorded_by_principal, created_at) \
+                     VALUES (?, 'request-1', ?, ?, 'evidence://fixture', 'fixture', \
+                             'fixture-v1', ?, '{}', datetime('now'))"
+                        .to_string(),
+                    vec![
+                        id.to_string().into(),
+                        authority.to_string().into(),
+                        subject.to_string().into(),
+                        format!("digest-{id}").into(),
+                    ],
+                ))
+                .await
+                .expect("publication evidence fixture");
+        }
+
+        service
+            .publish_request(command)
             .await
             .expect("publish request");
 
@@ -4162,7 +4860,7 @@ mod tests {
             release
                 .try_get::<String>("", "checksum_sha256")
                 .expect("release checksum"),
-            "abc123"
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         );
         let release_id: String = release.try_get("", "id").expect("release id");
         let translations = database
@@ -4203,7 +4901,7 @@ mod tests {
             ))
             .await
             .expect("events query");
-        assert_eq!(events.len(), 2);
+        assert_eq!(events.len(), 3);
         let event_types = events
             .iter()
             .map(|event| {
@@ -4230,5 +4928,164 @@ mod tests {
                 .expect("publication release ID"),
             release_id
         );
+        assert!(event_types
+            .iter()
+            .any(|event_type| event_type == "marketplace_approval_recorded"));
+        let evidence = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT authority, subject_digest_sha256 FROM registry_publication_evidence"
+                    .to_string(),
+            ))
+            .await
+            .expect("marketplace approval evidence query")
+            .expect("marketplace approval evidence row");
+        assert_eq!(
+            evidence
+                .try_get::<String>("", "authority")
+                .expect("marketplace approval authority"),
+            "marketplace_approval"
+        );
+        assert_eq!(
+            evidence
+                .try_get::<String>("", "subject_digest_sha256")
+                .expect("marketplace approval subject"),
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        );
+    }
+
+    #[tokio::test]
+    async fn publication_evidence_is_authority_scoped_and_idempotent() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE registry_publish_requests (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, status TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_publication_evidence (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, authority TEXT NOT NULL,\
+                subject_digest_sha256 TEXT NOT NULL, evidence_reference TEXT NOT NULL,\
+                issuer_identity TEXT NOT NULL, policy_revision TEXT NOT NULL,\
+                evidence_digest_sha256 TEXT NOT NULL, recorded_by_principal TEXT NOT NULL,\
+                created_at TEXT NOT NULL, UNIQUE (request_id, evidence_digest_sha256)\
+             )",
+            "CREATE TABLE registry_governance_events (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, request_id TEXT NULL, release_id TEXT NULL,\
+                event_type TEXT NOT NULL, actor_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
+                details TEXT NOT NULL, created_at TEXT NOT NULL\
+             )",
+            "INSERT INTO registry_publish_requests (id, slug, status) \
+             VALUES ('request-1', 'sample_module', 'approved')",
+        ] {
+            database
+                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .await
+                .expect("schema or fixture");
+        }
+
+        let command = ModulePublicationEvidenceCommand {
+            request_id: "request-1".to_string(),
+            authority: ModulePublicationEvidenceAuthority::AuthorSignature,
+            subject_digest_sha256: "a".repeat(64),
+            evidence_reference: "oci://registry.example/modules/sample@sha256:author-signature"
+                .to_string(),
+            issuer_identity: "author:sample".to_string(),
+            policy_revision: "author-policy-v1".to_string(),
+            actor_principal: serde_json::json!({ "kind": "user", "id": "author" }),
+        };
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        let first = service
+            .record_publication_evidence(command.clone())
+            .await
+            .expect("record evidence");
+        let repeated = service
+            .record_publication_evidence(command)
+            .await
+            .expect("repeat evidence");
+        let reference = |digest| crate::installation::OciArtifactReference {
+            registry: "registry.example".to_string(),
+            repository: "modules/sample".to_string(),
+            digest: format!("sha256:{}", digest.to_string().repeat(64)),
+        };
+        let build_command = ModuleBuildServiceAttestationCommand {
+            request_id: "request-1".to_string(),
+            receipt: ModuleBuildPublicationReceipt {
+                artifact: reference('a'),
+                sbom_referrer: reference('b'),
+                provenance_referrer: reference('c'),
+                signature_manifest: reference('d'),
+                signature_authority: ModuleBuildSignatureAuthority::BuildService,
+            },
+            issuer_identity: "build-service:production".to_string(),
+            policy_revision: "build-policy-v1".to_string(),
+            actor_principal: serde_json::json!({ "kind": "service", "id": "build-worker" }),
+        };
+        let build = service
+            .record_build_service_attestation(build_command.clone())
+            .await
+            .expect("record build evidence");
+        let platform_admission = ModulePlatformAdmissionCommand {
+            request_id: "request-1".to_string(),
+            reference: reference('a'),
+            evidence: ArtifactVerificationEvidence {
+                manifest_digest: format!("sha256:{}", "a".repeat(64)),
+                payload_digest: format!("sha256:{}", "e".repeat(64)),
+                media_type: "application/wasm".to_string(),
+                signer_identity: "build-service:production".to_string(),
+                trust_policy_revision: 7,
+                capability_policy_revision: 9,
+                signature_verified: true,
+                provenance_verified: true,
+                sbom_verified: true,
+                evidence_references: vec![
+                    "oci://registry.example/modules/sample@sha256:signature".to_string(),
+                    "oci://registry.example/modules/sample@sha256:provenance".to_string(),
+                ],
+                verified_at: chrono::Utc::now(),
+            },
+            actor_principal: serde_json::json!({ "kind": "service", "id": "verification-worker" }),
+        };
+        let admission = service
+            .record_platform_admission(platform_admission.clone())
+            .await
+            .expect("record platform admission");
+        let repeated_admission = service
+            .record_platform_admission(platform_admission)
+            .await
+            .expect("repeat platform admission");
+
+        assert!(first.recorded);
+        assert!(!repeated.recorded);
+        assert_eq!(first.evidence_id, repeated.evidence_id);
+        assert!(build.recorded);
+        assert_ne!(first.evidence_id, build.evidence_id);
+        assert!(admission.recorded);
+        assert!(!repeated_admission.recorded);
+        assert_eq!(admission.evidence_id, repeated_admission.evidence_id);
+        assert_ne!(build.evidence_id, admission.evidence_id);
+        let evidence = database
+            .query_all(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT authority, subject_digest_sha256 FROM registry_publication_evidence"
+                    .to_string(),
+            ))
+            .await
+            .expect("evidence query");
+        assert_eq!(evidence.len(), 3);
+        let authorities = evidence
+            .iter()
+            .map(|row| row.try_get::<String>("", "authority").expect("authority"))
+            .collect::<Vec<_>>();
+        assert!(authorities.contains(&"author_signature".to_string()));
+        assert!(authorities.contains(&"build_service_attestation".to_string()));
+        assert!(authorities.contains(&"platform_admission".to_string()));
+        for row in evidence {
+            assert_eq!(
+                row.try_get::<String>("", "subject_digest_sha256")
+                    .expect("subject digest"),
+                "a".repeat(64)
+            );
+        }
     }
 }

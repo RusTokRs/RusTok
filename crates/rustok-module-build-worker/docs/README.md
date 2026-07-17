@@ -18,12 +18,34 @@ The worker requires a mutually authenticated listener configured with the
 - `RUSTOK_MODULE_BUILD_PUBLICATION_REGISTRY` and
   `RUSTOK_MODULE_BUILD_PUBLICATION_REPOSITORY` (the deployment-owned scoped OCI
   publication destination).
+- `RUSTOK_MODULE_BUILD_COSIGN_PROGRAM` (an absolute non-symlink image-owned
+  Cosign executable).
+- `RUSTOK_MODULE_BUILD_COSIGN_KEY_REFERENCE` (an approved KMS provider URI;
+  never a file path or raw private key).
+- `RUSTOK_MODULE_BUILD_REGISTRY_CREDENTIAL_BROKER` (an absolute non-symlink
+  deployment-owned executable that returns a short-lived scoped registry lease).
 
-`RUSTOK_MODULE_BUILD_PUBLICATION_USERNAME` and
-`RUSTOK_MODULE_BUILD_PUBLICATION_PASSWORD` are optional mounted credentials but
-must be supplied together. When both are absent, the worker uses anonymous
-registry access. The identity must be restricted to publishing this configured
-repository; it is never accepted from request data.
+The worker never reads registry usernames or passwords from environment. Before
+publication it invokes the fixed credential broker with exactly one bounded JSON
+request containing `protocol_version: 1`, configured `registry`, `repository`,
+and `minimum_ttl_seconds`. The broker returns one bounded JSON lease for that
+same repository with username, password, and expiry. The lease must remain
+valid for the complete publication/signing window, is capped at 15 minutes, and
+is kept only in worker memory. Broker stdout is limited to 16 KiB; stderr is
+discarded. The broker runs with a cleared environment and must use its own
+deployment-managed workload identity or local provider channel.
+
+Cosign receives the verified, digest-pinned artifact reference only after OCI
+publication. Its KMS-provider identity is deployment-owned and must be scoped
+to the configured publication repository; neither a private key nor a signing
+credential enters a build request, runner environment, descriptor, or log.
+The worker removes `COSIGN_REPOSITORY` for the signing command so Cosign cannot
+redirect a signature to another repository. It then resolves Cosign's standard
+`sha256-<subject>.sig` OCI manifest tag to a digest-pinned receipt. The tag is
+only a registry lookup mechanism, never an identity exposed to the control
+plane. The same in-memory lease is written only to a private temporary Docker
+configuration for the fixed Cosign process and is removed immediately after it
+exits.
 
 `RUSTOK_MODULE_BUILD_DEPENDENCY_MATERIALIZER` is optional for deployments that
 accept only `network_policy: denied`. When configured, it must be an absolute,
@@ -72,16 +94,21 @@ package, world, version, and complete import/export surface to match exactly.
 This rejects undeclared capability imports; the runner cannot supply WIT text
 or choose the inspection executable. The JSON result is therefore evidence
 about a fixed output, not an unverified substitute for the payload. Publication
-uses only that verified output; signing and admission remain later stages.
+and Cosign signing use only that verified output; admission remains a later
+stage.
 
 The runner must additionally write
 `RUSTOK_MODULE_BUILD_OUTPUT_DIR/module-artifact-descriptor.json`. The worker
 parses this regular non-symlink file under the descriptor limit and binds its
 slug, version, runtime ABI, WASM payload kind, and payload digest to the
 immutable successful build result. It publishes the fixed component, SBOM, and
-provenance through the configured scoped OCI destination. The returned result
-then carries only digest-pinned artifact/SBOM/provenance references; the owner
-rejects any successful result that lacks those publication facts.
+provenance through the configured scoped OCI destination, then uses fixed
+Cosign with the configured KMS reference to sign the digest-pinned artifact.
+The returned result then carries only digest-pinned artifact/SBOM/provenance/
+signature-manifest references and marks that signature as `build_service`; the
+owner rejects any successful result that lacks those publication facts. An
+author signature and marketplace approval are separate governance evidence and
+cannot be claimed by the build worker.
 
 Successful builds must also emit `sbom.cdx.json` and `provenance.intoto.json`
 in the same output directory. The worker rehashes both regular non-symlink
@@ -89,9 +116,10 @@ files against the result digests and parses them before accepting success. The
 SBOM must be bounded CycloneDX JSON with a metadata component. Provenance must
 be a bounded SLSA in-toto Statement whose subject carries the component SHA-256
 and whose `predicate.buildDefinition.externalParameters.rustok` object binds
-the immutable source, dependency-lock, toolchain, and WIT digests. This checks
-production evidence before the worker publishes OCI referrers; signature and
-admission trust policy remain separate stages.
+the immutable source, dependency-lock, toolchain, and WIT digests plus exact
+independently versioned author SDK and template inputs. This checks
+production evidence before the worker publishes OCI referrers and signs the
+artifact; admission trust policy remains a separate stage.
 
 For v1, source reference must exactly be `cas://sha256/<hex>` and its matching
 `<hex>.tar` file must exist in `RUSTOK_MODULE_BUILD_SOURCE_ROOT`. The worker

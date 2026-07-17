@@ -13,6 +13,7 @@ mod m20260716_000012_module_build_requests;
 mod m20260716_000013_artifact_admission_commands;
 mod m20260716_000014_artifact_secret_bindings;
 mod m20260716_000015_artifact_execution_audit;
+mod m20260716_000016_artifact_execution_audit_metrics;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -33,5 +34,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260716_000013_artifact_admission_commands::Migration),
         Box::new(m20260716_000014_artifact_secret_bindings::Migration),
         Box::new(m20260716_000015_artifact_execution_audit::Migration),
+        Box::new(m20260716_000016_artifact_execution_audit_metrics::Migration),
     ]
 }

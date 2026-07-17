@@ -18,8 +18,8 @@ use rhai::{Dynamic, Engine, EvalAltResult, Map, Scope};
 use serde_json::Value;
 
 use crate::{
-    ExecutionMetrics, SandboxError, SandboxExecutor, SandboxExecutorKind, SandboxHost,
-    SandboxOutcome, SandboxRequest, SandboxResult,
+    ExecutionMetrics, RhaiBindingInput, RhaiBindingOutput, SandboxError, SandboxExecutor,
+    SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxRequest, SandboxResult,
 };
 
 const TIMEOUT_MARKER: &str = "__RUSTOK_SANDBOX_TIMEOUT__";
@@ -108,7 +108,7 @@ impl RhaiExecutor {
         engine
     }
 
-    fn build_scope(request: &SandboxRequest) -> Scope<'static> {
+    fn build_scope(request: &SandboxRequest, input: &Value) -> Scope<'static> {
         let mut scope = Scope::new();
         scope.push_constant("EXECUTION_ID", request.context.execution_id.to_string());
         scope.push_constant("PHASE", format!("{:?}", request.context.phase));
@@ -119,7 +119,7 @@ impl RhaiExecutor {
         if let Some(actor_id) = &request.context.actor_id {
             scope.push_constant("ACTOR_ID", actor_id.clone());
         }
-        scope.push_constant("input", json_to_dynamic(&request.input));
+        scope.push_constant("input", json_to_dynamic(input));
         scope
     }
 
@@ -177,6 +177,8 @@ impl SandboxExecutor for RhaiExecutor {
         request: &SandboxRequest,
         host: SandboxHost,
     ) -> SandboxResult<SandboxOutcome> {
+        let binding = RhaiBindingInput::decode(request.input.clone())
+            .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
         let source = std::str::from_utf8(&request.payload.bytes)
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
         let operations = Arc::new(AtomicU64::new(0));
@@ -184,7 +186,7 @@ impl SandboxExecutor for RhaiExecutor {
         for extension in &self.extensions {
             extension.register(&mut engine, request, host.clone());
         }
-        let mut scope = Self::build_scope(request);
+        let mut scope = Self::build_scope(request, &binding.input);
         for extension in &self.extensions {
             extension.populate_scope(&mut scope, request)?;
         }
@@ -198,6 +200,8 @@ impl SandboxExecutor for RhaiExecutor {
         for extension in &self.extensions {
             output = extension.map_output(&mut scope, request, output)?;
         }
+        let output = serde_json::to_value(RhaiBindingOutput::new(output))
+            .map_err(|error| SandboxError::Internal(error.to_string()))?;
         let output_bytes = serde_json::to_vec(&output)
             .map_err(|error| SandboxError::Internal(error.to_string()))?
             .len() as u64;

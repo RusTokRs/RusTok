@@ -11,11 +11,13 @@ use uuid::Uuid;
 
 use rustok_sandbox::rhai::RhaiHostExtension;
 use rustok_sandbox::{
-    ExecutionPhase as SandboxExecutionPhase, SandboxContext, SandboxError, SandboxExecutorKind,
-    SandboxPayload, SandboxPolicy, SandboxRequest, SandboxResult, SandboxSubject,
+    ExecutionPhase as SandboxExecutionPhase, RhaiBindingInput, RhaiBindingOutput, SandboxContext,
+    SandboxError, SandboxExecutorKind, SandboxPayload, SandboxPolicy, SandboxRequest,
+    SandboxResult, SandboxSubject,
 };
 
 use crate::{
+    artifact::RHAI_MODULE_ABI,
     register_entity_proxy,
     utils::{dynamic_to_json, json_to_dynamic},
     Bridge, EntityProxy, ExecutionContext, ExecutionPhase, Script, ScriptError, ScriptResult,
@@ -25,12 +27,11 @@ use crate::{
 /// artifact. Published artifacts use their separately admitted descriptor.
 pub const ALLOY_DRAFT_RHAI_MEDIA_TYPE: &str = "application/vnd.rustok.alloy.rhai-source.v1";
 
-/// The only v1 input shape an Alloy sandbox adapter may expose to Rhai. It
-/// keeps user-provided parameters and entity snapshots data-only; the later
+/// Alloy-owned data carried inside the shared Rhai v1 input envelope. It keeps
+/// user-provided parameters and entity snapshots data-only; the later
 /// request-scoped extension owns mutable `EntityProxy` reconstruction.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AlloyDraftInput {
-    pub binding_version: u32,
     #[serde(default = "empty_object")]
     pub params: serde_json::Value,
     #[serde(default)]
@@ -42,7 +43,6 @@ pub struct AlloyDraftInput {
 impl Default for AlloyDraftInput {
     fn default() -> Self {
         Self {
-            binding_version: 1,
             params: empty_object(),
             entity: None,
             entity_before: None,
@@ -52,11 +52,6 @@ impl Default for AlloyDraftInput {
 
 impl AlloyDraftInput {
     pub fn validate(&self) -> Result<(), AlloyDraftBindingError> {
-        if self.binding_version != 1 {
-            return Err(AlloyDraftBindingError::UnsupportedVersion(
-                self.binding_version,
-            ));
-        }
         if !self.params.is_object() {
             return Err(AlloyDraftBindingError::ParamsMustBeObject);
         }
@@ -92,10 +87,9 @@ impl AlloyDraftEntitySnapshot {
     }
 }
 
-/// The v1 data-only result produced by the planned Alloy sandbox adapter.
+/// Alloy-owned data carried inside the shared Rhai v1 output envelope.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AlloyDraftOutput {
-    pub binding_version: u32,
     #[serde(default)]
     pub return_value: serde_json::Value,
     #[serde(default = "empty_object")]
@@ -104,11 +98,6 @@ pub struct AlloyDraftOutput {
 
 impl AlloyDraftOutput {
     pub fn validate(&self) -> Result<(), AlloyDraftBindingError> {
-        if self.binding_version != 1 {
-            return Err(AlloyDraftBindingError::UnsupportedVersion(
-                self.binding_version,
-            ));
-        }
         if !self.entity_changes.is_object() {
             return Err(AlloyDraftBindingError::EntityChangesMustBeObject);
         }
@@ -155,7 +144,9 @@ impl AlloyDraftRuntime {
             .execute(request)
             .await
             .map_err(ScriptError::from)?;
-        let output: AlloyDraftOutput = serde_json::from_value(output.output).map_err(|error| {
+        let binding = RhaiBindingOutput::decode(output.output)
+            .map_err(|error| ScriptError::Runtime(error.to_string()))?;
+        let output: AlloyDraftOutput = serde_json::from_value(binding.output).map_err(|error| {
             ScriptError::Runtime(format!("invalid Alloy sandbox output: {error}"))
         })?;
         output
@@ -227,7 +218,6 @@ impl RhaiHostExtension for AlloyDraftScopeExtension {
             .map(entity_changes)
             .unwrap_or_else(empty_object);
         let result = AlloyDraftOutput {
-            binding_version: 1,
             return_value: output,
             entity_changes,
         };
@@ -283,11 +273,15 @@ impl AlloyDraftRequestBuilder {
                 executor: SandboxExecutorKind::Rhai,
                 media_type: ALLOY_DRAFT_RHAI_MEDIA_TYPE.to_string(),
                 digest,
+                runtime_abi: RHAI_MODULE_ABI.to_string(),
                 entrypoint: "main".to_string(),
                 bytes: script.code.as_bytes().to_vec(),
             },
-            input: serde_json::to_value(input)
-                .map_err(|error| AlloyDraftRequestError::Serialize(error.to_string()))?,
+            input: serde_json::to_value(RhaiBindingInput::new(
+                serde_json::to_value(input)
+                    .map_err(|error| AlloyDraftRequestError::Serialize(error.to_string()))?,
+            ))
+            .map_err(|error| AlloyDraftRequestError::Serialize(error.to_string()))?,
             policy: self.policy.clone(),
         })
     }
@@ -339,8 +333,6 @@ pub enum AlloyDraftRequestError {
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum AlloyDraftBindingError {
-    #[error("Alloy draft binding version `{0}` is unsupported")]
-    UnsupportedVersion(u32),
     #[error("Alloy draft params must be a JSON object")]
     ParamsMustBeObject,
     #[error("Alloy draft entity id must not be empty")]
@@ -358,10 +350,11 @@ fn empty_object() -> serde_json::Value {
 }
 
 fn alloy_input(request: &SandboxRequest) -> SandboxResult<AlloyDraftInput> {
-    let input: AlloyDraftInput =
-        serde_json::from_value(request.input.clone()).map_err(|error| {
-            SandboxError::InvalidRequest(format!("invalid Alloy draft input: {error}"))
-        })?;
+    let binding = RhaiBindingInput::decode(request.input.clone())
+        .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
+    let input: AlloyDraftInput = serde_json::from_value(binding.input).map_err(|error| {
+        SandboxError::InvalidRequest(format!("invalid Alloy draft input: {error}"))
+    })?;
     input
         .validate()
         .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
@@ -394,7 +387,6 @@ fn entity_changes(entity: EntityProxy) -> serde_json::Value {
 
 fn input_from_context(context: &ExecutionContext) -> AlloyDraftInput {
     AlloyDraftInput {
-        binding_version: 1,
         params: serde_json::Value::Object(
             context
                 .params
@@ -499,6 +491,16 @@ mod tests {
                 hex::encode(Sha256::digest(script.code.as_bytes()))
             )
         );
+        assert_eq!(
+            RhaiBindingInput::decode(request.input)
+                .expect("versioned Rhai input")
+                .input,
+            serde_json::json!({
+                "params": { "value": 41 },
+                "entity": null,
+                "entity_before": null,
+            })
+        );
     }
 
     #[test]
@@ -519,7 +521,6 @@ mod tests {
     fn binding_rejects_non_object_entity_changes() {
         assert_eq!(
             AlloyDraftOutput {
-                binding_version: 1,
                 return_value: serde_json::Value::Null,
                 entity_changes: serde_json::json!(["not", "an", "object"]),
             }
@@ -560,8 +561,12 @@ mod tests {
             .execute(request)
             .await
             .expect("execute draft");
-        let output: AlloyDraftOutput =
-            serde_json::from_value(output.output).expect("typed draft output");
+        let output: AlloyDraftOutput = serde_json::from_value(
+            RhaiBindingOutput::decode(output.output)
+                .expect("versioned Rhai output")
+                .output,
+        )
+        .expect("typed draft output");
         assert_eq!(output.return_value, serde_json::json!(42));
         assert_eq!(
             output.entity_changes,

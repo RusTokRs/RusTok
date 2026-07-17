@@ -28,12 +28,48 @@ an oversized descriptor and the OCI-declared layer size before `pull_blob`, then
 stream the received bytes into a private temporary file while enforcing the
 same size limit and SHA-256 digest.
 
+`OciDistributionArtifactPublisher` publishes the descriptor-selected payload
+and OCI 1.1 SBOM/provenance referrers. The isolated build worker subsequently
+uses Cosign with a deployment-owned KMS provider reference to sign the returned
+artifact digest, then resolves Cosign's compatible OCI signature manifest to a
+digest-pinned publication receipt. The standard Cosign tag is used only while
+resolving the signature manifest and never becomes installation identity.
+That receipt records build-service signature evidence only; author signatures
+and marketplace approvals remain separate owner-governance facts.
+Before that publication window the worker obtains a repository-scoped,
+short-lived lease through its deployment-owned credential broker. Credentials
+never enter module contracts, descriptors, build requests, runner output, or
+artifact persistence.
+
+`strict_oci_distribution_client` configures the enforceable subset of registry
+transport policy: HTTPS only, certificate validation, no image-index fallback,
+and one concurrent upload/download. The current upstream OCI client does not
+expose redirect or proxy hooks, so deployment egress must reject cross-host
+redirects and apply its proxy policy; that remaining transport replacement is
+tracked in the central plan.
+
 During admission, `ModuleInstaller` verifies the OCI package and places its
 payload in an `ArtifactBlobStore` under the descriptor payload digest.
 `ArtifactRuntime` reads only that admitted digest-pinned blob for execution;
 the external OCI registry is a distribution source and is not consulted at
 runtime. Missing or corrupted blobs fail closed before a sandbox request is
 created.
+
+Every dynamic execution is selected by an admitted `ModuleRuntimeBinding`.
+Before the sandbox runs, `ArtifactRuntime` validates the owner input against the
+binding's exact descriptor-bundled Draft 2020-12 schema; after execution it
+validates the decoded owner output against the corresponding output schema.
+Schemas are keyed by their canonical digest, compile into a bounded node-local
+LRU cache with linear-time regex limits, and use a `jsonschema` build without
+filesystem or HTTP resolver features. Non-local `$ref`, `$dynamicRef`, and
+`$recursiveRef` values are rejected during descriptor admission.
+
+Artifact permission descriptors carry immutable localized labels and
+descriptions. Admission sends them through the shared
+`ArtifactPermissionRegistrationPort` only after the installation is committed;
+the installation ID makes the owner operation idempotent and a retry repeats
+registration for an already admitted release. The port adds RBAC vocabulary
+only and cannot assign a permission to a role or actor.
 
 `module_artifact_installations` is the host-managed persistence boundary. Its
 PostgreSQL migration enables RLS; tenant-scoped connections must set

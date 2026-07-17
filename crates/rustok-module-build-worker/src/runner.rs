@@ -9,11 +9,11 @@ use std::{
 };
 
 use async_trait::async_trait;
-use oci_distribution::{secrets::RegistryAuth, Client};
 use rustok_modules::{
-    ArtifactAdmissionLimits, ModuleBuildEvidence, ModuleBuildFailureCode, ModuleBuildMetrics,
-    ModuleBuildNextAction, ModuleBuildOutcome, ModuleBuildProtocolError,
-    ModuleBuildPublicationReceipt, ModuleBuildRequest, ModuleBuildResult, ModuleBuildWorker,
+    strict_oci_distribution_client, ArtifactAdmissionLimits, ModuleBuildDiagnostic,
+    ModuleBuildEvidence, ModuleBuildFailureCode, ModuleBuildMetrics, ModuleBuildNextAction,
+    ModuleBuildOutcome, ModuleBuildProtocolError, ModuleBuildPublicationReceipt,
+    ModuleBuildRequest, ModuleBuildResult, ModuleBuildSignatureAuthority, ModuleBuildWorker,
     OciArtifactPublicationError, OciArtifactPublicationTarget, OciArtifactPublisher,
     OciDistributionArtifactPublisher,
 };
@@ -25,10 +25,12 @@ use tokio::{
 
 use crate::{
     BuildEvidenceError, BuildEvidenceInspector, CargoMetadataError, CargoMetadataInspector,
-    ComponentArtifactError, ComponentArtifactInspector, DependencyMaterializationError,
+    CommandRegistryCredentialBroker, ComponentArtifactError, ComponentArtifactInspector,
+    CosignArtifactSigner, CosignSigningError, DependencyMaterializationError,
     OciScopedDependencyMaterializer, PublicationBundleCollector, PublicationBundleError,
-    SourceMaterializationError, SourceMaterializer, SourcePolicyError, SourcePolicyPreflight,
-    WitContractError, WitContractInspector,
+    RegistryCredentialBroker, RegistryCredentialError, SourceMaterializationError,
+    SourceMaterializer, SourcePolicyError, SourcePolicyPreflight, WitContractError,
+    WitContractInspector,
 };
 
 /// Fixed deployment-owned job-runner adapter. The configured executable is
@@ -42,7 +44,8 @@ pub struct CommandBuildWorker {
     dependency_materializer: Option<OciScopedDependencyMaterializer>,
     wit_contract: WitContractInspector,
     publication_target: OciArtifactPublicationTarget,
-    publisher: OciDistributionArtifactPublisher,
+    registry_credentials: Arc<dyn RegistryCredentialBroker>,
+    signer: CosignArtifactSigner,
     request_timeout: Duration,
 }
 
@@ -88,10 +91,8 @@ impl CommandBuildWorker {
         publication_target
             .validate()
             .map_err(|error| error.to_string())?;
-        let publisher = OciDistributionArtifactPublisher::new(
-            Client::default(),
-            publication_registry_auth_from_env()?,
-        );
+        let registry_credentials = Arc::new(CommandRegistryCredentialBroker::from_env()?);
+        let signer = CosignArtifactSigner::from_env()?;
         Self::new(
             runner_path,
             workdir,
@@ -101,7 +102,8 @@ impl CommandBuildWorker {
             dependency_materializer,
             wasm_tools_path,
             publication_target,
-            publisher,
+            registry_credentials,
+            signer,
             request_timeout,
         )
     }
@@ -115,7 +117,8 @@ impl CommandBuildWorker {
         dependency_materializer: Option<OciScopedDependencyMaterializer>,
         wasm_tools_path: PathBuf,
         publication_target: OciArtifactPublicationTarget,
-        publisher: OciDistributionArtifactPublisher,
+        registry_credentials: Arc<dyn RegistryCredentialBroker>,
+        signer: CosignArtifactSigner,
         request_timeout: Duration,
     ) -> Result<Self, String> {
         if !runner_path.is_absolute() || !workdir.is_absolute() {
@@ -147,26 +150,10 @@ impl CommandBuildWorker {
             dependency_materializer,
             wit_contract: WitContractInspector::new(wasm_tools_path)?,
             publication_target,
-            publisher,
+            registry_credentials,
+            signer,
             request_timeout,
         })
-    }
-}
-
-fn publication_registry_auth_from_env() -> Result<RegistryAuth, String> {
-    let username = std::env::var("RUSTOK_MODULE_BUILD_PUBLICATION_USERNAME").ok();
-    let password = std::env::var("RUSTOK_MODULE_BUILD_PUBLICATION_PASSWORD").ok();
-    match (username, password) {
-        (None, None) => Ok(RegistryAuth::Anonymous),
-        (Some(username), Some(password))
-            if !username.trim().is_empty() && !password.trim().is_empty() =>
-        {
-            Ok(RegistryAuth::Basic(username, password))
-        }
-        _ => Err(
-            "RUSTOK_MODULE_BUILD_PUBLICATION_USERNAME and RUSTOK_MODULE_BUILD_PUBLICATION_PASSWORD must be configured together"
-                .to_string(),
-        ),
     }
 }
 
@@ -505,12 +492,21 @@ impl ModuleBuildWorker for CommandBuildWorker {
                         return Err(ModuleBuildProtocolError::Transport(error));
                     }
                 };
-            let Some(publication_timeout) = remaining_timeout(execution_deadline) else {
+            let Some(publication_timeout) = remaining_timeout(execution_deadline)
+                .map(|timeout| timeout.min(Duration::from_secs(15 * 60)))
+            else {
                 return Ok(failed_result(
                     &request,
                     ModuleBuildFailureCode::ResourceLimitExceeded,
                 ));
             };
+            if publication_timeout.is_zero() {
+                return Ok(failed_result(
+                    &request,
+                    ModuleBuildFailureCode::ResourceLimitExceeded,
+                ));
+            }
+            let publication_deadline = Instant::now() + publication_timeout;
             let publication_limits = ArtifactAdmissionLimits {
                 max_descriptor_bytes: ArtifactAdmissionLimits::default().max_descriptor_bytes,
                 max_payload_bytes: request
@@ -519,9 +515,45 @@ impl ModuleBuildWorker for CommandBuildWorker {
                     .min(request.limits.memory_bytes / 4)
                     .min(64 * 1024 * 1024),
             };
-            let receipt = match timeout(
+            let credentials = match timeout(
                 publication_timeout,
-                self.publisher.publish(
+                self.registry_credentials
+                    .acquire(&self.publication_target, publication_timeout),
+            )
+            .await
+            {
+                Ok(Ok(credentials)) => credentials,
+                Ok(Err(RegistryCredentialError::Rejected)) => {
+                    return Ok(failed_result(
+                        &request,
+                        ModuleBuildFailureCode::PublicationFailed,
+                    ));
+                }
+                Ok(Err(RegistryCredentialError::TimedOut)) | Err(_) => {
+                    return Err(ModuleBuildProtocolError::Transport(
+                        "module registry credential broker timed out".to_string(),
+                    ));
+                }
+                Ok(Err(RegistryCredentialError::Unavailable(error))) => {
+                    return Err(ModuleBuildProtocolError::Transport(format!(
+                        "module registry credential broker unavailable: {error}"
+                    )));
+                }
+            };
+            let publisher = OciDistributionArtifactPublisher::new(
+                strict_oci_distribution_client().map_err(ModuleBuildProtocolError::Transport)?,
+                credentials.registry_auth(),
+            );
+            let Some(remaining_publication_timeout) = remaining_timeout(publication_deadline)
+            else {
+                return Ok(failed_result(
+                    &request,
+                    ModuleBuildFailureCode::ResourceLimitExceeded,
+                ));
+            };
+            let receipt = match timeout(
+                remaining_publication_timeout,
+                publisher.publish(
                     self.publication_target.clone(),
                     publication_bundle,
                     publication_limits,
@@ -549,10 +581,91 @@ impl ModuleBuildWorker for CommandBuildWorker {
                     ));
                 }
             };
+            let Some(signature_timeout) = remaining_timeout(publication_deadline) else {
+                return Ok(failed_result(
+                    &request,
+                    ModuleBuildFailureCode::ResourceLimitExceeded,
+                ));
+            };
+            match self
+                .signer
+                .sign(&receipt.artifact, &credentials, signature_timeout)
+                .await
+            {
+                Ok(()) => {}
+                Err(CosignSigningError::Rejected) => {
+                    return Ok(failed_result(
+                        &request,
+                        ModuleBuildFailureCode::PublicationFailed,
+                    ));
+                }
+                Err(CosignSigningError::TimedOut) => {
+                    return Err(ModuleBuildProtocolError::Transport(
+                        "module artifact signature publication timed out".to_string(),
+                    ));
+                }
+                Err(CosignSigningError::Unavailable(error)) => {
+                    return Err(ModuleBuildProtocolError::Transport(format!(
+                        "module artifact signature publication unavailable: {error}"
+                    )));
+                }
+                Err(CosignSigningError::Credential(RegistryCredentialError::Rejected)) => {
+                    return Ok(failed_result(
+                        &request,
+                        ModuleBuildFailureCode::PublicationFailed,
+                    ));
+                }
+                Err(CosignSigningError::Credential(RegistryCredentialError::TimedOut)) => {
+                    return Err(ModuleBuildProtocolError::Transport(
+                        "module artifact signature credential lease expired".to_string(),
+                    ));
+                }
+                Err(CosignSigningError::Credential(RegistryCredentialError::Unavailable(
+                    error,
+                ))) => {
+                    return Err(ModuleBuildProtocolError::Transport(format!(
+                        "module artifact signature credential unavailable: {error}"
+                    )));
+                }
+            }
+            let Some(signature_resolution_timeout) = remaining_timeout(publication_deadline) else {
+                return Ok(failed_result(
+                    &request,
+                    ModuleBuildFailureCode::ResourceLimitExceeded,
+                ));
+            };
+            let signature_manifest = match timeout(
+                signature_resolution_timeout,
+                publisher.resolve_cosign_signature(&self.publication_target, &receipt.artifact),
+            )
+            .await
+            {
+                Ok(Ok(signature_manifest)) => signature_manifest,
+                Ok(Err(OciArtifactPublicationError::InvalidTarget(_)))
+                | Ok(Err(OciArtifactPublicationError::InvalidBundle(_)))
+                | Ok(Err(OciArtifactPublicationError::ManifestDigestMismatch { .. })) => {
+                    return Ok(failed_result(
+                        &request,
+                        ModuleBuildFailureCode::PublicationFailed,
+                    ));
+                }
+                Ok(Err(OciArtifactPublicationError::Registry(error))) => {
+                    return Err(ModuleBuildProtocolError::Transport(format!(
+                        "module artifact signature manifest resolution failed: {error}"
+                    )));
+                }
+                Err(_) => {
+                    return Err(ModuleBuildProtocolError::Transport(
+                        "module artifact signature manifest resolution timed out".to_string(),
+                    ));
+                }
+            };
             result.publication = Some(ModuleBuildPublicationReceipt {
                 artifact: receipt.artifact,
                 sbom_referrer: receipt.sbom_referrer,
                 provenance_referrer: receipt.provenance_referrer,
+                signature_manifest,
+                signature_authority: ModuleBuildSignatureAuthority::BuildService,
             });
             result.validate_against(&request)?;
         }
@@ -588,6 +701,10 @@ fn failed_result(
         evidence: ModuleBuildEvidence {
             log_reference: format!("worker://module-build/{}/log", request.request_id),
             policy_report_reference: format!("worker://module-build/{}/policy", request.request_id),
+            diagnostics: vec![ModuleBuildDiagnostic {
+                stage: failure.diagnostic_stage(),
+                code: failure,
+            }],
         },
         publication: None,
         metrics: ModuleBuildMetrics {

@@ -26,8 +26,9 @@ Implemented:
 - broker-backed HTTP capability bridge with no direct HTTP client;
 - versioned `AlloyDraftRequestBuilder` that pins draft ID, source revision,
   source digest, sandbox phase, tenant, actor, input, grants, and limits;
-- v1 data-only `AlloyDraftInput`/`AlloyDraftOutput` bindings for parameters,
-  entity snapshots, returned values, and entity changes;
+- data-only `AlloyDraftInput`/`AlloyDraftOutput` payloads for parameters,
+  entity snapshots, returned values, and entity changes, carried inside the
+  strict shared `RhaiBindingInput`/`RhaiBindingOutput` v1 envelope;
 - request-scoped `AlloyDraftScopeExtension` that reconstructs `params`,
   `entity`, and `entity_before` for the neutral Rhai executor and emits typed
   entity changes;
@@ -66,7 +67,9 @@ Remaining:
 
 ### A1 - Shared Sandbox Cutover
 
-- Define the versioned Alloy draft input/output binding.
+- [x] Use the shared versioned Rhai input/output envelope for Alloy drafts;
+  Alloy owns only its nested data payload and does not retain a raw or
+  Alloy-specific versioned runtime binding.
 - Build requests with draft ID, monotonic revision, tenant, actor, phase,
   trace/correlation, source digest, input, grants, and limits.
 - Preserve entity proxies, parameters, validation helpers, and broker-backed

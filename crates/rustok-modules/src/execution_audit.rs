@@ -102,9 +102,10 @@ impl SeaOrmArtifactExecutionObserver {
                         backend,
                         format!(
                             "UPDATE module_artifact_execution_audit \
-                             SET status = {}, finished_at = {}, duration_ms = {}, \
-                                 instructions_consumed = {}, peak_memory_bytes = {}, \
-                                 output_bytes = {}, error_code = {} \
+                             SET status = {}, finished_at = {}, queue_time_ms = {}, \
+                                 duration_ms = {}, instructions_consumed = {}, \
+                                 peak_memory_bytes = {}, output_bytes = {}, \
+                                 capability_calls = {}, error_code = {} \
                              WHERE execution_id = {} AND status = 'started'",
                             placeholder(backend, 1),
                             placeholder(backend, 2),
@@ -114,10 +115,15 @@ impl SeaOrmArtifactExecutionObserver {
                             placeholder(backend, 6),
                             placeholder(backend, 7),
                             placeholder(backend, 8),
+                            placeholder(backend, 9),
+                            placeholder(backend, 10),
                         ),
                         vec![
                             status_name(record).into(),
                             optional_timestamp_value(record.finished_at),
+                            optional_metric_value(
+                                record.metrics.as_ref().map(|value| value.queue_time_ms),
+                            )?,
                             optional_metric_value(
                                 record.metrics.as_ref().map(|value| value.duration_ms),
                             )?,
@@ -135,6 +141,12 @@ impl SeaOrmArtifactExecutionObserver {
                             )?,
                             optional_metric_value(
                                 record.metrics.as_ref().and_then(|value| value.output_bytes),
+                            )?,
+                            optional_metric_value(
+                                record
+                                    .metrics
+                                    .as_ref()
+                                    .map(|value| u64::from(value.capability_calls)),
                             )?,
                             optional_string_value(record.error_code.clone()),
                             uuid_value(record.execution_id, backend),

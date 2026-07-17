@@ -224,6 +224,7 @@ fn request(granted: bool) -> SandboxRequest {
             executor: SandboxExecutorKind::Rhai,
             media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
             digest: "sha256:fixture".to_string(),
+            runtime_abi: "rustok:module/runtime@1".to_string(),
             entrypoint: "main".to_string(),
             bytes: b"42".to_vec(),
         },
@@ -344,9 +345,37 @@ async fn execution_audit_excludes_untrusted_error_text() {
     let failed = records.last().expect("failed record");
     assert_eq!(failed.status, ExecutionStatus::Failed);
     assert_eq!(failed.error_code.as_deref(), Some("EXECUTION_TRAPPED"));
+    let metrics = failed.metrics.as_ref().expect("terminal failure metrics");
+    assert_eq!(metrics.capability_calls, 0);
     assert!(!serde_json::to_string(failed)
         .expect("serialize audit record")
         .contains("must-not-appear-in-audit"));
+}
+
+#[tokio::test]
+async fn runtime_records_queue_execution_and_capability_metrics() {
+    let mut registry = ExecutorRegistry::new();
+    registry
+        .register(RhaiFixtureExecutor)
+        .expect("register fixture executor");
+    let records = Arc::new(Records::default());
+    let observer: Arc<dyn ExecutionObserver> = records.clone();
+    let runtime = SandboxRuntime::new(registry, Arc::new(TestBroker)).with_observer(observer);
+
+    let outcome = runtime.execute(request(true)).await.expect("execution");
+
+    assert_eq!(outcome.metrics.capability_calls, 1);
+    let records = records.0.lock().expect("records lock");
+    let succeeded = records.last().expect("success record");
+    assert_eq!(succeeded.status, ExecutionStatus::Succeeded);
+    assert_eq!(
+        succeeded
+            .metrics
+            .as_ref()
+            .expect("success metrics")
+            .capability_calls,
+        1
+    );
 }
 
 #[tokio::test]

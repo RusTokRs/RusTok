@@ -101,6 +101,8 @@ pub struct SandboxPayload {
     pub executor: SandboxExecutorKind,
     pub media_type: String,
     pub digest: String,
+    /// Immutable ABI selected by the admitted draft or artifact descriptor.
+    pub runtime_abi: String,
     pub entrypoint: String,
     pub bytes: Vec<u8>,
 }
@@ -128,6 +130,11 @@ impl SandboxRequest {
                 "payload digest must not be empty".to_string(),
             ));
         }
+        if self.payload.runtime_abi.trim().is_empty() {
+            return Err(SandboxError::InvalidRequest(
+                "payload runtime_abi must not be empty".to_string(),
+            ));
+        }
         if self.payload.entrypoint.trim().is_empty() {
             return Err(SandboxError::InvalidRequest(
                 "payload entrypoint must not be empty".to_string(),
@@ -139,10 +146,18 @@ impl SandboxRequest {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionMetrics {
+    /// Time spent in request validation, admission, and required start evidence
+    /// before the executor begins. Current admission is fail-fast, so this is
+    /// normally near zero until a queued admission policy is introduced.
+    pub queue_time_ms: u64,
+    /// Elapsed wall-clock time spent inside the selected executor.
     pub duration_ms: u64,
     pub instructions_consumed: Option<u64>,
     pub peak_memory_bytes: Option<u64>,
     pub output_bytes: Option<u64>,
+    /// Calls admitted by the shared capability budget, including a later
+    /// policy-denied broker call but excluding malformed or rate-rejected input.
+    pub capability_calls: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

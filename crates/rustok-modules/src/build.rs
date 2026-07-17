@@ -6,6 +6,7 @@
 
 use async_trait::async_trait;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -14,6 +15,8 @@ use uuid::Uuid;
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::OutboxTransport;
 
+use crate::OciArtifactReference;
+
 use crate::{
     data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
     ModuleCommandContext,
@@ -21,6 +24,7 @@ use crate::{
 
 const MAX_BUILD_REFERENCE_BYTES: usize = 512;
 const MAX_BUILD_TEXT_BYTES: usize = 256;
+const MAX_BUILD_VERSION_BYTES: usize = 128;
 const MAX_ALLOWED_REGISTRIES: usize = 16;
 const MAX_SCOPED_ENDPOINTS: usize = 16;
 const MAX_VALIDATION_PROFILES: usize = 8;
@@ -29,10 +33,11 @@ const MAX_MEMORY_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 const MAX_DISK_BYTES: u64 = 100 * 1024 * 1024 * 1024;
 const MAX_PROCESSES: u16 = 1_024;
 const MAX_OUTPUT_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_BUILD_DIAGNOSTICS: usize = 32;
 const MAX_WALL_CLOCK_MS: u64 = 2 * 60 * 60 * 1_000;
 
 /// Current transport contract version for isolated module build workers.
-pub const MODULE_BUILD_PROTOCOL_VERSION: u32 = 2;
+pub const MODULE_BUILD_PROTOCOL_VERSION: u32 = 6;
 
 /// Immutable request submitted by the control plane to an isolated worker.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,6 +52,7 @@ pub struct ModuleBuildRequest {
     pub runtime_abi: String,
     pub wit: ModuleBuildWitContract,
     pub toolchain: ModuleBuildToolchain,
+    pub authoring: ModuleBuildAuthoring,
     pub dependency_policy: ModuleBuildDependencyPolicy,
     pub limits: ModuleBuildLimits,
     pub network_policy: ModuleBuildNetworkPolicy,
@@ -86,6 +92,24 @@ impl ModuleBuildToolchain {
             "rustok.module.build.toolchain.v1",
             &[&self.rust_toolchain, &self.component_target],
         )
+    }
+}
+
+/// Independently versioned authoring inputs bound to build provenance.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleBuildAuthoring {
+    pub sdk_version: String,
+    pub template_version: String,
+}
+
+impl ModuleBuildAuthoring {
+    fn validate(&self) -> Result<(), ModuleBuildProtocolError> {
+        for version in [&self.sdk_version, &self.template_version] {
+            if version.len() > MAX_BUILD_VERSION_BYTES || Version::parse(version).is_err() {
+                return Err(ModuleBuildProtocolError::InvalidRequest);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -184,6 +208,30 @@ pub enum ModuleBuildFailureCode {
     Internal,
 }
 
+impl ModuleBuildFailureCode {
+    /// Canonical lifecycle stage for a terminal worker failure.
+    pub const fn diagnostic_stage(self) -> ModuleBuildDiagnosticStage {
+        match self {
+            Self::SourceDigestMismatch | Self::UnsafeArchive => ModuleBuildDiagnosticStage::Source,
+            Self::DependencyPolicyDenied
+            | Self::BuildScriptDenied
+            | Self::NativeLinkDenied
+            | Self::NetworkPolicyDenied => ModuleBuildDiagnosticStage::DependencyPolicy,
+            Self::ValidationFailed => ModuleBuildDiagnosticStage::Validation,
+            Self::WitContractMismatch | Self::ComponentInspectionFailed => {
+                ModuleBuildDiagnosticStage::ComponentInspection
+            }
+            Self::SbomGenerationFailed | Self::ProvenanceGenerationFailed => {
+                ModuleBuildDiagnosticStage::Evidence
+            }
+            Self::PublicationFailed => ModuleBuildDiagnosticStage::Publication,
+            Self::ResourceLimitExceeded | Self::WorkerUnavailable | Self::Internal => {
+                ModuleBuildDiagnosticStage::Worker
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleBuildComponentInterface {
     pub exports: Vec<String>,
@@ -194,15 +242,49 @@ pub struct ModuleBuildComponentInterface {
 pub struct ModuleBuildEvidence {
     pub log_reference: String,
     pub policy_report_reference: String,
+    /// Bounded stable diagnostics for CLI, Alloy, CI, and admin consumers.
+    /// They intentionally do not contain a compiler line, file path, or runner
+    /// output; consumers can retrieve the separately authorized log reference.
+    #[serde(default)]
+    pub diagnostics: Vec<ModuleBuildDiagnostic>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleBuildDiagnosticStage {
+    Source,
+    DependencyPolicy,
+    Build,
+    Validation,
+    ComponentInspection,
+    Evidence,
+    Publication,
+    Worker,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleBuildDiagnostic {
+    pub stage: ModuleBuildDiagnosticStage,
+    pub code: ModuleBuildFailureCode,
+}
+
+/// Authority that created the signature recorded by an isolated build worker.
+/// Author signatures and marketplace approvals are separate governance facts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleBuildSignatureAuthority {
+    BuildService,
 }
 
 /// Digest-pinned OCI identities emitted only after publication of the verified
-/// payload and the required SBOM/provenance referrers.
+/// payload, SBOM/provenance referrers, and its Cosign signature manifest.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleBuildPublicationReceipt {
     pub artifact: OciArtifactReference,
     pub sbom_referrer: OciArtifactReference,
     pub provenance_referrer: OciArtifactReference,
+    pub signature_manifest: OciArtifactReference,
+    pub signature_authority: ModuleBuildSignatureAuthority,
 }
 
 impl ModuleBuildPublicationReceipt {
@@ -211,6 +293,7 @@ impl ModuleBuildPublicationReceipt {
             &self.artifact,
             &self.sbom_referrer,
             &self.provenance_referrer,
+            &self.signature_manifest,
         ] {
             reference
                 .validate()
@@ -220,6 +303,8 @@ impl ModuleBuildPublicationReceipt {
             || self.sbom_referrer.repository != self.artifact.repository
             || self.provenance_referrer.registry != self.artifact.registry
             || self.provenance_referrer.repository != self.artifact.repository
+            || self.signature_manifest.registry != self.artifact.registry
+            || self.signature_manifest.repository != self.artifact.repository
         {
             return Err(ModuleBuildProtocolError::InvalidResult);
         }
@@ -596,6 +681,7 @@ impl ModuleBuildRequest {
         validate_text(&self.wit.version)?;
         validate_text(&self.toolchain.rust_toolchain)?;
         validate_text(&self.toolchain.component_target)?;
+        self.authoring.validate()?;
         if !valid_digest(&self.source.digest) || !valid_digest(&self.dependency_policy.lock_digest)
         {
             return Err(ModuleBuildProtocolError::InvalidDigest);
@@ -717,6 +803,40 @@ impl ModuleBuildResult {
         }
         validate_reference(&self.evidence.log_reference)?;
         validate_reference(&self.evidence.policy_report_reference)?;
+        if self.evidence.diagnostics.len() > MAX_BUILD_DIAGNOSTICS
+            || self
+                .evidence
+                .diagnostics
+                .iter()
+                .enumerate()
+                .any(|(index, diagnostic)| {
+                    self.evidence.diagnostics[..index]
+                        .iter()
+                        .any(|previous| previous == diagnostic)
+                })
+            || self
+                .evidence
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.stage != diagnostic.code.diagnostic_stage())
+        {
+            return Err(ModuleBuildProtocolError::InvalidResult);
+        }
+        match &self.outcome {
+            ModuleBuildOutcome::Failed(failure)
+                if !self
+                    .evidence
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == *failure) =>
+            {
+                return Err(ModuleBuildProtocolError::InvalidResult);
+            }
+            ModuleBuildOutcome::Succeeded if !self.evidence.diagnostics.is_empty() => {
+                return Err(ModuleBuildProtocolError::InvalidResult);
+            }
+            _ => {}
+        }
         Ok(())
     }
 }
@@ -986,6 +1106,10 @@ mod tests {
                 rust_toolchain: "1.85.0".to_string(),
                 component_target: "wasm32-wasip2".to_string(),
             },
+            authoring: ModuleBuildAuthoring {
+                sdk_version: "1.0.0".to_string(),
+                template_version: "1.0.0".to_string(),
+            },
             dependency_policy: ModuleBuildDependencyPolicy {
                 lock_digest: digest('b'),
                 allowed_registries: vec!["https://crates.io".to_string()],
@@ -1030,6 +1154,13 @@ mod tests {
             request.validate(),
             Err(ModuleBuildProtocolError::InvalidValidationProfiles)
         ));
+
+        request.validation_profiles = vec![ModuleBuildValidationProfile::Check];
+        request.authoring.sdk_version = "unversioned".to_string();
+        assert!(matches!(
+            request.validate(),
+            Err(ModuleBuildProtocolError::InvalidRequest)
+        ));
     }
 
     #[test]
@@ -1052,6 +1183,7 @@ mod tests {
             evidence: ModuleBuildEvidence {
                 log_reference: "cas://logs/1".to_string(),
                 policy_report_reference: "cas://reports/1".to_string(),
+                diagnostics: Vec::new(),
             },
             publication: None,
             metrics: ModuleBuildMetrics {
@@ -1062,6 +1194,82 @@ mod tests {
             retryable: false,
             next_action: ModuleBuildNextAction::AdmitArtifact,
         };
+        assert!(matches!(
+            result.validate_against(&request),
+            Err(ModuleBuildProtocolError::InvalidResult)
+        ));
+    }
+
+    #[test]
+    fn publication_receipt_requires_a_signature_in_the_artifact_repository() {
+        let reference = |marker| OciArtifactReference {
+            registry: "registry.example".to_string(),
+            repository: "modules/sample_module".to_string(),
+            digest: digest(marker),
+        };
+        let mut receipt = ModuleBuildPublicationReceipt {
+            artifact: reference('a'),
+            sbom_referrer: reference('b'),
+            provenance_referrer: reference('c'),
+            signature_manifest: reference('d'),
+            signature_authority: ModuleBuildSignatureAuthority::BuildService,
+        };
+        assert!(receipt.validate().is_ok());
+        assert_eq!(
+            receipt.signature_authority,
+            ModuleBuildSignatureAuthority::BuildService
+        );
+
+        receipt.signature_manifest.repository = "modules/other_module".to_string();
+        assert!(matches!(
+            receipt.validate(),
+            Err(ModuleBuildProtocolError::InvalidResult)
+        ));
+    }
+
+    #[test]
+    fn failed_result_requires_a_matching_structured_diagnostic() {
+        let request = request();
+        let mut result = ModuleBuildResult {
+            protocol_version: MODULE_BUILD_PROTOCOL_VERSION,
+            request_id: request.request_id,
+            tenant_id: request.context.tenant_id.expect("tenant"),
+            attempt: request.attempt,
+            outcome: ModuleBuildOutcome::Failed(ModuleBuildFailureCode::ValidationFailed),
+            source_digest: request.source.digest.clone(),
+            dependency_lock_digest: request.dependency_policy.lock_digest.clone(),
+            toolchain_digest: request.toolchain.protocol_digest(),
+            wit_digest: request.wit.protocol_digest(),
+            component_digest: None,
+            sbom_digest: None,
+            provenance_digest: None,
+            component_interface: None,
+            evidence: ModuleBuildEvidence {
+                log_reference: "cas://logs/1".to_string(),
+                policy_report_reference: "cas://reports/1".to_string(),
+                diagnostics: Vec::new(),
+            },
+            publication: None,
+            metrics: ModuleBuildMetrics {
+                duration_ms: 1,
+                peak_memory_bytes: 1,
+                output_bytes: 1,
+            },
+            retryable: false,
+            next_action: ModuleBuildNextAction::ReviseSource,
+        };
+        assert!(matches!(
+            result.validate_against(&request),
+            Err(ModuleBuildProtocolError::InvalidResult)
+        ));
+
+        result.evidence.diagnostics = vec![ModuleBuildDiagnostic {
+            stage: ModuleBuildDiagnosticStage::Validation,
+            code: ModuleBuildFailureCode::ValidationFailed,
+        }];
+        assert!(result.validate_against(&request).is_ok());
+
+        result.evidence.diagnostics[0].stage = ModuleBuildDiagnosticStage::Build;
         assert!(matches!(
             result.validate_against(&request),
             Err(ModuleBuildProtocolError::InvalidResult)
@@ -1091,6 +1299,7 @@ mod tests {
             evidence: ModuleBuildEvidence {
                 log_reference: "cas://logs/1".to_string(),
                 policy_report_reference: "cas://reports/1".to_string(),
+                diagnostics: Vec::new(),
             },
             publication: None,
             metrics: ModuleBuildMetrics {

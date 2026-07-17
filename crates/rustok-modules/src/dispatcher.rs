@@ -341,6 +341,8 @@ fn lifecycle_binding_kind(phase: ModuleLifecycleHookPhase) -> ModuleRuntimeBindi
 }
 
 fn binding_allows_phase(kind: ModuleRuntimeBindingKind, phase: ExecutionPhase) -> bool {
+    // DataUpgrade is intentionally absent: the owner-only data upgrade bridge
+    // invokes its admitted binding directly after its storage read is complete.
     matches!(
         (kind, phase),
         (
@@ -469,6 +471,10 @@ mod tests {
         assert!(!binding_allows_phase(
             ModuleRuntimeBindingKind::Event,
             ExecutionPhase::Scheduled
+        ));
+        assert!(!binding_allows_phase(
+            ModuleRuntimeBindingKind::DataUpgrade,
+            ExecutionPhase::Manual
         ));
     }
 

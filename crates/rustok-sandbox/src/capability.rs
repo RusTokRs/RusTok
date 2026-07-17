@@ -919,6 +919,10 @@ impl SandboxHost {
         self.cancellation.clone()
     }
 
+    pub(crate) fn capability_calls(&self) -> u32 {
+        self.budget.calls.load(Ordering::Acquire)
+    }
+
     pub async fn invoke(&self, call: &CapabilityCall) -> SandboxResult<CapabilityResponse> {
         let result = self.invoke_inner(call).await;
         self.observe_capability(call, &result).await;

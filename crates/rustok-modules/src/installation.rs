@@ -13,15 +13,20 @@ use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use uuid::Uuid;
 
+use rustok_api::{
+    ArtifactPermissionRegistration, ArtifactPermissionRegistrationPort,
+    ArtifactPermissionRegistrationRequest, ArtifactPermissionScope,
+};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::OutboxTransport;
 use rustok_sandbox::{
-    SandboxContext, SandboxPayload, SandboxPolicy, SandboxRequest, SandboxSubject,
+    RhaiBindingInput, SandboxContext, SandboxPayload, SandboxPolicy, SandboxRequest, SandboxSubject,
 };
 
 use crate::{
-    ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor,
-    ModuleArtifactError, ModuleDependencyLockGraph, TrustPolicyRevision, TrustVerificationDecision,
+    ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactModuleKind,
+    ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleArtifactError,
+    ModuleDependencyLockGraph, TrustPolicyRevision, TrustVerificationDecision,
     TrustVerificationRequest, TrustVerifier,
 };
 
@@ -344,6 +349,13 @@ impl InstalledModuleArtifact {
             });
         }
 
+        let input = if self.descriptor.payload_kind == ArtifactPayloadKind::Rhai {
+            serde_json::to_value(RhaiBindingInput::new(input))
+                .map_err(|error| ModuleInstallationError::RhaiBinding(error.to_string()))?
+        } else {
+            input
+        };
+
         Ok(SandboxRequest {
             subject: SandboxSubject::ModuleArtifact {
                 slug: self.release.slug.clone(),
@@ -355,6 +367,7 @@ impl InstalledModuleArtifact {
                 executor,
                 media_type: media_type_for(self.descriptor.payload_kind).to_string(),
                 digest: self.release.digest.clone(),
+                runtime_abi: self.descriptor.runtime_abi.clone(),
                 entrypoint: self.descriptor.entrypoint.clone(),
                 bytes: payload,
             },
@@ -1861,6 +1874,18 @@ impl SeaOrmArtifactInstallationStore {
     }
 }
 
+#[async_trait]
+impl ArtifactDataMigrationCheckpointStore for SeaOrmArtifactInstallationStore {
+    async fn record_data_upgrade_checkpoint(
+        &self,
+        request: ArtifactMigrationCheckpointRequest,
+    ) -> Result<u64, ArtifactDataError> {
+        self.record_migration_checkpoint(request)
+            .await
+            .map_err(|error| ArtifactDataError::MigrationCheckpoint(error.to_string()))
+    }
+}
+
 fn admission_scope_predicate(
     scope: &ModuleInstallationScope,
     backend: DbBackend,
@@ -2431,10 +2456,11 @@ fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> SqlValue {
 /// Coordinates immutable OCI resolution and durable admission. The concrete OCI
 /// client and database adapter are host infrastructure; this module owns the
 /// identity, validation and lifecycle boundary.
-pub struct ModuleInstaller<R, S, B> {
+pub struct ModuleInstaller<R, S, B, P> {
     registry: R,
     admission: ArtifactAdmissionService<S, B>,
     verifier: Arc<dyn TrustVerifier>,
+    permission_registrar: P,
     trust_policy: TrustPolicyRevision,
     limits: ArtifactAdmissionLimits,
 }
@@ -2510,11 +2536,12 @@ where
     }
 }
 
-impl<R, S, B> ModuleInstaller<R, S, B>
+impl<R, S, B, P> ModuleInstaller<R, S, B, P>
 where
     R: ArtifactRegistry,
     S: ArtifactAdmissionStore,
     B: DurableArtifactBlobStore,
+    P: ArtifactPermissionRegistrationPort,
 {
     pub fn new(
         registry: R,
@@ -2522,11 +2549,13 @@ where
         blobs: B,
         verifier: Arc<dyn TrustVerifier>,
         trust_policy: TrustPolicyRevision,
+        permission_registrar: P,
     ) -> Self {
         Self {
             registry,
             admission: ArtifactAdmissionService::new(store, blobs),
             verifier,
+            permission_registrar,
             trust_policy,
             limits: ArtifactAdmissionLimits::default(),
         }
@@ -2543,13 +2572,10 @@ where
     ) -> Result<ArtifactAdmissionResult, ModuleInstallationError> {
         command.validate()?;
         let request_digest = command.request_digest()?;
-        if let Some(existing) = self
+        let existing = self
             .admission
             .find_admission(&command, &request_digest)
-            .await?
-        {
-            return Ok(existing);
-        }
+            .await?;
         let reference = command.reference.clone();
         let package = self.registry.fetch(&reference, self.limits).await?;
         if package.reference != reference {
@@ -2559,6 +2585,15 @@ where
             });
         }
         package.verify(self.limits).await?;
+        if let Some(existing) = existing {
+            self.register_admitted_permissions(
+                existing.installation_id,
+                &command.scope,
+                &package.descriptor,
+            )
+            .await?;
+            return Ok(existing);
+        }
         if package.descriptor.payload_kind == ArtifactPayloadKind::StaticPromoted {
             return Err(ModuleInstallationError::StaticPromotionRequired);
         }
@@ -2629,7 +2664,47 @@ where
                 result?
             }
         };
+        self.register_admitted_permissions(
+            result.installation_id,
+            &command.scope,
+            &artifact.descriptor,
+        )
+        .await?;
         Ok(result)
+    }
+
+    async fn register_admitted_permissions(
+        &self,
+        installation_id: Uuid,
+        scope: &ModuleInstallationScope,
+        descriptor: &ModuleArtifactDescriptor,
+    ) -> Result<(), ModuleInstallationError> {
+        if descriptor.permissions.is_empty() {
+            return Ok(());
+        }
+        let scope = match scope {
+            ModuleInstallationScope::Platform => ArtifactPermissionScope::Platform,
+            ModuleInstallationScope::Tenant { tenant_id } => ArtifactPermissionScope::Tenant {
+                tenant_id: *tenant_id,
+            },
+        };
+        self.permission_registrar
+            .register_admitted_permissions(ArtifactPermissionRegistrationRequest {
+                installation_id,
+                scope,
+                module_slug: descriptor.slug.clone(),
+                release_digest: descriptor.artifact_digest.clone(),
+                permissions: descriptor
+                    .permissions
+                    .iter()
+                    .map(|permission| ArtifactPermissionRegistration {
+                        key: permission.key.clone(),
+                        localizations: permission.localizations.clone(),
+                    })
+                    .collect(),
+            })
+            .await
+            .map_err(|error| ModuleInstallationError::PermissionRegistration(error.to_string()))
     }
 }
 
@@ -2655,6 +2730,8 @@ pub enum ModuleInstallationError {
     StaticPromotionRequired,
     #[error("sandbox policy grants undeclared artifact capability `{0}")]
     UndeclaredCapability(String),
+    #[error("artifact Rhai binding serialization failed: {0}")]
+    RhaiBinding(String),
     #[error("artifact registry error: {0}")]
     Registry(String),
     #[error("artifact installation store error: {0}")]
@@ -2671,6 +2748,8 @@ pub enum ModuleInstallationError {
     DependencyLock(String),
     #[error("artifact trust verification failed: {0}")]
     TrustVerification(String),
+    #[error("artifact permission registration failed: {0}")]
+    PermissionRegistration(String),
 }
 
 fn media_type_for(kind: ArtifactPayloadKind) -> &'static str {
@@ -2747,6 +2826,34 @@ mod tests {
             trust_policy_revision: 1,
             capability_policy_revision: 1,
             capability_grant_revision: 1,
+        }
+    }
+
+    struct AllowArtifactPermissionRegistrar;
+
+    #[async_trait]
+    impl ArtifactPermissionRegistrationPort for AllowArtifactPermissionRegistrar {
+        async fn register_admitted_permissions(
+            &self,
+            _request: ArtifactPermissionRegistrationRequest,
+        ) -> Result<(), rustok_api::PortError> {
+            Ok(())
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingArtifactPermissionRegistrar(
+        Arc<Mutex<Vec<ArtifactPermissionRegistrationRequest>>>,
+    );
+
+    #[async_trait]
+    impl ArtifactPermissionRegistrationPort for RecordingArtifactPermissionRegistrar {
+        async fn register_admitted_permissions(
+            &self,
+            request: ArtifactPermissionRegistrationRequest,
+        ) -> Result<(), rustok_api::PortError> {
+            self.0.lock().expect("registrar lock").push(request);
+            Ok(())
         }
     }
 
@@ -2966,6 +3073,7 @@ mod tests {
             InMemoryArtifactBlobStore::default(),
             trust_verifier(),
             trust_policy(),
+            AllowArtifactPermissionRegistrar,
         );
 
         let admission = installer
@@ -2983,6 +3091,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn admission_registers_only_descriptor_permissions_without_role_grants() {
+        let mut package = package(ArtifactPayloadKind::Rhai);
+        package.descriptor.permissions = vec![crate::ArtifactPermissionDescriptor {
+            key: "sample_module.events.handle".to_string(),
+            localizations: vec![rustok_api::ArtifactPermissionLocalization {
+                locale: "en".to_string(),
+                label: "Handle events".to_string(),
+                description: "Allows handling admitted sample events".to_string(),
+            }],
+        }];
+        let reference = package.reference.clone();
+        let registrar = RecordingArtifactPermissionRegistrar::default();
+        let installer = ModuleInstaller::new(
+            FixtureRegistry(package),
+            CapturingStore::default(),
+            InMemoryArtifactBlobStore::default(),
+            trust_verifier(),
+            trust_policy(),
+            registrar.clone(),
+        );
+
+        let result = installer
+            .admit(admission_command(
+                reference,
+                ModuleInstallationScope::Tenant {
+                    tenant_id: Uuid::new_v4(),
+                },
+            ))
+            .await
+            .expect("admission");
+        let registrations = registrar.0.lock().expect("registrar lock");
+        assert_eq!(registrations.len(), 1);
+        assert_eq!(registrations[0].installation_id, result.installation_id);
+        assert_eq!(registrations[0].permissions.len(), 1);
+        assert_eq!(
+            registrations[0].permissions[0].key,
+            "sample_module.events.handle"
+        );
+    }
+
+    #[tokio::test]
     async fn static_promotion_is_not_a_runtime_install_path() {
         let package = package(ArtifactPayloadKind::StaticPromoted);
         let reference = package.reference.clone();
@@ -2992,6 +3141,7 @@ mod tests {
             InMemoryArtifactBlobStore::default(),
             trust_verifier(),
             trust_policy(),
+            AllowArtifactPermissionRegistrar,
         );
 
         assert!(matches!(
@@ -3015,6 +3165,7 @@ mod tests {
             InMemoryArtifactBlobStore::default(),
             trust_verifier(),
             trust_policy(),
+            AllowArtifactPermissionRegistrar,
         )
         .with_admission_limits(ArtifactAdmissionLimits {
             max_descriptor_bytes: 1024,
@@ -3052,6 +3203,7 @@ mod tests {
             InMemoryArtifactBlobStore::default(),
             trust_verifier(),
             trust_policy(),
+            AllowArtifactPermissionRegistrar,
         );
         let admission = installer
             .admit(admission_command(reference, scope.clone()))
@@ -3086,6 +3238,12 @@ mod tests {
             request.payload.executor,
             rustok_sandbox::SandboxExecutorKind::Rhai
         );
+        assert_eq!(
+            RhaiBindingInput::decode(request.input)
+                .expect("versioned Rhai input")
+                .input,
+            json!({ "topic": "module.installed", "payload": { "value": 42 } })
+        );
         assert_eq!(installed.scope, scope);
     }
 
@@ -3119,6 +3277,7 @@ mod tests {
             InMemoryArtifactBlobStore::default(),
             trust_verifier(),
             trust_policy(),
+            AllowArtifactPermissionRegistrar,
         );
         let command = ArtifactAdmissionCommand {
             reference,

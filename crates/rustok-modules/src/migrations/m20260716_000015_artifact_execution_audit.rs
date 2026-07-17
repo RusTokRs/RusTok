@@ -80,5 +80,6 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute_unprepared("DROP TABLE module_artifact_execution_audit")
             .await
+            .map(|_| ())
     }
 }

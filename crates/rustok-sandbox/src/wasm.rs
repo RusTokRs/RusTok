@@ -6,16 +6,17 @@
 //! ambient imports. Its one typed WIT import bridges through `SandboxHost`,
 //! just as the Rhai adapters do.
 
+use std::collections::{HashMap, VecDeque};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 use std::thread;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use wasmtime::component::{Component, HasSelf, Linker};
-use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
+use wasmtime::{Config, Engine, ResourceLimiter, Store, StoreLimits, StoreLimitsBuilder};
 
 use crate::{
     CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionMetrics, SandboxError,
@@ -32,6 +33,14 @@ pub const WASM_COMPONENT_INPUT_ENCODING: &str = "application/json";
 pub const WASM_COMPONENT_OUTPUT_ENCODING: &str = "application/json";
 pub const WASM_COMPONENT_ERROR_ENCODING: &str = "wit-result-string";
 
+/// Wasmtime version encoded into every serialized-component cache key.
+///
+/// Update this value in the same change as the pinned `wasmtime` dependency.
+pub const WASMTIME_ENGINE_VERSION: &str = "46.0.1";
+
+const MAX_COMPONENT_CACHE_ENTRIES: usize = 64;
+const MAX_COMPONENT_CACHE_BYTES: usize = 128 * 1024 * 1024;
+
 wasmtime::component::bindgen!({
     inline: r#"
         package rustok:module@1.0.0;
@@ -47,17 +56,219 @@ wasmtime::component::bindgen!({
     "#,
 });
 
+/// Bounded node-local policy for serialized compiled Components.
+///
+/// The cache never retains stores, host handles, tenant context, credentials,
+/// or guest input/output. A cache hit still creates a request-private engine
+/// and store before execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WasmComponentCachePolicy {
+    pub max_entries: usize,
+    pub max_serialized_bytes: usize,
+}
+
+impl Default for WasmComponentCachePolicy {
+    fn default() -> Self {
+        Self {
+            max_entries: MAX_COMPONENT_CACHE_ENTRIES,
+            max_serialized_bytes: MAX_COMPONENT_CACHE_BYTES,
+        }
+    }
+}
+
+impl WasmComponentCachePolicy {
+    fn validate(self) -> SandboxResult<Self> {
+        if self.max_entries == 0
+            || self.max_entries > MAX_COMPONENT_CACHE_ENTRIES
+            || self.max_serialized_bytes == 0
+            || self.max_serialized_bytes > MAX_COMPONENT_CACHE_BYTES
+        {
+            return Err(SandboxError::InvalidRequest(
+                "Wasm component cache policy is outside the supported bounds".to_string(),
+            ));
+        }
+        Ok(self)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct WasmComponentCacheKey {
+    engine_version: &'static str,
+    target: String,
+    runtime_abi: String,
+    digest: String,
+}
+
+#[derive(Debug)]
+struct SerializedComponentCache {
+    policy: WasmComponentCachePolicy,
+    state: Mutex<SerializedComponentCacheState>,
+}
+
+#[derive(Debug, Default)]
+struct SerializedComponentCacheState {
+    bytes: usize,
+    entries: HashMap<WasmComponentCacheKey, Vec<u8>>,
+    lru: VecDeque<WasmComponentCacheKey>,
+}
+
+impl SerializedComponentCache {
+    fn new(policy: WasmComponentCachePolicy) -> Self {
+        Self {
+            policy,
+            state: Mutex::new(SerializedComponentCacheState::default()),
+        }
+    }
+
+    fn get(&self, key: &WasmComponentCacheKey) -> SandboxResult<Option<Vec<u8>>> {
+        let mut state = self.state.lock().map_err(|_| {
+            SandboxError::Internal("Wasm component cache lock is poisoned".to_string())
+        })?;
+        let value = state.entries.get(key).cloned();
+        if value.is_some() {
+            state.lru.retain(|candidate| candidate != key);
+            state.lru.push_back(key.clone());
+        }
+        Ok(value)
+    }
+
+    fn remove(&self, key: &WasmComponentCacheKey) -> SandboxResult<()> {
+        let mut state = self.state.lock().map_err(|_| {
+            SandboxError::Internal("Wasm component cache lock is poisoned".to_string())
+        })?;
+        if let Some(value) = state.entries.remove(key) {
+            state.bytes = state.bytes.saturating_sub(value.len());
+        }
+        state.lru.retain(|candidate| candidate != key);
+        Ok(())
+    }
+
+    fn insert(&self, key: WasmComponentCacheKey, bytes: Vec<u8>) -> SandboxResult<()> {
+        if bytes.len() > self.policy.max_serialized_bytes {
+            return Ok(());
+        }
+        let mut state = self.state.lock().map_err(|_| {
+            SandboxError::Internal("Wasm component cache lock is poisoned".to_string())
+        })?;
+        if let Some(previous) = state.entries.remove(&key) {
+            state.bytes = state.bytes.saturating_sub(previous.len());
+        }
+        state.lru.retain(|candidate| candidate != &key);
+        while state.entries.len() >= self.policy.max_entries
+            || state.bytes.saturating_add(bytes.len()) > self.policy.max_serialized_bytes
+        {
+            let Some(oldest) = state.lru.pop_front() else {
+                break;
+            };
+            if let Some(evicted) = state.entries.remove(&oldest) {
+                state.bytes = state.bytes.saturating_sub(evicted.len());
+            }
+        }
+        state.bytes += bytes.len();
+        state.entries.insert(key.clone(), bytes);
+        state.lru.push_back(key);
+        Ok(())
+    }
+}
+
 /// Executes Component Model payloads without WASI, filesystem, network or
 /// inherited environment access.
-#[derive(Debug, Default)]
-pub struct WasmComponentExecutor;
+#[derive(Debug)]
+pub struct WasmComponentExecutor {
+    cache: Arc<SerializedComponentCache>,
+}
 
 struct WasmStoreState {
-    limits: StoreLimits,
+    limits: WasmStoreLimits,
     host: SandboxHost,
     execution_id: uuid::Uuid,
     subject: SandboxSubject,
     context: CapabilityCallContext,
+}
+
+/// Tracks guest linear-memory allocations that Wasmtime actually permits.
+///
+/// Wasmtime reports a failed permitted growth through `memory_grow_failed`; the
+/// tracker removes that pending delta, so the metric never becomes a configured
+/// limit or a failed allocation request. Shared memories are outside Wasmtime's
+/// `ResourceLimiter` contract and therefore are not included.
+struct WasmStoreLimits {
+    limits: StoreLimits,
+    allocated_linear_memory_bytes: u64,
+    peak_linear_memory_bytes: u64,
+    pending_memory_growth_bytes: Option<u64>,
+}
+
+impl WasmStoreLimits {
+    fn new(limits: StoreLimits) -> Self {
+        Self {
+            limits,
+            allocated_linear_memory_bytes: 0,
+            peak_linear_memory_bytes: 0,
+            pending_memory_growth_bytes: None,
+        }
+    }
+
+    fn peak_linear_memory_bytes(&self) -> u64 {
+        self.peak_linear_memory_bytes
+    }
+}
+
+impl ResourceLimiter for WasmStoreLimits {
+    fn memory_growing(
+        &mut self,
+        current: usize,
+        desired: usize,
+        maximum: Option<usize>,
+    ) -> wasmtime::Result<bool> {
+        let allowed = self.limits.memory_growing(current, desired, maximum)?;
+        if allowed {
+            let growth = u64::try_from(desired.saturating_sub(current)).unwrap_or(u64::MAX);
+            self.allocated_linear_memory_bytes =
+                self.allocated_linear_memory_bytes.saturating_add(growth);
+            self.peak_linear_memory_bytes = self
+                .peak_linear_memory_bytes
+                .max(self.allocated_linear_memory_bytes);
+            self.pending_memory_growth_bytes = Some(growth);
+        }
+        Ok(allowed)
+    }
+
+    fn memory_grow_failed(&mut self, error: wasmtime::Error) -> wasmtime::Result<()> {
+        if let Some(growth) = self.pending_memory_growth_bytes.take() {
+            self.allocated_linear_memory_bytes =
+                self.allocated_linear_memory_bytes.saturating_sub(growth);
+            if self.allocated_linear_memory_bytes < self.peak_linear_memory_bytes {
+                self.peak_linear_memory_bytes = self.allocated_linear_memory_bytes;
+            }
+        }
+        self.limits.memory_grow_failed(error)
+    }
+
+    fn table_growing(
+        &mut self,
+        current: usize,
+        desired: usize,
+        maximum: Option<usize>,
+    ) -> wasmtime::Result<bool> {
+        self.limits.table_growing(current, desired, maximum)
+    }
+
+    fn table_grow_failed(&mut self, error: wasmtime::Error) -> wasmtime::Result<()> {
+        self.limits.table_grow_failed(error)
+    }
+
+    fn instances(&self) -> usize {
+        self.limits.instances()
+    }
+
+    fn tables(&self) -> usize {
+        self.limits.tables()
+    }
+
+    fn memories(&self) -> usize {
+        self.limits.memories()
+    }
 }
 
 impl rustok::module::host::Host for WasmStoreState {
@@ -86,7 +297,14 @@ impl rustok::module::host::Host for WasmStoreState {
 
 impl WasmComponentExecutor {
     pub fn new() -> Self {
-        Self
+        Self::with_component_cache_policy(WasmComponentCachePolicy::default())
+            .expect("default Wasm component cache policy must be valid")
+    }
+
+    pub fn with_component_cache_policy(policy: WasmComponentCachePolicy) -> SandboxResult<Self> {
+        Ok(Self {
+            cache: Arc::new(SerializedComponentCache::new(policy.validate()?)),
+        })
     }
 
     fn engine() -> SandboxResult<Engine> {
@@ -97,13 +315,42 @@ impl WasmComponentExecutor {
         Engine::new(&config).map_err(|error| SandboxError::Internal(error.to_string()))
     }
 
+    fn cache_key(request: &SandboxRequest) -> WasmComponentCacheKey {
+        WasmComponentCacheKey {
+            engine_version: WASMTIME_ENGINE_VERSION,
+            target: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
+            runtime_abi: request.payload.runtime_abi.clone(),
+            digest: request.payload.digest.clone(),
+        }
+    }
+
+    fn load_component(&self, request: &SandboxRequest) -> SandboxResult<(Engine, Component)> {
+        let key = Self::cache_key(request);
+        let engine = Self::engine()?;
+        if let Some(serialized) = self.cache.get(&key)? {
+            // Safety: only `Component::serialize` output produced by this
+            // process is inserted into the private cache. The cache key binds
+            // Wasmtime version, host target, runtime ABI, and admitted digest.
+            match unsafe { Component::deserialize(&engine, &serialized) } {
+                Ok(component) => return Ok((engine, component)),
+                Err(_) => self.cache.remove(&key)?,
+            }
+        }
+        let component = Component::new(&engine, &request.payload.bytes)
+            .map_err(|error| SandboxError::Compilation(error.to_string()))?;
+        let serialized = component
+            .serialize()
+            .map_err(|error| SandboxError::Internal(error.to_string()))?;
+        self.cache.insert(key, serialized)?;
+        Ok((engine, component))
+    }
+
     fn execute_component(
+        &self,
         request: &SandboxRequest,
         host: SandboxHost,
     ) -> SandboxResult<SandboxOutcome> {
-        let engine = Self::engine()?;
-        let component = Component::new(&engine, &request.payload.bytes)
-            .map_err(|error| SandboxError::Compilation(error.to_string()))?;
+        let (engine, component) = self.load_component(request)?;
         let mut linker = Linker::<WasmStoreState>::new(&engine);
         ModuleRuntime::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
             .map_err(|error| SandboxError::Internal(error.to_string()))?;
@@ -121,7 +368,7 @@ impl WasmComponentExecutor {
         let mut store = Store::new(
             &engine,
             WasmStoreState {
-                limits,
+                limits: WasmStoreLimits::new(limits),
                 host,
                 execution_id: request.context.execution_id,
                 subject: request.subject.clone(),
@@ -188,6 +435,7 @@ impl WasmComponentExecutor {
                 });
             }
             let fuel_remaining = store.get_fuel().unwrap_or(0);
+            let peak_memory_bytes = store.data().limits.peak_linear_memory_bytes();
             Ok(SandboxOutcome {
                 execution_id: request.context.execution_id,
                 output,
@@ -199,6 +447,7 @@ impl WasmComponentExecutor {
                             .instruction_budget
                             .saturating_sub(fuel_remaining),
                     ),
+                    peak_memory_bytes: Some(peak_memory_bytes),
                     output_bytes: Some(output_bytes),
                     ..Default::default()
                 },
@@ -230,7 +479,13 @@ impl SandboxExecutor for WasmComponentExecutor {
         request: &SandboxRequest,
         host: SandboxHost,
     ) -> SandboxResult<SandboxOutcome> {
-        Self::execute_component(request, host)
+        self.execute_component(request, host)
+    }
+}
+
+impl Default for WasmComponentExecutor {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -242,11 +497,15 @@ mod tests {
     use serde_json::{json, Value};
     use uuid::Uuid;
 
-    use super::WasmComponentExecutor;
+    use super::{
+        SerializedComponentCache, WasmComponentCacheKey, WasmComponentCachePolicy,
+        WasmComponentExecutor, WasmStoreLimits, WASMTIME_ENGINE_VERSION,
+    };
     use crate::{
         ExecutionPhase, SandboxContext, SandboxError, SandboxExecutorKind, SandboxPayload,
         SandboxPolicy, SandboxRequest, SandboxSubject,
     };
+    use wasmtime::ResourceLimiter;
 
     #[test]
     fn v1_abi_constants_match_the_component_contract() {
@@ -259,32 +518,132 @@ mod tests {
         assert_eq!(super::WASM_COMPONENT_ERROR_ENCODING, "wit-result-string");
     }
 
-    #[tokio::test]
-    async fn invalid_component_bytes_are_rejected_before_instantiation() {
-        let request = SandboxRequest {
+    #[test]
+    fn component_cache_key_binds_engine_target_abi_and_admitted_digest() {
+        let request = cache_request("rustok:module/runtime@1", "sha256:first");
+        let mut changed_abi = request.clone();
+        changed_abi.payload.runtime_abi = "rustok:module/runtime@2".to_string();
+        let mut changed_digest = request.clone();
+        changed_digest.payload.digest = "sha256:second".to_string();
+
+        let key = WasmComponentExecutor::cache_key(&request);
+        assert_eq!(key.engine_version, WASMTIME_ENGINE_VERSION);
+        assert_eq!(
+            key.target,
+            format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS)
+        );
+        assert_ne!(key, WasmComponentExecutor::cache_key(&changed_abi));
+        assert_ne!(key, WasmComponentExecutor::cache_key(&changed_digest));
+    }
+
+    #[test]
+    fn serialized_component_cache_evicts_the_least_recently_used_entry() {
+        let cache = SerializedComponentCache::new(WasmComponentCachePolicy {
+            max_entries: 2,
+            max_serialized_bytes: 6,
+        });
+        let first = cache_key("first");
+        let second = cache_key("second");
+        let third = cache_key("third");
+        cache
+            .insert(first.clone(), vec![1, 2])
+            .expect("insert first entry");
+        cache
+            .insert(second.clone(), vec![3, 4])
+            .expect("insert second entry");
+        assert_eq!(
+            cache.get(&first).expect("touch first entry"),
+            Some(vec![1, 2])
+        );
+        cache
+            .insert(third.clone(), vec![5, 6])
+            .expect("insert third entry");
+
+        assert_eq!(
+            cache.get(&first).expect("read first entry"),
+            Some(vec![1, 2])
+        );
+        assert_eq!(cache.get(&second).expect("read second entry"), None);
+        assert_eq!(
+            cache.get(&third).expect("read third entry"),
+            Some(vec![5, 6])
+        );
+    }
+
+    #[test]
+    fn component_cache_policy_rejects_unbounded_capacity() {
+        assert!(
+            WasmComponentExecutor::with_component_cache_policy(WasmComponentCachePolicy {
+                max_entries: 0,
+                max_serialized_bytes: 1,
+            })
+            .is_err()
+        );
+        assert!(
+            WasmComponentExecutor::with_component_cache_policy(WasmComponentCachePolicy {
+                max_entries: 1,
+                max_serialized_bytes: super::MAX_COMPONENT_CACHE_BYTES + 1,
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn peak_memory_tracks_permitted_growth_and_discards_failed_growth() {
+        let mut limits = WasmStoreLimits::new(wasmtime::StoreLimitsBuilder::new().build());
+        assert!(limits
+            .memory_growing(0, 64 * 1024, None)
+            .expect("permit initial memory"));
+        assert!(limits
+            .memory_growing(64 * 1024, 128 * 1024, None)
+            .expect("permit memory growth"));
+        assert_eq!(limits.peak_linear_memory_bytes(), 128 * 1024);
+
+        assert!(limits
+            .memory_growing(128 * 1024, 192 * 1024, None)
+            .expect("permit pending memory growth"));
+        limits
+            .memory_grow_failed(wasmtime::Error::msg("synthetic allocation failure"))
+            .expect("record failed memory growth");
+        assert_eq!(limits.peak_linear_memory_bytes(), 128 * 1024);
+    }
+
+    fn cache_request(runtime_abi: &str, digest: &str) -> SandboxRequest {
+        SandboxRequest {
             subject: SandboxSubject::ModuleArtifact {
                 slug: "sample_module".to_string(),
                 version: "1.0.0".to_string(),
-                digest: "sha256:fixture".to_string(),
+                digest: digest.to_string(),
             },
-            context: SandboxContext {
-                execution_id: Uuid::new_v4(),
-                phase: ExecutionPhase::Test,
-                timestamp: Utc::now(),
-                tenant_id: None,
-                actor_id: None,
-                trace_id: None,
-            },
+            context: SandboxContext::new(ExecutionPhase::Test),
             payload: SandboxPayload {
                 executor: SandboxExecutorKind::WasmComponent,
                 media_type: "application/wasm".to_string(),
-                digest: "sha256:fixture".to_string(),
+                digest: digest.to_string(),
+                runtime_abi: runtime_abi.to_string(),
                 entrypoint: "run".to_string(),
-                bytes: b"not a component".to_vec(),
+                bytes: Vec::new(),
             },
             input: Value::Null,
             policy: SandboxPolicy::default(),
-        };
+        }
+    }
+
+    fn cache_key(digest: &str) -> WasmComponentCacheKey {
+        WasmComponentCacheKey {
+            engine_version: WASMTIME_ENGINE_VERSION,
+            target: "test-target".to_string(),
+            runtime_abi: "rustok:module/runtime@1".to_string(),
+            digest: digest.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_component_bytes_are_rejected_before_instantiation() {
+        let mut request = cache_request("rustok:module/runtime@1", "sha256:fixture");
+        request.context.execution_id = Uuid::new_v4();
+        request.context.timestamp = Utc::now();
+        request.payload.bytes = b"not a component".to_vec();
 
         struct NoCapabilities;
 
@@ -339,7 +698,7 @@ mod tests {
         let mut context = SandboxContext::new(ExecutionPhase::Test);
         context.execution_id = execution_id;
         let mut state = super::WasmStoreState {
-            limits: wasmtime::StoreLimitsBuilder::new().build(),
+            limits: WasmStoreLimits::new(wasmtime::StoreLimitsBuilder::new().build()),
             host: crate::SandboxHost::new(
                 Arc::new(SandboxPolicy {
                     grants: vec![crate::CapabilityGrant {

@@ -16,6 +16,7 @@ rustok-core.workspace = true
 # Module crates — each owns its own migration files
 alloy.workspace = true
 rustok-auth.workspace = true
+rustok-rbac.workspace = true
 rustok-channel.workspace = true
 rustok-cart.workspace = true
 rustok-customer.workspace = true

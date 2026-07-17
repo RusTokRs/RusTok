@@ -10,7 +10,7 @@ use rustok_sandbox::CapabilityName;
 
 use crate::Script;
 
-const RHAI_MODULE_ABI: &str = "rustok:module/runtime@1";
+pub(crate) const RHAI_MODULE_ABI: &str = "rustok:module/runtime@1";
 
 #[derive(Debug, Error)]
 pub enum AlloyArtifactError {

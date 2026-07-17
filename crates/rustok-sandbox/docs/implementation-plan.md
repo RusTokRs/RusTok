@@ -30,16 +30,18 @@ Implemented:
 - request-scoped Rhai host extensions;
 - Wasmtime Component Model executor with fuel, epoch deadlines, store limits,
   and no ambient WASI imports;
+- bounded node-local LRU cache of serialized compiled Components keyed by
+  Wasmtime version, host target, admitted runtime ABI, and artifact digest;
 - typed `rustok:module/host.invoke` WIT import routed through `SandboxHost`;
 - installed artifact execution from `rustok-modules`.
+- local authoring/test harness over the same runtime request, policy, execution,
+  cancellation, and error contracts with an explicit fixture-only capability
+  broker and no infrastructure clients.
 
 Remaining:
 
-- stable Rhai binding and WIT v1 compatibility contract;
-- owner-specific durable audit deployment composition; `rustok-modules` now
-  provides the artifact-only SeaORM adapter, while this neutral crate keeps no
-  storage dependency;
-- production compiled-artifact cache policy and metrics;
+- actual peak-memory and cache-observation metrics without treating configured
+  limits as measurements;
 - richer capability constraints and call budgets;
 - sidecar executor after its entry conditions are met.
 - a production isolated-worker deployment profile for untrusted Rhai;
@@ -59,13 +61,19 @@ Remaining:
 
 - [x] Implement request-scoped cancellation propagation through the runtime,
   Rhai progress callback, Wasmtime epoch watchdog, and capability host.
+- [x] Enforce the configured wall-clock deadline in every enabled executor:
+  Rhai uses its progress callback and Wasmtime a request-private epoch
+  watchdog, both mapped to the common timeout error.
 - [x] Add runtime-scoped global, executor, tenant, and artifact concurrency
   admission controls with automatic permit release.
 - [x] Add fallible observer delivery, redaction, and correlation context. The
   artifact owner supplies the durable SeaORM adapter; hosts must attach it when
   durable execution evidence is required.
-- Add queue time, execution time, fuel/instruction, memory, output, capability,
-  and cache metrics.
+- Queue time, execution time, Rhai instruction/Wasmtime fuel, output size, and
+  policy-admitted capability-call metrics are emitted on terminal records.
+  Wasmtime reports observed aggregate non-shared guest linear-memory peak while
+  excluding failed growth; Rhai peak-memory and executor cache-observation
+  metrics remain pending without substituting configured limits for usage.
 - Add one shared in-process/isolated-worker executor placement contract.
 - Run untrusted production Rhai in the supervised isolated worker without
   giving it infrastructure clients; keep in-process Rhai an explicit
@@ -74,9 +82,14 @@ Remaining:
 
 ### S3 - Stable Language/ABI Contracts
 
-- Freeze the Rhai input/output binding used by drafts and artifacts.
+- [x] Freeze the strict `RhaiBindingInput`/`RhaiBindingOutput` v1 JSON envelope
+  used by drafts and artifacts. Unknown fields, another version, and raw JSON
+  compatibility paths are rejected at the executor boundary.
 - [x] Freeze WIT v1 package/world/entrypoint and JSON/error encoding.
-- Define runtime ABI compatibility and cache invalidation.
+- [x] Define exact runtime ABI compatibility and bounded compiled-component
+  cache invalidation. Serialized Components are keyed by Wasmtime version,
+  target, admitted runtime ABI, and artifact digest; capacity uses LRU eviction
+  and a corrupted cache value is removed before recompilation.
 - Add malformed/untrusted input and component fuzz targets.
 
 ### S4 - Capability Hardening

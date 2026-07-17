@@ -1,3 +1,4 @@
+mod artifact_permission_catalog;
 pub mod bootstrap;
 pub mod catalog;
 pub mod dto;
@@ -7,10 +8,12 @@ pub mod error;
 pub mod graphql;
 pub mod integration;
 mod invalidation_generation;
+mod m20260716_000001_artifact_permission_catalog;
 pub mod ports;
 mod repair;
 pub mod services;
 
+pub use artifact_permission_catalog::RbacArtifactPermissionCatalog;
 pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
 pub use catalog::BuiltinTenantRbacCatalog;
 pub use consistency::{load_consistency_stats, RbacConsistencyStats};
@@ -100,7 +103,9 @@ pub struct RbacModule;
 
 impl MigrationSource for RbacModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
+        vec![Box::new(
+            m20260716_000001_artifact_permission_catalog::Migration,
+        )]
     }
 }
 

@@ -38,6 +38,8 @@ pub enum ModuleResolutionProviderKind {
 pub struct ModuleResolutionCandidate {
     pub node: ModuleDependencyLockNode,
     pub runtime_abi: String,
+    /// Semantic-version range from the admitted artifact descriptor.
+    pub platform_compatibility: String,
     pub trusted: bool,
     pub active: bool,
     pub yanked: bool,
@@ -68,6 +70,8 @@ pub trait ModuleResolutionProvider: Send + Sync {
 pub struct ModuleResolutionRequest {
     pub graph_revision: u64,
     pub runtime_abi: String,
+    /// Exact platform release selected by deployment composition.
+    pub platform_version: String,
     pub scope: ModuleResolutionScope,
     #[serde(default)]
     pub root_dependencies: Vec<ModuleDependencyConstraint>,
@@ -89,6 +93,10 @@ pub enum ModuleResolutionError {
     Conflict { conflict: ModuleResolutionConflict },
     #[error("module resolution received an invalid candidate: {0}")]
     InvalidCandidate(String),
+    #[error("module resolution received an invalid platform version `{0}`")]
+    InvalidPlatformVersion(String),
+    #[error("module resolution received an invalid platform compatibility range `{0}`")]
+    InvalidPlatformCompatibility(String),
     #[error("module resolution does not support prerelease versions in v1: {0}")]
     UnsupportedPrerelease(String),
     #[error("module resolution cannot represent version requirement `{0}")]
@@ -127,7 +135,10 @@ pub async fn resolve_module_dependencies<P>(
 where
     P: ModuleResolutionProvider,
 {
-    let snapshot = ResolutionSnapshot::collect(provider, &request).await?;
+    let platform_version = Version::parse(&request.platform_version).map_err(|_| {
+        ModuleResolutionError::InvalidPlatformVersion(request.platform_version.clone())
+    })?;
+    let snapshot = ResolutionSnapshot::collect(provider, &request, &platform_version).await?;
     let selected = resolve(&snapshot, ROOT_PACKAGE.to_string(), ROOT_VERSION).map_err(|_| {
         ModuleResolutionError::Conflict {
             conflict: conflict_for_request(&request),
@@ -177,6 +188,7 @@ impl ResolutionSnapshot {
     async fn collect<P>(
         provider: &P,
         request: &ModuleResolutionRequest,
+        platform_version: &Version,
     ) -> Result<Self, ModuleResolutionError>
     where
         P: ModuleResolutionProvider,
@@ -197,6 +209,7 @@ impl ResolutionSnapshot {
                     &constraint,
                     request.scope,
                     &request.runtime_abi,
+                    platform_version,
                     &version,
                 )? {
                     continue;
@@ -301,11 +314,18 @@ fn candidate_is_eligible(
     constraint: &ModuleDependencyConstraint,
     scope: ModuleResolutionScope,
     runtime_abi: &str,
+    platform_version: &Version,
     version: &Version,
 ) -> Result<bool, ModuleResolutionError> {
     let requirement = VersionReq::parse(&constraint.version_requirement).map_err(|_| {
         ModuleResolutionError::UnsupportedRequirement(constraint.version_requirement.clone())
     })?;
+    let platform_compatibility =
+        VersionReq::parse(&candidate.platform_compatibility).map_err(|_| {
+            ModuleResolutionError::InvalidPlatformCompatibility(
+                candidate.platform_compatibility.clone(),
+            )
+        })?;
     Ok(candidate.trusted
         && candidate.active
         && !candidate.yanked
@@ -314,6 +334,7 @@ fn candidate_is_eligible(
         && candidate.module_kind == ArtifactModuleKind::Optional
         && candidate.provider_kind == ModuleResolutionProviderKind::Artifact
         && candidate.runtime_abi == runtime_abi
+        && platform_compatibility.matches(platform_version)
         && requirement.matches(version))
 }
 
@@ -544,6 +565,7 @@ mod tests {
                     .collect(),
             },
             runtime_abi: "v1".into(),
+            platform_compatibility: "^1.0".into(),
             trusted: true,
             active: true,
             yanked: false,
@@ -580,6 +602,7 @@ mod tests {
             ModuleResolutionRequest {
                 graph_revision: 9,
                 runtime_abi: "v1".into(),
+                platform_version: "1.2.3".into(),
                 scope: ModuleResolutionScope::Platform,
                 root_dependencies: vec![ModuleDependencyConstraint {
                     slug: "app".into(),
@@ -604,6 +627,7 @@ mod tests {
             ModuleResolutionRequest {
                 graph_revision: 1,
                 runtime_abi: "v1".into(),
+                platform_version: "1.2.3".into(),
                 scope: ModuleResolutionScope::Platform,
                 root_dependencies: vec![ModuleDependencyConstraint {
                     slug: "missing".into(),
@@ -617,6 +641,80 @@ mod tests {
         assert_eq!(conflict.code, "DEPENDENCY_CONFLICT");
         assert_eq!(conflict.involved_slugs, vec!["missing"]);
         assert!(!conflict.message.contains("pubgrub"));
+    }
+
+    #[tokio::test]
+    async fn provider_excludes_platform_incompatible_candidates_before_pubgrub() {
+        let mut catalog = Catalog::default();
+        let mut incompatible = candidate("platform_dep", "2.0.0", &[]);
+        incompatible.platform_compatibility = "^2.0".into();
+        catalog.0.insert(
+            "platform_dep".into(),
+            vec![incompatible, candidate("platform_dep", "1.0.0", &[])],
+        );
+
+        let result = resolve_module_dependencies(
+            &catalog,
+            ModuleResolutionRequest {
+                graph_revision: 2,
+                runtime_abi: "v1".into(),
+                platform_version: "1.2.3".into(),
+                scope: ModuleResolutionScope::Platform,
+                root_dependencies: vec![ModuleDependencyConstraint {
+                    slug: "platform_dep".into(),
+                    version_requirement: ">=1".into(),
+                }],
+            },
+        )
+        .await
+        .expect("compatible platform release is selected");
+
+        assert_eq!(result.lock_graph.nodes.len(), 1);
+        assert_eq!(result.lock_graph.nodes[0].version, "1.0.0");
+    }
+
+    #[tokio::test]
+    async fn malformed_platform_facts_fail_closed() {
+        let error = resolve_module_dependencies(
+            &Catalog::default(),
+            ModuleResolutionRequest {
+                graph_revision: 3,
+                runtime_abi: "v1".into(),
+                platform_version: "not-semver".into(),
+                scope: ModuleResolutionScope::Platform,
+                root_dependencies: Vec::new(),
+            },
+        )
+        .await
+        .expect_err("invalid deployment platform version must fail closed");
+        assert!(matches!(
+            error,
+            ModuleResolutionError::InvalidPlatformVersion(version) if version == "not-semver"
+        ));
+
+        let mut catalog = Catalog::default();
+        let mut candidate = candidate("invalid_platform", "1.0.0", &[]);
+        candidate.platform_compatibility = "not-a-range".into();
+        catalog.0.insert("invalid_platform".into(), vec![candidate]);
+        let error = resolve_module_dependencies(
+            &catalog,
+            ModuleResolutionRequest {
+                graph_revision: 4,
+                runtime_abi: "v1".into(),
+                platform_version: "1.2.3".into(),
+                scope: ModuleResolutionScope::Platform,
+                root_dependencies: vec![ModuleDependencyConstraint {
+                    slug: "invalid_platform".into(),
+                    version_requirement: "^1".into(),
+                }],
+            },
+        )
+        .await
+        .expect_err("invalid candidate compatibility range must fail closed");
+        assert!(matches!(
+            error,
+            ModuleResolutionError::InvalidPlatformCompatibility(range) if range == "not-a-range"
+        ));
     }
 
     #[test]

@@ -1,22 +1,30 @@
 use async_trait::async_trait;
+use jsonschema::{Draft, PatternOptions};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::OutboxTransport;
 use rustok_sandbox::{
-    CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, SandboxError,
-    SandboxResult, SandboxSubject,
+    CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutionPhase,
+    SandboxError, SandboxResult, SandboxSubject,
+};
+
+use crate::{
+    ArtifactBindingDispatch, ArtifactBindingExecutor, ArtifactMigrationCheckpointRequest,
+    ArtifactReleaseRef, ModuleInstallationScope, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
 };
 
 const MAX_ARTIFACT_DATA_KEY_BYTES: usize = 256;
 const MAX_ARTIFACT_DATA_VALUE_BYTES: usize = 64 * 1024;
 const MAX_ARTIFACT_DATA_PAGE_SIZE: u32 = 100;
+const MAX_DATA_SCHEMA_REGEX_BYTES: usize = 64 * 1024;
 
 /// Host-owned namespace for untrusted artifact data. Guests never supply a
 /// physical table, bucket, database schema, or secret-store location.
@@ -33,6 +41,11 @@ pub struct ArtifactDataWrite {
     pub key: String,
     pub value: Value,
     pub expected_revision: Option<u64>,
+    /// Owner-only create-if-absent guard. Sandbox capability decoding always
+    /// sets this to false; upgrade application uses it with a deterministic
+    /// idempotency key so it can never overwrite target-contract data.
+    #[serde(default)]
+    pub create_only: bool,
     pub idempotency_key: Uuid,
 }
 
@@ -56,6 +69,72 @@ pub struct ArtifactDataPageRequest {
 pub struct ArtifactDataPage {
     pub records: Vec<ArtifactDataRecord>,
     pub next_after_key: Option<String>,
+}
+
+/// A read/transform-only request for advancing one bounded page of structured
+/// artifact data to a newer admitted data-contract revision. Persisting the
+/// resulting plan is deliberately a separate owner command.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataUpgradeRequest {
+    /// Stable owner-generated identity for retrying one bounded upgrade page.
+    pub plan_id: Uuid,
+    /// The exact host-selected installation whose target contract is being
+    /// prepared and later checkpointed.
+    pub target_installation_id: Uuid,
+    pub source: ArtifactDataScope,
+    pub target: ArtifactDataScope,
+    /// Identifies a pre-bound, admitted sandbox hook. It is never a guest
+    /// command line, module path, or executable reference.
+    pub hook_binding_id: String,
+    pub page: ArtifactDataPageRequest,
+}
+
+/// The only input passed to an admitted data-contract upgrade hook.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactDataUpgradeInput {
+    pub source: ArtifactDataScope,
+    pub target: ArtifactDataScope,
+    pub record: ArtifactDataRecord,
+}
+
+/// A transformed value paired with the source revision it was planned from.
+/// The revision lets a later owner command reject a stale plan through its
+/// normal optimistic-write contract.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactDataUpgradeRecord {
+    pub key: String,
+    pub value: Value,
+    pub source_revision: u64,
+}
+
+/// A bounded, non-durable upgrade result. It carries no database transaction,
+/// write authority, checkpoint, or lifecycle transition.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactDataUpgradePlan {
+    pub plan_id: Uuid,
+    pub target_installation_id: Uuid,
+    pub source: ArtifactDataScope,
+    pub target: ArtifactDataScope,
+    pub hook_binding_id: String,
+    pub records: Vec<ArtifactDataUpgradeRecord>,
+    pub next_after_key: Option<String>,
+}
+
+/// Owner command for applying a previously validated bounded plan. It cannot
+/// supply arbitrary checkpoint contents: the applier derives redacted owner
+/// metadata from the immutable plan.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactDataUpgradeApplyRequest {
+    pub plan: ArtifactDataUpgradePlan,
+    pub installation_scope: ModuleInstallationScope,
+    pub expected_installation_revision: u64,
+    pub has_irreversible_migration: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactDataUpgradeApplyResult {
+    pub records: Vec<ArtifactDataRecord>,
+    pub installation_revision: u64,
 }
 
 /// The operation being authorized by the host. Values are intentionally absent:
@@ -157,6 +236,19 @@ fn valid_module_slug(value: &str) -> bool {
         })
 }
 
+fn valid_upgrade_hook_binding_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '_' | '-' | '.')
+        })
+}
+
+/// Read and write calls are self-contained owner operations. An implementation
+/// must finish any storage transaction before returning; it must not expose a
+/// live transaction to a caller that may invoke untrusted code next.
 #[async_trait]
 pub trait ArtifactDataBroker: Send + Sync {
     async fn get(
@@ -176,6 +268,81 @@ pub trait ArtifactDataBroker: Send + Sync {
         scope: &ArtifactDataScope,
         page: ArtifactDataPageRequest,
     ) -> Result<ArtifactDataPage, ArtifactDataError>;
+}
+
+/// Host-owned invocation of a pre-bound sandbox transformation. The hook has
+/// no storage handle and receives one record at a time.
+#[async_trait]
+pub trait ArtifactDataUpgradeHook: Send + Sync {
+    async fn transform_data(
+        &self,
+        hook_binding_id: &str,
+        input: ArtifactDataUpgradeInput,
+    ) -> Result<Value, ArtifactDataError>;
+}
+
+/// Production bridge from a dedicated admitted `data_upgrade` binding to the
+/// data-contract planner. The binding is deliberately unavailable through the
+/// generic dispatcher: only this owner-owned adapter may invoke it.
+pub struct ArtifactBindingDataUpgradeHook<E> {
+    executor: E,
+    release: ArtifactReleaseRef,
+    binding: ModuleRuntimeBinding,
+}
+
+impl<E> ArtifactBindingDataUpgradeHook<E> {
+    pub fn new(
+        executor: E,
+        release: ArtifactReleaseRef,
+        binding: ModuleRuntimeBinding,
+    ) -> Result<Self, ArtifactDataError> {
+        if binding.kind != ModuleRuntimeBindingKind::DataUpgrade || binding.id.is_empty() {
+            return Err(ArtifactDataError::InvalidUpgrade);
+        }
+        Ok(Self {
+            executor,
+            release,
+            binding,
+        })
+    }
+}
+
+#[async_trait]
+impl<E> ArtifactDataUpgradeHook for ArtifactBindingDataUpgradeHook<E>
+where
+    E: ArtifactBindingExecutor,
+{
+    async fn transform_data(
+        &self,
+        hook_binding_id: &str,
+        input: ArtifactDataUpgradeInput,
+    ) -> Result<Value, ArtifactDataError> {
+        if hook_binding_id != self.binding.id
+            || input.source.module_slug != self.release.slug
+            || input.target.module_slug != self.release.slug
+            || input.source.tenant_id != input.target.tenant_id
+        {
+            return Err(ArtifactDataError::InvalidUpgrade);
+        }
+        self.executor
+            .dispatch_binding(ArtifactBindingDispatch {
+                release: &self.release,
+                binding: &self.binding,
+                tenant_id: input.source.tenant_id,
+                input: json!({
+                    "source": input.source,
+                    "target": input.target,
+                    "record": input.record,
+                }),
+                // `data_upgrade` is intentionally omitted from the public
+                // generic dispatcher. This internal owner bridge uses the
+                // neutral sandbox phase while the binding kind carries the
+                // admission and authorization distinction.
+                phase: ExecutionPhase::Manual,
+            })
+            .await
+            .map_err(ArtifactDataError::UpgradeHook)
+    }
 }
 
 /// Policy evaluation is host-owned and request-scoped. The implementation can
@@ -203,6 +370,111 @@ pub trait ArtifactDataSchemaValidator: Send + Sync {
     ) -> Result<(), ArtifactDataError>;
 }
 
+/// Resolves a data-contract schema only from the descriptor persisted with the
+/// exact injected installation. It accepts an admitted lifecycle state so an
+/// owner can validate a target contract before activation; the separate data
+/// authorizer remains responsible for operation lifecycle policy.
+#[derive(Clone)]
+pub struct SeaOrmArtifactDataSchemaValidator {
+    db: DatabaseConnection,
+    installation_id: Uuid,
+}
+
+impl SeaOrmArtifactDataSchemaValidator {
+    /// The host injects the exact immutable installation selected for this
+    /// data broker. It is never derived from the module slug at validation
+    /// time and never crosses the artifact capability boundary.
+    pub fn new(db: DatabaseConnection, installation_id: Uuid) -> Self {
+        Self {
+            db,
+            installation_id,
+        }
+    }
+
+    async fn data_contract_schema(
+        &self,
+        scope: &ArtifactDataScope,
+    ) -> Result<Value, ArtifactDataError> {
+        scope.validate()?;
+        if self.installation_id.is_nil() {
+            return Err(ArtifactDataError::DataContractUnavailable);
+        }
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        let placeholders = match backend {
+            DbBackend::Postgres => ("$1", "$2", "$3"),
+            _ => ("?1", "?2", "?3"),
+        };
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT installation.descriptor \
+                     FROM module_artifact_installations installation \
+                     JOIN module_artifact_admissions admission \
+                       ON admission.installation_id = installation.installation_id \
+                     WHERE installation.installation_id = {} \
+                       AND installation.slug = {} \
+                       AND (installation.scope_kind = 'platform' OR installation.tenant_id = {}) \
+                       AND admission.status IN ('admitted', 'installed', 'active', 'inactive')",
+                    placeholders.0, placeholders.1, placeholders.2,
+                ),
+                vec![
+                    uuid_value(self.installation_id, backend),
+                    scope.module_slug.clone().into(),
+                    uuid_value(scope.tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(storage_error)?
+            .ok_or(ArtifactDataError::DataContractUnavailable)?;
+        transaction.commit().await.map_err(storage_error)?;
+
+        let descriptor_value: Value = row.try_get("", "descriptor").map_err(storage_error)?;
+        let descriptor =
+            serde_json::from_value::<crate::ModuleArtifactDescriptor>(descriptor_value)
+                .map_err(|_| ArtifactDataError::DataContractUnavailable)?;
+        descriptor
+            .validate()
+            .map_err(|_| ArtifactDataError::DataContractUnavailable)?;
+        let contract = descriptor
+            .persistence_contract
+            .as_ref()
+            .filter(|contract| contract.revision == scope.data_contract_revision)
+            .ok_or(ArtifactDataError::DataContractUnavailable)?;
+        descriptor
+            .schema_document(&contract.schema_digest)
+            .cloned()
+            .ok_or(ArtifactDataError::DataContractUnavailable)
+    }
+}
+
+#[async_trait]
+impl ArtifactDataSchemaValidator for SeaOrmArtifactDataSchemaValidator {
+    async fn validate_data_value(
+        &self,
+        scope: &ArtifactDataScope,
+        value: &Value,
+    ) -> Result<(), ArtifactDataError> {
+        let schema = self.data_contract_schema(scope).await?;
+        let validator = jsonschema::options()
+            .with_draft(Draft::Draft202012)
+            .should_validate_formats(true)
+            .should_ignore_unknown_formats(false)
+            .with_pattern_options(
+                PatternOptions::default()
+                    .backtrack_limit(MAX_DATA_SCHEMA_REGEX_BYTES)
+                    .dfa_size_limit(MAX_DATA_SCHEMA_REGEX_BYTES),
+            )
+            .build(&schema)
+            .map_err(|_| ArtifactDataError::DataContractSchemaInvalid)?;
+        validator
+            .validate(value)
+            .map_err(|_| ArtifactDataError::DataContractSchemaViolation)
+    }
+}
+
 /// The host owns destructive-data authority. An artifact cannot supply an
 /// implementation or replace this check through its broker capability.
 #[async_trait]
@@ -211,6 +483,238 @@ pub trait ArtifactDataPurgeAuthorizer: Send + Sync {
         &self,
         request: &ArtifactDataPurgeRequest,
     ) -> Result<(), ArtifactDataError>;
+}
+
+/// Produces non-durable data-contract upgrade plans. The data broker call is
+/// complete before any sandbox hook begins, so an untrusted transformation can
+/// never run while a control-plane or storage transaction is held open.
+#[derive(Clone)]
+pub struct ArtifactDataUpgradePlanner<B, H, V> {
+    data: B,
+    hook: H,
+    schema_validator: V,
+}
+
+impl<B, H, V> ArtifactDataUpgradePlanner<B, H, V>
+where
+    B: ArtifactDataBroker,
+    H: ArtifactDataUpgradeHook,
+    V: ArtifactDataSchemaValidator,
+{
+    pub fn new(data: B, hook: H, schema_validator: V) -> Self {
+        Self {
+            data,
+            hook,
+            schema_validator,
+        }
+    }
+
+    pub async fn plan(
+        &self,
+        request: ArtifactDataUpgradeRequest,
+    ) -> Result<ArtifactDataUpgradePlan, ArtifactDataError> {
+        validate_upgrade_request(&request)?;
+
+        // `list` finishes its bounded read before this await resolves. Do not
+        // move transformation or a later write into a broker transaction.
+        let page = self.data.list(&request.source, request.page).await?;
+        let mut records = Vec::with_capacity(page.records.len());
+        for record in page.records {
+            let source_revision = record.revision;
+            let key = record.key.clone();
+            let value = self
+                .hook
+                .transform_data(
+                    &request.hook_binding_id,
+                    ArtifactDataUpgradeInput {
+                        source: request.source.clone(),
+                        target: request.target.clone(),
+                        record,
+                    },
+                )
+                .await?;
+            validate_artifact_data_value(&value)?;
+            self.schema_validator
+                .validate_data_value(&request.target, &value)
+                .await?;
+            records.push(ArtifactDataUpgradeRecord {
+                key,
+                value,
+                source_revision,
+            });
+        }
+
+        Ok(ArtifactDataUpgradePlan {
+            plan_id: request.plan_id,
+            target_installation_id: request.target_installation_id,
+            source: request.source,
+            target: request.target,
+            hook_binding_id: request.hook_binding_id,
+            records,
+            next_after_key: page.next_after_key,
+        })
+    }
+}
+
+fn validate_upgrade_request(request: &ArtifactDataUpgradeRequest) -> Result<(), ArtifactDataError> {
+    request.source.validate()?;
+    request.target.validate()?;
+    validate_page_request(&request.page)?;
+    if request.plan_id.is_nil()
+        || request.target_installation_id.is_nil()
+        || !valid_upgrade_hook_binding_id(&request.hook_binding_id)
+        || request.source.tenant_id != request.target.tenant_id
+        || request.source.module_slug != request.target.module_slug
+        || request.target.data_contract_revision <= request.source.data_contract_revision
+    {
+        return Err(ArtifactDataError::InvalidUpgrade);
+    }
+    Ok(())
+}
+
+/// Owner-owned installation checkpoint boundary. Implementations must retain
+/// the installation revision CAS and transactional outbox semantics.
+#[async_trait]
+pub trait ArtifactDataMigrationCheckpointStore: Send + Sync {
+    async fn record_data_upgrade_checkpoint(
+        &self,
+        request: ArtifactMigrationCheckpointRequest,
+    ) -> Result<u64, ArtifactDataError>;
+}
+
+/// Applies a bounded plan without opening a control-plane transaction across
+/// source reads, target writes, or checkpointing. Repeating the same plan ID
+/// produces the same per-record idempotency keys, so a retry resumes a partial
+/// attempt before creating the installation checkpoint.
+#[derive(Clone)]
+pub struct ArtifactDataUpgradeApplier<B, C> {
+    data: B,
+    checkpoints: C,
+}
+
+impl<B, C> ArtifactDataUpgradeApplier<B, C>
+where
+    B: ArtifactDataBroker,
+    C: ArtifactDataMigrationCheckpointStore,
+{
+    pub fn new(data: B, checkpoints: C) -> Self {
+        Self { data, checkpoints }
+    }
+
+    pub async fn apply(
+        &self,
+        request: ArtifactDataUpgradeApplyRequest,
+    ) -> Result<ArtifactDataUpgradeApplyResult, ArtifactDataError> {
+        validate_upgrade_apply_request(&request)?;
+        let mut records = Vec::with_capacity(request.plan.records.len());
+        for record in &request.plan.records {
+            let current = self.data.get(&request.plan.source, &record.key).await?;
+            if !matches!(current, Some(ref current) if current.revision == record.source_revision) {
+                return Err(ArtifactDataError::StaleUpgradePlan);
+            }
+            let persisted = self
+                .data
+                .put(
+                    &request.plan.target,
+                    ArtifactDataWrite {
+                        key: record.key.clone(),
+                        value: record.value.clone(),
+                        expected_revision: None,
+                        create_only: true,
+                        idempotency_key: upgrade_record_idempotency_key(
+                            request.plan.plan_id,
+                            &request.plan.target,
+                            record,
+                        ),
+                    },
+                )
+                .await?;
+            records.push(persisted);
+        }
+        let checkpoint = json!({
+            "kind": "artifact_data_upgrade",
+            "plan_id": request.plan.plan_id,
+            "hook_binding_id": request.plan.hook_binding_id,
+            "source": {
+                "module_slug": request.plan.source.module_slug,
+                "data_contract_revision": request.plan.source.data_contract_revision,
+            },
+            "target": {
+                "module_slug": request.plan.target.module_slug,
+                "data_contract_revision": request.plan.target.data_contract_revision,
+            },
+            "records_applied": records.len(),
+            "next_after_key": request.plan.next_after_key,
+        });
+        let installation_revision = self
+            .checkpoints
+            .record_data_upgrade_checkpoint(ArtifactMigrationCheckpointRequest {
+                installation_id: request.plan.target_installation_id,
+                scope: request.installation_scope,
+                expected_revision: request.expected_installation_revision,
+                checkpoint,
+                has_irreversible_migration: request.has_irreversible_migration,
+            })
+            .await?;
+        Ok(ArtifactDataUpgradeApplyResult {
+            records,
+            installation_revision,
+        })
+    }
+}
+
+fn validate_upgrade_apply_request(
+    request: &ArtifactDataUpgradeApplyRequest,
+) -> Result<(), ArtifactDataError> {
+    validate_upgrade_plan(&request.plan)?;
+    if request.expected_installation_revision == 0 {
+        return Err(ArtifactDataError::InvalidUpgrade);
+    }
+    Ok(())
+}
+
+fn validate_upgrade_plan(plan: &ArtifactDataUpgradePlan) -> Result<(), ArtifactDataError> {
+    if plan.plan_id.is_nil()
+        || plan.target_installation_id.is_nil()
+        || !valid_upgrade_hook_binding_id(&plan.hook_binding_id)
+        || plan.source.tenant_id != plan.target.tenant_id
+        || plan.source.module_slug != plan.target.module_slug
+        || plan.target.data_contract_revision <= plan.source.data_contract_revision
+    {
+        return Err(ArtifactDataError::InvalidUpgrade);
+    }
+    plan.source.validate()?;
+    plan.target.validate()?;
+    for (index, record) in plan.records.iter().enumerate() {
+        validate_artifact_data_key(&record.key)?;
+        validate_artifact_data_value(&record.value)?;
+        if record.source_revision == 0
+            || plan.records[..index]
+                .iter()
+                .any(|previous| previous.key == record.key)
+        {
+            return Err(ArtifactDataError::InvalidUpgrade);
+        }
+    }
+    Ok(())
+}
+
+fn upgrade_record_idempotency_key(
+    plan_id: Uuid,
+    target: &ArtifactDataScope,
+    record: &ArtifactDataUpgradeRecord,
+) -> Uuid {
+    let mut hasher = Sha256::new();
+    hasher.update(plan_id.as_bytes());
+    hasher.update(target.tenant_id.as_bytes());
+    hasher.update(target.module_slug.as_bytes());
+    hasher.update(target.data_contract_revision.to_be_bytes());
+    hasher.update(record.key.as_bytes());
+    hasher.update(record.source_revision.to_be_bytes());
+    let digest = hasher.finalize();
+    let mut bytes = [0_u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    Uuid::from_bytes(bytes)
 }
 
 /// SeaORM adapter for the host-owned structured-value namespace. It never
@@ -361,7 +865,7 @@ where
             .map_err(storage_error)?;
         let revision = if let Some(row) = current {
             let current = record_from_row(row)?;
-            if write.expected_revision != Some(current.revision) {
+            if write.create_only || write.expected_revision != Some(current.revision) {
                 return Err(ArtifactDataError::RevisionConflict);
             }
             let next_revision = current
@@ -690,6 +1194,7 @@ fn decode_data_capability_call(call: &CapabilityCall) -> SandboxResult<DataCapab
                     key: required_data_capability_string(call, input, "key")?.to_string(),
                     value,
                     expected_revision,
+                    create_only: false,
                     idempotency_key,
                 },
             })
@@ -1196,6 +1701,20 @@ pub enum ArtifactDataError {
     InvalidKey,
     #[error("artifact data page is invalid")]
     InvalidPage,
+    #[error("artifact data upgrade request is invalid")]
+    InvalidUpgrade,
+    #[error("artifact data upgrade hook failed: {0}")]
+    UpgradeHook(String),
+    #[error("artifact data upgrade plan is stale")]
+    StaleUpgradePlan,
+    #[error("artifact data migration checkpoint failed: {0}")]
+    MigrationCheckpoint(String),
+    #[error("artifact data contract is unavailable for the injected installation scope")]
+    DataContractUnavailable,
+    #[error("artifact data contract schema is invalid")]
+    DataContractSchemaInvalid,
+    #[error("artifact data value does not satisfy the admitted data contract schema")]
+    DataContractSchemaViolation,
     #[error("artifact data revision conflict")]
     RevisionConflict,
     #[error("artifact data namespace was purged")]
@@ -1216,12 +1735,215 @@ pub enum ArtifactDataError {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        collections::HashMap,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc, Mutex,
+        },
+    };
+
+    use crate::ModuleBindingIdempotency;
+    use async_trait::async_trait;
     use rustok_sandbox::{
         CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionPhase, SandboxSubject,
     };
     use serde_json::json;
 
     use super::*;
+
+    #[derive(Clone)]
+    struct CompletedPageBroker {
+        completed: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl ArtifactDataBroker for CompletedPageBroker {
+        async fn get(
+            &self,
+            _: &ArtifactDataScope,
+            _: &str,
+        ) -> Result<Option<ArtifactDataRecord>, ArtifactDataError> {
+            Err(ArtifactDataError::Storage(
+                "not used by upgrade planning".to_string(),
+            ))
+        }
+
+        async fn put(
+            &self,
+            _: &ArtifactDataScope,
+            _: ArtifactDataWrite,
+        ) -> Result<ArtifactDataRecord, ArtifactDataError> {
+            Err(ArtifactDataError::Storage(
+                "not used by upgrade planning".to_string(),
+            ))
+        }
+
+        async fn list(
+            &self,
+            _: &ArtifactDataScope,
+            _: ArtifactDataPageRequest,
+        ) -> Result<ArtifactDataPage, ArtifactDataError> {
+            self.completed.store(true, Ordering::SeqCst);
+            Ok(ArtifactDataPage {
+                records: vec![ArtifactDataRecord {
+                    key: "state/current".to_string(),
+                    value: json!({ "version": 1 }),
+                    revision: 7,
+                }],
+                next_after_key: Some("state/current".to_string()),
+            })
+        }
+    }
+
+    #[derive(Clone)]
+    struct UpgradeHook {
+        read_completed: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl ArtifactDataUpgradeHook for UpgradeHook {
+        async fn transform_data(
+            &self,
+            hook_binding_id: &str,
+            input: ArtifactDataUpgradeInput,
+        ) -> Result<Value, ArtifactDataError> {
+            assert!(self.read_completed.load(Ordering::SeqCst));
+            assert_eq!(hook_binding_id, "upgrade.v2");
+            assert_eq!(input.record.key, "state/current");
+            Ok(json!({ "version": 2 }))
+        }
+    }
+
+    #[derive(Clone)]
+    struct AcceptingSchemaValidator;
+
+    #[async_trait]
+    impl ArtifactDataSchemaValidator for AcceptingSchemaValidator {
+        async fn validate_data_value(
+            &self,
+            scope: &ArtifactDataScope,
+            value: &Value,
+        ) -> Result<(), ArtifactDataError> {
+            assert_eq!(scope.data_contract_revision, 2);
+            assert_eq!(value, &json!({ "version": 2 }));
+            Ok(())
+        }
+    }
+
+    #[derive(Clone)]
+    struct RecordingUpgradeBindingExecutor {
+        calls: Arc<Mutex<Vec<(String, String, ExecutionPhase, Value)>>>,
+    }
+
+    #[async_trait]
+    impl ArtifactBindingExecutor for RecordingUpgradeBindingExecutor {
+        async fn dispatch_binding(
+            &self,
+            dispatch: ArtifactBindingDispatch<'_>,
+        ) -> Result<Value, String> {
+            self.calls.lock().expect("calls lock").push((
+                dispatch.release.slug.clone(),
+                dispatch.binding.id.clone(),
+                dispatch.phase.clone(),
+                dispatch.input,
+            ));
+            Ok(json!({ "version": 2 }))
+        }
+    }
+
+    #[derive(Clone)]
+    struct UpgradeApplyBroker {
+        source: ArtifactDataRecord,
+        target: Arc<Mutex<HashMap<String, (ArtifactDataRecord, Uuid)>>>,
+    }
+
+    #[async_trait]
+    impl ArtifactDataBroker for UpgradeApplyBroker {
+        async fn get(
+            &self,
+            scope: &ArtifactDataScope,
+            key: &str,
+        ) -> Result<Option<ArtifactDataRecord>, ArtifactDataError> {
+            if scope.data_contract_revision == 1 {
+                return Ok((key == self.source.key).then(|| self.source.clone()));
+            }
+            Ok(self
+                .target
+                .lock()
+                .expect("target lock")
+                .get(key)
+                .map(|(record, _)| record.clone()))
+        }
+
+        async fn put(
+            &self,
+            scope: &ArtifactDataScope,
+            write: ArtifactDataWrite,
+        ) -> Result<ArtifactDataRecord, ArtifactDataError> {
+            assert_eq!(scope.data_contract_revision, 2);
+            assert!(write.create_only);
+            let mut target = self.target.lock().expect("target lock");
+            if let Some((record, idempotency_key)) = target.get(&write.key) {
+                if *idempotency_key == write.idempotency_key
+                    && record.value == write.value
+                    && write.expected_revision.is_none()
+                {
+                    return Ok(record.clone());
+                }
+                return Err(ArtifactDataError::RevisionConflict);
+            }
+            let record = ArtifactDataRecord {
+                key: write.key.clone(),
+                value: write.value,
+                revision: 1,
+            };
+            target.insert(write.key, (record.clone(), write.idempotency_key));
+            Ok(record)
+        }
+
+        async fn list(
+            &self,
+            _: &ArtifactDataScope,
+            _: ArtifactDataPageRequest,
+        ) -> Result<ArtifactDataPage, ArtifactDataError> {
+            Err(ArtifactDataError::Storage(
+                "not used by upgrade application".to_string(),
+            ))
+        }
+    }
+
+    #[derive(Clone)]
+    struct RecordingCheckpointStore {
+        requests: Arc<Mutex<Vec<ArtifactMigrationCheckpointRequest>>>,
+        fail_first: Arc<AtomicBool>,
+    }
+
+    impl Default for RecordingCheckpointStore {
+        fn default() -> Self {
+            Self {
+                requests: Arc::new(Mutex::new(Vec::new())),
+                fail_first: Arc::new(AtomicBool::new(true)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ArtifactDataMigrationCheckpointStore for RecordingCheckpointStore {
+        async fn record_data_upgrade_checkpoint(
+            &self,
+            request: ArtifactMigrationCheckpointRequest,
+        ) -> Result<u64, ArtifactDataError> {
+            if self.fail_first.swap(false, Ordering::SeqCst) {
+                return Err(ArtifactDataError::MigrationCheckpoint(
+                    "simulated retryable checkpoint failure".to_string(),
+                ));
+            }
+            let revision = request.expected_revision + 1;
+            self.requests.lock().expect("checkpoint lock").push(request);
+            Ok(revision)
+        }
+    }
 
     #[test]
     fn scope_and_keys_reject_guest_controlled_namespace_escapes() {
@@ -1268,5 +1990,185 @@ mod tests {
         ));
         call.input = json!({ "prefix": "state/", "after_key": "other/one", "limit": 10 });
         assert!(decode_data_capability_call(&call).is_err());
+    }
+
+    #[tokio::test]
+    async fn upgrade_planning_reads_before_transforming_and_never_writes() {
+        let completed = Arc::new(AtomicBool::new(false));
+        let tenant_id = Uuid::new_v4();
+        let source = ArtifactDataScope {
+            tenant_id,
+            module_slug: "sample_module".to_string(),
+            data_contract_revision: 1,
+            policy_revision: 1,
+        };
+        let planner = ArtifactDataUpgradePlanner::new(
+            CompletedPageBroker {
+                completed: Arc::clone(&completed),
+            },
+            UpgradeHook {
+                read_completed: Arc::clone(&completed),
+            },
+            AcceptingSchemaValidator,
+        );
+
+        let plan = planner
+            .plan(ArtifactDataUpgradeRequest {
+                plan_id: Uuid::new_v4(),
+                target_installation_id: Uuid::new_v4(),
+                source,
+                target: ArtifactDataScope {
+                    tenant_id,
+                    module_slug: "sample_module".to_string(),
+                    data_contract_revision: 2,
+                    policy_revision: 2,
+                },
+                hook_binding_id: "upgrade.v2".to_string(),
+                page: ArtifactDataPageRequest {
+                    prefix: "state/".to_string(),
+                    after_key: None,
+                    limit: 10,
+                },
+            })
+            .await
+            .expect("upgrade plan");
+
+        assert_eq!(plan.records.len(), 1);
+        assert_eq!(plan.records[0].source_revision, 7);
+        assert_eq!(plan.records[0].value, json!({ "version": 2 }));
+        assert_eq!(plan.next_after_key.as_deref(), Some("state/current"));
+    }
+
+    #[tokio::test]
+    async fn upgrade_hook_requires_a_dedicated_admitted_binding() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let executor = RecordingUpgradeBindingExecutor {
+            calls: Arc::clone(&calls),
+        };
+        let release = ArtifactReleaseRef {
+            slug: "sample_module".to_string(),
+            version: "1.0.0".to_string(),
+            digest: "sha256:artifact".to_string(),
+        };
+        let mut binding = ModuleRuntimeBinding {
+            id: "upgrade.v2".to_string(),
+            kind: ModuleRuntimeBindingKind::Command,
+            entrypoint: "upgrade.v2".to_string(),
+            input_schema_digest: "sha256:input".to_string(),
+            output_schema_digest: "sha256:output".to_string(),
+            permission: "sample_module.data.upgrade".to_string(),
+            idempotency: ModuleBindingIdempotency::Required,
+            limit_profile: "data_upgrade".to_string(),
+            capabilities: Vec::new(),
+            event_topics: Vec::new(),
+            schedule: None,
+            http: None,
+        };
+        assert!(matches!(
+            ArtifactBindingDataUpgradeHook::new(executor.clone(), release.clone(), binding.clone()),
+            Err(ArtifactDataError::InvalidUpgrade)
+        ));
+
+        binding.kind = ModuleRuntimeBindingKind::DataUpgrade;
+        let hook = ArtifactBindingDataUpgradeHook::new(executor, release, binding)
+            .expect("dedicated upgrade hook");
+        let tenant_id = Uuid::new_v4();
+        let source = ArtifactDataScope {
+            tenant_id,
+            module_slug: "sample_module".to_string(),
+            data_contract_revision: 1,
+            policy_revision: 1,
+        };
+        let transformed = hook
+            .transform_data(
+                "upgrade.v2",
+                ArtifactDataUpgradeInput {
+                    source: source.clone(),
+                    target: ArtifactDataScope {
+                        tenant_id,
+                        module_slug: "sample_module".to_string(),
+                        data_contract_revision: 2,
+                        policy_revision: 2,
+                    },
+                    record: ArtifactDataRecord {
+                        key: "state/current".to_string(),
+                        value: json!({ "version": 1 }),
+                        revision: 7,
+                    },
+                },
+            )
+            .await
+            .expect("transformed value");
+
+        assert_eq!(transformed, json!({ "version": 2 }));
+        let calls = calls.lock().expect("calls lock");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "sample_module");
+        assert_eq!(calls[0].1, "upgrade.v2");
+        assert_eq!(calls[0].2, ExecutionPhase::Manual);
+        assert_eq!(calls[0].3["source"], serde_json::to_value(source).unwrap());
+        assert_eq!(calls[0].3["record"]["revision"], 7);
+    }
+
+    #[tokio::test]
+    async fn upgrade_application_retries_by_plan_id_before_checkpointing() {
+        let tenant_id = Uuid::new_v4();
+        let source = ArtifactDataScope {
+            tenant_id,
+            module_slug: "sample_module".to_string(),
+            data_contract_revision: 1,
+            policy_revision: 1,
+        };
+        let plan = ArtifactDataUpgradePlan {
+            plan_id: Uuid::new_v4(),
+            target_installation_id: Uuid::new_v4(),
+            source,
+            target: ArtifactDataScope {
+                tenant_id,
+                module_slug: "sample_module".to_string(),
+                data_contract_revision: 2,
+                policy_revision: 2,
+            },
+            hook_binding_id: "upgrade.v2".to_string(),
+            records: vec![ArtifactDataUpgradeRecord {
+                key: "state/current".to_string(),
+                value: json!({ "version": 2 }),
+                source_revision: 7,
+            }],
+            next_after_key: Some("state/current".to_string()),
+        };
+        let data = UpgradeApplyBroker {
+            source: ArtifactDataRecord {
+                key: "state/current".to_string(),
+                value: json!({ "version": 1 }),
+                revision: 7,
+            },
+            target: Arc::new(Mutex::new(HashMap::new())),
+        };
+        let checkpoints = RecordingCheckpointStore::default();
+        let applier = ArtifactDataUpgradeApplier::new(data.clone(), checkpoints.clone());
+        let request = ArtifactDataUpgradeApplyRequest {
+            plan,
+            installation_scope: ModuleInstallationScope::Tenant { tenant_id },
+            expected_installation_revision: 4,
+            has_irreversible_migration: true,
+        };
+
+        assert!(matches!(
+            applier.apply(request.clone()).await,
+            Err(ArtifactDataError::MigrationCheckpoint(_))
+        ));
+        assert_eq!(
+            checkpoints.requests.lock().expect("checkpoint lock").len(),
+            0
+        );
+
+        let retry = applier.apply(request).await.expect("idempotent retry");
+        assert_eq!(retry.records[0].value, json!({ "version": 2 }));
+        assert_eq!(retry.installation_revision, 5);
+        assert_eq!(
+            checkpoints.requests.lock().expect("checkpoint lock").len(),
+            1
+        );
     }
 }

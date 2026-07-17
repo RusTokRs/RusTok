@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use rhai::{Dynamic, Engine, Map};
 use rustok_sandbox::rhai::RhaiHostExtension;
 use rustok_sandbox::{
-    CapabilityCall, CapabilityCallContext, CapabilityName, SandboxError, SandboxHost,
-    SandboxRequest, SandboxSubject,
+    CapabilityCall, CapabilityCallContext, CapabilityName, RhaiBindingInput, RhaiBindingOutput,
+    SandboxError, SandboxHost, SandboxRequest, SandboxSubject,
 };
 use serde_json::{json, Value};
 
+use crate::artifact::RHAI_MODULE_ABI;
 use crate::utils::{dynamic_to_json, json_to_dynamic};
 
 const HTTP_CAPABILITY: &str = "platform.http";
@@ -228,10 +229,12 @@ mod tests {
                 executor: rustok_sandbox::SandboxExecutorKind::Rhai,
                 media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
                 digest: "sha256:test".to_string(),
+                runtime_abi: RHAI_MODULE_ABI.to_string(),
                 entrypoint: "main".to_string(),
                 bytes: b"http_get(\"https://service.example/test\")".to_vec(),
             },
-            input: Value::Null,
+            input: serde_json::to_value(RhaiBindingInput::new(Value::Null))
+                .expect("serialize Rhai binding"),
             policy: SandboxPolicy {
                 grants: granted
                     .then(|| CapabilityGrant {
@@ -265,14 +268,20 @@ mod tests {
             .execute(request(true))
             .await
             .expect("granted execution");
-        assert_eq!(granted.output["status"], 200);
+        let granted = RhaiBindingOutput::decode(granted.output)
+            .expect("versioned Rhai output")
+            .output;
+        assert_eq!(granted["status"], 200);
         assert_eq!(broker.0.lock().expect("calls lock").len(), 1);
 
         let denied = runtime
             .execute(request(false))
             .await
             .expect("denied script response");
-        assert_eq!(denied.output["error_code"], "CAPABILITY_DENIED");
+        let denied = RhaiBindingOutput::decode(denied.output)
+            .expect("versioned Rhai output")
+            .output;
+        assert_eq!(denied["error_code"], "CAPABILITY_DENIED");
         assert_eq!(broker.0.lock().expect("calls lock").len(), 1);
 
         let mut denied_by_constraint = request(true);
@@ -282,8 +291,11 @@ mod tests {
             .execute(denied_by_constraint)
             .await
             .expect("constraint denial is returned to the script");
+        let denied_by_constraint = RhaiBindingOutput::decode(denied_by_constraint.output)
+            .expect("versioned Rhai output")
+            .output;
         assert_eq!(
-            denied_by_constraint.output["error_code"],
+            denied_by_constraint["error_code"],
             "CAPABILITY_CONSTRAINT_DENIED"
         );
         assert_eq!(broker.0.lock().expect("calls lock").len(), 1);
@@ -294,10 +306,10 @@ mod tests {
             .execute(denied_host)
             .await
             .expect("host denial is returned to the script");
-        assert_eq!(
-            denied_host.output["error_code"],
-            "CAPABILITY_CONSTRAINT_DENIED"
-        );
+        let denied_host = RhaiBindingOutput::decode(denied_host.output)
+            .expect("versioned Rhai output")
+            .output;
+        assert_eq!(denied_host["error_code"], "CAPABILITY_CONSTRAINT_DENIED");
         assert_eq!(broker.0.lock().expect("calls lock").len(), 1);
 
         let mut denied_method = request(true);
@@ -307,10 +319,10 @@ mod tests {
             .execute(denied_method)
             .await
             .expect("method denial is returned to the script");
-        assert_eq!(
-            denied_method.output["error_code"],
-            "CAPABILITY_CONSTRAINT_DENIED"
-        );
+        let denied_method = RhaiBindingOutput::decode(denied_method.output)
+            .expect("versioned Rhai output")
+            .output;
+        assert_eq!(denied_method["error_code"], "CAPABILITY_CONSTRAINT_DENIED");
         assert_eq!(broker.0.lock().expect("calls lock").len(), 1);
     }
 }

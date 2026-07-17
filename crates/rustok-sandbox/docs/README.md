@@ -80,11 +80,25 @@ fallible: a host that requires durable evidence can reject execution when a
 start or terminal record cannot be delivered. `rustok-modules` owns the
 artifact-specific SeaORM adapter; this crate remains storage-neutral.
 
+Every terminal execution record includes queue time, executor duration, and the
+number of capability calls admitted by the shared policy budget. Rhai reports
+its consumed instructions, Wasmtime reports consumed fuel through the same
+field, and both executors report serialized output size. Wasmtime also reports
+the observed aggregate peak of non-shared guest linear memory through its
+resource limiter; failed allocations are excluded and configured limits are not
+reported as usage. Rhai leaves peak memory absent until the isolated-worker
+profile can measure it truthfully.
+
 `SandboxRuntime::execute_with_cancellation` accepts the same request contract
 plus a request-scoped `SandboxCancellation` handle. The runtime rejects a
 pre-cancelled request, Rhai checks the handle during progress callbacks,
 Wasmtime interrupts its request-private epoch watchdog, and `SandboxHost` checks
 it before every capability dispatch.
+
+The same enabled executor paths enforce `SandboxLimits::wall_clock_ms`: Rhai
+terminates through its progress callback, while Wasmtime increments only the
+private engine epoch for the timed-out request. Both return the common timeout
+error; no enabled executor may continue after its deadline.
 
 `SandboxAdmissionLimits` is deployment composition policy, not artifact policy.
 It gates concurrent executions globally and by executor, tenant, and admitted
@@ -99,6 +113,12 @@ infrastructure clients, and credentials are never exposed to an adapter.
 The synchronous Rhai/WIT bridge admits only one native thread per execution, so
 guest code cannot create an unbounded number of blocking broker threads.
 
+Every Rhai request uses `RhaiBindingInput` v1 and every successful execution
+returns `RhaiBindingOutput` v1. Both envelopes are strict and reject another
+version, unknown fields, and raw JSON compatibility inputs or outputs. The
+guest sees the subject-owned `input` value inside the neutral envelope; subject
+owners decode the result before interpreting their own payload.
+
 The optional `wasm-component` feature provides `WasmComponentExecutor`. Its
 frozen v1 ABI is package `rustok:module@1.0.0`, world `module-runtime`, and
 entrypoint `run`: `(string) -> result<string, string>`. Input and successful
@@ -109,6 +129,22 @@ imports. The only accepted WIT import is
 `SandboxHost` capability call and still requires an explicit policy grant.
 Compatibility is exact within v1: a package, world, entrypoint, or wire-encoding
 change requires a new ABI version rather than a permissive fallback.
+
+`LocalSandboxHarness` is the authoring/test entry point for the same
+`SandboxRequest`, policy validation, runtime execution, cancellation, and error
+contracts used in deployment. Its `FixtureCapabilityBroker` returns only
+caller-supplied deterministic JSON by exact capability/operation; an
+unregistered fixture is denied. The harness never reads deployment
+configuration or exposes network, filesystem, database, secret, MCP, or other
+production clients.
+
+The Wasmtime executor keeps a bounded node-local LRU cache of serialized
+compiled Components. Its key includes the pinned Wasmtime engine version, host
+target, admitted runtime ABI, and artifact digest. A cache hit deserializes into
+a new request-private engine and store, so it cannot retain host handles, tenant
+state, credentials, or a prior execution's epoch cancellation state. Corrupt
+cached bytes are evicted and recompiled from the admitted payload; oversized
+serialized components are executed but not cached.
 
 ## Verification
 
