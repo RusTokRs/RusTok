@@ -1,12 +1,13 @@
 pub(crate) fn validate_safe_url(value: &str, label: &str) -> Result<(), String> {
-    normalize_safe_url(value, label).map(drop)
+    normalize_safe_url(value, label)?;
+    Ok(())
 }
 
 pub(crate) fn normalize_safe_url(value: &str, label: &str) -> Result<String, String> {
     let value = value.trim();
     let lower = value.to_ascii_lowercase();
     if value.is_empty()
-        || value.chars().any(|character| character.is_control())
+        || value.chars().any(char::is_control)
         || value.chars().any(char::is_whitespace)
         || value.contains('\\')
         || value.starts_with("//")
@@ -42,7 +43,7 @@ pub(crate) fn normalize_safe_url(value: &str, label: &str) -> Result<String, Str
 
 fn validate_authority(value: &str, prefix_len: usize, label: &str) -> Result<(), String> {
     let authority = value[prefix_len..]
-        .split(|character| matches!(character, '/' | '?' | '#'))
+        .split(['/', '?', '#'])
         .next()
         .unwrap_or_default();
     if authority.is_empty() || authority.starts_with(':') {
