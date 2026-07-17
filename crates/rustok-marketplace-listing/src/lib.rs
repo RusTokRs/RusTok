@@ -45,7 +45,15 @@ impl RusToKModule for MarketplaceListingModule {
     }
 
     fn permissions(&self) -> Vec<Permission> {
-        Vec::new()
+        vec![
+            Permission::MARKETPLACE_LISTINGS_CREATE,
+            Permission::MARKETPLACE_LISTINGS_READ,
+            Permission::MARKETPLACE_LISTINGS_UPDATE,
+            Permission::MARKETPLACE_LISTINGS_LIST,
+            Permission::MARKETPLACE_LISTINGS_MANAGE,
+            Permission::MARKETPLACE_LISTINGS_PUBLISH,
+            Permission::MARKETPLACE_LISTINGS_MODERATE,
+        ]
     }
 }
 
