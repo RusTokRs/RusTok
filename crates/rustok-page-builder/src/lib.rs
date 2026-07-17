@@ -76,7 +76,7 @@ mod tests {
     use super::*;
     use crate::dto::{
         BuilderCapabilityKind, BuilderNodePropertiesInput, PageBuilderCapabilityRequest,
-        PageBuilderCapabilityResponse, PageBuilderContractMetadata, PageBuilderErrorKind,
+        PageBuilderCapabilityResponse, PageBuilderErrorKind, PageBuilderModuleMetadata,
         PublishPageBuilderInput, PublishPageBuilderResult, PAGE_BUILDER_ERROR_CATALOG,
         PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
     };
@@ -103,17 +103,24 @@ mod tests {
 
     #[test]
     fn dto_contract_roundtrip_is_stable() {
-        let input = PublishPageBuilderInput {
-            page_id: "home".to_string(),
-            revision_id: "rev-1".to_string(),
-            schema_version: "grapesjs_v1".to_string(),
-            project_data: serde_json::json!({ "pages": [] }),
-        };
-        let encoded = serde_json::to_string(&input).expect("serialize input");
-        let decoded: PublishPageBuilderInput =
-            serde_json::from_str(&encoded).expect("deserialize input");
+        let input = PublishPageBuilderInput::new(
+            "home",
+            "rev-1",
+            serde_json::json!({ "pages": [] }),
+        );
+        let encoded = serde_json::to_value(&input).expect("serialize input");
+        assert_eq!(encoded["page_id"], "home");
+        assert!(encoded.get("schema_version").is_none());
+
+        let compatibility_payload = serde_json::json!({
+            "page_id": "home",
+            "revision_id": "rev-1",
+            "schema_version": "grapesjs_v1",
+            "project_data": { "pages": [] }
+        });
+        let decoded: PublishPageBuilderInput = serde_json::from_value(compatibility_payload)
+            .expect("deserialize compatibility input");
         assert_eq!(decoded.page_id, "home");
-        assert_eq!(decoded.schema_version, "grapesjs_v1");
 
         let props = BuilderNodePropertiesInput {
             page_id: "home".to_string(),
@@ -140,11 +147,8 @@ mod tests {
             "capability enum string contract must stay stable"
         );
 
-        let metadata = PageBuilderContractMetadata::BASELINE;
+        let metadata = PageBuilderModuleMetadata::CURRENT;
         assert_eq!(metadata.module_slug, "page_builder");
-        assert_eq!(metadata.contract, "grapesjs_v1");
-        assert_eq!(metadata.builder_contract_version, "1.0");
-        assert_eq!(metadata.consumer_min_version, "1.0");
         assert_eq!(
             metadata.capabilities,
             &["preview", "tree", "properties", "publish"]
