@@ -34,6 +34,7 @@ settings:
     audience: rustok-production-admin
   rustok:
     tenant:
+      profile: multi_tenant
       enabled: true
       resolution: header
       header_name: X-Tenant-ID

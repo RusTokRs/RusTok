@@ -292,8 +292,41 @@ impl std::fmt::Display for TenantResolutionMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TenantRuntimeProfile {
+    #[default]
+    MultiTenant,
+    SingleTenant,
+    Development,
+}
+
+impl TenantRuntimeProfile {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MultiTenant => "multi_tenant",
+            Self::SingleTenant => "single_tenant",
+            Self::Development => "development",
+        }
+    }
+
+    pub const fn derives_tenant_from_request(self) -> bool {
+        !matches!(self, Self::SingleTenant)
+    }
+}
+
+impl std::fmt::Display for TenantRuntimeProfile {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TenantSettings {
+    #[serde(default)]
+    pub profile: TenantRuntimeProfile,
+    /// Compatibility switch validated against `profile`.
+    /// `single_tenant` requires false; all request-derived profiles require true.
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default)]
@@ -416,26 +449,38 @@ pub enum TenantFallbackMode {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TenantSettingsError {
+    ProfileEnabledMismatch {
+        profile: TenantRuntimeProfile,
+        enabled: bool,
+    },
     InvalidHeaderName(String),
     MissingSubdomainBaseDomain,
+    FallbackRequiresDevelopmentProfile,
     FallbackRequiresHeaderMode,
-    FallbackForbiddenInProduction,
+    DevelopmentProfileForbiddenInProduction,
 }
 
 impl std::fmt::Display for TenantSettingsError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::ProfileEnabledMismatch { profile, enabled } => write!(
+                formatter,
+                "rustok.tenant.profile={profile} is inconsistent with rustok.tenant.enabled={enabled}; single_tenant requires enabled=false and request-derived profiles require enabled=true"
+            ),
             Self::InvalidHeaderName(value) => {
                 write!(formatter, "rustok.tenant.header_name `{value}` is not a valid HTTP header name")
             }
             Self::MissingSubdomainBaseDomain => formatter.write_str(
                 "rustok.tenant.base_domains must contain at least one domain when resolution=subdomain",
             ),
+            Self::FallbackRequiresDevelopmentProfile => formatter.write_str(
+                "rustok.tenant.fallback_mode=default_tenant requires rustok.tenant.profile=development",
+            ),
             Self::FallbackRequiresHeaderMode => formatter.write_str(
                 "rustok.tenant.fallback_mode=default_tenant is only valid with resolution=header",
             ),
-            Self::FallbackForbiddenInProduction => formatter.write_str(
-                "rustok.tenant.fallback_mode=default_tenant is forbidden in production",
+            Self::DevelopmentProfileForbiddenInProduction => formatter.write_str(
+                "rustok.tenant.profile=development is forbidden in production; use multi_tenant or single_tenant",
             ),
         }
     }
@@ -445,7 +490,21 @@ impl std::error::Error for TenantSettingsError {}
 
 impl TenantSettings {
     pub fn validate(&self) -> Result<(), TenantSettingsError> {
-        if !self.enabled {
+        let expected_enabled = self.profile.derives_tenant_from_request();
+        if self.enabled != expected_enabled {
+            return Err(TenantSettingsError::ProfileEnabledMismatch {
+                profile: self.profile,
+                enabled: self.enabled,
+            });
+        }
+
+        if self.fallback_mode == TenantFallbackMode::DefaultTenant
+            && self.profile != TenantRuntimeProfile::Development
+        {
+            return Err(TenantSettingsError::FallbackRequiresDevelopmentProfile);
+        }
+
+        if self.profile == TenantRuntimeProfile::SingleTenant {
             return Ok(());
         }
 
@@ -467,8 +526,8 @@ impl TenantSettings {
 
     pub fn validate_for_environment(&self, production: bool) -> Result<(), TenantSettingsError> {
         self.validate()?;
-        if self.enabled && production && self.fallback_mode == TenantFallbackMode::DefaultTenant {
-            return Err(TenantSettingsError::FallbackForbiddenInProduction);
+        if production && self.profile == TenantRuntimeProfile::Development {
+            return Err(TenantSettingsError::DevelopmentProfileForbiddenInProduction);
         }
         Ok(())
     }
@@ -535,6 +594,7 @@ pub enum GuardrailRolloutMode {
 impl Default for TenantSettings {
     fn default() -> Self {
         Self {
+            profile: TenantRuntimeProfile::MultiTenant,
             enabled: true,
             resolution: TenantResolutionMode::Header,
             header_name: default_header_name(),
@@ -1318,7 +1378,7 @@ mod tests {
     use super::{
         BuildDeploymentBackendKind, EmailProvider, EventTransportKind, GuardrailRolloutMode,
         RateLimitBackendKind, RelayTargetKind, RustokSettings, TenantFallbackMode,
-        TenantResolutionMode, TenantSettingsError,
+        TenantResolutionMode, TenantRuntimeProfile, TenantSettingsError,
     };
     use std::sync::{Mutex, OnceLock};
 
@@ -2041,8 +2101,34 @@ mod tests {
     }
 
     #[test]
-    fn tenant_policy_rejects_invalid_fallback_combination() {
+    fn tenant_policy_requires_profile_and_enabled_to_agree() {
         let mut settings = RustokSettings::default();
+        settings.tenant.profile = TenantRuntimeProfile::SingleTenant;
+        assert_eq!(
+            settings.tenant.validate(),
+            Err(TenantSettingsError::ProfileEnabledMismatch {
+                profile: TenantRuntimeProfile::SingleTenant,
+                enabled: true,
+            })
+        );
+        settings.tenant.enabled = false;
+        assert!(settings.tenant.validate().is_ok());
+    }
+
+    #[test]
+    fn tenant_policy_rejects_fallback_outside_development_profile() {
+        let mut settings = RustokSettings::default();
+        settings.tenant.fallback_mode = TenantFallbackMode::DefaultTenant;
+        assert_eq!(
+            settings.tenant.validate(),
+            Err(TenantSettingsError::FallbackRequiresDevelopmentProfile)
+        );
+    }
+
+    #[test]
+    fn tenant_policy_rejects_invalid_development_fallback_combination() {
+        let mut settings = RustokSettings::default();
+        settings.tenant.profile = TenantRuntimeProfile::Development;
         settings.tenant.resolution = TenantResolutionMode::Host;
         settings.tenant.fallback_mode = TenantFallbackMode::DefaultTenant;
         assert_eq!(
@@ -2052,12 +2138,12 @@ mod tests {
     }
 
     #[test]
-    fn tenant_policy_rejects_development_fallback_in_production() {
+    fn tenant_policy_rejects_development_profile_in_production() {
         let mut settings = RustokSettings::default();
-        settings.tenant.fallback_mode = TenantFallbackMode::DefaultTenant;
+        settings.tenant.profile = TenantRuntimeProfile::Development;
         assert_eq!(
             settings.tenant.validate_for_environment(true),
-            Err(TenantSettingsError::FallbackForbiddenInProduction)
+            Err(TenantSettingsError::DevelopmentProfileForbiddenInProduction)
         );
     }
 

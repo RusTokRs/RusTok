@@ -48,6 +48,21 @@ enum CachedTenantMiss {
     Disabled,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum TenantResolutionTransport {
+    Http,
+    GraphqlWebSocket,
+}
+
+impl TenantResolutionTransport {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Http => "http",
+            Self::GraphqlWebSocket => "graphql_ws",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum TenantContextLoadError {
     InvalidIdentifier(String),
@@ -83,6 +98,19 @@ impl TenantContextLoadError {
             | Self::CacheUnavailable(_)
             | Self::ClockUnavailable(_)
             | Self::BackendUnavailable(_) => "Failed to resolve tenant",
+        }
+    }
+
+    const fn metric_outcome(&self) -> &'static str {
+        match self {
+            Self::InvalidIdentifier(_) => "invalid_identifier",
+            Self::InvalidAssertion(_) => "invalid_assertion",
+            Self::InfrastructureUnavailable => "infrastructure_unavailable",
+            Self::NotFound => "not_found",
+            Self::Disabled => "disabled",
+            Self::CacheUnavailable(_) => "cache_unavailable",
+            Self::ClockUnavailable(_) => "clock_unavailable",
+            Self::BackendUnavailable(_) => "backend_unavailable",
         }
     }
 }
@@ -613,23 +641,38 @@ pub(crate) async fn load_tenant_context(
         .await
 }
 
-fn record_resolution_source(source: TenantResolutionSource) {
-    rustok_telemetry::metrics::record_cache_operation(
-        "tenant_resolution",
-        "resolve",
+fn record_resolution_outcome(
+    transport: TenantResolutionTransport,
+    source: TenantResolutionSource,
+    outcome: &str,
+) {
+    rustok_telemetry::metrics::record_tenant_resolution(
+        transport.as_str(),
         source.as_str(),
+        outcome,
     );
 }
 
 async fn load_resolved_tenant_context(
     ctx: &ServerRuntimeContext,
     resolution: &TenantResolution,
+    transport: TenantResolutionTransport,
 ) -> Result<TenantContext, TenantContextLoadError> {
-    let context = load_tenant_context(ctx, &resolution.identifier).await?;
-    resolution
-        .validate_resolved_slug(&context.slug)
-        .map_err(|error| TenantContextLoadError::InvalidAssertion(error.to_string()))?;
-    Ok(context)
+    let result = async {
+        let context = load_tenant_context(ctx, &resolution.identifier).await?;
+        resolution
+            .validate_resolved_slug(&context.slug)
+            .map_err(|error| TenantContextLoadError::InvalidAssertion(error.to_string()))?;
+        Ok(context)
+    }
+    .await;
+
+    let outcome = match &result {
+        Ok(_) => "success",
+        Err(error) => error.metric_outcome(),
+    };
+    record_resolution_outcome(transport, resolution.source, outcome);
+    result
 }
 
 pub(crate) async fn resolve_tenant_context_by_slug(
@@ -638,8 +681,12 @@ pub(crate) async fn resolve_tenant_context_by_slug(
 ) -> Result<TenantContext, TenantContextLoadError> {
     let resolution = resolve_explicit_slug(slug)
         .map_err(|error| TenantContextLoadError::InvalidIdentifier(error.to_string()))?;
-    record_resolution_source(resolution.source);
-    load_resolved_tenant_context(ctx, &resolution).await
+    load_resolved_tenant_context(
+        ctx,
+        &resolution,
+        TenantResolutionTransport::GraphqlWebSocket,
+    )
+    .await
 }
 
 pub async fn resolve(
@@ -664,13 +711,7 @@ pub async fn resolve(
         error.status_code()
     })?;
 
-    record_resolution_source(resolution.source);
     if resolution.source == TenantResolutionSource::DevelopmentFallback {
-        rustok_telemetry::metrics::record_cache_operation(
-            "tenant_resolution",
-            "fallback",
-            "default_tenant",
-        );
         tracing::warn!(
             path = req.uri().path(),
             header_name = %settings.tenant.header_name,
@@ -679,7 +720,7 @@ pub async fn resolve(
         );
     }
 
-    let context = load_resolved_tenant_context(&ctx, &resolution)
+    let context = load_resolved_tenant_context(&ctx, &resolution, TenantResolutionTransport::Http)
         .await
         .map_err(|error| {
             tracing::warn!(

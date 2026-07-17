@@ -214,6 +214,22 @@ lazy_static! {
 }
 
 // ============================================================================
+// Tenant Resolution Metrics
+// ============================================================================
+
+lazy_static! {
+    /// Tenant resolution outcomes by transport, typed source and final outcome.
+    pub static ref TENANT_RESOLUTIONS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "rustok_tenant_resolutions_total",
+            "Total tenant resolution outcomes by transport, source and outcome"
+        ),
+        &["transport", "source", "outcome"]
+    )
+    .expect("Failed to create tenant_resolutions_total");
+}
+
+// ============================================================================
 // Span/Trace Metrics
 // ============================================================================
 
@@ -662,6 +678,9 @@ pub fn register_all(registry: &Registry) -> Result<(), prometheus::Error> {
     registry.register(Box::new(CACHE_EVICTIONS_TOTAL.clone()))?;
     registry.register(Box::new(CACHE_OPERATION_DURATION_SECONDS.clone()))?;
 
+    // Tenant resolution
+    registry.register(Box::new(TENANT_RESOLUTIONS_TOTAL.clone()))?;
+
     // Spans/Traces
     registry.register(Box::new(SPANS_CREATED_TOTAL.clone()))?;
     registry.register(Box::new(SPAN_DURATION_SECONDS.clone()))?;
@@ -810,6 +829,13 @@ pub fn update_circuit_breaker_failures(service: &str, failures: i64) {
 pub fn record_cache_operation(cache: &str, operation: &str, result: &str) {
     CACHE_OPERATIONS_TOTAL
         .with_label_values(&[cache, operation, result])
+        .inc();
+}
+
+/// Record a tenant resolution outcome with bounded labels.
+pub fn record_tenant_resolution(transport: &str, source: &str, outcome: &str) {
+    TENANT_RESOLUTIONS_TOTAL
+        .with_label_values(&[transport, source, outcome])
         .inc();
 }
 

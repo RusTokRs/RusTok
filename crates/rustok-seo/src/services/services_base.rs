@@ -141,10 +141,11 @@ impl SeoService {
         let registry = seo_target_registry_from_extensions(extensions)
             .ok_or_else(|| SeoError::configuration("SEO target registry is not initialized"))?;
         let service = Self::new(db, event_bus, registry);
-        Ok(extensions
-            .get::<SeoMediaAssetReadProvider>()
-            .map(|provider| service.with_media_asset_read_port(provider.port()))
-            .unwrap_or(service))
+        if let Some(provider) = extensions.get::<SeoMediaAssetReadProvider>() {
+            Ok(service.with_media_asset_read_port(provider.port()))
+        } else {
+            Ok(service)
+        }
     }
 
     #[cfg(test)]

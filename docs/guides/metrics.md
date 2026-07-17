@@ -80,8 +80,8 @@ metrics::update_queue_depth("in_memory", 42);
 let start = std::time::Instant::now();
 // ... process event ...
 metrics::record_event_processing_duration(
-    "ProductCreated", 
-    "index_handler", 
+    "ProductCreated",
+    "index_handler",
     start.elapsed().as_secs_f64()
 );
 ```
@@ -268,8 +268,8 @@ rate(rustok_http_requests_total[5m])
 histogram_quantile(0.95, rate(rustok_http_request_duration_seconds_bucket[5m]))
 
 # Cache hit rate
-rate(rustok_cache_operations_total{result="hit"}[5m]) / 
-(rate(rustok_cache_operations_total{result="hit"}[5m]) + 
+rate(rustok_cache_operations_total{result="hit"}[5m]) /
+(rate(rustok_cache_operations_total{result="hit"}[5m]) +
  rate(rustok_cache_operations_total{result="miss"}[5m]))
 
 # Event queue depth
@@ -302,8 +302,8 @@ rustok_circuit_breaker_state{service="redis"}
     description: "Error rate is {{ $value | humanizePercentage }}"
 ```
 
-**Threshold:** 5% error rate  
-**Duration:** 2 minutes  
+**Threshold:** 5% error rate
+**Duration:** 2 minutes
 **Action:** Critical alert
 
 #### Slow Request Latency
@@ -311,15 +311,15 @@ rustok_circuit_breaker_state{service="redis"}
 ```yaml
 - alert: SlowRequestLatency
   expr: |
-    histogram_quantile(0.95, 
+    histogram_quantile(0.95,
       rate(rustok_http_request_duration_seconds_bucket[5m])) > 0.5
   for: 5m
   labels:
     severity: warning
 ```
 
-**Threshold:** 500ms P95 latency  
-**Duration:** 5 minutes  
+**Threshold:** 500ms P95 latency
+**Duration:** 5 minutes
 **Action:** Warning
 
 ### EventBus Alerts
@@ -334,7 +334,7 @@ rustok_circuit_breaker_state{service="redis"}
     severity: warning
 ```
 
-**Threshold:** 7,000 events (70% of max 10,000)  
+**Threshold:** 7,000 events (70% of max 10,000)
 **Duration:** 5 minutes
 
 #### Critical Queue Depth
@@ -349,7 +349,7 @@ rustok_circuit_breaker_state{service="redis"}
     description: "Risk of memory exhaustion!"
 ```
 
-**Threshold:** 10,000 events (max capacity)  
+**Threshold:** 10,000 events (max capacity)
 **Duration:** 2 minutes
 
 ### Circuit Breaker Alerts
@@ -364,7 +364,7 @@ rustok_circuit_breaker_state{service="redis"}
     severity: critical
 ```
 
-**Condition:** Circuit breaker is OPEN  
+**Condition:** Circuit breaker is OPEN
 **Duration:** 1 minute
 
 ### Cache Alerts
@@ -382,7 +382,7 @@ rustok_circuit_breaker_state{service="redis"}
     severity: warning
 ```
 
-**Threshold:** 50% hit rate  
+**Threshold:** 50% hit rate
 **Duration:** 10 minutes
 
 ### Database Alerts
@@ -399,7 +399,7 @@ rustok_circuit_breaker_state{service="redis"}
     severity: warning
 ```
 
-**Threshold:** 100ms P95 query duration  
+**Threshold:** 100ms P95 query duration
 **Duration:** 5 minutes
 
 ---
@@ -415,26 +415,26 @@ use std::time::Instant;
 pub async fn publish_event(&self, event: DomainEvent) -> Result<()> {
     let tenant_id = event.tenant_id().to_string();
     let event_type = event.event_type();
-    
+
     // Record publication
     metrics::record_event_published(event_type, &tenant_id);
-    
+
     // Update queue depth
     let depth = self.queue.len() as i64;
     metrics::update_queue_depth("in_memory", depth);
-    
+
     // Publish event
     self.transport.publish(event).await?;
-    
+
     Ok(())
 }
 
 pub async fn dispatch_event(&self, event: DomainEvent) -> Result<()> {
     let event_type = event.event_type();
     let handler_name = "my_handler";
-    
+
     let start = Instant::now();
-    
+
     match self.handler.handle(event).await {
         Ok(_) => {
             metrics::record_event_dispatched(event_type, handler_name);
@@ -448,7 +448,7 @@ pub async fn dispatch_event(&self, event: DomainEvent) -> Result<()> {
             metrics::record_event_error(event_type, "handler_error");
         }
     }
-    
+
     Ok(())
 }
 ```
@@ -464,7 +464,7 @@ impl CircuitBreaker {
         F: Future<Output = Result<T>>,
     {
         let service = &self.service_name;
-        
+
         match self.state {
             CircuitState::Closed => {
                 metrics::update_circuit_breaker_state(service, 0);
@@ -477,7 +477,7 @@ impl CircuitBreaker {
                         self.failure_count += 1;
                         metrics::update_circuit_breaker_failures(service, self.failure_count);
                         metrics::record_circuit_breaker_call(service, "failure");
-                        
+
                         if self.failure_count >= self.threshold {
                             self.open_circuit();
                         }
@@ -496,7 +496,7 @@ impl CircuitBreaker {
             }
         }
     }
-    
+
     fn open_circuit(&mut self) {
         metrics::record_circuit_breaker_transition(
             &self.service_name,
@@ -517,9 +517,9 @@ use std::time::Instant;
 impl TenantCache {
     pub async fn get(&self, key: &str) -> Option<Arc<Tenant>> {
         let start = Instant::now();
-        
+
         let result = self.cache.get(key).await;
-        
+
         let operation_result = if result.is_some() { "hit" } else { "miss" };
         metrics::record_cache_operation("tenant_cache", "get", operation_result);
         metrics::record_cache_duration(
@@ -527,16 +527,16 @@ impl TenantCache {
             "get",
             start.elapsed().as_secs_f64()
         );
-        
+
         // Update cache size periodically
         if self.should_report_size() {
             let size = self.cache.entry_count() as i64;
             metrics::update_cache_size("tenant_cache", size);
         }
-        
+
         result
     }
-    
+
     pub async fn evict(&self, key: &str, reason: &str) {
         self.cache.invalidate(key).await;
         metrics::record_cache_eviction("tenant_cache", reason);
@@ -612,11 +612,11 @@ Set thresholds based on SLOs:
 # P95 latency SLO: 500ms
 - alert: SlowRequests
   expr: histogram_quantile(0.95, ...) > 0.5
-  
+
 # Error rate SLO: 1%
 - alert: HighErrorRate
   expr: error_rate > 0.01
-  
+
 # Availability SLO: 99.9%
 - alert: ServiceDown
   expr: up{job="rustok-server"} == 0
@@ -701,3 +701,7 @@ The report includes:
 - new bypass points vs baseline snapshot
 
 Recommended use: attach this report to the platform verification cycle evidence bundle.
+
+## Tenant resolution
+
+`rustok_tenant_resolutions_total{transport,source,outcome}` records the final tenant-context resolution outcome. `transport` is bounded to server transports such as `http` and `graphql_ws`; `source` comes from the typed tenant resolution result; `outcome` is a bounded success or failure class. Tenant resolution must not be reported through `rustok_cache_operations_total`.
