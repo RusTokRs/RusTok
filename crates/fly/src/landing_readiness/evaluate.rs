@@ -366,6 +366,7 @@ fn classify_validation_diagnostic(
         || code.starts_with("action_")
         || code.starts_with("form_")
         || code.starts_with("duplicate_form_")
+        || code.starts_with("component_form_")
         || code.starts_with("binding_")
         || code.starts_with("dynamic_")
     {
@@ -430,5 +431,24 @@ fn issue(
             path: path.into(),
             message: message.into(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn component_form_conflicts_are_runtime_contracts() {
+        let diagnostic = ValidationDiagnostic {
+            severity: ValidationSeverity::Error,
+            code: "component_form_interaction_contract_conflict".to_string(),
+            path: "component:form".to_string(),
+            message: "conflict".to_string(),
+        };
+        assert!(matches!(
+            classify_validation_diagnostic(&diagnostic),
+            LandingReadinessCategory::RuntimeContracts
+        ));
     }
 }
