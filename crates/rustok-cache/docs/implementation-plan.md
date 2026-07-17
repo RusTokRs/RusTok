@@ -89,6 +89,9 @@ Last reconciled with `main`: 2026-07-16.
 - [x] Publish stale refresh results through CAS and treat mismatch as a newer authoritative value.
 - [x] Wire the permanent compiled gate to the full local CAS integration suite: exactly-one-winner
   contention, expired-entry non-revival, capacity eviction non-revival and 128 invalidate/CAS races.
+- [x] Retain isolated Redis source evidence for binary-safe mismatch, applied replacement and
+  conditional delete, plus a self-hosted outage scenario where primary CAS errors without changing
+  the local mirror, CAS rejects an unsynchronized degraded write, and recovery restores shared CAS.
 
 ### 6. Durable invalidation primitives
 
@@ -167,6 +170,8 @@ The detailed active-cache contract is maintained in
   timeout/open-circuit markers from accidental removal.
 - [x] Guard the full local CAS command and expiry, eviction, contention and invalidation-race test
   names from accidental narrowing.
+- [x] Guard binary-safe live Redis CAS, self-hosted fallback outage/recovery, unsynchronized mutation
+  rejection and both isolated workflow commands from accidental removal.
 - [x] Guard Redis, generation, PubSub, refresh and CAS Prometheus alert metric names in
   `tests/alert_rules_guard.rs`.
 - [x] Publish operational alerts for Redis degradation, generation bump failure, PubSub failure,
@@ -196,8 +201,8 @@ The detailed active-cache contract is maintained in
   transaction/concurrency/replay and two-replica startup/outage/regression recovery scenarios.
 - [ ] Execute and record the source-complete SEO seed-before-clear, exact tenant, multi-page,
   count/cursor-gap, database outage/recovery and terminal-worker scenarios across two replicas.
-- [ ] Prove binary-safe CAS applied/mismatch/failure behavior and fail-closed fallback against live
-  Redis.
+- [ ] Execute and record the source-complete binary-safe Redis CAS and self-hosted fail-closed fallback
+  CAS outage/recovery scenarios.
 - [ ] Execute and record the source-complete degraded-health plus eligible-local-read scenario.
 
 ### P1. Load, chaos and tuning evidence
@@ -275,6 +280,10 @@ RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
   cargo test -p rustok-cache -- --ignored --nocapture --test-threads=1
 RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
   cargo test -p rustok-core cache -- --ignored --nocapture --test-threads=1
+RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
+  cargo test -p rustok-cache --test atomic_cas -- --ignored --nocapture --test-threads=1
+RUSTOK_CACHE_REDIS_SERVER_BIN=/usr/bin/redis-server \
+  cargo test -p rustok-cache --test fallback_cas_live -- --ignored --nocapture --test-threads=1
 RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379/ \
 RUSTOK_CACHE_REDIS_SERVER_BIN=/usr/bin/redis-server \
   cargo test -p rustok-server tenant_locale_generation --lib \
