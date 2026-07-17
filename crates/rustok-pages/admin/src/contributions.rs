@@ -1,6 +1,6 @@
 use fly_ui::{
-    ContributionAssemblyPolicy, ContributionAssemblyResult, ContributionDescriptor,
-    ModuleContributionManifest, build_admin_contribution_registry_from_manifests,
+    build_admin_contribution_registry_from_manifests, ContributionAssemblyPolicy,
+    ContributionAssemblyResult, ContributionDescriptor, ModuleContributionManifest,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -10,6 +10,15 @@ pub const PAGES_OWNER_PROVIDER: &str = "rustok.pages";
 pub const FLY_BUILTIN_PROVIDER: &str = "fly.builtin";
 pub const FLY_BUILTIN_PROVIDER_VERSION: &str = "1";
 pub const PAGES_LANDING_BLOCKS_CONTRIBUTION_ID: &str = "rustok.pages.landing-blocks";
+
+pub const PAGES_BUILDER_CAPABILITIES: &[&str] = &[
+    "preview",
+    "tree",
+    "properties",
+    "publish",
+];
+
+pub const PAGES_LANDING_BLOCK_CAPABILITIES: &[&str] = &["tree", "properties"];
 
 pub const PAGES_LANDING_BLOCK_IDS: &[&str] = &[
     "fly.hero",
@@ -45,10 +54,7 @@ pub fn pages_landing_blocks_contribution() -> ContributionDescriptor {
         id: PAGES_LANDING_BLOCKS_CONTRIBUTION_ID.to_string(),
         provider: FLY_BUILTIN_PROVIDER.to_string(),
         provider_version: FLY_BUILTIN_PROVIDER_VERSION.to_string(),
-        required_capabilities: BTreeSet::from([
-            "properties".to_string(),
-            "tree".to_string(),
-        ]),
+        required_capabilities: capability_set(PAGES_LANDING_BLOCK_CAPABILITIES),
         blocks: PAGES_LANDING_BLOCK_IDS
             .iter()
             .map(|id| (*id).to_string())
@@ -76,28 +82,32 @@ pub fn pages_landing_blocks_contribution() -> ContributionDescriptor {
     }
 }
 
+pub fn pages_admin_contribution_policy() -> ContributionAssemblyPolicy {
+    ContributionAssemblyPolicy {
+        enabled_modules: BTreeSet::from([PAGES_MODULE_ID.to_string()]),
+        enabled_providers: BTreeSet::from([PAGES_OWNER_PROVIDER.to_string()]),
+        capabilities: capability_set(PAGES_BUILDER_CAPABILITIES),
+        ..ContributionAssemblyPolicy::default()
+    }
+}
+
 pub fn build_pages_admin_contribution_registry(
     policy: &ContributionAssemblyPolicy,
 ) -> ContributionAssemblyResult {
     build_admin_contribution_registry_from_manifests([pages_contribution_manifest()], policy)
 }
 
+fn capability_set(capabilities: &[&str]) -> BTreeSet<String> {
+    capabilities
+        .iter()
+        .map(|capability| (*capability).to_string())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use fly::RegistrySet;
-
-    fn policy() -> ContributionAssemblyPolicy {
-        ContributionAssemblyPolicy {
-            enabled_modules: BTreeSet::from([PAGES_MODULE_ID.to_string()]),
-            enabled_providers: BTreeSet::from([PAGES_OWNER_PROVIDER.to_string()]),
-            capabilities: BTreeSet::from([
-                "properties".to_string(),
-                "tree".to_string(),
-            ]),
-            ..ContributionAssemblyPolicy::default()
-        }
-    }
 
     #[test]
     fn manifest_explicitly_pins_the_fly_builtin_target() {
@@ -122,7 +132,7 @@ mod tests {
 
     #[test]
     fn admin_registry_contains_only_real_block_contracts() {
-        let result = build_pages_admin_contribution_registry(&policy());
+        let result = build_pages_admin_contribution_registry(&pages_admin_contribution_policy());
         assert!(result.is_valid());
         assert_eq!(result.registered_contributions, 1);
         let contribution = result
@@ -132,6 +142,20 @@ mod tests {
         assert_eq!(contribution.blocks.len(), PAGES_LANDING_BLOCK_IDS.len());
         assert!(contribution.renderers.is_empty());
         assert!(contribution.property_editors.is_empty());
+        assert!(contribution
+            .required_capabilities
+            .is_subset(&pages_admin_contribution_policy().capabilities));
+    }
+
+    #[test]
+    fn capability_constants_match_the_module_manifest() {
+        let module_manifest = include_str!("../../rustok-module.toml");
+        for capability in PAGES_BUILDER_CAPABILITIES {
+            assert!(
+                module_manifest.contains(&format!("\"{capability}\"")),
+                "Pages module manifest is missing builder capability `{capability}`"
+            );
+        }
     }
 
     #[test]
