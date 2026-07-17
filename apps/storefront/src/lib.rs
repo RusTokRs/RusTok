@@ -20,11 +20,13 @@ pub mod widgets;
 #[cfg(feature = "ssr")]
 use axum::response::{Html, IntoResponse, Redirect, Response};
 #[cfg(feature = "ssr")]
-use axum::{extract::Path, routing::get, Router};
+use axum::{extract::Path, routing::get, Extension, Router};
 #[cfg(feature = "ssr")]
 use leptos::prelude::{Owner, RenderHtml};
 #[cfg(feature = "ssr")]
 use leptos::view;
+#[cfg(feature = "ssr")]
+use rustok_web::CspNonce;
 
 #[cfg(feature = "ssr")]
 use crate::app::{StorefrontModulePage, StorefrontShell};
@@ -110,6 +112,17 @@ pub async fn render_module_page(
     query_params: std::collections::HashMap<String, String>,
     seo_context: Option<&ResolvedSeoPageContext>,
 ) -> String {
+    render_module_page_with_nonce(locale, route_segment, query_params, seo_context, None).await
+}
+
+#[cfg(feature = "ssr")]
+async fn render_module_page_with_nonce(
+    locale: &str,
+    route_segment: &str,
+    query_params: std::collections::HashMap<String, String>,
+    seo_context: Option<&ResolvedSeoPageContext>,
+    csp_nonce: Option<&CspNonce>,
+) -> String {
     let locale_owned = locale.to_string();
     let route_segment_owned = route_segment.to_string();
     let enabled_modules = enabled_modules_or_empty().await;
@@ -137,7 +150,9 @@ pub async fn render_module_page(
             }
         })
         .unwrap_or_else(|| "RusToK Module Storefront".to_string());
-    let head_html = seo_context.map(build_seo_head).unwrap_or_default();
+    let head_html = seo_context
+        .map(|context| build_seo_head(context, csp_nonce))
+        .unwrap_or_default();
     render_document(locale, title.as_str(), head_html.as_str(), app_html)
 }
 
@@ -147,6 +162,7 @@ async fn render_module_page_response(
     route_segment: &str,
     query_params: std::collections::HashMap<String, String>,
     locale_path_prefix: Option<&str>,
+    csp_nonce: Option<&CspNonce>,
 ) -> Response {
     match fetch_seo_page_context(locale, route_segment, &query_params).await {
         Ok(Some(resolved)) if resolved.route.redirect.is_some() => {
@@ -158,7 +174,14 @@ async fn render_module_page_response(
             redirect_response(redirect.target_url.as_str(), Some(redirect.status_code))
         }
         Ok(seo_context) => Html(
-            render_module_page(locale, route_segment, query_params, seo_context.as_ref()).await,
+            render_module_page_with_nonce(
+                locale,
+                route_segment,
+                query_params,
+                seo_context.as_ref(),
+                csp_nonce,
+            )
+            .await,
         )
         .into_response(),
         Err(err) => {
@@ -168,8 +191,17 @@ async fn render_module_page_response(
                     build_redirect_location(&resolved, locale_path_prefix, &query_params).as_str(),
                 )
                 .into_response(),
-                _ => Html(render_module_page(locale, route_segment, query_params, None).await)
-                    .into_response(),
+                _ => Html(
+                    render_module_page_with_nonce(
+                        locale,
+                        route_segment,
+                        query_params,
+                        None,
+                        csp_nonce,
+                    )
+                    .await,
+                )
+                .into_response(),
             }
         }
     }
@@ -184,17 +216,22 @@ fn redirect_response(location: &str, status_code: Option<i32>) -> Response {
 }
 
 #[cfg(feature = "ssr")]
-fn build_seo_head(context: &ResolvedSeoPageContext) -> String {
-    #[cfg(feature = "ssr")]
-    {
-        let context = crate::shared::context::seo_page_context::to_seo_page_context(context);
-        rustok_seo_render::render_head_html(&context)
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = context;
-        String::new()
-    }
+fn build_seo_head(context: &ResolvedSeoPageContext, csp_nonce: Option<&CspNonce>) -> String {
+    let context = crate::shared::context::seo_page_context::to_seo_page_context(context);
+    nonce_structured_data_scripts(rustok_seo_render::render_head_html(&context), csp_nonce)
+}
+
+#[cfg(feature = "ssr")]
+fn nonce_structured_data_scripts(head: String, csp_nonce: Option<&CspNonce>) -> String {
+    let Some(csp_nonce) = csp_nonce else {
+        return head;
+    };
+    let trusted_opening_tag = r#"<script type="application/ld+json">"#;
+    let nonce_opening_tag = format!(
+        r#"<script nonce="{}" type="application/ld+json">"#,
+        csp_nonce.as_str()
+    );
+    head.replace(trusted_opening_tag, nonce_opening_tag.as_str())
 }
 
 #[cfg(feature = "ssr")]
@@ -248,15 +285,18 @@ pub fn router() -> Router {
             "/modules/{route_segment}",
             get(
                 |Path(route_segment): Path<String>,
+                 nonce: Option<Extension<CspNonce>>,
                  axum::extract::Query(params): axum::extract::Query<
                     std::collections::HashMap<String, String>,
                 >| async move {
                     let locale = resolve_storefront_locale(None, &params);
+                    let nonce = nonce.as_ref().map(|Extension(value)| value);
                     render_module_page_response(
                         locale.as_str(),
                         route_segment.as_str(),
                         params,
                         None,
+                        nonce,
                     )
                     .await
                 },
@@ -266,16 +306,19 @@ pub fn router() -> Router {
             "/{locale}/modules/{route_segment}",
             get(
                 |Path((locale_path_prefix, route_segment)): Path<(String, String)>,
+                 nonce: Option<Extension<CspNonce>>,
                  axum::extract::Query(params): axum::extract::Query<
                     std::collections::HashMap<String, String>,
                 >| async move {
                     let locale =
                         resolve_storefront_locale(Some(locale_path_prefix.as_str()), &params);
+                    let nonce = nonce.as_ref().map(|Extension(value)| value);
                     render_module_page_response(
                         locale.as_str(),
                         route_segment.as_str(),
                         params,
                         Some(locale_path_prefix.as_str()),
+                        nonce,
                     )
                     .await
                 },
@@ -286,7 +329,10 @@ pub fn router() -> Router {
 #[cfg(feature = "ssr")]
 #[cfg(test)]
 mod tests {
-    use super::{normalize_storefront_locale, resolve_storefront_locale};
+    use super::{
+        nonce_structured_data_scripts, normalize_storefront_locale, resolve_storefront_locale,
+    };
+    use rustok_web::CspNonce;
     use std::collections::HashMap;
 
     #[test]
@@ -326,5 +372,22 @@ mod tests {
             normalize_storefront_locale("en_us").as_deref(),
             Some("en-US")
         );
+    }
+
+    #[test]
+    fn nonces_only_trusted_structured_data_scripts() {
+        let nonce = CspNonce::generate();
+        let head = r#"<script type="application/ld+json">{"@type":"Product"}</script><script>alert(1)</script>"#.to_string();
+
+        let rendered = nonce_structured_data_scripts(head, Some(&nonce));
+
+        assert!(rendered.contains(
+            format!(
+                r#"<script nonce="{}" type="application/ld+json">"#,
+                nonce.as_str()
+            )
+            .as_str()
+        ));
+        assert!(rendered.contains("<script>alert(1)</script>"));
     }
 }
