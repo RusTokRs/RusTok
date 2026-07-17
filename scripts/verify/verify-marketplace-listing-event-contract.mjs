@@ -18,6 +18,9 @@ const files = {
   iggyExports: "crates/rustok-iggy/src/lib.rs",
   tests: "crates/rustok-events/tests/marketplace_listing_contracts.rs",
   registry: "crates/rustok-marketplace-listing/contracts/marketplace-listing-fba-registry.json",
+  ownerReceipts: "crates/rustok-marketplace-listing/src/command_receipts.rs",
+  ownerEvents: "crates/rustok-marketplace-listing/src/external_events.rs",
+  ownerTests: "crates/rustok-marketplace-listing/src/command_receipts_tests.rs",
 };
 
 const events = [
@@ -81,6 +84,7 @@ for (const [variant, eventType] of events) {
   requireMarker(sources.listing, `${variant} => "${eventType}"`, files.listing);
   requireMarker(sources.listing, "Self::$variant", files.listing);
   requireMarker(sources.registry, `"${eventType}"`, files.registry);
+  requireMarker(sources.ownerEvents, variant, files.ownerEvents);
 }
 
 for (const marker of [
@@ -168,6 +172,22 @@ for (const marker of [
   "ConsumedContractEvent",
   "PersistentContractConsumerGroup",
 ]) requireMarker(sources.iggyExports, marker, files.iggyExports);
+
+for (const marker of [
+  "event_for_completed_command(command_kind.as_str(), response)",
+  "publish_contract_in_tx(&transaction, tenant_id, Some(actor_id), event)",
+  "transaction.rollback().await?",
+  "transaction.commit().await?",
+]) requireMarker(sources.ownerReceipts, marker, files.ownerReceipts);
+for (const marker of [
+  "completed_receipt_commits_one_contract_event_and_replay_adds_none",
+  "missing_outbox_storage_rolls_back_the_pending_receipt",
+]) requireMarker(sources.ownerTests, marker, files.ownerTests);
+for (const forbidden of [
+  '"legacy_snapshot" =>',
+  "LegacyApprovalSnapshot",
+  "LegacySuspensionSnapshot",
+]) forbidMarker(sources.ownerEvents, forbidden, files.ownerEvents);
 
 forbidMarker(sources.outboxBus, "event_type: String", files.outboxBus);
 forbidMarker(sources.outboxBus, "payload: serde_json::Value", files.outboxBus);
