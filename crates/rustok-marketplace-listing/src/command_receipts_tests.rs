@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use sea_orm::{
     ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait,
     QueryFilter,
@@ -150,8 +152,12 @@ async fn new_receipt(
     command_kind: &str,
     hash: &str,
 ) -> crate::command_receipts::NewListingCommandReceipt {
+    let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+        rustok_outbox::OutboxTransport::new(db.clone()),
+    ));
     match admit(
         db,
+        event_bus,
         tenant_id,
         actor_id,
         key.to_string(),
