@@ -4,10 +4,10 @@ use crate::contributions::{
     build_pages_admin_contribution_registry, pages_admin_contribution_policy,
 };
 use fly_browser::BrowserIntentEnvelope;
-use fly_ui::{CapabilityState, EditorCapability, PaletteBlockAccess};
+use fly_ui::{CapabilityState, PaletteBlockAccess};
 use rustok_page_builder_admin::{
-    browser_capability_denial, validate_browser_capability_access,
-    validate_browser_palette_access, BrowserIntentDispatchError, SsrDraftSessionStore,
+    validate_browser_capability_access, validate_browser_palette_access,
+    BrowserIntentDispatchError, SsrDraftSessionStore,
 };
 
 pub fn pages_palette_block_access() -> PaletteBlockAccess {
@@ -76,6 +76,8 @@ fn preflight_pages_intent(
 mod tests {
     use super::*;
     use fly_browser::FLY_BROWSER_PROTOCOL_V1;
+    use fly_ui::EditorCapability;
+    use rustok_page_builder_admin::browser_capability_denial;
     use serde_json::{json, Value};
 
     fn envelope(intent: &str, payload: Value) -> BrowserIntentEnvelope {
