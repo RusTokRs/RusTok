@@ -1,4 +1,5 @@
 name: Agent Current Baseline Diagnostics
+# Retrigger after focused source fixes.
 
 on:
   pull_request:
