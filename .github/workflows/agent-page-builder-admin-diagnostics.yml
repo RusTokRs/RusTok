@@ -1,0 +1,37 @@
+name: Agent Page Builder Admin Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: ${{ github.event.pull_request.head.ref == 'agent/ci-baseline-page-builder-diagnostics' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.93.1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: agent-page-builder-admin-diagnostics
+      - name: Capture Page Builder admin tests
+        shell: bash
+        run: |
+          mkdir -p /tmp/page-builder-admin
+          set +e
+          cargo test -p rustok-page-builder-admin --lib -- --nocapture \
+            > /tmp/page-builder-admin/test.log 2>&1
+          status=$?
+          echo "$status" > /tmp/page-builder-admin/test.status
+          exit 0
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agent-page-builder-admin-diagnostics
+          path: /tmp/page-builder-admin
+      - name: Fail on test error
+        run: exit "$(cat /tmp/page-builder-admin/test.status)"
