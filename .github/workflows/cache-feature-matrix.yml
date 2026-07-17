@@ -35,9 +35,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: cache-feature-matrix
-      - name: Compile without Redis
-        run: cargo check -p rustok-cache --lib --no-default-features
+      - name: Compile all targets without Redis
+        run: cargo check -p rustok-cache --all-targets --no-default-features
       - name: Test without Redis
-        run: cargo test -p rustok-cache --lib --no-default-features
-      - name: Clippy without Redis
-        run: cargo clippy -p rustok-cache --lib --no-default-features -- -D warnings
+        run: cargo test -p rustok-cache --no-default-features
+      - name: Clippy all targets without Redis
+        run: cargo clippy -p rustok-cache --all-targets --no-default-features -- -D warnings
