@@ -1,5 +1,12 @@
 #[test]
 fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
+    let lib = include_str!("../../../crates/rustok-marketplace-listing/src/lib.rs");
+    let listing_entity = include_str!(
+        "../../../crates/rustok-marketplace-listing/src/entities/listing.rs"
+    );
+    let terms_entity = include_str!(
+        "../../../crates/rustok-marketplace-listing/src/entities/listing_terms.rs"
+    );
     let migration = include_str!(
         "../../../crates/rustok-marketplace-listing/src/migrations/m20260716_000001_create_marketplace_listings.rs"
     );
@@ -19,6 +26,7 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "../../../crates/rustok-marketplace-listing/contracts/marketplace-listing-fba-registry.json"
     );
 
+    assert!(lib.contains("mod replay_safe_commands;"));
     for marker in [
         "marketplace_listings",
         "marketplace_listing_terms",
@@ -41,6 +49,21 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
             !migration.contains(forbidden),
             "listing schema must not add cross-module FK {forbidden}"
         );
+    }
+    for source in [listing_entity, terms_entity] {
+        for forbidden in [
+            "pub title:",
+            "pub description:",
+            "pub localized_title:",
+            "pub localized_description:",
+            "pub translations_json:",
+            "pub localized_fields_json:",
+        ] {
+            assert!(
+                !source.contains(forbidden),
+                "listing owner must not copy product localized content: {forbidden}"
+            );
+        }
     }
 
     for marker in [
@@ -79,10 +102,12 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         "publish_listing_replay_safe",
         "reactivate_listing_replay_safe",
         "replay_existing",
+        "replay_safe_lifecycle(&context",
         "self.create_listing(context, input).await",
     ] {
         assert!(replay_safe.contains(marker), "replay-safe path is missing {marker}");
     }
+    assert!(!replay_safe.contains("map_or_else(\n                || async"));
 
     for marker in [
         "pub trait MarketplaceListingReadPort",
@@ -95,13 +120,22 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
         assert!(ports.contains(marker), "listing ports are missing {marker}");
     }
     assert!(!ports.contains("storage unavailable: {error}"));
+    assert!(!ports.contains("self.create_listing(context, request)"));
 
-    assert!(registry.contains("\"status\": \"in_progress\""));
-    assert!(registry.contains("\"canonical_product_content_copied\": false"));
-    assert!(registry.contains("\"cross_module_foreign_keys\": false"));
-    assert!(registry.contains("\"buy_box_ranking_owned\": false"));
-    assert!(registry.contains("\"atomic_with_owner_write\": true"));
-    assert!(registry.contains("lost_response_replay_returns_saved_result"));
+    for marker in [
+        "\"status\": \"in_progress\"",
+        "\"canonical_product_content_copied\": false",
+        "\"localized_business_copy_owned\": false",
+        "\"localized_business_copy_provider\": \"rustok-product\"",
+        "\"operator_prose_target\": \"immutable_marketplace_listing_events_with_actor_and_effective_locale\"",
+        "\"cross_module_foreign_keys\": false",
+        "\"buy_box_ranking_owned\": false",
+        "\"atomic_with_owner_write\": true",
+        "replay_checked_before_provider_reads",
+        "lost_response_replay_returns_saved_result",
+    ] {
+        assert!(registry.contains(marker), "listing registry is missing {marker}");
+    }
 }
 
 #[test]
@@ -112,6 +146,9 @@ fn marketplace_root_consumes_listing_projection_without_owner_internals() {
     );
     let root_manifest = include_str!("../../../crates/rustok-marketplace/rustok-module.toml");
     let modules = include_str!("../../../modules.toml");
+    let distribution_manifest = include_str!("../../../crates/rustok-distribution/Cargo.toml");
+    let distribution_source = include_str!("../../../crates/rustok-distribution/src/lib.rs");
+    let server_manifest = include_str!("../../../apps/server/Cargo.toml");
 
     assert!(root.contains("MarketplaceListingDirectoryService"));
     assert!(consumer.contains("Arc<dyn MarketplaceListingReadPort>"));
@@ -121,6 +158,11 @@ fn marketplace_root_consumes_listing_projection_without_owner_internals() {
     assert!(root_manifest.contains("marketplace_listing"));
     assert!(root_manifest.contains("MarketplaceListingReadPort") || root_manifest.contains("providers = [\"marketplace_seller\", \"marketplace_listing\"]"));
     assert!(modules.contains("marketplace_listing ="));
+    assert!(distribution_manifest.contains("mod-marketplace_listing"));
+    assert!(distribution_manifest.contains("rustok-marketplace-listing"));
+    assert!(distribution_source.contains("rustok_marketplace_listing::MarketplaceListingModule"));
+    assert!(server_manifest.contains("mod-marketplace_listing"));
+    assert!(server_manifest.contains("rustok-marketplace-listing"));
 
     let default_enabled = modules
         .split("default_enabled =")
@@ -128,4 +170,11 @@ fn marketplace_root_consumes_listing_projection_without_owner_internals() {
         .unwrap_or_default();
     assert!(!default_enabled.contains("marketplace_listing"));
     assert!(!default_enabled.contains("\"marketplace\""));
+    let server_defaults = server_manifest
+        .split("default = [")
+        .nth(1)
+        .and_then(|value| value.split(']').next())
+        .unwrap_or_default();
+    assert!(!server_defaults.contains("mod-marketplace_listing"));
+    assert!(!server_defaults.contains("mod-marketplace\""));
 }
