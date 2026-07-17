@@ -21,6 +21,8 @@ mod redis_status;
 mod refresh;
 mod service;
 mod shared_backend;
+#[cfg(test)]
+mod startup_recovery_tests;
 mod tenant_generation_observability;
 mod typed;
 mod weighted;
