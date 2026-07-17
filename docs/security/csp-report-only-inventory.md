@@ -9,9 +9,9 @@ status: active
 
 ## Purpose
 
-This inventory defines the target browser policy, the report collection boundary and the evidence required before the UI CSP can remove the remaining inline-style allowance from enforcement. Inline scripts already require a per-response nonce, inline event handlers are blocked, `unsafe-eval` is prohibited and production connections are HTTPS/WSS-only.
+This inventory defines the target browser policy, the report collection boundary and the evidence required before the UI CSP can remove the remaining inline-style-attribute allowance from enforcement. Inline scripts and style elements already require a per-response nonce, inline event handlers are blocked, `unsafe-eval` is prohibited and production connections are HTTPS/WSS-only.
 
-No violation in this document is an automatic allowlist request. The preferred resolution is to remove the dependency, move code into a same-origin static asset, or attach a per-response nonce/hash.
+No violation in this document is an automatic allowlist request. The preferred resolution is to remove the dependency, move code into a same-origin static asset, attach a per-response nonce/hash to a trusted element, or replace a style attribute with a reviewed CSS class.
 
 ## Collection Contract
 
@@ -48,7 +48,8 @@ The existing Prometheus family `rustok_module_errors_total` records the same bou
 | `default-src` | `'self'` | Baseline deny for unspecified resource classes |
 | `script-src` | `'self' 'nonce-<per-response>'` | Only same-origin external scripts and explicitly trusted nonce-bearing inline scripts; inline event handlers and eval are forbidden |
 | `script-src-attr` | `'none'` | Inline event-handler attributes are forbidden |
-| `style-src` | `'self'` | No inline styles; migrate generated style blocks to hashes, nonces or static CSS |
+| `style-src` | `'self' 'nonce-<per-response>'` | Only same-origin stylesheets and explicitly trusted nonce-bearing style elements |
+| `style-src-attr` | `'none'` | Target state forbids inline style attributes; migrate them to reviewed classes |
 | `img-src` | `'self' data: blob: https:` | Remote images remain HTTPS-only |
 | `font-src` | `'self' data:` | No remote font origin is currently approved |
 | `connect-src` | `'self' https: wss:` | Production permits only secure HTTP and WebSocket connections |
@@ -62,11 +63,11 @@ The existing Prometheus family `rustok_module_errors_total` records the same bou
 
 - `rustok-web::CspNonce` creates one UUIDv4-derived nonce per UI response.
 - The outer main-server security middleware inserts the nonce into request extensions and uses the same value in enforced and report-only headers.
-- Embedded admin processing applies the nonce only to scripts in the immutable bundled `index.html`; it is never applied to tenant or user-authored HTML.
+- Embedded admin processing applies the nonce only to script and style elements in the immutable bundled `index.html`; it is never applied to tenant or user-authored HTML.
 - Storefront processing applies the nonce only to the exact JSON-LD opening tag emitted by the typed SEO renderer.
 - The standalone admin middleware inserts the same nonce type into Axum request extensions, copies it into the Leptos render context and applies it to the transitional auth bootstrap script.
-- The classic standalone admin shell intentionally contains no `HydrationScripts` or `AutoReload` script producer.
-- Missing nonce state fails closed to the API deny policy rather than restoring `unsafe-inline`.
+- The classic standalone admin shell intentionally contains no `HydrationScripts`, `AutoReload` or inline style element producer.
+- Missing nonce state fails closed to the API deny policy rather than restoring a blanket `unsafe-inline` source.
 
 ## Connection Profile Boundary
 
@@ -78,34 +79,35 @@ The existing Prometheus family `rustok_module_errors_total` records the same bou
 
 ## Current Migration Debt
 
-The enforced UI policies still contain:
+The enforced UI policies now isolate their remaining exception to:
 
-- `style-src 'unsafe-inline'`.
+- `style-src-attr 'unsafe-inline'`.
 
-`script-src 'unsafe-inline'`, `unsafe-eval`, plaintext HTTP and production plaintext WebSocket have been removed from enforcement and are protected by the CSP verification gate. The remaining inline-style entry is migration debt, not an approved production exception. The strict main-server report-only policy intentionally excludes it.
+The broader `style-src 'unsafe-inline'` source, `script-src 'unsafe-inline'`, `unsafe-eval`, plaintext HTTP and production plaintext WebSocket have been removed from enforcement and are protected by the CSP verification gate. The remaining attribute-level entry is migration debt, not an approved permanent production exception. The strict main-server report-only policy uses `style-src-attr 'none'` to expose the affected components.
 
 ## Triage Rules
 
 1. Group reports by normalized directive and origin.
 2. Reproduce each unique violation in embedded admin, standalone admin and storefront browser smoke tests.
 3. Classify it as application code, framework bootstrap, third-party dependency or malicious/noise traffic.
-4. Remove or replace the source before considering an allowlist.
-5. Any new external origin requires a security review, named owner, exact resource purpose and expiry/review date.
-6. Never allowlist `unsafe-eval`; replace the dependency or execution path.
-7. Never copy a full reported URL, query, fragment or script sample into issues or logs.
-8. Never add a nonce through blanket post-processing of tenant or user-authored HTML.
-9. Do not advertise a report endpoint from a deployment process that does not own the bounded collector.
+4. Replace each required style attribute with a reviewed class, CSS custom property contract or another non-inline representation.
+5. Remove or replace a source before considering an allowlist.
+6. Any new external origin requires a security review, named owner, exact resource purpose and expiry/review date.
+7. Never allowlist `unsafe-eval`; replace the dependency or execution path.
+8. Never copy a full reported URL, query, fragment or script sample into issues or logs.
+9. Never add a nonce through blanket post-processing of tenant or user-authored HTML.
+10. Do not advertise a report endpoint from a deployment process that does not own the bounded collector.
 
 ## Enforcement Exit Criteria
 
 The enforced policy may be promoted to the strict target only when:
 
-- browser smoke runs for embedded admin, standalone admin and storefront produce no unexplained `style-src` violations;
-- every required inline style block has a nonce/hash implementation or has moved to static CSS;
+- browser smoke runs for embedded admin, standalone admin and storefront produce no unexplained `style-src-attr` violations;
+- every required inline style attribute has moved to a reviewed class or another non-inline contract;
 - no production code path requires `eval` or equivalent string compilation;
 - the observed external-origin set matches this inventory;
 - the CSP reporting endpoint remains bounded and unauthenticated without inheriting tenant context;
-- rollback instructions retain the last known safe policy without restoring inline scripts or plaintext connection sources.
+- rollback instructions retain the last known safe policy without restoring inline scripts, blanket inline style elements or plaintext connection sources.
 
 ## Verification
 
