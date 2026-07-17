@@ -13,6 +13,9 @@ const files = {
   rootConsumer: "crates/rustok-marketplace/src/seller_directory.rs",
   sellerManifest: "crates/rustok-marketplace-seller/rustok-module.toml",
   sellerRegistry: "crates/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json",
+  sellerEntity: "crates/rustok-marketplace-seller/src/entities/seller.rs",
+  sellerTranslationEntity: "crates/rustok-marketplace-seller/src/entities/seller_translation.rs",
+  sellerDto: "crates/rustok-marketplace-seller/src/dto.rs",
   sellerService: "crates/rustok-marketplace-seller/src/service.rs",
   sellerPorts: "crates/rustok-marketplace-seller/src/ports.rs",
   sellerMigration: "crates/rustok-marketplace-seller/src/migrations/m20260716_000001_create_marketplace_sellers.rs",
@@ -50,6 +53,9 @@ const rootSource = read(files.rootSource);
 const rootConsumer = read(files.rootConsumer);
 const sellerManifest = read(files.sellerManifest);
 const sellerRegistry = read(files.sellerRegistry);
+const sellerEntity = read(files.sellerEntity);
+const sellerTranslationEntity = read(files.sellerTranslationEntity);
+const sellerDto = read(files.sellerDto);
 const sellerService = read(files.sellerService);
 const sellerPorts = read(files.sellerPorts);
 const sellerMigration = read(files.sellerMigration);
@@ -92,7 +98,7 @@ assertContains(ecommercePlan, "rustok-marketplace-listing", `${files.ecommercePl
 assertContains(ecommercePlan, "Marketplace promotion gates", `${files.ecommercePlan}: FFA/FBA gates missing`);
 
 assertContains(rootManifest, 'slug = "marketplace"', `${files.rootManifest}: root slug missing`);
-assertContains(rootManifest, '[fba.consumer]', `${files.rootManifest}: root consumer contract missing`);
+assertContains(rootManifest, "[fba.consumer]", `${files.rootManifest}: root consumer contract missing`);
 assertContains(rootRegistry, '"owns_tables": false', `${files.rootRegistry}: root non-ownership missing`);
 assertContains(rootSource, "MARKETPLACE_FAMILY_MODULES", `${files.rootSource}: family descriptor missing`);
 assertContains(rootConsumer, "Arc<dyn MarketplaceSellerReadPort>", `${files.rootConsumer}: typed seller consumer missing`);
@@ -116,13 +122,26 @@ assertNotContains(sellerRegistry, "durable command receipts are not yet implemen
 
 for (const marker of [
   "marketplace_sellers",
+  "marketplace_seller_translations",
   "marketplace_seller_members",
   "ux_marketplace_sellers_tenant_handle",
+  "ux_marketplace_seller_translations_locale",
+  "idx_marketplace_seller_translations_search",
+  "fk_marketplace_seller_translations_tenant_seller",
   "ux_marketplace_seller_members_scope_user",
   "fk_marketplace_seller_members_tenant_seller",
+  "MarketplaceSellerTranslations::Locale",
+  ".string_len(32)",
 ]) {
-  assertContains(sellerMigration, marker, `${files.sellerMigration}: missing schema invariant ${marker}`);
+  assertContains(sellerMigration, marker, `${files.sellerMigration}: missing multilingual schema invariant ${marker}`);
 }
+assertContains(sellerTranslationEntity, 'table_name = "marketplace_seller_translations"', `${files.sellerTranslationEntity}: translation table ownership missing`);
+assertContains(sellerTranslationEntity, "pub locale: String", `${files.sellerTranslationEntity}: locale column missing`);
+assertContains(sellerTranslationEntity, "pub display_name: String", `${files.sellerTranslationEntity}: localized display name missing`);
+assertNotContains(sellerEntity, "pub display_name:", `${files.sellerEntity}: localized display_name must not remain in base row`);
+assertNotContains(sellerMigration, "MarketplaceSellers::DisplayName", `${files.sellerMigration}: base seller migration must not own localized display_name`);
+assertContains(sellerDto, "pub resolved_locale: String", `${files.sellerDto}: resolved locale projection missing`);
+
 for (const marker of [
   "marketplace_seller_command_receipts",
   "uq_marketplace_seller_command_receipt_key",
@@ -135,20 +154,34 @@ for (const marker of [
   }
 }
 for (const marker of [
-  "self.db.begin().await?",
-  "MarketplaceSellerMemberRole::Owner",
+  "normalize_locale_tag",
+  "build_locale_candidates",
+  "PLATFORM_FALLBACK_LOCALE",
+  "upsert_translation",
+  "MISSING_TRANSLATION_PREFIX",
+  "resolved_locale: translation.locale",
   "owner membership role cannot be changed",
   "owner membership cannot be disabled",
-  "MarketplaceSellerOnboardingStatus::Submitted",
-  "MarketplaceSellerStatus::Suspended",
 ]) {
-  assertContains(sellerService, marker, `${files.sellerService}: missing owner invariant ${marker}`);
+  assertContains(sellerService, marker, `${files.sellerService}: missing localized owner invariant ${marker}`);
 }
+for (const forbidden of [
+  "pub async fn create_seller(",
+  "pub async fn update_profile(",
+  "pub async fn submit_onboarding(",
+  "pub async fn review_onboarding(",
+  "pub async fn suspend_seller(",
+  "pub async fn reactivate_seller(",
+]) {
+  assertNotContains(sellerService, forbidden, `${files.sellerService}: non-receipted write bypass remains: ${forbidden}`);
+}
+
 for (const marker of [
   "pub trait MarketplaceSellerReadPort",
   "pub trait MarketplaceSellerCommandPort",
   "PortCallPolicy::read()",
   "PortCallPolicy::write()",
+  "context.locale.as_str()",
   "create_seller_with_receipt",
   "update_profile_with_receipt",
   "submit_onboarding_with_receipt",
@@ -157,9 +190,10 @@ for (const marker of [
   "reactivate_seller_with_receipt",
   "add_member_with_receipt",
   "update_member_with_receipt",
+  "marketplace_seller.translation_missing",
   "marketplace seller storage is temporarily unavailable",
 ]) {
-  assertContains(sellerPorts, marker, `${files.sellerPorts}: missing FBA invariant ${marker}`);
+  assertContains(sellerPorts, marker, `${files.sellerPorts}: missing localized FBA invariant ${marker}`);
 }
 assertNotContains(sellerPorts, "storage unavailable: {error}", `${files.sellerPorts}: storage internals must not be exposed`);
 assertNotContains(sellerPorts, "self.create_seller(\n", `${files.sellerPorts}: create must use durable receipt path`);
@@ -184,10 +218,13 @@ for (const marker of [
   "reactivate_seller_with_receipt",
   "add_member_with_receipt",
   "update_member_with_receipt",
+  '"locale": locale',
+  "upsert_translation(",
   "complete_command(receipt",
   "rollback_command(receipt",
+  "let policy_input = input.clone()",
 ]) {
-  assertContains(sellerReceiptedCommands, marker, `${files.sellerReceiptedCommands}: missing receipted command invariant ${marker}`);
+  assertContains(sellerReceiptedCommands, marker, `${files.sellerReceiptedCommands}: missing localized receipted command invariant ${marker}`);
 }
 
 assertContains(sellerAdminCore, "MarketplaceSellerAdminTransportProfile", `${files.sellerAdminCore}: transport selection missing`);
