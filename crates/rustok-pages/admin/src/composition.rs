@@ -1,13 +1,12 @@
 use crate::browser_intent::pages_browser_draft_store;
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::contributions::{
-    build_pages_admin_contribution_registry, PAGES_MODULE_ID, PAGES_OWNER_PROVIDER,
+    build_pages_admin_contribution_registry, pages_admin_contribution_policy,
 };
 use crate::core;
 use crate::i18n::t;
 use crate::model::{PageBuilderScenarioReleaseStatus, PageDetail};
 use crate::transport;
-use fly_ui::ContributionAssemblyPolicy;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
@@ -24,7 +23,6 @@ use rustok_page_builder_admin::{
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 const FLY_DRAFT_QUERY_KEY: &str = "fly_draft";
@@ -156,7 +154,7 @@ fn PagesFlyBuilder(
         RuntimeContextScenario::new("generated", "Generated example", generated_context.clone()),
     ]);
     let contribution_assembly = Arc::new(build_pages_admin_contribution_registry(
-        &pages_contribution_policy(),
+        &pages_admin_contribution_policy(),
     ));
     let restored_draft = draft_token
         .as_deref()
@@ -276,20 +274,6 @@ fn PagesFlyBuilder(
             </div>
         }
         .into_any(),
-    }
-}
-
-fn pages_contribution_policy() -> ContributionAssemblyPolicy {
-    ContributionAssemblyPolicy {
-        enabled_modules: BTreeSet::from([PAGES_MODULE_ID.to_string()]),
-        enabled_providers: BTreeSet::from([PAGES_OWNER_PROVIDER.to_string()]),
-        capabilities: BTreeSet::from([
-            "preview".to_string(),
-            "properties".to_string(),
-            "publish".to_string(),
-            "tree".to_string(),
-        ]),
-        ..ContributionAssemblyPolicy::default()
     }
 }
 
