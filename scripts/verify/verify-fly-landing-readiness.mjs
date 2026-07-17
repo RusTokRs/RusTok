@@ -31,12 +31,44 @@ requireText(
   "validate_component_actions(document)",
 );
 requireText(
+  "crates/fly/src/runtime_pipeline.rs",
+  "materialize_component_actions",
+);
+requireText(
+  "crates/fly/src/runtime_pipeline.rs",
+  "pub materialized_forms: usize",
+);
+requireText(
+  "crates/fly/src/runtime_render.rs",
+  "pub native_actions: usize",
+);
+requireText(
+  "crates/fly/src/landing_readiness/evaluate.rs",
+  "evaluate_landing_readiness_with_context",
+);
+requireText(
+  "crates/fly/src/landing_readiness/evaluate.rs",
+  "landing_translation_locale_missing",
+);
+requireText(
+  "crates/fly/src/landing_readiness/evaluate.rs",
+  "materialize_structural_document",
+);
+requireText(
   "crates/fly/src/runtime_gate.rs",
   "pub readiness: Option<LandingReadinessPolicy>",
 );
 requireText(
   "crates/fly/src/runtime_gate.rs",
+  "evaluate_landing_readiness_with_context",
+);
+requireText(
+  "crates/fly/src/runtime_gate.rs",
   "runtime_publish_readiness_rejected",
+);
+requireText(
+  "crates/fly/src/page_metadata.rs",
+  "localized_metadata_exposes_preview_and_round_trips_losslessly",
 );
 requireText(
   "crates/rustok-page-builder/admin/src/editor/runtime.rs",
