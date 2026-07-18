@@ -35,9 +35,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: marketplace-seller-event-storage
-      - name: Check event storage formatting
+      - name: Capture event storage rustfmt patch
         run: |
-          rustfmt --edition 2021 --check \
+          rustfmt --edition 2021 \
             crates/rustok-marketplace-seller/src/dto.rs \
             crates/rustok-marketplace-seller/src/entities/mod.rs \
             crates/rustok-marketplace-seller/src/entities/seller.rs \
@@ -49,11 +49,81 @@ jobs:
             crates/rustok-marketplace-seller/src/seller_events.rs \
             crates/rustok-marketplace-seller/src/seller_events_tests.rs \
             crates/rustok-marketplace-seller/src/service.rs
+          git diff -- crates/rustok-marketplace-seller > rustfmt.patch
+          mkdir -p formatted
+          cp --parents \
+            crates/rustok-marketplace-seller/src/dto.rs \
+            crates/rustok-marketplace-seller/src/entities/mod.rs \
+            crates/rustok-marketplace-seller/src/entities/seller.rs \
+            crates/rustok-marketplace-seller/src/entities/seller_event.rs \
+            crates/rustok-marketplace-seller/src/lib.rs \
+            crates/rustok-marketplace-seller/src/migrations/mod.rs \
+            crates/rustok-marketplace-seller/src/migrations/m20260718_000003_create_marketplace_seller_events.rs \
+            crates/rustok-marketplace-seller/src/ports.rs \
+            crates/rustok-marketplace-seller/src/seller_events.rs \
+            crates/rustok-marketplace-seller/src/seller_events_tests.rs \
+            crates/rustok-marketplace-seller/src/service.rs \
+            formatted/
       - name: Compile seller owner
-        run: cargo check -p rustok-marketplace-seller --all-targets
+        id: compile
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo check -p rustok-marketplace-seller --all-targets 2>&1 | tee cargo-check.log
       - name: Test seller event storage
-        run: cargo test -p rustok-marketplace-seller
+        id: tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo test -p rustok-marketplace-seller 2>&1 | tee cargo-test.log
       - name: Clippy seller owner
-        run: cargo clippy -p rustok-marketplace-seller --all-targets --no-deps -- -D warnings
+        id: clippy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo clippy -p rustok-marketplace-seller --all-targets --no-deps -- -D warnings 2>&1 | tee cargo-clippy.log
       - name: Verify seller event boundary
-        run: node scripts/verify/verify-marketplace-seller-events.mjs
+        id: verify
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/verify/verify-marketplace-seller-events.mjs 2>&1 | tee seller-event-verifier.log
+      - name: Upload seller event diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketplace-seller-event-storage-diagnostics
+          path: |
+            formatted/
+            rustfmt.patch
+            cargo-check.log
+            cargo-test.log
+            cargo-clippy.log
+            seller-event-verifier.log
+          if-no-files-found: error
+          retention-days: 3
+      - name: Enforce seller event gates
+        if: always()
+        run: |
+          failed=0
+          if test -s rustfmt.patch; then
+            echo "seller event Rust files are not rustfmt-clean"
+            failed=1
+          fi
+          if test "${{ steps.compile.outcome }}" != "success"; then
+            echo "seller owner compile failed"
+            failed=1
+          fi
+          if test "${{ steps.tests.outcome }}" != "success"; then
+            echo "seller event tests failed"
+            failed=1
+          fi
+          if test "${{ steps.clippy.outcome }}" != "success"; then
+            echo "seller owner Clippy failed"
+            failed=1
+          fi
+          if test "${{ steps.verify.outcome }}" != "success"; then
+            echo "seller event verifier failed"
+            failed=1
+          fi
+          exit "$failed"
