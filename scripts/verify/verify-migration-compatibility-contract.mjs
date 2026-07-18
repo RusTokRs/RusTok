@@ -119,6 +119,17 @@ forbidMarkers(workflow, [
   'bash "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-smoke.sh"',
 ]);
 
+requireMarkers(".github/workflows/hardening-gates.yml", [
+  "Verify migration infrastructure approval fixtures",
+  "verify-migration-infra-self-test.mjs",
+  "Verify migration compatibility gate structure",
+  "verify-migration-compatibility-contract.mjs",
+]);
+requireMarkers("scripts/verify/verify-all.sh", [
+  "verify-migration-infra-self-test.mjs:Migration Infrastructure Approval Fixtures",
+  "verify-migration-compatibility-contract.mjs:Migration Compatibility Gate Structure",
+]);
+
 if (failures.length > 0) {
   console.error("Migration compatibility contract verification failed:");
   failures.forEach((failure) => console.error(`✗ ${failure}`));
