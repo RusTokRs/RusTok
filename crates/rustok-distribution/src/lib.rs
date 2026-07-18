@@ -111,6 +111,10 @@ pub fn build_registry() -> ModuleRegistry {
     {
         registry = registry.register(rustok_marketplace_listing::MarketplaceListingModule);
     }
+    #[cfg(feature = "mod-marketplace_allocation")]
+    {
+        registry = registry.register(rustok_marketplace_allocation::MarketplaceAllocationModule);
+    }
     #[cfg(feature = "mod-marketplace")]
     {
         registry = registry.register(rustok_marketplace::MarketplaceModule);
