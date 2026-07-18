@@ -25,76 +25,62 @@ jobs:
           ref: main
           fetch-depth: 0
       - run: git pull --rebase origin main
-      - name: Apply exact workflow wiring
+      - name: Apply bounded workflow wiring
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path(".github/workflows/migration-compatibility.yml")
           source = path.read_text()
 
-          def replace_once(old: str, new: str) -> None:
+          def sub_once(pattern: str, replacement: str) -> None:
               global source
-              count = source.count(old)
+              source, count = re.subn(
+                  pattern,
+                  replacement,
+                  source,
+                  count=1,
+                  flags=re.MULTILINE | re.DOTALL,
+              )
               if count != 1:
-                  raise SystemExit(f"expected one workflow match, found {count}: {old!r}")
-              source = source.replace(old, new, 1)
+                  raise SystemExit(f"expected one workflow regex match, found {count}: {pattern!r}")
 
-          replace_once(
-              '''      - name: Compare migration plans with base policy
-                run: >-
-                  node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-plan-compatibility.mjs"
-                  --base "$GITHUB_WORKSPACE/migration-plans/base.json"
-                  --head "$GITHUB_WORKSPACE/migration-plans/head.json"
+          sub_once(
+              r'(      - name: Compare migration plans with base policy\n        run: >-\n          node "\$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-plan-compatibility\.mjs"\n          --base "\$GITHUB_WORKSPACE/migration-plans/base\.json"\n          --head "\$GITHUB_WORKSPACE/migration-plans/head\.json"\n)\n(      - name: Upload migration plans)',
+              r'''\1
+      - name: Select appended migration backfill fixtures
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-backfill-contracts.mjs"
+          --base-plan "$GITHUB_WORKSPACE/migration-plans/base.json"
+          --head-plan "$GITHUB_WORKSPACE/migration-plans/head.json"
+          --contracts "$GITHUB_WORKSPACE/head/docs/migrations/backfill-contracts.json"
+          --output "$GITHUB_WORKSPACE/migration-plans/backfill-fixtures.json"
 
-              - name: Upload migration plans''',
-              '''      - name: Compare migration plans with base policy
-                run: >-
-                  node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-plan-compatibility.mjs"
-                  --base "$GITHUB_WORKSPACE/migration-plans/base.json"
-                  --head "$GITHUB_WORKSPACE/migration-plans/head.json"
+      - name: Verify selected backfill fixture artifact
+        run: test -s "$GITHUB_WORKSPACE/migration-plans/backfill-fixtures.json"
 
-              - name: Select appended migration backfill fixtures
-                run: >-
-                  node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-backfill-contracts.mjs"
-                  --base-plan "$GITHUB_WORKSPACE/migration-plans/base.json"
-                  --head-plan "$GITHUB_WORKSPACE/migration-plans/head.json"
-                  --contracts "$GITHUB_WORKSPACE/head/docs/migrations/backfill-contracts.json"
-                  --output "$GITHUB_WORKSPACE/migration-plans/backfill-fixtures.json"
-
-              - name: Verify selected backfill fixture artifact
-                run: test -s "$GITHUB_WORKSPACE/migration-plans/backfill-fixtures.json"
-
-              - name: Upload migration plans''',
+\2''',
           )
-          replace_once(
-              '''      - uses: dtolnay/rust-toolchain@stable
+          sub_once(
+              r'(  n-minus-one-upgrade:.*?      - uses: dtolnay/rust-toolchain@stable\n)\n(      - name: Apply base migrations and preserve database)',
+              r'''\1
+      - name: Download selected backfill fixtures
+        uses: actions/download-artifact@v5
+        with:
+          name: migration-plans-${{ github.run_id }}
+          path: migration-backfill
 
-              - name: Apply base migrations and preserve database''',
-              '''      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify selected backfill fixtures
+        run: test -s "$GITHUB_WORKSPACE/migration-backfill/backfill-fixtures.json"
 
-              - name: Download selected backfill fixtures
-                uses: actions/download-artifact@v5
-                with:
-                  name: migration-plans-${{ github.run_id }}
-                  path: migration-backfill
-
-              - name: Verify selected backfill fixtures
-                run: test -s "$GITHUB_WORKSPACE/migration-backfill/backfill-fixtures.json"
-
-              - name: Apply base migrations and preserve database''',
+\2''',
           )
-          replace_once(
-              '''          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "1"
-                  RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"
-                  RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
-                  RUSTOK_MIGRATION_SMOKE_REUSE_DB: "1"''',
-              '''          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "1"
-                  RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"
-                  RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
-                  RUSTOK_MIGRATION_SMOKE_REUSE_DB: "1"
-                  RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES: ${{ github.workspace }}/migration-backfill/backfill-fixtures.json''',
+          sub_once(
+              r'(      - name: Upgrade preserved database with head migrations\n        env:.*?          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "1")',
+              r'''\1
+          RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES: ${{ github.workspace }}/migration-backfill/backfill-fixtures.json''',
           )
 
           path.write_text(source)
