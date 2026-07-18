@@ -28,13 +28,24 @@ async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::E
     let target_url = database_url_from_admin_url(&admin_url, &database_name);
     let keep_database = env_binary_flag("RUSTOK_MIGRATION_SMOKE_KEEP_DB")?;
     let incremental = env_binary_flag("RUSTOK_MIGRATION_SMOKE_INCREMENTAL")?;
+    let reuse_database = env_binary_flag("RUSTOK_MIGRATION_SMOKE_REUSE_DB")?;
 
     let admin = connect_postgres(&admin_url)
         .await
         .map_err(|error| format!("admin database must be reachable: {error}"))?;
 
-    drop_database_if_exists(&admin, &database_name).await?;
-    create_database(&admin, &database_name).await?;
+    if reuse_database {
+        connect_postgres(&target_url)
+            .await
+            .map_err(|error| {
+                format!(
+                    "reused migration smoke database {database_name} must already exist and be reachable: {error}"
+                )
+            })?;
+    } else {
+        drop_database_if_exists(&admin, &database_name).await?;
+        create_database(&admin, &database_name).await?;
+    }
 
     let smoke_result = apply_migrations_and_assert_schema(&target_url, incremental).await;
 
@@ -59,7 +70,7 @@ async fn apply_migrations_and_assert_schema(
         apply_migrations_incrementally(&db).await?;
     } else {
         Migrator::up(&db, None).await.map_err(|error| {
-            format!("server migrator must apply from zero on PostgreSQL: {error}")
+            format!("server migrator must apply all pending PostgreSQL migrations: {error}")
         })?;
     }
 
@@ -349,7 +360,7 @@ mod tests {
                 .expect("1 should be accepted")
         );
         assert!(
-            parse_binary_flag("RUSTOK_MIGRATION_SMOKE_INCREMENTAL", Some("true"))
+            parse_binary_flag("RUSTOK_MIGRATION_SMOKE_REUSE_DB", Some("true"))
                 .expect_err("non-binary values should be rejected")
                 .to_string()
                 .contains("must be 0 or 1")
