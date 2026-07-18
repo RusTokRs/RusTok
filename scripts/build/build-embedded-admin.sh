@@ -80,10 +80,6 @@ grep -Fq 'href="output.css"' "$repo_root/apps/admin/index.html" || {
   echo "admin source stylesheet must remain mount-relative" >&2
   exit 1
 }
-if grep -Eq '(src|href)="/(?!admin/)' "$index" 2>/dev/null; then
-  echo "embedded admin output contains a root-relative asset URL outside /admin/" >&2
-  exit 1
-fi
 if grep -Eq '(src|href)="/(rustok-admin|snippets|output\.css)' "$index"; then
   echo "embedded admin output contains a root-mounted asset URL" >&2
   exit 1
