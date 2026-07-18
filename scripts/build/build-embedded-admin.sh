@@ -45,7 +45,8 @@ target_dir=$(mkdir -p "$target_dir" && cd "$target_dir" && pwd)
 trunk="$tool_root/bin/trunk"
 
 if [[ $skip_tool_install -eq 0 ]]; then
-  cargo install trunk --version 0.21.14 --locked --root "$tool_root"
+  CARGO_TARGET_DIR="$tool_root/target" \
+    cargo install trunk --version 0.21.14 --locked --root "$tool_root"
 fi
 [[ -x "$trunk" ]] || {
   echo "exact Trunk binary is missing: $trunk" >&2
