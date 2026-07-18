@@ -59,12 +59,17 @@ migration, contention, mounted-transport, and remote-profile evidence.
   tenant/seller foreign key.
 - [x] Publish a bounded newest-first owner timeline read through
   `MarketplaceSellerReadPort::list_seller_events`.
+- [x] Commit onboarding review, suspension, and reactivation state, immutable command
+  event, completed receipt, and normalized response snapshot in one transaction.
+- [x] Keep lost-response replay outside event append so one idempotency key produces
+  exactly one lifecycle event.
+- [x] Roll back owner state and the pending receipt when lifecycle event persistence
+  fails.
 
 ## Ownership remaining
 
-- [ ] Route create/profile/onboarding/suspension/reactivation/member writes through
-  atomic state + event + receipt transactions.
-- [ ] Include effective locale in every event-producing command identity.
+- [ ] Route create, profile update, onboarding submit, and member writes through atomic
+  state + event + receipt transactions.
 - [ ] Backfill existing onboarding/suspension prose snapshots and remove mutable
   compatibility columns only after live command event coverage is complete.
 - [ ] Publish seller lifecycle events through the transactional outbox.
@@ -86,19 +91,22 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Publish the in-process provider registry and planned remote-adapter cases.
 - [x] Add source guards for multilingual schema, exact locale resolution, replay,
   conflict, typed response snapshots, transport wiring, immutable event storage,
-  truthful provenance, bounded timeline reads, and root/owner non-bypass rules.
+  truthful provenance, bounded timeline reads, lifecycle completion order, and
+  root/owner non-bypass rules.
+- [x] Execute SQLite proof for one-event replay semantics and event-insert rollback of
+  lifecycle state plus the pending receipt.
 - [x] Aggregate marketplace family and seller transport verifiers into the root npm
   verification entry points.
 
 ## FBA remaining
 
-- [ ] Route seller command writes through immutable event storage atomically.
+- [ ] Extend atomic immutable event production to create/profile/onboarding-submit and
+  member commands.
 - [ ] Compile the provider and GraphQL contracts.
 - [ ] Apply seller/translation/receipt/event migrations on clean and upgraded
   SQLite/PostgreSQL graphs.
-- [ ] Execute lost-response replay, conflicting payload, same-key contention,
-  same-locale upsert contention, lifecycle contention, event atomicity, rollback,
-  exact-locale missing translation, and cross-tenant scenarios.
+- [ ] Execute same-key contention, lifecycle contention, cross-tenant, and PostgreSQL
+  event atomicity scenarios.
 - [ ] Retain timeout, degraded, remote-profile, and fallback execution evidence before
   promoting FBA to `transport_verified`.
 
@@ -133,9 +141,9 @@ migration, contention, mounted-transport, and remote-profile evidence.
 
 1. [x] Add immutable seller lifecycle/moderation event schema, entity, typed DTOs, and
    bounded FBA timeline read.
-2. [ ] Route onboarding review, suspension, and reactivation through atomic
+2. [x] Route onboarding review, suspension, and reactivation through atomic
    state + event + receipt transactions.
-3. [ ] Extend event production to create/profile/member commands.
+3. [ ] Extend event production to create/profile/onboarding-submit/member commands.
 4. [ ] Add event history to native and GraphQL FFA transports.
 5. [ ] Backfill/remove mutable prose snapshots.
 6. [ ] Publish live seller events through the transactional outbox.
