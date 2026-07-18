@@ -28,7 +28,10 @@ COPY --chown=10001:10001 rustok-server /app/rustok-server
 COPY --chown=10001:10001 config /app/config
 
 RUN test -x /app/rustok-server \
-    && find /app/config -type l -print -quit | grep -q . && exit 1 || true
+    && if find /app/config -type l -print -quit | grep -q .; then \
+         echo "release image config must not contain symlinks" >&2; \
+         exit 1; \
+       fi
 
 USER 10001:10001
 EXPOSE 5150
