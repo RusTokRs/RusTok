@@ -1,20 +1,68 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16-bookworm@sha256:05bb94c3949035f4da16815d91b389443f3dbc5db95d65e2cb9b1abbf8565974
     container_name: rustok_db
     environment:
-      POSTGRES_DB: rustok_dev
-      POSTGRES_USER: rustok
-      POSTGRES_PASSWORD: rustok
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rustok -d rustok_dev"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 12
+
+  db-bootstrap:
+    image: postgres:16-bookworm@sha256:05bb94c3949035f4da16815d91b389443f3dbc5db95d65e2cb9b1abbf8565974
+    container_name: rustok_db_bootstrap
+    environment:
+      PGPASSWORD: postgres
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-euo", "pipefail", "-c"]
+    command:
+      - |
+        psql --host db --username postgres --dbname postgres --set ON_ERROR_STOP=1 <<'SQL'
+        DO $$do$$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rustok') THEN
+            CREATE ROLE rustok
+              LOGIN
+              PASSWORD 'rustok'
+              NOSUPERUSER
+              NOCREATEDB
+              NOCREATEROLE
+              NOREPLICATION
+              NOBYPASSRLS
+              CONNECTION LIMIT 20;
+          ELSE
+            ALTER ROLE rustok WITH
+              LOGIN
+              PASSWORD 'rustok'
+              NOSUPERUSER
+              NOCREATEDB
+              NOCREATEROLE
+              NOREPLICATION
+              NOBYPASSRLS
+              CONNECTION LIMIT 20;
+          END IF;
+        END
+        $$do$$;
+        SQL
+        if ! psql --host db --username postgres --dbname postgres --tuples-only --no-align \
+          --command "SELECT 1 FROM pg_database WHERE datname = 'rustok_dev'" | grep -qx 1; then
+          createdb --host db --username postgres --owner rustok rustok_dev
+        fi
+        psql --host db --username postgres --dbname rustok_dev --set ON_ERROR_STOP=1 <<'SQL'
+        REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+        GRANT ALL ON SCHEMA public TO rustok;
+        SQL
+    restart: "no"
 
   iggy:
     image: apache/iggy:0.7.0
