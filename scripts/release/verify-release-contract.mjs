@@ -114,7 +114,12 @@ function releaseSection(changelog, version) {
   }
   const releaseDate = heading[2];
   const timestamp = Date.parse(`${releaseDate}T00:00:00Z`);
-  if (!Number.isFinite(timestamp)) throw new Error(`CHANGELOG.md release ${version} has an invalid date`);
+  if (
+    !Number.isFinite(timestamp) ||
+    new Date(timestamp).toISOString().slice(0, 10) !== releaseDate
+  ) {
+    throw new Error(`CHANGELOG.md release ${version} has an invalid date`);
+  }
   return { body, releaseDate };
 }
 
@@ -188,6 +193,14 @@ function runSelfTest() {
         "1.2.3",
       ),
     /placeholder/,
+  );
+  assert.throws(
+    () =>
+      releaseSection(
+        `# Changelog\n\n## [1.2.3] - 2026-02-31\n\n### Fixed\n- Invalid date fixture.\n`,
+        "1.2.3",
+      ),
+    /invalid date/,
   );
   console.log("✔ release contract verifier self-test passed");
 }
