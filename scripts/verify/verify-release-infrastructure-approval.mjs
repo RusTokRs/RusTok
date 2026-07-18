@@ -11,10 +11,16 @@ const PROTECTED_PATHS = [
   ".github/workflows/release-infrastructure.yml",
   ".github/workflows/hardening-gates.yml",
   ".dockerignore",
+  "apps/admin/Trunk.toml",
+  "apps/admin/index.html",
+  "apps/admin/package.json",
+  "apps/admin/package-lock.json",
+  "apps/admin/scripts/tailwind-build.mjs",
   "apps/server/Dockerfile",
   "apps/server/Dockerfile.release",
   "docs/release/RELEASE_READINESS_CHECKLIST.md",
   "docs/verification/PLATFORM_HARDENING_STATUS_2026-07-18.md",
+  "scripts/build/build-embedded-admin.sh",
   "scripts/release/verify-release-contract.mjs",
   "scripts/release/verify-release-collisions.mjs",
   "scripts/release/generate-spdx-sbom.mjs",
@@ -124,6 +130,10 @@ function runSelfTest() {
   assert(PROTECTED_PATHS.includes(".github/workflows/release-infrastructure.yml"));
   assert(PROTECTED_PATHS.includes(".github/workflows/hardening-gates.yml"));
   assert(PROTECTED_PATHS.includes("scripts/verify/verify-all.sh"));
+  assert(PROTECTED_PATHS.includes("apps/admin/Trunk.toml"));
+  assert(PROTECTED_PATHS.includes("apps/admin/package-lock.json"));
+  assert(PROTECTED_PATHS.includes("apps/admin/scripts/tailwind-build.mjs"));
+  assert(PROTECTED_PATHS.includes("scripts/build/build-embedded-admin.sh"));
   assert(PROTECTED_PATHS.includes("apps/server/Dockerfile.release"));
   assert(PROTECTED_PATHS.includes("docs/release/RELEASE_READINESS_CHECKLIST.md"));
   assert(PROTECTED_PATHS.includes("docs/verification/PLATFORM_HARDENING_STATUS_2026-07-18.md"));
