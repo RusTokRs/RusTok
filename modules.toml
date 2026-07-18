@@ -58,7 +58,8 @@ fulfillment = { crate = "rustok-fulfillment", source = "path", path = "crates/ru
 commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce", depends_on = ["cart", "customer", "product", "region", "pricing", "inventory", "order", "payment", "fulfillment"] }
 marketplace_seller = { crate = "rustok-marketplace-seller", source = "path", path = "crates/rustok-marketplace-seller" }
 marketplace_listing = { crate = "rustok-marketplace-listing", source = "path", path = "crates/rustok-marketplace-listing", depends_on = ["marketplace_seller", "product"] }
-marketplace = { crate = "rustok-marketplace", source = "path", path = "crates/rustok-marketplace", depends_on = ["marketplace_seller", "marketplace_listing"] }
+marketplace_allocation = { crate = "rustok-marketplace-allocation", source = "path", path = "crates/rustok-marketplace-allocation", depends_on = ["order", "marketplace_seller", "marketplace_listing"] }
+marketplace = { crate = "rustok-marketplace", source = "path", path = "crates/rustok-marketplace", depends_on = ["marketplace_seller", "marketplace_listing", "marketplace_allocation"] }
 blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content", "comments", "taxonomy"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content", "taxonomy", "page_builder"] }
 comments = { crate = "rustok-comments", source = "path", path = "crates/rustok-comments" }
