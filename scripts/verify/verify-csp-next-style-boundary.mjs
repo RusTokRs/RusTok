@@ -17,8 +17,8 @@ const excludedDirectories = new Set([
   "node_modules",
   "out",
 ]);
-const maxRegisteredFiles = 10;
-const maxStyleAttributeSites = 60;
+const maxRegisteredFiles = 7;
+const maxStyleAttributeSites = 57;
 const maxRuntimeStyleElements = 1;
 const failures = [];
 
@@ -291,6 +291,30 @@ requireMarkers("apps/server/src/middleware/security_headers.rs", [
   "style-src-attr 'none'",
   "content-security-policy-report-only",
 ]);
+requireMarkers("apps/next-admin/src/shared/ui/forms/form-textarea.tsx", [
+  "const TEXTAREA_RESIZE_CLASSES",
+  "NonNullable<TextareaConfig['resize']>",
+  "className={TEXTAREA_RESIZE_CLASSES[resize]}",
+]);
+forbidMarkers("apps/next-admin/src/shared/ui/forms/form-textarea.tsx", [
+  "style={{ resize }}",
+]);
+requireMarkers("apps/next-admin/src/features/overview/components/bar-graph-skeleton.tsx", [
+  "const BAR_HEIGHT_CLASSES = [",
+  "BAR_HEIGHT_CLASSES.map",
+  "className={`w-full ${heightClass}`}",
+]);
+forbidMarkers("apps/next-admin/src/features/overview/components/bar-graph-skeleton.tsx", [
+  "Math.random",
+  "style=",
+]);
+requireMarkers("apps/next-admin/src/shared/ui/shadcn/sonner.tsx", [
+  "type RusTokToasterProps = Omit<ToasterProps, 'style'>",
+  "[--normal-bg:var(--popover)]",
+  "[--normal-text:var(--popover-foreground)]",
+  "[--normal-border:var(--border)]",
+]);
+forbidMarkers("apps/next-admin/src/shared/ui/shadcn/sonner.tsx", ["style="]);
 requireMarkers("apps/next-admin/src/shared/ui/shadcn/chart.tsx", [
   "<style",
   "dangerouslySetInnerHTML",
