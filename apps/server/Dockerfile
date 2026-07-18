@@ -15,6 +15,7 @@ COPY --from=node-runtime /usr/local /usr/local
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         ca-certificates \
+        curl \
         libssl-dev \
         pkg-config \
     && rm -rf /var/lib/apt/lists/* \
@@ -29,11 +30,10 @@ COPY . .
 RUN bash scripts/build/build-embedded-admin.sh \
       --tool-root /opt/trunk \
       --target-dir /workspace/target/admin-assets \
-      --skip-tool-install \
-    && cargo install --locked cargo-watch
+      --skip-tool-install
 WORKDIR /workspace/apps/server
 EXPOSE 5150
-CMD ["cargo", "watch", "-x", "run --locked -p rustok-server --bin rustok-server"]
+CMD ["cargo", "run", "--locked", "-p", "rustok-server", "--bin", "rustok-server"]
 
 FROM base AS builder
 
