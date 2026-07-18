@@ -68,7 +68,7 @@ requireMarkers(checklistPath, [
   "Do not overwrite the version tag with a different digest",
   "Treat the release as immutable",
   "A checkbox without a durable run, artifact or operator record is not release evidence.",
-  `1. \`rustok-server-VERSION-linux-x86_64.tar.gz\`
+  `  1. \`rustok-server-VERSION-linux-x86_64.tar.gz\`
   2. \`rustok-server-VERSION.spdx.json\`
   3. \`container-image.json\`
   4. \`release-manifest.json\`
