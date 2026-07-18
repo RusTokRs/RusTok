@@ -66,8 +66,32 @@ function requireOccurrenceCount(relativePath, marker, expected) {
   }
 }
 
-const workflow = ".github/workflows/release.yml";
-requireMarkers(workflow, [
+function actionReferences(relativePath) {
+  if (!requireFile(relativePath)) return [];
+  return [...read(relativePath).matchAll(/^\s*uses:\s*([^\s#]+)\s*$/gm)].map(
+    (match) => match[1],
+  );
+}
+
+function requireGithubOwnedActions(relativePath, requiredActions) {
+  const references = actionReferences(relativePath);
+  for (const reference of references) {
+    if (!reference.startsWith("actions/")) {
+      failures.push(`${relativePath}: workflow may only use GitHub-owned actions, found ${reference}`);
+    }
+    if (!/@v\d+$/.test(reference)) {
+      failures.push(`${relativePath}: action reference must use an explicit major release tag, found ${reference}`);
+    }
+  }
+  for (const reference of requiredActions) {
+    if (!references.includes(reference)) {
+      failures.push(`${relativePath}: missing required action ${reference}`);
+    }
+  }
+}
+
+const releaseWorkflow = ".github/workflows/release.yml";
+requireMarkers(releaseWorkflow, [
   "name: Release",
   'tags:\n      - "v*.*.*"',
   "cancel-in-progress: false",
@@ -76,6 +100,10 @@ requireMarkers(workflow, [
   ".verification.verified",
   "git merge-base --is-ancestor",
   "refs/remotes/origin/main",
+  "Require repository release immutability",
+  "repos/${GITHUB_REPOSITORY}/immutable-releases",
+  "--jq '.enabled'",
+  "Repository immutable releases must be enabled before publishing a tag",
   "verify-release-contract.mjs",
   "--workspace Cargo.toml",
   "--lock Cargo.lock",
@@ -112,11 +140,20 @@ requireMarkers(workflow, [
   "attestations: write",
   "artifact-metadata: write",
 ]);
-requireOccurrenceCount(workflow, "cargo build --locked --release -p rustok-server --bin rustok-server", 2);
-requireOccurrenceCount(workflow, "rustup toolchain install 1.96.0 --profile minimal --no-self-update", 2);
-requireOccurrenceCount(workflow, "actions/attest@v4", 3);
-requireOccurrenceCount(workflow, "persist-credentials: false", 6);
-forbidMarkers(workflow, [
+requireOccurrenceCount(
+  releaseWorkflow,
+  "cargo build --locked --release -p rustok-server --bin rustok-server",
+  2,
+);
+requireOccurrenceCount(
+  releaseWorkflow,
+  "rustup toolchain install 1.96.0 --profile minimal --no-self-update",
+  2,
+);
+requireOccurrenceCount(releaseWorkflow, "actions/attest@v4", 3);
+requireOccurrenceCount(releaseWorkflow, "persist-credentials: false", 6);
+requireOccurrenceCount(releaseWorkflow, "repos/${GITHUB_REPOSITORY}/immutable-releases", 1);
+forbidMarkers(releaseWorkflow, [
   "workflow_dispatch:",
   "pull_request:",
   "pull_request_target:",
@@ -129,34 +166,71 @@ forbidMarkers(workflow, [
   "contents: write\n      packages: write\n      id-token: read",
   "gh release upload",
   "--clobber",
+  "immutable-releases\" >/dev/null || true",
 ]);
-
-if (requireFile(workflow)) {
-  const source = read(workflow);
-  const actionReferences = [...source.matchAll(/^\s*uses:\s*([^\s#]+)\s*$/gm)].map(
-    (match) => match[1],
-  );
-  for (const reference of actionReferences) {
-    if (!reference.startsWith("actions/")) {
-      failures.push(`${workflow}: release workflow may only use GitHub-owned actions, found ${reference}`);
-    }
-    if (!/@v\d+$/.test(reference)) {
-      failures.push(`${workflow}: action reference must use an explicit major release tag, found ${reference}`);
-    }
-  }
-  const requiredActions = new Set([
+requireGithubOwnedActions(
+  releaseWorkflow,
+  new Set([
     "actions/checkout@v7",
     "actions/setup-node@v6",
     "actions/upload-artifact@v7",
     "actions/download-artifact@v5",
     "actions/attest@v4",
-  ]);
-  for (const reference of requiredActions) {
-    if (!actionReferences.includes(reference)) {
-      failures.push(`${workflow}: missing required action ${reference}`);
-    }
-  }
-}
+  ]),
+);
+
+const infrastructureWorkflow = ".github/workflows/release-infrastructure.yml";
+requireMarkers(infrastructureWorkflow, [
+  "name: Release Infrastructure",
+  "pull_request_target:",
+  "workflow_dispatch:",
+  "allow_infrastructure_changes:",
+  "permissions:\n  contents: read",
+  "BASE_REPOSITORY:",
+  "HEAD_REPOSITORY:",
+  "BASE_REF:",
+  "HEAD_REF:",
+  "Release supply-chain policy",
+  "runs-on: ubuntu-24.04",
+  "timeout-minutes: 10",
+  "Checkout base policy source",
+  "Checkout proposed release source",
+  "persist-credentials: false",
+  "Verify base approval policy fixtures",
+  "base/scripts/verify/verify-release-infrastructure-approval.mjs",
+  "--self-test",
+  "Require approval for release infrastructure changes",
+  "release-infra-approved",
+  "--base-dir \"$GITHUB_WORKSPACE/base\"",
+  "--head-dir \"$GITHUB_WORKSPACE/head\"",
+  "--github-output \"$GITHUB_OUTPUT\"",
+  "Verify unchanged head with base-owned release policy",
+  "steps.policy.outputs.changed == 'false'",
+  "base/scripts/verify/verify-release-supply-chain-contract.mjs",
+  "--root \"$GITHUB_WORKSPACE/head\"",
+  "Verify explicitly approved tooling fixtures",
+  "steps.policy.outputs.changed == 'true'",
+  "head/scripts/verify/verify-release-tooling-self-test.mjs",
+  "Verify explicitly approved head policy",
+  "head/scripts/verify/verify-release-supply-chain-contract.mjs",
+]);
+requireOccurrenceCount(infrastructureWorkflow, "persist-credentials: false", 2);
+requireOccurrenceCount(infrastructureWorkflow, "steps.policy.outputs.changed == 'true'", 2);
+forbidMarkers(infrastructureWorkflow, [
+  "permissions:\n  contents: write",
+  "packages: write",
+  "id-token: write",
+  "attestations: write",
+  "artifact-metadata: write",
+  "secrets:",
+  "continue-on-error:",
+  "runs-on: ubuntu-latest",
+  "pull_request:\n",
+]);
+requireGithubOwnedActions(
+  infrastructureWorkflow,
+  new Set(["actions/checkout@v7", "actions/setup-node@v6"]),
+);
 
 requireMarkers("scripts/release/verify-release-contract.mjs", [
   "CANONICAL_SEMVER",
@@ -232,7 +306,10 @@ requireMarkers("apps/server/Dockerfile", [
   "USER 10001:10001",
   'ENTRYPOINT ["/app/rustok-server"]',
 ]);
-forbidMarkers("apps/server/Dockerfile", ["postgresql-client", "cargo build --release --bin rustok-server"]);
+forbidMarkers("apps/server/Dockerfile", [
+  "postgresql-client",
+  "cargo build --release --bin rustok-server",
+]);
 
 requireMarkers(".dockerignore", [
   ".git",
@@ -266,6 +343,23 @@ requireMarkers("scripts/verify/verify-release-infra-self-test.mjs", [
   '"--self-test"',
 ]);
 
+requireMarkers(".github/workflows/hardening-gates.yml", [
+  "Verify release tooling fixtures",
+  "verify-release-tooling-self-test.mjs",
+  "Verify release infrastructure approval fixtures",
+  "verify-release-infra-self-test.mjs",
+  "Verify release supply-chain gate structure",
+  "verify-release-supply-chain-contract.mjs",
+]);
+requireMarkers("scripts/verify/verify-all.sh", [
+  "release-tooling-self-test  Verify deterministic release tooling fixtures",
+  "release-infra-self-test  Verify release-infrastructure approval policy fixtures",
+  "release-supply-chain-contract  Verify signed, reproducible and attested release structure",
+  "verify-release-tooling-self-test.mjs:Release Tooling Fixtures",
+  "verify-release-infra-self-test.mjs:Release Infrastructure Approval Fixtures",
+  "verify-release-supply-chain-contract.mjs:Release Supply-chain Gate Structure",
+]);
+
 if (failures.length > 0) {
   console.error(`Release supply-chain contract verification failed for ${repoRoot}:`);
   failures.forEach((failure) => console.error(`✗ ${failure}`));
@@ -273,5 +367,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `✔ signed SemVer tags, reproducible archives, SPDX SBOM, checksums, attestations, GHCR publication and immutable release assets are structurally bound in ${repoRoot}`,
+  `✔ signed SemVer tags, immutable releases, reproducible archives, SPDX SBOM, checksums, attestations, GHCR publication and base-owned release policy are structurally bound in ${repoRoot}`,
 );
