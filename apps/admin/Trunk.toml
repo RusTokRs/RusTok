@@ -8,7 +8,8 @@ ignore = ["./dist"]
 
 [[hooks]]
 stage = "post_build"
-command = "scripts\\tailwind-build.cmd"
+command = "node"
+command_arguments = ["scripts/tailwind-build.mjs"]
 
 [[proxy]]
 backend = "http://127.0.0.1:5150/api/"
