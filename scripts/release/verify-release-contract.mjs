@@ -51,10 +51,21 @@ function parseReleaseTag(tag) {
 }
 
 function sectionValue(source, section, key) {
-  const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const sectionMatch = new RegExp(`^\\[${escaped}]\\s*$([\\s\\S]*?)(?=^\\[|\\Z)`, "m").exec(source);
-  if (!sectionMatch) throw new Error(`missing [${section}] section`);
-  const keyMatch = new RegExp(`^${key}\\s*=\\s*"([^"]+)"\\s*$`, "m").exec(sectionMatch[1]);
+  const lines = source.replaceAll("\r\n", "\n").split("\n");
+  const heading = `[${section}]`;
+  const start = lines.findIndex((line) => line.trim() === heading);
+  if (start === -1) throw new Error(`missing [${section}] section`);
+  const duplicate = lines.findIndex((line, index) => index > start && line.trim() === heading);
+  if (duplicate !== -1) throw new Error(`duplicate [${section}] section`);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^\s*\[[^\]]+]\s*$/.test(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+  const body = lines.slice(start + 1, end).join("\n");
+  const keyMatch = new RegExp(`^${key}\\s*=\\s*"([^"]+)"\\s*$`, "m").exec(body);
   if (!keyMatch) throw new Error(`[${section}] must define ${key} as a quoted string`);
   return keyMatch[1].trim();
 }
@@ -152,6 +163,11 @@ function runSelfTest() {
   assert.equal(result.version, "1.2.3-rc.1");
   assert.equal(result.prerelease, "rc.1");
   assert.equal(result.releaseDate, "2026-07-18");
+  assert.equal(workspaceVersion("[workspace.package]\nversion = \"9.8.7\"\n"), "9.8.7");
+  assert.throws(
+    () => workspaceVersion("[workspace.package]\nversion = \"1.0.0\"\n[workspace.package]\nversion = \"2.0.0\"\n"),
+    /duplicate/,
+  );
   assert.throws(() => parseReleaseTag("1.2.3"), /start with v/);
   assert.throws(() => parseReleaseTag("v01.2.3"), /canonical SemVer/);
   assert.throws(() => parseReleaseTag("v1.2.3+build.1"), /canonical SemVer/);
