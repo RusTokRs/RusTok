@@ -9,9 +9,9 @@ status: active
 
 ## Purpose
 
-This inventory defines the target browser policy, the report collection boundary and the evidence required before the UI CSP can remove the remaining inline-style-attribute allowance from enforcement. Inline scripts and style elements already require a per-response nonce, inline event handlers are blocked, `unsafe-eval` is prohibited and production connections are HTTPS/WSS-only.
+This inventory defines the target browser policy, the report collection boundary and the evidence required before the UI CSP can remove the remaining inline-style-attribute allowance from enforcement. Inline scripts and trusted style elements already require a per-response nonce, inline event handlers are blocked, `unsafe-eval` is prohibited and production connections are HTTPS/WSS-only.
 
-No violation in this document is an automatic allowlist request. The preferred resolution is to remove the dependency, move code into a same-origin static asset, attach a per-response nonce/hash to a trusted element, or replace a style attribute with a reviewed CSS class, native element attribute or SVG geometry contract.
+No violation in this document is an automatic allowlist request. The preferred resolution is to remove the dependency, move code into a same-origin static asset, attach a per-response nonce/hash to a trusted element, or replace a style attribute with a reviewed CSS class, native element attribute, SVG geometry contract or bounded DOM adapter.
 
 ## Collection Contract
 
@@ -49,7 +49,7 @@ The existing Prometheus family `rustok_module_errors_total` records the same bou
 | `script-src` | `'self' 'nonce-<per-response>'` | Only same-origin external scripts and explicitly trusted nonce-bearing inline scripts; inline event handlers and eval are forbidden |
 | `script-src-attr` | `'none'` | Inline event-handler attributes are forbidden |
 | `style-src` | `'self' 'nonce-<per-response>'` | Only same-origin stylesheets and explicitly trusted nonce-bearing style elements |
-| `style-src-attr` | `'none'` | Target state forbids inline style attributes; migrate them to reviewed classes, native attributes or SVG geometry |
+| `style-src-attr` | `'none'` | Target state forbids inline style attributes; migrate them to reviewed classes, native attributes, SVG geometry or bounded adapters |
 | `img-src` | `'self' data: blob: https:` | Remote images remain HTTPS-only |
 | `font-src` | `'self' data:` | No remote font origin is currently approved |
 | `connect-src` | `'self' https: wss:` | Production permits only secure HTTP and WebSocket connections |
@@ -68,6 +68,7 @@ The existing Prometheus family `rustok_module_errors_total` records the same bou
 - The standalone admin middleware inserts the same nonce type into Axum request extensions, copies it into the Leptos render context and applies it to the transitional auth bootstrap script.
 - The classic standalone admin shell intentionally contains no `HydrationScripts`, `AutoReload` or inline style element producer.
 - Missing nonce state fails closed to the API deny policy rather than restoring a blanket `unsafe-inline` source.
+- The Next chart adapter still creates one runtime `<style>` element without a demonstrated host nonce path. It remains registered migration debt and blocks strict promotion.
 
 ## Connection Profile Boundary
 
@@ -83,50 +84,77 @@ The enforced UI policies now isolate their remaining exception to:
 
 - `style-src-attr 'unsafe-inline'`.
 
-The broader `style-src 'unsafe-inline'` source, `script-src 'unsafe-inline'`, `unsafe-eval`, plaintext HTTP and production plaintext WebSocket have been removed from enforcement and are protected by the CSP verification gate. The remaining attribute-level entry is migration debt, not an approved permanent production exception. The strict main-server report-only policy uses `style-src-attr 'none'` to expose the affected components.
+The broader `style-src 'unsafe-inline'` source, `script-src 'unsafe-inline'`, `unsafe-eval`, plaintext HTTP and production plaintext WebSocket have been removed from enforcement and are protected by CSP verification gates. The remaining attribute-level entry is migration debt, not an approved permanent production exception. The strict main-server report-only policy already uses `style-src-attr 'none'` to expose affected components.
 
-The machine-readable register is `docs/security/csp-inline-style-attribute-exceptions.json`. It now records exactly **2 source sites across 2 Rust-hosted UI files**, down from 15 sites across 7 files, and must be reviewed no later than **2026-08-14**. The verification gate fails on an unregistered file, a changed occurrence count, missing constraint evidence, stale entries, an expired review date or an increase above the 2-site/2-file ratchet.
+### Rust-hosted and classic admin boundary
 
-| Source | Sites | Reviewed constraint | Exit path |
-|---|---:|---|---|
-| `apps/admin/src/features/modules/components/modules_list.rs` | 1 | Percent width is formatted from typed `BuildJob.progress: i32`, never from a CSS string | Move to a native progress or finite class contract |
-| `crates/rustok-forum/admin/src/ui/leptos.rs` | 1 | The entity hook rejects invalid colors before persistence, and the admin JSON boundary normalizes valid hex tokens again | Reuse the finite storefront palette class |
+`docs/security/csp-inline-style-attribute-exceptions.json` is now empty. Its gate observes exactly **0 Rust-hosted style attributes across 0 files** and has a non-increasing `0/0` ratchet.
 
-Completed attribute migrations in this batch:
+The last Rust sites were removed by:
 
-- the unreferenced legacy `editor/admin_canvas.rs` duplicate was removed after confirming it had no `mod`, `#[path]` or source reference;
-- modular layer indentation now uses a bounded nine-step Tailwind class scale and caps deeper trees at the final class;
-- hover, selection and insertion overlays now use SVG `x`, `y`, `width` and `height` attributes;
-- resize preview geometry now uses an SVG `<rect>`;
-- the eight resize handles now use SVG `<circle>` positions and a closed cursor-class mapping while retaining pointer capture;
-- storefront forum accents now map validated colors to a finite eight-color utility-class palette or reviewed gradient fallback and no longer emit a runtime CSS declaration;
-- Page Builder custom viewport width, height and continuous zoom now use an SVG `viewBox` plus an explicit XHTML `<foreignObject>` integration point; the iframe retains native width/height attributes and no longer requires CSS sizing or `transform:scale`.
+- mapping the forum admin category accent to a finite class before attaching it to the DOM;
+- replacing the admin module build bar with native `<progress max="100">` and clamping the numeric value to `0..=100`.
 
-The static modular Page Builder three-column layout had already moved from an inline attribute to a Tailwind arbitrary grid class and remains outside the exception register.
+The bundled classic admin bootstrap no longer writes `document.documentElement.style`. It toggles only the `dark` class, while `apps/admin/input.css` owns `color-scheme: light` and `color-scheme: dark`; the document declares `<meta name="color-scheme" content="light dark">`.
 
-Forum category accents previously accepted an arbitrary persisted CSS fragment. The SeaORM `before_save` hook rejects any non-hex category color before insert or update. `rustok-ui-core::normalize_css_hex_color` and both Rust UI transport models independently retain the same strict `#RGB`, `#RGBA`, `#RRGGBB` or `#RRGGBBAA` grammar. `rustok-ui-core::css_hex_accent_class` then converts valid tokens into one of the reviewed `rose`, `amber`, `emerald`, `cyan`, `sky`, `violet`, `fuchsia` or `slate` classes; invalid and absent values use the fixed sky-to-amber gradient. The storefront view model exposes only the selected `'static` class. The remaining admin attribute must migrate to the same policy.
+### Next/React boundary
+
+`docs/security/csp-next-style-exceptions.json` records exactly **60 JSX style props across 10 Next files** and **1 runtime style element**. Review is due no later than **2026-08-15**.
+
+| Surface | Files | JSX style props | Runtime style elements | Primary exit path |
+|---|---:|---:|---:|---|
+| Next storefront search package | 1 | 43 | 0 | Shared storefront classes and explicit state variants |
+| Next admin design-system and shell | 9 | 17 | 1 | Native elements, finite classes, data attributes, bounded geometry adapters and a nonce-aware or finite-palette chart boundary |
+| **Total** | **10** | **60** | **1** | Empty the register before strict promotion |
+
+The Next gate:
+
+- scans every `.tsx` and `.jsx` file under `apps/next-admin` and `apps/next-frontend`;
+- rejects unregistered files, count changes, stale entries, duplicate paths and expired review dates;
+- caps the baseline at `60` style props, `10` files and `1` runtime style element;
+- globally forbids direct DOM `.style` writes in those source roots;
+- protects the class-only classic admin color-scheme bootstrap.
+
+The runtime chart `<style dangerouslySetInnerHTML>` is tracked separately from JSX style props because it is governed by nonce-bearing `style-src`, not only `style-src-attr`.
+
+## Completed Attribute Migrations
+
+- the unreferenced legacy Page Builder `editor/admin_canvas.rs` duplicate was removed after confirming it had no `mod`, `#[path]` or source reference;
+- modular layer indentation uses a bounded nine-step Tailwind class scale and caps deeper trees at the final class;
+- hover, selection and insertion overlays use SVG `x`, `y`, `width` and `height` attributes;
+- resize preview geometry uses an SVG `<rect>`;
+- the eight resize handles use SVG `<circle>` positions and a closed cursor-class mapping while retaining pointer capture;
+- Page Builder custom viewport width, height and continuous zoom use SVG `viewBox`/`foreignObject` geometry with native iframe dimensions rather than CSS sizing or `transform:scale`;
+- storefront and forum-admin category accents map validated colors to a finite eight-color utility-class palette or reviewed gradient fallback and no longer attach a CSS declaration to the DOM;
+- the admin build progress indicator uses native progress semantics;
+- the classic admin theme bootstrap uses classes and stylesheet-owned color-scheme declarations rather than DOM style writes.
+
+The static modular Page Builder three-column layout had already moved from an inline attribute to a Tailwind arbitrary grid class and remains outside the exception registers.
 
 ## Triage Rules
 
 1. Group reports by normalized directive and origin.
-2. Reproduce each unique violation in embedded admin, standalone admin and storefront browser smoke tests.
+2. Reproduce each unique violation in embedded admin, standalone admin, Next admin and storefront browser smoke tests.
 3. Classify it as application code, framework bootstrap, third-party dependency or malicious/noise traffic.
-4. Replace each required style attribute with a reviewed class, native attribute, SVG geometry contract or another non-inline representation.
+4. Replace each required style attribute with a reviewed class, native attribute, SVG geometry contract, bounded DOM adapter or another non-inline representation.
 5. Remove or replace a source before considering an allowlist.
 6. Any new external origin requires a security review, named owner, exact resource purpose and expiry/review date.
 7. Never allowlist `unsafe-eval`; replace the dependency or execution path.
 8. Never copy a full reported URL, query, fragment or script sample into issues or logs.
 9. Never add a nonce through blanket post-processing of tenant or user-authored HTML.
 10. Do not advertise a report endpoint from a deployment process that does not own the bounded collector.
-11. Do not add a new Rust-hosted `style=` source site without updating the register with a narrow grammar, owner and removal plan.
+11. Do not add a new Rust-hosted `style=` source site; its ratchet is zero.
+12. Do not add a new Next style-prop file, runtime style element or direct DOM style write without failing and deliberately revising the migration boundary.
 
 ## Enforcement Exit Criteria
 
 The enforced policy may be promoted to the strict target only when:
 
-- browser smoke runs for embedded admin, standalone admin and storefront produce no unexplained `style-src-attr` violations;
-- every registered inline style attribute has moved to a reviewed class or another non-inline contract;
-- the exception register is empty and the gate observes zero Rust-hosted source sites;
+- browser smoke runs for embedded admin, standalone admin, Next admin and storefront produce no unexplained `style-src-attr` or `style-src` violations;
+- the Rust exception register remains empty and its gate observes zero sites;
+- the Next exception register is empty and the gate observes zero JSX style props;
+- every runtime style element is removed or receives the exact request nonce through a reviewed host boundary;
+- direct DOM style writes remain at zero across reviewed UI source roots;
 - no production code path requires `eval` or equivalent string compilation;
 - the observed external-origin set matches this inventory;
 - the CSP reporting endpoint remains bounded and unauthenticated without inheriting tenant context;
@@ -148,4 +176,5 @@ cargo test -p rustok-server middleware::csp_reports
 cargo test -p rustok-server middleware::security_headers
 node scripts/verify/verify-csp-reporting-contract.mjs
 node scripts/verify/verify-csp-inline-style-exceptions.mjs
+node scripts/verify/verify-csp-next-style-boundary.mjs
 ```
