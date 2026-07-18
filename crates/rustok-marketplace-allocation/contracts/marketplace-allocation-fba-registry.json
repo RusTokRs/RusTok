@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "module": "marketplace_allocation",
+  "family": "marketplace",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "marketplace.allocation.v1",
+  "ownership": {
+    "allocation_table": "marketplace_order_allocations",
+    "receipt_table": "marketplace_allocation_receipts",
+    "one_allocation_per_order_line": true,
+    "identity_scope": [
+      "tenant_id",
+      "order_line_item_id"
+    ],
+    "cross_module_foreign_keys": false,
+    "amount_representation": "signed_64_bit_minor_units",
+    "commercial_snapshot_immutable": true
+  },
+  "ports": [
+    {
+      "name": "MarketplaceAllocationReadPort",
+      "operations": [
+        "read_allocation_by_line",
+        "list_allocations_by_order",
+        "list_allocations_by_seller"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "deadline_required": true,
+      "idempotency_required": false
+    },
+    {
+      "name": "MarketplaceAllocationCommandPort",
+      "operations": [
+        "allocate_order_lines"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "deadline_required": true,
+      "idempotency_required": true
+    }
+  ],
+  "allocate_order_lines": {
+    "max_lines": 500,
+    "atomic_batch": true,
+    "request_identity": "canonical_sha256_v1",
+    "request_identity_includes": [
+      "actor_id",
+      "order_id",
+      "currency_code",
+      "normalized_lines"
+    ],
+    "receipt_identity_scope": [
+      "tenant_id",
+      "idempotency_key"
+    ],
+    "lost_response_replay_returns_saved_result": true,
+    "conflicting_payload": "marketplace_allocation.idempotency_conflict",
+    "partial_allocation_allowed": false
+  },
+  "line_invariants": {
+    "quantity_positive": true,
+    "currency_uppercase_ascii_length": 3,
+    "amounts_non_negative": true,
+    "subtotal_formula": "unit_amount * quantity",
+    "total_formula": "subtotal_amount - discount_amount + tax_amount",
+    "listing_terms_version_positive": true,
+    "duplicate_line_rejected": true,
+    "existing_line_reallocation_rejected": true
+  },
+  "snapshot_fields": [
+    "seller_id",
+    "listing_id",
+    "master_product_id",
+    "master_variant_id",
+    "listing_terms_version",
+    "pricing_reference",
+    "inventory_reference",
+    "fulfillment_profile_slug",
+    "quantity",
+    "currency_code",
+    "unit_amount",
+    "subtotal_amount",
+    "discount_amount",
+    "tax_amount",
+    "total_amount"
+  ],
+  "known_gaps": [
+    "platform composition registration",
+    "order checkout composition",
+    "allocation cancellation lifecycle",
+    "external event contracts and outbox",
+    "postgres contention evidence",
+    "admin and seller-facing projections"
+  ]
+}
