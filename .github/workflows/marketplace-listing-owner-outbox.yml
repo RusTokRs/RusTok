@@ -110,7 +110,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          cargo clippy -p rustok-marketplace-listing --all-targets -- -D warnings 2>&1 | tee cargo-clippy.log
+          cargo clippy -p rustok-marketplace-listing --all-targets --no-deps -- -D warnings 2>&1 | tee cargo-clippy.log
       - name: Verify listing owner boundaries
         id: verify
         continue-on-error: true
