@@ -78,11 +78,15 @@ requireMarkers("crates/rustok-migrations/tests/support/backfill_fixtures.rs", [
   "pub async fn apply_setup",
   "execute_unprepared(&fixture.setup_sql)",
   "pub async fn assert_results",
-  'row.try_get("", "passed")',
+  "query_all(Statement::from_string(",
+  "assertion must return exactly one row",
+  'rows[0].try_get("", "passed")',
   "assertion must return boolean column `passed`",
   "schema_version must be 1",
   "fixtures must be an array",
+  "fixtures[{index}].migration duplicates",
   "fixture_document_requires_assertion_sql",
+  "fixture_document_rejects_duplicate_migrations",
 ]);
 
 const smokeScript = "scripts/verify/verify-migration-smoke.sh";
@@ -255,5 +259,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ append-only planning, declared backfills, PostgreSQL fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
+  "✔ append-only planning, declared backfills, strict fixture assertions, PostgreSQL fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
 );
