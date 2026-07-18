@@ -14,6 +14,11 @@ on:
         description: Head git ref or commit
         required: true
         default: main
+      allow_exception_changes:
+        description: Explicitly approve compatibility exception register changes
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -62,6 +67,17 @@ jobs:
 
       - name: Verify base comparator fixtures
         run: node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility.mjs" --self-test
+
+      - name: Require approval for compatibility exception changes
+        env:
+          PR_LABELS_JSON: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
+          EXPLICIT_APPROVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_exception_changes || false }}
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility-exception-approval.mjs"
+          --base-file "$GITHUB_WORKSPACE/base/docs/api/compatibility-exceptions.json"
+          --head-file "$GITHUB_WORKSPACE/head/docs/api/compatibility-exceptions.json"
+          --labels-json "$PR_LABELS_JSON"
+          --explicitly-approved "$EXPLICIT_APPROVAL"
 
       - name: Validate head compatibility exceptions with base policy
         run: >-
