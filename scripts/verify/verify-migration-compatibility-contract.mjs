@@ -35,6 +35,15 @@ function requireMarkers(relativePath, markers) {
   }
 }
 
+function requireOccurrenceCount(relativePath, marker, expected) {
+  if (!requireFile(relativePath)) return;
+  const source = read(relativePath);
+  const actual = source.split(marker).length - 1;
+  if (actual !== expected) {
+    failures.push(`${relativePath}: expected ${expected} occurrence(s) of ${marker}, found ${actual}`);
+  }
+}
+
 function forbidMarkers(relativePath, markers) {
   if (!requireFile(relativePath)) return;
   const source = read(relativePath);
@@ -122,7 +131,7 @@ requireMarkers("scripts/verify/verify-migration-plan-self-test.mjs", [
 
 requireMarkers("docs/migrations/backfill-contracts.json", [
   '"schema_version": 1',
-  '"contracts": []',
+  '"contracts":',
 ]);
 requireMarkers("scripts/verify/verify-migration-backfill-contracts.mjs", [
   "function appendedMigrations",
@@ -206,6 +215,9 @@ requireMarkers(workflow, [
   'RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"',
   "Checkout base migration source",
   "Checkout head migration source",
+  "Create bounded migration test role",
+  "postgres://rustok_migration:rustok_migration@localhost:5432/postgres",
+  "CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8",
   "Download selected backfill fixtures",
   "actions/download-artifact@v5",
   "Verify selected backfill fixtures",
@@ -223,10 +235,17 @@ requireMarkers(workflow, [
   "target/migration-base",
   "target/migration-head",
 ]);
+requireOccurrenceCount(workflow, "Create bounded migration test role", 2);
+requireOccurrenceCount(
+  workflow,
+  "CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8",
+  2,
+);
 forbidMarkers(workflow, [
   "\n  pull_request:\n",
   "continue-on-error: true",
   "|| true",
+  "RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@",
   'head/scripts/verify/verify-migration-plan-compatibility.mjs',
   'head/scripts/verify/verify-migration-backfill-contracts.mjs',
   'bash "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-smoke.sh"',
@@ -259,5 +278,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ append-only planning, declared backfills, strict fixture assertions, PostgreSQL fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
+  "✔ append-only planning, declared backfills, strict fixtures, bounded PostgreSQL roles, fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
 );
