@@ -70,7 +70,7 @@ requireMarkers(workflow, [
   "name: Rust-hosted Browser Smoke",
   "permissions:\n  contents: read",
   "runs-on: ubuntu-24.04",
-  "image: postgres:16",
+  "image: postgres:16-bookworm@sha256:05bb94c3949035f4da16815d91b389443f3dbc5db95d65e2cb9b1abbf8565974",
   "Create bounded PostgreSQL smoke role",
   "CREATEDB",
   "NOSUPERUSER",
@@ -102,6 +102,7 @@ forbidMarkers(workflow, [
   "secrets:",
   "continue-on-error:",
   "runs-on: ubuntu-latest",
+  "image: postgres:16\n",
   "postgres://postgres:postgres@",
   "RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres",
   "cargo run -p rustok-server",
@@ -228,5 +229,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ commit-pinned Next and migration-prepared Rust-host browser evidence are structurally bound with bounded PostgreSQL and strict CSP assertions",
+  "✔ commit-pinned Next and migration-prepared Rust-host browser evidence are structurally bound with digest-pinned PostgreSQL, bounded role and strict CSP assertions",
 );
