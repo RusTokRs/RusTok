@@ -6,11 +6,16 @@ edition = "2021"
 license = "BUSL-1.1"
 description.workspace = true
 
+[[bin]]
+name = "rustok-migrate"
+path = "src/bin/rustok_migrate.rs"
+
 [dependencies]
 rustok-api.workspace = true
 sea-orm-migration.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+tokio.workspace = true
 # Platform-core dependencies
 rustok-core.workspace = true
 rustok-modules.workspace = true
@@ -45,4 +50,3 @@ async-trait.workspace = true
 rust_decimal.workspace = true
 rustok-test-utils.workspace = true
 serde_json.workspace = true
-tokio.workspace = true
