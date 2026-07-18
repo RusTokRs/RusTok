@@ -1,0 +1,80 @@
+name: One-off Wire Migration Backfill Master
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  wire-backfill-master:
+    if: >-
+      github.event.issue.title == '[automation] wire migration backfill master' &&
+      (github.event_name == 'issues' || github.event.comment.body == '/wire-migration-backfill-master')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git pull --rebase origin main
+      - name: Apply exact master wiring
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/verify/verify-all.sh")
+          source = path.read_text()
+
+          def replace_once(old: str, new: str) -> None:
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one verify-all match, found {count}: {old!r}")
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              '    echo "  migration-plan-self-test  Verify append-only migration-plan comparator fixtures"\n'
+              '    echo "  migration-infra-self-test  Verify migration-harness approval policy fixtures"\n',
+              '    echo "  migration-plan-self-test  Verify append-only migration-plan comparator fixtures"\n'
+              '    echo "  migration-backfill-self-test  Verify appended-migration backfill contract fixtures"\n'
+              '    echo "  migration-infra-self-test  Verify migration-harness approval policy fixtures"\n',
+          )
+          replace_once(
+              '    "verify-migration-plan-self-test.mjs:Migration Plan Comparator Fixtures"\n'
+              '    "verify-migration-infra-self-test.mjs:Migration Infrastructure Approval Fixtures"\n',
+              '    "verify-migration-plan-self-test.mjs:Migration Plan Comparator Fixtures"\n'
+              '    "verify-migration-backfill-self-test.mjs:Migration Backfill Contract Fixtures"\n'
+              '    "verify-migration-infra-self-test.mjs:Migration Infrastructure Approval Fixtures"\n',
+          )
+
+          path.write_text(source)
+          workflow = Path(".github/workflows/one-off-wire-migration-backfill-master.yml")
+          if not workflow.exists():
+              raise SystemExit("one-off workflow is missing")
+          workflow.unlink()
+          PY
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          grep -Fq 'verify-migration-backfill-self-test.mjs:Migration Backfill Contract Fixtures' scripts/verify/verify-all.sh
+          test ! -e .github/workflows/one-off-wire-migration-backfill-master.yml
+      - name: Commit master wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test(migrations): wire backfill contract fixtures"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "Migration backfill contract fixtures wired to verify-all; one-off workflow removed itself."
