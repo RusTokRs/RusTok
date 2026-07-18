@@ -24,6 +24,11 @@ RUN apt-get update \
        cargo install trunk --version 0.21.14 --locked --root /opt/trunk \
     && rm -rf /tmp/trunk-target
 
+FROM base AS migration
+
+COPY . .
+CMD ["cargo", "run", "--locked", "-p", "rustok-migrations", "--bin", "rustok-migrate", "--", "up"]
+
 FROM base AS development
 
 COPY . .
