@@ -1,8 +1,14 @@
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use rustok_core::generate_id;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
+};
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::dto::{
     MarketplaceSellerEventKind, MarketplaceSellerEventProvenance, MarketplaceSellerEventResponse,
+    MarketplaceSellerOnboardingStatus, MarketplaceSellerResponse, MarketplaceSellerStatus,
 };
 use crate::entities::seller_event;
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
@@ -26,6 +32,112 @@ pub(crate) async fn list_seller_events<C: ConnectionTrait>(
         .into_iter()
         .map(map_seller_event)
         .collect()
+}
+
+pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    command_kind: &str,
+    response_kind: &str,
+    response_json: &Value,
+) -> MarketplaceSellerResult<()> {
+    if response_kind != "seller"
+        || !matches!(
+            command_kind,
+            "review_seller_onboarding" | "suspend_seller" | "reactivate_seller"
+        )
+    {
+        return Ok(());
+    }
+
+    let response: MarketplaceSellerResponse = serde_json::from_value(response_json.clone())
+        .map_err(|_| {
+            MarketplaceSellerError::Validation(
+                "marketplace seller command result could not be mapped to an immutable event"
+                    .to_string(),
+            )
+        })?;
+    if response.tenant_id != tenant_id {
+        return Err(MarketplaceSellerError::Validation(
+            "marketplace seller command result tenant does not match its receipt".to_string(),
+        ));
+    }
+
+    let (event_kind, note, metadata) = match command_kind {
+        "review_seller_onboarding" => {
+            let event_kind = match response.onboarding_status {
+                MarketplaceSellerOnboardingStatus::Approved => {
+                    MarketplaceSellerEventKind::OnboardingApproved
+                }
+                MarketplaceSellerOnboardingStatus::Rejected => {
+                    MarketplaceSellerEventKind::OnboardingRejected
+                }
+                _ => {
+                    return Err(MarketplaceSellerError::Validation(
+                        "onboarding review result has no approved or rejected state".to_string(),
+                    ));
+                }
+            };
+            (
+                event_kind,
+                response.onboarding_note.clone(),
+                serde_json::json!({
+                    "seller_status": response.status.as_str(),
+                    "onboarding_status": response.onboarding_status.as_str(),
+                }),
+            )
+        }
+        "suspend_seller" => {
+            if response.status != MarketplaceSellerStatus::Suspended {
+                return Err(MarketplaceSellerError::Validation(
+                    "seller suspension result is not suspended".to_string(),
+                ));
+            }
+            (
+                MarketplaceSellerEventKind::Suspended,
+                response.suspension_reason.clone(),
+                serde_json::json!({
+                    "seller_status": response.status.as_str(),
+                    "onboarding_status": response.onboarding_status.as_str(),
+                }),
+            )
+        }
+        "reactivate_seller" => {
+            if response.status != MarketplaceSellerStatus::Active
+                || response.onboarding_status != MarketplaceSellerOnboardingStatus::Approved
+            {
+                return Err(MarketplaceSellerError::Validation(
+                    "seller reactivation result is not active and approved".to_string(),
+                ));
+            }
+            (
+                MarketplaceSellerEventKind::Reactivated,
+                None,
+                serde_json::json!({
+                    "seller_status": response.status.as_str(),
+                    "onboarding_status": response.onboarding_status.as_str(),
+                }),
+            )
+        }
+        _ => return Ok(()),
+    };
+
+    seller_event::ActiveModel {
+        id: Set(generate_id()),
+        tenant_id: Set(tenant_id),
+        seller_id: Set(response.id),
+        actor_id: Set(Some(actor_id)),
+        event_kind: Set(event_kind.as_str().to_string()),
+        locale: Set(Some(response.resolved_locale)),
+        provenance: Set(MarketplaceSellerEventProvenance::Command.as_str().to_string()),
+        note: Set(note),
+        metadata: Set(metadata),
+        created_at: Set(response.updated_at),
+    }
+    .insert(connection)
+    .await?;
+    Ok(())
 }
 
 fn map_seller_event(
