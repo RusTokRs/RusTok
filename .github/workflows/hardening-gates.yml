@@ -68,3 +68,5 @@ jobs:
         run: node scripts/verify/verify-release-supply-chain-contract.mjs
       - name: Verify release runtime image pin
         run: node scripts/verify/verify-release-runtime-image-contract.mjs
+      - name: Verify release readiness documentation
+        run: node scripts/verify/verify-release-readiness-contract.mjs
