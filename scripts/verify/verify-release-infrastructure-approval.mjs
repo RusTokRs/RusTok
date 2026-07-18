@@ -14,6 +14,7 @@ const PROTECTED_PATHS = [
   "apps/server/Dockerfile",
   "apps/server/Dockerfile.release",
   "scripts/release/verify-release-contract.mjs",
+  "scripts/release/verify-release-collisions.mjs",
   "scripts/release/generate-spdx-sbom.mjs",
   "scripts/release/finalize-release-artifacts.mjs",
   "scripts/release/extract-release-notes.mjs",
@@ -120,6 +121,7 @@ function runSelfTest() {
   assert(PROTECTED_PATHS.includes(".github/workflows/hardening-gates.yml"));
   assert(PROTECTED_PATHS.includes("scripts/verify/verify-all.sh"));
   assert(PROTECTED_PATHS.includes("apps/server/Dockerfile.release"));
+  assert(PROTECTED_PATHS.includes("scripts/release/verify-release-collisions.mjs"));
   assert(PROTECTED_PATHS.includes("scripts/release/generate-spdx-sbom.mjs"));
   console.log("✔ release infrastructure approval self-test passed");
 }
