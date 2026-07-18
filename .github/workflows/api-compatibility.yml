@@ -55,14 +55,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: api-compatibility
-          cache-targets: true
 
       - name: Export base API contracts
         run: >-
           cargo run
+          --locked
+          --all-features
           --manifest-path "$GITHUB_WORKSPACE/base/Cargo.toml"
           -p rustok-server
           --bin export_api_contracts
@@ -72,11 +70,20 @@ jobs:
       - name: Export head API contracts
         run: >-
           cargo run
+          --locked
+          --all-features
           --manifest-path "$GITHUB_WORKSPACE/head/Cargo.toml"
           -p rustok-server
           --bin export_api_contracts
           --
           --output-dir "$GITHUB_WORKSPACE/contracts/head"
+
+      - name: Verify exported artifact set
+        run: |
+          test -s "$GITHUB_WORKSPACE/contracts/base/openapi.json"
+          test -s "$GITHUB_WORKSPACE/contracts/base/schema.graphql"
+          test -s "$GITHUB_WORKSPACE/contracts/head/openapi.json"
+          test -s "$GITHUB_WORKSPACE/contracts/head/schema.graphql"
 
       - name: Compare API contracts
         run: >-
