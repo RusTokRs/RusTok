@@ -7,6 +7,29 @@
 
 services:
   # ============================================================================
+  # One-shot schema migration. The CLI intentionally supports only up/status.
+  # ============================================================================
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+      target: migration
+    container_name: rustok_migrate
+    environment:
+      DATABASE_URL: postgres://rustok:rustok@db:5432/rustok_dev
+    depends_on:
+      db-bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - cargo_cache:/usr/local/cargo/registry
+    restart: "no"
+    profiles:
+      - full-dev
+      - server
+      - admin
+      - storefront
+
+  # ============================================================================
   # Backend Server (Axum + embedded Leptos admin/storefront)
   # ============================================================================
   server:
@@ -31,8 +54,8 @@ services:
       - ./modules.toml:/workspace/modules.toml:ro
       - cargo_cache:/usr/local/cargo/registry
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:5150/health || exit 1"]
       interval: 10s
@@ -42,6 +65,8 @@ services:
     profiles:
       - full-dev
       - server
+      - admin
+      - storefront
 
   # ============================================================================
   # Next.js Admin Panel
