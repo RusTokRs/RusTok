@@ -4,6 +4,7 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 mod command_receipts;
+mod external_events;
 mod localized_sellers;
 mod receipted_commands;
 mod seller_events;
