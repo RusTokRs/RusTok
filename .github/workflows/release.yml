@@ -84,6 +84,16 @@ jobs:
             exit 1
           }
 
+      - name: Refuse an existing GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; refusing to rebuild or mutate it" >&2
+            exit 1
+          fi
+
       - name: Validate semantic release contract
         id: contract
         run: >-
@@ -301,6 +311,17 @@ jobs:
           GHCR_TOKEN: ${{ github.token }}
         run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
+      - name: Refuse an existing immutable image tag
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.image }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          if docker buildx imagetools inspect "$IMAGE_NAME:$VERSION" >/dev/null 2>&1; then
+            echo "Container tag $IMAGE_NAME:$VERSION already exists; refusing to overwrite it" >&2
+            exit 1
+          fi
+
       - name: Build and publish runtime image
         id: image-metadata
         env:
@@ -485,7 +506,7 @@ jobs:
             exit 1
           fi
           mapfile -d '' assets < <(find release-artifacts -maxdepth 1 -type f -print0 | sort -z)
-          test "${#assets[@]}" -ge 5
+          test "${#assets[@]}" -eq 5
           args=(
             release create "$RELEASE_TAG"
             --repo "$GITHUB_REPOSITORY"
