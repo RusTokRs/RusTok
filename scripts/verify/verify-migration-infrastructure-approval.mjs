@@ -8,8 +8,11 @@ import process from "node:process";
 const APPROVAL_LABEL = "migration-infra-approved";
 const PROTECTED_PATHS = [
   ".github/workflows/migration-compatibility.yml",
+  "crates/rustok-migrations/src/bin/export_migration_plan.rs",
   "crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs",
   "scripts/verify/verify-migration-smoke.sh",
+  "scripts/verify/verify-migration-plan-compatibility.mjs",
+  "scripts/verify/verify-migration-plan-self-test.mjs",
   "scripts/verify/verify-migration-compatibility-contract.mjs",
   "scripts/verify/verify-migration-infrastructure-approval.mjs",
   "scripts/verify/verify-migration-infra-self-test.mjs",
