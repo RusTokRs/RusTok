@@ -39,13 +39,13 @@ jobs:
       created_epoch: ${{ steps.source.outputs.created_epoch }}
     steps:
       - name: Checkout tagged source
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
 
@@ -127,13 +127,13 @@ jobs:
         -C link-arg=-Wl,--build-id=none
     steps:
       - name: Checkout exact release commit
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
 
@@ -180,7 +180,7 @@ jobs:
           echo "sbom_name=$SBOM_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Upload binary and SBOM
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-binary-${{ github.run_id }}
           path: release-artifacts
@@ -203,7 +203,7 @@ jobs:
         -C link-arg=-Wl,--build-id=none
     steps:
       - name: Checkout exact release commit
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
@@ -255,18 +255,18 @@ jobs:
       digest: ${{ steps.image-metadata.outputs.digest }}
     steps:
       - name: Checkout release image definition
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
 
       - name: Download reproducible server archive
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           name: release-binary-${{ github.run_id }}
           path: binary-artifacts
@@ -380,14 +380,14 @@ jobs:
           NODE
 
       - name: Attest container provenance
-        uses: actions/attest@v4
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
         with:
           subject-name: ${{ steps.image-metadata.outputs.image }}
           subject-digest: ${{ steps.image-metadata.outputs.digest }}
           push-to-registry: true
 
       - name: Upload container identity
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-container-${{ github.run_id }}
           path: container-artifacts
@@ -410,24 +410,24 @@ jobs:
       artifact-metadata: write
     steps:
       - name: Checkout release scripts
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
 
       - name: Download binary assets
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           name: release-binary-${{ github.run_id }}
           path: release-artifacts
 
       - name: Download container identity
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           name: release-container-${{ github.run_id }}
           path: release-artifacts
@@ -444,18 +444,18 @@ jobs:
           --image-metadata release-artifacts/container-image.json
 
       - name: Attest every checksummed release asset
-        uses: actions/attest@v4
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
         with:
           subject-checksums: release-artifacts/SHA256SUMS
 
       - name: Attach SPDX SBOM attestation to server archive
-        uses: actions/attest@v4
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
         with:
           subject-path: release-artifacts/${{ needs.build.outputs.archive_name }}
           sbom-path: release-artifacts/${{ needs.build.outputs.sbom_name }}
 
       - name: Upload finalized release asset set
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-final-${{ github.run_id }}
           path: release-artifacts
@@ -471,18 +471,18 @@ jobs:
       contents: write
     steps:
       - name: Checkout exact release notes
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
 
       - name: Download finalized release assets
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           name: release-final-${{ github.run_id }}
           path: release-artifacts
