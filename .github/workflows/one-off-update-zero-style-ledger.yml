@@ -1,0 +1,96 @@
+name: One-off Update Zero Style Ledger
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  update-zero-style-ledger:
+    if: >-
+      github.event.issue.title == '[automation] update zero-style hardening ledger' &&
+      (github.event_name == 'issues' || github.event.comment.body == '/update-zero-style-ledger')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git pull --rebase origin main
+      - name: Apply exact ledger updates
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md")
+          source = path.read_text()
+
+          def replace_once(old: str, new: str) -> None:
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one exact ledger match, found {count}: {old!r}")
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              "zeroing the Rust-hosted inline-style baseline, protecting the classic admin bootstrap, registering the remaining Next/React style debt and completing dependency feature cleanup.",
+              "zeroing the Rust-hosted and Next/React inline-style baselines, protecting the classic admin bootstrap, removing runtime style generation from the reviewed Next roots and completing dependency feature cleanup.",
+          )
+          replace_once(
+              '''1. The enforced UI Content Security Policy still permits inline style attributes through the explicit `style-src-attr 'unsafe-inline'` migration boundary. The Rust-hosted register is empty with a `0/0` ratchet, while the Next boundary now contains exactly 54 JSX style props across 5 files and one runtime `<style>` element through 2026-08-15, down from the initial 60 props across 10 files. Migration and browser evidence remain required before `HARD-101` is complete.
+          2. The Next chart adapter generates one runtime style element without a demonstrated per-response nonce path; it must be removed, converted to a finite palette or integrated with the trusted host nonce before strict style enforcement.
+          3. Browser E2E runs in a dedicated workflow, but repository branch protection has not yet been verified to require that workflow.
+          4. Two dependency waivers remain until `Cargo.lock` is regenerated after disabling the unused SeaORM migration CLI/MySQL and Postcard heapless default features.
+          5. Production JWT bootstrap policy validates algorithm-specific key material, issuer, audience and HS256 secret quality; operational key rotation and emergency revocation remain separate production-readiness work.''',
+              '''1. The enforced UI Content Security Policy still permits inline style attributes through the explicit `style-src-attr 'unsafe-inline'` rollout boundary. Both exception registers are empty; the Rust gate is `0/0` and the Next gate is `0 props / 0 files / 0 runtime style elements / 0 DOM style writes`. Cross-stack browser evidence and the subsequent enforced promotion remain required before `HARD-101` is complete.
+          2. Browser E2E runs in a dedicated workflow, but repository branch protection has not yet been verified to require that workflow.
+          3. Two dependency waivers remain until `Cargo.lock` is regenerated after disabling the unused SeaORM migration CLI/MySQL and Postcard heapless default features.
+          4. Production JWT bootstrap policy validates algorithm-specific key material, issuer, audience and HS256 secret quality; operational key rotation and emergency revocation remain separate production-readiness work.''',
+          )
+          replace_once(
+              "12. The remaining Next/React style surface is covered by a time-bounded machine-readable register. Its gate rejects unregistered files, count changes, stale entries, review expiry, direct DOM style writes and increases above the `54 props / 5 files / 1 runtime style element` ratchet. Five low-risk Next files have already moved to finite classes, SVG geometry or normal table layout.",
+              "12. The Next/React exception register is empty. Its gate scans all reviewed JSX/TSX roots and enforces zero JSX style props, zero registered files, zero runtime style elements and zero direct DOM style writes, with regression markers for every completed migration.",
+          )
+          replace_once(
+              "1. Complete `HARD-101` by migrating the registered Next boundary from 54 JSX style props in 5 files and one runtime style element to zero, capture cross-stack browser evidence, then enforce `style-src-attr 'none'`.",
+              "1. Complete `HARD-101` by capturing cross-stack browser evidence under the strict report-only policy, then promote enforced `style-src-attr` from `'unsafe-inline'` to `'none'` without restoring any source exception.",
+          )
+          old_row = next(
+              line for line in source.splitlines()
+              if line.startswith("| `HARD-101` CSP enforcement hardening |")
+          )
+          new_row = "| `HARD-101` CSP enforcement hardening | Source migration complete; browser evidence and enforced promotion pending | Shared nonce `8492391`; main-server policy `9b1b1af`/`700d4cb`; standalone adapter `8b80543`/`611e50a`; report-only boundary `ac93c41`; Rust `0/0` source gate `e250e42`/`3a61789`; classic admin class-only bootstrap `bf8816e`/`cfc29c4`; Next register/gate `044d4d3`/`4ac34c2`; shell migration `659544b`; chart migration/gate `9187417`/`83aeb33`/`35c546a`; data-table cleanup/gate `7682dc6`/`be1fb0d`/`ba1de73`; storefront search migration `34e8265`; empty Next register and `0/0/0` gate `d54306f`/`a02d69e`; final inventory `266ece9`; browser evidence and enforced promotion remain |"
+          replace_once(old_row, new_row)
+
+          path.write_text(source)
+          workflow = Path(".github/workflows/one-off-update-zero-style-ledger.yml")
+          if not workflow.exists():
+              raise SystemExit("one-off ledger workflow is missing")
+          workflow.unlink()
+          PY
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          grep -Fq 'Source migration complete; browser evidence and enforced promotion pending' docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md
+          grep -Fq '0 props / 0 files / 0 runtime style elements / 0 DOM style writes' docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md
+          test ! -e .github/workflows/one-off-update-zero-style-ledger.yml
+      - name: Commit ledger update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: record zero cross-stack inline style source"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "Zero-style hardening ledger updated; one-off workflow removed itself."
