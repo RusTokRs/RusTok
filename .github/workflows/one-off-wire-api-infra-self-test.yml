@@ -1,0 +1,80 @@
+name: One-off Wire API Infrastructure Self Test
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  wire-infrastructure-self-test:
+    if: >-
+      github.event.issue.title == '[automation] wire API infrastructure self-test' &&
+      (github.event_name == 'issues' || github.event.comment.body == '/wire-api-infrastructure-self-test')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git pull --rebase origin main
+      - name: Apply exact master-runner wiring
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/verify/verify-all.sh")
+          source = path.read_text()
+
+          def replace_once(old: str, new: str) -> None:
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one verify-all match, found {count}: {old!r}")
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              '    echo "  api-compatibility-exception-approval-self-test  Verify breaking-exception approval policy fixtures"\n'
+              '    echo "  api-compatibility-exceptions-local  Verify local API compatibility exception register"\n',
+              '    echo "  api-compatibility-exception-approval-self-test  Verify breaking-exception approval policy fixtures"\n'
+              '    echo "  api-compatibility-infra-self-test  Verify contract-infrastructure approval policy fixtures"\n'
+              '    echo "  api-compatibility-exceptions-local  Verify local API compatibility exception register"\n',
+          )
+          replace_once(
+              '    "verify-api-compatibility-exception-approval-self-test.mjs:API Compatibility Exception Approval Fixtures"\n'
+              '    "verify-api-compatibility-exceptions-local.mjs:API Compatibility Exceptions"\n',
+              '    "verify-api-compatibility-exception-approval-self-test.mjs:API Compatibility Exception Approval Fixtures"\n'
+              '    "verify-api-compatibility-infra-self-test.mjs:API Compatibility Infrastructure Approval Fixtures"\n'
+              '    "verify-api-compatibility-exceptions-local.mjs:API Compatibility Exceptions"\n',
+          )
+
+          path.write_text(source)
+          workflow = Path(".github/workflows/one-off-wire-api-infra-self-test.yml")
+          if not workflow.exists():
+              raise SystemExit("one-off workflow is missing")
+          workflow.unlink()
+          PY
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          grep -Fq 'verify-api-compatibility-infra-self-test.mjs:API Compatibility Infrastructure Approval Fixtures' scripts/verify/verify-all.sh
+          test ! -e .github/workflows/one-off-wire-api-infra-self-test.yml
+      - name: Commit master-runner wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test(api): wire infrastructure approval fixtures"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "API compatibility infrastructure approval self-test wired; one-off workflow removed itself."
