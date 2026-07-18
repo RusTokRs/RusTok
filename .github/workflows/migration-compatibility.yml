@@ -82,9 +82,82 @@ jobs:
           --labels-json "$PR_LABELS_JSON"
           --explicitly-approved "$EXPLICIT_APPROVAL"
 
+  migration-plan:
+    name: Append-only migration plan
+    needs: infrastructure-approval
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout base migration source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.BASE_REPOSITORY }}
+          ref: ${{ env.BASE_REF }}
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout head migration source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.HEAD_REPOSITORY }}
+          ref: ${{ env.HEAD_REF }}
+          path: head
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Export base migration plan
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-plan-base
+        run: >-
+          cargo run
+          --locked
+          --manifest-path "$GITHUB_WORKSPACE/base/Cargo.toml"
+          -p rustok-migrations
+          --bin export_migration_plan
+          --
+          --output "$GITHUB_WORKSPACE/migration-plans/base.json"
+
+      - name: Export head migration plan
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-plan-head
+        run: >-
+          cargo run
+          --locked
+          --manifest-path "$GITHUB_WORKSPACE/head/Cargo.toml"
+          -p rustok-migrations
+          --bin export_migration_plan
+          --
+          --output "$GITHUB_WORKSPACE/migration-plans/head.json"
+
+      - name: Verify exported migration plans
+        run: |
+          test -s "$GITHUB_WORKSPACE/migration-plans/base.json"
+          test -s "$GITHUB_WORKSPACE/migration-plans/head.json"
+
+      - name: Compare migration plans with base policy
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-plan-compatibility.mjs"
+          --base "$GITHUB_WORKSPACE/migration-plans/base.json"
+          --head "$GITHUB_WORKSPACE/migration-plans/head.json"
+
+      - name: Upload migration plans
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: migration-plans-${{ github.run_id }}
+          path: migration-plans
+          if-no-files-found: error
+          retention-days: 14
+
   fresh-install:
     name: Fresh PostgreSQL (${{ matrix.name }})
-    needs: infrastructure-approval
+    needs: migration-plan
     runs-on: ubuntu-latest
     timeout-minutes: 35
     strategy:
@@ -143,7 +216,7 @@ jobs:
 
   n-minus-one-upgrade:
     name: PostgreSQL N-1 to head upgrade
-    needs: infrastructure-approval
+    needs: migration-plan
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
