@@ -10,6 +10,10 @@ function Progress({
   value,
   ...props
 }: React.ComponentProps<typeof ProgressPrimitive.Root>) {
+  const numericValue =
+    typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  const progressValue = Math.min(100, Math.max(0, numericValue));
+
   return (
     <ProgressPrimitive.Root
       data-slot='progress'
@@ -17,13 +21,23 @@ function Progress({
         'bg-primary/20 relative h-2 w-full overflow-hidden rounded-full',
         className
       )}
+      value={progressValue}
       {...props}
     >
-      <ProgressPrimitive.Indicator
-        data-slot='progress-indicator'
-        className='bg-primary h-full w-full flex-1 transition-all'
-        style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
-      />
+      <svg
+        aria-hidden='true'
+        className='block h-full w-full'
+        preserveAspectRatio='none'
+        viewBox='0 0 100 2'
+      >
+        <rect
+          className='fill-primary transition-all'
+          height='2'
+          width={progressValue}
+          x='0'
+          y='0'
+        />
+      </svg>
     </ProgressPrimitive.Root>
   );
 }
