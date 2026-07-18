@@ -1,0 +1,86 @@
+name: One-off Update Next Style Ledger
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  update-ledger:
+    if: >-
+      github.event.issue.title == '[automation] update Next CSP style ledger' &&
+      (github.event_name == 'issues' || github.event.comment.body == '/update-next-style-ledger')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git pull --rebase origin main
+      - name: Apply exact ledger replacements
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md")
+          source = path.read_text()
+
+          def replace_once(old: str, new: str) -> None:
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one exact ledger match, found {count}: {old!r}")
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              "The Rust-hosted register is empty with a `0/0` ratchet, but the Next boundary contains exactly 60 JSX style props across 10 files and one runtime `<style>` element through 2026-08-15.",
+              "The Rust-hosted register is empty with a `0/0` ratchet, while the Next boundary now contains exactly 54 JSX style props across 5 files and one runtime `<style>` element through 2026-08-15, down from the initial 60 props across 10 files.",
+          )
+          replace_once(
+              "increases above the `60 props / 10 files / 1 runtime style element` ratchet.",
+              "increases above the `54 props / 5 files / 1 runtime style element` ratchet. Five low-risk Next files have already moved to finite classes, SVG geometry or normal table layout.",
+          )
+          replace_once(
+              "migrating the registered Next boundary from 60 JSX style props in 10 files and one runtime style element to zero",
+              "migrating the registered Next boundary from 54 JSX style props in 5 files and one runtime style element to zero",
+          )
+          replace_once(
+              "In progress; Rust `0/0`, Next `60 props / 10 files / 1 runtime style element`",
+              "In progress; Rust `0/0`, Next `54 props / 5 files / 1 runtime style element`",
+          )
+          replace_once(
+              "Next register/gate `044d4d3`/`4ac34c2`; CI/master wiring `c789cd7`/`72e29d7`; inventory `7fff543`; Next migration and browser evidence remain",
+              "Next register/gate `044d4d3`/`4ac34c2`; CI/master wiring `c789cd7`/`72e29d7`; textarea/bar/Sonner migrations `beb6b1f`/`7c33876`/`b13c367`; progress/table-skeleton migrations `1ff56b8`/`c67d659`; Next ratchets `e82f1e4`/`6a9138a`/`b72699e`/`071a67d`; inventories `7fff543`/`afd4440`; remaining Next migration and browser evidence remain",
+          )
+
+          path.write_text(source)
+          workflow = Path(".github/workflows/one-off-update-next-style-ledger.yml")
+          if not workflow.exists():
+              raise SystemExit("one-off workflow is missing")
+          workflow.unlink()
+          PY
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          grep -Fq 'Next `54 props / 5 files / 1 runtime style element`' docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md
+          test ! -e .github/workflows/one-off-update-next-style-ledger.yml
+      - name: Commit ledger update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: record reduced Next CSP style boundary"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "Next CSP style ledger updated; one-off workflow removed itself."
