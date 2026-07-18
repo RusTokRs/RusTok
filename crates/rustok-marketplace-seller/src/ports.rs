@@ -5,12 +5,12 @@ use uuid::Uuid;
 
 use crate::dto::{
     AddMarketplaceSellerMemberInput, CreateMarketplaceSellerInput,
-    ListMarketplaceSellerMembersRequest, ListMarketplaceSellersInput,
-    MarketplaceSellerMemberResponse, MarketplaceSellerResponse,
-    ReadMarketplaceSellerMembershipRequest, ReadMarketplaceSellerRequest,
-    ReviewMarketplaceSellerOnboardingInput, SubmitMarketplaceSellerOnboardingInput,
-    SuspendMarketplaceSellerInput, UpdateMarketplaceSellerMemberInput,
-    UpdateMarketplaceSellerProfileInput,
+    ListMarketplaceSellerEventsRequest, ListMarketplaceSellerMembersRequest,
+    ListMarketplaceSellersInput, MarketplaceSellerEventResponse, MarketplaceSellerMemberResponse,
+    MarketplaceSellerResponse, ReadMarketplaceSellerMembershipRequest,
+    ReadMarketplaceSellerRequest, ReviewMarketplaceSellerOnboardingInput,
+    SubmitMarketplaceSellerOnboardingInput, SuspendMarketplaceSellerInput,
+    UpdateMarketplaceSellerMemberInput, UpdateMarketplaceSellerProfileInput,
 };
 use crate::error::MarketplaceSellerError;
 
@@ -87,6 +87,12 @@ pub trait MarketplaceSellerReadPort: Send + Sync {
         context: PortContext,
         request: ListMarketplaceSellerMembersRequest,
     ) -> Result<Vec<MarketplaceSellerMemberResponse>, PortError>;
+
+    async fn list_seller_events(
+        &self,
+        context: PortContext,
+        request: ListMarketplaceSellerEventsRequest,
+    ) -> Result<Vec<MarketplaceSellerEventResponse>, PortError>;
 }
 
 #[async_trait]
@@ -198,6 +204,21 @@ impl MarketplaceSellerReadPort for crate::MarketplaceSellerService {
         self.list_members(parse_tenant_id(&context)?, request.seller_id)
             .await
             .map_err(map_owner_error)
+    }
+
+    async fn list_seller_events(
+        &self,
+        context: PortContext,
+        request: ListMarketplaceSellerEventsRequest,
+    ) -> Result<Vec<MarketplaceSellerEventResponse>, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        self.list_events(
+            parse_tenant_id(&context)?,
+            request.seller_id,
+            request.limit,
+        )
+        .await
+        .map_err(map_owner_error)
     }
 }
 
