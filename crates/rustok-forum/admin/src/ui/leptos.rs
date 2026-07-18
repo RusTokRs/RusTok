@@ -1690,7 +1690,7 @@ fn render_category_grid(
                     let item_id = vm.id.clone();
                     view! {
                         <article class="relative overflow-hidden rounded-[1.5rem] border border-border bg-background p-5 shadow-sm">
-                            <span class="absolute inset-y-0 left-0 w-1.5" style=vm.accent_style.clone()></span>
+                            <span class=format!("absolute inset-y-0 left-0 w-1.5 {}", rustok_ui_core::css_background_accent_class(vm.accent_style.as_str()))></span>
                             <div class="pl-3">
                                 <div class="flex items-start justify-between gap-4">
                                     <div>
