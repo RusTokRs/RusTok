@@ -137,8 +137,12 @@ requireMarkers("scripts/verify/verify-api-compatibility-self-test.mjs", [
 
 requireMarkers(".github/workflows/api-compatibility.yml", [
   "name: API Compatibility",
+  "github.event.pull_request.base.repo.full_name",
+  "github.event.pull_request.head.repo.full_name",
   "github.event.pull_request.base.sha",
   "github.event.pull_request.head.sha",
+  "repository: ${{ env.BASE_REPOSITORY }}",
+  "repository: ${{ env.HEAD_REPOSITORY }}",
   "--locked",
   "--all-features",
   "--bin export_api_contracts",
