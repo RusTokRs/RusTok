@@ -2,15 +2,18 @@ use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::RusToKModule;
 
+pub mod allocation_directory;
 pub mod listing_directory;
 pub mod seller_directory;
 
+pub use allocation_directory::MarketplaceAllocationDirectoryService;
 pub use listing_directory::MarketplaceListingDirectoryService;
 pub use seller_directory::MarketplaceSellerDirectoryService;
 
 pub const MARKETPLACE_FAMILY_MODULES: &[&str] = &[
     "marketplace_seller",
     "marketplace_listing",
+    "marketplace_allocation",
     "marketplace_commission",
     "marketplace_ledger",
     "marketplace_payout",
@@ -34,8 +37,8 @@ impl Default for MarketplaceFamilyDescriptor {
 /// Marketplace family root.
 ///
 /// This module composes marketplace owner modules and future cross-marketplace
-/// workflows. It intentionally owns no seller, listing, commission, ledger, or
-/// payout persistence.
+/// workflows. It intentionally owns no seller, listing, allocation, commission,
+/// ledger, or payout persistence.
 pub struct MarketplaceModule;
 
 #[async_trait]
