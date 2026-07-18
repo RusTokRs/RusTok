@@ -1,0 +1,143 @@
+name: One-off Bind API Exception Approval
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  bind-exception-approval:
+    if: >-
+      github.event.issue.title == '[automation] bind API compatibility exception approval' &&
+      (github.event_name == 'issues' || github.event.comment.body == '/bind-api-exception-approval')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git pull --rebase origin main
+      - name: Apply exact approval binding
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              source = file.read_text()
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one exact match, found {count}: {old!r}")
+              file.write_text(source.replace(old, new, 1))
+
+          verify_all = "scripts/verify/verify-all.sh"
+          replace_once(
+              verify_all,
+              '    echo "  api-compatibility-self-test  Verify OpenAPI/GraphQL semantic comparator fixtures"\n'
+              '    echo "  api-compatibility-exceptions-local  Verify local API compatibility exception register"\n',
+              '    echo "  api-compatibility-self-test  Verify OpenAPI/GraphQL semantic comparator fixtures"\n'
+              '    echo "  api-compatibility-exception-approval-self-test  Verify breaking-exception approval policy fixtures"\n'
+              '    echo "  api-compatibility-exceptions-local  Verify local API compatibility exception register"\n',
+          )
+          replace_once(
+              verify_all,
+              '    "verify-api-compatibility-self-test.mjs:API Compatibility Comparator Fixtures"\n'
+              '    "verify-api-compatibility-exceptions-local.mjs:API Compatibility Exceptions"\n',
+              '    "verify-api-compatibility-self-test.mjs:API Compatibility Comparator Fixtures"\n'
+              '    "verify-api-compatibility-exception-approval-self-test.mjs:API Compatibility Exception Approval Fixtures"\n'
+              '    "verify-api-compatibility-exceptions-local.mjs:API Compatibility Exceptions"\n',
+          )
+
+          contract = "scripts/verify/verify-api-compatibility-contract.mjs"
+          replace_once(
+              contract,
+              'requireMarkers("scripts/verify/verify-api-compatibility-exceptions-local.mjs", [\n'
+              '  "verify-api-compatibility-exceptions.mjs",\n'
+              '  "docs/api/compatibility-exceptions.json",\n'
+              '  \'"--file"\',\n'
+              ']);\n',
+              'requireMarkers("scripts/verify/verify-api-compatibility-exceptions-local.mjs", [\n'
+              '  "verify-api-compatibility-exceptions.mjs",\n'
+              '  "docs/api/compatibility-exceptions.json",\n'
+              '  \'"--file"\',\n'
+              ']);\n'
+              'requireMarkers("scripts/verify/verify-api-compatibility-exception-approval.mjs", [\n'
+              '  "api-breaking-approved",\n'
+              '  "function approvalDecision",\n'
+              '  "--labels-json",\n'
+              '  "--explicitly-approved",\n'
+              '  "function runSelfTest",\n'
+              ']);\n'
+              'requireMarkers("scripts/verify/verify-api-compatibility-exception-approval-self-test.mjs", [\n'
+              '  "verify-api-compatibility-exception-approval.mjs",\n'
+              '  \'"--self-test"\',\n'
+              ']);\n',
+          )
+          replace_once(
+              contract,
+              '  "Validate head compatibility exceptions with base policy",\n'
+              '  "base/scripts/verify/verify-api-compatibility-exceptions.mjs",\n',
+              '  "Require approval for compatibility exception changes",\n'
+              '  "api-breaking-approved",\n'
+              '  "PR_LABELS_JSON",\n'
+              '  "EXPLICIT_APPROVAL",\n'
+              '  "base/scripts/verify/verify-api-compatibility-exception-approval.mjs",\n'
+              '  "base/docs/api/compatibility-exceptions.json",\n'
+              '  "head/docs/api/compatibility-exceptions.json",\n'
+              '  "Validate head compatibility exceptions with base policy",\n'
+              '  "base/scripts/verify/verify-api-compatibility-exceptions.mjs",\n',
+          )
+          replace_once(
+              contract,
+              '  "Verify API compatibility comparator fixtures",\n'
+              '  "verify-api-compatibility-self-test.mjs",\n',
+              '  "Verify API compatibility comparator fixtures",\n'
+              '  "verify-api-compatibility-self-test.mjs",\n'
+              '  "Verify API compatibility exception approval fixtures",\n'
+              '  "verify-api-compatibility-exception-approval-self-test.mjs",\n',
+          )
+          replace_once(
+              contract,
+              ']);\n\nif (failures.length > 0) {',
+              ']);\n'
+              'requireMarkers("scripts/verify/verify-all.sh", [\n'
+              '  "verify-api-compatibility-self-test.mjs:API Compatibility Comparator Fixtures",\n'
+              '  "verify-api-compatibility-exception-approval-self-test.mjs:API Compatibility Exception Approval Fixtures",\n'
+              '  "verify-api-compatibility-exceptions-local.mjs:API Compatibility Exceptions",\n'
+              '  "verify-api-compatibility-contract.mjs:API Compatibility Gate Structure",\n'
+              ']);\n\n'
+              'if (failures.length > 0) {',
+          )
+
+          workflow = Path(".github/workflows/one-off-bind-api-exception-approval.yml")
+          if not workflow.exists():
+              raise SystemExit("one-off workflow is missing")
+          workflow.unlink()
+          PY
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          grep -Fq 'verify-api-compatibility-exception-approval-self-test.mjs:API Compatibility Exception Approval Fixtures' scripts/verify/verify-all.sh
+          grep -Fq 'api-breaking-approved' scripts/verify/verify-api-compatibility-contract.mjs
+          grep -Fq 'PR_LABELS_JSON' scripts/verify/verify-api-compatibility-contract.mjs
+          test ! -e .github/workflows/one-off-bind-api-exception-approval.yml
+      - name: Commit approval binding
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test(api): bind breaking-exception approval"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "Breaking-exception approval is now bound into structural and master gates; one-off workflow removed itself."
