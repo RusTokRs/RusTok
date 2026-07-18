@@ -9,6 +9,7 @@ const APPROVAL_LABEL = "release-infra-approved";
 const PROTECTED_PATHS = [
   ".github/workflows/release.yml",
   ".github/workflows/release-infrastructure.yml",
+  ".github/workflows/hardening-gates.yml",
   ".dockerignore",
   "apps/server/Dockerfile",
   "apps/server/Dockerfile.release",
@@ -17,6 +18,7 @@ const PROTECTED_PATHS = [
   "scripts/release/finalize-release-artifacts.mjs",
   "scripts/release/extract-release-notes.mjs",
   "scripts/release/package-server.sh",
+  "scripts/verify/verify-all.sh",
   "scripts/verify/verify-release-tooling-self-test.mjs",
   "scripts/verify/verify-release-supply-chain-contract.mjs",
   "scripts/verify/verify-release-infrastructure-approval.mjs",
@@ -114,6 +116,9 @@ function runSelfTest() {
     { required: true, approved: true },
   );
   assert(PROTECTED_PATHS.includes(".github/workflows/release.yml"));
+  assert(PROTECTED_PATHS.includes(".github/workflows/release-infrastructure.yml"));
+  assert(PROTECTED_PATHS.includes(".github/workflows/hardening-gates.yml"));
+  assert(PROTECTED_PATHS.includes("scripts/verify/verify-all.sh"));
   assert(PROTECTED_PATHS.includes("apps/server/Dockerfile.release"));
   assert(PROTECTED_PATHS.includes("scripts/release/generate-spdx-sbom.mjs"));
   console.log("✔ release infrastructure approval self-test passed");
