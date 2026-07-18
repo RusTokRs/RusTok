@@ -1,0 +1,95 @@
+name: API Compatibility
+
+on:
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Base git ref or commit
+        required: true
+        default: main
+      head_ref:
+        description: Head git ref or commit
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target/api-compatibility
+  BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
+  HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref }}
+
+jobs:
+  compatibility:
+    name: OpenAPI and GraphQL Compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout base contract source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.BASE_REF }}
+          path: base
+          fetch-depth: 1
+
+      - name: Checkout head contract source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.HEAD_REF }}
+          path: head
+          fetch-depth: 1
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: api-compatibility
+          cache-targets: true
+
+      - name: Export base API contracts
+        run: >-
+          cargo run
+          --manifest-path "$GITHUB_WORKSPACE/base/Cargo.toml"
+          -p rustok-server
+          --bin export_api_contracts
+          --
+          --output-dir "$GITHUB_WORKSPACE/contracts/base"
+
+      - name: Export head API contracts
+        run: >-
+          cargo run
+          --manifest-path "$GITHUB_WORKSPACE/head/Cargo.toml"
+          -p rustok-server
+          --bin export_api_contracts
+          --
+          --output-dir "$GITHUB_WORKSPACE/contracts/head"
+
+      - name: Compare API contracts
+        run: >-
+          node "$GITHUB_WORKSPACE/head/scripts/verify/verify-api-compatibility.mjs"
+          --base-dir "$GITHUB_WORKSPACE/contracts/base"
+          --head-dir "$GITHUB_WORKSPACE/contracts/head"
+          --exceptions "$GITHUB_WORKSPACE/head/docs/api/compatibility-exceptions.json"
+
+      - name: Upload generated contracts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: api-contracts-${{ github.run_id }}
+          path: contracts
+          if-no-files-found: error
+          retention-days: 14
