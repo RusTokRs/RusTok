@@ -1,5 +1,11 @@
+mod support;
+
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use support::backfill_fixtures::{
+    apply_setup as apply_backfill_setup, assert_results as assert_backfill_results,
+    load_from_environment as load_backfill_fixtures, BackfillFixture,
+};
 use rustok_migrations::Migrator;
 use sea_orm_migration::{
     prelude::MigratorTrait,
@@ -30,6 +36,12 @@ async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::E
     let incremental = env_binary_flag("RUSTOK_MIGRATION_SMOKE_INCREMENTAL")?;
     let reuse_database = env_binary_flag("RUSTOK_MIGRATION_SMOKE_REUSE_DB")?;
     let rollback_latest = env_binary_flag("RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST")?;
+    let backfill_fixtures = load_backfill_fixtures()?;
+    if !backfill_fixtures.is_empty() && !reuse_database {
+        return Err(
+            "backfill fixtures require RUSTOK_MIGRATION_SMOKE_REUSE_DB=1".into(),
+        );
+    }
 
     let admin = connect_postgres(&admin_url)
         .await
@@ -48,8 +60,13 @@ async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::E
         create_database(&admin, &database_name).await?;
     }
 
-    let smoke_result =
-        apply_migrations_and_assert_schema(&target_url, incremental, rollback_latest).await;
+    let smoke_result = apply_migrations_and_assert_schema(
+        &target_url,
+        incremental,
+        rollback_latest,
+        &backfill_fixtures,
+    )
+    .await;
 
     if keep_database {
         eprintln!("Keeping migration smoke database '{database_name}' at {target_url}");
@@ -64,10 +81,13 @@ async fn apply_migrations_and_assert_schema(
     target_url: &str,
     incremental: bool,
     rollback_latest: bool,
+    backfill_fixtures: &[BackfillFixture],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let db = connect_postgres(target_url)
         .await
         .map_err(|error| format!("smoke database must be reachable: {error}"))?;
+
+    apply_backfill_setup(&db, backfill_fixtures).await?;
 
     if incremental {
         apply_migrations_incrementally(&db).await?;
@@ -79,10 +99,12 @@ async fn apply_migrations_and_assert_schema(
 
     assert_no_pending_migrations(&db, "initial migration apply").await?;
     assert_schema_contract(&db).await?;
+    assert_backfill_results(&db, backfill_fixtures).await?;
 
     if rollback_latest {
         rollback_latest_and_reapply(&db).await?;
         assert_schema_contract(&db).await?;
+        assert_backfill_results(&db, backfill_fixtures).await?;
     }
 
     Ok(())
