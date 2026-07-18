@@ -11,7 +11,7 @@
 'use client';
 
 import React from 'react';
-import type { storefrontGraphql } from "@/shared/lib/graphql";
+import type { storefrontGraphql } from '@/shared/lib/graphql';
 
 export type SearchStorefrontPageProps = {
   graphql: StorefrontGraphqlExecutor;
@@ -165,11 +165,14 @@ async function fetchStorefrontSearch(
   query: string,
   presetKey: string | null,
   filters: SearchCatalogFilters,
-  props: SearchStorefrontPageProps,
+  props: SearchStorefrontPageProps
 ): Promise<SearchPreviewPayload> {
   const categoryIds = parseCsv(filters.categoryIds);
   const attributeValues = parseCsv(filters.attributeValues);
-  const response = await props.graphql<StorefrontSearchResponse, { input: Record<string, unknown> }>({
+  const response = await props.graphql<
+    StorefrontSearchResponse,
+    { input: Record<string, unknown> }
+  >({
     query: STOREFRONT_SEARCH_QUERY,
     variables: {
       input: {
@@ -184,19 +187,19 @@ async function fetchStorefrontSearch(
                 attributeCode: filters.attributeCode.trim(),
                 values: attributeValues.length ? attributeValues : undefined,
                 min: filters.attributeMin.trim() || undefined,
-                max: filters.attributeMax.trim() || undefined,
-              },
+                max: filters.attributeMax.trim() || undefined
+              }
             ]
           : undefined,
         sortAttributeCode: filters.sortAttributeCode.trim() || undefined,
         sortDesc: filters.sortDesc || undefined,
         limit: 12,
-        offset: 0,
-      },
+        offset: 0
+      }
     },
     token: props.token ?? undefined,
     tenant: props.tenantSlug ?? undefined,
-    baseUrl: props.graphqlUrl,
+    baseUrl: props.graphqlUrl
   });
 
   const payload = response.data?.storefrontSearch;
@@ -208,13 +211,13 @@ async function fetchStorefrontSearch(
 }
 
 async function fetchStorefrontFilterPresets(
-  props: SearchStorefrontPageProps,
+  props: SearchStorefrontPageProps
 ): Promise<SearchFilterPreset[]> {
   const response = await props.graphql<StorefrontFilterPresetsResponse>({
     query: STOREFRONT_FILTER_PRESETS_QUERY,
     token: props.token ?? undefined,
     tenant: props.tenantSlug ?? undefined,
-    baseUrl: props.graphqlUrl,
+    baseUrl: props.graphqlUrl
   });
 
   return response.data?.storefrontSearchFilterPresets ?? [];
@@ -222,7 +225,7 @@ async function fetchStorefrontFilterPresets(
 
 async function fetchStorefrontSuggestions(
   query: string,
-  props: SearchStorefrontPageProps,
+  props: SearchStorefrontPageProps
 ): Promise<SearchSuggestion[]> {
   const response = await props.graphql<
     StorefrontSuggestionsResponse,
@@ -232,65 +235,82 @@ async function fetchStorefrontSuggestions(
     variables: {
       input: {
         query,
-        limit: 6,
-      },
+        limit: 6
+      }
     },
     token: props.token ?? undefined,
     tenant: props.tenantSlug ?? undefined,
-    baseUrl: props.graphqlUrl,
+    baseUrl: props.graphqlUrl
   });
 
   return response.data?.storefrontSearchSuggestions ?? [];
 }
 
-export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JSX.Element {
+export function SearchStorefrontPage(
+  props: SearchStorefrontPageProps
+): React.JSX.Element {
   const [query, setQuery] = React.useState(props.initialQuery ?? '');
   const deferredQuery = React.useDeferredValue(query);
-  const [results, setResults] = React.useState<SearchPreviewPayload | null>(null);
+  const [results, setResults] =
+    React.useState<SearchPreviewPayload | null>(null);
   const [suggestions, setSuggestions] = React.useState<SearchSuggestion[]>([]);
   const [presets, setPresets] = React.useState<SearchFilterPreset[]>([]);
   const [selectedPreset, setSelectedPreset] = React.useState('');
-  const [catalogFilters, setCatalogFilters] = React.useState<SearchCatalogFilters>({
-    channelId: props.initialFilters?.channelId ?? '',
-    categoryIds: props.initialFilters?.categoryIds ?? '',
-    attributeCode: props.initialFilters?.attributeCode ?? '',
-    attributeValues: props.initialFilters?.attributeValues ?? '',
-    attributeMin: props.initialFilters?.attributeMin ?? '',
-    attributeMax: props.initialFilters?.attributeMax ?? '',
-    sortAttributeCode: props.initialFilters?.sortAttributeCode ?? '',
-    sortDesc: props.initialFilters?.sortDesc ?? false,
-  });
+  const [catalogFilters, setCatalogFilters] =
+    React.useState<SearchCatalogFilters>({
+      channelId: props.initialFilters?.channelId ?? '',
+      categoryIds: props.initialFilters?.categoryIds ?? '',
+      attributeCode: props.initialFilters?.attributeCode ?? '',
+      attributeValues: props.initialFilters?.attributeValues ?? '',
+      attributeMin: props.initialFilters?.attributeMin ?? '',
+      attributeMax: props.initialFilters?.attributeMax ?? '',
+      sortAttributeCode: props.initialFilters?.sortAttributeCode ?? '',
+      sortDesc: props.initialFilters?.sortDesc ?? false
+    });
   const [searchError, setSearchError] = React.useState<string | null>(null);
-  const [suggestionsError, setSuggestionsError] = React.useState<string | null>(null);
+  const [suggestionsError, setSuggestionsError] =
+    React.useState<string | null>(null);
   const [presetsError, setPresetsError] = React.useState<string | null>(null);
   const [isLoadingResults, startResultsTransition] = React.useTransition();
-  const [isLoadingSuggestions, startSuggestionsTransition] = React.useTransition();
+  const [isLoadingSuggestions, startSuggestionsTransition] =
+    React.useTransition();
   const [isLoadingPresets, startPresetsTransition] = React.useTransition();
 
-  const loadResults = React.useEffectEvent(async (
-    nextQuery: string,
-    nextPreset: string | null,
-    filters: SearchCatalogFilters,
-  ) => {
-    const trimmed = nextQuery.trim();
-    if (!trimmed) {
-      setResults(null);
-      setSearchError(null);
-      return;
-    }
-
-    try {
-      const payload = await fetchStorefrontSearch(trimmed, nextPreset, filters, props);
-      startResultsTransition(() => {
-        setResults(payload);
+  const loadResults = React.useEffectEvent(
+    async (
+      nextQuery: string,
+      nextPreset: string | null,
+      filters: SearchCatalogFilters
+    ) => {
+      const trimmed = nextQuery.trim();
+      if (!trimmed) {
+        setResults(null);
         setSearchError(null);
-      });
-    } catch (error) {
-      startResultsTransition(() => {
-        setSearchError(error instanceof Error ? error.message : 'Failed to load storefront search');
-      });
+        return;
+      }
+
+      try {
+        const payload = await fetchStorefrontSearch(
+          trimmed,
+          nextPreset,
+          filters,
+          props
+        );
+        startResultsTransition(() => {
+          setResults(payload);
+          setSearchError(null);
+        });
+      } catch (error) {
+        startResultsTransition(() => {
+          setSearchError(
+            error instanceof Error
+              ? error.message
+              : 'Failed to load storefront search'
+          );
+        });
+      }
     }
-  });
+  );
 
   const loadPresets = React.useEffectEvent(async () => {
     try {
@@ -301,7 +321,9 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
       });
     } catch (error) {
       startPresetsTransition(() => {
-        setPresetsError(error instanceof Error ? error.message : 'Failed to load presets');
+        setPresetsError(
+          error instanceof Error ? error.message : 'Failed to load presets'
+        );
       });
     }
   });
@@ -325,14 +347,20 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
     } catch (error) {
       startSuggestionsTransition(() => {
         setSuggestionsError(
-          error instanceof Error ? error.message : 'Failed to load storefront suggestions',
+          error instanceof Error
+            ? error.message
+            : 'Failed to load storefront suggestions'
         );
       });
     }
   });
 
   React.useEffect(() => {
-    void loadResults(props.initialQuery ?? '', selectedPreset || null, catalogFilters);
+    void loadResults(
+      props.initialQuery ?? '',
+      selectedPreset || null,
+      catalogFilters
+    );
   }, [loadResults, props.initialQuery, selectedPreset]);
 
   React.useEffect(() => {
@@ -344,146 +372,165 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
   }, [loadPresets]);
 
   return (
-    <section style={{ border: '1px solid #d4d4d8', borderRadius: 28, padding: 28 }}>
-      <div
-        style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.14em', color: '#71717a' }}
-      >
+    <section className='rounded-[1.75rem] border border-zinc-300 p-7 dark:border-zinc-700'>
+      <div className='text-xs uppercase tracking-[0.14em] text-zinc-500'>
         search
       </div>
-      <h2 style={{ marginTop: 10, fontSize: 32 }}>Search experiences start here</h2>
-      <p style={{ marginTop: 12, color: '#52525b', maxWidth: 760 }}>
-        Next storefront package now follows the same live search and autocomplete contract as the
-        Leptos storefront module.
+      <h2 className='mt-2.5 text-3xl font-semibold'>
+        Search experiences start here
+      </h2>
+      <p className='mt-3 max-w-[47.5rem] text-zinc-600 dark:text-zinc-300'>
+        Next storefront package now follows the same live search and
+        autocomplete contract as the Leptos storefront module.
       </p>
 
       <form
+        className='mt-6 grid gap-3'
         onSubmit={(event) => {
           event.preventDefault();
           void loadResults(query, selectedPreset || null, catalogFilters);
         }}
-        style={{ marginTop: 24, display: 'grid', gap: 12 }}
       >
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div className='flex flex-wrap gap-3'>
           <input
+            className='min-w-0 flex-[1_1_360px] rounded-[1.125rem] border border-zinc-300 bg-white px-4 py-3.5 text-[15px] outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-100'
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search products and published content"
-            style={{
-              flex: '1 1 360px',
-              minWidth: 0,
-              borderRadius: 18,
-              border: '1px solid #d4d4d8',
-              padding: '14px 16px',
-              fontSize: 15,
-            }}
+            placeholder='Search products and published content'
           />
           <button
-            type="submit"
-            style={{
-              borderRadius: 18,
-              border: 'none',
-              background: '#18181b',
-              color: '#fafafa',
-              padding: '14px 18px',
-              fontWeight: 600,
-            }}
+            className='rounded-[1.125rem] bg-zinc-900 px-[1.125rem] py-3.5 font-semibold text-zinc-50 transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white'
+            type='submit'
           >
             Search
           </button>
         </div>
 
-        <div style={{ border: '1px solid #e4e4e7', borderRadius: 20, padding: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <div className='rounded-[1.25rem] border border-zinc-200 p-4 dark:border-zinc-800'>
+          <div className='flex justify-between gap-3'>
             <strong>Filter presets</strong>
-            <span style={{ fontSize: 12, color: '#71717a' }}>
-              {isLoadingPresets ? 'loadingвЂ¦' : 'surface defaults'}
+            <span className='text-xs text-zinc-500'>
+              {isLoadingPresets ? 'loading…' : 'surface defaults'}
             </span>
           </div>
           {presetsError ? (
-            <p style={{ marginTop: 10, color: '#b91c1c' }}>{presetsError}</p>
+            <p className='mt-2.5 text-red-700 dark:text-red-400'>
+              {presetsError}
+            </p>
           ) : presets.length === 0 ? (
-            <p style={{ marginTop: 10, color: '#71717a' }}>No presets configured yet.</p>
+            <p className='mt-2.5 text-zinc-500'>No presets configured yet.</p>
           ) : (
-            <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {presets.map((preset) => (
-                <button
-                  key={preset.key}
-                  onClick={() => {
-                    const nextPreset = selectedPreset === preset.key ? '' : preset.key;
-                    setSelectedPreset(nextPreset);
-                    void loadResults(query, nextPreset || null, catalogFilters);
-                  }}
-                  style={{
-                    borderRadius: 999,
-                    border: selectedPreset === preset.key ? '1px solid #0f766e' : '1px solid #d4d4d8',
-                    background: selectedPreset === preset.key ? '#ccfbf1' : '#fff',
-                    padding: '8px 12px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                  }}
-                  type='button'
-                >
-                  {preset.label}
-                </button>
-              ))}
+            <div className='mt-3 flex flex-wrap gap-2'>
+              {presets.map((preset) => {
+                const isSelected = selectedPreset === preset.key;
+                return (
+                  <button
+                    key={preset.key}
+                    className={
+                      isSelected
+                        ? 'rounded-full border border-teal-700 bg-teal-100 px-3 py-2 text-xs font-semibold text-teal-900 transition dark:border-teal-400 dark:bg-teal-950 dark:text-teal-100'
+                        : 'rounded-full border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-800 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-900'
+                    }
+                    onClick={() => {
+                      const nextPreset = isSelected ? '' : preset.key;
+                      setSelectedPreset(nextPreset);
+                      void loadResults(
+                        query,
+                        nextPreset || null,
+                        catalogFilters
+                      );
+                    }}
+                    type='button'
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
 
-        <details style={{ border: '1px solid #e4e4e7', padding: 16 }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Catalog filters and sorting</summary>
-          <div
-            style={{
-              marginTop: 14,
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: 12,
-            }}
-          >
+        <details className='rounded-xl border border-zinc-200 p-4 dark:border-zinc-800'>
+          <summary className='cursor-pointer font-semibold'>
+            Catalog filters and sorting
+          </summary>
+          <div className='mt-3.5 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3'>
             <CatalogField
               label='Channel ID'
               value={catalogFilters.channelId}
-              onChange={(channelId) => setCatalogFilters((current) => ({ ...current, channelId }))}
+              onChange={(channelId) =>
+                setCatalogFilters((current) => ({ ...current, channelId }))
+              }
             />
             <CatalogField
               label='Category IDs (CSV)'
               value={catalogFilters.categoryIds}
-              onChange={(categoryIds) => setCatalogFilters((current) => ({ ...current, categoryIds }))}
+              onChange={(categoryIds) =>
+                setCatalogFilters((current) => ({ ...current, categoryIds }))
+              }
               options={props.categoryOptions}
             />
             <CatalogField
               label='Attribute code'
               value={catalogFilters.attributeCode}
-              onChange={(attributeCode) => setCatalogFilters((current) => ({ ...current, attributeCode }))}
+              onChange={(attributeCode) =>
+                setCatalogFilters((current) => ({
+                  ...current,
+                  attributeCode
+                }))
+              }
               options={props.attributeOptions}
             />
             <CatalogField
               label='Attribute values (CSV)'
               value={catalogFilters.attributeValues}
-              onChange={(attributeValues) => setCatalogFilters((current) => ({ ...current, attributeValues }))}
+              onChange={(attributeValues) =>
+                setCatalogFilters((current) => ({
+                  ...current,
+                  attributeValues
+                }))
+              }
             />
             <CatalogField
               label='Minimum'
               value={catalogFilters.attributeMin}
-              onChange={(attributeMin) => setCatalogFilters((current) => ({ ...current, attributeMin }))}
+              onChange={(attributeMin) =>
+                setCatalogFilters((current) => ({
+                  ...current,
+                  attributeMin
+                }))
+              }
             />
             <CatalogField
               label='Maximum'
               value={catalogFilters.attributeMax}
-              onChange={(attributeMax) => setCatalogFilters((current) => ({ ...current, attributeMax }))}
+              onChange={(attributeMax) =>
+                setCatalogFilters((current) => ({
+                  ...current,
+                  attributeMax
+                }))
+              }
             />
             <CatalogField
               label='Sort attribute code'
               value={catalogFilters.sortAttributeCode}
-              onChange={(sortAttributeCode) => setCatalogFilters((current) => ({ ...current, sortAttributeCode }))}
+              onChange={(sortAttributeCode) =>
+                setCatalogFilters((current) => ({
+                  ...current,
+                  sortAttributeCode
+                }))
+              }
               options={props.attributeOptions}
             />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+            <label className='flex items-center gap-2 text-sm'>
               <input
                 type='checkbox'
                 checked={catalogFilters.sortDesc}
                 onChange={(event) =>
-                  setCatalogFilters((current) => ({ ...current, sortDesc: event.target.checked }))
+                  setCatalogFilters((current) => ({
+                    ...current,
+                    sortDesc: event.target.checked
+                  }))
                 }
               />
               Descending order
@@ -491,45 +538,45 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
           </div>
         </details>
 
-        <div style={{ border: '1px solid #e4e4e7', borderRadius: 20, padding: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <div className='rounded-[1.25rem] border border-zinc-200 p-4 dark:border-zinc-800'>
+          <div className='flex justify-between gap-3'>
             <strong>Suggestions</strong>
-            <span style={{ fontSize: 12, color: '#71717a' }}>
-              {isLoadingSuggestions ? 'loadingвЂ¦' : 'autocomplete'}
+            <span className='text-xs text-zinc-500'>
+              {isLoadingSuggestions ? 'loading…' : 'autocomplete'}
             </span>
           </div>
           {suggestionsError ? (
-            <p style={{ marginTop: 10, color: '#b91c1c' }}>{suggestionsError}</p>
+            <p className='mt-2.5 text-red-700 dark:text-red-400'>
+              {suggestionsError}
+            </p>
           ) : suggestions.length === 0 ? (
-            <p style={{ marginTop: 10, color: '#71717a' }}>
+            <p className='mt-2.5 text-zinc-500'>
               Type at least 2 characters to load query and document suggestions.
             </p>
           ) : (
-            <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+            <div className='mt-3 grid gap-2'>
               {suggestions.map((suggestion) => (
                 <button
                   key={`${suggestion.kind}:${suggestion.text}`}
+                  className='w-full rounded-2xl border border-zinc-200 bg-white p-3.5 text-left transition hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-600 dark:hover:bg-zinc-900'
                   onClick={() => {
                     if (suggestion.kind === 'document' && suggestion.url) {
                       window.location.href = suggestion.url;
                       return;
                     }
                     setQuery(suggestion.text);
-                    void loadResults(suggestion.text, selectedPreset || null, catalogFilters);
+                    void loadResults(
+                      suggestion.text,
+                      selectedPreset || null,
+                      catalogFilters
+                    );
                   }}
-                  style={{
-                    borderRadius: 16,
-                    border: '1px solid #e4e4e7',
-                    background: '#fff',
-                    padding: 14,
-                    textAlign: 'left',
-                  }}
-                  type="button"
+                  type='button'
                 >
-                  <div style={{ fontWeight: 600 }}>{suggestion.text}</div>
-                  <div style={{ marginTop: 4, fontSize: 12, color: '#71717a' }}>
+                  <div className='font-semibold'>{suggestion.text}</div>
+                  <div className='mt-1 text-xs text-zinc-500'>
                     {suggestion.kind}
-                    {suggestion.locale ? ` вЂў ${suggestion.locale}` : ''}
+                    {suggestion.locale ? ` • ${suggestion.locale}` : ''}
                   </div>
                 </button>
               ))}
@@ -538,53 +585,54 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
         </div>
       </form>
 
-      <div style={{ marginTop: 24, border: '1px solid #e4e4e7', borderRadius: 20, padding: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      <div className='mt-6 rounded-[1.25rem] border border-zinc-200 p-5 dark:border-zinc-800'>
+        <div className='flex flex-wrap justify-between gap-3'>
           <strong>Results</strong>
-          <span style={{ fontSize: 12, color: '#71717a' }}>
+          <span className='text-xs text-zinc-500'>
             {isLoadingResults
-              ? 'loadingвЂ¦'
+              ? 'loading…'
               : results
                 ? `${results.total} hits via ${results.engine} (${results.rankingProfile})`
                 : 'idle'}
           </span>
         </div>
         {searchError ? (
-          <p style={{ marginTop: 12, color: '#b91c1c' }}>{searchError}</p>
+          <p className='mt-3 text-red-700 dark:text-red-400'>{searchError}</p>
         ) : !results ? (
-          <p style={{ marginTop: 12, color: '#71717a' }}>
-            Submit a query to preview the live storefront search contract in Next.
+          <p className='mt-3 text-zinc-500'>
+            Submit a query to preview the live storefront search contract in
+            Next.
           </p>
         ) : (
-          <div style={{ marginTop: 16, display: 'grid', gap: 14 }}>
-            <div style={{ color: '#52525b' }}>
+          <div className='mt-4 grid gap-3.5'>
+            <div className='text-zinc-600 dark:text-zinc-300'>
               {results.total} results in {results.tookMs} ms
-              {results.presetKey ? ` вЂў preset ${results.presetKey}` : ''}
+              {results.presetKey ? ` • preset ${results.presetKey}` : ''}
             </div>
             {results.facets.length ? (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <div className='flex flex-wrap gap-2'>
                 {results.facets.flatMap((facet) =>
                   facet.buckets.map((bucket) => (
                     <span
                       key={`${facet.name}:${bucket.value}`}
-                      style={{ border: '1px solid #d4d4d8', padding: '6px 9px', fontSize: 12 }}
+                      className='border border-zinc-300 px-[9px] py-1.5 text-xs dark:border-zinc-700'
                     >
                       {bucket.label || bucket.value} ({bucket.count})
                     </span>
-                  )),
+                  ))
                 )}
               </div>
             ) : null}
             {results.items.map((item) => (
               <article
                 key={item.id}
-                style={{ border: '1px solid #e4e4e7', borderRadius: 18, padding: 16 }}
+                className='rounded-[1.125rem] border border-zinc-200 p-4 dark:border-zinc-800'
               >
-                <div style={{ fontSize: 12, color: '#71717a', textTransform: 'uppercase' }}>
-                  {item.entityType} вЂў {item.sourceModule}
+                <div className='text-xs uppercase text-zinc-500'>
+                  {item.entityType} • {item.sourceModule}
                 </div>
-                <h3 style={{ marginTop: 8, fontSize: 18 }}>{item.title}</h3>
-                <p style={{ marginTop: 8, color: '#52525b' }}>
+                <h3 className='mt-2 text-lg font-semibold'>{item.title}</h3>
+                <p className='mt-2 text-zinc-600 dark:text-zinc-300'>
                   {item.snippet ?? 'No snippet returned.'}
                 </p>
               </article>
@@ -611,13 +659,13 @@ function CatalogField(props: {
 }): React.JSX.Element {
   const listId = React.useId();
   return (
-    <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+    <label className='grid gap-1.5 text-[13px]'>
       <span>{props.label}</span>
       <input
+        className='border border-zinc-300 bg-white px-3 py-2.5 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-100'
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
         list={props.options?.length ? listId : undefined}
-        style={{ border: '1px solid #d4d4d8', padding: '10px 12px' }}
       />
       {props.options?.length ? (
         <datalist id={listId}>
