@@ -1,0 +1,116 @@
+name: One-off Fix Strict Style Gate
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  fix-strict-style-gate:
+    if: >-
+      github.event.issue.title == '[automation] fix strict style gate' &&
+      (github.event_name == 'issues' || github.event.comment.body == '/fix-strict-style-gate')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git pull --rebase origin main
+      - name: Remove contradictory CSP contract
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          gate = Path("scripts/verify/verify-csp-inline-style-exceptions.mjs")
+          source = gate.read_text()
+          legacy = '''for (const [file, required] of [
+            [
+              "apps/server/src/middleware/security_headers.rs",
+              ["style-src 'self' {nonce}", "style-src-attr 'unsafe-inline'", "style-src-attr 'none'", "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES", "strict_style_attributes_enabled"],
+            ],
+            [
+              "apps/admin/src/app/security.rs",
+              ["style-src 'self' {nonce}", "style-src-attr 'unsafe-inline'", "style-src-attr 'none'", "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES", "strict_style_attributes_enabled"],
+            ],
+          ]) {
+            const source = read(file);
+            for (const marker of required) {
+              if (!source.includes(marker)) failures.push(`${file}: missing CSP marker ${marker}`);
+            }
+            if (source.includes("style-src 'self' 'unsafe-inline'")) {
+              failures.push(`${file}: blanket inline style elements must remain forbidden`);
+            }
+          }
+
+          '''
+          if source.count(legacy) != 1:
+              raise SystemExit("legacy contradictory CSP contract block not found exactly once")
+          source = source.replace(legacy, "", 1)
+          strict = '''for (const file of [
+            "apps/server/src/middleware/security_headers.rs",
+            "apps/admin/src/app/security.rs",
+          ]) {
+            requireMarkers(file, ["style-src-attr 'none'"]);
+            forbidMarkers(file, [
+              "style-src-attr 'unsafe-inline'",
+              "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES",
+              "STRICT_STYLE_TEMPLATE",
+            ]);
+          }
+          '''
+          replacement = '''for (const file of [
+            "apps/server/src/middleware/security_headers.rs",
+            "apps/admin/src/app/security.rs",
+          ]) {
+            requireMarkers(file, [
+              "style-src 'self' {nonce}",
+              "style-src-attr 'none'",
+            ]);
+            forbidMarkers(file, [
+              "style-src 'self' 'unsafe-inline'",
+              "style-src-attr 'unsafe-inline'",
+              "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES",
+              "strict_style_attributes_enabled",
+              "STRICT_STYLE_TEMPLATE",
+            ]);
+          }
+          '''
+          if source.count(strict) != 1:
+              raise SystemExit("strict CSP contract block not found exactly once")
+          gate.write_text(source.replace(strict, replacement, 1))
+
+          server = Path("apps/server/src/middleware/security_headers.rs")
+          server_source = server.read_text().replace("}\n\n\nfn parse_env_flag", "}\n\nfn parse_env_flag", 1)
+          server_source = server_source.replace(
+              "/// Target UI policy used during style-attribute migration. It carries the same trusted nonce as the\n/// enforced policy, blocks inline style attributes and plaintext connection schemes, and remains\n/// report-only until the component style inventory is clean.\n",
+              "/// Reporting mirror for strict UI violations. It carries the same trusted nonce as the enforced\n/// policy, additionally fixes worker sources, and reports violations without weakening enforcement.\n",
+              1,
+          )
+          server.write_text(server_source)
+
+          admin = Path("apps/admin/src/app/security.rs")
+          admin.write_text(admin.read_text().replace("}\n\n\nfn parse_env_flag", "}\n\nfn parse_env_flag", 1))
+
+          Path(".github/workflows/one-off-fix-strict-style-gate.yml").unlink()
+          PY
+      - name: Commit strict-style gate cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test(csp): bind strict style enforcement"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "Contradictory relaxed CSP contract removed; one-off workflow removed itself."
