@@ -5,8 +5,25 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+function parseArguments(argv) {
+  const options = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--root") {
+      const value = argv[index + 1];
+      if (!value) throw new Error("--root requires a value");
+      options.root = value;
+      index += 1;
+      continue;
+    }
+    throw new Error(`unknown argument: ${argument}`);
+  }
+  return options;
+}
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(scriptDir, "../..");
+const options = parseArguments(process.argv.slice(2));
+const repoRoot = path.resolve(options.root || path.resolve(scriptDir, "../.."));
 const failures = [];
 
 function absolute(relativePath) {
@@ -145,9 +162,10 @@ requireMarkers("scripts/release/verify-release-contract.mjs", [
   "CANONICAL_SEMVER",
   "release tag must start with v",
   "workspace version",
-  "Cargo.lock must contain exactly one rustok-server package",
+  "Cargo.lock must contain exactly one ${packageName} package",
   "must contain exactly one release heading",
   "contains an unreplaced placeholder",
+  "duplicate [${section}] section",
   "--github-output",
   "function runSelfTest",
 ]);
@@ -232,13 +250,28 @@ requireMarkers("scripts/verify/verify-release-tooling-self-test.mjs", [
   "package-server.sh",
   "--self-test",
 ]);
+requireMarkers("scripts/verify/verify-release-infrastructure-approval.mjs", [
+  'const APPROVAL_LABEL = "release-infra-approved"',
+  ".github/workflows/release.yml",
+  ".github/workflows/release-infrastructure.yml",
+  "apps/server/Dockerfile.release",
+  "generate-spdx-sbom.mjs",
+  "function changedProtectedPaths",
+  "function approvalDecision",
+  "--github-output",
+  "function runSelfTest",
+]);
+requireMarkers("scripts/verify/verify-release-infra-self-test.mjs", [
+  "verify-release-infrastructure-approval.mjs",
+  '"--self-test"',
+]);
 
 if (failures.length > 0) {
-  console.error("Release supply-chain contract verification failed:");
+  console.error(`Release supply-chain contract verification failed for ${repoRoot}:`);
   failures.forEach((failure) => console.error(`✗ ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  "✔ signed SemVer tags, reproducible archives, SPDX SBOM, checksums, attestations, GHCR publication and immutable release assets are structurally bound",
+  `✔ signed SemVer tags, reproducible archives, SPDX SBOM, checksums, attestations, GHCR publication and immutable release assets are structurally bound in ${repoRoot}`,
 );
