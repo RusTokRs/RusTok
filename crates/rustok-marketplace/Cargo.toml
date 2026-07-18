@@ -9,6 +9,7 @@ description = "Marketplace family root and cross-marketplace orchestration bound
 async-trait.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
+rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation" }
 rustok-marketplace-listing = { path = "../rustok-marketplace-listing" }
 rustok-marketplace-seller.workspace = true
 serde.workspace = true
