@@ -1,74 +1,64 @@
-# Dockerfile for the RusToK Axum server
-# Supports both development and production builds
+# syntax=docker/dockerfile:1.7
 
-# ============================================================================
-# Base stage: Install Rust and dependencies
-# ============================================================================
-FROM rust:1.96-slim AS base
+ARG RUST_VERSION=1.96
+ARG DEBIAN_VERSION=bookworm
 
-WORKDIR /app
+FROM rust:${RUST_VERSION}-slim-${DEBIAN_VERSION} AS base
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    curl \
-    postgresql-client \
+ENV CARGO_INCREMENTAL=0 \
+    CARGO_TERM_COLOR=always
+WORKDIR /workspace
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        ca-certificates \
+        libssl-dev \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# ============================================================================
-# Development stage
-# ============================================================================
 FROM base AS development
 
-# Copy workspace files
-COPY Cargo.toml Cargo.lock ./
-COPY crates ./crates
-COPY apps/server ./apps/server
-
-WORKDIR /app/apps/server
-
-# Install cargo-watch for hot reload
-RUN cargo install cargo-watch
-
+COPY . .
+WORKDIR /workspace/apps/server
+RUN cargo install --locked cargo-watch
 EXPOSE 5150
+CMD ["cargo", "watch", "-x", "run --locked -p rustok-server --bin rustok-server"]
 
-# Use cargo-watch for hot reload in dev
-CMD ["cargo", "watch", "-x", "run"]
-
-# ============================================================================
-# Builder stage: Build production binary
-# ============================================================================
 FROM base AS builder
 
-# Copy workspace files
-COPY Cargo.toml Cargo.lock ./
-COPY crates ./crates
-COPY apps/server ./apps/server
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+COPY . .
+RUN cargo build --locked --release -p rustok-server --bin rustok-server \
+    && test -x /workspace/target/release/rustok-server
 
-# Build for production
-RUN cargo build --release --bin rustok-server
+FROM debian:${DEBIAN_VERSION}-slim AS production
 
-# ============================================================================
-# Production stage: Run binary
-# ============================================================================
-FROM debian:bookworm-slim AS production
+ARG OCI_SOURCE=https://github.com/RusTokRs/RusTok
+ARG OCI_VERSION=dev
+ARG OCI_REVISION=unknown
+LABEL org.opencontainers.image.title="RusToK Server" \
+      org.opencontainers.image.description="Modular RusToK API, admin and storefront server" \
+      org.opencontainers.image.source="${OCI_SOURCE}" \
+      org.opencontainers.image.version="${OCI_VERSION}" \
+      org.opencontainers.image.revision="${OCI_REVISION}" \
+      org.opencontainers.image.licenses="BUSL-1.1"
 
+ENV RUST_BACKTRACE=1
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        ca-certificates \
+        libssl3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 10001 rustok \
+    && useradd --system --uid 10001 --gid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin rustok
 
-# Copy built binary
-COPY --from=builder /app/target/release/rustok-server /app/rustok-server
+COPY --from=builder --chown=10001:10001 /workspace/target/release/rustok-server /app/rustok-server
+COPY --from=builder --chown=10001:10001 /workspace/apps/server/config /app/config
 
-# Copy host configuration
-COPY apps/server/config ./config
-
+USER 10001:10001
 EXPOSE 5150
-
-CMD ["./rustok-server"]
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/app/rustok-server"]
