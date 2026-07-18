@@ -1,23 +1,19 @@
 name: One-off Pin Release Actions
 
 on:
-  issues:
-    types: [opened]
-  issue_comment:
-    types: [created]
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
-  issues: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   pin-release-actions:
-    if: >-
-      github.event.issue.title == '[automation] pin release actions' &&
-      (github.event_name == 'issues' || github.event.comment.body == '/pin-release-actions')
+    if: github.event.head_commit.message == 'chore: arm release action pinning'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -60,7 +56,6 @@ jobs:
               '"actions/upload-artifact@v7",': '"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",',
               '"actions/download-artifact@v5",': '"actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0",',
               '"actions/attest@v4",': '"actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6",',
-              '"actions/attest@v4"': '"actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6"',
           }
           for old, new in replacements.items():
               if old not in source:
@@ -77,7 +72,3 @@ jobs:
           git add -A
           git commit -m "security(release): pin GitHub actions by commit"
           git push origin HEAD:main
-      - name: Close trigger issue
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh issue close "${{ github.event.issue.number }}" --comment "Release and policy actions pinned to full commit SHAs; one-off workflow removed itself."
