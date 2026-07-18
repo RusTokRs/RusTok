@@ -42,12 +42,7 @@ pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
     response_kind: &str,
     response_json: &Value,
 ) -> MarketplaceSellerResult<()> {
-    if response_kind != "seller"
-        || !matches!(
-            command_kind,
-            "review_seller_onboarding" | "suspend_seller" | "reactivate_seller"
-        )
-    {
+    if response_kind != "seller" {
         return Ok(());
     }
 
@@ -64,7 +59,46 @@ pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
         ));
     }
 
+    let status_metadata = || {
+        serde_json::json!({
+            "seller_status": response.status.as_str(),
+            "onboarding_status": response.onboarding_status.as_str(),
+        })
+    };
     let (event_kind, note, metadata) = match command_kind {
+        "create_seller" => {
+            if response.status != MarketplaceSellerStatus::Draft
+                || response.onboarding_status != MarketplaceSellerOnboardingStatus::Draft
+            {
+                return Err(MarketplaceSellerError::Validation(
+                    "seller creation result is not draft".to_string(),
+                ));
+            }
+            (
+                MarketplaceSellerEventKind::Created,
+                None,
+                status_metadata(),
+            )
+        }
+        "update_seller_profile" => (
+            MarketplaceSellerEventKind::ProfileUpdated,
+            None,
+            status_metadata(),
+        ),
+        "submit_seller_onboarding" => {
+            if response.status != MarketplaceSellerStatus::Draft
+                || response.onboarding_status != MarketplaceSellerOnboardingStatus::Submitted
+            {
+                return Err(MarketplaceSellerError::Validation(
+                    "onboarding submission result is not submitted".to_string(),
+                ));
+            }
+            (
+                MarketplaceSellerEventKind::OnboardingSubmitted,
+                response.onboarding_note.clone(),
+                status_metadata(),
+            )
+        }
         "review_seller_onboarding" => {
             let event_kind = match response.onboarding_status {
                 MarketplaceSellerOnboardingStatus::Approved => {
@@ -79,14 +113,7 @@ pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
                     ));
                 }
             };
-            (
-                event_kind,
-                response.onboarding_note.clone(),
-                serde_json::json!({
-                    "seller_status": response.status.as_str(),
-                    "onboarding_status": response.onboarding_status.as_str(),
-                }),
-            )
+            (event_kind, response.onboarding_note.clone(), status_metadata())
         }
         "suspend_seller" => {
             if response.status != MarketplaceSellerStatus::Suspended {
@@ -97,10 +124,7 @@ pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
             (
                 MarketplaceSellerEventKind::Suspended,
                 response.suspension_reason.clone(),
-                serde_json::json!({
-                    "seller_status": response.status.as_str(),
-                    "onboarding_status": response.onboarding_status.as_str(),
-                }),
+                status_metadata(),
             )
         }
         "reactivate_seller" => {
@@ -114,13 +138,14 @@ pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
             (
                 MarketplaceSellerEventKind::Reactivated,
                 None,
-                serde_json::json!({
-                    "seller_status": response.status.as_str(),
-                    "onboarding_status": response.onboarding_status.as_str(),
-                }),
+                status_metadata(),
             )
         }
-        _ => return Ok(()),
+        _ => {
+            return Err(MarketplaceSellerError::Validation(format!(
+                "seller response has no immutable event mapping for command `{command_kind}`"
+            )));
+        }
     };
 
     seller_event::ActiveModel {
