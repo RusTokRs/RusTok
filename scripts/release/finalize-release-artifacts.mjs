@@ -43,6 +43,10 @@ function parseArguments(argv) {
   return options;
 }
 
+function compareText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function sha256(file) {
   return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
@@ -85,7 +89,7 @@ function readImageMetadata(file, version, commit) {
       throw new Error(`container metadata tag ${JSON.stringify(tag)} is not scoped to ${metadata.image}`);
     }
   }
-  return { image: metadata.image, digest: metadata.digest, tags: [...tags].sort() };
+  return { image: metadata.image, digest: metadata.digest, tags: [...tags].sort(compareText) };
 }
 
 function regularFiles(directory, excludedNames) {
@@ -103,7 +107,17 @@ function regularFiles(directory, excludedNames) {
     if (stats.size === 0) throw new Error(`release asset ${entry.name} must not be empty`);
     files.push({ name: entry.name, file, size: stats.size, sha256: sha256(file) });
   }
-  return files.sort((left, right) => left.name.localeCompare(right.name));
+  return files.sort((left, right) => compareText(left.name, right.name));
+}
+
+function requireExactNames(assets, expectedNames, phase) {
+  const actual = assets.map((asset) => asset.name).sort(compareText);
+  const expected = [...expectedNames].sort(compareText);
+  if (actual.length !== expected.length || actual.some((name, index) => name !== expected[index])) {
+    throw new Error(
+      `${phase} must contain exactly ${expected.join(", ")}; found ${actual.join(", ") || "no files"}`,
+    );
+  }
 }
 
 function finalize(options) {
@@ -125,20 +139,20 @@ function finalize(options) {
 
   const manifestPath = path.join(directory, options.manifestName);
   const checksumsPath = path.join(directory, options.checksumsName);
+  const expectedImageMetadata = path.join(directory, "container-image.json");
+  const imageMetadata = path.resolve(options.imageMetadata);
+  if (imageMetadata !== expectedImageMetadata) {
+    throw new Error("--image-metadata must be <directory>/container-image.json");
+  }
   fs.rmSync(manifestPath, { force: true });
   fs.rmSync(checksumsPath, { force: true });
 
-  const image = readImageMetadata(path.resolve(options.imageMetadata), options.version, options.commit);
-  const assets = regularFiles(
-    directory,
-    new Set([options.manifestName, options.checksumsName]),
-  );
-  if (!assets.some((asset) => asset.name.endsWith(".tar.gz"))) {
-    throw new Error("release artifact directory must contain a .tar.gz binary archive");
-  }
-  if (!assets.some((asset) => asset.name.endsWith(".spdx.json"))) {
-    throw new Error("release artifact directory must contain an SPDX JSON SBOM");
-  }
+  const image = readImageMetadata(imageMetadata, options.version, options.commit);
+  const archiveName = `rustok-server-${options.version}-linux-x86_64.tar.gz`;
+  const sbomName = `rustok-server-${options.version}.spdx.json`;
+  const sourceAssetNames = new Set([archiveName, sbomName, "container-image.json"]);
+  const assets = regularFiles(directory, new Set([options.manifestName, options.checksumsName]));
+  requireExactNames(assets, sourceAssetNames, "release source asset set");
 
   const manifest = {
     schema_version: 1,
@@ -159,6 +173,11 @@ function finalize(options) {
   fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
   const checksumAssets = regularFiles(directory, new Set([options.checksumsName]));
+  requireExactNames(
+    checksumAssets,
+    new Set([...sourceAssetNames, options.manifestName]),
+    "checksummed release asset set",
+  );
   const checksumText = checksumAssets
     .map((asset) => `${asset.sha256}  ${asset.name}`)
     .join("\n");
@@ -200,12 +219,15 @@ function runSelfTest() {
     const secondChecksums = fs.readFileSync(path.join(directory, "SHA256SUMS"), "utf8");
     assert.deepEqual(first.manifest, second.manifest);
     assert.equal(firstChecksums, secondChecksums);
+    assert.equal(first.checksumAssets.length, 4);
     assert(firstChecksums.includes("release-manifest.json"));
     assert.equal(first.manifest.container.digest, `sha256:${"a".repeat(64)}`);
     assert.throws(
       () => readImageMetadata(imageMetadata, "1.2.4", options.commit),
       /version does not match/,
     );
+    fs.writeFileSync(path.join(directory, "unexpected.txt"), "unexpected");
+    assert.throws(() => finalize(options), /must contain exactly/);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
@@ -227,11 +249,15 @@ function main() {
     "createdEpoch",
     "imageMetadata",
   ]) {
-    if (!options[name]) throw new Error(`--${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`);
+    if (!options[name]) {
+      throw new Error(
+        `--${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`,
+      );
+    }
   }
   const result = finalize(options);
   console.log(
-    `✔ finalized ${result.checksumAssets.length} release asset(s) with manifest and SHA256SUMS`,
+    `✔ finalized ${result.checksumAssets.length + 1} exact release asset(s) with manifest and SHA256SUMS`,
   );
 }
 
