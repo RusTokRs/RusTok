@@ -22,6 +22,7 @@ const PROTECTED_PATHS = [
   "scripts/verify/verify-all.sh",
   "scripts/verify/verify-release-tooling-self-test.mjs",
   "scripts/verify/verify-release-supply-chain-contract.mjs",
+  "scripts/verify/verify-release-runtime-image-contract.mjs",
   "scripts/verify/verify-release-infrastructure-approval.mjs",
   "scripts/verify/verify-release-infra-self-test.mjs",
 ];
@@ -123,6 +124,7 @@ function runSelfTest() {
   assert(PROTECTED_PATHS.includes("apps/server/Dockerfile.release"));
   assert(PROTECTED_PATHS.includes("scripts/release/verify-release-collisions.mjs"));
   assert(PROTECTED_PATHS.includes("scripts/release/generate-spdx-sbom.mjs"));
+  assert(PROTECTED_PATHS.includes("scripts/verify/verify-release-runtime-image-contract.mjs"));
   console.log("✔ release infrastructure approval self-test passed");
 }
 
