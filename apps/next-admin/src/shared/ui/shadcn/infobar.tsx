@@ -25,9 +25,6 @@ import { CircleXIcon } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
-const INFOBAR_WIDTH = '22rem';
-const INFOBAR_WIDTH_ICON = '3rem';
-const INFOBAR_WIDTH_MOBILE = '18rem';
 const INFOBAR_KEYBOARD_SHORTCUT = 'i';
 
 export type HelpfulLink = {
@@ -70,19 +67,20 @@ function useInfobar() {
   return context;
 }
 
+type InfobarProviderProps = Omit<React.ComponentProps<'div'>, 'style'> & {
+  defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+};
+
 function InfobarProvider({
   defaultOpen = true,
   open: openProp,
   onOpenChange: setOpenProp,
   className,
-  style,
   children,
   ...props
-}: React.ComponentProps<'div'> & {
-  defaultOpen?: boolean;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-}) {
+}: InfobarProviderProps) {
   const isMobile = useIsMobile();
   const [openMobile, setOpenMobile] = React.useState(false);
   const [content, setContent] = React.useState<InfobarContent | null>(null);
@@ -201,15 +199,8 @@ function InfobarProvider({
       <TooltipProvider delayDuration={0}>
         <div
           data-slot='infobar-wrapper'
-          style={
-            {
-              '--infobar-width': INFOBAR_WIDTH,
-              '--infobar-width-icon': INFOBAR_WIDTH_ICON,
-              ...style
-            } as React.CSSProperties
-          }
           className={cn(
-            'group/infobar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full',
+            'group/infobar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full [--infobar-width:22rem] [--infobar-width-icon:3rem]',
             className
           )}
           {...props}
@@ -258,12 +249,7 @@ function Infobar({
           data-infobar='infobar'
           data-slot='infobar'
           data-mobile='true'
-          className='bg-sidebar text-sidebar-foreground w-(--infobar-width) p-0 [&>button]:hidden'
-          style={
-            {
-              '--infobar-width': INFOBAR_WIDTH_MOBILE
-            } as React.CSSProperties
-          }
+          className='bg-sidebar text-sidebar-foreground w-[18rem] p-0 [&>button]:hidden'
           side={side}
         >
           <SheetHeader className='sr-only'>
@@ -284,17 +270,13 @@ function Infobar({
       data-variant={variant}
       data-side={side}
       data-slot='infobar'
-      style={
-        {
-          '--infobar-transition-duration': isPathnameChanging ? '0ms' : '200ms'
-        } as React.CSSProperties
-      }
+      data-pathname-changing={isPathnameChanging}
     >
       {/* This is what handles the infobar gap on desktop */}
       <div
         data-slot='infobar-gap'
         className={cn(
-          'relative w-(--infobar-width) bg-transparent transition-[width] duration-(--infobar-transition-duration,200ms) ease-linear',
+          'relative w-(--infobar-width) bg-transparent transition-[width] duration-200 group-data-[pathname-changing=true]:duration-0 ease-linear',
           'group-data-[collapsible=offcanvas]:w-0',
           'group-data-[side=right]:rotate-180',
           variant === 'floating' || variant === 'inset'
@@ -305,7 +287,7 @@ function Infobar({
       <div
         data-slot='infobar-container'
         className={cn(
-          'absolute inset-y-0 z-10 hidden h-svh w-(--infobar-width) transition-[left,right,width] duration-(--infobar-transition-duration,200ms) ease-linear md:flex',
+          'absolute inset-y-0 z-10 hidden h-svh w-(--infobar-width) transition-[left,right,width] duration-200 group-data-[pathname-changing=true]:duration-0 ease-linear md:flex',
           side === 'left'
             ? 'left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--infobar-width)*-1)]'
             : 'right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--infobar-width)*-1)]',
@@ -683,12 +665,7 @@ function InfobarMenuSkeleton({
 }: React.ComponentProps<'div'> & {
   showIcon?: boolean;
 }) {
-  // Random width between 50 to 90%.
-  const width = React.useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`;
-  }, []);
-
-  return (
+return (
     <div
       data-slot='infobar-menu-skeleton'
       data-infobar='menu-skeleton'
@@ -702,13 +679,8 @@ function InfobarMenuSkeleton({
         />
       )}
       <Skeleton
-        className='h-4 max-w-(--skeleton-width) flex-1'
+        className='h-4 max-w-[70%] flex-1'
         data-infobar='menu-skeleton-text'
-        style={
-          {
-            '--skeleton-width': width
-          } as React.CSSProperties
-        }
       />
     </div>
   );

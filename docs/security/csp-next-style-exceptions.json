@@ -35,24 +35,6 @@
       "reason": "Chart indicators project runtime series colors through style props, and ChartStyle emits a generated style element containing per-chart CSS custom properties.",
       "constraints": "Chart configuration keys and colors require validation before use; the generated style element currently has no demonstrated per-response nonce path.",
       "exit_criteria": "Adopt a reviewed finite chart palette or nonce-aware chart style adapter, then remove indicator style props and the unnonced runtime style element."
-    },
-    {
-      "path": "apps/next-admin/src/shared/ui/shadcn/infobar.tsx",
-      "expected_style_attribute_occurrences": 4,
-      "expected_runtime_style_element_occurrences": 0,
-      "owner": "Next admin shell maintainers",
-      "reason": "The infobar adapter sets fixed desktop/mobile widths, a state-derived transition duration and a random skeleton width through CSS custom properties.",
-      "constraints": "Width constants are source-owned and transition state is boolean; caller-provided style spreading must not expand the approved property set.",
-      "exit_criteria": "Move fixed dimensions to static classes, state to data attributes, and skeleton width to a deterministic finite class scale."
-    },
-    {
-      "path": "apps/next-admin/src/shared/ui/shadcn/sidebar.tsx",
-      "expected_style_attribute_occurrences": 3,
-      "expected_runtime_style_element_occurrences": 0,
-      "owner": "Next admin shell maintainers",
-      "reason": "The sidebar adapter sets fixed desktop/mobile widths and a random skeleton width through CSS custom properties.",
-      "constraints": "Sidebar dimensions are source-owned constants; caller-provided style spreading must not expand the approved property set.",
-      "exit_criteria": "Move fixed dimensions to static classes and skeleton width to a deterministic finite class scale."
     }
   ]
 }

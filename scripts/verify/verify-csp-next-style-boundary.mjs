@@ -17,8 +17,8 @@ const excludedDirectories = new Set([
   "node_modules",
   "out",
 ]);
-const maxRegisteredFiles = 5;
-const maxStyleAttributeSites = 54;
+const maxRegisteredFiles = 3;
+const maxStyleAttributeSites = 47;
 const maxRuntimeStyleElements = 1;
 const failures = [];
 
@@ -332,6 +332,32 @@ forbidMarkers("apps/next-admin/src/widgets/data-table/data-table-skeleton.tsx", 
   "cellWidths",
   "shrinkZero",
   "style=",
+]);
+requireMarkers("apps/next-admin/src/shared/ui/shadcn/infobar.tsx", [
+  "type InfobarProviderProps = Omit<React.ComponentProps<'div'>, 'style'>",
+  "[--infobar-width:22rem]",
+  "[--infobar-width-icon:3rem]",
+  "data-pathname-changing={isPathnameChanging}",
+  "group-data-[pathname-changing=true]:duration-0",
+  "max-w-[70%]",
+]);
+forbidMarkers("apps/next-admin/src/shared/ui/shadcn/infobar.tsx", [
+  "style=",
+  "Math.random",
+  "INFOBAR_WIDTH",
+  "--infobar-transition-duration",
+]);
+requireMarkers("apps/next-admin/src/shared/ui/shadcn/sidebar.tsx", [
+  "type SidebarProviderProps = Omit<React.ComponentProps<'div'>, 'style'>",
+  "[--sidebar-width:16rem]",
+  "[--sidebar-width-icon:3rem]",
+  "w-[18rem]",
+  "max-w-[70%]",
+]);
+forbidMarkers("apps/next-admin/src/shared/ui/shadcn/sidebar.tsx", [
+  "style=",
+  "Math.random",
+  "SIDEBAR_WIDTH",
 ]);
 requireMarkers("apps/next-admin/src/shared/ui/shadcn/chart.tsx", [
   "<style",
