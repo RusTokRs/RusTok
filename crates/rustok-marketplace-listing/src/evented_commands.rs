@@ -149,6 +149,7 @@ impl MarketplaceListingService {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn review_in_transaction(
     receipt: &NewListingCommandReceipt,
     tenant_id: Uuid,
@@ -177,11 +178,7 @@ async fn review_in_transaction(
     }
     .as_str()
     .to_string());
-    active.approved_at = Set(if approved {
-        Some(now.clone().into())
-    } else {
-        None
-    });
+    active.approved_at = Set(if approved { Some(now.into()) } else { None });
     active.updated_at = Set(now.into());
     let model = active.update(&receipt.transaction).await?;
 
