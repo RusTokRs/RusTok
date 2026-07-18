@@ -15,7 +15,7 @@ impl MigrationTrait for Migration {
         let backend = manager.get_database_backend();
         if !matches!(backend, DbBackend::Postgres | DbBackend::Sqlite) {
             return Err(DbErr::Migration(format!(
-                "marketplace seller legacy prose cutover does not support {backend:?}"
+                "marketplace seller legacy prose backfill does not support {backend:?}"
             )));
         }
 
@@ -72,29 +72,12 @@ impl MigrationTrait for Migration {
                 .await?;
             }
         }
-
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(MarketplaceSellers::Table)
-                    .drop_column(MarketplaceSellers::OnboardingNote)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(MarketplaceSellers::Table)
-                    .drop_column(MarketplaceSellers::SuspensionReason)
-                    .to_owned(),
-            )
-            .await?;
         Ok(())
     }
 
     async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
         Err(DbErr::Migration(
-            "marketplace seller legacy prose cutover is intentionally irreversible: mutable onboarding and suspension snapshots were normalized into immutable legacy_snapshot events"
+            "marketplace seller legacy prose backfill is intentionally irreversible: snapshot provenance cannot be reconstructed from mutable columns"
                 .to_string(),
         ))
     }
@@ -135,11 +118,4 @@ async fn insert_legacy_snapshot<C: ConnectionTrait>(
     };
     connection.execute(statement).await?;
     Ok(())
-}
-
-#[derive(Iden)]
-enum MarketplaceSellers {
-    Table,
-    OnboardingNote,
-    SuspensionReason,
 }
