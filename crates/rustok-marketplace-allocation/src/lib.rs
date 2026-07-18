@@ -4,6 +4,8 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 mod receipts;
+#[cfg(test)]
+mod tests;
 
 pub mod dto;
 pub mod entities;
