@@ -8,7 +8,8 @@ use uuid::Uuid;
 
 use crate::dto::{
     MarketplaceSellerEventKind, MarketplaceSellerEventProvenance, MarketplaceSellerEventResponse,
-    MarketplaceSellerOnboardingStatus, MarketplaceSellerResponse, MarketplaceSellerStatus,
+    MarketplaceSellerMemberResponse, MarketplaceSellerOnboardingStatus, MarketplaceSellerResponse,
+    MarketplaceSellerStatus,
 };
 use crate::entities::seller_event;
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
@@ -148,19 +149,86 @@ pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
         }
     };
 
+    insert_command_event(
+        connection,
+        tenant_id,
+        response.id,
+        actor_id,
+        response.resolved_locale,
+        event_kind,
+        note,
+        metadata,
+        response.updated_at,
+    )
+    .await
+}
+
+pub(crate) async fn append_receipted_member_event<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    locale: &str,
+    command_kind: &str,
+    response: &MarketplaceSellerMemberResponse,
+) -> MarketplaceSellerResult<()> {
+    if response.tenant_id != tenant_id {
+        return Err(MarketplaceSellerError::Validation(
+            "marketplace seller member result tenant does not match its receipt".to_string(),
+        ));
+    }
+    let event_kind = match command_kind {
+        "add_seller_member" => MarketplaceSellerEventKind::MemberAdded,
+        "update_seller_member" => MarketplaceSellerEventKind::MemberUpdated,
+        _ => {
+            return Err(MarketplaceSellerError::Validation(format!(
+                "member response has no immutable event mapping for command `{command_kind}`"
+            )));
+        }
+    };
+    insert_command_event(
+        connection,
+        tenant_id,
+        response.seller_id,
+        actor_id,
+        locale.to_string(),
+        event_kind,
+        None,
+        serde_json::json!({
+            "member_id": response.id,
+            "user_id": response.user_id,
+            "role": response.role.as_str(),
+            "status": response.status.as_str(),
+        }),
+        response.updated_at,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn insert_command_event<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    seller_id: Uuid,
+    actor_id: Uuid,
+    locale: String,
+    event_kind: MarketplaceSellerEventKind,
+    note: Option<String>,
+    metadata: Value,
+    created_at: chrono::DateTime<chrono::FixedOffset>,
+) -> MarketplaceSellerResult<()> {
     seller_event::ActiveModel {
         id: Set(generate_id()),
         tenant_id: Set(tenant_id),
-        seller_id: Set(response.id),
+        seller_id: Set(seller_id),
         actor_id: Set(Some(actor_id)),
         event_kind: Set(event_kind.as_str().to_string()),
-        locale: Set(Some(response.resolved_locale)),
+        locale: Set(Some(locale)),
         provenance: Set(MarketplaceSellerEventProvenance::Command
             .as_str()
             .to_string()),
         note: Set(note),
         metadata: Set(metadata),
-        created_at: Set(response.updated_at),
+        created_at: Set(created_at),
     }
     .insert(connection)
     .await?;
