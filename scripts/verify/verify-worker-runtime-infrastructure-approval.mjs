@@ -1,0 +1,160 @@
+#!/usr/bin/env node
+
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import process from "node:process";
+
+const APPROVAL_LABEL = "worker-runtime-infra-approved";
+const PROTECTED_PATHS = [
+  ".github/workflows/worker-runtime-infrastructure.yml",
+  ".github/workflows/hardening-gates.yml",
+  "crates/rustok-worker-transport/Cargo.toml",
+  "crates/rustok-worker-transport/src/lib.rs",
+  "crates/rustok-verification-transport/Cargo.toml",
+  "crates/rustok-verification-transport/src/server.rs",
+  "crates/rustok-verification-worker/src/main.rs",
+  "crates/rustok-verification-worker/src/cosign.rs",
+  "crates/rustok-module-build-worker/src/admission.rs",
+  "crates/rustok-module-build-worker/src/lib.rs",
+  "crates/rustok-module-build-worker/src/main.rs",
+  "crates/rustok-module-build-worker/src/runner.rs",
+  "scripts/verify/verify-all.sh",
+  "scripts/verify/verify-worker-runtime-policy.mjs",
+  "scripts/verify/verify-worker-runtime-infrastructure-approval.mjs",
+  "scripts/verify/verify-worker-runtime-infra-self-test.mjs",
+];
+
+function parseArguments(argv) {
+  const options = { labelsJson: "[]", explicitlyApproved: false, selfTest: false };
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--self-test") {
+      options.selfTest = true;
+      continue;
+    }
+    if (["--base-dir", "--head-dir", "--labels-json", "--github-output"].includes(argument)) {
+      const value = argv[index + 1];
+      if (!value) throw new Error(`${argument} requires a value`);
+      options[argument.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--explicitly-approved") {
+      const value = argv[index + 1];
+      if (!value || !/^(?:true|false)$/i.test(value)) {
+        throw new Error("--explicitly-approved requires true or false");
+      }
+      options.explicitlyApproved = value.toLowerCase() === "true";
+      index += 1;
+      continue;
+    }
+    throw new Error(`unknown argument: ${argument}`);
+  }
+  return options;
+}
+
+function parseLabels(value) {
+  const labels = JSON.parse(value);
+  if (!Array.isArray(labels) || labels.some((label) => typeof label !== "string")) {
+    throw new Error("--labels-json must be a JSON array of label names");
+  }
+  return new Set(labels);
+}
+
+function fileState(root, relativePath) {
+  const file = path.join(root, relativePath);
+  if (!fs.existsSync(file)) return null;
+  const stats = fs.lstatSync(file);
+  if (!stats.isFile() || stats.isSymbolicLink()) {
+    throw new Error(`${relativePath} must be a regular non-symlink file`);
+  }
+  return fs.readFileSync(file, "utf8").replaceAll("\r\n", "\n");
+}
+
+function changedProtectedPaths(baseRoot, headRoot) {
+  return PROTECTED_PATHS.filter(
+    (relativePath) => fileState(baseRoot, relativePath) !== fileState(headRoot, relativePath),
+  );
+}
+
+function approvalDecision(changedPaths, labels, explicitlyApproved) {
+  if (changedPaths.length === 0) return { required: false, approved: true };
+  return {
+    required: true,
+    approved: explicitlyApproved || labels.has(APPROVAL_LABEL),
+  };
+}
+
+function writeGithubOutput(file, changedPaths) {
+  if (!file) return;
+  fs.appendFileSync(
+    file,
+    `changed=${changedPaths.length > 0 ? "true" : "false"}\nchanged_count=${changedPaths.length}\n`,
+  );
+}
+
+function runSelfTest() {
+  assert.deepEqual(approvalDecision([], new Set(), false), {
+    required: false,
+    approved: true,
+  });
+  assert.deepEqual(approvalDecision([PROTECTED_PATHS[0]], new Set(), false), {
+    required: true,
+    approved: false,
+  });
+  assert.deepEqual(
+    approvalDecision([PROTECTED_PATHS[1]], new Set([APPROVAL_LABEL]), false),
+    { required: true, approved: true },
+  );
+  assert.deepEqual(approvalDecision([PROTECTED_PATHS[2]], new Set(), true), {
+    required: true,
+    approved: true,
+  });
+  assert(PROTECTED_PATHS.includes("crates/rustok-worker-transport/src/lib.rs"));
+  assert(PROTECTED_PATHS.includes("crates/rustok-module-build-worker/src/runner.rs"));
+  assert(PROTECTED_PATHS.includes("crates/rustok-verification-worker/src/cosign.rs"));
+  console.log("✔ worker runtime infrastructure approval self-test passed");
+}
+
+function main() {
+  const options = parseArguments(process.argv.slice(2));
+  if (options.selfTest) {
+    runSelfTest();
+    return;
+  }
+  if (!options.baseDir || !options.headDir) {
+    throw new Error(
+      "usage: verify-worker-runtime-infrastructure-approval.mjs --base-dir DIR --head-dir DIR [--labels-json JSON] [--explicitly-approved true|false] [--github-output FILE]",
+    );
+  }
+  const changedPaths = changedProtectedPaths(
+    path.resolve(options.baseDir),
+    path.resolve(options.headDir),
+  );
+  writeGithubOutput(options.githubOutput, changedPaths);
+  const decision = approvalDecision(
+    changedPaths,
+    parseLabels(options.labelsJson),
+    options.explicitlyApproved,
+  );
+  if (!decision.required) {
+    console.log("✔ worker runtime infrastructure is unchanged");
+    return;
+  }
+  if (!decision.approved) {
+    console.error(`worker runtime infrastructure changed without ${APPROVAL_LABEL} approval:`);
+    changedPaths.forEach((relativePath) => console.error(`✗ ${relativePath}`));
+    process.exit(Math.min(changedPaths.length, 255));
+  }
+  console.log(
+    `✔ worker runtime infrastructure change is explicitly approved (${APPROVAL_LABEL}): ${changedPaths.join(", ")}`,
+  );
+}
+
+try {
+  main();
+} catch (error) {
+  console.error(`worker runtime infrastructure approval failed: ${error.message}`);
+  process.exit(1);
+}
