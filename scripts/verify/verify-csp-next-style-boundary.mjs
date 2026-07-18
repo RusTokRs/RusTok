@@ -17,9 +17,9 @@ const excludedDirectories = new Set([
   "node_modules",
   "out",
 ]);
-const maxRegisteredFiles = 3;
-const maxStyleAttributeSites = 47;
-const maxRuntimeStyleElements = 1;
+const maxRegisteredFiles = 2;
+const maxStyleAttributeSites = 45;
+const maxRuntimeStyleElements = 0;
 const failures = [];
 
 function read(relativePath) {
@@ -360,9 +360,24 @@ forbidMarkers("apps/next-admin/src/shared/ui/shadcn/sidebar.tsx", [
   "SIDEBAR_WIDTH",
 ]);
 requireMarkers("apps/next-admin/src/shared/ui/shadcn/chart.tsx", [
+  "const CHART_INDICATOR_CLASSES",
+  "function chartIndicatorClass",
+  "chartIndicatorClass(index)",
+]);
+forbidMarkers("apps/next-admin/src/shared/ui/shadcn/chart.tsx", [
+  "style=",
   "<style",
   "dangerouslySetInnerHTML",
   "--color-${configKey}",
+  "ChartStyle",
+]);
+requireMarkers("apps/next-admin/src/features/overview/components/area-graph.tsx", [
+  "stroke='var(--primary)'",
+  "stopColor='var(--primary)'",
+]);
+forbidMarkers("apps/next-admin/src/features/overview/components/area-graph.tsx", [
+  "var(--color-desktop)",
+  "var(--color-mobile)",
 ]);
 
 if (failures.length > 0) {
