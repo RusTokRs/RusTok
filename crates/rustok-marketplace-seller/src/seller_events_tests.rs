@@ -1,5 +1,5 @@
 use sea_orm::{ActiveModelTrait, ConnectOptions, Database, DatabaseConnection, Set};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 use crate::dto::{MarketplaceSellerEventKind, MarketplaceSellerEventProvenance};
