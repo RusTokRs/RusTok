@@ -125,6 +125,81 @@ impl MarketplaceSellerMemberStatus {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketplaceSellerEventKind {
+    Created,
+    ProfileUpdated,
+    OnboardingSubmitted,
+    OnboardingApproved,
+    OnboardingRejected,
+    Suspended,
+    Reactivated,
+    MemberAdded,
+    MemberUpdated,
+    LegacyOnboardingSnapshot,
+    LegacySuspensionSnapshot,
+}
+
+impl MarketplaceSellerEventKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::ProfileUpdated => "profile_updated",
+            Self::OnboardingSubmitted => "onboarding_submitted",
+            Self::OnboardingApproved => "onboarding_approved",
+            Self::OnboardingRejected => "onboarding_rejected",
+            Self::Suspended => "suspended",
+            Self::Reactivated => "reactivated",
+            Self::MemberAdded => "member_added",
+            Self::MemberUpdated => "member_updated",
+            Self::LegacyOnboardingSnapshot => "legacy_onboarding_snapshot",
+            Self::LegacySuspensionSnapshot => "legacy_suspension_snapshot",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "created" => Some(Self::Created),
+            "profile_updated" => Some(Self::ProfileUpdated),
+            "onboarding_submitted" => Some(Self::OnboardingSubmitted),
+            "onboarding_approved" => Some(Self::OnboardingApproved),
+            "onboarding_rejected" => Some(Self::OnboardingRejected),
+            "suspended" => Some(Self::Suspended),
+            "reactivated" => Some(Self::Reactivated),
+            "member_added" => Some(Self::MemberAdded),
+            "member_updated" => Some(Self::MemberUpdated),
+            "legacy_onboarding_snapshot" => Some(Self::LegacyOnboardingSnapshot),
+            "legacy_suspension_snapshot" => Some(Self::LegacySuspensionSnapshot),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketplaceSellerEventProvenance {
+    Command,
+    LegacySnapshot,
+}
+
+impl MarketplaceSellerEventProvenance {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Command => "command",
+            Self::LegacySnapshot => "legacy_snapshot",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "command" => Some(Self::Command),
+            "legacy_snapshot" => Some(Self::LegacySnapshot),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateMarketplaceSellerInput {
     #[validate(length(min = 2, max = 80))]
@@ -224,6 +299,20 @@ pub struct MarketplaceSellerMemberResponse {
     pub updated_at: DateTime<FixedOffset>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MarketplaceSellerEventResponse {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub seller_id: Uuid,
+    pub actor_id: Option<Uuid>,
+    pub event_kind: MarketplaceSellerEventKind,
+    pub locale: Option<String>,
+    pub provenance: MarketplaceSellerEventProvenance,
+    pub note: Option<String>,
+    pub metadata: Value,
+    pub created_at: DateTime<FixedOffset>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReadMarketplaceSellerRequest {
     pub seller_id: Uuid,
@@ -238,4 +327,10 @@ pub struct ReadMarketplaceSellerMembershipRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ListMarketplaceSellerMembersRequest {
     pub seller_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListMarketplaceSellerEventsRequest {
+    pub seller_id: Uuid,
+    pub limit: u64,
 }
