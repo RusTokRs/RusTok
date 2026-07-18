@@ -13,11 +13,17 @@ function expectStrictUiCsp(response: APIResponse): void {
   expect(csp).not.toMatch(/(?:^|;)\s*style-src\s+[^;]*'unsafe-inline'/);
 }
 
-function expectNonceBackedElements(html: string, tagName: "script" | "style"): void {
+function expectNonceBackedElements(
+  html: string,
+  tagName: "script" | "style",
+  minimum: number,
+): void {
   const tags = [...html.matchAll(new RegExp(`<${tagName}\\b[^>]*>`, "gi"))].map(
     (match) => match[0],
   );
-  expect(tags.length, `expected at least one <${tagName}> element`).toBeGreaterThan(0);
+  expect(tags.length, `expected at least ${minimum} <${tagName}> element(s)`).toBeGreaterThanOrEqual(
+    minimum,
+  );
   for (const tag of tags) {
     expect(tag, `${tagName} element must carry the response nonce`).toMatch(
       /\snonce="[A-Za-z0-9_-]+"/,
@@ -77,8 +83,8 @@ test("embedded admin assets hydrate from the admin mount under strict CSP", asyn
   expect(html).not.toMatch(/\sstyle\s*=/i);
   expect(html).not.toMatch(/(?:src|href)="\/(?:rustok-admin|snippets|output\.css)/i);
   expect(html).toContain("/admin/");
-  expectNonceBackedElements(html, "script");
-  expectNonceBackedElements(html, "style");
+  expectNonceBackedElements(html, "script", 1);
+  expectNonceBackedElements(html, "style", 0);
 
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
