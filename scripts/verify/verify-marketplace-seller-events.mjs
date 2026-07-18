@@ -14,7 +14,7 @@ const files = {
   ports: "crates/rustok-marketplace-seller/src/ports.rs",
   tests: "crates/rustok-marketplace-seller/src/seller_events_tests.rs",
   registry: "crates/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json",
-  commands: "crates/rustok-marketplace-seller/src/receipted_commands.rs",
+  receipts: "crates/rustok-marketplace-seller/src/command_receipts.rs",
 };
 
 const failures = [];
@@ -28,9 +28,6 @@ const read = (file) => {
 };
 const requireMarker = (source, marker, file) => {
   if (!source.includes(marker)) failures.push(`${file}: missing ${marker}`);
-};
-const forbidMarker = (source, marker, file) => {
-  if (source.includes(marker)) failures.push(`${file}: forbidden ${marker}`);
 };
 
 const sources = Object.fromEntries(
@@ -51,7 +48,7 @@ for (const marker of [
   "pub actor_id: Option<Uuid>",
   "pub locale: Option<String>",
   "pub provenance: String",
-  "belongs_to = \"super::seller::Entity\"",
+  'belongs_to = "super::seller::Entity"',
 ]) requireMarker(sources.entity, marker, files.entity);
 requireMarker(sources.entities, "pub mod seller_event;", files.entities);
 
@@ -74,10 +71,15 @@ requireMarker(
 for (const marker of [
   "MAX_EVENTS_PER_READ: u64 = 200",
   "list_seller_events",
+  "append_receipted_seller_event",
+  '"review_seller_onboarding" | "suspend_seller" | "reactivate_seller"',
+  "MarketplaceSellerEventKind::OnboardingApproved",
+  "MarketplaceSellerEventKind::OnboardingRejected",
+  "MarketplaceSellerEventKind::Suspended",
+  "MarketplaceSellerEventKind::Reactivated",
+  "MarketplaceSellerEventProvenance::Command",
   "order_by_desc(seller_event::Column::CreatedAt)",
   "order_by_desc(seller_event::Column::Id)",
-  "MarketplaceSellerEventProvenance::Command",
-  "MarketplaceSellerEventProvenance::LegacySnapshot",
 ]) requireMarker(sources.reader, marker, files.reader);
 for (const marker of [
   "pub async fn list_events(",
@@ -92,24 +94,45 @@ for (const marker of [
 ]) requireMarker(sources.ports, marker, files.ports);
 
 for (const marker of [
+  "pub actor_id: Uuid",
+  "pub command_kind: String",
+  "append_receipted_seller_event(",
+  "receipt.transaction.rollback().await?",
+  "seller_command_receipt::Entity::update_many()",
+  "receipt.transaction.commit().await?",
+]) requireMarker(sources.receipts, marker, files.receipts);
+const appendIndex = sources.receipts.indexOf("append_receipted_seller_event(");
+const receiptCompletionIndex = sources.receipts.indexOf(
+  "seller_command_receipt::Entity::update_many()",
+);
+if (
+  appendIndex < 0 ||
+  receiptCompletionIndex < 0 ||
+  appendIndex > receiptCompletionIndex
+) {
+  failures.push(
+    `${files.receipts}: immutable event must be appended before receipt completion`,
+  );
+}
+
+for (const marker of [
   "seller_event_timeline_is_bounded_newest_first_and_tenant_scoped",
   "seller_event_attribution_constraint_accepts_truthful_provenance_only",
-  "command event without actor must fail DB CHECK",
+  "lifecycle_commands_commit_one_event_with_state_and_receipt",
+  "event_insert_failure_rolls_back_state_and_pending_receipt",
+  "replay must not append duplicate events",
+  "pending receipt must roll back with state",
 ]) requireMarker(sources.tests, marker, files.tests);
 
 for (const marker of [
   '"table": "marketplace_seller_events"',
-  '"status": "schema_and_read_port_ready_write_path_pending"',
-  '"write_commands_atomic": false',
+  '"status": "lifecycle_subset_atomic"',
+  '"review_seller_onboarding"',
+  '"suspend_seller"',
+  '"reactivate_seller"',
   '"compatibility_columns_removed": false',
   '"list_seller_events"',
 ]) requireMarker(sources.registry, marker, files.registry);
-
-forbidMarker(
-  sources.commands,
-  "append_seller_event(",
-  files.commands,
-);
 
 if (failures.length > 0) {
   console.error("marketplace seller event storage verification failed:");
