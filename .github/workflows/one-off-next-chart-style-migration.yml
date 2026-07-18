@@ -58,32 +58,18 @@ jobs:
               file.write_text(updated)
 
           chart = "apps/next-admin/src/shared/ui/shadcn/chart.tsx"
-          sub_once(
+          replace_once(
               chart,
-              r"// Format: \{ THEME_NAME: CSS_SELECTOR \}\s*const THEMES = \{ light: '', dark: '\.dark' \} as const;\s*export type ChartConfig = \{\s*\[key in string\]: \{\s*label\?: React\.ReactNode;\s*icon\?: React\.ComponentType;\s*\} & \(\s*\| \{ color\?: string; theme\?: never \}\s*\| \{ color\?: never; theme: Record<keyof typeof THEMES, string> \}\s*\);\s*\};",
-              """export type ChartIndicatorTone = 'primary' | 'muted' | 'subtle' | 'strong';
+              "import { cn } from '@/shared/lib/utils';\n",
+              """import { cn } from '@/shared/lib/utils';
 
-          const CHART_INDICATOR_CLASSES: Record<ChartIndicatorTone, string> = {
-            primary: 'border-primary bg-primary',
-            muted: 'border-primary/70 bg-primary/70',
-            subtle: 'border-primary/45 bg-primary/45',
-            strong: 'border-foreground bg-foreground'
-          };
-
-          const CHART_INDICATOR_TONES: ChartIndicatorTone[] = [
-            'primary',
-            'muted',
-            'subtle',
-            'strong'
-          ];
-
-          export type ChartConfig = {
-            [key in string]: {
-              label?: React.ReactNode;
-              icon?: React.ComponentType;
-              tone?: ChartIndicatorTone;
-            };
-          };""",
+          const CHART_INDICATOR_CLASSES = [
+            'border-primary bg-primary',
+            'border-primary/70 bg-primary/70',
+            'border-primary/45 bg-primary/45',
+            'border-foreground bg-foreground'
+          ] as const;
+          """,
           )
           sub_once(
               chart,
@@ -112,7 +98,7 @@ jobs:
           replace_once(
               chart,
               "          const indicatorColor = color || item.payload?.fill || item.color;",
-              "          const indicatorClassName = chartIndicatorClass(itemConfig?.tone, index);",
+              "          const indicatorClassName = chartIndicatorClass(index);",
           )
           sub_once(
               chart,
@@ -131,19 +117,15 @@ jobs:
               """<div
                 className={cn(
                   'h-2 w-2 shrink-0 rounded-[2px]',
-                  chartIndicatorClass(itemConfig?.tone, index)
+                  chartIndicatorClass(index)
                 )}
               />""",
           )
           replace_once(
               chart,
               "// Helper to extract item config from a payload.\n",
-              """function chartIndicatorClass(
-            tone: ChartIndicatorTone | undefined,
-            index: number
-          ) {
-            const resolvedTone = tone || CHART_INDICATOR_TONES[index % CHART_INDICATOR_TONES.length];
-            return CHART_INDICATOR_CLASSES[resolvedTone];
+              """function chartIndicatorClass(index: number) {
+            return CHART_INDICATOR_CLASSES[index % CHART_INDICATOR_CLASSES.length];
           }
 
           // Helper to extract item config from a payload.
@@ -156,15 +138,8 @@ jobs:
           )
 
           area = "apps/next-admin/src/features/overview/components/area-graph.tsx"
-          replace_count(area, ",\n    color: 'var(--primary)'", "", 2)
           replace_count(area, "var(--color-desktop)", "var(--primary)", 2)
           replace_count(area, "var(--color-mobile)", "var(--primary)", 2)
-
-          bar = "apps/next-admin/src/features/overview/components/bar-graph.tsx"
-          replace_count(bar, ",\n    color: 'var(--primary)'", "", 3)
-
-          pie = "apps/next-admin/src/features/overview/components/pie-graph.tsx"
-          replace_count(pie, ",\n    color: 'var(--primary)'", "", 5)
 
           register_path = Path("docs/security/csp-next-style-exceptions.json")
           register = json.loads(register_path.read_text())
@@ -189,10 +164,9 @@ jobs:
             "--color-${configKey}",
           ]);""",
               """requireMarkers("apps/next-admin/src/shared/ui/shadcn/chart.tsx", [
-            "export type ChartIndicatorTone",
             "const CHART_INDICATOR_CLASSES",
             "function chartIndicatorClass",
-            "chartIndicatorClass(itemConfig?.tone, index)",
+            "chartIndicatorClass(index)",
           ]);
           forbidMarkers("apps/next-admin/src/shared/ui/shadcn/chart.tsx", [
             "style=",
