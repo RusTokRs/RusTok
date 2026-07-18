@@ -1,6 +1,6 @@
 # RusToK ecommerce implementation plan
 
-Last reviewed: 2026-07-17
+Last reviewed: 2026-07-18
 
 ## Source of truth
 
@@ -133,6 +133,12 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - [x] Persist durable actor-bound command receipts and reject idempotency conflicts.
 - [x] Use SQL `ON CONFLICT` for concurrent translation upsert.
 - [x] Route all seller FBA writes through the receipt executor.
+- [x] Persist append-only seller lifecycle/moderation events with truthful command or
+  legacy-snapshot provenance and bounded newest-first timeline reads.
+- [x] Commit onboarding review, suspension, and reactivation state, immutable event,
+  completed receipt, and normalized response snapshot in one owner transaction.
+- [x] Prove completed-receipt replay does not append another lifecycle event and event
+  persistence failure rolls back state plus the pending receipt.
 
 ### Seller FFA completed
 
@@ -143,13 +149,15 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 
 ### Seller remaining
 
-- [ ] Replace mutable onboarding/suspension prose with immutable locale-tagged seller
-  lifecycle/moderation events and bounded timeline reads.
+- [ ] Extend atomic immutable event production to create, profile update, onboarding
+  submit, and member commands.
 - [ ] Backfill/remove seller compatibility snapshots without fabricating attribution.
 - [ ] Publish seller events through the transactional outbox.
+- [ ] Add lifecycle/moderation history to native and GraphQL seller FFA workflows.
 - [ ] Add normalized verification facts and KYC provider SPI without raw payloads.
-- [ ] Compile seller/core/GraphQL/admin packages, apply migrations, and execute locale,
-  replay, tenant, contention, rollback, mounted FFA, and remote-profile evidence.
+- [ ] Compile seller/core/GraphQL/admin packages, apply clean/upgraded PostgreSQL
+  migrations, and execute locale, replay, tenant, contention, rollback, mounted FFA,
+  and remote-profile evidence.
 
 ### Listing FBA completed
 
@@ -253,6 +261,7 @@ Source inspection is not execution evidence.
 - [ ] `cargo fmt --all -- --check`
 - [ ] `npm run verify:ecommerce:fba`
 - [ ] `npm run verify:marketplace`
+- [x] `node scripts/verify/verify-marketplace-seller-events.mjs`
 - [ ] `node scripts/verify/verify-marketplace-listing-event-contract.mjs`
 - [ ] `node scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
 - [ ] `cargo xtask module validate commerce`
@@ -266,15 +275,15 @@ Source inspection is not execution evidence.
 - [ ] `cargo check -p rustok-commerce --lib`
 - [ ] `cargo check -p rustok-payment --all-features`
 - [ ] `cargo check -p rustok-marketplace --lib`
-- [ ] `cargo check -p rustok-marketplace-seller --lib`
+- [x] `cargo check -p rustok-marketplace-seller --all-targets`
+- [x] `cargo test -p rustok-marketplace-seller`
 - [ ] `cargo check -p rustok-marketplace-seller-admin --all-features`
 - [ ] `cargo check -p rustok-marketplace-listing --lib`
 - [ ] `cargo test -p rustok-marketplace-listing`
 - [ ] `cargo check -p rustok-marketplace-listing-admin --all-features`
 - [ ] `cargo check -p rustok-server --features mod-marketplace`
-- [ ] Targeted checkout, return-completion, payment, seller/listing lifecycle,
-  localization, event provenance/timeline, outbox replay/rollback, recovery, and
-  tenant-isolation tests.
+- [ ] Targeted checkout, return-completion, payment, remaining seller/listing lifecycle,
+  localization, outbox replay/rollback, recovery, and tenant-isolation tests.
 
 ### Database/runtime
 
@@ -298,18 +307,22 @@ Source inspection is not execution evidence.
 7. [x] Publish the initial module-owned listing FFA source package.
 8. [x] Define and atomically publish the sealed listing transactional outbox events.
 9. [x] Add listing permissions and workspace/admin feature registration.
-10. [ ] Add immutable seller lifecycle/moderation events and timeline reads.
-11. [ ] Mount authenticated request-scoped listing native composition.
-12. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
-13. [ ] Run static verifiers and fix remaining source drift.
-14. [ ] Compile commerce/payment/Marketplace packages and server features.
-15. [ ] Apply clean/upgraded migrations and targeted regression tests.
-16. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, and
+10. [x] Add immutable seller lifecycle/moderation event storage and bounded timeline reads.
+11. [x] Route onboarding review, suspension, and reactivation through atomic seller
+    state + event + receipt completion.
+12. [ ] Extend seller event production to create/profile/onboarding-submit/member commands.
+13. [ ] Add seller event history to native and GraphQL FFA transports.
+14. [ ] Mount authenticated request-scoped listing native composition.
+15. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
+16. [ ] Run static verifiers and fix remaining source drift.
+17. [ ] Compile remaining commerce/payment/Marketplace packages and server features.
+18. [ ] Apply clean/upgraded migrations and targeted regression tests.
+19. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, and
     mounted transport scenarios.
-17. [ ] Introduce seller allocations, commission snapshots, double-entry ledger, and
+20. [ ] Introduce seller allocations, commission snapshots, double-entry ledger, and
     payout journals in that order.
-18. [ ] Execute production-like payment provider and mounted worker evidence.
-19. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
+21. [ ] Execute production-like payment provider and mounted worker evidence.
+22. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
 
 ## Change rules
 
