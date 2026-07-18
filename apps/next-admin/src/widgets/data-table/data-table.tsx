@@ -10,7 +10,6 @@ import {
   TableHeader,
   TableRow
 } from '@/widgets/data-table';
-import { getCommonPinningStyles } from '@/shared/lib/data-table';
 import { ScrollArea, ScrollBar } from '@/shared/ui/shadcn/scroll-area';
 
 interface DataTableProps<TData> extends React.ComponentProps<'div'> {
@@ -34,13 +33,7 @@ export function DataTable<TData>({
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow key={headerGroup.id}>
                     {headerGroup.headers.map((header) => (
-                      <TableHead
-                        key={header.id}
-                        colSpan={header.colSpan}
-                        style={{
-                          ...getCommonPinningStyles({ column: header.column })
-                        }}
-                      >
+                      <TableHead key={header.id} colSpan={header.colSpan}>
                         {header.isPlaceholder
                           ? null
                           : flexRender(
@@ -60,12 +53,7 @@ export function DataTable<TData>({
                       data-state={row.getIsSelected() && 'selected'}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <TableCell
-                          key={cell.id}
-                          style={{
-                            ...getCommonPinningStyles({ column: cell.column })
-                          }}
-                        >
+                        <TableCell key={cell.id}>
                           {flexRender(
                             cell.column.columnDef.cell,
                             cell.getContext()
