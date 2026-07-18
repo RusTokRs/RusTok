@@ -36,5 +36,7 @@ jobs:
         run: node scripts/verify/verify-dependency-feature-hygiene.mjs
       - name: Verify CSP reporting contract
         run: node scripts/verify/verify-csp-reporting-contract.mjs
-      - name: Verify CSP inline style exceptions
+      - name: Verify Rust-hosted CSP style boundary
         run: node scripts/verify/verify-csp-inline-style-exceptions.mjs
+      - name: Verify Next CSP style boundary
+        run: node scripts/verify/verify-csp-next-style-boundary.mjs
