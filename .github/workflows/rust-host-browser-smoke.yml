@@ -1,0 +1,182 @@
+name: Rust-hosted Browser Smoke
+
+on:
+  pull_request:
+    branches:
+      - "**"
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  RUSTOK_BROWSER_DATABASE: rustok_browser_smoke
+  RUSTOK_BROWSER_DATABASE_ROLE: rustok_browser
+  RUSTOK_BROWSER_DATABASE_PASSWORD: rustok_browser_password
+
+jobs:
+  embedded-hosts:
+    name: Embedded admin and storefront
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            apps/admin/package-lock.json
+            apps/next-admin/package-lock.json
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+          rustc --version --verbose
+
+      - name: Create bounded PostgreSQL smoke role
+        run: |
+          set -euo pipefail
+          container=$(docker ps --filter ancestor=postgres:16 --format '{{.ID}}' | head -n 1)
+          test -n "$container"
+          docker exec "$container" psql --set ON_ERROR_STOP=1 --username postgres --dbname postgres <<SQL
+          CREATE ROLE ${RUSTOK_BROWSER_DATABASE_ROLE}
+            LOGIN
+            PASSWORD '${RUSTOK_BROWSER_DATABASE_PASSWORD}'
+            CREATEDB
+            NOSUPERUSER
+            NOCREATEROLE
+            NOREPLICATION
+            NOBYPASSRLS
+            CONNECTION LIMIT 10;
+          SQL
+
+      - name: Apply migrations and preserve browser database
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/browser-migrations
+          RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://${{ env.RUSTOK_BROWSER_DATABASE_ROLE }}:${{ env.RUSTOK_BROWSER_DATABASE_PASSWORD }}@127.0.0.1:5432/postgres
+          RUSTOK_MIGRATION_SMOKE_DB_NAME: ${{ env.RUSTOK_BROWSER_DATABASE }}
+          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "0"
+          RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"
+          RUSTOK_MIGRATION_SMOKE_KEEP_DB: "1"
+          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
+        run: >-
+          cargo test
+          --locked
+          -p rustok-migrations
+          --test postgres_zero_migration_smoke
+          postgres_zero_migration_smoke_applies_from_empty_database
+          --
+          --ignored
+          --nocapture
+
+      - name: Build embedded admin assets
+        run: >-
+          bash scripts/build/build-embedded-admin.sh
+          --tool-root "$GITHUB_WORKSPACE/.tools/trunk-0.21.14"
+          --target-dir "$GITHUB_WORKSPACE/target/browser-admin-assets"
+          --public-url /admin/
+
+      - name: Install browser test dependencies
+        run: |
+          npm ci --prefix apps/next-admin --no-audit --no-fund
+          (cd apps/next-admin && npx playwright install --with-deps chromium)
+
+      - name: Start monolith browser host
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/browser-server
+          DATABASE_URL: postgres://${{ env.RUSTOK_BROWSER_DATABASE_ROLE }}:${{ env.RUSTOK_BROWSER_DATABASE_PASSWORD }}@127.0.0.1:5432/${{ env.RUSTOK_BROWSER_DATABASE }}
+          RUSTOK_ENV: browser-smoke
+          SUPERADMIN_EMAIL: browser-smoke@example.invalid
+          SUPERADMIN_PASSWORD: BrowserSmoke-2026!9Qv2Lm7Rx
+          SUPERADMIN_TENANT_SLUG: default
+          SUPERADMIN_TENANT_NAME: Browser Smoke
+          RUST_LOG: rustok_server=info,tower_http=warn
+        run: |
+          set -euo pipefail
+          cargo run --locked -p rustok-server --bin rustok-server > rust-host-browser.log 2>&1 &
+          echo "$!" > rust-host-browser.pid
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent --show-error http://127.0.0.1:5150/health >/dev/null; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat rust-host-browser.pid)" 2>/dev/null; then
+              cat rust-host-browser.log >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          cat rust-host-browser.log >&2
+          exit 1
+
+      - name: Run Rust-hosted Chromium smoke
+        env:
+          RUSTOK_BROWSER_BASE_URL: http://127.0.0.1:5150
+          RUSTOK_BROWSER_TENANT_SLUG: default
+        run: >-
+          npm exec
+          --prefix apps/next-admin
+          playwright test
+          --
+          --config playwright.rust-hosts.config.ts
+
+      - name: Stop browser host
+        if: always()
+        run: |
+          if [[ -f rust-host-browser.pid ]]; then
+            kill "$(cat rust-host-browser.pid)" 2>/dev/null || true
+            wait "$(cat rust-host-browser.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload Rust-host browser evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rust-host-browser-${{ github.run_id }}
+          path: |
+            rust-host-browser.log
+            apps/next-admin/playwright-report-rust-hosts
+            apps/next-admin/test-results-rust-hosts
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Drop browser database and role
+        if: always()
+        run: |
+          set -euo pipefail
+          container=$(docker ps --filter ancestor=postgres:16 --format '{{.ID}}' | head -n 1)
+          if [[ -n "$container" ]]; then
+            docker exec "$container" psql --set ON_ERROR_STOP=1 --username postgres --dbname postgres <<SQL
+            DROP DATABASE IF EXISTS ${RUSTOK_BROWSER_DATABASE} WITH (FORCE);
+            DROP ROLE IF EXISTS ${RUSTOK_BROWSER_DATABASE_ROLE};
+          SQL
+          fi
