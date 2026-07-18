@@ -66,3 +66,5 @@ jobs:
         run: node scripts/verify/verify-release-infra-self-test.mjs
       - name: Verify release supply-chain gate structure
         run: node scripts/verify/verify-release-supply-chain-contract.mjs
+      - name: Verify release runtime image pin
+        run: node scripts/verify/verify-release-runtime-image-contract.mjs
