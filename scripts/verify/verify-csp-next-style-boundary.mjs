@@ -17,8 +17,8 @@ const excludedDirectories = new Set([
   "node_modules",
   "out",
 ]);
-const maxRegisteredFiles = 7;
-const maxStyleAttributeSites = 57;
+const maxRegisteredFiles = 5;
+const maxStyleAttributeSites = 54;
 const maxRuntimeStyleElements = 1;
 const failures = [];
 
@@ -315,6 +315,24 @@ requireMarkers("apps/next-admin/src/shared/ui/shadcn/sonner.tsx", [
   "[--normal-border:var(--border)]",
 ]);
 forbidMarkers("apps/next-admin/src/shared/ui/shadcn/sonner.tsx", ["style="]);
+requireMarkers("apps/next-admin/src/shared/ui/shadcn/progress.tsx", [
+  "const progressValue = Math.min(100, Math.max(0, numericValue))",
+  "viewBox='0 0 100 2'",
+  "width={progressValue}",
+]);
+forbidMarkers("apps/next-admin/src/shared/ui/shadcn/progress.tsx", [
+  "style=",
+  "translateX",
+]);
+requireMarkers("apps/next-admin/src/widgets/data-table/data-table-skeleton.tsx", [
+  "<TableHead key={columnIndex}>",
+  "<TableCell key={columnIndex}>",
+]);
+forbidMarkers("apps/next-admin/src/widgets/data-table/data-table-skeleton.tsx", [
+  "cellWidths",
+  "shrinkZero",
+  "style=",
+]);
 requireMarkers("apps/next-admin/src/shared/ui/shadcn/chart.tsx", [
   "<style",
   "dangerouslySetInnerHTML",
