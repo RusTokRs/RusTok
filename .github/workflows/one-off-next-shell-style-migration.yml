@@ -1,0 +1,338 @@
+name: One-off Next Shell Style Migration
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  migrate-shell-styles:
+    if: >-
+      github.event.issue.title == '[automation] migrate Next shell inline styles' &&
+      (github.event_name == 'issues' || github.event.comment.body == '/migrate-next-shell-styles')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git pull --rebase origin main
+      - name: Apply exact shell migrations
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              source = file.read_text()
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one exact match, found {count}: {old!r}")
+              file.write_text(source.replace(old, new, 1))
+
+          def replace_count(path: str, old: str, new: str, expected: int) -> None:
+              file = Path(path)
+              source = file.read_text()
+              count = source.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} exact matches, found {count}: {old!r}")
+              file.write_text(source.replace(old, new))
+
+          infobar = "apps/next-admin/src/shared/ui/shadcn/infobar.tsx"
+          replace_once(
+              infobar,
+              """const INFOBAR_WIDTH = '22rem';
+          const INFOBAR_WIDTH_ICON = '3rem';
+          const INFOBAR_WIDTH_MOBILE = '18rem';
+          """,
+              "",
+          )
+          replace_once(
+              infobar,
+              """function InfobarProvider({
+            defaultOpen = true,
+            open: openProp,
+            onOpenChange: setOpenProp,
+            className,
+            style,
+            children,
+            ...props
+          }: React.ComponentProps<'div'> & {
+            defaultOpen?: boolean;
+            open?: boolean;
+            onOpenChange?: (open: boolean) => void;
+          }) {""",
+              """type InfobarProviderProps = Omit<React.ComponentProps<'div'>, 'style'> & {
+            defaultOpen?: boolean;
+            open?: boolean;
+            onOpenChange?: (open: boolean) => void;
+          };
+
+          function InfobarProvider({
+            defaultOpen = true,
+            open: openProp,
+            onOpenChange: setOpenProp,
+            className,
+            children,
+            ...props
+          }: InfobarProviderProps) {""",
+          )
+          replace_once(
+              infobar,
+              """        <div
+                    data-slot='infobar-wrapper'
+                    style={
+                      {
+                        '--infobar-width': INFOBAR_WIDTH,
+                        '--infobar-width-icon': INFOBAR_WIDTH_ICON,
+                        ...style
+                      } as React.CSSProperties
+                    }
+                    className={cn(
+                      'group/infobar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full',
+                      className
+                    )}""",
+              """        <div
+                    data-slot='infobar-wrapper'
+                    className={cn(
+                      'group/infobar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full [--infobar-width:22rem] [--infobar-width-icon:3rem]',
+                      className
+                    )}""",
+          )
+          replace_once(
+              infobar,
+              """          className='bg-sidebar text-sidebar-foreground w-(--infobar-width) p-0 [&>button]:hidden'
+                    style={
+                      {
+                        '--infobar-width': INFOBAR_WIDTH_MOBILE
+                      } as React.CSSProperties
+                    }""",
+              """          className='bg-sidebar text-sidebar-foreground w-[18rem] p-0 [&>button]:hidden'""",
+          )
+          replace_once(
+              infobar,
+              """      data-side={side}
+                data-slot='infobar'
+                style={
+                  {
+                    '--infobar-transition-duration': isPathnameChanging ? '0ms' : '200ms'
+                  } as React.CSSProperties
+                }
+              >""",
+              """      data-side={side}
+                data-slot='infobar'
+                data-pathname-changing={isPathnameChanging}
+              >""",
+          )
+          replace_count(
+              infobar,
+              "duration-(--infobar-transition-duration,200ms)",
+              "duration-200 group-data-[pathname-changing=true]:duration-0",
+              2,
+          )
+          replace_once(
+              infobar,
+              """  // Random width between 50 to 90%.
+            const width = React.useMemo(() => {
+              return `${Math.floor(Math.random() * 40) + 50}%`;
+            }, []);
+
+          """,
+              "",
+          )
+          replace_once(
+              infobar,
+              """      <Skeleton
+                className='h-4 max-w-(--skeleton-width) flex-1'
+                data-infobar='menu-skeleton-text'
+                style={
+                  {
+                    '--skeleton-width': width
+                  } as React.CSSProperties
+                }
+              />""",
+              """      <Skeleton
+                className='h-4 max-w-[70%] flex-1'
+                data-infobar='menu-skeleton-text'
+              />""",
+          )
+
+          sidebar = "apps/next-admin/src/shared/ui/shadcn/sidebar.tsx"
+          replace_once(
+              sidebar,
+              """const SIDEBAR_WIDTH = '16rem';
+          const SIDEBAR_WIDTH_MOBILE = '18rem';
+          const SIDEBAR_WIDTH_ICON = '3rem';
+          """,
+              "",
+          )
+          replace_once(
+              sidebar,
+              """function SidebarProvider({
+            defaultOpen = true,
+            open: openProp,
+            onOpenChange: setOpenProp,
+            className,
+            style,
+            children,
+            ...props
+          }: React.ComponentProps<'div'> & {
+            defaultOpen?: boolean;
+            open?: boolean;
+            onOpenChange?: (open: boolean) => void;
+          }) {""",
+              """type SidebarProviderProps = Omit<React.ComponentProps<'div'>, 'style'> & {
+            defaultOpen?: boolean;
+            open?: boolean;
+            onOpenChange?: (open: boolean) => void;
+          };
+
+          function SidebarProvider({
+            defaultOpen = true,
+            open: openProp,
+            onOpenChange: setOpenProp,
+            className,
+            children,
+            ...props
+          }: SidebarProviderProps) {""",
+          )
+          replace_once(
+              sidebar,
+              """        <div
+                    data-slot='sidebar-wrapper'
+                    style={
+                      {
+                        '--sidebar-width': SIDEBAR_WIDTH,
+                        '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
+                        ...style
+                      } as React.CSSProperties
+                    }
+                    className={cn(
+                      'group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full',
+                      className
+                    )}""",
+              """        <div
+                    data-slot='sidebar-wrapper'
+                    className={cn(
+                      'group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full [--sidebar-width:16rem] [--sidebar-width-icon:3rem]',
+                      className
+                    )}""",
+          )
+          replace_once(
+              sidebar,
+              """          className='bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden'
+                    style={
+                      {
+                        '--sidebar-width': SIDEBAR_WIDTH_MOBILE
+                      } as React.CSSProperties
+                    }""",
+              """          className='bg-sidebar text-sidebar-foreground w-[18rem] p-0 [&>button]:hidden'""",
+          )
+          replace_once(
+              sidebar,
+              """  // Random width between 50 to 90%.
+            const width = React.useMemo(() => {
+              return `${Math.floor(Math.random() * 40) + 50}%`;
+            }, []);
+
+          """,
+              "",
+          )
+          replace_once(
+              sidebar,
+              """      <Skeleton
+                className='h-4 max-w-(--skeleton-width) flex-1'
+                data-sidebar='menu-skeleton-text'
+                style={
+                  {
+                    '--skeleton-width': width
+                  } as React.CSSProperties
+                }
+              />""",
+              """      <Skeleton
+                className='h-4 max-w-[70%] flex-1'
+                data-sidebar='menu-skeleton-text'
+              />""",
+          )
+
+          register_path = Path("docs/security/csp-next-style-exceptions.json")
+          register = json.loads(register_path.read_text())
+          removed = {
+              "apps/next-admin/src/shared/ui/shadcn/infobar.tsx",
+              "apps/next-admin/src/shared/ui/shadcn/sidebar.tsx",
+          }
+          existing = {entry.get("path") for entry in register.get("exceptions", [])}
+          if not removed.issubset(existing) or len(existing) != 5:
+              raise SystemExit(f"unexpected Next style register before shell migration: {sorted(existing)}")
+          register["exceptions"] = [
+              entry for entry in register["exceptions"] if entry.get("path") not in removed
+          ]
+          register_path.write_text(json.dumps(register, indent=2) + "\n")
+
+          verifier = "scripts/verify/verify-csp-next-style-boundary.mjs"
+          replace_once(verifier, "const maxRegisteredFiles = 5;", "const maxRegisteredFiles = 3;")
+          replace_once(verifier, "const maxStyleAttributeSites = 54;", "const maxStyleAttributeSites = 47;")
+          shell_contract = """requireMarkers("apps/next-admin/src/shared/ui/shadcn/infobar.tsx", [
+            "type InfobarProviderProps = Omit<React.ComponentProps<'div'>, 'style'>",
+            "[--infobar-width:22rem]",
+            "[--infobar-width-icon:3rem]",
+            "data-pathname-changing={isPathnameChanging}",
+            "group-data-[pathname-changing=true]:duration-0",
+            "max-w-[70%]",
+          ]);
+          forbidMarkers("apps/next-admin/src/shared/ui/shadcn/infobar.tsx", [
+            "style=",
+            "Math.random",
+            "INFOBAR_WIDTH",
+            "--infobar-transition-duration",
+          ]);
+          requireMarkers("apps/next-admin/src/shared/ui/shadcn/sidebar.tsx", [
+            "type SidebarProviderProps = Omit<React.ComponentProps<'div'>, 'style'>",
+            "[--sidebar-width:16rem]",
+            "[--sidebar-width-icon:3rem]",
+            "w-[18rem]",
+            "max-w-[70%]",
+          ]);
+          forbidMarkers("apps/next-admin/src/shared/ui/shadcn/sidebar.tsx", [
+            "style=",
+            "Math.random",
+            "SIDEBAR_WIDTH",
+          ]);
+          """
+          replace_once(
+              verifier,
+              "requireMarkers(\"apps/next-admin/src/shared/ui/shadcn/chart.tsx\", [\n",
+              shell_contract + "requireMarkers(\"apps/next-admin/src/shared/ui/shadcn/chart.tsx\", [\n",
+          )
+
+          workflow = Path(".github/workflows/one-off-next-shell-style-migration.yml")
+          if not workflow.exists():
+              raise SystemExit("one-off workflow is missing")
+          workflow.unlink()
+          PY
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          test ! -e .github/workflows/one-off-next-shell-style-migration.yml
+          grep -Fq 'const maxStyleAttributeSites = 47;' scripts/verify/verify-csp-next-style-boundary.mjs
+      - name: Commit shell migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "security: remove Next shell inline styles"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "Next shell inline styles removed; one-off workflow removed itself."
