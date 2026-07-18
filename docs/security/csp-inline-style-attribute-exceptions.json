@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "policy": {
-    "directive": "style-src-attr 'unsafe-inline'",
+    "directive": "style-src-attr 'none'",
     "owner": "Platform security and UI maintainers",
-    "approved_on": "2026-07-17",
-    "review_by": "2026-08-14",
-    "exit_criteria": "Every registered source site is replaced by a reviewed class, SVG geometry contract, native element contract, or another representation compatible with style-src-attr 'none'."
+    "approved_on": "2026-07-18",
+    "review_by": "2027-07-18",
+    "exit_criteria": "Any reintroduction of an inline style attribute or an unsafe style-src-attr source must fail the repository hardening gates."
   },
   "exceptions": []
 }

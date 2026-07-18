@@ -75,8 +75,11 @@ function verifyNoncePolicy(policy, file, label) {
   if (!policy.includes("script-src-attr 'none'")) {
     failures.push(`${file}: ${label} policy does not block inline script attributes`);
   }
-  if (!policy.includes("style-src-attr 'unsafe-inline'")) {
-    failures.push(`${file}: ${label} policy must isolate temporary inline style attributes`);
+  if (!policy.includes("style-src-attr 'none'")) {
+    failures.push(`${file}: ${label} policy must block inline style attributes`);
+  }
+  if (policy.includes("style-src-attr 'unsafe-inline'")) {
+    failures.push(`${file}: ${label} policy restores inline style attributes`);
   }
   for (const forbidden of ["'unsafe-eval'", " http:"]) {
     if (policy.includes(forbidden)) {
@@ -135,7 +138,7 @@ for (const marker of [
   "CspNonce::generate",
   "request.extensions_mut().insert(nonce.clone())",
   "script-src-attr 'none'",
-  "style-src-attr 'unsafe-inline'",
+  "style-src-attr 'none'",
   "plaintext_websocket_allowed()",
 ]) {
   requireMarker(headers, marker, headersFile);
@@ -198,6 +201,9 @@ for (const marker of [
 ]) {
   requireMarker(appRouter, marker, appRouterFile);
 }
+
+forbidMarker(headers, "style-src-attr 'unsafe-inline'", headersFile);
+forbidMarker(standaloneAdminSecurity, "style-src-attr 'unsafe-inline'", standaloneAdminSecurityFile);
 
 verifyNoncePolicy(
   stringConstant(standaloneAdminSecurity, "ADMIN_UI_CSP_TEMPLATE", standaloneAdminSecurityFile),
