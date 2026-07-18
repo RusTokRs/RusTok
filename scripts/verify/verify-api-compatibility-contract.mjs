@@ -134,6 +134,13 @@ requireMarkers("scripts/verify/verify-api-compatibility-self-test.mjs", [
   "verify-api-compatibility.mjs",
   '"--self-test"',
 ]);
+requireMarkers("scripts/verify/verify-api-compatibility-exceptions.mjs", [
+  '"--file"',
+  "policy.review_by",
+  "expires_on",
+  "openapi|graphql",
+  "VERIFICATION_DATE",
+]);
 
 requireMarkers(".github/workflows/api-compatibility.yml", [
   "name: API Compatibility",
@@ -143,6 +150,11 @@ requireMarkers(".github/workflows/api-compatibility.yml", [
   "github.event.pull_request.head.sha",
   "repository: ${{ env.BASE_REPOSITORY }}",
   "repository: ${{ env.HEAD_REPOSITORY }}",
+  "Verify base comparator fixtures",
+  'base/scripts/verify/verify-api-compatibility.mjs" --self-test',
+  "Validate head compatibility exceptions with base policy",
+  "base/scripts/verify/verify-api-compatibility-exceptions.mjs",
+  "head/docs/api/compatibility-exceptions.json",
   "--locked",
   "--all-features",
   "--bin export_api_contracts",
@@ -151,12 +163,14 @@ requireMarkers(".github/workflows/api-compatibility.yml", [
   "contracts/base/schema.graphql",
   "contracts/head/openapi.json",
   "contracts/head/schema.graphql",
+  "Compare API contracts with base policy",
+  "base/scripts/verify/verify-api-compatibility.mjs",
   "--base-dir",
   "--head-dir",
-  "docs/api/compatibility-exceptions.json",
   "actions/upload-artifact@v7",
 ]);
 forbidMarkers(".github/workflows/api-compatibility.yml", [
+  'head/scripts/verify/verify-api-compatibility.mjs',
   "continue-on-error: true",
   "|| true",
 ]);
@@ -164,6 +178,8 @@ forbidMarkers(".github/workflows/api-compatibility.yml", [
 requireMarkers(".github/workflows/hardening-gates.yml", [
   "Verify API compatibility comparator fixtures",
   "verify-api-compatibility-self-test.mjs",
+  "Verify API compatibility exceptions",
+  "verify-api-compatibility-exceptions.mjs",
   "Verify API compatibility gate structure",
   "verify-api-compatibility-contract.mjs",
 ]);
@@ -174,4 +190,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ API compatibility exporter, comparator, workflow, and exception policy are structurally bound");
+console.log("✔ API compatibility exporter, base-owned comparator, workflow, and exception policy are structurally bound");
