@@ -17,15 +17,6 @@
       "reason": "The storefront search package is a hand-styled prototype surface with layout, typography, state and result-card declarations embedded as React style props.",
       "constraints": "Values are source-authored constants or bounded component state; no server, tenant or user-provided CSS declaration string may be passed to a style prop.",
       "exit_criteria": "Move the surface to the shared storefront utility-class and component system, including explicit active/error variants."
-    },
-    {
-      "path": "apps/next-admin/src/widgets/data-table/data-table.tsx",
-      "expected_style_attribute_occurrences": 2,
-      "expected_runtime_style_element_occurrences": 0,
-      "owner": "Next admin data-table maintainers",
-      "reason": "TanStack column pinning projects calculated left, right, width and z-index values onto header and body cells.",
-      "constraints": "The objects come only from the shared getCommonPinningStyles helper and typed table column state; arbitrary CSS strings from row data are forbidden.",
-      "exit_criteria": "Move pinning geometry to a reviewed DOM adapter or stylesheet/custom-property boundary that does not require JSX style props."
     }
   ]
 }
