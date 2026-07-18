@@ -166,10 +166,16 @@ jobs:
         include:
           - name: apply-all
             incremental: "0"
+            rollback_latest: "0"
             database_suffix: all
           - name: incremental
             incremental: "1"
+            rollback_latest: "0"
             database_suffix: incremental
+          - name: rollback-latest
+            incremental: "0"
+            rollback_latest: "1"
+            database_suffix: rollback
     services:
       postgres:
         image: postgres:16
@@ -201,6 +207,7 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-fresh-${{ matrix.database_suffix }}
           RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_migration_${{ github.run_id }}_${{ matrix.database_suffix }}
           RUSTOK_MIGRATION_SMOKE_INCREMENTAL: ${{ matrix.incremental }}
+          RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: ${{ matrix.rollback_latest }}
           RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
           RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
         run: >-
@@ -259,6 +266,7 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-base
           RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_migration_${{ github.run_id }}_upgrade
           RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "0"
+          RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"
           RUSTOK_MIGRATION_SMOKE_KEEP_DB: "1"
           RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
         run: >-
@@ -277,6 +285,7 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-head
           RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_migration_${{ github.run_id }}_upgrade
           RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "1"
+          RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"
           RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
           RUSTOK_MIGRATION_SMOKE_REUSE_DB: "1"
         run: >-
