@@ -58,7 +58,7 @@ fi
 echo "Running PostgreSQL migration smoke ($mode) against database '$RUSTOK_MIGRATION_SMOKE_DB_NAME'"
 (
   cd "$ROOT_DIR"
-  cargo test -p migration --test postgres_zero_migration_smoke \
+  cargo test --locked -p rustok-migrations --test postgres_zero_migration_smoke \
     postgres_zero_migration_smoke_applies_from_empty_database -- --ignored --nocapture
 )
 
