@@ -169,13 +169,7 @@ async fn lifecycle_commands_commit_one_event_with_state_and_receipt() {
         .unwrap();
 
     service
-        .reactivate_seller_with_receipt(
-            tenant_id,
-            actor_id,
-            "reactivate-seller",
-            "en",
-            seller_id,
-        )
+        .reactivate_seller_with_receipt(tenant_id, actor_id, "reactivate-seller", "en", seller_id)
         .await
         .unwrap();
 
@@ -184,10 +178,7 @@ async fn lifecycle_commands_commit_one_event_with_state_and_receipt() {
     for event in &events {
         assert_eq!(event.actor_id, Some(actor_id));
         assert_eq!(event.locale.as_deref(), Some("en"));
-        assert_eq!(
-            event.provenance,
-            MarketplaceSellerEventProvenance::Command
-        );
+        assert_eq!(event.provenance, MarketplaceSellerEventProvenance::Command);
     }
     let kinds = events
         .iter()
@@ -252,13 +243,14 @@ async fn event_insert_failure_rolls_back_state_and_pending_receipt() {
 
     let receipt = seller_command_receipt::Entity::find()
         .filter(seller_command_receipt::Column::TenantId.eq(tenant_id))
-        .filter(
-            seller_command_receipt::Column::IdempotencyKey.eq("review-without-events-table"),
-        )
+        .filter(seller_command_receipt::Column::IdempotencyKey.eq("review-without-events-table"))
         .one(&db)
         .await
         .unwrap();
-    assert!(receipt.is_none(), "pending receipt must roll back with state");
+    assert!(
+        receipt.is_none(),
+        "pending receipt must roll back with state"
+    );
 }
 
 async fn setup_database() -> DatabaseConnection {
