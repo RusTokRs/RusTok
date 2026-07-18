@@ -1,6 +1,6 @@
 # Marketplace seller implementation plan
 
-Last reviewed: 2026-07-17
+Last reviewed: 2026-07-18
 
 ## Status
 
@@ -16,7 +16,7 @@ migration, contention, mounted-transport, and remote-profile evidence.
 ## FBA/FFA architecture contract
 
 - [x] Keep seller persistence, membership policy, lifecycle, receipts, translations,
-  and future verification facts inside `rustok-marketplace-seller`.
+  immutable events, and future verification facts inside `rustok-marketplace-seller`.
 - [x] Expose owner behavior through typed FBA read/command ports using
   `PortContext` and stable `PortError` mappings.
 - [x] Keep native and GraphQL FFA adapters over the same command envelope and owner
@@ -52,17 +52,21 @@ migration, contention, mounted-transport, and remote-profile evidence.
   not abort a PostgreSQL transaction after a unique violation.
 - [x] Reject reuse of an idempotency key for another command kind, actor, locale, or
   payload.
+- [x] Own append-only `marketplace_seller_events` with tenant/seller scope, typed event
+  kind, nullable attribution only for explicit legacy snapshots, note, metadata, and
+  timestamp.
+- [x] Enforce truthful command/legacy attribution with a database CHECK and composite
+  tenant/seller foreign key.
+- [x] Publish a bounded newest-first owner timeline read through
+  `MarketplaceSellerReadPort::list_seller_events`.
 
 ## Ownership remaining
 
-- [ ] Replace mutable onboarding/suspension prose with immutable seller lifecycle and
-  moderation events carrying tenant, seller, actor, event kind, effective locale,
-  note, metadata, and timestamp.
-- [ ] Add bounded seller lifecycle/moderation timeline reads through the FBA read port.
-- [ ] Include effective locale in every event-producing command identity and persist
-  state + event + receipt atomically.
-- [ ] Backfill existing prose snapshots and remove mutable compatibility columns only
-  after event coverage is complete.
+- [ ] Route create/profile/onboarding/suspension/reactivation/member writes through
+  atomic state + event + receipt transactions.
+- [ ] Include effective locale in every event-producing command identity.
+- [ ] Backfill existing onboarding/suspension prose snapshots and remove mutable
+  compatibility columns only after live command event coverage is complete.
 - [ ] Publish seller lifecycle events through the transactional outbox.
 - [ ] Add normalized verification facts and a KYC provider SPI without raw provider
   payload persistence.
@@ -70,7 +74,7 @@ migration, contention, mounted-transport, and remote-profile evidence.
 ## FBA completed
 
 - [x] Publish `MarketplaceSellerReadPort` with deadline semantics for seller,
-  directory, membership, and member-list reads.
+  directory, membership, member-list, and bounded event timeline reads.
 - [x] Publish `MarketplaceSellerCommandPort` with deadline and idempotency-key
   admission semantics.
 - [x] Route every command-port implementation through the durable receipt executor;
@@ -81,14 +85,14 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Publish stable typed error mapping without SQL/driver details.
 - [x] Publish the in-process provider registry and planned remote-adapter cases.
 - [x] Add source guards for multilingual schema, exact locale resolution, replay,
-  conflict, typed response snapshots, transport wiring, and root/owner non-bypass
-  rules.
+  conflict, typed response snapshots, transport wiring, immutable event storage,
+  truthful provenance, bounded timeline reads, and root/owner non-bypass rules.
 - [x] Aggregate marketplace family and seller transport verifiers into the root npm
   verification entry points.
 
 ## FBA remaining
 
-- [ ] Add immutable lifecycle/moderation event storage and typed timeline port.
+- [ ] Route seller command writes through immutable event storage atomically.
 - [ ] Compile the provider and GraphQL contracts.
 - [ ] Apply seller/translation/receipt/event migrations on clean and upgraded
   SQLite/PostgreSQL graphs.
@@ -120,20 +124,23 @@ migration, contention, mounted-transport, and remote-profile evidence.
 
 ## FFA remaining
 
-- [ ] Add lifecycle/moderation history to native and GraphQL DTOs and workflows after
-  the owner event port exists.
+- [ ] Add lifecycle/moderation history to native and GraphQL DTOs and workflows over
+  the new owner event read operation.
 - [ ] Retain native/GraphQL parity, localized errors, route state, retries, and mounted
   authenticated host evidence before promoting FFA to `phase_b_ready`.
 
 ## Immediate execution order
 
-1. [ ] Add immutable seller lifecycle/moderation event schema and entity.
+1. [x] Add immutable seller lifecycle/moderation event schema, entity, typed DTOs, and
+   bounded FBA timeline read.
 2. [ ] Route onboarding review, suspension, and reactivation through atomic
    state + event + receipt transactions.
-3. [ ] Add bounded event timeline reads to FBA and both FFA transports.
-4. [ ] Backfill/remove mutable prose snapshots.
-5. [ ] Add normalized verification/KYC facts and provider SPI.
-6. [ ] Compile and execute database, contention, replay, tenant, and mounted transport
+3. [ ] Extend event production to create/profile/member commands.
+4. [ ] Add event history to native and GraphQL FFA transports.
+5. [ ] Backfill/remove mutable prose snapshots.
+6. [ ] Publish live seller events through the transactional outbox.
+7. [ ] Add normalized verification/KYC facts and provider SPI.
+8. [ ] Compile and execute database, contention, replay, tenant, and mounted transport
    evidence.
 
 ## Source evidence
@@ -141,11 +148,15 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `src/entities/seller.rs`
 - `src/entities/seller_translation.rs`
 - `src/entities/seller_command_receipt.rs`
+- `src/entities/seller_event.rs`
 - `src/migrations/m20260716_000001_create_marketplace_sellers.rs`
 - `src/migrations/m20260716_000002_create_seller_command_receipts.rs`
+- `src/migrations/m20260718_000003_create_marketplace_seller_events.rs`
 - `src/localized_sellers.rs`
 - `src/command_receipts.rs`
 - `src/receipted_commands.rs`
+- `src/seller_events.rs`
+- `src/seller_events_tests.rs`
 - `src/ports.rs`
 - `src/graphql.rs`
 - `admin/src/model.rs`
@@ -157,4 +168,5 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `../../apps/server/tests/marketplace_family_boundary_guard.rs`
 - `../../apps/server/tests/marketplace_seller_transport_guard.rs`
 - `../../scripts/verify/verify-marketplace-family-boundary.mjs`
+- `../../scripts/verify/verify-marketplace-seller-events.mjs`
 - `../../scripts/verify/verify-marketplace-seller-transport.mjs`
