@@ -66,7 +66,7 @@ jobs:
       - name: Create bounded PostgreSQL smoke role
         run: |
           set -euo pipefail
-          container=$(docker ps --filter ancestor=postgres:16 --format '{{.ID}}' | head -n 1)
+          container=$(docker ps --filter publish=5432 --format '{{.ID}}' | head -n 1)
           test -n "$container"
           docker exec "$container" psql --set ON_ERROR_STOP=1 --username postgres --dbname postgres <<SQL
           CREATE ROLE ${RUSTOK_BROWSER_DATABASE_ROLE}
@@ -109,7 +109,7 @@ jobs:
       - name: Install browser test dependencies
         run: |
           npm ci --prefix apps/next-admin --no-audit --no-fund
-          (cd apps/next-admin && npx playwright install --with-deps chromium)
+          (cd apps/next-admin && npx --no-install playwright install --with-deps chromium)
 
       - name: Start monolith browser host
         env:
@@ -143,11 +143,8 @@ jobs:
           RUSTOK_BROWSER_BASE_URL: http://127.0.0.1:5150
           RUSTOK_BROWSER_TENANT_SLUG: default
         run: >-
-          npm exec
-          --prefix apps/next-admin
-          playwright test
-          --
-          --config playwright.rust-hosts.config.ts
+          bash -c
+          'cd apps/next-admin && npx --no-install playwright test --config playwright.rust-hosts.config.ts'
 
       - name: Stop browser host
         if: always()
@@ -173,7 +170,7 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          container=$(docker ps --filter ancestor=postgres:16 --format '{{.ID}}' | head -n 1)
+          container=$(docker ps --filter publish=5432 --format '{{.ID}}' | head -n 1)
           if [[ -n "$container" ]]; then
             docker exec "$container" psql --set ON_ERROR_STOP=1 --username postgres --dbname postgres <<SQL
             DROP DATABASE IF EXISTS ${RUSTOK_BROWSER_DATABASE} WITH (FORCE);
