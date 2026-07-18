@@ -81,7 +81,16 @@ jobs:
           RUSTOK_MIGRATION_SMOKE_INCREMENTAL: ${{ matrix.incremental }}
           RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
           RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
-        run: bash "$GITHUB_WORKSPACE/head/scripts/verify/verify-migration-smoke.sh"
+        run: >-
+          cargo test
+          --locked
+          --manifest-path "$GITHUB_WORKSPACE/head/Cargo.toml"
+          -p rustok-migrations
+          --test postgres_zero_migration_smoke
+          postgres_zero_migration_smoke_applies_from_empty_database
+          --
+          --ignored
+          --nocapture
 
   n-minus-one-upgrade:
     name: PostgreSQL N-1 to head upgrade
@@ -129,7 +138,16 @@ jobs:
           RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "0"
           RUSTOK_MIGRATION_SMOKE_KEEP_DB: "1"
           RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
-        run: bash "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-smoke.sh"
+        run: >-
+          cargo test
+          --locked
+          --manifest-path "$GITHUB_WORKSPACE/base/Cargo.toml"
+          -p rustok-migrations
+          --test postgres_zero_migration_smoke
+          postgres_zero_migration_smoke_applies_from_empty_database
+          --
+          --ignored
+          --nocapture
 
       - name: Upgrade preserved database with head migrations
         env:
@@ -138,4 +156,13 @@ jobs:
           RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "1"
           RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
           RUSTOK_MIGRATION_SMOKE_REUSE_DB: "1"
-        run: bash "$GITHUB_WORKSPACE/head/scripts/verify/verify-migration-smoke.sh"
+        run: >-
+          cargo test
+          --locked
+          --manifest-path "$GITHUB_WORKSPACE/head/Cargo.toml"
+          -p rustok-migrations
+          --test postgres_zero_migration_smoke
+          postgres_zero_migration_smoke_applies_from_empty_database
+          --
+          --ignored
+          --nocapture
