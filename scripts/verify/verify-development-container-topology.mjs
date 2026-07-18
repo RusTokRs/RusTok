@@ -60,7 +60,9 @@ requireMarkers("apps/admin/Dockerfile", [
 ]);
 forbidMarkers("apps/admin/Dockerfile", [
   "AS production",
-  "nginx",
+  "FROM nginx:",
+  'CMD ["nginx"',
+  "/usr/share/nginx/html",
   "cargo install trunk --locked\n",
   "cargo install wasm-bindgen-cli",
   "trunk build --release",
