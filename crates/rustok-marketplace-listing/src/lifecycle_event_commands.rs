@@ -238,6 +238,7 @@ async fn update_terms_in_transaction(
     map_listing(model, terms)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn transition_in_transaction(
     receipt: &NewListingCommandReceipt,
     tenant_id: Uuid,
