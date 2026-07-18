@@ -11,56 +11,60 @@ status: active
 
 This document is the execution plan for moving RusToK from an ambitious development platform to a reproducible, production-ready platform with explicit security, tenancy, compatibility, release and scale contracts.
 
-The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5f1b443d7fc0fa1dae8ee9b09a29d2edfb67`. The progress ledger was refreshed on 2026-07-17 after completing the typed tenant profile, cross-transport tenant isolation coverage, bounded CSP violation collection, server-hosted and standalone script/style-element nonce enforcement, production WSS-only browser connections, strict inline-style exception governance, class/SVG attribute migrations, the storefront finite accent palette and dependency feature cleanup.
+The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5f1b443d7fc0fa1dae8ee9b09a29d2edfb67`. The progress ledger was refreshed on 2026-07-18 after completing the typed tenant profile, cross-transport tenant isolation coverage, bounded CSP violation collection, server-hosted and standalone script/style-element nonce enforcement, production WSS-only browser connections, zeroing the Rust-hosted inline-style baseline, protecting the classic admin bootstrap, registering the remaining Next/React style debt and completing dependency feature cleanup.
 
 ## Current Revalidation Summary
 
 ### Confirmed open high-risk findings
 
-1. The enforced UI Content Security Policy still permits inline style attributes through the explicit `style-src-attr 'unsafe-inline'` migration boundary. Exactly 2 source sites in 2 Rust-hosted UI files are registered through 2026-08-14, down from 15 sites in 7 files; migration and browser evidence remain required before `HARD-101` is complete.
-2. Browser E2E runs in a dedicated workflow, but repository branch protection has not yet been verified to require that workflow.
-3. Two dependency waivers remain until `Cargo.lock` is regenerated after disabling the unused SeaORM migration CLI/MySQL and Postcard heapless default features.
-4. Production JWT bootstrap policy validates algorithm-specific key material, issuer, audience and HS256 secret quality; operational key rotation and emergency revocation remain separate production-readiness work.
+1. The enforced UI Content Security Policy still permits inline style attributes through the explicit `style-src-attr 'unsafe-inline'` migration boundary. The Rust-hosted register is empty with a `0/0` ratchet, but the Next boundary contains exactly 60 JSX style props across 10 files and one runtime `<style>` element through 2026-08-15. Migration and browser evidence remain required before `HARD-101` is complete.
+2. The Next chart adapter generates one runtime style element without a demonstrated per-response nonce path; it must be removed, converted to a finite palette or integrated with the trusted host nonce before strict style enforcement.
+3. Browser E2E runs in a dedicated workflow, but repository branch protection has not yet been verified to require that workflow.
+4. Two dependency waivers remain until `Cargo.lock` is regenerated after disabling the unused SeaORM migration CLI/MySQL and Postcard heapless default features.
+5. Production JWT bootstrap policy validates algorithm-specific key material, issuer, audience and HS256 secret quality; operational key rotation and emergency revocation remain separate production-readiness work.
 
 ### Findings closed or materially reduced
 
 1. Plaintext `http:` was removed from the enforced UI CSP `connect-src`, and object/plugin content is blocked.
 2. `unsafe-eval` was removed from the enforced UI CSP and the hardening gate prevents its reintroduction.
 3. Server-hosted UI responses use one UUIDv4-derived nonce in both the CSP header and request extensions; `script-src 'unsafe-inline'` and inline event handlers are blocked.
-4. Style elements now share the same request nonce; the broader `style-src 'unsafe-inline'` source was replaced by nonce-bearing `style-src` plus an isolated temporary `style-src-attr` allowance.
+4. Style elements share the same request nonce; the broader `style-src 'unsafe-inline'` source was replaced by nonce-bearing `style-src` plus an isolated temporary `style-src-attr` allowance.
 5. Embedded admin script and style elements receive a nonce only while rendering the immutable bundled `index.html`; tenant or user-authored HTML is never blanket-authorized.
 6. Storefront JSON-LD receives a nonce only through the exact trusted SEO-renderer opening tag; arbitrary script markup remains without a nonce.
 7. The standalone admin SSR host installs its own nonce CSP and security headers, validates production HTTPS/HSTS, and applies the request nonce to its only inline auth bootstrap script, including fallback renders.
 8. Production UI `connect-src` is restricted to same-origin, HTTPS and WSS on both server-hosted and standalone admin surfaces; plaintext `ws:` is retained only for non-production development profiles.
 9. A strict CSP report-only policy contains no `unsafe-inline`, `unsafe-eval`, plaintext HTTP or plaintext WebSocket source and explicitly reports style attributes through `style-src-attr 'none'`.
 10. CSP reports are collected through a bounded pre-auth/pre-tenant endpoint with legacy and Reporting API support, origin-only logging, bounded metric labels and a reviewed migration inventory. The standalone admin does not advertise a collector it does not own.
-11. Every Rust-hosted inline style attribute is covered by an expiry-enforcing machine-readable register. The gate rejects new files, count changes, missing evidence, stale entries, review expiry and any increase above the 2-site/2-file ratchet.
-12. The static modular Page Builder grid moved from a style attribute to a Tailwind grid class and is no longer part of the exception surface.
-13. Persisted forum category colors are validated before persistence and normalized to the strict `#RGB`, `#RGBA`, `#RRGGBB` or `#RRGGBBAA` grammar before Rust UI rendering; CSS declaration injection is rejected or falls back instead of being concatenated into `background`.
-14. The unreferenced legacy Page Builder `admin_canvas.rs` duplicate was removed after confirming it had no module declaration, path override or source reference.
-15. Modular Page Builder layer indentation now uses a bounded nine-step class scale instead of an inline `padding-left` declaration.
-16. Page Builder hover, selection and insertion overlays now use SVG geometry attributes instead of CSS positioning text.
-17. Page Builder resize preview and handles now use SVG geometry and a closed cursor-class map while retaining pointer capture.
-18. Storefront forum accents now use a finite, build-time-visible class palette selected from validated hex colors; its view model exposes only a `'static` class and emits no runtime CSS declaration.
-19. Page Builder custom viewport dimensions and continuous zoom now use native SVG dimensions, `viewBox` and an explicit XHTML `foreignObject` integration point rather than CSS sizing or `transform:scale`.
-20. Tenant resolution is a typed enum with an exhaustive canonical resolver; unknown modes fail configuration deserialization and cannot reach a default-tenant catch-all.
-21. `DefaultTenant` fallback is forbidden in production, rejected outside header mode and emits dedicated telemetry plus a warning only when it is actually selected.
-22. HTTP and GraphQL WebSocket use one cache-aware tenant read-port loader with typed errors; transport code no longer queries tenant persistence or reconstructs `TenantContext` independently.
-23. Operator routes, self-resolving handshakes and the global read-only registry catalog are represented by one segment-safe route policy rather than duplicated bypass lists.
-24. Tenant runtime behavior is selected by an explicit `multi_tenant`, `single_tenant` or `development` profile; the development profile is forbidden in production.
-25. Tenant resolution uses the dedicated `rustok_tenant_resolutions_total` metric with bounded transport, typed source and outcome labels rather than cache-operation telemetry.
-26. Negative tenant isolation coverage rejects missing, malformed, unknown, conflicting and disabled tenant assertions across REST, GraphQL HTTP, GraphQL WebSocket and storefront paths.
-27. Subdomain tenant resolution requires at least one configured base domain at bootstrap.
-28. Production startup requires an explicit HTTPS deployment declaration, and HSTS flag parsing is normalized.
-29. The `/v1/catalog*` bypass was reviewed and documented as a global read-only registry boundary; `/v2/catalog/*` mutation routes remain tenant-bound.
-30. `modules.toml.example` and `docs/modules/overview.md` were synchronized with `modules.toml`, and an automated drift gate now protects them.
-31. The stale `quick-xml` advisory waivers were removed after confirming that the package is absent from the resolved `Cargo.lock` graph.
-32. Three stale `rustls-webpki` waivers were removed because the resolved version is `0.103.13`, which meets all three patched thresholds.
-33. Both `deny.toml` and `.cargo/audit.toml` ignores are governed by the same expiry-enforcing exception register.
-34. Unused SeaORM migration CLI/MySQL and Postcard heapless defaults are disabled at workspace level and protected from member override by a repository gate.
-35. A dedicated browser Playwright matrix runs smoke tests for `next-admin` and `next-frontend`.
-36. Durable tenant cache generation publication aborts and logs an error rather than emitting timestamp zero on a pre-epoch clock anomaly.
-37. Production JWT claims cannot use framework defaults; HS256 requires at least 64 bytes and rejects common placeholder or low-diversity secrets.
+11. The Rust-hosted inline-style exception register is empty. Its gate rejects every new Rust UI `style=` site and has a non-increasing `0/0` ratchet.
+12. The remaining Next/React style surface is covered by a time-bounded machine-readable register. Its gate rejects unregistered files, count changes, stale entries, review expiry, direct DOM style writes and increases above the `60 props / 10 files / 1 runtime style element` ratchet.
+13. The classic bundled admin bootstrap no longer writes `document.documentElement.style`; it toggles the `dark` class while static CSS owns the light/dark color-scheme declarations.
+14. The static modular Page Builder grid moved from a style attribute to a Tailwind grid class and is no longer part of the exception surface.
+15. Persisted forum category colors are validated before persistence and normalized to the strict `#RGB`, `#RGBA`, `#RRGGBB` or `#RRGGBBAA` grammar before Rust UI rendering; CSS declaration injection is rejected or falls back instead of being concatenated into `background`.
+16. The unreferenced legacy Page Builder `admin_canvas.rs` duplicate was removed after confirming it had no module declaration, path override or source reference.
+17. Modular Page Builder layer indentation uses a bounded nine-step class scale instead of an inline `padding-left` declaration.
+18. Page Builder hover, selection and insertion overlays use SVG geometry attributes instead of CSS positioning text.
+19. Page Builder resize preview and handles use SVG geometry and a closed cursor-class map while retaining pointer capture.
+20. Storefront and forum-admin category accents use a finite, build-time-visible class palette selected from validated hex colors and attach no CSS declaration to the DOM.
+21. Page Builder custom viewport dimensions and continuous zoom use native SVG dimensions, `viewBox` and `foreignObject` geometry rather than CSS sizing or `transform:scale`.
+22. The admin module build indicator uses native `<progress max="100">` and clamps transport progress to `0..=100`.
+23. Tenant resolution is a typed enum with an exhaustive canonical resolver; unknown modes fail configuration deserialization and cannot reach a default-tenant catch-all.
+24. `DefaultTenant` fallback is forbidden in production, rejected outside header mode and emits dedicated telemetry plus a warning only when it is actually selected.
+25. HTTP and GraphQL WebSocket use one cache-aware tenant read-port loader with typed errors; transport code no longer queries tenant persistence or reconstructs `TenantContext` independently.
+26. Operator routes, self-resolving handshakes and the global read-only registry catalog are represented by one segment-safe route policy rather than duplicated bypass lists.
+27. Tenant runtime behavior is selected by an explicit `multi_tenant`, `single_tenant` or `development` profile; the development profile is forbidden in production.
+28. Tenant resolution uses the dedicated `rustok_tenant_resolutions_total` metric with bounded transport, typed source and outcome labels rather than cache-operation telemetry.
+29. Negative tenant isolation coverage rejects missing, malformed, unknown, conflicting and disabled tenant assertions across REST, GraphQL HTTP, GraphQL WebSocket and storefront paths.
+30. Subdomain tenant resolution requires at least one configured base domain at bootstrap.
+31. Production startup requires an explicit HTTPS deployment declaration, and HSTS flag parsing is normalized.
+32. The `/v1/catalog*` bypass was reviewed and documented as a global read-only registry boundary; `/v2/catalog/*` mutation routes remain tenant-bound.
+33. `modules.toml.example` and `docs/modules/overview.md` were synchronized with `modules.toml`, and an automated drift gate protects them.
+34. The stale `quick-xml` advisory waivers were removed after confirming that the package is absent from the resolved `Cargo.lock` graph.
+35. Three stale `rustls-webpki` waivers were removed because the resolved version is `0.103.13`, which meets all three patched thresholds.
+36. Both `deny.toml` and `.cargo/audit.toml` ignores are governed by the same expiry-enforcing exception register.
+37. Unused SeaORM migration CLI/MySQL and Postcard heapless defaults are disabled at workspace level and protected from member override by a repository gate.
+38. A dedicated browser Playwright matrix runs smoke tests for `next-admin` and `next-frontend`.
+39. Durable tenant cache generation publication aborts and logs an error rather than emitting timestamp zero on a pre-epoch clock anomaly.
+40. Production JWT claims cannot use framework defaults; HS256 requires at least 64 bytes and rejects common placeholder or low-diversity secrets.
 
 ## Execution Rules
 
@@ -121,7 +125,7 @@ The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5
 
 - No request can resolve to a tenant by implicit fallback in production.
 - Catalog/global routes have an approved isolation decision and tests.
-- Enforced CSP contains no `unsafe-eval`, no inline-script allowance, no blanket inline-style-element allowance and no plaintext production connection source.
+- Enforced CSP contains no `unsafe-eval`, no inline-script allowance, no blanket inline-style-element allowance, no plaintext production connection source and no inline-style-attribute allowance.
 - Tenant isolation tests run as required CI checks.
 
 ## Phase 2 — Compatibility, Testing and Release Engineering
@@ -187,7 +191,7 @@ The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5
 
 ## Top 20 Ordered Backlog
 
-1. Complete `HARD-101` by migrating the 2 registered inline style attributes to reviewed classes or native elements, then capture browser evidence and remove `style-src-attr 'unsafe-inline'`.
+1. Complete `HARD-101` by migrating the registered Next boundary from 60 JSX style props in 10 files and one runtime style element to zero, capture cross-stack browser evidence, then enforce `style-src-attr 'none'`.
 2. Regenerate `Cargo.lock`, verify `rsa` and `atomic-polyfill` are absent from the selected graph and remove the final two audit waivers.
 3. Make `HARD-201` a required branch-protection check.
 4. `HARD-204` API compatibility diff gates.
@@ -230,6 +234,7 @@ cargo test -p rustok-server middleware::tenant
 cargo test -p rustok-server --test tenant_resolver_invariants_test
 node scripts/verify/verify-csp-reporting-contract.mjs
 node scripts/verify/verify-csp-inline-style-exceptions.mjs
+node scripts/verify/verify-csp-next-style-boundary.mjs
 node scripts/verify/verify-dependency-feature-hygiene.mjs
 node scripts/verify/verify-tenant-resolution-architecture.mjs
 node scripts/verify/verify-module-manifest-docs-drift.mjs
@@ -261,8 +266,8 @@ npm --prefix apps/next-frontend run test:e2e
 | `HARD-002` Automated manifest/docs drift verification | Completed | `f7c1fbe`, `8d6f1fb`, `b579617` |
 | `HARD-003` Implementation plan and ledger | Completed | `5eb0687`, this update |
 | `HARD-004` Advisory exception governance | Manifest remediation landed; lock refresh pending | Unified register `6b7b6cb`, gate `f9ac9ae`, stale TLS cleanup `c663746`, exact paths `22dcb01`, feature cleanup `c38a8ea`, feature gate `a307cb8`/`0c201ea` |
-| `HARD-101` CSP enforcement hardening | In progress; 2 registered style attributes remain | Shared nonce `8492391`; storefront trusted JSON-LD `712168a`; embedded admin elements `531146a`/`65ae8c8`/`a20cde6`; main-server nonce policy `9b1b1af`/`700d4cb`; production WSS-only `8800f79`; standalone admin adapter `8b80543`/`611e50a`/`066a45b`; standalone style policy `d5defaf`; strict color grammar `95efed1`/`6917019`; forum render/persistence boundaries `4bbb29b`/`96780c0`/`7712591`/`4879455`; static grid cleanup `badf66e`; dead canvas removal `314c320`; bounded indentation `8a97295`; SVG overlays `30e2647`; SVG resize controls `d2a6e10`; finite accent palette `b9fd978`/`a1e2eae`/`0874593`; storefront class migration `cedef39`/`34d05a7`/`5f620f6`; style-free viewport `e485925`; register ratchet `d2cfc58`/`e7174ee`; browser evidence and final two attribute removals remain |
-| `HARD-102` CSP report-only and telemetry | Completed | Bounded collector `6c71c30`, minimized telemetry `0990b59`, report headers `ac93c41`, inventory `273ece5`/`8dbd47b`/`c495c1c`/`71522b8`/`cef4a41`/`e81bc42`, gate `c7436f9`/`85e6e6a`/`389cb07`, middleware test `50ef318` |
+| `HARD-101` CSP enforcement hardening | In progress; Rust `0/0`, Next `60 props / 10 files / 1 runtime style element` | Shared nonce `8492391`; storefront trusted JSON-LD `712168a`; embedded admin elements `531146a`/`65ae8c8`/`a20cde6`; main-server nonce policy `9b1b1af`/`700d4cb`; production WSS-only `8800f79`; standalone admin adapter `8b80543`/`611e50a`/`066a45b`; standalone style policy `d5defaf`; strict color grammar `95efed1`/`6917019`; Page Builder class/SVG migrations `314c320`/`8a97295`/`30e2647`/`d2a6e10`/`e485925`; shared accent adapters `b9fd978`/`a1e2eae`/`d62cb59`/`5e79a57`; storefront/admin forum class migrations `5f620f6`/`6adb7e7`; final native progress and Rust `0/0` ratchet `e250e42`/`3a61789`; classic admin style-write removal `bf8816e`/`cfc29c4`; Next register/gate `044d4d3`/`4ac34c2`; CI/master wiring `c789cd7`/`72e29d7`; inventory `7fff543`; Next migration and browser evidence remain |
+| `HARD-102` CSP report-only and telemetry | Completed | Bounded collector `6c71c30`, minimized telemetry `0990b59`, report headers `ac93c41`, inventory `273ece5`/`8dbd47b`/`c495c1c`/`71522b8`/`cef4a41`/`e81bc42`/`7fff543`, gate `c7436f9`/`85e6e6a`/`389cb07`, middleware test `50ef318` |
 | `HARD-103` Production HSTS contract | Completed | `822430e`, `3a9f936`; standalone admin production validation `8b80543`/`611e50a` |
 | `HARD-104` Tenant resolution fail-closed | Completed | Typed configuration and canonical resolver `adca4014`; route/header hardening `f3b475e0`; unified HTTP/WS loader `21ad3a99` |
 | `HARD-105` Default-tenant fallback restriction | Completed | Explicit runtime profiles, production development-profile ban and fallback/profile validation in tenant hardening batch |
