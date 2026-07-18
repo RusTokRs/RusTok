@@ -92,6 +92,12 @@ jobs:
           node "$GITHUB_WORKSPACE/base/scripts/verify/verify-release-runtime-image-contract.mjs"
           --root "$GITHUB_WORKSPACE/head"
 
+      - name: Verify release readiness with base-owned policy
+        if: steps.policy.outputs.changed == 'false'
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-release-readiness-contract.mjs"
+          --root "$GITHUB_WORKSPACE/head"
+
       - name: Verify explicitly approved tooling fixtures
         if: steps.policy.outputs.changed == 'true'
         run: node "$GITHUB_WORKSPACE/head/scripts/verify/verify-release-tooling-self-test.mjs"
@@ -106,4 +112,10 @@ jobs:
         if: steps.policy.outputs.changed == 'true'
         run: >-
           node "$GITHUB_WORKSPACE/head/scripts/verify/verify-release-runtime-image-contract.mjs"
+          --root "$GITHUB_WORKSPACE/head"
+
+      - name: Verify explicitly approved release readiness policy
+        if: steps.policy.outputs.changed == 'true'
+        run: >-
+          node "$GITHUB_WORKSPACE/head/scripts/verify/verify-release-readiness-contract.mjs"
           --root "$GITHUB_WORKSPACE/head"
