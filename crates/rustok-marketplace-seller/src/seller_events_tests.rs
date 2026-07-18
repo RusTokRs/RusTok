@@ -1,6 +1,4 @@
-use sea_orm::{
-    ActiveModelTrait, ConnectOptions, Database, DatabaseConnection, Set,
-};
+use sea_orm::{ActiveModelTrait, ConnectOptions, Database, DatabaseConnection, Set};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
@@ -44,7 +42,10 @@ async fn seller_event_timeline_is_bounded_newest_first_and_tenant_scoped() {
     let events = service.list_events(tenant_id, seller_id, 1).await.unwrap();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].event_kind, MarketplaceSellerEventKind::Suspended);
-    assert_eq!(events[0].provenance, MarketplaceSellerEventProvenance::Command);
+    assert_eq!(
+        events[0].provenance,
+        MarketplaceSellerEventProvenance::Command
+    );
 
     assert!(matches!(
         service.list_events(other_tenant_id, seller_id, 10).await,
@@ -85,7 +86,10 @@ async fn seller_event_attribution_constraint_accepts_truthful_provenance_only() 
     }
     .insert(&db)
     .await;
-    assert!(invalid.is_err(), "command event without actor must fail DB CHECK");
+    assert!(
+        invalid.is_err(),
+        "command event without actor must fail DB CHECK"
+    );
 }
 
 async fn setup_database() -> DatabaseConnection {
