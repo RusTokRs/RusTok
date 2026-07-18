@@ -1489,7 +1489,7 @@ pub fn ModulesList(
                     <div class="mt-4">
                         <Show when=move || latest_build().is_some() fallback=move || view! { <p class="text-sm text-muted-foreground">"No platform builds yet. The first install, uninstall, or upgrade will queue one."</p> }>
                             {move || latest_build().map(|build| {
-                                let progress_width = format!("width: {}%;", build.progress);
+                                let progress_value = build.progress.clamp(0, 100);
                                 view! {
                                     <div class="space-y-4">
                                         <div class="flex items-center justify-between gap-3">
@@ -1513,9 +1513,9 @@ pub fn ModulesList(
                                                     </p>
                                                 </Show>
                                             </div>
-                                            <span class="text-sm font-semibold text-card-foreground">{format!("{}%", build.progress)}</span>
+                                            <span class="text-sm font-semibold text-card-foreground">{format!("{}%", progress_value)}</span>
                                         </div>
-                                        <div class="h-2 overflow-hidden rounded-full bg-primary/15"><div class="h-full rounded-full bg-primary transition-all" style=progress_width></div></div>
+                                        <progress class="h-2 w-full overflow-hidden rounded-full accent-primary" max="100" value=progress_value></progress>
                                         <p class="text-xs text-muted-foreground">{move || if active_build_state.get().is_some() { "Platform actions stay locked until the current build finishes.".to_string() } else { "No active build. The latest completed job is shown for context.".to_string() }}</p>
                                         <Show when=move || active_build_state.get().as_ref().is_some_and(is_build_active)>
                                             <p class="text-xs text-muted-foreground">

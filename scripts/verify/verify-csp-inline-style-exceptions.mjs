@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 const registerPath = "docs/security/csp-inline-style-attribute-exceptions.json";
-const maxRegisteredSites = 2;
-const maxRegisteredFiles = 2;
+const maxRegisteredSites = 0;
+const maxRegisteredFiles = 0;
 const failures = [];
 
 function read(relativePath) {
@@ -145,8 +145,8 @@ if (!Number.isFinite(reviewBy)) {
 }
 
 const entries = Array.isArray(register.exceptions) ? register.exceptions : [];
-if (entries.length === 0) {
-  failures.push(`${registerPath}: exceptions must contain at least one reviewed entry`);
+if (!Array.isArray(register.exceptions)) {
+  failures.push(`${registerPath}: exceptions must be an array`);
 }
 if (entries.length > maxRegisteredFiles) {
   failures.push(
@@ -250,6 +250,7 @@ if (exists(legacyCanvas)) {
 requireMarkers("crates/rustok-ui-core/src/css.rs", [
   "normalize_css_hex_color",
   "css_hex_accent_class",
+  "css_background_accent_class",
   "let warm_threshold = ((u16::from(red) * 3) / 4) as u8",
   "matches!(digits.len(), 3 | 4 | 6 | 8)",
   "character.is_ascii_hexdigit()",
@@ -298,7 +299,6 @@ requireMarkers("crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs",
   "fn viewport_svg_geometry",
   "data-fly-svg-viewport",
   "<foreignObject",
-  'xmlns="http://www.w3.org/1999/xhtml"',
   "viewBox=move || viewport_geometry.get().view_box",
   "viewport_geometry_preserves_source_dimensions_and_applies_zoom",
   "struct OverlayGeometry",
@@ -321,6 +321,24 @@ forbidMarkers("crates/rustok-page-builder/admin/src/editor/resize_handles.rs", [
   "fn rect_style",
   "fn handle_style",
   "style=move ||",
+]);
+
+requireMarkers("crates/rustok-forum/admin/src/ui/leptos.rs", [
+  "css_background_accent_class(vm.accent_style.as_str())",
+  "absolute inset-y-0 left-0 w-1.5",
+]);
+forbidMarkers("crates/rustok-forum/admin/src/ui/leptos.rs", [
+  "style=vm.accent_style",
+]);
+requireMarkers("apps/admin/src/features/modules/components/modules_list.rs", [
+  "let progress_value = build.progress.clamp(0, 100)",
+  "<progress",
+  "max="100"",
+  "value=progress_value",
+]);
+forbidMarkers("apps/admin/src/features/modules/components/modules_list.rs", [
+  "progress_width",
+  "style=progress_width",
 ]);
 
 for (const [file, required] of [

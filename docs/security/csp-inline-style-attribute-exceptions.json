@@ -7,53 +7,5 @@
     "review_by": "2026-08-14",
     "exit_criteria": "Every registered source site is replaced by a reviewed class, SVG geometry contract, native element contract, or another representation compatible with style-src-attr 'none'."
   },
-  "exceptions": [
-    {
-      "path": "apps/admin/src/features/modules/components/modules_list.rs",
-      "expected_occurrences": 1,
-      "owner": "Admin platform maintainers",
-      "reason": "Build progress width is rendered from the typed i32 BuildJob.progress field.",
-      "constraints": "The value is numeric transport data and the source site may set only width in percent; it must not accept a CSS string.",
-      "exit_criteria": "Replace the width attribute with a reviewed native progress or finite class contract that remains functional under style-src-attr 'none'.",
-      "required_markers": [
-        "format!(\"width: {}%;\", build.progress)",
-        "style=progress_width"
-      ],
-      "required_evidence": [
-        {
-          "path": "apps/admin/src/entities/module/model.rs",
-          "marker": "pub progress: i32"
-        }
-      ]
-    },
-    {
-      "path": "crates/rustok-forum/admin/src/ui/leptos.rs",
-      "expected_occurrences": 1,
-      "owner": "Forum module maintainers",
-      "reason": "Category cards expose a persisted visual accent.",
-      "constraints": "Category colors are rejected before persistence unless they match the strict hex grammar, then normalized again at the JSON model boundary before this source site is rendered.",
-      "exit_criteria": "Replace arbitrary category accents with the shared reviewed finite palette class already used by the storefront.",
-      "required_markers": [
-        "style=vm.accent_style.clone()"
-      ],
-      "required_evidence": [
-        {
-          "path": "crates/rustok-forum/src/entities/forum_category.rs",
-          "marker": "async fn before_save"
-        },
-        {
-          "path": "crates/rustok-forum/src/entities/forum_category.rs",
-          "marker": "normalize_category_color"
-        },
-        {
-          "path": "crates/rustok-forum/admin/src/model.rs",
-          "marker": "deserialize_optional_css_hex_color"
-        },
-        {
-          "path": "crates/rustok-ui-core/src/css.rs",
-          "marker": "css_hex_accent_class"
-        }
-      ]
-    }
-  ]
+  "exceptions": []
 }
