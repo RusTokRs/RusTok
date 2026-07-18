@@ -130,7 +130,9 @@ pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
         actor_id: Set(Some(actor_id)),
         event_kind: Set(event_kind.as_str().to_string()),
         locale: Set(Some(response.resolved_locale)),
-        provenance: Set(MarketplaceSellerEventProvenance::Command.as_str().to_string()),
+        provenance: Set(MarketplaceSellerEventProvenance::Command
+            .as_str()
+            .to_string()),
         note: Set(note),
         metadata: Set(metadata),
         created_at: Set(response.updated_at),
