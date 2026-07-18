@@ -1,7 +1,7 @@
 name: API Compatibility
 
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - "**"
   workflow_dispatch:
@@ -34,10 +34,10 @@ env:
   PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_TARGET_DIR: ${{ github.workspace }}/target/api-compatibility
-  BASE_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || github.repository }}
-  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
-  BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
-  HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref }}
+  BASE_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.repo.full_name || github.repository }}
+  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+  BASE_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || inputs.base_ref }}
+  HEAD_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || inputs.head_ref }}
 
 jobs:
   compatibility:
@@ -51,6 +51,7 @@ jobs:
           ref: ${{ env.BASE_REF }}
           path: base
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Checkout head contract source
         uses: actions/checkout@v7
@@ -59,6 +60,7 @@ jobs:
           ref: ${{ env.HEAD_REF }}
           path: head
           fetch-depth: 1
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v6
@@ -70,7 +72,7 @@ jobs:
 
       - name: Require approval for compatibility exception changes
         env:
-          PR_LABELS_JSON: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
+          PR_LABELS_JSON: ${{ github.event_name == 'pull_request_target' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
           EXPLICIT_APPROVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_exception_changes || false }}
         run: >-
           node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility-exception-approval.mjs"
