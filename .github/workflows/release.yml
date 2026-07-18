@@ -86,13 +86,12 @@ jobs:
 
       - name: Refuse an existing GitHub Release
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $GITHUB_REF_NAME already exists; refusing to rebuild or mutate it" >&2
-            exit 1
-          fi
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/release/verify-release-collisions.mjs
+          --github-release
+          --repository "$GITHUB_REPOSITORY"
+          --tag "$GITHUB_REF_NAME"
 
       - name: Validate semantic release contract
         id: contract
@@ -262,6 +261,10 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
       - name: Download reproducible server archive
         uses: actions/download-artifact@v5
         with:
@@ -313,14 +316,15 @@ jobs:
 
       - name: Refuse an existing immutable image tag
         env:
+          GHCR_TOKEN: ${{ github.token }}
           IMAGE_NAME: ${{ steps.image.outputs.image }}
           VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          set -euo pipefail
-          if docker buildx imagetools inspect "$IMAGE_NAME:$VERSION" >/dev/null 2>&1; then
-            echo "Container tag $IMAGE_NAME:$VERSION already exists; refusing to overwrite it" >&2
-            exit 1
-          fi
+        run: >-
+          node scripts/release/verify-release-collisions.mjs
+          --container-tag
+          --image "$IMAGE_NAME"
+          --tag "$VERSION"
+          --actor "$GITHUB_ACTOR"
 
       - name: Build and publish runtime image
         id: image-metadata
@@ -495,16 +499,17 @@ jobs:
 
       - name: Publish immutable asset set
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.validate.outputs.tag }}
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
           PRERELEASE: ${{ needs.validate.outputs.prerelease }}
         run: |
           set -euo pipefail
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists; refusing to mutate published assets" >&2
-            exit 1
-          fi
+          node scripts/release/verify-release-collisions.mjs \
+            --github-release \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG"
           mapfile -d '' assets < <(find release-artifacts -maxdepth 1 -type f -print0 | sort -z)
           test "${#assets[@]}" -eq 5
           args=(
