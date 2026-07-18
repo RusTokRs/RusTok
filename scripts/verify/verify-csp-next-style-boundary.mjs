@@ -17,8 +17,8 @@ const excludedDirectories = new Set([
   "node_modules",
   "out",
 ]);
-const maxRegisteredFiles = 2;
-const maxStyleAttributeSites = 45;
+const maxRegisteredFiles = 1;
+const maxStyleAttributeSites = 43;
 const maxRuntimeStyleElements = 0;
 const failures = [];
 
@@ -358,6 +358,19 @@ forbidMarkers("apps/next-admin/src/shared/ui/shadcn/sidebar.tsx", [
   "style=",
   "Math.random",
   "SIDEBAR_WIDTH",
+]);
+requireMarkers("apps/next-admin/src/widgets/data-table/data-table.tsx", [
+  "<TableHead key={header.id} colSpan={header.colSpan}>",
+  "<TableCell key={cell.id}>",
+]);
+forbidMarkers("apps/next-admin/src/widgets/data-table/data-table.tsx", [
+  "style=",
+  "getCommonPinningStyles",
+]);
+forbidMarkers("apps/next-admin/src/shared/lib/data-table.ts", [
+  "getCommonPinningStyles",
+  "React.CSSProperties",
+  "getIsPinned",
 ]);
 requireMarkers("apps/next-admin/src/shared/ui/shadcn/chart.tsx", [
   "const CHART_INDICATOR_CLASSES",
