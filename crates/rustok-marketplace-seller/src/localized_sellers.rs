@@ -12,7 +12,7 @@ use crate::dto::{
 };
 use crate::entities::{seller, seller_translation};
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
-use crate::seller_events::{
+use crate::seller_prose::{
     load_seller_prose, load_seller_prose_map, SellerProseProjection,
 };
 
@@ -187,6 +187,23 @@ fn map_seller(
                 ))
             },
         )?;
+    let row_updated_at = model.updated_at;
+    let onboarding_note = if prose
+        .onboarding_at
+        .is_some_and(|event_at| event_at >= row_updated_at)
+    {
+        prose.onboarding_note
+    } else {
+        model.onboarding_note
+    };
+    let suspension_reason = if prose
+        .suspension_at
+        .is_some_and(|event_at| event_at >= row_updated_at)
+    {
+        prose.suspension_reason
+    } else {
+        model.suspension_reason
+    };
 
     Ok(MarketplaceSellerResponse {
         id: model.id,
@@ -197,8 +214,8 @@ fn map_seller(
         legal_name: model.legal_name,
         status,
         onboarding_status,
-        onboarding_note: prose.onboarding_note,
-        suspension_reason: prose.suspension_reason,
+        onboarding_note,
+        suspension_reason,
         metadata: model.metadata,
         created_at: model.created_at,
         updated_at: model.updated_at,
