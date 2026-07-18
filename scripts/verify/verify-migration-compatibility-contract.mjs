@@ -21,6 +21,12 @@ function requireFile(relativePath) {
   return true;
 }
 
+function forbidFile(relativePath) {
+  if (fs.existsSync(path.join(repoRoot, relativePath))) {
+    failures.push(`${relativePath}: temporary file must not exist`);
+  }
+}
+
 function requireMarkers(relativePath, markers) {
   if (!requireFile(relativePath)) return;
   const source = read(relativePath);
@@ -39,15 +45,21 @@ function forbidMarkers(relativePath, markers) {
 
 const smokeTest = "crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs";
 requireMarkers(smokeTest, [
+  "mod support;",
+  "load_backfill_fixtures()",
   'env_binary_flag("RUSTOK_MIGRATION_SMOKE_REUSE_DB")',
   'env_binary_flag("RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST")',
+  "backfill fixtures require RUSTOK_MIGRATION_SMOKE_REUSE_DB=1",
   "if reuse_database {",
   "reused migration smoke database",
   "must already exist and be reachable",
   "drop_database_if_exists(&admin, &database_name).await?;",
   "create_database(&admin, &database_name).await?;",
-  "apply_migrations_and_assert_schema(&target_url, incremental, rollback_latest)",
+  "apply_migrations_and_assert_schema(",
+  "&backfill_fixtures,",
+  "apply_backfill_setup(&db, backfill_fixtures).await?;",
   "apply_migrations_incrementally(&db)",
+  "assert_backfill_results(&db, backfill_fixtures).await?;",
   "rollback_latest_and_reapply(&db)",
   "Migrator::down(db, Some(1))",
   "one-step rollback must expose exactly one pending migration",
@@ -57,6 +69,20 @@ requireMarkers(smokeTest, [
   "Migrator::get_pending_migrations(db)",
   'assert_trigger_exists(db, "trg_products_normalize_channel_visibility")',
   'parse_binary_flag("RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST", Some("1"))',
+]);
+
+requireMarkers("crates/rustok-migrations/tests/support/mod.rs", ["pub mod backfill_fixtures;"]);
+requireMarkers("crates/rustok-migrations/tests/support/backfill_fixtures.rs", [
+  "pub struct BackfillFixture",
+  'std::env::var("RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES")',
+  "pub async fn apply_setup",
+  "execute_unprepared(&fixture.setup_sql)",
+  "pub async fn assert_results",
+  'row.try_get("", "passed")',
+  "assertion must return boolean column `passed`",
+  "schema_version must be 1",
+  "fixtures must be an array",
+  "fixture_document_requires_assertion_sql",
 ]);
 
 const smokeScript = "scripts/verify/verify-migration-smoke.sh";
@@ -90,14 +116,37 @@ requireMarkers("scripts/verify/verify-migration-plan-self-test.mjs", [
   '"--self-test"',
 ]);
 
+requireMarkers("docs/migrations/backfill-contracts.json", [
+  '"schema_version": 1',
+  '"contracts": []',
+]);
+requireMarkers("scripts/verify/verify-migration-backfill-contracts.mjs", [
+  "function appendedMigrations",
+  "function validateContracts",
+  "appended migration ${migration} has no backfill contract",
+  "contract.mode === \"fixture\"",
+  "setup_sql",
+  "assertion_sql",
+  "backfill fixture(s) selected",
+  "function runSelfTest",
+]);
+requireMarkers("scripts/verify/verify-migration-backfill-self-test.mjs", [
+  "verify-migration-backfill-contracts.mjs",
+  '"--self-test"',
+]);
+
 requireMarkers("scripts/verify/verify-migration-infrastructure-approval.mjs", [
   'const APPROVAL_LABEL = "migration-infra-approved"',
   "const PROTECTED_PATHS",
   ".github/workflows/migration-compatibility.yml",
   "export_migration_plan.rs",
   "postgres_zero_migration_smoke.rs",
+  "tests/support/mod.rs",
+  "tests/support/backfill_fixtures.rs",
   "verify-migration-plan-compatibility.mjs",
   "verify-migration-plan-self-test.mjs",
+  "verify-migration-backfill-contracts.mjs",
+  "verify-migration-backfill-self-test.mjs",
   "verify-migration-compatibility-contract.mjs",
   "verify-migration-infra-self-test.mjs",
   "function changedProtectedPaths",
@@ -131,6 +180,11 @@ requireMarkers(workflow, [
   "migration-plans/head.json",
   "Compare migration plans with base policy",
   "base/scripts/verify/verify-migration-plan-compatibility.mjs",
+  "Select appended migration backfill fixtures",
+  "base/scripts/verify/verify-migration-backfill-contracts.mjs",
+  "head/docs/migrations/backfill-contracts.json",
+  "migration-plans/backfill-fixtures.json",
+  "Verify selected backfill fixture artifact",
   "actions/upload-artifact@v7",
   "migration-plans-${{ github.run_id }}",
   "needs: infrastructure-approval",
@@ -148,11 +202,16 @@ requireMarkers(workflow, [
   'RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"',
   "Checkout base migration source",
   "Checkout head migration source",
+  "Download selected backfill fixtures",
+  "actions/download-artifact@v5",
+  "Verify selected backfill fixtures",
+  "migration-backfill/backfill-fixtures.json",
   "Apply base migrations and preserve database",
   "Upgrade preserved database with head migrations",
   'RUSTOK_MIGRATION_SMOKE_KEEP_DB: "1"',
   'RUSTOK_MIGRATION_SMOKE_REUSE_DB: "1"',
   'RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "1"',
+  "RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES:",
   'manifest-path "$GITHUB_WORKSPACE/base/Cargo.toml"',
   'manifest-path "$GITHUB_WORKSPACE/head/Cargo.toml"',
   "-p rustok-migrations",
@@ -165,12 +224,18 @@ forbidMarkers(workflow, [
   "continue-on-error: true",
   "|| true",
   'head/scripts/verify/verify-migration-plan-compatibility.mjs',
+  'head/scripts/verify/verify-migration-backfill-contracts.mjs',
   'bash "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-smoke.sh"',
 ]);
+forbidFile(".github/workflows/one-off-wire-migration-backfill-workflow.yml");
+forbidFile(".github/workflows/one-off-wire-migration-backfill-master.yml");
+forbidFile(".github/workflows/one-off-wire-migration-backfill-fixtures.yml");
 
 requireMarkers(".github/workflows/hardening-gates.yml", [
   "Verify migration plan comparator fixtures",
   "verify-migration-plan-self-test.mjs",
+  "Verify migration backfill contract fixtures",
+  "verify-migration-backfill-self-test.mjs",
   "Verify migration infrastructure approval fixtures",
   "verify-migration-infra-self-test.mjs",
   "Verify migration compatibility gate structure",
@@ -178,6 +243,7 @@ requireMarkers(".github/workflows/hardening-gates.yml", [
 ]);
 requireMarkers("scripts/verify/verify-all.sh", [
   "verify-migration-plan-self-test.mjs:Migration Plan Comparator Fixtures",
+  "verify-migration-backfill-self-test.mjs:Migration Backfill Contract Fixtures",
   "verify-migration-infra-self-test.mjs:Migration Infrastructure Approval Fixtures",
   "verify-migration-compatibility-contract.mjs:Migration Compatibility Gate Structure",
 ]);
@@ -189,5 +255,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ append-only planning plus PostgreSQL fresh, incremental, rollback, and N-1 migration paths are structurally bound",
+  "✔ append-only planning, declared backfills, PostgreSQL fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
 );
