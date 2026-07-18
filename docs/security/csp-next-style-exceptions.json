@@ -8,15 +8,5 @@
     "review_by": "2026-08-15",
     "exit_criteria": "Every registered JSX style prop is replaced by a reviewed class, native attribute, bounded DOM adapter, or another representation compatible with style-src-attr 'none'; every runtime style element is removed or receives the exact per-response nonce through a reviewed host boundary."
   },
-  "exceptions": [
-    {
-      "path": "apps/next-frontend/packages/search/src/index.tsx",
-      "expected_style_attribute_occurrences": 43,
-      "expected_runtime_style_element_occurrences": 0,
-      "owner": "Next storefront and search module maintainers",
-      "reason": "The storefront search package is a hand-styled prototype surface with layout, typography, state and result-card declarations embedded as React style props.",
-      "constraints": "Values are source-authored constants or bounded component state; no server, tenant or user-provided CSS declaration string may be passed to a style prop.",
-      "exit_criteria": "Move the surface to the shared storefront utility-class and component system, including explicit active/error variants."
-    }
-  ]
+  "exceptions": []
 }
