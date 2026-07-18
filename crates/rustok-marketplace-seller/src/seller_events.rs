@@ -1,6 +1,4 @@
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::dto::{
@@ -33,12 +31,13 @@ pub(crate) async fn list_seller_events<C: ConnectionTrait>(
 fn map_seller_event(
     model: seller_event::Model,
 ) -> MarketplaceSellerResult<MarketplaceSellerEventResponse> {
-    let event_kind = MarketplaceSellerEventKind::parse(model.event_kind.as_str()).ok_or_else(|| {
-        MarketplaceSellerError::Validation(format!(
-            "unknown marketplace seller event kind `{}`",
-            model.event_kind
-        ))
-    })?;
+    let event_kind =
+        MarketplaceSellerEventKind::parse(model.event_kind.as_str()).ok_or_else(|| {
+            MarketplaceSellerError::Validation(format!(
+                "unknown marketplace seller event kind `{}`",
+                model.event_kind
+            ))
+        })?;
     let provenance = MarketplaceSellerEventProvenance::parse(model.provenance.as_str())
         .ok_or_else(|| {
             MarketplaceSellerError::Validation(format!(
