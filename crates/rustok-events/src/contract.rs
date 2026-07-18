@@ -5,7 +5,8 @@ use ulid::Ulid;
 use uuid::Uuid;
 
 use crate::{
-    DomainEvent, EventEnvelope, EventValidationError, MarketplaceListingEvent, ValidateEvent,
+    DomainEvent, EventEnvelope, EventValidationError, MarketplaceListingEvent,
+    MarketplaceSellerEvent, ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -36,6 +37,8 @@ pub enum ContractEventPayload {
     Root(DomainEvent),
     #[serde(rename = "marketplace_listing")]
     MarketplaceListing(MarketplaceListingEvent),
+    #[serde(rename = "marketplace_seller")]
+    MarketplaceSeller(MarketplaceSellerEvent),
 }
 
 impl ContractEventPayload {
@@ -43,6 +46,7 @@ impl ContractEventPayload {
         match self {
             Self::Root(event) => event.event_type(),
             Self::MarketplaceListing(event) => event.event_type(),
+            Self::MarketplaceSeller(event) => event.event_type(),
         }
     }
 
@@ -50,6 +54,7 @@ impl ContractEventPayload {
         match self {
             Self::Root(event) => event.schema_version(),
             Self::MarketplaceListing(event) => event.schema_version(),
+            Self::MarketplaceSeller(event) => event.schema_version(),
         }
     }
 }
@@ -59,6 +64,7 @@ impl ValidateEvent for ContractEventPayload {
         match self {
             Self::Root(event) => event.validate(),
             Self::MarketplaceListing(event) => event.validate(),
+            Self::MarketplaceSeller(event) => event.validate(),
         }
     }
 }
