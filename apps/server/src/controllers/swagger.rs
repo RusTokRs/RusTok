@@ -158,7 +158,7 @@ const REGISTRY_ONLY_OPENAPI_PATHS: &[&str] = &[
     "/api/openapi.yaml",
 ];
 
-fn build_openapi_document(settings: &RustokSettings) -> OpenApiDoc {
+pub fn build_openapi_document(settings: &RustokSettings) -> OpenApiDoc {
     let mut openapi = ApiDoc::openapi();
     #[cfg(feature = "mod-blog")]
     openapi.merge(rustok_blog::openapi::openapi_document());
