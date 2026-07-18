@@ -120,6 +120,40 @@ requireActionCounts(
   ]),
 );
 
+const nextWorkflow = ".github/workflows/browser-e2e.yml";
+requireMarkers(nextWorkflow, [
+  "name: Browser E2E",
+  "permissions:\n  contents: read",
+  "runs-on: ubuntu-24.04",
+  "apps/next-admin",
+  "apps/next-frontend",
+  "fail-fast: false",
+  "persist-credentials: false",
+  "npm ci --no-audit --no-fund",
+  "npx --no-install playwright install --with-deps chromium",
+  "npm run test:e2e",
+  "Upload Playwright diagnostics",
+  "if: failure()",
+]);
+forbidMarkers(nextWorkflow, [
+  "permissions:\n  contents: write",
+  "continue-on-error:",
+  "runs-on: ubuntu-latest",
+  "npm install",
+  "npx playwright install",
+  "actions/checkout@v",
+  "actions/setup-node@v",
+  "actions/upload-artifact@v",
+]);
+requireActionCounts(
+  nextWorkflow,
+  new Map([
+    [ACTIONS.checkout, 1],
+    [ACTIONS.setupNode, 1],
+    [ACTIONS.uploadArtifact, 1],
+  ]),
+);
+
 requireMarkers("apps/server/config/browser-smoke.yaml", [
   "profile: multi_tenant",
   "header_name: x-tenant-slug",
@@ -173,8 +207,9 @@ requireMarkers("scripts/build/build-embedded-admin.sh", [
   "cargo install trunk --version 0.21.14 --locked",
 ]);
 requireMarkers("apps/server/src/services/app_router.rs", [
-  'router.nest_service("/admin", admin_assets_service())',
-  "build_storefront_router(runtime_ctx, registry)",
+  'router.nest("/admin", admin_router)',
+  "router.merge(storefront_router)",
+  "nonce_trusted_admin_elements",
 ]);
 
 requireMarkers(".github/workflows/hardening-gates.yml", [
@@ -193,5 +228,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ bounded PostgreSQL, migration-prepared monolith, embedded admin/storefront Chromium smoke and strict CSP evidence are structurally bound",
+  "✔ commit-pinned Next and migration-prepared Rust-host browser evidence are structurally bound with bounded PostgreSQL and strict CSP assertions",
 );
