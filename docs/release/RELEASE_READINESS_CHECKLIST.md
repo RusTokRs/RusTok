@@ -24,7 +24,8 @@ Use this checklist for every RusToK release. A release is not complete because a
 - [ ] Confirm no immutable GHCR tag `ghcr.io/rustokrs/rustok:VERSION` already exists.
 - [ ] Confirm release workflows and GitHub actions are unchanged or explicitly approved with `release-infra-approved`.
 - [ ] Confirm the pinned Debian base digest and Debian Snapshot timestamp in `apps/server/Dockerfile.release` have a reviewed update record if changed.
-- [ ] For a private mirror, remove the unauthenticated post-checkout `git fetch origin main` residual or provide narrowly scoped ephemeral authentication before creating the tag.
+- [ ] Confirm checkout fetched `refs/remotes/origin/main` and signed-tag ancestry validation uses the local ref without a post-checkout credentialed fetch.
+- [ ] Confirm the embedded admin bundle was built from locked npm inputs with Trunk `0.21.14` for public URL `/admin/` before both independent server builds.
 
 ## 3. Required verification before tagging
 
@@ -52,6 +53,9 @@ node scripts/verify/verify-release-tooling-self-test.mjs
 node scripts/verify/verify-release-infra-self-test.mjs
 node scripts/verify/verify-release-supply-chain-contract.mjs
 node scripts/verify/verify-release-runtime-image-contract.mjs
+node scripts/verify/verify-release-readiness-contract.mjs
+node scripts/verify/verify-rust-host-browser-contract.mjs
+node scripts/verify/verify-development-container-topology.mjs
 
 cargo tree -i rsa --workspace --all-features
 cargo tree -i atomic-polyfill --workspace --all-features
@@ -59,7 +63,8 @@ cargo audit
 ```
 
 - [ ] Run Next admin and frontend Playwright smoke suites.
-- [ ] Run Leptos/server-hosted browser smoke for authentication, navigation, storefront and strict CSP.
+- [ ] Run the migration-prepared Rust-host browser workflow for `/health`, storefront, embedded `/admin/` assets and strict CSP.
+- [ ] Run standalone admin smoke against the nonce-bearing SSR host before declaring that deployment profile production-ready.
 - [ ] Run Page Builder smoke for custom viewport size, continuous zoom, iframe load, overlay alignment, drag/drop and resize.
 - [ ] Execute fresh, incremental and N-1 PostgreSQL migration scenarios against disposable databases.
 - [ ] Verify current backup/PITR evidence and identify the restore point immediately preceding deployment.
@@ -70,6 +75,7 @@ The release workflow must produce and verify all of the following:
 
 - [ ] The tag is annotated, cryptographically verified and points to a commit on `main`.
 - [ ] Workspace version, locked server version, tag and changelog section are identical.
+- [ ] Both isolated build jobs prepare the same locked embedded admin input before compiling `rustok-server`.
 - [ ] Two isolated jobs produce the same SHA-256 digest for the Linux server archive.
 - [ ] The SPDX 2.3 SBOM contains only the transitive dependency closure reachable from `rustok-server`.
 - [ ] The runtime image is built from the pinned Debian base and fixed snapshot package sources, runs as UID/GID `10001`, and is published by digest.
