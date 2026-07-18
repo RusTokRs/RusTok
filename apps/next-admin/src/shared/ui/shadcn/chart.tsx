@@ -5,8 +5,14 @@ import * as RechartsPrimitive from 'recharts';
 
 import { cn } from '@/shared/lib/utils';
 
-// Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: '', dark: '.dark' } as const;
+
+const CHART_INDICATOR_CLASSES = [
+  'border-primary bg-primary',
+  'border-primary/70 bg-primary/70',
+  'border-primary/45 bg-primary/45',
+  'border-foreground bg-foreground'
+] as const;
 
 export type ChartConfig = {
   [key in string]: {
@@ -80,7 +86,6 @@ function useChart() {
 }
 
 function ChartContainer({
-  id,
   className,
   children,
   config,
@@ -91,21 +96,16 @@ function ChartContainer({
     typeof RechartsPrimitive.ResponsiveContainer
   >['children'];
 }) {
-  const uniqueId = React.useId();
-  const chartId = `chart-${id || uniqueId.replace(/:/g, '')}`;
-
   return (
     <ChartContext.Provider value={{ config }}>
       <div
         data-slot='chart'
-        data-chart={chartId}
         className={cn(
           "[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border flex aspect-video justify-center text-xs [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden",
           className
         )}
         {...props}
       >
-        <ChartStyle id={chartId} config={config} />
         {/* adding debounce will fix chart laggy behavior while animating */}
         <RechartsPrimitive.ResponsiveContainer debounce={2000}>
           {children}
@@ -114,39 +114,6 @@ function ChartContainer({
     </ChartContext.Provider>
   );
 }
-
-const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
-  const colorConfig = Object.entries(config).filter(
-    ([, config]) => config.theme || config.color
-  );
-
-  if (!colorConfig.length) {
-    return null;
-  }
-
-  return (
-    <style
-      dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
-  .map(([configKey, itemConfig]) => {
-    const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
-      itemConfig.color;
-    return color ? `  --color-${configKey}: ${color};` : null;
-  })
-  .join('\n')}
-}
-`
-          )
-          .join('\n')
-      }}
-    />
-  );
-};
 
 const ChartTooltip = RechartsPrimitive.Tooltip;
 
@@ -161,7 +128,6 @@ function ChartTooltipContent({
   labelFormatter,
   labelClassName,
   formatter,
-  color,
   nameKey,
   labelKey
 }: ChartTooltipContentProps) {
@@ -221,7 +187,7 @@ function ChartTooltipContent({
         {payload.map((item, index) => {
           const key = `${nameKey || item.name || item.dataKey || 'value'}`;
           const itemConfig = getPayloadConfigFromPayload(config, item, key);
-          const indicatorColor = color || item.payload?.fill || item.color;
+          const indicatorClassName = chartIndicatorClass(index);
 
           return (
             <div
@@ -241,7 +207,8 @@ function ChartTooltipContent({
                     !hideIndicator && (
                       <div
                         className={cn(
-                          'shrink-0 rounded-[2px] border-(--color-border) bg-(--color-bg)',
+                          'shrink-0 rounded-[2px] border',
+                          indicatorClassName,
                           {
                             'h-2.5 w-2.5': indicator === 'dot',
                             'w-1': indicator === 'line',
@@ -250,12 +217,6 @@ function ChartTooltipContent({
                             'my-0.5': nestLabel && indicator === 'dashed'
                           }
                         )}
-                        style={
-                          {
-                            '--color-bg': indicatorColor,
-                            '--color-border': indicatorColor
-                          } as React.CSSProperties
-                        }
                       />
                     )
                   )}
@@ -311,7 +272,7 @@ function ChartLegendContent({
         className
       )}
     >
-      {payload.map((item) => {
+      {payload.map((item, index) => {
         const key = `${nameKey || item.dataKey || 'value'}`;
         const itemConfig = getPayloadConfigFromPayload(config, item, key);
 
@@ -326,10 +287,10 @@ function ChartLegendContent({
               <itemConfig.icon />
             ) : (
               <div
-                className='h-2 w-2 shrink-0 rounded-[2px]'
-                style={{
-                  backgroundColor: item.color
-                }}
+                className={cn(
+                  'h-2 w-2 shrink-0 rounded-[2px]',
+                  chartIndicatorClass(index)
+                )}
               />
             )}
             {itemConfig?.label}
@@ -338,6 +299,10 @@ function ChartLegendContent({
       })}
     </div>
   );
+}
+
+function chartIndicatorClass(index: number) {
+  return CHART_INDICATOR_CLASSES[index % CHART_INDICATOR_CLASSES.length];
 }
 
 // Helper to extract item config from a payload.
@@ -384,6 +349,5 @@ export {
   ChartTooltip,
   ChartTooltipContent,
   ChartLegend,
-  ChartLegendContent,
-  ChartStyle
+  ChartLegendContent
 };
