@@ -1,0 +1,59 @@
+name: Marketplace seller event storage
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/rustok-marketplace-seller/**"
+      - "scripts/verify/verify-marketplace-seller-events.mjs"
+      - ".github/workflows/marketplace-seller-event-storage.yml"
+  pull_request:
+    paths:
+      - "crates/rustok-marketplace-seller/**"
+      - "scripts/verify/verify-marketplace-seller-events.mjs"
+      - ".github/workflows/marketplace-seller-event-storage.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketplace-seller-event-storage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  event-storage:
+    name: Seller event storage contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.96.1"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: marketplace-seller-event-storage
+      - name: Check event storage formatting
+        run: |
+          rustfmt --edition 2021 --check \
+            crates/rustok-marketplace-seller/src/dto.rs \
+            crates/rustok-marketplace-seller/src/entities/mod.rs \
+            crates/rustok-marketplace-seller/src/entities/seller.rs \
+            crates/rustok-marketplace-seller/src/entities/seller_event.rs \
+            crates/rustok-marketplace-seller/src/lib.rs \
+            crates/rustok-marketplace-seller/src/migrations/mod.rs \
+            crates/rustok-marketplace-seller/src/migrations/m20260718_000003_create_marketplace_seller_events.rs \
+            crates/rustok-marketplace-seller/src/ports.rs \
+            crates/rustok-marketplace-seller/src/seller_events.rs \
+            crates/rustok-marketplace-seller/src/seller_events_tests.rs \
+            crates/rustok-marketplace-seller/src/service.rs
+      - name: Compile seller owner
+        run: cargo check -p rustok-marketplace-seller --all-targets
+      - name: Test seller event storage
+        run: cargo test -p rustok-marketplace-seller
+      - name: Clippy seller owner
+        run: cargo clippy -p rustok-marketplace-seller --all-targets --no-deps -- -D warnings
+      - name: Verify seller event boundary
+        run: node scripts/verify/verify-marketplace-seller-events.mjs
