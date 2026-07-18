@@ -11,17 +11,16 @@ status: active
 
 This document is the execution plan for moving RusToK from an ambitious development platform to a reproducible, production-ready platform with explicit security, tenancy, compatibility, release and scale contracts.
 
-The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5f1b443d7fc0fa1dae8ee9b09a29d2edfb67`. The progress ledger was refreshed on 2026-07-18 after completing the typed tenant profile, cross-transport tenant isolation coverage, bounded CSP violation collection, server-hosted and standalone script/style-element nonce enforcement, production WSS-only browser connections, zeroing the Rust-hosted inline-style baseline, protecting the classic admin bootstrap, registering the remaining Next/React style debt and completing dependency feature cleanup.
+The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5f1b443d7fc0fa1dae8ee9b09a29d2edfb67`. The progress ledger was refreshed on 2026-07-18 after completing the typed tenant profile, cross-transport tenant isolation coverage, bounded CSP violation collection, server-hosted and standalone script/style-element nonce enforcement, production WSS-only browser connections, zeroing the Rust-hosted and Next/React inline-style baselines, protecting the classic admin bootstrap, removing runtime style generation from the reviewed Next roots and completing dependency feature cleanup.
 
 ## Current Revalidation Summary
 
 ### Confirmed open high-risk findings
 
-1. The enforced UI Content Security Policy still permits inline style attributes through the explicit `style-src-attr 'unsafe-inline'` migration boundary. The Rust-hosted register is empty with a `0/0` ratchet, while the Next boundary now contains exactly 54 JSX style props across 5 files and one runtime `<style>` element through 2026-08-15, down from the initial 60 props across 10 files. Migration and browser evidence remain required before `HARD-101` is complete.
-2. The Next chart adapter generates one runtime style element without a demonstrated per-response nonce path; it must be removed, converted to a finite palette or integrated with the trusted host nonce before strict style enforcement.
-3. Browser E2E runs in a dedicated workflow, but repository branch protection has not yet been verified to require that workflow.
-4. Two dependency waivers remain until `Cargo.lock` is regenerated after disabling the unused SeaORM migration CLI/MySQL and Postcard heapless default features.
-5. Production JWT bootstrap policy validates algorithm-specific key material, issuer, audience and HS256 secret quality; operational key rotation and emergency revocation remain separate production-readiness work.
+1. The enforced UI Content Security Policy still permits inline style attributes through the explicit `style-src-attr 'unsafe-inline'` rollout boundary. Both exception registers are empty; the Rust gate is `0/0` and the Next gate is `0 props / 0 files / 0 runtime style elements / 0 DOM style writes`. Cross-stack browser evidence and the subsequent enforced promotion remain required before `HARD-101` is complete.
+2. Browser E2E runs in a dedicated workflow, but repository branch protection has not yet been verified to require that workflow.
+3. Two dependency waivers remain until `Cargo.lock` is regenerated after disabling the unused SeaORM migration CLI/MySQL and Postcard heapless default features.
+4. Production JWT bootstrap policy validates algorithm-specific key material, issuer, audience and HS256 secret quality; operational key rotation and emergency revocation remain separate production-readiness work.
 
 ### Findings closed or materially reduced
 
@@ -36,7 +35,7 @@ The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5
 9. A strict CSP report-only policy contains no `unsafe-inline`, `unsafe-eval`, plaintext HTTP or plaintext WebSocket source and explicitly reports style attributes through `style-src-attr 'none'`.
 10. CSP reports are collected through a bounded pre-auth/pre-tenant endpoint with legacy and Reporting API support, origin-only logging, bounded metric labels and a reviewed migration inventory. The standalone admin does not advertise a collector it does not own.
 11. The Rust-hosted inline-style exception register is empty. Its gate rejects every new Rust UI `style=` site and has a non-increasing `0/0` ratchet.
-12. The remaining Next/React style surface is covered by a time-bounded machine-readable register. Its gate rejects unregistered files, count changes, stale entries, review expiry, direct DOM style writes and increases above the `54 props / 5 files / 1 runtime style element` ratchet. Five low-risk Next files have already moved to finite classes, SVG geometry or normal table layout.
+12. The Next/React exception register is empty. Its gate scans all reviewed JSX/TSX roots and enforces zero JSX style props, zero registered files, zero runtime style elements and zero direct DOM style writes, with regression markers for every completed migration.
 13. The classic bundled admin bootstrap no longer writes `document.documentElement.style`; it toggles the `dark` class while static CSS owns the light/dark color-scheme declarations.
 14. The static modular Page Builder grid moved from a style attribute to a Tailwind grid class and is no longer part of the exception surface.
 15. Persisted forum category colors are validated before persistence and normalized to the strict `#RGB`, `#RGBA`, `#RRGGBB` or `#RRGGBBAA` grammar before Rust UI rendering; CSS declaration injection is rejected or falls back instead of being concatenated into `background`.
@@ -191,7 +190,7 @@ The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5
 
 ## Top 20 Ordered Backlog
 
-1. Complete `HARD-101` by migrating the registered Next boundary from 54 JSX style props in 5 files and one runtime style element to zero, capture cross-stack browser evidence, then enforce `style-src-attr 'none'`.
+1. Complete `HARD-101` by capturing cross-stack browser evidence under the strict report-only policy, then promote enforced `style-src-attr` from `'unsafe-inline'` to `'none'` without restoring any source exception.
 2. Regenerate `Cargo.lock`, verify `rsa` and `atomic-polyfill` are absent from the selected graph and remove the final two audit waivers.
 3. Make `HARD-201` a required branch-protection check.
 4. `HARD-204` API compatibility diff gates.
@@ -266,7 +265,7 @@ npm --prefix apps/next-frontend run test:e2e
 | `HARD-002` Automated manifest/docs drift verification | Completed | `f7c1fbe`, `8d6f1fb`, `b579617` |
 | `HARD-003` Implementation plan and ledger | Completed | `5eb0687`, this update |
 | `HARD-004` Advisory exception governance | Manifest remediation landed; lock refresh pending | Unified register `6b7b6cb`, gate `f9ac9ae`, stale TLS cleanup `c663746`, exact paths `22dcb01`, feature cleanup `c38a8ea`, feature gate `a307cb8`/`0c201ea` |
-| `HARD-101` CSP enforcement hardening | In progress; Rust `0/0`, Next `54 props / 5 files / 1 runtime style element` | Shared nonce `8492391`; storefront trusted JSON-LD `712168a`; embedded admin elements `531146a`/`65ae8c8`/`a20cde6`; main-server nonce policy `9b1b1af`/`700d4cb`; production WSS-only `8800f79`; standalone admin adapter `8b80543`/`611e50a`/`066a45b`; standalone style policy `d5defaf`; strict color grammar `95efed1`/`6917019`; Page Builder class/SVG migrations `314c320`/`8a97295`/`30e2647`/`d2a6e10`/`e485925`; shared accent adapters `b9fd978`/`a1e2eae`/`d62cb59`/`5e79a57`; storefront/admin forum class migrations `5f620f6`/`6adb7e7`; final native progress and Rust `0/0` ratchet `e250e42`/`3a61789`; classic admin style-write removal `bf8816e`/`cfc29c4`; Next register/gate `044d4d3`/`4ac34c2`; CI/master wiring `c789cd7`/`72e29d7`; textarea/bar/Sonner migrations `beb6b1f`/`7c33876`/`b13c367`; progress/table-skeleton migrations `1ff56b8`/`c67d659`; Next ratchets `e82f1e4`/`6a9138a`/`b72699e`/`071a67d`; inventories `7fff543`/`afd4440`; remaining Next migration and browser evidence remain |
+| `HARD-101` CSP enforcement hardening | Source migration complete; browser evidence and enforced promotion pending | Shared nonce `8492391`; main-server policy `9b1b1af`/`700d4cb`; standalone adapter `8b80543`/`611e50a`; report-only boundary `ac93c41`; Rust `0/0` source gate `e250e42`/`3a61789`; classic admin class-only bootstrap `bf8816e`/`cfc29c4`; Next register/gate `044d4d3`/`4ac34c2`; shell migration `659544b`; chart migration/gate `9187417`/`83aeb33`/`35c546a`; data-table cleanup/gate `7682dc6`/`be1fb0d`/`ba1de73`; storefront search migration `34e8265`; empty Next register and `0/0/0` gate `d54306f`/`a02d69e`; final inventory `266ece9`; browser evidence and enforced promotion remain |
 | `HARD-102` CSP report-only and telemetry | Completed | Bounded collector `6c71c30`, minimized telemetry `0990b59`, report headers `ac93c41`, inventory `273ece5`/`8dbd47b`/`c495c1c`/`71522b8`/`cef4a41`/`e81bc42`/`7fff543`, gate `c7436f9`/`85e6e6a`/`389cb07`, middleware test `50ef318` |
 | `HARD-103` Production HSTS contract | Completed | `822430e`, `3a9f936`; standalone admin production validation `8b80543`/`611e50a` |
 | `HARD-104` Tenant resolution fail-closed | Completed | Typed configuration and canonical resolver `adca4014`; route/header hardening `f3b475e0`; unified HTTP/WS loader `21ad3a99` |
