@@ -1,0 +1,228 @@
+name: One-off Refine GraphQL Nullability Diff
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  refine-nullability-diff:
+    if: >-
+      github.event.issue.title == '[automation] refine GraphQL nullability compatibility' &&
+      (github.event_name == 'issues' || github.event.comment.body == '/refine-graphql-nullability')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git pull --rebase origin main
+      - name: Apply exact comparator refinement
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/verify/verify-api-compatibility.mjs")
+          source = path.read_text()
+
+          def replace_once(old: str, new: str) -> None:
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one comparator match, found {count}: {old!r}")
+              source = source.replace(old, new, 1)
+
+          helper = '''function parseGraphqlTypeReference(type) {
+            let index = 0;
+
+            function parseNode() {
+              let node;
+              if (type[index] === "[") {
+                index += 1;
+                node = { kind: "list", ofType: parseNode(), nonNull: false };
+                if (type[index] !== "]") throw new Error(`invalid GraphQL type reference ${type}`);
+                index += 1;
+              } else {
+                const name = type.slice(index).match(/^[_A-Za-z][_0-9A-Za-z]*/)?.[0];
+                if (!name) throw new Error(`invalid GraphQL type reference ${type}`);
+                index += name.length;
+                node = { kind: "named", name, nonNull: false };
+              }
+              if (type[index] === "!") {
+                node.nonNull = true;
+                index += 1;
+              }
+              return node;
+            }
+
+            const result = parseNode();
+            if (index !== type.length) throw new Error(`invalid GraphQL type reference ${type}`);
+            return result;
+          }
+
+          function graphqlTypeIsCompatible(baseType, headType, direction) {
+            const base = parseGraphqlTypeReference(baseType);
+            const head = parseGraphqlTypeReference(headType);
+
+            function compatible(baseNode, headNode) {
+              if (baseNode.kind !== headNode.kind) return false;
+              if (baseNode.kind === "named" && baseNode.name !== headNode.name) return false;
+              if (direction === "output" && baseNode.nonNull && !headNode.nonNull) return false;
+              if (direction === "input" && !baseNode.nonNull && headNode.nonNull) return false;
+              if (baseNode.kind === "list") return compatible(baseNode.ofType, headNode.ofType);
+              return true;
+            }
+
+            return compatible(base, head);
+          }
+
+          '''
+          replace_once(
+              '''function isRequiredInput(field) {
+            return field.type.endsWith("!") && !field.hasDefault;
+          }
+
+          ''',
+              '''function isRequiredInput(field) {
+            return field.type.endsWith("!") && !field.hasDefault;
+          }
+
+          ''' + helper,
+          )
+          replace_once(
+              '''        if (baseField.type !== headField.type) {
+                    addChange(
+                      changes,
+                      `graphql:field-type:${typeName}.${fieldName}`,
+                      `GraphQL field ${typeName}.${fieldName} changed type from ${baseField.type} to ${headField.type}`,
+                    );
+                  }''',
+              '''        if (!graphqlTypeIsCompatible(baseField.type, headField.type, "output")) {
+                    addChange(
+                      changes,
+                      `graphql:field-type:${typeName}.${fieldName}`,
+                      `GraphQL field ${typeName}.${fieldName} changed incompatibly from ${baseField.type} to ${headField.type}`,
+                    );
+                  }''',
+          )
+          replace_once(
+              '''          if (baseArgument.type !== headArgument.type) {
+                      addChange(
+                        changes,
+                        `graphql:argument-type:${typeName}.${fieldName}:${argumentName}`,
+                        `GraphQL argument ${typeName}.${fieldName}(${argumentName}:) changed type from ${baseArgument.type} to ${headArgument.type}`,
+                      );
+                    }''',
+              '''          if (!graphqlTypeIsCompatible(baseArgument.type, headArgument.type, "input")) {
+                      addChange(
+                        changes,
+                        `graphql:argument-type:${typeName}.${fieldName}:${argumentName}`,
+                        `GraphQL argument ${typeName}.${fieldName}(${argumentName}:) changed incompatibly from ${baseArgument.type} to ${headArgument.type}`,
+                      );
+                    }''',
+          )
+          replace_once(
+              '''        if (baseField.type !== headField.type) {
+                    addChange(
+                      changes,
+                      `graphql:input-field-type:${typeName}.${fieldName}`,
+                      `GraphQL input field ${typeName}.${fieldName} changed type from ${baseField.type} to ${headField.type}`,
+                    );
+                  }''',
+              '''        if (!graphqlTypeIsCompatible(baseField.type, headField.type, "input")) {
+                    addChange(
+                      changes,
+                      `graphql:input-field-type:${typeName}.${fieldName}`,
+                      `GraphQL input field ${typeName}.${fieldName} changed incompatibly from ${baseField.type} to ${headField.type}`,
+                    );
+                  }''',
+          )
+
+          fixtures = '''
+            const nullabilityBase = `
+              type Query { item(id: ID!): Item }
+              type Item { name: String }
+              input ItemInput { name: String! }
+            `;
+            const nullabilitySafe = `
+              type Query { item(id: ID): Item! }
+              type Item { name: String! }
+              input ItemInput { name: String }
+            `;
+            assert.equal(compareGraphql(nullabilityBase, nullabilitySafe).length, 0);
+
+            const nullabilityBreakingBase = `
+              type Query { item(id: ID): Item! }
+              type Item { name: String! }
+              input ItemInput { name: String }
+            `;
+            const nullabilityBreakingHead = `
+              type Query { item(id: ID!): Item }
+              type Item { name: String }
+              input ItemInput { name: String! }
+            `;
+            const nullabilityChanges = compareGraphql(
+              nullabilityBreakingBase,
+              nullabilityBreakingHead,
+            );
+            assert(
+              nullabilityChanges.some(
+                (change) => change.id === "graphql:field-type:Query.item",
+              ),
+            );
+            assert(
+              nullabilityChanges.some(
+                (change) => change.id === "graphql:field-type:Item.name",
+              ),
+            );
+            assert(
+              nullabilityChanges.some(
+                (change) => change.id === "graphql:argument-type:Query.item:id",
+              ),
+            );
+            assert(
+              nullabilityChanges.some(
+                (change) => change.id === "graphql:input-field-type:ItemInput.name",
+              ),
+            );
+          '''
+          replace_once(
+              '''  assert(graphqlChanges.some((change) => change.id === "graphql:enum-value-removed:Status.ARCHIVED"));
+
+            console.log("✔ API compatibility comparator self-test passed");''',
+              '''  assert(graphqlChanges.some((change) => change.id === "graphql:enum-value-removed:Status.ARCHIVED"));
+          ''' + fixtures + '''
+            console.log("✔ API compatibility comparator self-test passed");''',
+          )
+
+          workflow = Path(".github/workflows/one-off-refine-graphql-nullability-diff.yml")
+          if not workflow.exists():
+              raise SystemExit("one-off workflow is missing")
+          workflow.unlink()
+          PY
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          grep -Fq 'function graphqlTypeIsCompatible' scripts/verify/verify-api-compatibility.mjs
+          grep -Fq 'nullabilitySafe' scripts/verify/verify-api-compatibility.mjs
+          test ! -e .github/workflows/one-off-refine-graphql-nullability-diff.yml
+      - name: Commit comparator refinement
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test(api): compare GraphQL nullability directionally"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "GraphQL nullability compatibility is now directional and fixture-guarded; one-off workflow removed itself."
