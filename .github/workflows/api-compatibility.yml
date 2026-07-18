@@ -132,11 +132,13 @@ jobs:
           test -s "$GITHUB_WORKSPACE/contracts/head/schema.graphql"
 
       - name: Compare API contracts with base policy
-        run: >-
-          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility.mjs"
-          --base-dir "$GITHUB_WORKSPACE/contracts/base"
-          --head-dir "$GITHUB_WORKSPACE/contracts/head"
-          --exceptions "$GITHUB_WORKSPACE/head/docs/api/compatibility-exceptions.json"
+        run: |
+          set -o pipefail
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility.mjs" \
+            --base-dir "$GITHUB_WORKSPACE/contracts/base" \
+            --head-dir "$GITHUB_WORKSPACE/contracts/head" \
+            --exceptions "$GITHUB_WORKSPACE/head/docs/api/compatibility-exceptions.json" \
+            2>&1 | tee "$GITHUB_WORKSPACE/contracts/api-compatibility.log"
 
       - name: Upload generated contracts
         if: always()
