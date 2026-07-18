@@ -1,11 +1,12 @@
 use crate::editor::{
     AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, CapabilityPolicyPanel,
     ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel, DynamicRuntimePanel,
-    IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
-    ResponsiveStylePanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
-    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, SsrActionsFormsPanel, SsrAssetPanel,
-    SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel,
-    SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
+    IsolatedAuthoringCanvas, LandingPropertiesPanel, PageManagerPanel, PaletteLayersPanel,
+    PropertiesAssetsPanel, ResponsiveStylePanel, RuntimePublishGatePanel,
+    RuntimeScenarioMatrixPanel, RuntimeScenarioPanel, RuntimeScenarioRegressionPanel,
+    SsrActionsFormsPanel, SsrAssetPanel, SsrInspectorPanel, SsrInternalPageLinkPanel,
+    SsrLocaleCoveragePanel, SsrLocalePanel, SsrLocalePolicyPanel, SsrLocalizedMetadataPanel,
+    SsrTranslationsPanel, TraitPanel,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
@@ -112,6 +113,7 @@ pub fn AdminCanvas(
     let contract_tools_runtime = runtime.clone();
     let dependency_runtime = runtime.clone();
     let binding_runtime = runtime.clone();
+    let landing_properties_runtime = runtime.clone();
     let trait_runtime = runtime.clone();
     let properties_runtime = runtime.clone();
     let responsive_runtime = runtime.clone();
@@ -177,6 +179,7 @@ pub fn AdminCanvas(
                     <ContextContractToolsPanel runtime=contract_tools_runtime />
                     <ContextDependencyPanel runtime=dependency_runtime />
                     <BindingPanel runtime=binding_runtime />
+                    <LandingPropertiesPanel runtime=landing_properties_runtime />
                     <TraitPanel runtime=trait_runtime />
                     <PropertiesAssetsPanel runtime=properties_runtime />
                     <ResponsiveStylePanel runtime=responsive_runtime />

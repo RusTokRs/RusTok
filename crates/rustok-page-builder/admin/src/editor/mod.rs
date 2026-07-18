@@ -13,6 +13,8 @@ mod context_schema_panel;
 mod diagnostics_section;
 mod dynamic_runtime;
 mod isolated_canvas;
+// Typed landing-section property inspector.
+mod landing_properties;
 mod modular_canvas;
 mod page_manager;
 mod palette_layers;
@@ -40,6 +42,8 @@ mod ssr_locale_policy;
 mod ssr_localized_metadata;
 mod ssr_translations;
 mod style_section;
+#[cfg(test)]
+mod test_command_proxy;
 mod toolbar;
 mod trait_panel;
 
@@ -62,6 +66,7 @@ pub(crate) use context_schema_panel::ContextSchemaPanel;
 pub(crate) use diagnostics_section::DiagnosticsSection;
 pub(crate) use dynamic_runtime::DynamicRuntimePanel;
 pub(crate) use isolated_canvas::IsolatedAuthoringCanvas;
+pub(crate) use landing_properties::LandingPropertiesPanel;
 pub use modular_canvas::AdminCanvas;
 pub(crate) use page_manager::PageManagerPanel;
 pub(crate) use palette_layers::PaletteLayersPanel;
