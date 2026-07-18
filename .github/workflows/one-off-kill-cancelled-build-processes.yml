@@ -1,0 +1,55 @@
+name: One-off Kill Cancelled Build Processes
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  patch-runner:
+    if: >-
+      github.event.issue.title == '[automation] kill cancelled build processes' &&
+      (github.event_name == 'issues' || github.event.comment.body == '/kill-cancelled-build-processes')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git pull --rebase origin main
+      - name: Apply exact cancellation patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/rustok-module-build-worker/src/runner.rs")
+          source = path.read_text()
+          old = "        let mut command = Command::new(program);\n"
+          new = "        let mut command = Command::new(program);\n        command.kill_on_drop(true);\n"
+          if source.count(old) != 1:
+              raise SystemExit(f"expected one command constructor, found {source.count(old)}")
+          if "command.kill_on_drop(true);" in source:
+              raise SystemExit("kill_on_drop is already configured")
+          path.write_text(source.replace(old, new, 1))
+          Path(".github/workflows/one-off-kill-cancelled-build-processes.yml").unlink()
+          PY
+      - name: Commit cancellation patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "security(workers): kill cancelled build processes"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "Build subprocesses now terminate when the request future is cancelled; one-off workflow removed itself."
