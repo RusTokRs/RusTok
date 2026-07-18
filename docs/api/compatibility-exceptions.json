@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "owner": "Platform API maintainers",
+    "review_by": "2026-08-15",
+    "exit_criteria": "Intentional breaking changes must be versioned or migrated, then removed from this register."
+  },
+  "exceptions": []
+}
