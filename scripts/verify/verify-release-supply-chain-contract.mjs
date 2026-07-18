@@ -104,6 +104,10 @@ requireMarkers(releaseWorkflow, [
   "repos/${GITHUB_REPOSITORY}/immutable-releases",
   "--jq '.enabled'",
   "Repository immutable releases must be enabled before publishing a tag",
+  "Refuse an existing GitHub Release",
+  "verify-release-collisions.mjs",
+  "--github-release",
+  "Validate semantic release contract",
   "verify-release-contract.mjs",
   "--workspace Cargo.toml",
   "--lock Cargo.lock",
@@ -118,6 +122,9 @@ requireMarkers(releaseWorkflow, [
   "generate-spdx-sbom.mjs",
   "Publish attested GHCR image",
   "docker login ghcr.io",
+  "Refuse an existing immutable image tag",
+  "--container-tag",
+  "GHCR_TOKEN: ${{ github.token }}",
   "--platform linux/amd64",
   "--provenance=mode=max",
   "--sbom=true",
@@ -130,8 +137,7 @@ requireMarkers(releaseWorkflow, [
   "finalize-release-artifacts.mjs",
   "sha256sum --check SHA256SUMS",
   "extract-release-notes.mjs",
-  "Release $RELEASE_TAG already exists; refusing to mutate published assets",
-  "gh release view",
+  'test "${#assets[@]}" -eq 5',
   "release create",
   "--verify-tag",
   "contents: write",
@@ -153,6 +159,9 @@ requireOccurrenceCount(
 requireOccurrenceCount(releaseWorkflow, "actions/attest@v4", 3);
 requireOccurrenceCount(releaseWorkflow, "persist-credentials: false", 6);
 requireOccurrenceCount(releaseWorkflow, "repos/${GITHUB_REPOSITORY}/immutable-releases", 1);
+requireOccurrenceCount(releaseWorkflow, "verify-release-collisions.mjs", 3);
+requireOccurrenceCount(releaseWorkflow, "--github-release", 2);
+requireOccurrenceCount(releaseWorkflow, "--container-tag", 1);
 forbidMarkers(releaseWorkflow, [
   "workflow_dispatch:",
   "pull_request:",
@@ -164,7 +173,9 @@ forbidMarkers(releaseWorkflow, [
   "--sbom=false",
   "packages: read",
   "contents: write\n      packages: write\n      id-token: read",
+  "gh release view",
   "gh release upload",
+  "docker buildx imagetools inspect",
   "--clobber",
   "immutable-releases\" >/dev/null || true",
 ]);
@@ -199,8 +210,7 @@ requireMarkers(infrastructureWorkflow, [
   "Verify base approval policy fixtures",
   "base/scripts/verify/verify-release-infrastructure-approval.mjs",
   "--self-test",
-  "Require approval for release infrastructure changes",
-  "release-infra-approved",
+  "Require release-infra-approved for release infrastructure changes",
   "--base-dir \"$GITHUB_WORKSPACE/base\"",
   "--head-dir \"$GITHUB_WORKSPACE/head\"",
   "--github-output \"$GITHUB_OUTPUT\"",
@@ -243,22 +253,48 @@ requireMarkers("scripts/release/verify-release-contract.mjs", [
   "--github-output",
   "function runSelfTest",
 ]);
+requireMarkers("scripts/release/verify-release-collisions.mjs", [
+  "function assertAbsentStatus",
+  "status === 404",
+  "already exists",
+  "unexpected HTTP ${status}",
+  "AbortSignal.timeout(15_000)",
+  "--github-release",
+  "--container-tag",
+  "api.github.com/repos/${repository}/releases/tags",
+  "https://ghcr.io/v2/${repositoryPath}/manifests",
+  "GHCR authentication challenge is incomplete",
+  "GHCR token request returned HTTP",
+  "choose --github-release or --container-tag",
+  "function runSelfTest",
+]);
 requireMarkers("scripts/release/generate-spdx-sbom.mjs", [
   'spdxVersion: "SPDX-2.3"',
   'dataLicense: "CC0-1.0"',
   "cargo metadata resolve.nodes must be present",
+  "function reachablePackageIds",
+  "dependency graph is missing resolve node",
   "DEPENDS_ON",
   "--created-epoch",
   "Workspace package built from the release commit",
+  "rustok-admin",
+  '"licenseListVersion" in parsed.creationInfo',
   "function runSelfTest",
 ]);
 requireMarkers("scripts/release/finalize-release-artifacts.mjs", [
   "release artifact directory must contain regular files only",
   "must not be a symlink",
   "container metadata digest must be sha256",
+  "function requireExactNames",
+  "--image-metadata must be <directory>/container-image.json",
+  "release source asset set",
+  "checksummed release asset set",
+  "rustok-server-${options.version}-linux-x86_64.tar.gz",
+  "rustok-server-${options.version}.spdx.json",
   "release-manifest.json",
   "SHA256SUMS",
   "size_bytes",
+  "unexpected.txt",
   "function runSelfTest",
 ]);
 requireMarkers("scripts/release/extract-release-notes.mjs", [
@@ -321,6 +357,7 @@ requireMarkers(".dockerignore", [
 ]);
 requireMarkers("scripts/verify/verify-release-tooling-self-test.mjs", [
   "verify-release-contract.mjs",
+  "verify-release-collisions.mjs",
   "generate-spdx-sbom.mjs",
   "finalize-release-artifacts.mjs",
   "extract-release-notes.mjs",
@@ -331,7 +368,10 @@ requireMarkers("scripts/verify/verify-release-infrastructure-approval.mjs", [
   'const APPROVAL_LABEL = "release-infra-approved"',
   ".github/workflows/release.yml",
   ".github/workflows/release-infrastructure.yml",
+  ".github/workflows/hardening-gates.yml",
+  "scripts/verify/verify-all.sh",
   "apps/server/Dockerfile.release",
+  "verify-release-collisions.mjs",
   "generate-spdx-sbom.mjs",
   "function changedProtectedPaths",
   "function approvalDecision",
@@ -367,5 +407,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `✔ signed SemVer tags, immutable releases, reproducible archives, SPDX SBOM, checksums, attestations, GHCR publication and base-owned release policy are structurally bound in ${repoRoot}`,
+  `✔ signed SemVer tags, immutable releases, fail-closed collision probes, reproducible exact assets, server-scoped SPDX SBOM, attestations, GHCR publication and base-owned release policy are structurally bound in ${repoRoot}`,
 );
