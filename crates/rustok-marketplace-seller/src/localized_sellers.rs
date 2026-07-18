@@ -127,7 +127,7 @@ pub(crate) async fn upsert_translation<C: ConnectionTrait>(
             seller_id.into(),
             locale.clone().into(),
             display_name.into(),
-            now.clone().into(),
+            now.into(),
             now.into(),
         ])
         .on_conflict(
