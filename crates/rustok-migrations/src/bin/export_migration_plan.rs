@@ -1,16 +1,9 @@
 use rustok_migrations::Migrator;
 use sea_orm_migration::prelude::{MigrationName, MigratorTrait};
-use serde::Serialize;
 use std::env;
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
-
-#[derive(Serialize)]
-struct MigrationPlan {
-    schema_version: u32,
-    migrations: Vec<String>,
-}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let output = parse_output_path()?;
@@ -26,10 +19,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err("composed migration plan must not be empty".into());
     }
 
-    let plan = MigrationPlan {
-        schema_version: 1,
-        migrations,
-    };
+    let plan = serde_json::json!({
+        "schema_version": 1,
+        "migrations": migrations,
+    });
     fs::write(&output, format!("{}\n", serde_json::to_string_pretty(&plan)?))?;
     println!("exported migration plan to {}", output.display());
     Ok(())
