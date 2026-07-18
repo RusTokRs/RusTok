@@ -1,0 +1,31 @@
+[package]
+name = "rustok-ai-athanor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Athanor library adapter for RusToK AI retrieval"
+
+[features]
+default = []
+athanor = [
+    "dep:athanor-app",
+    "dep:athanor-core",
+    "dep:athanor-domain",
+    "dep:athanor-runtime-defaults",
+]
+athanor-surreal = ["athanor", "athanor-runtime-defaults/store-surreal"]
+
+[dependencies]
+async-trait.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+rustok-ai.workspace = true
+athanor-app = { workspace = true, optional = true }
+athanor-core = { workspace = true, optional = true }
+athanor-domain = { workspace = true, optional = true }
+athanor-runtime-defaults = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio.workspace = true

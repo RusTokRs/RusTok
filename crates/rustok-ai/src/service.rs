@@ -34,6 +34,7 @@ use crate::model::{
 use crate::router::AiRouter;
 use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent};
 use crate::{AiError, AiResult, McpClientAdapter, ProviderSlug};
+use crate::{RagCoordinator, RagRetrievalStrategy, RagSearchRequest};
 
 pub use helpers::*;
 pub use mapping::*;
@@ -48,6 +49,85 @@ pub use types::*;
 enum TaskJobExecutionAuthority {
     OperatorOverride,
     RegisteredAgentAssignment,
+}
+
+const MAX_RAG_CONTEXT_ATOMS: usize = 32;
+
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct RagTaskPolicy {
+    enabled: bool,
+    strategy: RagRetrievalStrategy,
+    limit: usize,
+    source_ids: Vec<String>,
+}
+
+impl Default for RagTaskPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            strategy: RagRetrievalStrategy::Hybrid,
+            limit: 8,
+            source_ids: Vec::new(),
+        }
+    }
+}
+
+async fn apply_rag_context(
+    runtime: &AiHostRuntime,
+    tenant_id: Uuid,
+    task_profile: Option<&ai_task_profiles::Model>,
+    mut messages: Vec<ChatMessage>,
+) -> AiResult<Vec<ChatMessage>> {
+    let Some(policy_value) = task_profile.and_then(|profile| profile.metadata.get("rag")) else {
+        return Ok(messages);
+    };
+    let policy: RagTaskPolicy = serde_json::from_value(policy_value.clone()).map_err(|error| {
+        AiError::Validation(format!("task profile has an invalid RAG policy: {error}"))
+    })?;
+    if !policy.enabled {
+        return Ok(messages);
+    }
+    if policy.limit == 0 || policy.limit > MAX_RAG_CONTEXT_ATOMS {
+        return Err(AiError::Validation(format!(
+            "task profile RAG limit must be between 1 and {MAX_RAG_CONTEXT_ATOMS}"
+        )));
+    }
+    let query = messages
+        .iter()
+        .rev()
+        .find(|message| message.role == ChatMessageRole::User)
+        .and_then(|message| message.content.as_deref())
+        .map(str::trim)
+        .filter(|query| !query.is_empty())
+        .ok_or_else(|| {
+            AiError::Validation("RAG-enabled task requires a non-empty user message".to_string())
+        })?;
+    let provider = runtime.rag_retrieval_port().ok_or_else(|| {
+        AiError::Runtime(
+            "RAG is enabled for this task, but SharedAiRagRetrievalPort is not registered"
+                .to_string(),
+        )
+    })?;
+    let coordinator = RagCoordinator::new(provider, MAX_RAG_CONTEXT_ATOMS)
+        .map_err(|error| AiError::Runtime(error.to_string()))?;
+    let context = coordinator
+        .retrieve(RagSearchRequest {
+            tenant_id,
+            query: query.to_string(),
+            strategy: policy.strategy,
+            limit: policy.limit,
+            source_ids: policy.source_ids,
+        })
+        .await
+        .map_err(|error| AiError::Runtime(error.to_string()))?;
+    messages.insert(
+        0,
+        context
+            .to_system_message()
+            .map_err(|error| AiError::Runtime(error.to_string()))?,
+    );
+    Ok(messages)
 }
 
 fn ensure_agent_provider_capabilities(
@@ -3934,6 +4014,8 @@ impl AiManagementService {
             }
         }
 
+        let messages =
+            apply_rag_context(runtime, operator.tenant_id, task_profile.as_ref(), messages).await?;
         let provider_config = provider_config(
             &provider_profile,
             runtime.provider_targets(),

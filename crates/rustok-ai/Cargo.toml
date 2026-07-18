@@ -92,3 +92,4 @@ uuid.workspace = true
 [dev-dependencies]
 rust_decimal.workspace = true
 rustok-test-utils.workspace = true
+tokio.workspace = true

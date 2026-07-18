@@ -28,13 +28,14 @@ as the canonical AI data-plane provider behind one AI-owned retrieval port:
    Tantivy lexical retrieval and metadata filters for all indexed sources.
    Optional Rig reranking may improve the result set.
 2. **Semantic RAG** — the same source/chunk/citation model plus Rig embeddings
-   and Athanor/SurrealDB vector similarity search. Tantivy lexical candidates,
-   SurrealDB structure/vector candidates and Rig reranking form the built-in
-   hybrid strategy; index details are not part of the public RAG contract.
+   and an Athanor vector-index adapter. Athanor currently exposes the
+   `EmbeddingProvider` and `VectorIndex` core ports, while the concrete vector
+   implementation remains a planned Athanor Phase 9 slice. Tantivy lexical
+   retrieval and structural expansion are the available v0.1 path.
 
-The vector-specific storage is an Athanor AI-infrastructure capability. Core
-RAG contracts remain provider-neutral and do not add PostgreSQL vector types or
-extension migrations.
+The vector-specific storage is an Athanor AI-infrastructure capability to be
+implemented behind its core ports. Core RAG contracts remain provider-neutral
+and do not add PostgreSQL vector types or extension migrations.
 
 ## Enablement and installation
 
@@ -43,17 +44,19 @@ module installation, but it must first probe the embedded capability and
 report:
 
 - Athanor embedded SurrealDB/Tantivy capability and its contract/version;
+- concrete Athanor vector-index capability status;
 - migration/backfill state.
 
 When an optional Athanor module is missing, the UI should offer an
-operator-facing module installation or explicit instructions. When a module
-becomes available, an explicit setup and idempotent backfill create or
-synchronize its derived indexes.
+operator-facing module installation or explicit instructions. When the vector
+adapter becomes available, an explicit setup and idempotent backfill create
+or synchronize its derived indexes.
 
 ## Ownership boundaries
 
-- `rustok-ai` owns RAG sources, versions, chunks, embeddings, retrieval and
-  citation contracts.
+- `rustok-ai` owns RAG source/version/retrieval/citation contracts and access
+  policy. Athanor owns physical canonical atoms, chunks, embeddings and
+  derived indexes; no duplicate PostgreSQL RAG tables are introduced.
 - `rustok-storage` owns physical files; RAG stores only safe file references.
 - `rustok-search` remains the owner of product/search indexing and `pg_trgm`;
   RAG must not reuse Search tables as its source of truth.
@@ -93,10 +96,10 @@ instead of flattening every source into anonymous text chunks. Vector search
 is then a recall aid for natural-language queries, not the definition of
 semantic understanding itself.
 
-## Athanor vector capability
+## Athanor vector capability (planned)
 
-Vector search may be implemented as an Athanor-owned AI capability. The AI
-orchestrator selects a typed operation rather than exposing arbitrary
+Vector search is reserved as an Athanor-owned AI capability. The AI
+orchestrator will select a typed operation rather than exposing arbitrary
 SurrealDB access to the model:
 
 - `index_document_revision` — normalize a source revision and build/update its
@@ -108,14 +111,17 @@ SurrealDB access to the model:
 - `build_citations` — return stable source/revision/atom citations for the
   generated context.
 
-Rig remains the embedding/model seam. Athanor owns the SurrealDB vector index
-and structural expansion, while `rustok-ai` owns retrieval strategy, policy,
-budgets, tool orchestration and the final context envelope passed to the model.
+Rig remains the embedding/model seam. Once implemented, Athanor will own the
+SurrealDB vector index and structural expansion, while `rustok-ai` owns
+retrieval strategy, policy, budgets, tool orchestration and the final context
+envelope passed to the model.
 Future external retrieval providers may be added only through the same typed
 port; PostgreSQL vector extensions are not part of the current RusToK plan.
 
 ## Open release decision
 
-Version `0.1` includes the Basic RAG foundation and Athanor-backed semantic
-retrieval. Additional Athanor modules may add parsers, connectors, embedding
-providers or retrieval strategies without changing the `rustok-ai` contract.
+Version `0.1` includes the Basic RAG foundation with Athanor structural and
+Tantivy lexical retrieval. The semantic vector profile follows after Athanor's
+concrete vector adapter is implemented. Additional Athanor modules may add
+parsers, connectors, embedding providers or retrieval strategies without
+changing the `rustok-ai` contract.

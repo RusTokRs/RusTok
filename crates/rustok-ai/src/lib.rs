@@ -75,8 +75,8 @@ pub use model::{
 };
 pub use policy::ToolExecutionPolicy;
 pub use rag::{
-    AthanorRagPort, RagAtom, RagCandidate, RagCitation, RagContext, RagCoordinator, RagError,
-    RagExpandRequest, RagResult, RagRetrievalStrategy, RagSearchRequest, RagSourceRef,
+    RagAtom, RagCandidate, RagCitation, RagContext, RagCoordinator, RagError, RagExpandRequest,
+    RagResult, RagRetrievalPort, RagRetrievalStrategy, RagSearchRequest, RagSourceRef,
 };
 pub use router::{AiRouter, ResolvedExecutionPlan, RouterProviderProfile};
 #[cfg(feature = "server")]
@@ -91,9 +91,10 @@ pub use service::{
     CreateAiAgentWorkflowRunInput, CreateAiProviderProfileInput, CreateAiTaskProfileInput,
     CreateAiToolProfileInput, ResolveAiAgentWorkflowStageApprovalInput, ResumeAiApprovalInput,
     RunAiTaskJobInput, SendAiChatMessageInput, SharedAiEgressPolicy, SharedAiOrderStatusPort,
-    SharedAiProductCatalogReadPort, SharedAiProviderTargetCatalog, SharedAiSecretResolverRegistry,
-    StartAiChatSessionInput, UpdateAiAgentModelAssignmentInput, UpdateAiAgentPrincipalInput,
-    UpdateAiProviderProfileInput, UpdateAiTaskProfileInput, UpdateAiToolProfileInput,
+    SharedAiProductCatalogReadPort, SharedAiProviderTargetCatalog, SharedAiRagRetrievalPort,
+    SharedAiSecretResolverRegistry, StartAiChatSessionInput, UpdateAiAgentModelAssignmentInput,
+    UpdateAiAgentPrincipalInput, UpdateAiProviderProfileInput, UpdateAiTaskProfileInput,
+    UpdateAiToolProfileInput,
 };
 #[cfg(feature = "server")]
 pub use streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub};

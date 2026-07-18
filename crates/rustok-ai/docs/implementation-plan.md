@@ -167,17 +167,21 @@ The next RAG slice is planned as two deployment profiles behind one
 - **Basic RAG** owns source references, source versions, citations and
   structure-aware retrieval through Athanor's document/atom graph. Tantivy
   provides lexical candidates and metadata filters, while optional Rig
-  reranking improves the result set.
-- **Semantic RAG** adds Rig embeddings and Athanor/SurrealDB vector similarity
-  search. Additional Athanor modules may provide parsers, connectors,
+  reranking improves the result set. A task profile enables the path through
+  `metadata.rag.enabled`; the host registers `SharedAiRagRetrievalPort`, and
+  retrieved evidence is injected into the model as a data-only system block.
+- **Semantic RAG** is reserved for Rig embeddings and an Athanor vector-index
+  adapter. Athanor currently exposes the `EmbeddingProvider` and `VectorIndex`
+  core ports, but its concrete vector implementation is still a planned Phase
+  9 slice. Additional Athanor modules may provide parsers, connectors,
   embedding providers or retrieval strategies; no `pgvector` installation is
-  required for the embedded RusToK + Athanor deployment.
+  required.
 
 The base AI schema remains provider-neutral. `rustok-search` keeps ownership
 of its own FTS/trigram read model; RAG does not reuse Search tables. Version
-0.1 uses embedded Athanor as the lexical, structural and semantic data plane,
-while future external providers must be added behind the same retrieval
-contract.
+0.1 uses embedded Athanor as the lexical and structural data plane. Semantic
+vector retrieval follows the Athanor Phase 9 adapter and future external
+providers must be added behind the same retrieval contract.
 
 ## Verification
 

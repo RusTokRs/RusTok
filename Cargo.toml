@@ -283,6 +283,10 @@ rustok-ai-order = { path = "crates/rustok-ai-order" }
 rustok-ai-product = { path = "crates/rustok-ai-product" }
 rustok-ai-media = { path = "crates/rustok-ai-media" }
 rustok-ai-alloy = { path = "crates/rustok-ai-alloy" }
+athanor-app = { git = "https://github.com/RusTokRs/Athanor.git", rev = "67d0bdae5439f510a52105a7af964a508895ff1b" }
+athanor-core = { git = "https://github.com/RusTokRs/Athanor.git", rev = "67d0bdae5439f510a52105a7af964a508895ff1b" }
+athanor-domain = { git = "https://github.com/RusTokRs/Athanor.git", rev = "67d0bdae5439f510a52105a7af964a508895ff1b" }
+athanor-runtime-defaults = { git = "https://github.com/RusTokRs/Athanor.git", rev = "67d0bdae5439f510a52105a7af964a508895ff1b" }
 rustok-telemetry = { path = "crates/rustok-telemetry" }
 rustok-test-utils = { path = "crates/rustok-test-utils" }
 rustok-storage = { path = "crates/rustok-storage" }
