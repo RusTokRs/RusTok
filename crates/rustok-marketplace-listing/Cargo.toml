@@ -8,6 +8,7 @@ description = "Marketplace Family seller listing identity, commercial terms, lif
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+hex.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
