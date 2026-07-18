@@ -29,6 +29,7 @@ async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::E
     let keep_database = env_binary_flag("RUSTOK_MIGRATION_SMOKE_KEEP_DB")?;
     let incremental = env_binary_flag("RUSTOK_MIGRATION_SMOKE_INCREMENTAL")?;
     let reuse_database = env_binary_flag("RUSTOK_MIGRATION_SMOKE_REUSE_DB")?;
+    let rollback_latest = env_binary_flag("RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST")?;
 
     let admin = connect_postgres(&admin_url)
         .await
@@ -47,7 +48,8 @@ async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::E
         create_database(&admin, &database_name).await?;
     }
 
-    let smoke_result = apply_migrations_and_assert_schema(&target_url, incremental).await;
+    let smoke_result =
+        apply_migrations_and_assert_schema(&target_url, incremental, rollback_latest).await;
 
     if keep_database {
         eprintln!("Keeping migration smoke database '{database_name}' at {target_url}");
@@ -61,6 +63,7 @@ async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::E
 async fn apply_migrations_and_assert_schema(
     target_url: &str,
     incremental: bool,
+    rollback_latest: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let db = connect_postgres(target_url)
         .await
@@ -74,17 +77,67 @@ async fn apply_migrations_and_assert_schema(
         })?;
     }
 
-    let pending = Migrator::get_pending_migrations(&db)
+    assert_no_pending_migrations(&db, "initial migration apply").await?;
+    assert_schema_contract(&db).await?;
+
+    if rollback_latest {
+        rollback_latest_and_reapply(&db).await?;
+        assert_schema_contract(&db).await?;
+    }
+
+    Ok(())
+}
+
+async fn rollback_latest_and_reapply(
+    db: &DatabaseConnection,
+) -> Result<(), Box<dyn std::error::Error>> {
+    Migrator::down(db, Some(1))
         .await
-        .map_err(|error| format!("pending migration list must be readable: {error}"))?;
+        .map_err(|error| format!("latest migration must support one-step rollback: {error}"))?;
+
+    let pending = Migrator::get_pending_migrations(db)
+        .await
+        .map_err(|error| format!("pending list after rollback must be readable: {error}"))?;
+    if pending.len() != 1 {
+        let names = pending
+            .iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+        return Err(format!(
+            "one-step rollback must expose exactly one pending migration, found {names:?}"
+        )
+        .into());
+    }
+    let rolled_back_name = pending[0].name().to_string();
+
+    Migrator::up(db, Some(1)).await.map_err(|error| {
+        format!("rolled-back migration {rolled_back_name} must reapply successfully: {error}")
+    })?;
+    assert_no_pending_migrations(db, "rollback reapply").await?;
+    eprintln!("Rehearsed rollback and reapply for migration {rolled_back_name}");
+    Ok(())
+}
+
+async fn assert_no_pending_migrations(
+    db: &DatabaseConnection,
+    phase: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let pending = Migrator::get_pending_migrations(db)
+        .await
+        .map_err(|error| format!("pending migration list during {phase} must be readable: {error}"))?;
     if !pending.is_empty() {
         let pending_names = pending
             .iter()
             .map(|migration| migration.name().to_string())
             .collect::<Vec<_>>();
-        return Err(format!("all migrations should be applied, pending: {pending_names:?}").into());
+        return Err(format!("{phase} must leave no pending migrations: {pending_names:?}").into());
     }
+    Ok(())
+}
 
+async fn assert_schema_contract(
+    db: &DatabaseConnection,
+) -> Result<(), Box<dyn std::error::Error>> {
     for table in [
         "tenants",
         "users",
@@ -97,7 +150,7 @@ async fn apply_migrations_and_assert_schema(
         "forum_topic_tags",
         "taxonomy_terms",
     ] {
-        assert_table_exists(&db, table).await?;
+        assert_table_exists(db, table).await?;
     }
 
     for constraint in [
@@ -109,7 +162,7 @@ async fn apply_migrations_and_assert_schema(
         "chk_product_attribute_values_one_scalar",
         "chk_product_variant_attribute_values_one_scalar",
     ] {
-        assert_constraint_exists(&db, constraint).await?;
+        assert_constraint_exists(db, constraint).await?;
     }
     for index in [
         "uq_product_translations_tenant_locale_handle",
@@ -118,9 +171,9 @@ async fn apply_migrations_and_assert_schema(
         "idx_products_storefront_published",
         "idx_products_channel_visibility_jsonb",
     ] {
-        assert_index_exists(&db, index).await?;
+        assert_index_exists(db, index).await?;
     }
-    assert_trigger_exists(&db, "trg_products_normalize_channel_visibility").await?;
+    assert_trigger_exists(db, "trg_products_normalize_channel_visibility").await?;
 
     Ok(())
 }
@@ -356,7 +409,7 @@ mod tests {
                 .expect("0 should be accepted")
         );
         assert!(
-            parse_binary_flag("RUSTOK_MIGRATION_SMOKE_INCREMENTAL", Some("1"))
+            parse_binary_flag("RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST", Some("1"))
                 .expect("1 should be accepted")
         );
         assert!(
