@@ -60,3 +60,9 @@ jobs:
         run: node scripts/verify/verify-migration-infra-self-test.mjs
       - name: Verify migration compatibility gate structure
         run: node scripts/verify/verify-migration-compatibility-contract.mjs
+      - name: Verify release tooling fixtures
+        run: node scripts/verify/verify-release-tooling-self-test.mjs
+      - name: Verify release infrastructure approval fixtures
+        run: node scripts/verify/verify-release-infra-self-test.mjs
+      - name: Verify release supply-chain gate structure
+        run: node scripts/verify/verify-release-supply-chain-contract.mjs
