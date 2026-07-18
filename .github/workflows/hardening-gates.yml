@@ -42,3 +42,5 @@ jobs:
         run: node scripts/verify/verify-csp-next-style-boundary.mjs
       - name: Verify API compatibility comparator fixtures
         run: node scripts/verify/verify-api-compatibility-self-test.mjs
+      - name: Verify API compatibility gate structure
+        run: node scripts/verify/verify-api-compatibility-contract.mjs
