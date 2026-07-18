@@ -64,7 +64,10 @@ jobs:
             echo "Release tag ${GITHUB_REF_NAME} is not cryptographically verified: ${reason}" >&2
             exit 1
           }
-          git fetch --no-tags origin main:refs/remotes/origin/main
+          git show-ref --verify --quiet refs/remotes/origin/main || {
+            echo "Checkout did not fetch the main ref required for release ancestry validation" >&2
+            exit 1
+          }
           git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || {
             echo "Release tag must point to a commit reachable from main" >&2
             exit 1
@@ -111,7 +114,7 @@ jobs:
     name: Build deterministic Linux artifact
     needs: validate
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     permissions:
       contents: read
     outputs:
@@ -136,6 +139,8 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: apps/admin/package-lock.json
 
       - name: Install exact Rust toolchain
         run: |
@@ -143,9 +148,18 @@ jobs:
           rustup default 1.96.0
           rustc --version --verbose
 
+      - name: Build embedded admin assets
+        env:
+          RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=.
+        run: >-
+          bash scripts/build/build-embedded-admin.sh
+          --tool-root "$GITHUB_WORKSPACE/.tools/trunk-0.21.14"
+          --target-dir "$GITHUB_WORKSPACE/target/admin-assets"
+
       - name: Build locked release binary
         run: |
           test "$(uname -m)" = "x86_64"
+          test -s apps/admin/dist/index.html
           cargo build --locked --release -p rustok-server --bin rustok-server
           test -x "$CARGO_TARGET_DIR/release/rustok-server"
 
@@ -191,7 +205,7 @@ jobs:
     name: Rebuild and compare archive digest
     needs: [validate, build]
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     permissions:
       contents: read
     env:
@@ -209,15 +223,30 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/admin/package-lock.json
+
       - name: Install exact Rust toolchain
         run: |
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
           rustc --version --verbose
 
+      - name: Rebuild embedded admin assets
+        env:
+          RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=.
+        run: >-
+          bash scripts/build/build-embedded-admin.sh
+          --tool-root "$GITHUB_WORKSPACE/.tools/trunk-0.21.14"
+          --target-dir "$GITHUB_WORKSPACE/target/admin-assets"
+
       - name: Rebuild locked release binary
         run: |
           test "$(uname -m)" = "x86_64"
+          test -s apps/admin/dist/index.html
           cargo build --locked --release -p rustok-server --bin rustok-server
           test -x "$CARGO_TARGET_DIR/release/rustok-server"
 
