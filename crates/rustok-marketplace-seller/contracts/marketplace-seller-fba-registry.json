@@ -59,7 +59,7 @@
   ],
   "event_storage": {
     "table": "marketplace_seller_events",
-    "status": "schema_and_read_port_ready_write_path_pending",
+    "status": "lifecycle_subset_atomic",
     "append_only": true,
     "identity": "uuid",
     "scope": [
@@ -91,7 +91,19 @@
       "id_desc"
     ],
     "max_read_limit": 200,
-    "write_commands_atomic": false,
+    "completion_order": "owner_state_then_event_then_completed_receipt_then_commit",
+    "write_commands_atomic": [
+      "review_seller_onboarding",
+      "suspend_seller",
+      "reactivate_seller"
+    ],
+    "write_commands_pending": [
+      "create_seller",
+      "update_seller_profile",
+      "submit_seller_onboarding",
+      "add_seller_member",
+      "update_seller_member"
+    ],
     "compatibility_columns_removed": false
   },
   "localized_storage": {
@@ -243,8 +255,26 @@
           "deadline_required",
           "idempotency_key_required",
           "expected_state_transition",
-          "receipt_and_transition_atomic",
+          "state_event_and_receipt_atomic",
+          "event_insert_failure_rolls_back_state_and_receipt",
+          "lost_response_replay_does_not_duplicate_event",
           "concurrent_transition_conflict"
+        ]
+      },
+      {
+        "operation": "suspend_seller",
+        "assertions": [
+          "expected_active_state",
+          "state_event_and_receipt_atomic",
+          "lost_response_replay_does_not_duplicate_event"
+        ]
+      },
+      {
+        "operation": "reactivate_seller",
+        "assertions": [
+          "expected_suspended_and_approved_state",
+          "state_event_and_receipt_atomic",
+          "lost_response_replay_does_not_duplicate_event"
         ]
       },
       {
@@ -268,6 +298,6 @@
         ]
       }
     ],
-    "known_gap": "seller event write-path atomicity, legacy snapshot backfill/removal, transactional outbox publication, compiled clean/upgraded SQLite and PostgreSQL migrations, contention, mounted native and GraphQL execution, and remote-profile evidence are not yet retained"
+    "known_gap": "event production for create/profile/onboarding-submit/member commands, legacy snapshot backfill/removal, transactional outbox publication, compiled clean/upgraded SQLite and PostgreSQL migrations, contention, mounted native and GraphQL execution, and remote-profile evidence are not yet retained"
   }
 }
