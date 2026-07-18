@@ -17,8 +17,8 @@ const excludedDirectories = new Set([
   "node_modules",
   "out",
 ]);
-const maxRegisteredFiles = 1;
-const maxStyleAttributeSites = 43;
+const maxRegisteredFiles = 0;
+const maxStyleAttributeSites = 0;
 const maxRuntimeStyleElements = 0;
 const failures = [];
 
@@ -358,6 +358,17 @@ forbidMarkers("apps/next-admin/src/shared/ui/shadcn/sidebar.tsx", [
   "style=",
   "Math.random",
   "SIDEBAR_WIDTH",
+]);
+requireMarkers("apps/next-frontend/packages/search/src/index.tsx", [
+  "rounded-[1.75rem] border border-zinc-300 p-7",
+  "grid-cols-[repeat(auto-fit,minmax(220px,1fr))]",
+  "isSelected",
+  "dark:border-zinc-700",
+]);
+forbidMarkers("apps/next-frontend/packages/search/src/index.tsx", [
+  "style=",
+  "React.CSSProperties",
+  "background:",
 ]);
 requireMarkers("apps/next-admin/src/widgets/data-table/data-table.tsx", [
   "<TableHead key={header.id} colSpan={header.colSpan}>",
