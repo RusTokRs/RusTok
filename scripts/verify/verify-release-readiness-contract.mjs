@@ -47,12 +47,8 @@ function requireMarkers(relativePath, markers) {
   return source;
 }
 
-function count(source, marker) {
-  return source.split(marker).length - 1;
-}
-
 const checklistPath = "docs/release/RELEASE_READINESS_CHECKLIST.md";
-const checklist = requireMarkers(checklistPath, [
+requireMarkers(checklistPath, [
   "# Release Readiness Checklist",
   "## 1. Release identity",
   "## 2. Repository and registry preflight",
@@ -72,19 +68,12 @@ const checklist = requireMarkers(checklistPath, [
   "Do not overwrite the version tag with a different digest",
   "Treat the release as immutable",
   "A checkbox without a durable run, artifact or operator record is not release evidence.",
+  `1. \`rustok-server-VERSION-linux-x86_64.tar.gz\`
+  2. \`rustok-server-VERSION.spdx.json\`
+  3. \`container-image.json\`
+  4. \`release-manifest.json\`
+  5. \`SHA256SUMS\``,
 ]);
-
-for (const asset of [
-  "rustok-server-VERSION-linux-x86_64.tar.gz",
-  "rustok-server-VERSION.spdx.json",
-  "container-image.json",
-  "release-manifest.json",
-  "SHA256SUMS",
-]) {
-  if (count(checklist, asset) !== 1) {
-    failures.push(`${checklistPath}: expected exactly one canonical asset entry for ${asset}`);
-  }
-}
 
 requireMarkers("docs/verification/PLATFORM_HARDENING_STATUS_2026-07-18.md", [
   "HARD-101 — CSP enforcement",
