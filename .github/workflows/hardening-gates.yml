@@ -70,3 +70,5 @@ jobs:
         run: node scripts/verify/verify-release-runtime-image-contract.mjs
       - name: Verify release readiness documentation
         run: node scripts/verify/verify-release-readiness-contract.mjs
+      - name: Verify Rust-host browser smoke structure
+        run: node scripts/verify/verify-rust-host-browser-contract.mjs
