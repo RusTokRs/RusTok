@@ -63,30 +63,112 @@ function parseLabels(labelsJson) {
   return new Set(labels);
 }
 
+function withoutKey(value, key) {
+  const copy = { ...(value || {}) };
+  delete copy[key];
+  return copy;
+}
+
+function dateWasExtended(baseValue, headValue) {
+  if (baseValue === headValue) return false;
+  const baseTimestamp = Date.parse(`${baseValue}T23:59:59Z`);
+  const headTimestamp = Date.parse(`${headValue}T23:59:59Z`);
+  if (!Number.isFinite(baseTimestamp) || !Number.isFinite(headTimestamp)) return true;
+  return headTimestamp > baseTimestamp;
+}
+
+function exceptionExpansionRequired(baseRegister, headRegister) {
+  if (baseRegister.schema_version !== headRegister.schema_version) return true;
+
+  const baseTopLevel = withoutKey(withoutKey(baseRegister, "policy"), "exceptions");
+  const headTopLevel = withoutKey(withoutKey(headRegister, "policy"), "exceptions");
+  if (stableJson(baseTopLevel) !== stableJson(headTopLevel)) return true;
+
+  const basePolicy = baseRegister.policy || {};
+  const headPolicy = headRegister.policy || {};
+  if (
+    stableJson(withoutKey(basePolicy, "review_by")) !==
+    stableJson(withoutKey(headPolicy, "review_by"))
+  ) {
+    return true;
+  }
+  if (dateWasExtended(basePolicy.review_by, headPolicy.review_by)) return true;
+
+  const baseExceptions = new Map(
+    (baseRegister.exceptions || []).map((entry) => [entry.id, entry]),
+  );
+  for (const headEntry of headRegister.exceptions || []) {
+    const baseEntry = baseExceptions.get(headEntry.id);
+    if (!baseEntry) return true;
+
+    if (
+      stableJson(withoutKey(baseEntry, "expires_on")) !==
+      stableJson(withoutKey(headEntry, "expires_on"))
+    ) {
+      return true;
+    }
+    if (dateWasExtended(baseEntry.expires_on, headEntry.expires_on)) return true;
+  }
+
+  return false;
+}
+
 function approvalDecision({ baseRegister, headRegister, labels, approvalLabel, explicitlyApproved }) {
   const changed = stableJson(baseRegister) !== stableJson(headRegister);
-  if (!changed) return { changed: false, approved: true };
-  const approved = explicitlyApproved || labels.has(approvalLabel);
-  return { changed: true, approved };
+  if (!changed) {
+    return { changed: false, approvalRequired: false, approved: true };
+  }
+
+  const approvalRequired = exceptionExpansionRequired(baseRegister, headRegister);
+  const approved =
+    !approvalRequired || explicitlyApproved || labels.has(approvalLabel);
+  return { changed: true, approvalRequired, approved };
+}
+
+function exception(id, expiresOn = "2026-08-01") {
+  return {
+    id,
+    owner: "API maintainers",
+    reason: "Versioned migration",
+    expires_on: expiresOn,
+  };
 }
 
 function runSelfTest() {
-  const base = { schema_version: 1, policy: { review_by: "2026-08-15" }, exceptions: [] };
+  const existing = exception("graphql:field-removed:Query.legacy");
+  const base = {
+    schema_version: 1,
+    policy: {
+      owner: "Platform API maintainers",
+      review_by: "2026-08-15",
+      exit_criteria: "Remove versioned exceptions",
+    },
+    exceptions: [existing],
+  };
   const sameWithDifferentKeyOrder = {
-    exceptions: [],
-    policy: { review_by: "2026-08-15" },
+    exceptions: [existing],
+    policy: {
+      exit_criteria: "Remove versioned exceptions",
+      review_by: "2026-08-15",
+      owner: "Platform API maintainers",
+    },
     schema_version: 1,
   };
-  const changed = {
+  const added = {
     ...base,
     exceptions: [
-      {
-        id: "graphql:field-removed:Query.legacy",
-        owner: "API maintainers",
-        reason: "Versioned migration",
-        expires_on: "2026-08-01",
-      },
+      existing,
+      exception("openapi:path-removed:/legacy"),
     ],
+  };
+  const removed = { ...base, exceptions: [] };
+  const shortened = {
+    ...base,
+    exceptions: [{ ...existing, expires_on: "2026-07-31" }],
+  };
+  const extended = {
+    ...base,
+    exceptions: [{ ...existing, expires_on: "2026-08-10" }],
   };
 
   assert.deepEqual(
@@ -97,38 +179,52 @@ function runSelfTest() {
       approvalLabel: DEFAULT_APPROVAL_LABEL,
       explicitlyApproved: false,
     }),
-    { changed: false, approved: true },
+    { changed: false, approvalRequired: false, approved: true },
   );
-  assert.deepEqual(
-    approvalDecision({
-      baseRegister: base,
-      headRegister: changed,
-      labels: new Set(),
-      approvalLabel: DEFAULT_APPROVAL_LABEL,
-      explicitlyApproved: false,
-    }),
-    { changed: true, approved: false },
-  );
-  assert.deepEqual(
-    approvalDecision({
-      baseRegister: base,
-      headRegister: changed,
-      labels: new Set([DEFAULT_APPROVAL_LABEL]),
-      approvalLabel: DEFAULT_APPROVAL_LABEL,
-      explicitlyApproved: false,
-    }),
-    { changed: true, approved: true },
-  );
-  assert.deepEqual(
-    approvalDecision({
-      baseRegister: base,
-      headRegister: changed,
-      labels: new Set(),
-      approvalLabel: DEFAULT_APPROVAL_LABEL,
-      explicitlyApproved: true,
-    }),
-    { changed: true, approved: true },
-  );
+  for (const cleanup of [removed, shortened]) {
+    assert.deepEqual(
+      approvalDecision({
+        baseRegister: base,
+        headRegister: cleanup,
+        labels: new Set(),
+        approvalLabel: DEFAULT_APPROVAL_LABEL,
+        explicitlyApproved: false,
+      }),
+      { changed: true, approvalRequired: false, approved: true },
+    );
+  }
+  for (const expansion of [added, extended]) {
+    assert.deepEqual(
+      approvalDecision({
+        baseRegister: base,
+        headRegister: expansion,
+        labels: new Set(),
+        approvalLabel: DEFAULT_APPROVAL_LABEL,
+        explicitlyApproved: false,
+      }),
+      { changed: true, approvalRequired: true, approved: false },
+    );
+    assert.deepEqual(
+      approvalDecision({
+        baseRegister: base,
+        headRegister: expansion,
+        labels: new Set([DEFAULT_APPROVAL_LABEL]),
+        approvalLabel: DEFAULT_APPROVAL_LABEL,
+        explicitlyApproved: false,
+      }),
+      { changed: true, approvalRequired: true, approved: true },
+    );
+    assert.deepEqual(
+      approvalDecision({
+        baseRegister: base,
+        headRegister: expansion,
+        labels: new Set(),
+        approvalLabel: DEFAULT_APPROVAL_LABEL,
+        explicitlyApproved: true,
+      }),
+      { changed: true, approvalRequired: true, approved: true },
+    );
+  }
 
   console.log("✔ API compatibility exception approval self-test passed");
 }
@@ -162,15 +258,19 @@ function main() {
     console.log("✔ API compatibility exception register is unchanged");
     return;
   }
+  if (!decision.approvalRequired) {
+    console.log("✔ API compatibility exception register only removes or shortens debt");
+    return;
+  }
   if (!decision.approved) {
     console.error(
-      `API compatibility exception register changed without ${options.approvalLabel} approval`,
+      `API compatibility exception debt expanded without ${options.approvalLabel} approval`,
     );
     process.exit(1);
   }
 
   console.log(
-    `✔ API compatibility exception register change is explicitly approved (${options.approvalLabel})`,
+    `✔ API compatibility exception expansion is explicitly approved (${options.approvalLabel})`,
   );
 }
 
