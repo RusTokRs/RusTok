@@ -49,7 +49,19 @@ jobs:
             crates/rustok-marketplace-seller/src/seller_events.rs \
             crates/rustok-marketplace-seller/src/seller_events_tests.rs \
             crates/rustok-marketplace-seller/src/service.rs
-          git diff -- crates/rustok-marketplace-seller > rustfmt.patch
+          git diff -- \
+            crates/rustok-marketplace-seller/src/dto.rs \
+            crates/rustok-marketplace-seller/src/entities/mod.rs \
+            crates/rustok-marketplace-seller/src/entities/seller.rs \
+            crates/rustok-marketplace-seller/src/entities/seller_event.rs \
+            crates/rustok-marketplace-seller/src/lib.rs \
+            crates/rustok-marketplace-seller/src/migrations/mod.rs \
+            crates/rustok-marketplace-seller/src/migrations/m20260718_000003_create_marketplace_seller_events.rs \
+            crates/rustok-marketplace-seller/src/ports.rs \
+            crates/rustok-marketplace-seller/src/seller_events.rs \
+            crates/rustok-marketplace-seller/src/seller_events_tests.rs \
+            crates/rustok-marketplace-seller/src/service.rs \
+            > rustfmt.patch
           mkdir -p formatted
           cp --parents \
             crates/rustok-marketplace-seller/src/dto.rs \
