@@ -12,6 +12,9 @@ use crate::dto::{
 };
 use crate::entities::{seller, seller_translation};
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
+use crate::seller_events::{
+    load_seller_prose, load_seller_prose_map, SellerProseProjection,
+};
 
 pub(crate) const MISSING_TRANSLATION_PREFIX: &str = "marketplace seller translation missing";
 
@@ -23,7 +26,8 @@ pub(crate) async fn load_seller_response<C: ConnectionTrait>(
 ) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
     let model = crate::service::find_seller(connection, tenant_id, seller_id).await?;
     let translation = resolve_translation(connection, tenant_id, seller_id, locale).await?;
-    map_seller(model, translation)
+    let prose = load_seller_prose(connection, tenant_id, seller_id).await?;
+    map_seller(model, translation, prose)
 }
 
 pub(crate) async fn load_seller_responses<C: ConnectionTrait>(
@@ -40,13 +44,14 @@ pub(crate) async fn load_seller_responses<C: ConnectionTrait>(
     let seller_ids = models.iter().map(|model| model.id).collect::<Vec<_>>();
     let translations = seller_translation::Entity::find()
         .filter(seller_translation::Column::TenantId.eq(tenant_id))
-        .filter(seller_translation::Column::SellerId.is_in(seller_ids))
+        .filter(seller_translation::Column::SellerId.is_in(seller_ids.clone()))
         .filter(seller_translation::Column::Locale.eq(locale.as_str()))
         .all(connection)
         .await?
         .into_iter()
         .map(|translation| (translation.seller_id, translation))
         .collect::<HashMap<_, _>>();
+    let mut prose = load_seller_prose_map(connection, tenant_id, seller_ids).await?;
 
     models
         .into_iter()
@@ -55,7 +60,8 @@ pub(crate) async fn load_seller_responses<C: ConnectionTrait>(
                 .get(&model.id)
                 .cloned()
                 .ok_or_else(|| missing_translation_error(model.id, locale.as_str()))?;
-            map_seller(model, translation)
+            let projection = prose.remove(&model.id).unwrap_or_default();
+            map_seller(model, translation, projection)
         })
         .collect()
 }
@@ -164,6 +170,7 @@ pub(crate) fn normalize_seller_locale(value: &str) -> MarketplaceSellerResult<St
 fn map_seller(
     model: seller::Model,
     translation: seller_translation::Model,
+    prose: SellerProseProjection,
 ) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
     let status = MarketplaceSellerStatus::parse(model.status.as_str()).ok_or_else(|| {
         MarketplaceSellerError::Validation(format!(
@@ -190,8 +197,8 @@ fn map_seller(
         legal_name: model.legal_name,
         status,
         onboarding_status,
-        onboarding_note: model.onboarding_note,
-        suspension_reason: model.suspension_reason,
+        onboarding_note: prose.onboarding_note,
+        suspension_reason: prose.suspension_reason,
         metadata: model.metadata,
         created_at: model.created_at,
         updated_at: model.updated_at,
