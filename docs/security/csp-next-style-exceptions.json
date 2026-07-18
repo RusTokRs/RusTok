@@ -19,15 +19,6 @@
       "exit_criteria": "Move the surface to the shared storefront utility-class and component system, including explicit active/error variants."
     },
     {
-      "path": "apps/next-admin/src/shared/ui/shadcn/progress.tsx",
-      "expected_style_attribute_occurrences": 1,
-      "expected_runtime_style_element_occurrences": 0,
-      "owner": "Next admin design-system maintainers",
-      "reason": "The Radix progress indicator uses a dynamic translate transform derived from the numeric progress value.",
-      "constraints": "The value is numeric component state and must remain bounded to the progress range; no CSS string input is accepted.",
-      "exit_criteria": "Use a native progress element, finite width classes, SVG geometry, or a reviewed DOM adapter compatible with style-src-attr 'none'."
-    },
-    {
       "path": "apps/next-admin/src/widgets/data-table/data-table.tsx",
       "expected_style_attribute_occurrences": 2,
       "expected_runtime_style_element_occurrences": 0,
@@ -35,15 +26,6 @@
       "reason": "TanStack column pinning projects calculated left, right, width and z-index values onto header and body cells.",
       "constraints": "The objects come only from the shared getCommonPinningStyles helper and typed table column state; arbitrary CSS strings from row data are forbidden.",
       "exit_criteria": "Move pinning geometry to a reviewed DOM adapter or stylesheet/custom-property boundary that does not require JSX style props."
-    },
-    {
-      "path": "apps/next-admin/src/widgets/data-table/data-table-skeleton.tsx",
-      "expected_style_attribute_occurrences": 2,
-      "expected_runtime_style_element_occurrences": 0,
-      "owner": "Next admin data-table maintainers",
-      "reason": "Skeleton header and body cells reuse configured preview widths.",
-      "constraints": "Widths are component configuration only and must not originate from remote row data or tenant-authored CSS.",
-      "exit_criteria": "Replace free-form width strings with a finite column-width scale or a reviewed table layout contract."
     },
     {
       "path": "apps/next-admin/src/shared/ui/shadcn/chart.tsx",
