@@ -1,0 +1,263 @@
+name: One-off Next Chart Style Migration
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  migrate-chart-styles:
+    if: >-
+      github.event.issue.title == '[automation] migrate Next chart style boundary' &&
+      (github.event_name == 'issues' || github.event.comment.body == '/migrate-next-chart-styles')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git pull --rebase origin main
+      - name: Apply exact chart migrations
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import re
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              source = file.read_text()
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one exact match, found {count}: {old!r}")
+              file.write_text(source.replace(old, new, 1))
+
+          def replace_count(path: str, old: str, new: str, expected: int) -> None:
+              file = Path(path)
+              source = file.read_text()
+              count = source.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} exact matches, found {count}: {old!r}")
+              file.write_text(source.replace(old, new))
+
+          def sub_once(path: str, pattern: str, replacement: str) -> None:
+              file = Path(path)
+              source = file.read_text()
+              updated, count = re.subn(pattern, replacement, source, count=1, flags=re.MULTILINE | re.DOTALL)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one regex match, found {count}: {pattern!r}")
+              file.write_text(updated)
+
+          chart = "apps/next-admin/src/shared/ui/shadcn/chart.tsx"
+          replace_once(
+              chart,
+              """// Format: { THEME_NAME: CSS_SELECTOR }
+          const THEMES = { light: '', dark: '.dark' } as const;
+
+          export type ChartConfig = {
+            [key in string]: {
+              label?: React.ReactNode;
+              icon?: React.ComponentType;
+            } & (
+              | { color?: string; theme?: never }
+              | { color?: never; theme: Record<keyof typeof THEMES, string> }
+            );
+          };""",
+              """export type ChartIndicatorTone = 'primary' | 'muted' | 'subtle' | 'strong';
+
+          const CHART_INDICATOR_CLASSES: Record<ChartIndicatorTone, string> = {
+            primary: 'border-primary bg-primary',
+            muted: 'border-primary/70 bg-primary/70',
+            subtle: 'border-primary/45 bg-primary/45',
+            strong: 'border-foreground bg-foreground'
+          };
+
+          const CHART_INDICATOR_TONES: ChartIndicatorTone[] = [
+            'primary',
+            'muted',
+            'subtle',
+            'strong'
+          ];
+
+          export type ChartConfig = {
+            [key in string]: {
+              label?: React.ReactNode;
+              icon?: React.ComponentType;
+              tone?: ChartIndicatorTone;
+            };
+          };""",
+          )
+          replace_once(
+              chart,
+              """function ChartContainer({
+            id,
+            className,
+            children,
+            config,
+            ...props
+          }: React.ComponentProps<'div'> & {
+            config: ChartConfig;
+            children: React.ComponentProps<
+              typeof RechartsPrimitive.ResponsiveContainer
+            >['children'];
+          }) {
+            const uniqueId = React.useId();
+            const chartId = `chart-${id || uniqueId.replace(/:/g, '')}`;
+
+            return (""",
+              """function ChartContainer({
+            className,
+            children,
+            config,
+            ...props
+          }: React.ComponentProps<'div'> & {
+            config: ChartConfig;
+            children: React.ComponentProps<
+              typeof RechartsPrimitive.ResponsiveContainer
+            >['children'];
+          }) {
+            return (""",
+          )
+          replace_once(chart, "        data-chart={chartId}\n", "")
+          replace_once(chart, "        <ChartStyle id={chartId} config={config} />\n", "")
+          sub_once(
+              chart,
+              r"const ChartStyle = \(\{ id, config \}: \{ id: string; config: ChartConfig \}\) => \{.*?\n\};\n\nconst ChartTooltip",
+              "const ChartTooltip",
+          )
+          replace_once(chart, "  color,\n", "")
+          replace_once(
+              chart,
+              "          const indicatorColor = color || item.payload?.fill || item.color;",
+              "          const indicatorClassName = chartIndicatorClass(itemConfig?.tone, index);",
+          )
+          replace_once(
+              chart,
+              "                          'shrink-0 rounded-[2px] border-(--color-border) bg-(--color-bg)',\n                          {",
+              "                          'shrink-0 rounded-[2px] border',\n                          indicatorClassName,\n                          {",
+          )
+          sub_once(
+              chart,
+              r"\s*style=\{\s*\{\s*'--color-bg': indicatorColor,\s*'--color-border': indicatorColor\s*\}\s*as React\.CSSProperties\s*\}",
+              "",
+          )
+          replace_once(chart, "      {payload.map((item) => {", "      {payload.map((item, index) => {")
+          replace_once(
+              chart,
+              """              <div
+                className='h-2 w-2 shrink-0 rounded-[2px]'
+                style={{
+                  backgroundColor: item.color
+                }}
+              />""",
+              """              <div
+                className={cn(
+                  'h-2 w-2 shrink-0 rounded-[2px]',
+                  chartIndicatorClass(itemConfig?.tone, index)
+                )}
+              />""",
+          )
+          replace_once(
+              chart,
+              "// Helper to extract item config from a payload.\n",
+              """function chartIndicatorClass(
+            tone: ChartIndicatorTone | undefined,
+            index: number
+          ) {
+            const resolvedTone = tone || CHART_INDICATOR_TONES[index % CHART_INDICATOR_TONES.length];
+            return CHART_INDICATOR_CLASSES[resolvedTone];
+          }
+
+          // Helper to extract item config from a payload.
+          """,
+          )
+          replace_once(chart, "  ChartLegendContent,\n  ChartStyle\n", "  ChartLegendContent\n")
+
+          area = "apps/next-admin/src/features/overview/components/area-graph.tsx"
+          replace_count(area, ",\n    color: 'var(--primary)'", "", 2)
+          replace_count(area, "var(--color-desktop)", "var(--primary)", 2)
+          replace_count(area, "var(--color-mobile)", "var(--primary)", 2)
+
+          bar = "apps/next-admin/src/features/overview/components/bar-graph.tsx"
+          replace_count(bar, ",\n    color: 'var(--primary)'", "", 3)
+
+          pie = "apps/next-admin/src/features/overview/components/pie-graph.tsx"
+          replace_count(pie, ",\n    color: 'var(--primary)'", "", 5)
+
+          register_path = Path("docs/security/csp-next-style-exceptions.json")
+          register = json.loads(register_path.read_text())
+          chart_path = "apps/next-admin/src/shared/ui/shadcn/chart.tsx"
+          existing = {entry.get("path") for entry in register.get("exceptions", [])}
+          if chart_path not in existing or len(existing) != 3:
+              raise SystemExit(f"unexpected Next style register before chart migration: {sorted(existing)}")
+          register["exceptions"] = [
+              entry for entry in register["exceptions"] if entry.get("path") != chart_path
+          ]
+          register_path.write_text(json.dumps(register, indent=2) + "\n")
+
+          verifier = "scripts/verify/verify-csp-next-style-boundary.mjs"
+          replace_once(verifier, "const maxRegisteredFiles = 3;", "const maxRegisteredFiles = 2;")
+          replace_once(verifier, "const maxStyleAttributeSites = 47;", "const maxStyleAttributeSites = 45;")
+          replace_once(verifier, "const maxRuntimeStyleElements = 1;", "const maxRuntimeStyleElements = 0;")
+          replace_once(
+              verifier,
+              """requireMarkers("apps/next-admin/src/shared/ui/shadcn/chart.tsx", [
+            "<style",
+            "dangerouslySetInnerHTML",
+            "--color-${configKey}",
+          ]);""",
+              """requireMarkers("apps/next-admin/src/shared/ui/shadcn/chart.tsx", [
+            "export type ChartIndicatorTone",
+            "const CHART_INDICATOR_CLASSES",
+            "function chartIndicatorClass",
+            "chartIndicatorClass(itemConfig?.tone, index)",
+          ]);
+          forbidMarkers("apps/next-admin/src/shared/ui/shadcn/chart.tsx", [
+            "style=",
+            "<style",
+            "dangerouslySetInnerHTML",
+            "--color-${configKey}",
+            "ChartStyle",
+          ]);
+          requireMarkers("apps/next-admin/src/features/overview/components/area-graph.tsx", [
+            "stroke='var(--primary)'",
+            "stopColor='var(--primary)'",
+          ]);
+          forbidMarkers("apps/next-admin/src/features/overview/components/area-graph.tsx", [
+            "var(--color-desktop)",
+            "var(--color-mobile)",
+          ]);""",
+          )
+
+          workflow = Path(".github/workflows/one-off-next-chart-style-migration.yml")
+          if not workflow.exists():
+              raise SystemExit("one-off workflow is missing")
+          workflow.unlink()
+          PY
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          test ! -e .github/workflows/one-off-next-chart-style-migration.yml
+          grep -Fq 'const maxRuntimeStyleElements = 0;' scripts/verify/verify-csp-next-style-boundary.mjs
+          ! grep -Fq 'style=' apps/next-admin/src/shared/ui/shadcn/chart.tsx
+          ! grep -Fq '<style' apps/next-admin/src/shared/ui/shadcn/chart.tsx
+      - name: Commit chart migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "security: remove Next chart inline styles"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "Next chart inline styles removed; one-off workflow removed itself."
