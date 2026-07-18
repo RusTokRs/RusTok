@@ -1,6 +1,21 @@
 import { Card, CardContent, CardHeader } from '@/shared/ui/shadcn/card';
 import { Skeleton } from '@/shared/ui/shadcn/skeleton';
 
+const BAR_HEIGHT_CLASSES = [
+  'h-[28%]',
+  'h-[46%]',
+  'h-[64%]',
+  'h-[38%]',
+  'h-[78%]',
+  'h-[56%]',
+  'h-[88%]',
+  'h-[42%]',
+  'h-[70%]',
+  'h-[34%]',
+  'h-[82%]',
+  'h-[52%]'
+] as const;
+
 export function BarGraphSkeleton() {
   return (
     <Card>
@@ -22,16 +37,9 @@ export function BarGraphSkeleton() {
         </div>
       </CardHeader>
       <CardContent className='px-2 sm:p-6'>
-        {/* Bar-like shapes */}
         <div className='flex aspect-auto h-[280px] w-full items-end justify-around gap-2 pt-8'>
-          {Array.from({ length: 12 }).map((_, i) => (
-            <Skeleton
-              key={i}
-              className='w-full'
-              style={{
-                height: `${Math.max(20, Math.random() * 100)}%`
-              }}
-            />
+          {BAR_HEIGHT_CLASSES.map((heightClass, index) => (
+            <Skeleton key={index} className={`w-full ${heightClass}`} />
           ))}
         </div>
       </CardContent>
