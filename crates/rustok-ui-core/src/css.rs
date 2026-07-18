@@ -55,6 +55,21 @@ pub fn css_hex_accent_class(value: Option<&str>) -> &'static str {
     }
 }
 
+/// Converts the forum admin's legacy single-property accent representation into the finite class
+/// palette without attaching the CSS declaration to the DOM.
+///
+/// Only the exact `background:<value>;` envelope is inspected. The nested value must still pass the
+/// strict hex grammar; gradients, additional declarations and malformed envelopes use the reviewed
+/// fallback class.
+pub fn css_background_accent_class(value: &str) -> &'static str {
+    let color = value
+        .trim()
+        .strip_prefix("background:")
+        .and_then(|value| value.strip_suffix(';'))
+        .map(str::trim);
+    css_hex_accent_class(color)
+}
+
 fn css_hex_rgb(value: &str) -> Option<(u8, u8, u8)> {
     let normalized = normalize_css_hex_color(value)?;
     let digits = normalized.strip_prefix('#')?;
@@ -78,7 +93,9 @@ fn css_hex_rgb(value: &str) -> Option<(u8, u8, u8)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{css_hex_accent_class, normalize_css_hex_color};
+    use super::{
+        css_background_accent_class, css_hex_accent_class, normalize_css_hex_color,
+    };
 
     #[test]
     fn accepts_only_bounded_hex_color_tokens() {
@@ -124,5 +141,21 @@ mod tests {
         }
         assert!(css_hex_accent_class(None).contains("from-sky-500"));
         assert!(css_hex_accent_class(Some("#fff;--owned:1")).contains("from-sky-500"));
+    }
+
+    #[test]
+    fn maps_legacy_background_envelopes_without_rendering_css_text() {
+        assert_eq!(
+            css_background_accent_class("background:#0ea5e9;"),
+            "bg-sky-500"
+        );
+        for raw in [
+            "background:linear-gradient(180deg,#0ea5e9 0%,#f59e0b 100%);",
+            "background:#fff;--owned:1;",
+            "color:#fff;",
+            "",
+        ] {
+            assert!(css_background_accent_class(raw).contains("from-sky-500"));
+        }
     }
 }
