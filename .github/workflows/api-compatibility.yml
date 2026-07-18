@@ -29,6 +29,8 @@ env:
   PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_TARGET_DIR: ${{ github.workspace }}/target/api-compatibility
+  BASE_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || github.repository }}
+  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
   BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
   HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref }}
 
@@ -40,6 +42,7 @@ jobs:
       - name: Checkout base contract source
         uses: actions/checkout@v7
         with:
+          repository: ${{ env.BASE_REPOSITORY }}
           ref: ${{ env.BASE_REF }}
           path: base
           fetch-depth: 1
@@ -47,6 +50,7 @@ jobs:
       - name: Checkout head contract source
         uses: actions/checkout@v7
         with:
+          repository: ${{ env.HEAD_REPOSITORY }}
           ref: ${{ env.HEAD_REF }}
           path: head
           fetch-depth: 1
