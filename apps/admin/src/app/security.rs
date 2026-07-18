@@ -10,6 +10,7 @@ use rustok_web::CspNonce;
 const API_CSP: &str =
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 const ADMIN_UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+const ADMIN_UI_CSP_STRICT_STYLE_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 const SECURE_CONNECT_SOURCES: &str = "'self' https: wss:";
 const DEVELOPMENT_CONNECT_SOURCES: &str = "'self' https: ws: wss:";
 const HSTS: &str = "max-age=31536000; includeSubDomains";
@@ -30,6 +31,7 @@ pub async fn admin_security_headers(mut request: Request, next: Next) -> Respons
         path.as_str(),
         csp_nonce.as_ref(),
         !is_production_environment(),
+        strict_style_attributes_enabled(),
     );
     let headers = response.headers_mut();
     headers.insert("content-security-policy", policy_header(policy.as_str()));
@@ -82,6 +84,7 @@ fn select_csp(
     path: &str,
     csp_nonce: Option<&CspNonce>,
     allow_plaintext_websocket: bool,
+    strict_style_attributes: bool,
 ) -> String {
     if is_api_surface(path) {
         return API_CSP.to_string();
@@ -94,7 +97,12 @@ fn select_csp(
     } else {
         SECURE_CONNECT_SOURCES
     };
-    ADMIN_UI_CSP_TEMPLATE
+    let template = if strict_style_attributes {
+        ADMIN_UI_CSP_STRICT_STYLE_TEMPLATE
+    } else {
+        ADMIN_UI_CSP_TEMPLATE
+    };
+    template
         .replace("{nonce}", csp_nonce.source_expression().as_str())
         .replace("{connect_sources}", connect_sources)
 }
@@ -111,6 +119,12 @@ fn policy_header(policy: &str) -> HeaderValue {
 
 fn hsts_enabled() -> bool {
     std::env::var("RUSTOK_HTTPS")
+        .map(|value| parse_env_flag(value.as_str()))
+        .unwrap_or(false)
+}
+
+fn strict_style_attributes_enabled() -> bool {
+    std::env::var("RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES")
         .map(|value| parse_env_flag(value.as_str()))
         .unwrap_or(false)
 }
@@ -158,8 +172,8 @@ mod tests {
     #[test]
     fn standalone_admin_ui_policy_requires_nonce_and_secure_production_connections() {
         let nonce = CspNonce::generate();
-        let production = select_csp("/dashboard", Some(&nonce), false);
-        let development = select_csp("/dashboard", Some(&nonce), true);
+        let production = select_csp("/dashboard", Some(&nonce), false, false);
+        let development = select_csp("/dashboard", Some(&nonce), true, false);
         let script = directive(production.as_str(), "script-src").expect("script-src");
         let style = directive(production.as_str(), "style-src").expect("style-src");
         let production_connect =
@@ -180,8 +194,20 @@ mod tests {
     }
 
     #[test]
+    fn standalone_strict_style_attribute_profile_enforces_none() {
+        let nonce = CspNonce::generate();
+        let relaxed = select_csp("/dashboard", Some(&nonce), false, false);
+        let strict = select_csp("/dashboard", Some(&nonce), false, true);
+
+        assert!(relaxed.contains("style-src-attr 'unsafe-inline'"));
+        assert!(strict.contains("style-src-attr 'none'"));
+        assert!(!strict.contains("style-src-attr 'unsafe-inline'"));
+        assert!(strict.contains(nonce.source_expression().as_str()));
+    }
+
+    #[test]
     fn standalone_admin_api_policy_is_scriptless() {
-        assert_eq!(select_csp("/api/admin/pages", None, false), API_CSP);
+        assert_eq!(select_csp("/api/admin/pages", None, false, false), API_CSP);
     }
 
     #[tokio::test]

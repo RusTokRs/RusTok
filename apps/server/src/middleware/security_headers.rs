@@ -26,6 +26,7 @@ const API_CSP: &str =
 /// and all dynamic string compilation are prohibited. Inline style attributes remain temporary
 /// migration debt until component-level style usage is moved to classes or hashes.
 const UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+const UI_CSP_STRICT_STYLE_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 const SECURE_UI_CONNECT_SOURCES: &str = "'self' https: wss:";
 const DEVELOPMENT_UI_CONNECT_SOURCES: &str = "'self' https: ws: wss:";
 
@@ -62,6 +63,7 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
         &path,
         csp_nonce.as_ref(),
         plaintext_websocket_allowed(),
+        strict_style_attributes_enabled(),
     );
     headers.insert(
         "content-security-policy",
@@ -132,6 +134,12 @@ pub(crate) fn hsts_enabled() -> bool {
         .unwrap_or(false)
 }
 
+fn strict_style_attributes_enabled() -> bool {
+    std::env::var("RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES")
+        .map(|value| parse_env_flag(value.as_str()))
+        .unwrap_or(false)
+}
+
 fn parse_env_flag(value: &str) -> bool {
     matches!(
         value.trim().to_ascii_lowercase().as_str(),
@@ -166,6 +174,7 @@ fn select_csp(
     path: &str,
     csp_nonce: Option<&CspNonce>,
     allow_plaintext_websocket: bool,
+    strict_style_attributes: bool,
 ) -> String {
     if is_api_surface(path) {
         API_CSP.to_string()
@@ -175,7 +184,12 @@ fn select_csp(
         } else {
             SECURE_UI_CONNECT_SOURCES
         };
-        UI_CSP_TEMPLATE
+        let template = if strict_style_attributes {
+            UI_CSP_STRICT_STYLE_TEMPLATE
+        } else {
+            UI_CSP_TEMPLATE
+        };
+        template
             .replace("{nonce}", csp_nonce.source_expression().as_str())
             .replace("{connect_sources}", connect_sources)
     } else {
@@ -219,10 +233,10 @@ mod tests {
 
     #[test]
     fn api_and_operator_paths_use_strict_csp() {
-        assert_eq!(select_csp("/api/graphql", None, false), API_CSP);
-        assert_eq!(select_csp("/metrics", None, false), API_CSP);
-        assert_eq!(select_csp("/health/ready", None, false), API_CSP);
-        assert_eq!(select_csp("/swagger/index.html", None, false), API_CSP);
+        assert_eq!(select_csp("/api/graphql", None, false, false), API_CSP);
+        assert_eq!(select_csp("/metrics", None, false, false), API_CSP);
+        assert_eq!(select_csp("/health/ready", None, false, false), API_CSP);
+        assert_eq!(select_csp("/swagger/index.html", None, false, false), API_CSP);
         assert_eq!(select_report_only_csp("/api/graphql", None), None);
     }
 
@@ -230,7 +244,7 @@ mod tests {
     fn ui_paths_use_nonce_backed_script_and_style_element_policies() {
         for path in ["/admin", "/", "/assets/app.js"] {
             let nonce = CspNonce::generate();
-            let enforced = select_csp(path, Some(&nonce), false);
+            let enforced = select_csp(path, Some(&nonce), false, false);
             let report_only = select_report_only_csp(path, Some(&nonce)).expect("UI policy");
             let script = directive(enforced.as_str(), "script-src").expect("script-src");
             let style = directive(enforced.as_str(), "style-src").expect("style-src");
@@ -248,10 +262,23 @@ mod tests {
     }
 
     #[test]
+    fn strict_style_attribute_profile_enforces_none() {
+        let nonce = CspNonce::generate();
+        let relaxed = select_csp("/admin", Some(&nonce), false, false);
+        let strict = select_csp("/admin", Some(&nonce), false, true);
+
+        assert!(relaxed.contains("style-src-attr 'unsafe-inline'"));
+        assert!(!relaxed.contains("style-src-attr 'none'"));
+        assert!(strict.contains("style-src-attr 'none'"));
+        assert!(!strict.contains("style-src-attr 'unsafe-inline'"));
+        assert!(strict.contains(nonce.source_expression().as_str()));
+    }
+
+    #[test]
     fn production_ui_csp_forbids_plaintext_websocket() {
         let nonce = CspNonce::generate();
-        let production = select_csp("/", Some(&nonce), false);
-        let development = select_csp("/", Some(&nonce), true);
+        let production = select_csp("/", Some(&nonce), false, false);
+        let development = select_csp("/", Some(&nonce), true, false);
         let production_connect =
             directive(production.as_str(), "connect-src").expect("production connect-src");
         let development_connect =
@@ -265,7 +292,7 @@ mod tests {
     #[test]
     fn enforced_ui_csp_blocks_eval_plaintext_http_and_plugin_content() {
         let nonce = CspNonce::generate();
-        let policy = select_csp("/admin", Some(&nonce), false);
+        let policy = select_csp("/admin", Some(&nonce), false, false);
 
         assert!(!policy.contains("'unsafe-eval'"));
         assert!(!policy.contains(" http:"));

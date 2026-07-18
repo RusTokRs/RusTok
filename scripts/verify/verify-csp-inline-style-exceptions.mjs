@@ -344,11 +344,11 @@ forbidMarkers("apps/admin/src/features/modules/components/modules_list.rs", [
 for (const [file, required] of [
   [
     "apps/server/src/middleware/security_headers.rs",
-    ["style-src 'self' {nonce}", "style-src-attr 'unsafe-inline'", "style-src-attr 'none'"],
+    ["style-src 'self' {nonce}", "style-src-attr 'unsafe-inline'", "style-src-attr 'none'", "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES", "strict_style_attributes_enabled"],
   ],
   [
     "apps/admin/src/app/security.rs",
-    ["style-src 'self' {nonce}", "style-src-attr 'unsafe-inline'"],
+    ["style-src 'self' {nonce}", "style-src-attr 'unsafe-inline'", "style-src-attr 'none'", "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES", "strict_style_attributes_enabled"],
   ],
 ]) {
   const source = read(file);
