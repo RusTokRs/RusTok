@@ -2,7 +2,7 @@ use sea_orm::{
     ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait,
     QueryFilter,
 };
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 use crate::dto::{
@@ -80,7 +80,7 @@ async fn conflicting_receipt_and_reallocation_are_rejected_without_partial_rows(
         .unwrap();
 
     let mut conflicting = request.clone();
-    conflicting.lines[0].total_amount += 1;
+    conflicting.lines[0].seller_id = Uuid::new_v4();
     let conflict = service
         .allocate_order_lines_with_receipt(
             tenant_id,
