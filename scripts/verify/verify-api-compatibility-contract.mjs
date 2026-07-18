@@ -139,7 +139,14 @@ requireMarkers(".github/workflows/api-compatibility.yml", [
   "name: API Compatibility",
   "github.event.pull_request.base.sha",
   "github.event.pull_request.head.sha",
+  "--locked",
+  "--all-features",
   "--bin export_api_contracts",
+  "Verify exported artifact set",
+  "contracts/base/openapi.json",
+  "contracts/base/schema.graphql",
+  "contracts/head/openapi.json",
+  "contracts/head/schema.graphql",
   "--base-dir",
   "--head-dir",
   "docs/api/compatibility-exceptions.json",
@@ -153,6 +160,8 @@ forbidMarkers(".github/workflows/api-compatibility.yml", [
 requireMarkers(".github/workflows/hardening-gates.yml", [
   "Verify API compatibility comparator fixtures",
   "verify-api-compatibility-self-test.mjs",
+  "Verify API compatibility gate structure",
+  "verify-api-compatibility-contract.mjs",
 ]);
 
 if (failures.length > 0) {
