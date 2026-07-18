@@ -61,12 +61,36 @@ requireMarkers(smokeScript, [
 ]);
 forbidMarkers(smokeScript, ["-p migration ", "|| true"]);
 
+requireMarkers("scripts/verify/verify-migration-infrastructure-approval.mjs", [
+  'const APPROVAL_LABEL = "migration-infra-approved"',
+  "const PROTECTED_PATHS",
+  ".github/workflows/migration-compatibility.yml",
+  "postgres_zero_migration_smoke.rs",
+  "verify-migration-compatibility-contract.mjs",
+  "verify-migration-infra-self-test.mjs",
+  "function changedProtectedPaths",
+  "function approvalDecision",
+  "function runSelfTest",
+]);
+requireMarkers("scripts/verify/verify-migration-infra-self-test.mjs", [
+  "verify-migration-infrastructure-approval.mjs",
+  '"--self-test"',
+]);
+
 const workflow = ".github/workflows/migration-compatibility.yml";
 requireMarkers(workflow, [
   "name: Migration Compatibility",
   "pull_request_target:",
+  "allow_infrastructure_changes:",
   "permissions:\n  contents: read",
   "persist-credentials: false",
+  "Migration harness approval",
+  "timeout-minutes: 5",
+  "Verify base approval policy fixtures",
+  "Require approval for migration harness changes",
+  "migration-infra-approved",
+  "base/scripts/verify/verify-migration-infrastructure-approval.mjs",
+  "needs: infrastructure-approval",
   "image: postgres:16",
   "timeout-minutes: 35",
   "timeout-minutes: 45",
@@ -85,8 +109,11 @@ requireMarkers(workflow, [
   'manifest-path "$GITHUB_WORKSPACE/head/Cargo.toml"',
   "-p rustok-migrations",
   "--locked",
+  "target/migration-base",
+  "target/migration-head",
 ]);
 forbidMarkers(workflow, [
+  "\n  pull_request:\n",
   "continue-on-error: true",
   "|| true",
   'bash "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-smoke.sh"',
