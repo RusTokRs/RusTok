@@ -88,7 +88,7 @@ The broader `style-src 'unsafe-inline'` source, `script-src 'unsafe-inline'`, `u
 
 ### Rust-hosted and classic admin boundary
 
-`docs/security/csp-inline-style-attribute-exceptions.json` is now empty. Its gate observes exactly **0 Rust-hosted style attributes across 0 files** and has a non-increasing `0/0` ratchet.
+`docs/security/csp-inline-style-attribute-exceptions.json` is empty. Its gate observes exactly **0 Rust-hosted style attributes across 0 files** and has a non-increasing `0/0` ratchet.
 
 The last Rust sites were removed by:
 
@@ -99,21 +99,22 @@ The bundled classic admin bootstrap no longer writes `document.documentElement.s
 
 ### Next/React boundary
 
-`docs/security/csp-next-style-exceptions.json` records exactly **60 JSX style props across 10 Next files** and **1 runtime style element**. Review is due no later than **2026-08-15**.
+`docs/security/csp-next-style-exceptions.json` now records exactly **54 JSX style props across 5 Next files** and **1 runtime style element**, down from the initial 60 props across 10 files. Review is due no later than **2026-08-15**.
 
 | Surface | Files | JSX style props | Runtime style elements | Primary exit path |
 |---|---:|---:|---:|---|
 | Next storefront search package | 1 | 43 | 0 | Shared storefront classes and explicit state variants |
-| Next admin design-system and shell | 9 | 17 | 1 | Native elements, finite classes, data attributes, bounded geometry adapters and a nonce-aware or finite-palette chart boundary |
-| **Total** | **10** | **60** | **1** | Empty the register before strict promotion |
+| Next admin table/chart/shell boundary | 4 | 11 | 1 | Bounded table geometry, finite chart palette or nonce-aware adapter, static shell classes and deterministic skeletons |
+| **Total** | **5** | **54** | **1** | Empty the register before strict promotion |
 
 The Next gate:
 
 - scans every `.tsx` and `.jsx` file under `apps/next-admin` and `apps/next-frontend`;
 - rejects unregistered files, count changes, stale entries, duplicate paths and expired review dates;
-- caps the baseline at `60` style props, `10` files and `1` runtime style element;
+- caps the baseline at `54` style props, `5` files and `1` runtime style element;
 - globally forbids direct DOM `.style` writes in those source roots;
-- protects the class-only classic admin color-scheme bootstrap.
+- protects the class-only classic admin color-scheme bootstrap;
+- protects completed class/SVG migrations for textarea resize, bar skeletons, Sonner, shared progress and table skeletons.
 
 The runtime chart `<style dangerouslySetInnerHTML>` is tracked separately from JSX style props because it is governed by nonce-bearing `style-src`, not only `style-src-attr`.
 
@@ -127,7 +128,12 @@ The runtime chart `<style dangerouslySetInnerHTML>` is tracked separately from J
 - Page Builder custom viewport width, height and continuous zoom use SVG `viewBox`/`foreignObject` geometry with native iframe dimensions rather than CSS sizing or `transform:scale`;
 - storefront and forum-admin category accents map validated colors to a finite eight-color utility-class palette or reviewed gradient fallback and no longer attach a CSS declaration to the DOM;
 - the admin build progress indicator uses native progress semantics;
-- the classic admin theme bootstrap uses classes and stylesheet-owned color-scheme declarations rather than DOM style writes.
+- the classic admin theme bootstrap uses classes and stylesheet-owned color-scheme declarations rather than DOM style writes;
+- Next textarea resize modes map the closed configuration union to four finite classes;
+- Next overview bar skeletons use a deterministic, build-time-visible height-class sequence;
+- the Sonner adapter exposes no `style` prop and owns its fixed token bridge through static arbitrary-property classes;
+- the shared Next progress adapter preserves the Radix root contract while rendering clamped progress through an SVG width attribute;
+- the data-table skeleton removed its unused free-form width API and relies on normal table layout.
 
 The static modular Page Builder three-column layout had already moved from an inline attribute to a Tailwind arbitrary grid class and remains outside the exception registers.
 
