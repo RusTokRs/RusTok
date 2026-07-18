@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::entities::seller_command_receipt;
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
+use crate::seller_events::append_receipted_seller_event;
 
 const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
 const RECEIPT_STATUS_PENDING: &str = "pending";
@@ -20,7 +21,9 @@ pub(crate) struct NewCommandReceipt {
     pub transaction: DatabaseTransaction,
     pub receipt_id: Uuid,
     pub tenant_id: Uuid,
+    pub actor_id: Uuid,
     pub idempotency_key: String,
+    pub command_kind: String,
 }
 
 pub(crate) enum CommandReceiptAdmission {
@@ -100,7 +103,9 @@ pub(crate) async fn admit_command(
             transaction,
             receipt_id,
             tenant_id,
+            actor_id,
             idempotency_key,
+            command_kind: command_kind.to_string(),
         })),
         Err(error) if is_unique_constraint(&error) => {
             transaction.rollback().await?;
@@ -155,6 +160,21 @@ pub(crate) async fn complete_command<R: Serialize + Clone>(
             "marketplace seller command result could not be serialized".to_string(),
         )
     })?;
+
+    if let Err(error) = append_receipted_seller_event(
+        &receipt.transaction,
+        receipt.tenant_id,
+        receipt.actor_id,
+        receipt.command_kind.as_str(),
+        response_kind,
+        &response_json,
+    )
+    .await
+    {
+        receipt.transaction.rollback().await?;
+        return Err(error);
+    }
+
     let result = seller_command_receipt::Entity::update_many()
         .col_expr(
             seller_command_receipt::Column::Status,
