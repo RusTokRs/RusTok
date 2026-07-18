@@ -102,6 +102,7 @@ impl MarketplaceListingService {
 
         match admit(
             self.database(),
+            self.event_bus().clone(),
             tenant_id,
             actor_id,
             key,
@@ -224,6 +225,7 @@ impl MarketplaceListingService {
 
         match admit(
             self.database(),
+            self.event_bus().clone(),
             tenant_id,
             actor_id,
             key,
@@ -411,9 +413,7 @@ fn parse_actor_id(context: &rustok_api::PortContext) -> MarketplaceListingResult
     })
 }
 
-fn required_idempotency_key(
-    context: &rustok_api::PortContext,
-) -> MarketplaceListingResult<String> {
+fn required_idempotency_key(context: &rustok_api::PortContext) -> MarketplaceListingResult<String> {
     context.idempotency_key.clone().ok_or_else(|| {
         MarketplaceListingError::Validation(
             "marketplace listing write requires an idempotency key".to_string(),

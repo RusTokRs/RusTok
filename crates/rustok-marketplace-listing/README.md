@@ -15,8 +15,12 @@ RusToK Marketplace Family.
   copying product, pricing, inventory, or fulfillment owner data.
 - Resolve seller and master variant references only through typed owner ports.
 - Own draft, review, publish, suspend, reactivate, and archive transitions.
-- Persist command receipts atomically with owner writes and typed response
-  snapshots.
+- Persist command receipts atomically with owner writes, immutable internal
+  timeline events, sealed external contract events, and typed response snapshots.
+- Publish external listing events through the transactional outbox without
+  exposing moderation prose, arbitrary owner metadata, or imported legacy snapshots.
+- Receive the owner `TransactionalEventBus` from host composition; command and receipt
+  executors never construct their own event transport.
 - Publish deterministic eligibility with explicit reason codes.
 - Avoid buy-box ranking; selection policy belongs to a later Marketplace Family
   capability.
@@ -32,7 +36,9 @@ RusToK Marketplace Family.
 
 ## Interactions
 
-The module consumes `MarketplaceSellerReadPort` and `ProductCatalogReadPort`.
-It owns no seller or product entities and declares no cross-module database
-foreign keys. `rustok-marketplace` consumes its read projections through a typed
-port.
+The module consumes `MarketplaceSellerReadPort`, `ProductCatalogReadPort`, and an
+injected `TransactionalEventBus`. It owns no seller or product entities and declares
+no cross-module database foreign keys. `rustok-marketplace` consumes its read
+projections through a typed port. External consumers receive sealed listing lifecycle
+contracts through the transactional outbox and refresh owner state through
+`MarketplaceListingReadPort`.

@@ -7,9 +7,9 @@ use crate::dto::{
     CreateMarketplaceListingInput, ListMarketplaceListingEventsRequest,
     ListMarketplaceListingsInput, MarketplaceListingEligibilityProjection,
     MarketplaceListingEligibilityRequest, MarketplaceListingEventResponse,
-    MarketplaceListingListResponse, MarketplaceListingResponse,
-    ReadMarketplaceListingRequest, ReviewMarketplaceListingInput,
-    SuspendMarketplaceListingInput, UpdateMarketplaceListingTermsInput,
+    MarketplaceListingListResponse, MarketplaceListingResponse, ReadMarketplaceListingRequest,
+    ReviewMarketplaceListingInput, SuspendMarketplaceListingInput,
+    UpdateMarketplaceListingTermsInput,
 };
 use crate::error::MarketplaceListingError;
 
@@ -241,12 +241,13 @@ fn map_owner_error(error: MarketplaceListingError) -> PortError {
             "marketplace_listing.not_found",
             format!("marketplace listing {id} not found"),
         ),
-        MarketplaceListingError::TermsNotFound { listing_id, version } => {
-            PortError::invariant_violation(
-                "marketplace_listing.terms_missing",
-                format!("listing {listing_id} terms version {version} requires operator review"),
-            )
-        }
+        MarketplaceListingError::TermsNotFound {
+            listing_id,
+            version,
+        } => PortError::invariant_violation(
+            "marketplace_listing.terms_missing",
+            format!("listing {listing_id} terms version {version} requires operator review"),
+        ),
         MarketplaceListingError::SellerUnavailable(_) => PortError::unavailable(
             "marketplace_listing.seller_unavailable",
             "marketplace seller service is temporarily unavailable",
@@ -270,6 +271,14 @@ fn map_owner_error(error: MarketplaceListingError) -> PortError {
         MarketplaceListingError::CommandReceiptCorrupt => PortError::invariant_violation(
             "marketplace_listing.command_receipt_corrupt",
             "marketplace listing command receipt requires operator review",
+        ),
+        MarketplaceListingError::EventContractInvariant(_) => PortError::invariant_violation(
+            "marketplace_listing.event_contract_invariant",
+            "marketplace listing event contract requires operator review",
+        ),
+        MarketplaceListingError::EventPublicationUnavailable => PortError::unavailable(
+            "marketplace_listing.event_publication_unavailable",
+            "marketplace listing event publication is temporarily unavailable",
         ),
         MarketplaceListingError::Validation(message) => {
             PortError::validation("marketplace_listing.validation", message)

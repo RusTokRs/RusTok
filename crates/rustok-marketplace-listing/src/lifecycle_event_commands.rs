@@ -9,9 +9,8 @@ use crate::command_receipts::{
     ListingCommandAdmission, NewListingCommandReceipt,
 };
 use crate::dto::{
-    MarketplaceListingApprovalStatus, MarketplaceListingEventKind,
-    MarketplaceListingResponse, MarketplaceListingStatus,
-    UpdateMarketplaceListingTermsInput,
+    MarketplaceListingApprovalStatus, MarketplaceListingEventKind, MarketplaceListingResponse,
+    MarketplaceListingStatus, UpdateMarketplaceListingTermsInput,
 };
 use crate::entities::{listing, listing_terms};
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
@@ -51,6 +50,7 @@ impl MarketplaceListingService {
 
         match admit(
             self.database(),
+            self.event_bus().clone(),
             tenant_id,
             actor_id,
             key,
@@ -100,6 +100,7 @@ impl MarketplaceListingService {
 
         match admit(
             self.database(),
+            self.event_bus().clone(),
             tenant_id,
             actor_id,
             key,
@@ -148,6 +149,7 @@ impl MarketplaceListingService {
 
         match admit(
             self.database(),
+            self.event_bus().clone(),
             tenant_id,
             actor_id,
             key,
@@ -193,9 +195,12 @@ async fn update_terms_in_transaction(
             to: "terms_updated".to_string(),
         });
     }
-    let next_version = current.current_terms_version.checked_add(1).ok_or_else(|| {
-        MarketplaceListingError::Validation("listing terms version overflow".to_string())
-    })?;
+    let next_version = current
+        .current_terms_version
+        .checked_add(1)
+        .ok_or_else(|| {
+            MarketplaceListingError::Validation("listing terms version overflow".to_string())
+        })?;
     let terms = listing_terms::ActiveModel {
         id: Set(generate_id()),
         tenant_id: Set(tenant_id),
@@ -335,9 +340,7 @@ fn parse_actor_id(context: &rustok_api::PortContext) -> MarketplaceListingResult
     })
 }
 
-fn required_idempotency_key(
-    context: &rustok_api::PortContext,
-) -> MarketplaceListingResult<String> {
+fn required_idempotency_key(context: &rustok_api::PortContext) -> MarketplaceListingResult<String> {
     context.idempotency_key.clone().ok_or_else(|| {
         MarketplaceListingError::Validation(
             "marketplace listing write requires an idempotency key".to_string(),
