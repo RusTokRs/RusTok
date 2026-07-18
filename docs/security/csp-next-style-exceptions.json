@@ -26,15 +26,6 @@
       "reason": "TanStack column pinning projects calculated left, right, width and z-index values onto header and body cells.",
       "constraints": "The objects come only from the shared getCommonPinningStyles helper and typed table column state; arbitrary CSS strings from row data are forbidden.",
       "exit_criteria": "Move pinning geometry to a reviewed DOM adapter or stylesheet/custom-property boundary that does not require JSX style props."
-    },
-    {
-      "path": "apps/next-admin/src/shared/ui/shadcn/chart.tsx",
-      "expected_style_attribute_occurrences": 2,
-      "expected_runtime_style_element_occurrences": 1,
-      "owner": "Next admin chart and design-system maintainers",
-      "reason": "Chart indicators project runtime series colors through style props, and ChartStyle emits a generated style element containing per-chart CSS custom properties.",
-      "constraints": "Chart configuration keys and colors require validation before use; the generated style element currently has no demonstrated per-response nonce path.",
-      "exit_criteria": "Adopt a reviewed finite chart palette or nonce-aware chart style adapter, then remove indicator style props and the unnonced runtime style element."
     }
   ]
 }
