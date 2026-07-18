@@ -38,7 +38,7 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
     for marker in [
         "marketplace_listings",
         "marketplace_listing_terms",
-        "marketplace_listing_command_receipts",
+        "MarketplaceListingCommandReceipts",
         "uq_marketplace_listings_scope",
         "uq_marketplace_listings_seller_sku",
         "uq_marketplace_listing_terms_version",
@@ -148,6 +148,7 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
     for marker in [
         "canonical_json",
         "Sha256::digest",
+        "hex::encode",
         "replay_existing",
         "STATUS_COMPLETED",
         "event_bus: TransactionalEventBus",
