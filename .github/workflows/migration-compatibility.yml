@@ -1,0 +1,141 @@
+name: Migration Compatibility
+
+on:
+  pull_request_target:
+    branches:
+      - "**"
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Base git ref or commit
+        required: true
+        default: main
+      head_ref:
+        description: Head git ref or commit
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  BASE_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.repo.full_name || github.repository }}
+  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+  BASE_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || inputs.base_ref }}
+  HEAD_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || inputs.head_ref }}
+  RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+
+jobs:
+  fresh-install:
+    name: Fresh PostgreSQL (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: apply-all
+            incremental: "0"
+            database_suffix: all
+          - name: incremental
+            incremental: "1"
+            database_suffix: incremental
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Checkout head migration source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.HEAD_REPOSITORY }}
+          ref: ${{ env.HEAD_REF }}
+          path: head
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run fresh migration smoke
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-fresh-${{ matrix.database_suffix }}
+          RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_migration_${{ github.run_id }}_${{ matrix.database_suffix }}
+          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: ${{ matrix.incremental }}
+          RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
+          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
+        run: bash "$GITHUB_WORKSPACE/head/scripts/verify/verify-migration-smoke.sh"
+
+  n-minus-one-upgrade:
+    name: PostgreSQL N-1 to head upgrade
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Checkout base migration source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.BASE_REPOSITORY }}
+          ref: ${{ env.BASE_REF }}
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout head migration source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.HEAD_REPOSITORY }}
+          ref: ${{ env.HEAD_REF }}
+          path: head
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Apply base migrations and preserve database
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-base
+          RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_migration_${{ github.run_id }}_upgrade
+          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "0"
+          RUSTOK_MIGRATION_SMOKE_KEEP_DB: "1"
+          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
+        run: bash "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-smoke.sh"
+
+      - name: Upgrade preserved database with head migrations
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-head
+          RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_migration_${{ github.run_id }}_upgrade
+          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "1"
+          RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
+          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "1"
+        run: bash "$GITHUB_WORKSPACE/head/scripts/verify/verify-migration-smoke.sh"
