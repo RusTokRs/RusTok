@@ -39,18 +39,24 @@ jobs:
         run: |
           rustfmt --edition 2021 \
             crates/rustok-marketplace-seller/src/command_receipts.rs \
-            crates/rustok-marketplace-seller/src/seller_events.rs \
-            crates/rustok-marketplace-seller/src/seller_events_tests.rs
-          git diff -- \
-            crates/rustok-marketplace-seller/src/command_receipts.rs \
+            crates/rustok-marketplace-seller/src/lib.rs \
             crates/rustok-marketplace-seller/src/seller_events.rs \
             crates/rustok-marketplace-seller/src/seller_events_tests.rs \
+            crates/rustok-marketplace-seller/src/seller_response_events_tests.rs
+          git diff -- \
+            crates/rustok-marketplace-seller/src/command_receipts.rs \
+            crates/rustok-marketplace-seller/src/lib.rs \
+            crates/rustok-marketplace-seller/src/seller_events.rs \
+            crates/rustok-marketplace-seller/src/seller_events_tests.rs \
+            crates/rustok-marketplace-seller/src/seller_response_events_tests.rs \
             > rustfmt.patch
           mkdir -p formatted
           cp --parents \
             crates/rustok-marketplace-seller/src/command_receipts.rs \
+            crates/rustok-marketplace-seller/src/lib.rs \
             crates/rustok-marketplace-seller/src/seller_events.rs \
             crates/rustok-marketplace-seller/src/seller_events_tests.rs \
+            crates/rustok-marketplace-seller/src/seller_response_events_tests.rs \
             formatted/
       - name: Compile seller owner
         id: compile

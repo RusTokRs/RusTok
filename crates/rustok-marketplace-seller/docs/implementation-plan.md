@@ -59,17 +59,19 @@ migration, contention, mounted-transport, and remote-profile evidence.
   tenant/seller foreign key.
 - [x] Publish a bounded newest-first owner timeline read through
   `MarketplaceSellerReadPort::list_seller_events`.
-- [x] Commit onboarding review, suspension, and reactivation state, immutable command
-  event, completed receipt, and normalized response snapshot in one transaction.
+- [x] Commit create, profile update, onboarding submit/review, suspension, and
+  reactivation state, immutable command event, completed receipt, and normalized
+  response snapshot in one transaction.
 - [x] Keep lost-response replay outside event append so one idempotency key produces
-  exactly one lifecycle event.
-- [x] Roll back owner state and the pending receipt when lifecycle event persistence
+  exactly one seller event.
+- [x] Roll back owner state and the pending receipt when seller event persistence
   fails.
+- [x] Fail closed when a completed seller response has no immutable event mapping.
 
 ## Ownership remaining
 
-- [ ] Route create, profile update, onboarding submit, and member writes through atomic
-  state + event + receipt transactions.
+- [ ] Bind effective locale into member command identity and route add/update member
+  writes through atomic member state + seller event + receipt transactions.
 - [ ] Backfill existing onboarding/suspension prose snapshots and remove mutable
   compatibility columns only after live command event coverage is complete.
 - [ ] Publish seller lifecycle events through the transactional outbox.
@@ -91,17 +93,18 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Publish the in-process provider registry and planned remote-adapter cases.
 - [x] Add source guards for multilingual schema, exact locale resolution, replay,
   conflict, typed response snapshots, transport wiring, immutable event storage,
-  truthful provenance, bounded timeline reads, lifecycle completion order, and
-  root/owner non-bypass rules.
+  truthful provenance, bounded timeline reads, seller response mapping, completion
+  order, and root/owner non-bypass rules.
 - [x] Execute SQLite proof for one-event replay semantics and event-insert rollback of
   lifecycle state plus the pending receipt.
+- [x] Execute SQLite proof that create/profile/onboarding-submit each commit exactly one
+  locale-attributed event and completed replay does not append another event.
 - [x] Aggregate marketplace family and seller transport verifiers into the root npm
   verification entry points.
 
 ## FBA remaining
 
-- [ ] Extend atomic immutable event production to create/profile/onboarding-submit and
-  member commands.
+- [ ] Add effective-locale identity and immutable events to add/update member commands.
 - [ ] Compile the provider and GraphQL contracts.
 - [ ] Apply seller/translation/receipt/event migrations on clean and upgraded
   SQLite/PostgreSQL graphs.
@@ -143,12 +146,15 @@ migration, contention, mounted-transport, and remote-profile evidence.
    bounded FBA timeline read.
 2. [x] Route onboarding review, suspension, and reactivation through atomic
    state + event + receipt transactions.
-3. [ ] Extend event production to create/profile/onboarding-submit/member commands.
-4. [ ] Add event history to native and GraphQL FFA transports.
-5. [ ] Backfill/remove mutable prose snapshots.
-6. [ ] Publish live seller events through the transactional outbox.
-7. [ ] Add normalized verification/KYC facts and provider SPI.
-8. [ ] Compile and execute database, contention, replay, tenant, and mounted transport
+3. [x] Route create, profile update, and onboarding submit through atomic
+   state + event + receipt transactions.
+4. [ ] Bind effective locale to member command identity and emit add/update member
+   events atomically.
+5. [ ] Add event history to native and GraphQL FFA transports.
+6. [ ] Backfill/remove mutable prose snapshots.
+7. [ ] Publish live seller events through the transactional outbox.
+8. [ ] Add normalized verification/KYC facts and provider SPI.
+9. [ ] Compile and execute database, contention, replay, tenant, and mounted transport
    evidence.
 
 ## Source evidence
@@ -165,6 +171,7 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `src/receipted_commands.rs`
 - `src/seller_events.rs`
 - `src/seller_events_tests.rs`
+- `src/seller_response_events_tests.rs`
 - `src/ports.rs`
 - `src/graphql.rs`
 - `admin/src/model.rs`
