@@ -1,0 +1,126 @@
+name: One-off Wire Migration Backfill Fixtures
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  wire-backfill-fixtures:
+    if: >-
+      github.event.issue.title == '[automation] wire migration backfill fixtures' &&
+      (github.event_name == 'issues' || github.event.comment.body == '/wire-migration-backfill-fixtures')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git pull --rebase origin main
+      - name: Apply exact fixture wiring
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs")
+          source = path.read_text()
+
+          def replace_once(old: str, new: str) -> None:
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one smoke-test match, found {count}: {old!r}")
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              "use std::time::{Duration, SystemTime, UNIX_EPOCH};\n\n",
+              "mod support;\n\n"
+              "use std::time::{Duration, SystemTime, UNIX_EPOCH};\n\n"
+              "use support::backfill_fixtures::{\n"
+              "    apply_setup as apply_backfill_setup, assert_results as assert_backfill_results,\n"
+              "    load_from_environment as load_backfill_fixtures, BackfillFixture,\n"
+              "};\n",
+          )
+          replace_once(
+              '    let rollback_latest = env_binary_flag("RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST")?;\n',
+              '    let rollback_latest = env_binary_flag("RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST")?;\n'
+              '    let backfill_fixtures = load_backfill_fixtures()?;\n'
+              '    if !backfill_fixtures.is_empty() && !reuse_database {\n'
+              '        return Err(\n'
+              '            "backfill fixtures require RUSTOK_MIGRATION_SMOKE_REUSE_DB=1".into(),\n'
+              '        );\n'
+              '    }\n',
+          )
+          replace_once(
+              "    let smoke_result =\n        apply_migrations_and_assert_schema(&target_url, incremental, rollback_latest).await;\n",
+              "    let smoke_result = apply_migrations_and_assert_schema(\n"
+              "        &target_url,\n"
+              "        incremental,\n"
+              "        rollback_latest,\n"
+              "        &backfill_fixtures,\n"
+              "    )\n"
+              "    .await;\n",
+          )
+          replace_once(
+              "async fn apply_migrations_and_assert_schema(\n    target_url: &str,\n    incremental: bool,\n    rollback_latest: bool,\n) -> Result<(), Box<dyn std::error::Error>> {\n",
+              "async fn apply_migrations_and_assert_schema(\n"
+              "    target_url: &str,\n"
+              "    incremental: bool,\n"
+              "    rollback_latest: bool,\n"
+              "    backfill_fixtures: &[BackfillFixture],\n"
+              ") -> Result<(), Box<dyn std::error::Error>> {\n",
+          )
+          replace_once(
+              '    let db = connect_postgres(target_url)\n        .await\n        .map_err(|error| format!("smoke database must be reachable: {error}"))?;\n\n    if incremental {\n',
+              '    let db = connect_postgres(target_url)\n'
+              '        .await\n'
+              '        .map_err(|error| format!("smoke database must be reachable: {error}"))?;\n\n'
+              '    apply_backfill_setup(&db, backfill_fixtures).await?;\n\n'
+              '    if incremental {\n',
+          )
+          replace_once(
+              '    assert_no_pending_migrations(&db, "initial migration apply").await?;\n    assert_schema_contract(&db).await?;\n\n    if rollback_latest {\n        rollback_latest_and_reapply(&db).await?;\n        assert_schema_contract(&db).await?;\n    }\n',
+              '    assert_no_pending_migrations(&db, "initial migration apply").await?;\n'
+              '    assert_schema_contract(&db).await?;\n'
+              '    assert_backfill_results(&db, backfill_fixtures).await?;\n\n'
+              '    if rollback_latest {\n'
+              '        rollback_latest_and_reapply(&db).await?;\n'
+              '        assert_schema_contract(&db).await?;\n'
+              '        assert_backfill_results(&db, backfill_fixtures).await?;\n'
+              '    }\n',
+          )
+
+          path.write_text(source)
+          workflow = Path(".github/workflows/one-off-wire-migration-backfill-fixtures.yml")
+          if not workflow.exists():
+              raise SystemExit("one-off workflow is missing")
+          workflow.unlink()
+          PY
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          grep -Fq 'mod support;' crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs
+          grep -Fq 'load_backfill_fixtures()' crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs
+          grep -Fq 'apply_backfill_setup(&db, backfill_fixtures)' crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs
+          grep -Fq 'assert_backfill_results(&db, backfill_fixtures)' crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs
+          test ! -e .github/workflows/one-off-wire-migration-backfill-fixtures.yml
+      - name: Commit fixture wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test(migrations): execute backfill fixtures during upgrade"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "Migration backfill fixture execution wired; one-off workflow removed itself."
