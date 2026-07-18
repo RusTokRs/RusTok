@@ -52,6 +52,8 @@
         ],
         "result_snapshot": "normalized_listing_response_json",
         "atomic_with_owner_write": true,
+        "atomic_with_external_contract_event": true,
+        "replay_publishes_duplicate_event": false,
         "conflicting_payload": "marketplace_listing.idempotency_conflict",
         "provider_preflight_replay": [
           "create_listing",
@@ -78,6 +80,14 @@
       "port": "ProductCatalogReadPort",
       "usage": [
         "resolve_master_product_from_variant"
+      ],
+      "foreign_entities_imported": false
+    },
+    {
+      "module": "outbox",
+      "port": "TransactionalEventBus",
+      "usage": [
+        "publish_contract_in_tx"
       ],
       "foreign_entities_imported": false
     }
@@ -215,12 +225,17 @@
     "archive_remains_owner_command": true
   },
   "outbox": {
-    "status": "event_contract_source_ready_owner_publication_pending",
+    "status": "owner_publication_source_ready_execution_pending",
     "transport": "rustok_outbox::TransactionalEventBus",
     "required_api": "publish_contract_in_tx",
     "contract_type": "rustok_events::MarketplaceListingEvent",
     "contract_sealed": true,
+    "event_bus_composition": "injected_through_marketplace_listing_service",
+    "receipt_executor_constructs_transport": false,
+    "publication_owner": "marketplace_listing_command_receipts_completion",
     "same_transaction_as_owner_event_and_receipt": true,
+    "replay_publishes_duplicate_event": false,
+    "publication_failure_rolls_back_owner_transaction": true,
     "moderation_note_exposed": false,
     "arbitrary_metadata_exposed": false,
     "legacy_snapshot_relayed_as_live_command": false,
@@ -266,6 +281,8 @@
     "owner_permissions": "crates/rustok-marketplace-listing/src/lib.rs",
     "platform_permissions": "crates/rustok-api/src/permissions.rs",
     "receipt_executor": "crates/rustok-marketplace-listing/src/command_receipts.rs",
+    "external_event_mapper": "crates/rustok-marketplace-listing/src/external_events.rs",
+    "owner_outbox_tests": "crates/rustok-marketplace-listing/src/command_receipts_tests.rs",
     "provider_event_commands": "crates/rustok-marketplace-listing/src/replay_safe_commands.rs",
     "moderation_event_commands": "crates/rustok-marketplace-listing/src/evented_commands.rs",
     "owner_lifecycle_event_commands": "crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs",
@@ -280,7 +297,8 @@
     "ffa_guard": "apps/server/tests/marketplace_listing_admin_ffa_guard.rs",
     "external_event_contract": "crates/rustok-events/src/marketplace_listing.rs",
     "external_event_envelope": "crates/rustok-events/src/contract.rs",
-    "external_event_guard": "scripts/verify/verify-marketplace-listing-event-contract.mjs"
+    "external_event_guard": "scripts/verify/verify-marketplace-listing-event-contract.mjs",
+    "external_event_rust_guard": "apps/server/tests/marketplace_listing_event_contract_guard.rs"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
@@ -293,11 +311,23 @@
         "operation": "all_listing_commands",
         "assertions": [
           "effective_locale_in_request_identity",
-          "state_or_terms_event_and_receipt_atomic",
+          "state_or_terms_event_receipt_and_outbox_atomic",
           "command_event_actor_matches_port_actor",
           "command_event_locale_matches_effective_locale",
           "lost_response_replay_returns_saved_result",
+          "lost_response_replay_does_not_publish_duplicate_event",
           "conflicting_payload_rejected"
+        ]
+      },
+      {
+        "operation": "transactional_outbox",
+        "assertions": [
+          "all_nine_command_outcomes_map_to_sealed_contracts",
+          "approved_and_rejected_reviews_map_from_completed_owner_state",
+          "owner_private_note_reason_and_metadata_excluded",
+          "legacy_snapshots_never_enter_live_publication_mapper",
+          "outbox_failure_rolls_back_pending_receipt",
+          "receipt_completion_failure_rolls_back_outbox_row"
         ]
       },
       {
@@ -349,6 +379,6 @@
         ]
       }
     ],
-    "known_gap": "owner transactional outbox publication, authenticated native runtime provider composition, real GraphQL schema, readiness-board synchronization, compiled migrations, contention/replay, remote-profile, mounted transport, and FFA parity evidence are not yet retained"
+    "known_gap": "compiled clean/upgraded SQLite and PostgreSQL migrations, PostgreSQL outbox contention/rollback, relay/restart, remote-profile, authenticated native runtime composition, real GraphQL schema, readiness-board synchronization, mounted transport, and FFA parity evidence are not yet retained"
   }
 }

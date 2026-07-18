@@ -19,6 +19,10 @@ pub enum MarketplaceListingError {
     IdempotencyConflict,
     #[error("marketplace listing command receipt requires operator review")]
     CommandReceiptCorrupt,
+    #[error("marketplace listing event contract invariant failed: {0}")]
+    EventContractInvariant(String),
+    #[error("marketplace listing transactional event publication is unavailable")]
+    EventPublicationUnavailable,
     #[error("marketplace listing validation failed: {0}")]
     Validation(String),
     #[error("marketplace listing transition from `{from}` to `{to}` is not allowed")]

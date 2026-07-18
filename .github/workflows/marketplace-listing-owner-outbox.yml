@@ -1,0 +1,161 @@
+name: Marketplace listing owner outbox
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/rustok-events/src/contract.rs"
+      - "crates/rustok-events/src/marketplace_listing.rs"
+      - "crates/rustok-marketplace-listing/**"
+      - "crates/rustok-outbox/src/transactional.rs"
+      - "crates/rustok-outbox/src/transport.rs"
+      - "apps/server/tests/marketplace_listing_boundary_guard.rs"
+      - "apps/server/tests/marketplace_listing_event_contract_guard.rs"
+      - "scripts/verify/verify-marketplace-listing-boundary.mjs"
+      - "scripts/verify/verify-marketplace-listing-event-contract.mjs"
+      - ".github/workflows/marketplace-listing-owner-outbox.yml"
+  pull_request:
+    paths:
+      - "crates/rustok-events/src/contract.rs"
+      - "crates/rustok-events/src/marketplace_listing.rs"
+      - "crates/rustok-marketplace-listing/**"
+      - "crates/rustok-outbox/src/transactional.rs"
+      - "crates/rustok-outbox/src/transport.rs"
+      - "apps/server/tests/marketplace_listing_boundary_guard.rs"
+      - "apps/server/tests/marketplace_listing_event_contract_guard.rs"
+      - "scripts/verify/verify-marketplace-listing-boundary.mjs"
+      - "scripts/verify/verify-marketplace-listing-event-contract.mjs"
+      - ".github/workflows/marketplace-listing-owner-outbox.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketplace-listing-owner-outbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  owner-outbox:
+    name: Listing owner outbox contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.96.1"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: marketplace-listing-owner-outbox
+      - name: Capture owner outbox rustfmt patch
+        run: |
+          rustfmt --edition 2021 \
+            apps/server/tests/marketplace_listing_boundary_guard.rs \
+            apps/server/tests/marketplace_listing_event_contract_guard.rs \
+            crates/rustok-marketplace-listing/src/command_receipts.rs \
+            crates/rustok-marketplace-listing/src/command_receipts_tests.rs \
+            crates/rustok-marketplace-listing/src/error.rs \
+            crates/rustok-marketplace-listing/src/evented_commands.rs \
+            crates/rustok-marketplace-listing/src/external_events.rs \
+            crates/rustok-marketplace-listing/src/lib.rs \
+            crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs \
+            crates/rustok-marketplace-listing/src/ports.rs \
+            crates/rustok-marketplace-listing/src/replay_safe_commands.rs \
+            crates/rustok-marketplace-listing/src/service.rs
+          git diff -- \
+            apps/server/tests/marketplace_listing_boundary_guard.rs \
+            apps/server/tests/marketplace_listing_event_contract_guard.rs \
+            crates/rustok-marketplace-listing/src/command_receipts.rs \
+            crates/rustok-marketplace-listing/src/command_receipts_tests.rs \
+            crates/rustok-marketplace-listing/src/error.rs \
+            crates/rustok-marketplace-listing/src/evented_commands.rs \
+            crates/rustok-marketplace-listing/src/external_events.rs \
+            crates/rustok-marketplace-listing/src/lib.rs \
+            crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs \
+            crates/rustok-marketplace-listing/src/ports.rs \
+            crates/rustok-marketplace-listing/src/replay_safe_commands.rs \
+            crates/rustok-marketplace-listing/src/service.rs \
+            > rustfmt.patch
+          mkdir -p formatted
+          cp --parents \
+            apps/server/tests/marketplace_listing_boundary_guard.rs \
+            apps/server/tests/marketplace_listing_event_contract_guard.rs \
+            crates/rustok-marketplace-listing/src/command_receipts.rs \
+            crates/rustok-marketplace-listing/src/command_receipts_tests.rs \
+            crates/rustok-marketplace-listing/src/error.rs \
+            crates/rustok-marketplace-listing/src/evented_commands.rs \
+            crates/rustok-marketplace-listing/src/external_events.rs \
+            crates/rustok-marketplace-listing/src/lib.rs \
+            crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs \
+            crates/rustok-marketplace-listing/src/ports.rs \
+            crates/rustok-marketplace-listing/src/replay_safe_commands.rs \
+            crates/rustok-marketplace-listing/src/service.rs \
+            formatted/
+      - name: Compile listing crate
+        id: compile
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo check -p rustok-marketplace-listing --all-targets 2>&1 | tee cargo-check.log
+      - name: Test listing owner atomicity
+        id: tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo test -p rustok-marketplace-listing 2>&1 | tee cargo-test.log
+      - name: Clippy listing crate
+        id: clippy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo clippy -p rustok-marketplace-listing --all-targets --no-deps -- -D warnings 2>&1 | tee cargo-clippy.log
+      - name: Verify listing owner boundaries
+        id: verify
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          {
+            node scripts/verify/verify-marketplace-listing-boundary.mjs
+            node scripts/verify/verify-marketplace-listing-event-contract.mjs
+          } 2>&1 | tee listing-verifiers.log
+      - name: Upload listing owner diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketplace-listing-owner-outbox-diagnostics
+          path: |
+            formatted/
+            rustfmt.patch
+            cargo-check.log
+            cargo-test.log
+            cargo-clippy.log
+            listing-verifiers.log
+          if-no-files-found: error
+          retention-days: 3
+      - name: Enforce listing owner gates
+        if: always()
+        run: |
+          failed=0
+          if test -s rustfmt.patch; then
+            echo "owner outbox Rust files are not rustfmt-clean"
+            failed=1
+          fi
+          if test "${{ steps.compile.outcome }}" != "success"; then
+            echo "listing crate compile failed"
+            failed=1
+          fi
+          if test "${{ steps.tests.outcome }}" != "success"; then
+            echo "listing crate tests failed"
+            failed=1
+          fi
+          if test "${{ steps.clippy.outcome }}" != "success"; then
+            echo "listing crate Clippy failed"
+            failed=1
+          fi
+          if test "${{ steps.verify.outcome }}" != "success"; then
+            echo "listing source verifiers failed"
+            failed=1
+          fi
+          exit "$failed"
