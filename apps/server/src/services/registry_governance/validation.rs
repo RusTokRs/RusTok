@@ -3,7 +3,7 @@ use rustok_modules::{
     ModulePublishValidationContract, ModuleRemoteValidationClaimCommand,
     ModuleRemoteValidationHeartbeatCommand, ModuleRemoteValidationTerminalCommand,
     ModuleRemoteValidationTerminalOutcome, ModuleValidationJobEnqueueCommand,
-    ModuleValidationStageReportCommand, SeaOrmModuleGovernanceService,
+    ModuleValidationStageReportCommand,
 };
 
 impl RegistryGovernanceService {
@@ -38,7 +38,8 @@ impl RegistryGovernanceService {
             _ => false,
         };
 
-        let result = SeaOrmModuleGovernanceService::new(self.db.clone())
+        let result = self
+            .publication_service()
             .enqueue_validation_job(ModuleValidationJobEnqueueCommand {
                 request_id: request.id.clone(),
                 actor_principal: authority.principal.to_json_value(),
@@ -90,7 +91,7 @@ impl RegistryGovernanceService {
             .map(ToString::to_string)
             .unwrap_or_else(|| default_validation_stage_detail(stage_key, &requested_status));
 
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.publication_service()
             .report_validation_stage(ModuleValidationStageReportCommand {
                 request_id: request.id.clone(),
                 stage_key: stage_key.to_string(),
@@ -119,7 +120,7 @@ impl RegistryGovernanceService {
         supported_stages: &[String],
         lease_ttl_ms: u64,
     ) -> anyhow::Result<Option<RegistryRemoteValidationClaim>> {
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.publication_service()
             .claim_remote_validation_stage(ModuleRemoteValidationClaimCommand {
                 runner_id: runner_id.to_string(),
                 supported_stages: supported_stages.to_vec(),
@@ -154,7 +155,7 @@ impl RegistryGovernanceService {
         runner_id: &str,
         lease_ttl_ms: u64,
     ) -> anyhow::Result<registry_validation_stage::Model> {
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.publication_service()
             .heartbeat_remote_validation_stage(ModuleRemoteValidationHeartbeatCommand {
                 claim_id: claim_id.to_string(),
                 runner_id: runner_id.to_string(),
@@ -173,7 +174,8 @@ impl RegistryGovernanceService {
         detail: Option<&str>,
         reason_code: Option<&str>,
     ) -> anyhow::Result<RegistryValidationStageMutationResult> {
-        let stage_id = SeaOrmModuleGovernanceService::new(self.db.clone())
+        let stage_id = self
+            .publication_service()
             .complete_remote_validation_stage(ModuleRemoteValidationTerminalCommand {
                 claim_id: claim_id.to_string(),
                 runner_id: runner_id.to_string(),
@@ -200,7 +202,8 @@ impl RegistryGovernanceService {
         detail: Option<&str>,
         reason_code: Option<&str>,
     ) -> anyhow::Result<RegistryValidationStageMutationResult> {
-        let stage_id = SeaOrmModuleGovernanceService::new(self.db.clone())
+        let stage_id = self
+            .publication_service()
             .complete_remote_validation_stage(ModuleRemoteValidationTerminalCommand {
                 claim_id: claim_id.to_string(),
                 runner_id: runner_id.to_string(),

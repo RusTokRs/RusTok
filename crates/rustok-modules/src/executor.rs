@@ -5,7 +5,8 @@ use thiserror::Error;
 
 use crate::{
     validate_module_toggle, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
-    ModuleOperationJournal, ModuleOperationRequest, ModuleToggleValidationError,
+    ModuleOperationJournal, ModuleOperationRecordOutcome, ModuleOperationRequest,
+    ModuleOperationSnapshot, ModuleOperationStatus, ModuleToggleValidationError,
     TenantModuleStateRecord, TenantModuleStateRequest, TenantModuleStateStore,
 };
 
@@ -15,6 +16,8 @@ pub struct ModuleLifecycleToggleRequest {
     pub module_slug: String,
     pub enabled: bool,
     pub requested_by: Option<String>,
+    pub correlation_id: Option<String>,
+    pub idempotency_key: Option<uuid::Uuid>,
     pub effective_enabled_modules: HashSet<String>,
     pub current_settings: serde_json::Value,
 }
@@ -35,6 +38,10 @@ pub enum ModuleLifecycleExecutionError {
     PreHook(String),
     #[error("module post-hook failed: {0}")]
     PostHook(String),
+    #[error("module lifecycle idempotency key must not be nil")]
+    InvalidIdempotencyKey,
+    #[error("module lifecycle idempotency key was reused for a different command")]
+    IdempotencyConflict,
 }
 
 pub async fn execute_module_toggle(
@@ -42,16 +49,38 @@ pub async fn execute_module_toggle(
     dispatcher: &ModuleExecutionDispatcher<'_>,
     request: ModuleLifecycleToggleRequest,
 ) -> Result<ModuleLifecycleToggleResult, ModuleLifecycleExecutionError> {
+    if request.idempotency_key == Some(uuid::Uuid::nil()) {
+        return Err(ModuleLifecycleExecutionError::InvalidIdempotencyKey);
+    }
+    let previous_effective_enabled = request
+        .effective_enabled_modules
+        .contains(request.module_slug.as_str());
+    let operation_request = ModuleOperationRequest {
+        tenant_id: request.tenant_id,
+        module_slug: request.module_slug.clone(),
+        requested_enabled: request.enabled,
+        previous_effective_enabled,
+        requested_by: request.requested_by.clone(),
+        correlation_id: request
+            .correlation_id
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        idempotency_key: request.idempotency_key,
+    };
+    if operation_request.idempotency_key.is_some() {
+        if let Some(existing) =
+            ModuleOperationJournal::replay_idempotent_command(db, &operation_request)
+                .await
+                .map_err(map_idempotency_store_error)?
+        {
+            return replay_lifecycle_operation(db, &operation_request, existing).await;
+        }
+    }
     validate_module_toggle(
         dispatcher.catalog(),
         &request.effective_enabled_modules,
         &request.module_slug,
         request.enabled,
     )?;
-    let previous_effective_enabled = request
-        .effective_enabled_modules
-        .contains(request.module_slug.as_str());
-
     if previous_effective_enabled == request.enabled {
         let state = TenantModuleStateStore::persist(
             db,
@@ -69,19 +98,29 @@ pub async fn execute_module_toggle(
         });
     }
 
-    let operation = ModuleOperationJournal::record(
-        db,
-        ModuleOperationRequest {
-            tenant_id: request.tenant_id,
-            module_slug: request.module_slug.clone(),
-            requested_enabled: request.enabled,
-            previous_effective_enabled,
-            requested_by: request.requested_by,
-            correlation_id: uuid::Uuid::new_v4().to_string(),
-        },
-    )
-    .await
-    .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
+    let operation = if operation_request.idempotency_key.is_some() {
+        match ModuleOperationJournal::record_idempotent(db, operation_request.clone())
+            .await
+            .map_err(map_idempotency_store_error)?
+        {
+            ModuleOperationRecordOutcome::Recorded(operation) => operation,
+            ModuleOperationRecordOutcome::Replayed(operation) => {
+                let existing = ModuleOperationJournal::find(db, operation.id)
+                    .await
+                    .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?
+                    .ok_or_else(|| {
+                        ModuleLifecycleExecutionError::Persistence(
+                            "idempotent lifecycle operation disappeared".to_string(),
+                        )
+                    })?;
+                return replay_lifecycle_operation(db, &operation_request, existing).await;
+            }
+        }
+    } else {
+        ModuleOperationJournal::record(db, operation_request)
+            .await
+            .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?
+    };
     ModuleOperationJournal::mark_running(db, operation.id)
         .await
         .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
@@ -176,6 +215,59 @@ pub async fn execute_module_toggle(
     })
 }
 
+fn map_idempotency_store_error(
+    error: crate::ModuleOperationStoreError,
+) -> ModuleLifecycleExecutionError {
+    match error {
+        crate::ModuleOperationStoreError::IdempotencyConflict => {
+            ModuleLifecycleExecutionError::IdempotencyConflict
+        }
+        error => ModuleLifecycleExecutionError::Persistence(error.to_string()),
+    }
+}
+
+async fn replay_lifecycle_operation(
+    db: &DatabaseConnection,
+    request: &ModuleOperationRequest,
+    operation: ModuleOperationSnapshot,
+) -> Result<ModuleLifecycleToggleResult, ModuleLifecycleExecutionError> {
+    match operation.status {
+        ModuleOperationStatus::Committed => {
+            let state = TenantModuleStateStore::read(db, request.tenant_id, &request.module_slug)
+                .await
+                .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?
+                .ok_or_else(|| {
+                    ModuleLifecycleExecutionError::Persistence(
+                        "committed lifecycle operation has no tenant state".to_string(),
+                    )
+                })?;
+            Ok(ModuleLifecycleToggleResult {
+                state,
+                operation_id: Some(operation.id),
+            })
+        }
+        ModuleOperationStatus::Failed => {
+            let message = operation
+                .error_message
+                .unwrap_or_else(|| "unknown failure".to_string());
+            if let Some(message) = message.strip_prefix("post-hook: ") {
+                Err(ModuleLifecycleExecutionError::PostHook(message.to_string()))
+            } else if let Some(message) = message.strip_prefix("state-commit: ") {
+                Err(ModuleLifecycleExecutionError::Persistence(
+                    message.to_string(),
+                ))
+            } else {
+                Err(ModuleLifecycleExecutionError::PreHook(message))
+            }
+        }
+        ModuleOperationStatus::Validated | ModuleOperationStatus::Running => {
+            Err(ModuleLifecycleExecutionError::Persistence(
+                "idempotent lifecycle operation is still in progress".to_string(),
+            ))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
@@ -229,6 +321,7 @@ mod tests {
                     status TEXT NOT NULL, \
                     requested_by TEXT, \
                     correlation_id TEXT, \
+                    idempotency_key TEXT, \
                     error_message TEXT, \
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
@@ -255,6 +348,8 @@ mod tests {
                 module_slug: "optional-test".to_string(),
                 enabled: true,
                 requested_by: Some("test".to_string()),
+                correlation_id: None,
+                idempotency_key: None,
                 effective_enabled_modules: HashSet::new(),
                 current_settings: serde_json::json!({}),
             },

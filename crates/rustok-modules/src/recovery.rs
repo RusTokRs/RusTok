@@ -5,8 +5,9 @@ use thiserror::Error;
 
 use crate::{
     ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationIssue,
-    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecoveryAction,
-    ModuleOperationRequest, ModuleOperationSnapshot, ModuleOperationStatus,
+    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecordOutcome,
+    ModuleOperationRecoveryAction, ModuleOperationRequest, ModuleOperationSnapshot,
+    ModuleOperationStatus,
 };
 
 /// Transport-neutral recovery view of a failed lifecycle operation.
@@ -72,6 +73,7 @@ impl ModuleOperationRecoveryPlan {
 pub struct ModulePostHookRetryRequest {
     pub operation_id: uuid::Uuid,
     pub requested_by: Option<String>,
+    pub idempotency_key: uuid::Uuid,
     pub effective_enabled_modules: HashSet<String>,
     pub current_settings: serde_json::Value,
 }
@@ -80,6 +82,10 @@ pub struct ModulePostHookRetryRequest {
 pub enum ModuleOperationRecoveryError {
     #[error("module operation not found")]
     OperationNotFound,
+    #[error("module operation idempotency key must not be nil")]
+    InvalidIdempotencyKey,
+    #[error("module operation idempotency key was reused for a different command")]
+    IdempotencyConflict,
     #[error("module operation is not retryable: {0}")]
     NotRetryable(String),
     #[error(
@@ -125,6 +131,7 @@ pub async fn failed_module_operation_recovery_plans(
 fn retry_operation_request(
     plan: &ModuleOperationRecoveryPlan,
     requested_by: Option<String>,
+    idempotency_key: uuid::Uuid,
 ) -> ModuleOperationRequest {
     ModuleOperationRequest {
         tenant_id: plan.tenant_id,
@@ -132,7 +139,8 @@ fn retry_operation_request(
         requested_enabled: plan.requested_enabled,
         previous_effective_enabled: plan.previous_effective_enabled,
         requested_by,
-        correlation_id: uuid::Uuid::new_v4().to_string(),
+        correlation_id: plan.operation_id.to_string(),
+        idempotency_key: Some(idempotency_key),
     }
 }
 
@@ -141,7 +149,23 @@ pub async fn retry_failed_post_hook_operation(
     dispatcher: &ModuleExecutionDispatcher<'_>,
     request: ModulePostHookRetryRequest,
 ) -> Result<ModuleOperationRecord, ModuleOperationRecoveryError> {
+    if request.idempotency_key.is_nil() {
+        return Err(ModuleOperationRecoveryError::InvalidIdempotencyKey);
+    }
     let plan = module_operation_recovery_plan(db, request.operation_id).await?;
+    let journal_request =
+        retry_operation_request(&plan, request.requested_by.clone(), request.idempotency_key);
+    if let Some(operation) = ModuleOperationJournal::replay_idempotent(db, &journal_request)
+        .await
+        .map_err(|error| match error {
+            crate::ModuleOperationStoreError::IdempotencyConflict => {
+                ModuleOperationRecoveryError::IdempotencyConflict
+            }
+            error => ModuleOperationRecoveryError::Persistence(error.to_string()),
+        })?
+    {
+        return Ok(operation);
+    }
     if !plan.retryable {
         return Err(ModuleOperationRecoveryError::NotRetryable(
             plan.issue.to_string(),
@@ -162,10 +186,17 @@ pub async fn retry_failed_post_hook_operation(
         });
     }
 
-    let operation =
-        ModuleOperationJournal::record(db, retry_operation_request(&plan, request.requested_by))
-            .await
-            .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+    let operation = match ModuleOperationJournal::record_idempotent(db, journal_request)
+        .await
+        .map_err(|error| match error {
+            crate::ModuleOperationStoreError::IdempotencyConflict => {
+                ModuleOperationRecoveryError::IdempotencyConflict
+            }
+            error => ModuleOperationRecoveryError::Persistence(error.to_string()),
+        })? {
+        ModuleOperationRecordOutcome::Recorded(operation) => operation,
+        ModuleOperationRecordOutcome::Replayed(operation) => return Ok(operation),
+    };
     ModuleOperationJournal::mark_running(db, operation.id)
         .await
         .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
@@ -214,6 +245,7 @@ mod tests {
             status: ModuleOperationStatus::Failed,
             requested_by: Some("operator".to_string()),
             correlation_id: Some(Uuid::new_v4().to_string()),
+            idempotency_key: None,
             error_message: error_message.map(str::to_string),
             created_at: Utc::now(),
         }
@@ -253,7 +285,8 @@ mod tests {
     #[test]
     fn retry_attempt_preserves_original_previous_state_for_compensation() {
         let plan = ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some("post-hook: timeout")));
-        let request = retry_operation_request(&plan, Some("retry-operator".to_string()));
+        let request =
+            retry_operation_request(&plan, Some("retry-operator".to_string()), Uuid::new_v4());
 
         assert_eq!(request.requested_enabled, plan.requested_enabled);
         assert_eq!(
@@ -264,5 +297,6 @@ mod tests {
             request.previous_effective_enabled,
             request.requested_enabled
         );
+        assert_eq!(request.correlation_id, plan.operation_id.to_string());
     }
 }

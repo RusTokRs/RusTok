@@ -1,11 +1,7 @@
-use rustok_core::ModuleRegistry;
-use rustok_modules::{ModuleDefinitionCatalog, ModuleEffectivePolicyQuery, TenantModuleOverride};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
-
-use crate::models::_entities::tenant_modules::{
-    Column as TenantModulesColumn, Entity as TenantModulesEntity,
-};
 use crate::services::platform_composition::{PlatformCompositionError, PlatformCompositionService};
+use rustok_core::ModuleRegistry;
+use rustok_modules::{ModuleControlPlane, ModuleLifecycleDbWriterError};
+use sea_orm::{DatabaseConnection, DbErr};
 
 pub struct EffectiveModulePolicyService;
 
@@ -16,23 +12,11 @@ impl EffectiveModulePolicyService {
         tenant_id: uuid::Uuid,
     ) -> Result<std::collections::HashSet<String>, PlatformCompositionError> {
         let manifest = PlatformCompositionService::active_manifest(db).await?;
-        let overrides = TenantModulesEntity::find()
-            .filter(TenantModulesColumn::TenantId.eq(tenant_id))
-            .all(db)
-            .await?;
-
-        let catalog = ModuleDefinitionCatalog::from_static_registry(registry)
-            .map_err(PlatformCompositionError::Definition)?;
-        Ok(ModuleEffectivePolicyQuery::new(
-            &catalog,
-            manifest.settings.default_enabled,
-            overrides.into_iter().map(|module| TenantModuleOverride {
-                module_slug: module.module_slug,
-                enabled: module.enabled,
-            }),
-        )
-        .execute()
-        .into_enabled_modules())
+        ModuleControlPlane::new(db.clone())
+            .effective_policy(registry, manifest.settings.default_enabled)
+            .resolve_enabled(tenant_id)
+            .await
+            .map_err(map_effective_policy_error)
     }
 
     pub async fn list_enabled(
@@ -57,5 +41,17 @@ impl EffectiveModulePolicyService {
         Ok(Self::resolve_enabled(db, registry, tenant_id)
             .await?
             .contains(module_slug))
+    }
+}
+
+fn map_effective_policy_error(error: ModuleLifecycleDbWriterError) -> PlatformCompositionError {
+    match error {
+        ModuleLifecycleDbWriterError::Definition(error) => {
+            PlatformCompositionError::Definition(error)
+        }
+        ModuleLifecycleDbWriterError::Database(error) => {
+            PlatformCompositionError::Database(DbErr::Custom(error))
+        }
+        error => PlatformCompositionError::EffectivePolicy(error.to_string()),
     }
 }

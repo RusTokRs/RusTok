@@ -59,6 +59,64 @@ impl ArtifactBindingExecutionContext {
     }
 }
 
+/// The only artifact runtime dispatch envelope supported by the v1 module
+/// control plane. The host owns every field except `payload`; artifacts cannot
+/// select a binding, execution phase, or installation through their input.
+pub const ARTIFACT_BINDING_DISPATCH_ENVELOPE_VERSION: u32 = 1;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactBindingDispatchEnvelope {
+    pub dispatch_version: u32,
+    pub binding_id: String,
+    pub binding_kind: ModuleRuntimeBindingKind,
+    pub phase: ExecutionPhase,
+    pub payload: serde_json::Value,
+}
+
+impl ArtifactBindingDispatchEnvelope {
+    pub fn new(
+        binding: &ModuleRuntimeBinding,
+        phase: ExecutionPhase,
+        payload: serde_json::Value,
+    ) -> Self {
+        Self {
+            dispatch_version: ARTIFACT_BINDING_DISPATCH_ENVELOPE_VERSION,
+            binding_id: binding.id.clone(),
+            binding_kind: binding.kind.clone(),
+            phase,
+            payload,
+        }
+    }
+
+    pub fn validate_for(
+        &self,
+        binding: &ModuleRuntimeBinding,
+        phase: ExecutionPhase,
+    ) -> Result<(), ArtifactBindingDispatchEnvelopeError> {
+        if self.dispatch_version != ARTIFACT_BINDING_DISPATCH_ENVELOPE_VERSION {
+            return Err(ArtifactBindingDispatchEnvelopeError::UnsupportedVersion);
+        }
+        if self.binding_id != binding.id || self.binding_kind != binding.kind {
+            return Err(ArtifactBindingDispatchEnvelopeError::BindingMismatch);
+        }
+        if self.phase != phase {
+            return Err(ArtifactBindingDispatchEnvelopeError::PhaseMismatch);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ArtifactBindingDispatchEnvelopeError {
+    #[error("artifact binding dispatch envelope has an unsupported version")]
+    UnsupportedVersion,
+    #[error("artifact binding dispatch envelope does not match the admitted binding")]
+    BindingMismatch,
+    #[error("artifact binding dispatch envelope does not match the execution phase")]
+    PhaseMismatch,
+}
+
 impl<'a> ModuleExecutionDispatcher<'a> {
     pub fn new(catalog: &'a ModuleDefinitionCatalog, static_registry: &'a ModuleRegistry) -> Self {
         Self {

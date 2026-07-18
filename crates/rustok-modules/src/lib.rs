@@ -8,6 +8,7 @@ mod build;
 mod build_surface;
 mod composition;
 mod contracts;
+mod control_plane;
 mod data;
 mod definition;
 mod dependency;
@@ -88,18 +89,22 @@ pub use contracts::{
     ControlPlaneRevision, ModuleCommandContext, ModuleControlPlaneError,
     ModuleControlPlaneSnapshot, ModuleErrorCode, ModuleSnapshotKind, RevisionedModuleCommand,
 };
+pub use control_plane::{EffectivePolicyService, ModuleControlPlane};
 pub use data::{
     validate_artifact_data_key, validate_artifact_data_prefix, ArtifactBindingDataUpgradeHook,
     ArtifactDataAccess, ArtifactDataAuthorizer, ArtifactDataBatchWrite, ArtifactDataBroker,
-    ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactDataPage,
-    ArtifactDataPageRequest, ArtifactDataPurgeAuthorizer, ArtifactDataPurgeRequest,
-    ArtifactDataPurgeResult, ArtifactDataRecord, ArtifactDataSchemaValidator, ArtifactDataScope,
-    ArtifactDataUpgradeApplier, ArtifactDataUpgradeApplyRequest, ArtifactDataUpgradeApplyResult,
-    ArtifactDataUpgradeHook, ArtifactDataUpgradeInput, ArtifactDataUpgradePlan,
-    ArtifactDataUpgradePlanner, ArtifactDataUpgradeRecord, ArtifactDataUpgradeRequest,
-    ArtifactDataWrite, SeaOrmArtifactDataBroker, SeaOrmArtifactDataCapabilityBroker,
-    SeaOrmArtifactDataCapabilityBrokerResolver, SeaOrmArtifactDataPurgeService,
-    SeaOrmArtifactDataSchemaValidator,
+    ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactDataObject,
+    ArtifactDataObjectBroker, ArtifactDataObjectContent, ArtifactDataObjectPage,
+    ArtifactDataObjectUpload, ArtifactDataPage, ArtifactDataPageRequest,
+    ArtifactDataPurgeAuthorizer, ArtifactDataPurgeRequest, ArtifactDataPurgeResult,
+    ArtifactDataRecord, ArtifactDataSchemaValidator, ArtifactDataScope, ArtifactDataUpgradeApplier,
+    ArtifactDataUpgradeApplyRequest, ArtifactDataUpgradeApplyResult, ArtifactDataUpgradeHook,
+    ArtifactDataUpgradeInput, ArtifactDataUpgradePlan, ArtifactDataUpgradePlanner,
+    ArtifactDataUpgradeRecord, ArtifactDataUpgradeRequest, ArtifactDataWrite,
+    SeaOrmArtifactDataBroker, SeaOrmArtifactDataCapabilityBroker,
+    SeaOrmArtifactDataCapabilityBrokerResolver, SeaOrmArtifactDataObjectBroker,
+    SeaOrmArtifactDataObjectCapabilityBroker, SeaOrmArtifactDataObjectCapabilityBrokerResolver,
+    SeaOrmArtifactDataPurgeService, SeaOrmArtifactDataSchemaValidator,
 };
 pub use definition::{
     ModuleDefinition, ModuleDefinitionCatalog, ModuleDefinitionError, ModuleDefinitionKind,
@@ -111,9 +116,10 @@ pub use dependency::{
 pub use dispatcher::{
     dispatch_artifact_command_binding, dispatch_artifact_http_binding,
     find_artifact_command_binding, find_artifact_http_binding, ArtifactBindingDispatch,
+    ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
     ArtifactBindingExecutionContext, ArtifactBindingExecutor, ArtifactInstallationTarget,
     ArtifactLifecycleExecutor, ModuleDispatchError, ModuleExecutionDispatcher,
-    ModuleLifecycleHookPhase,
+    ModuleLifecycleHookPhase, ARTIFACT_BINDING_DISPATCH_ENVELOPE_VERSION,
 };
 pub use event_delivery::{
     ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig, ArtifactEventDeliveryError,
@@ -187,9 +193,10 @@ pub use oci::{
     OCI_EMPTY_CONFIG_MEDIA_TYPE,
 };
 pub use operation_store::{
-    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRequest, ModuleOperationSnapshot,
-    ModuleOperationStoreError, TenantModuleSettingsRecord, TenantModuleSettingsRequest,
-    TenantModuleStateRecord, TenantModuleStateRequest, TenantModuleStateStore,
+    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecordOutcome,
+    ModuleOperationRequest, ModuleOperationSnapshot, ModuleOperationStoreError,
+    TenantModuleSettingsRecord, TenantModuleSettingsRequest, TenantModuleStateRecord,
+    TenantModuleStateRequest, TenantModuleStateStore,
 };
 pub use policy::{
     validate_module_toggle, ModuleEffectivePolicy, ModuleEffectivePolicyQuery,
@@ -240,17 +247,18 @@ pub use settings::{
     ModuleSettingsValidationError,
 };
 pub use static_package::{
-    is_valid_static_module_slug, resolve_static_module_ui_classification,
-    static_module_platform_version_is_compatible, validate_static_module_catalog_contract,
-    validate_static_module_http_provides_contract, validate_static_module_package_contract,
-    validate_static_module_registry_contracts, validate_static_module_topology_contract,
-    validate_static_module_ui_i18n_contract, StaticModuleCatalogContract,
-    StaticModuleCatalogValidationError, StaticModuleHttpProvidesContract,
-    StaticModuleHttpProvidesValidationError, StaticModulePackageContract,
-    StaticModulePackageValidationError, StaticModulePlatformVersionError,
-    StaticModuleTopologyContract, StaticModuleTopologyModule, StaticModuleTopologyValidationError,
-    StaticModuleUiClassificationError, StaticModuleUiI18nContract, StaticModuleUiI18nResolved,
-    StaticModuleUiI18nValidationError,
+    is_valid_static_module_slug, resolve_static_module_entrypoints,
+    resolve_static_module_ui_classification, static_module_platform_version_is_compatible,
+    validate_static_module_catalog_contract, validate_static_module_http_provides_contract,
+    validate_static_module_package_contract, validate_static_module_registry_contracts,
+    validate_static_module_topology_contract, validate_static_module_ui_i18n_contract,
+    StaticModuleCatalogContract, StaticModuleCatalogValidationError,
+    StaticModuleEntrypointContract, StaticModuleEntrypointValidationError, StaticModuleEntrypoints,
+    StaticModuleHttpProvidesContract, StaticModuleHttpProvidesValidationError,
+    StaticModulePackageContract, StaticModulePackageValidationError,
+    StaticModulePlatformVersionError, StaticModuleTopologyContract, StaticModuleTopologyModule,
+    StaticModuleTopologyValidationError, StaticModuleUiClassificationError,
+    StaticModuleUiI18nContract, StaticModuleUiI18nResolved, StaticModuleUiI18nValidationError,
 };
 pub use trust::{
     TrustPolicyRevision, TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,

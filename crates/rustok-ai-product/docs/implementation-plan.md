@@ -60,9 +60,11 @@ rather than an implicit AI write.
    creates the product-owned principals and capability-compatible model
    assignments, validates both owner inputs, and proves the durable approval,
    lease, dependency-promotion, and completion lifecycle for
-   `product_enrichment`. The canonical `product_copy` and
-   `product_attributes` direct handlers remain covered separately by their
-   composed runtime tests; no product-specific executor exists in `rustok-ai`.
+   `product_enrichment`. Its `attributes` stage executes through the canonical
+   task runner and registered `product_attributes` direct handler with a
+   deterministic test provider, while the `copy` handler retains its separate
+   owner-persistence runtime evidence. No product-specific executor exists in
+   `rustok-ai`.
 
 ## Host-composed adapter controls
 

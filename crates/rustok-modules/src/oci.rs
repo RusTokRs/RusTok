@@ -41,6 +41,9 @@ pub const OCI_EMPTY_CONFIG_MEDIA_TYPE: &str = "application/vnd.oci.empty.v1+json
 const OCI_EMPTY_CONFIG_BYTES: &[u8] = b"{}";
 const OCI_REGISTRY_MAX_CONCURRENT_REQUESTS: usize = 1;
 const OCI_REGISTRY_ADMISSION_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+/// Leaves bounded time for the worker's subsequent Cosign invocation within
+/// its deployment-owned fifteen-minute credential lease.
+const OCI_REGISTRY_PUBLICATION_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 /// Removes a private OCI staging file if its producer returns an error or is
 /// cancelled, including by the outer admission deadline.
@@ -293,63 +296,72 @@ impl OciArtifactPublisher for OciDistributionArtifactPublisher {
         bundle: OciArtifactPublicationBundle,
         limits: ArtifactAdmissionLimits,
     ) -> Result<OciArtifactPublicationReceipt, OciArtifactPublicationError> {
-        target.validate()?;
-        bundle.validate(limits)?;
-        let descriptor_bytes = serde_json::to_vec(&bundle.descriptor)
-            .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
-        let primary_tag = derived_tag("artifact", &[&sha256_digest(&descriptor_bytes)]);
-        let primary_write_reference = target.tag_reference(primary_tag);
-        let layer = ImageLayer::new(
-            bundle.payload,
-            bundle
-                .descriptor
-                .payload_kind
-                .oci_layer_media_type()
-                .to_string(),
-            None,
-        );
-        let config = Config::new(
-            descriptor_bytes,
-            MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE.to_string(),
-            None,
-        );
-        let mut manifest = OciImageManifest::build(&[layer.clone()], &config, None);
-        manifest.media_type = Some(OCI_IMAGE_MEDIA_TYPE.to_string());
-        manifest.artifact_type = Some(layer.media_type.clone());
-        self.client
-            .push(
-                &primary_write_reference,
-                &[layer],
-                config,
-                &self.auth,
-                Some(manifest),
-            )
+        let publication = async {
+            target.validate()?;
+            bundle.validate(limits)?;
+            let descriptor_bytes = serde_json::to_vec(&bundle.descriptor)
+                .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
+            let primary_tag = derived_tag("artifact", &[&sha256_digest(&descriptor_bytes)]);
+            let primary_write_reference = target.tag_reference(primary_tag);
+            let layer = ImageLayer::new(
+                bundle.payload,
+                bundle
+                    .descriptor
+                    .payload_kind
+                    .oci_layer_media_type()
+                    .to_string(),
+                None,
+            );
+            let config = Config::new(
+                descriptor_bytes,
+                MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE.to_string(),
+                None,
+            );
+            let mut manifest = OciImageManifest::build(&[layer.clone()], &config, None);
+            manifest.media_type = Some(OCI_IMAGE_MEDIA_TYPE.to_string());
+            manifest.artifact_type = Some(layer.media_type.clone());
+            self.client
+                .push(
+                    &primary_write_reference,
+                    &[layer],
+                    config,
+                    &self.auth,
+                    Some(manifest),
+                )
+                .await
+                .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
+            let artifact = self
+                .resolve_published_reference(&target, &primary_write_reference)
+                .await?;
+            let sbom_referrer = self
+                .publish_referrer(
+                    &target,
+                    &artifact,
+                    OciArtifactEvidenceKind::Sbom,
+                    bundle.sbom,
+                )
+                .await?;
+            let provenance_referrer = self
+                .publish_referrer(
+                    &target,
+                    &artifact,
+                    OciArtifactEvidenceKind::Provenance,
+                    bundle.provenance,
+                )
+                .await?;
+            Ok(OciArtifactPublicationReceipt {
+                artifact,
+                sbom_referrer,
+                provenance_referrer,
+            })
+        };
+        tokio::time::timeout(OCI_REGISTRY_PUBLICATION_TIMEOUT, publication)
             .await
-            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
-        let artifact = self
-            .resolve_published_reference(&target, &primary_write_reference)
-            .await?;
-        let sbom_referrer = self
-            .publish_referrer(
-                &target,
-                &artifact,
-                OciArtifactEvidenceKind::Sbom,
-                bundle.sbom,
-            )
-            .await?;
-        let provenance_referrer = self
-            .publish_referrer(
-                &target,
-                &artifact,
-                OciArtifactEvidenceKind::Provenance,
-                bundle.provenance,
-            )
-            .await?;
-        Ok(OciArtifactPublicationReceipt {
-            artifact,
-            sbom_referrer,
-            provenance_referrer,
-        })
+            .map_err(|_| {
+                OciArtifactPublicationError::Registry(
+                    "OCI artifact publication exceeded the 600 second deadline".to_string(),
+                )
+            })?
     }
 }
 

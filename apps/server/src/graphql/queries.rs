@@ -483,6 +483,11 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
         ModuleOperationRecoveryError::OperationNotFound => {
             <FieldError as GraphQLError>::bad_user_input("Module operation not found")
         }
+        ModuleOperationRecoveryError::InvalidIdempotencyKey => {
+            <FieldError as GraphQLError>::bad_user_input(
+                "Module operation idempotency key is invalid",
+            )
+        }
         ModuleOperationRecoveryError::NotRetryable(reason) => {
             FieldError::new(format!("Module operation is not retryable: {reason}"))
                 .extend_with(|_, ext| {
@@ -508,6 +513,13 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
                     ext.set("operation_issue", "post_hook_failed");
                 })
         }
+        ModuleOperationRecoveryError::IdempotencyConflict => FieldError::new(
+            "Module operation idempotency key was reused for a different command",
+        )
+        .extend_with(|_, ext| {
+            ext.set("code", "IDEMPOTENCY_CONFLICT");
+            ext.set("retryable_issue", false);
+        }),
         ModuleOperationRecoveryError::Database(err) => {
             <FieldError as GraphQLError>::internal_error(&err.to_string())
         }

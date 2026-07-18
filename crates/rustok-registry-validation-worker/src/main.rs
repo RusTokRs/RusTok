@@ -1,5 +1,6 @@
 use std::{env, time::Duration};
 
+use rustok_modules::ModuleControlPlane;
 use rustok_registry_validation_worker::RegistryValidationWorker;
 use rustok_storage::{StorageConfig, StorageService};
 use sea_orm::{ConnectOptions, Database};
@@ -23,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database = Database::connect(options).await?;
     let storage = StorageService::from_config(&storage_config).await?;
     let worker = RegistryValidationWorker::new(
-        rustok_modules::SeaOrmModuleGovernanceService::new(database),
+        ModuleControlPlane::new(database).publication(),
         storage,
         actor_id,
     )?;

@@ -21,6 +21,9 @@ mod m20260717_000020_artifact_schedule_cursors;
 mod m20260717_000021_artifact_sandbox_policies;
 mod m20260717_000022_artifact_execution_audit_installation_identity;
 mod m20260717_000023_artifact_binding_operations;
+mod m20260718_000024_artifact_rollback_idempotency_fingerprint;
+mod m20260718_000025_artifact_data_objects;
+mod m20260718_000026_artifact_data_object_operations;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -49,5 +52,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260717_000021_artifact_sandbox_policies::Migration),
         Box::new(m20260717_000022_artifact_execution_audit_installation_identity::Migration),
         Box::new(m20260717_000023_artifact_binding_operations::Migration),
+        Box::new(m20260718_000024_artifact_rollback_idempotency_fingerprint::Migration),
+        Box::new(m20260718_000025_artifact_data_objects::Migration),
+        Box::new(m20260718_000026_artifact_data_object_operations::Migration),
     ]
 }

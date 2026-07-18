@@ -1,13 +1,13 @@
 # Documentation `rustok-media`
 
-`rustok-media` is the domain module for media asset management on the platform. It
-holds upload and storage metadata, translations and a modular admin surface,
-relying on `rustok-storage` as the physical storage layer.
+`rustok-media` is the domain facade and metadata index for media asset
+management on the platform. It handles images, video and PDF assets while
+relying on `rustok-storage` as the physical binary/object owner.
 
 ## Purpose
 
 - publish the canonical runtime media contract for upload, list, delete and translation scenarios;
-- keep media metadata, validation and transport surfaces inside the module;
+- keep media metadata, classification, validation and transport surfaces inside the module;
 - provide a platform media capability without diluting domain logic across the host layer.
 
 ## Scope
@@ -29,7 +29,8 @@ relying on `rustok-storage` as the physical storage layer.
 
 ## Integration
 
-- uses `rustok-storage` as the backend storage contract;
+- uses `rustok-storage` as the physical backend storage contract; media records
+  keep object references and media metadata, not backend ownership;
 - `apps/server` remains the composition root and wiring layer for media routes/graphql;
 - runtime guard relies on tenant-scoped module enablement for public surfaces;
 - upload remains REST-owned, GraphQL is preserved for read/mutation flows without multipart extension, and the Leptos admin adapter calls the transport facade instead of the raw API module; the transport facade inside the admin package splits native server functions, the GraphQL selected path and REST upload adapters, while upload/detail presentation state remains in Leptos-free `admin/src/core.rs`;

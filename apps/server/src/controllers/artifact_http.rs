@@ -12,8 +12,8 @@ use rustok_modules::{
     dispatch_artifact_http_binding, find_artifact_command_binding, find_artifact_http_binding,
     ArtifactBindingExecutionContext, ArtifactBindingIdempotencyClaim,
     ArtifactBindingIdempotencyError, ArtifactBindingIdempotencyRequest, ArtifactInstallationTarget,
-    InstalledModuleArtifact, ModuleBindingIdempotency, ModuleDispatchError, ModuleHttpMethod,
-    ModuleRuntimeBinding, SeaOrmArtifactBindingIdempotencyStore, SeaOrmArtifactInstallationStore,
+    InstalledModuleArtifact, ModuleBindingIdempotency, ModuleControlPlane, ModuleDispatchError,
+    ModuleHttpMethod, ModuleRuntimeBinding, SeaOrmArtifactBindingIdempotencyStore,
     SharedArtifactBindingExecutor,
 };
 use rustok_rbac::SeaOrmArtifactPermissionAuthorizer;
@@ -122,7 +122,8 @@ async fn resolve_installation(
     installation_id: Uuid,
     tenant_id: Uuid,
 ) -> Result<InstalledModuleArtifact> {
-    SeaOrmArtifactInstallationStore::new(ctx.db_clone())
+    ModuleControlPlane::new(ctx.db_clone())
+        .installation()
         .resolve_routed_installation(installation_id, tenant_id)
         .await
         .map_err(|_| Error::NotFound)

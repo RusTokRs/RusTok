@@ -24,6 +24,7 @@ use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::error::{http_error, Error};
 use crate::modules::{CatalogManifestModule, ManifestManager, ModulesManifest};
@@ -970,7 +971,8 @@ async fn report_validation_stage(
     path = "/v2/catalog/publish/{request_id}/approve",
     tag = "marketplace",
     params(
-        ("request_id" = String, Path, description = "Registry publish request identifier")
+        ("request_id" = String, Path, description = "Registry publish request identifier"),
+        ("Idempotency-Key" = String, Header, description = "Required non-nil UUID for final approval; not required for dry-run previews")
     ),
     request_body = RegistryPublishDecisionRequest,
     responses(
@@ -1055,10 +1057,12 @@ async fn approve_publish_request(
         ));
     }
 
+    let idempotency_key = required_non_nil_idempotency_key(&headers)?;
     let approved = RegistryGovernanceService::new(ctx.db_clone())
         .approve_publish_request(
             &request_id,
             &authority,
+            idempotency_key,
             request.reason.as_deref(),
             request.reason_code.as_deref(),
         )
@@ -2965,7 +2969,9 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         | ModuleGovernanceError::InvalidValidationStageTransition { .. }
         | ModuleGovernanceError::PublishRequestInvalidHeldFromStatus
         | ModuleGovernanceError::PlatformBuildStageIdempotencyConflict
-        | ModuleGovernanceError::ExternalPrebuiltStageIdempotencyConflict => http_error(
+        | ModuleGovernanceError::ExternalPrebuiltStageIdempotencyConflict
+        | ModuleGovernanceError::PublicationIdempotencyConflict
+        | ModuleGovernanceError::PublishedRequestMissingIdempotencyRecord => http_error(
             HttpError::new(StatusCode::CONFLICT, "conflict", error.to_string()),
         ),
     }
@@ -2992,6 +2998,24 @@ fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) 
             Error::InternalServerError
         }
     }
+}
+
+fn required_non_nil_idempotency_key(headers: &HeaderMap) -> Result<Uuid, Error> {
+    let value = headers
+        .get("idempotency-key")
+        .ok_or_else(|| Error::BadRequest("Idempotency-Key header is required".to_string()))?
+        .to_str()
+        .map_err(|_| Error::BadRequest("Idempotency-Key header is invalid".to_string()))?;
+    let key = value
+        .trim()
+        .parse::<Uuid>()
+        .map_err(|_| Error::BadRequest("Idempotency-Key header must be a UUID".to_string()))?;
+    if key.is_nil() {
+        return Err(Error::BadRequest(
+            "Idempotency-Key header must not be the nil UUID".to_string(),
+        ));
+    }
+    Ok(key)
 }
 
 fn validate_registry_slug(slug: &str) -> Result<(), Error> {

@@ -309,63 +309,57 @@ pub fn merge_module_package_manifest(
     {
         spec.ui_classification = Some(ui_classification.to_string());
     }
-    if let Some(entry_type) = qualify_module_type_path(
-        &crate_name,
-        package_manifest.crate_contract.entry_type.as_deref(),
-    ) {
-        spec.entry_type = Some(entry_type);
-    }
-    if let Some(graphql) = package_manifest.provides.graphql {
-        if let Some(query_type) = qualify_module_type_path(&crate_name, graphql.query.as_deref()) {
-            spec.graphql_query_type = Some(query_type);
-        }
-        if let Some(mutation_type) =
-            qualify_module_type_path(&crate_name, graphql.mutation.as_deref())
-        {
-            spec.graphql_mutation_type = Some(mutation_type);
-        }
-    }
-    if let Some(http) = package_manifest.provides.http {
-        rustok_modules::validate_static_module_http_provides_contract(
-            rustok_modules::StaticModuleHttpProvidesContract {
-                has_routes: http.routes.is_some(),
-                has_axum_router: http.axum_router.is_some(),
-                has_webhook_routes: http.webhook_routes.is_some(),
-                has_axum_webhook_router: http.axum_webhook_router.is_some(),
-            },
-        )
-        .map_err(|error| {
-            let reason = match error {
+    let graphql = package_manifest.provides.graphql.as_ref();
+    let http = package_manifest.provides.http.as_ref();
+    let entrypoints = rustok_modules::resolve_static_module_entrypoints(
+        rustok_modules::StaticModuleEntrypointContract {
+            crate_name: crate_name.clone(),
+            entry_type: package_manifest.crate_contract.entry_type.clone(),
+            graphql_query_type: graphql.and_then(|value| value.query.clone()),
+            graphql_mutation_type: graphql.and_then(|value| value.mutation.clone()),
+            http_routes_fn: http.and_then(|value| value.routes.clone()),
+            http_axum_router_fn: http.and_then(|value| value.axum_router.clone()),
+            http_webhook_routes_fn: http.and_then(|value| value.webhook_routes.clone()),
+            http_axum_webhook_router_fn: http
+                .and_then(|value| value.axum_webhook_router.clone()),
+        },
+    )
+    .map_err(|error| {
+        let reason = match error {
+            rustok_modules::StaticModuleEntrypointValidationError::Http(error) => match error {
                 rustok_modules::StaticModuleHttpProvidesValidationError::RoutesAndAxumRouter => {
                     "[provides.http] cannot declare both routes and axum_router"
                 }
                 rustok_modules::StaticModuleHttpProvidesValidationError::WebhookRoutesAndAxumWebhookRouter => {
                     "[provides.http] cannot declare both webhook_routes and axum_webhook_router"
                 }
-            };
-            ManifestError::InvalidModuleHttpWiring {
-                slug: module_slug.clone(),
-                reason: reason.to_string(),
-            }
-        })?;
-        if let Some(routes_fn) = qualify_module_member_path(&crate_name, http.routes.as_deref()) {
-            spec.http_routes_fn = Some(routes_fn);
+            },
+        };
+        ManifestError::InvalidModuleHttpWiring {
+            slug: module_slug.clone(),
+            reason: reason.to_string(),
         }
-        if let Some(axum_router_fn) =
-            qualify_module_member_path(&crate_name, http.axum_router.as_deref())
-        {
-            spec.http_axum_router_fn = Some(axum_router_fn);
-        }
-        if let Some(axum_webhook_router_fn) =
-            qualify_module_member_path(&crate_name, http.axum_webhook_router.as_deref())
-        {
-            spec.http_axum_webhook_router_fn = Some(axum_webhook_router_fn);
-        }
-        if let Some(webhook_routes_fn) =
-            qualify_module_member_path(&crate_name, http.webhook_routes.as_deref())
-        {
-            spec.http_webhook_routes_fn = Some(webhook_routes_fn);
-        }
+    })?;
+    if entrypoints.entry_type.is_some() {
+        spec.entry_type = entrypoints.entry_type;
+    }
+    if entrypoints.graphql_query_type.is_some() {
+        spec.graphql_query_type = entrypoints.graphql_query_type;
+    }
+    if entrypoints.graphql_mutation_type.is_some() {
+        spec.graphql_mutation_type = entrypoints.graphql_mutation_type;
+    }
+    if entrypoints.http_routes_fn.is_some() {
+        spec.http_routes_fn = entrypoints.http_routes_fn;
+    }
+    if entrypoints.http_axum_router_fn.is_some() {
+        spec.http_axum_router_fn = entrypoints.http_axum_router_fn;
+    }
+    if entrypoints.http_webhook_routes_fn.is_some() {
+        spec.http_webhook_routes_fn = entrypoints.http_webhook_routes_fn;
+    }
+    if entrypoints.http_axum_webhook_router_fn.is_some() {
+        spec.http_axum_webhook_router_fn = entrypoints.http_axum_webhook_router_fn;
     }
     if !metadata.recommended_admin_surfaces.is_empty() {
         spec.recommended_admin_surfaces = metadata.recommended_admin_surfaces;
@@ -404,21 +398,6 @@ pub fn merge_module_package_manifest(
     spec.conflicts_with.dedup();
 
     Ok(spec)
-}
-
-pub fn qualify_module_type_path(crate_name: &str, value: Option<&str>) -> Option<String> {
-    let value = value?.trim();
-    if value.is_empty() {
-        return None;
-    }
-
-    let crate_ident = crate_name.replace('-', "_");
-    let relative = value.strip_prefix("crate::").unwrap_or(value);
-    Some(format!("{crate_ident}::{relative}"))
-}
-
-pub fn qualify_module_member_path(crate_name: &str, value: Option<&str>) -> Option<String> {
-    qualify_module_type_path(crate_name, value)
 }
 
 pub fn module_setting_shape_value(spec: &ModuleSettingSpec) -> Option<serde_json::Value> {
@@ -1201,87 +1180,28 @@ pub fn resolve_module_specs(
 }
 
 pub fn validate_build_surfaces(manifest: &ModulesManifest) -> Result<(), ManifestError> {
-    if !manifest.build.server.embed_admin && !manifest.build.admin.stack.trim().is_empty() {
-        if manifest.build.admin.public_url.trim().is_empty() {
-            return Err(ManifestError::InvalidBuildSurface(
-                "Standalone admin requires build.admin.public_url".to_string(),
-            ));
-        }
-
-        if manifest.build.admin.redirect_uris.is_empty() {
-            return Err(ManifestError::InvalidBuildSurface(
-                "Standalone admin requires at least one build.admin.redirect_uris entry"
-                    .to_string(),
-            ));
-        }
-
-        validate_urls(
-            &manifest.build.admin.redirect_uris,
-            "build.admin.redirect_uris",
-        )?;
-        validate_url(&manifest.build.admin.public_url, "build.admin.public_url")?;
-    }
-
-    let mut storefront_ids = HashSet::new();
-    for storefront in &manifest.build.storefront {
-        if storefront.id.trim().is_empty() {
-            return Err(ManifestError::InvalidBuildSurface(
-                "Each build.storefront entry requires a non-empty id".to_string(),
-            ));
-        }
-
-        if !storefront_ids.insert(storefront.id.clone()) {
-            return Err(ManifestError::InvalidBuildSurface(format!(
-                "Duplicate storefront id '{}'",
-                storefront.id
-            )));
-        }
-
-        let is_standalone = !manifest.build.server.embed_storefront || storefront.stack == "next";
-        if !is_standalone {
-            continue;
-        }
-
-        if storefront.public_url.trim().is_empty() {
-            return Err(ManifestError::InvalidBuildSurface(format!(
-                "Standalone storefront '{}' requires public_url",
-                storefront.id
-            )));
-        }
-
-        if storefront.redirect_uris.is_empty() {
-            return Err(ManifestError::InvalidBuildSurface(format!(
-                "Standalone storefront '{}' requires at least one redirect_uri",
-                storefront.id
-            )));
-        }
-
-        validate_url(
-            &storefront.public_url,
-            &format!("build.storefront[{}].public_url", storefront.id),
-        )?;
-        validate_urls(
-            &storefront.redirect_uris,
-            &format!("build.storefront[{}].redirect_uris", storefront.id),
-        )?;
-    }
-
-    Ok(())
-}
-
-pub fn validate_urls(urls: &[String], field: &str) -> Result<(), ManifestError> {
-    for value in urls {
-        validate_url(value, field)?;
-    }
-
-    Ok(())
-}
-
-pub fn validate_url(value: &str, field: &str) -> Result<(), ManifestError> {
-    reqwest::Url::parse(value).map_err(|error| {
-        ManifestError::InvalidBuildSurface(format!(
-            "{field} contains invalid URL '{value}': {error}"
-        ))
-    })?;
-    Ok(())
+    let contract = rustok_modules::PlatformBuildSurfaceContract {
+        embed_admin: manifest.build.server.embed_admin,
+        embed_storefront: manifest.build.server.embed_storefront,
+        admin: rustok_modules::PlatformAdminBuildSurfaceContract {
+            stack: manifest.build.admin.stack.clone(),
+            public_url: manifest.build.admin.public_url.clone(),
+            redirect_uris: manifest.build.admin.redirect_uris.clone(),
+        },
+        storefronts: manifest
+            .build
+            .storefront
+            .iter()
+            .map(
+                |storefront| rustok_modules::PlatformStorefrontBuildSurfaceContract {
+                    id: storefront.id.clone(),
+                    stack: storefront.stack.clone(),
+                    public_url: storefront.public_url.clone(),
+                    redirect_uris: storefront.redirect_uris.clone(),
+                },
+            )
+            .collect(),
+    };
+    rustok_modules::validate_platform_build_surface_contract(&contract)
+        .map_err(|error| ManifestError::InvalidBuildSurface(error.to_string()))
 }

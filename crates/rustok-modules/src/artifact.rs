@@ -20,6 +20,7 @@ pub const MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION: u32 = 4;
 const MAX_SCHEMA_DOCUMENTS: usize = 32;
 const MAX_SCHEMA_DOCUMENT_BYTES: usize = 64 * 1024;
 const JSON_SCHEMA_DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
+const ARTIFACT_UI_CONTRIBUTION_SURFACES: &[&str] = &["admin_settings", "admin_actions"];
 
 /// Stable OCI layer media type for immutable Rhai source artifacts.
 pub const MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
@@ -102,6 +103,7 @@ pub struct ArtifactSourceLineage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModuleArtifactDescriptor {
     pub schema_version: u32,
     pub slug: String,
@@ -135,12 +137,14 @@ pub struct ModuleArtifactDescriptor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModuleDependencyConstraint {
     pub slug: String,
     pub version_requirement: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactPermissionDescriptor {
     pub key: String,
     /// Immutable localized operator metadata registered by the RBAC owner.
@@ -151,6 +155,7 @@ pub struct ArtifactPermissionDescriptor {
 /// descriptor. The digest is over canonical JSON, not transport bytes, so it
 /// is stable across object-key ordering.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactSchemaDocument {
     pub digest: String,
     pub document: Value,
@@ -159,6 +164,7 @@ pub struct ArtifactSchemaDocument {
 /// Host-rendered declarative contribution. It is metadata only: marketplace
 /// artifacts never inject executable UI code into a host process.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactUiContribution {
     pub id: String,
     pub surface: String,
@@ -169,6 +175,7 @@ pub struct ArtifactUiContribution {
 /// Metadata for brokered namespaced data only. It never carries SQL, DDL, or
 /// executable migrations from an untrusted marketplace artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactPersistenceContract {
     pub revision: u64,
     pub schema_digest: String,
@@ -176,6 +183,7 @@ pub struct ArtifactPersistenceContract {
 
 /// Declarative runtime binding admitted with an immutable artifact descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModuleRuntimeBinding {
     pub id: String,
     pub kind: ModuleRuntimeBindingKind,
@@ -228,6 +236,7 @@ pub enum ModuleRuntimeBindingKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModuleScheduleBinding {
     pub cron: String,
     pub timezone: String,
@@ -262,6 +271,7 @@ pub enum ModuleScheduleDeduplication {
 /// A host-owned HTTP route. `path` is relative to the platform's module route
 /// namespace and consists solely of literal path segments in v1.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModuleHttpBinding {
     pub method: ModuleHttpMethod,
     pub path: String,
@@ -487,7 +497,7 @@ impl ModuleArtifactDescriptor {
         }
         for (index, contribution) in self.ui_contributions.iter().enumerate() {
             if contribution.id.trim().is_empty()
-                || contribution.surface.trim().is_empty()
+                || !valid_artifact_ui_contribution_surface(&contribution.surface)
                 || !valid_digest(&contribution.localization_digest)
                 || !contribution.permission.starts_with(&permission_prefix)
                 || !self
@@ -773,6 +783,10 @@ pub(crate) fn valid_event_topic(value: &str) -> bool {
                     || character == '-'
             })
     })
+}
+
+fn valid_artifact_ui_contribution_surface(value: &str) -> bool {
+    ARTIFACT_UI_CONTRIBUTION_SURFACES.contains(&value)
 }
 
 /// Matches one admitted exact or terminal-wildcard subscription against an
@@ -1197,6 +1211,35 @@ mod tests {
     }
 
     #[test]
+    fn descriptor_rejects_unknown_persistence_or_migration_fields() {
+        let mut descriptor_value =
+            serde_json::to_value(descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a'))
+                .expect("descriptor serializes");
+        descriptor_value
+            .as_object_mut()
+            .expect("descriptor is an object")
+            .insert(
+                "migrations".to_string(),
+                serde_json::json!([{"sql": "DROP TABLE module_artifact_data"}]),
+            );
+        assert!(serde_json::from_value::<ModuleArtifactDescriptor>(descriptor_value).is_err());
+
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.persistence_contract = Some(ArtifactPersistenceContract {
+            revision: 1,
+            schema_digest: digest('b'),
+        });
+        let mut persistence_value =
+            serde_json::to_value(descriptor).expect("descriptor serializes");
+        persistence_value
+            .get_mut("persistence_contract")
+            .and_then(Value::as_object_mut)
+            .expect("persistence contract is an object")
+            .insert("bucket".to_string(), serde_json::json!("untrusted-path"));
+        assert!(serde_json::from_value::<ModuleArtifactDescriptor>(persistence_value).is_err());
+    }
+
+    #[test]
     fn ui_contribution_requires_module_owned_permission() {
         let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
         descriptor.ui_contributions = vec![ArtifactUiContribution {
@@ -1209,6 +1252,39 @@ mod tests {
             descriptor.validate(),
             Err(ModuleArtifactError::InvalidUiContribution(_))
         ));
+    }
+
+    #[test]
+    fn ui_contributions_allow_only_declarative_host_surfaces() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.permissions = vec![ArtifactPermissionDescriptor {
+            key: "sample_module.settings.manage".to_string(),
+            localizations: vec![permission_localization("Manage settings")],
+        }];
+        descriptor.ui_contributions = vec![ArtifactUiContribution {
+            id: "custom".to_string(),
+            surface: "custom_iframe".to_string(),
+            localization_digest: digest('b'),
+            permission: "sample_module.settings.manage".to_string(),
+        }];
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidUiContribution(_))
+        ));
+
+        descriptor.ui_contributions[0].surface = "admin_settings".to_string();
+        let mut descriptor_value = serde_json::to_value(descriptor).expect("descriptor serializes");
+        descriptor_value
+            .get_mut("ui_contributions")
+            .and_then(Value::as_array_mut)
+            .and_then(|contributions| contributions.first_mut())
+            .and_then(Value::as_object_mut)
+            .expect("UI contribution is an object")
+            .insert(
+                "iframe_url".to_string(),
+                serde_json::json!("https://untrusted.example/module-ui"),
+            );
+        assert!(serde_json::from_value::<ModuleArtifactDescriptor>(descriptor_value).is_err());
     }
 
     #[test]

@@ -633,3 +633,23 @@ fn dedupe(values: &mut Vec<String>) {
     values.sort();
     values.dedup();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oversized_untrusted_artifact_text_never_enters_validation_diagnostics() {
+        let marker = "<untrusted-prompt-injection-marker>";
+        let source = marker.repeat(MODULE_PUBLISH_ARTIFACT_MANIFEST_MAX_BYTES / marker.len() + 1);
+        let mut validation = ModulePublishBundleValidation::default();
+
+        require_file("Cargo.toml", Some(&source), &mut validation);
+
+        assert!(!validation.errors.is_empty());
+        assert!(validation
+            .errors
+            .iter()
+            .all(|diagnostic| !diagnostic.contains(marker)));
+    }
+}

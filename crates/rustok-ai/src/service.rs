@@ -2006,6 +2006,7 @@ mod product_agent_workflow_persistence_tests {
             .await
             .expect("product agent workflow database");
         for statement in [
+            "CREATE TABLE tenants (id UUID PRIMARY KEY, default_locale TEXT NULL, settings JSON NOT NULL)",
             "CREATE TABLE ai_provider_profiles (\
                 id UUID PRIMARY KEY, tenant_id UUID NOT NULL, slug TEXT NOT NULL, \
                 display_name TEXT NOT NULL, provider_slug TEXT NOT NULL, \
@@ -2130,6 +2131,18 @@ mod product_agent_workflow_persistence_tests {
     async fn product_enrichment_workflow_persists_owner_bindings_and_approval_gates() {
         let database = database().await;
         let operator = operator();
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO tenants (id, default_locale, settings) VALUES (?, ?, ?)".to_string(),
+                vec![
+                    operator.tenant_id.into(),
+                    "en".into(),
+                    r#"{"enabled_locales":["en"]}"#.into(),
+                ],
+            ))
+            .await
+            .expect("product agent workflow tenant");
         let provider_id = Uuid::new_v4();
         let now = Utc::now();
         ai_provider_profiles::ActiveModel {
@@ -2325,7 +2338,10 @@ mod product_agent_workflow_persistence_tests {
         )
         .await
         .expect("attributes stage claim"));
-        let egress_policy = ProviderEgressPolicy::default();
+        let egress_policy = ProviderEgressPolicy {
+            allowed_origins: vec!["provider.example.test".to_string()],
+            allow_local_origins: false,
+        };
         let provider_targets = AiProviderTargetCatalog::new_with_egress_policy(
             vec![AiProviderTarget {
                 id: crate::ProviderTargetId::new("openai_compatible").expect("provider target id"),

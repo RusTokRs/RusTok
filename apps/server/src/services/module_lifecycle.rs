@@ -1,21 +1,19 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter};
+use sea_orm::{DatabaseConnection, DbErr, EntityTrait};
 use thiserror::Error;
 
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    execute_module_toggle, failed_module_operation_recovery_plans, module_operation_recovery_plan,
-    normalize_module_settings, persist_module_settings, retry_failed_post_hook_operation,
-    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationIssue,
-    ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
-    ModuleOperationStoreError, ModulePostHookRetryRequest, ModuleToggleValidationError,
-    TenantModuleSettingsRequest,
+    failed_module_operation_recovery_plans, module_operation_recovery_plan,
+    normalize_module_settings, ModuleControlPlane, ModuleLifecycleDbWriterError,
+    ModuleLifecycleExecutionError, ModuleOperationRecoveryError as ModulesRecoveryError,
+    ModuleOperationRecoveryPlan, ModuleOperationStoreError, ModuleToggleValidationError,
 };
 
 use crate::models::_entities::module_operations::Entity as ModuleOperationsEntity;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
 use crate::models::_entities::{module_operations, tenant_modules};
 use crate::modules::{map_module_settings_validation_error, ManifestError, ManifestManager};
-use crate::services::effective_module_policy::EffectiveModulePolicyService;
+use crate::services::platform_composition::PlatformCompositionService;
 
 pub struct ModuleLifecycleService;
 
@@ -23,6 +21,8 @@ pub struct ModuleLifecycleService;
 pub enum ModuleOperationRecoveryError {
     #[error("Module operation not found")]
     OperationNotFound,
+    #[error("Module operation idempotency key is invalid")]
+    InvalidIdempotencyKey,
     #[error("Module operation is not retryable: {0}")]
     NotRetryable(String),
     #[error(
@@ -34,6 +34,8 @@ pub enum ModuleOperationRecoveryError {
     },
     #[error("Module post-hook retry failed: {0}")]
     PostHookFailed(String),
+    #[error("Module operation idempotency key was reused for a different command")]
+    IdempotencyConflict,
     #[error("Database error: {0}")]
     Database(#[from] DbErr),
     #[error("Platform module policy error: {0}")]
@@ -101,27 +103,14 @@ impl ModuleLifecycleService {
         enabled: bool,
         requested_by: Option<String>,
     ) -> Result<tenant_modules::Model, ToggleModuleError> {
-        let enabled_set = EffectiveModulePolicyService::resolve_enabled(db, registry, tenant_id)
+        let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
-        let current_settings = Self::current_module_settings(db, tenant_id, module_slug).await?;
-        let catalog = rustok_modules::ModuleDefinitionCatalog::from_static_registry(registry)
-            .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
-        let dispatcher = rustok_modules::ModuleExecutionDispatcher::new(&catalog, registry);
-        let result = execute_module_toggle(
-            db,
-            &dispatcher,
-            ModuleLifecycleToggleRequest {
-                tenant_id,
-                module_slug: module_slug.to_string(),
-                enabled,
-                requested_by,
-                effective_enabled_modules: enabled_set,
-                current_settings,
-            },
-        )
-        .await
-        .map_err(map_toggle_execution_error)?;
+        let result = ModuleControlPlane::new(db.clone())
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .toggle(tenant_id, module_slug, enabled, requested_by)
+            .await
+            .map_err(map_lifecycle_writer_error)?;
         Ok(TenantModulesEntity::find_by_id(result.state.id)
             .one(db)
             .await?
@@ -153,30 +142,16 @@ impl ModuleLifecycleService {
         registry: &ModuleRegistry,
         operation_id: uuid::Uuid,
         requested_by: Option<String>,
+        idempotency_key: uuid::Uuid,
     ) -> Result<module_operations::Model, ModuleOperationRecoveryError> {
-        let plan = Self::module_operation_recovery_plan(db, operation_id).await?;
-
-        let enabled_set =
-            EffectiveModulePolicyService::resolve_enabled(db, registry, plan.tenant_id)
-                .await
-                .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
-        let post_settings =
-            Self::current_module_settings(db, plan.tenant_id, plan.module_slug.as_str()).await?;
-        let catalog = rustok_modules::ModuleDefinitionCatalog::from_static_registry(registry)
+        let manifest = PlatformCompositionService::active_manifest(db)
+            .await
             .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
-        let dispatcher = rustok_modules::ModuleExecutionDispatcher::new(&catalog, registry);
-        let retry_operation = retry_failed_post_hook_operation(
-            db,
-            &dispatcher,
-            ModulePostHookRetryRequest {
-                operation_id,
-                requested_by,
-                effective_enabled_modules: enabled_set,
-                current_settings: post_settings,
-            },
-        )
-        .await
-        .map_err(map_module_recovery_error)?;
+        let retry_operation = ModuleControlPlane::new(db.clone())
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .retry_post_hook(operation_id, requested_by, idempotency_key)
+            .await
+            .map_err(map_lifecycle_writer_recovery_error)?;
         ModuleOperationsEntity::find_by_id(retry_operation.id)
             .one(db)
             .await?
@@ -188,37 +163,24 @@ impl ModuleLifecycleService {
         registry: &ModuleRegistry,
         operation_id: uuid::Uuid,
         requested_by: Option<String>,
+        idempotency_key: uuid::Uuid,
     ) -> Result<tenant_modules::Model, ModuleOperationRecoveryError> {
-        let plan = Self::module_operation_recovery_plan(db, operation_id).await?;
-
-        if plan.issue != ModuleOperationIssue::PostHookFailed {
-            return Err(ModuleOperationRecoveryError::NotRetryable(
-                plan.issue.as_str().to_string(),
-            ));
-        }
-
-        let enabled_set =
-            EffectiveModulePolicyService::resolve_enabled(db, registry, plan.tenant_id)
-                .await
-                .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
-        let current_enabled = enabled_set.contains(plan.module_slug.as_str());
-        if current_enabled != plan.requested_enabled {
-            return Err(ModuleOperationRecoveryError::StateMismatch {
-                requested_enabled: plan.requested_enabled,
-                current_enabled,
-            });
-        }
-
-        Self::toggle_module_with_actor(
-            db,
-            registry,
-            plan.tenant_id,
-            plan.module_slug.as_str(),
-            plan.previous_effective_enabled,
-            requested_by,
-        )
-        .await
-        .map_err(ModuleOperationRecoveryError::Toggle)
+        let manifest = PlatformCompositionService::active_manifest(db)
+            .await
+            .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
+        let result = ModuleControlPlane::new(db.clone())
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .compensate_failed_operation(operation_id, requested_by, idempotency_key)
+            .await
+            .map_err(map_lifecycle_writer_recovery_error)?;
+        TenantModulesEntity::find_by_id(result.state.id)
+            .one(db)
+            .await?
+            .ok_or_else(|| {
+                ModuleOperationRecoveryError::Database(DbErr::RecordNotFound(
+                    "tenant_modules.compensation_state".to_string(),
+                ))
+            })
     }
 
     pub async fn update_module_settings(
@@ -228,14 +190,18 @@ impl ModuleLifecycleService {
         module_slug: &str,
         settings: serde_json::Value,
     ) -> Result<tenant_modules::Model, UpdateModuleSettingsError> {
-        let Some(_module_impl) = registry.get(module_slug) else {
-            return Err(UpdateModuleSettingsError::UnknownModule);
-        };
-
         if !settings.is_object() {
             return Err(UpdateModuleSettingsError::InvalidSettings);
         }
 
+        let manifest = PlatformCompositionService::active_manifest(db)
+            .await
+            .map_err(|error| UpdateModuleSettingsError::Policy(error.to_string()))?;
+        let writer = ModuleControlPlane::new(db.clone())
+            .lifecycle(registry, manifest.settings.default_enabled);
+        writer
+            .require_module_definition(module_slug)
+            .map_err(map_lifecycle_writer_settings_error)?;
         let settings_schema = ManifestManager::module_settings_schema(module_slug)?;
         let settings = normalize_module_settings(module_slug, &settings_schema, settings).map_err(
             |error| {
@@ -251,43 +217,16 @@ impl ModuleLifecycleService {
             },
         )?;
 
-        let is_core = registry.is_core(module_slug);
-        let is_effectively_enabled =
-            EffectiveModulePolicyService::is_enabled(db, registry, tenant_id, module_slug)
-                .await
-                .map_err(|error| UpdateModuleSettingsError::Policy(error.to_string()))?;
-        let state = persist_module_settings(
-            db,
-            TenantModuleSettingsRequest {
-                tenant_id,
-                module_slug: module_slug.to_string(),
-                settings,
-                is_core,
-                is_effectively_enabled,
-            },
-        )
-        .await
-        .map_err(map_module_settings_store_error)?;
+        let state = writer
+            .persist_normalized_settings(tenant_id, module_slug, settings)
+            .await
+            .map_err(map_lifecycle_writer_settings_error)?;
         TenantModulesEntity::find_by_id(state.id)
             .one(db)
             .await?
             .ok_or_else(|| {
                 DbErr::RecordNotFound("tenant_modules.settings_state".to_string()).into()
             })
-    }
-
-    async fn current_module_settings(
-        db: &DatabaseConnection,
-        tenant_id: uuid::Uuid,
-        module_slug: &str,
-    ) -> Result<serde_json::Value, DbErr> {
-        Ok(TenantModulesEntity::find()
-            .filter(tenant_modules::Column::TenantId.eq(tenant_id))
-            .filter(tenant_modules::Column::ModuleSlug.eq(module_slug))
-            .one(db)
-            .await?
-            .map(|model| model.settings)
-            .unwrap_or_else(|| serde_json::json!({})))
     }
 }
 
@@ -314,12 +253,97 @@ fn map_toggle_execution_error(error: ModuleLifecycleExecutionError) -> ToggleMod
         }
         ModuleLifecycleExecutionError::PreHook(error) => ToggleModuleError::PreHookFailed(error),
         ModuleLifecycleExecutionError::PostHook(error) => ToggleModuleError::PostHookFailed(error),
+        ModuleLifecycleExecutionError::InvalidIdempotencyKey => {
+            ToggleModuleError::Policy("module lifecycle idempotency key is invalid".to_string())
+        }
+        ModuleLifecycleExecutionError::IdempotencyConflict => ToggleModuleError::Policy(
+            "module lifecycle idempotency key was reused for a different command".to_string(),
+        ),
+    }
+}
+
+fn map_lifecycle_writer_error(error: ModuleLifecycleDbWriterError) -> ToggleModuleError {
+    match error {
+        ModuleLifecycleDbWriterError::Lifecycle(error) => map_toggle_execution_error(error),
+        ModuleLifecycleDbWriterError::Database(error) => {
+            ToggleModuleError::Database(DbErr::Custom(error))
+        }
+        ModuleLifecycleDbWriterError::Configuration(error) => ToggleModuleError::Policy(error),
+        ModuleLifecycleDbWriterError::Definition(error) => {
+            ToggleModuleError::Policy(error.to_string())
+        }
+        ModuleLifecycleDbWriterError::Recovery(error) => {
+            ToggleModuleError::Policy(error.to_string())
+        }
+        ModuleLifecycleDbWriterError::UnknownModule(error) => ToggleModuleError::Policy(error),
+        ModuleLifecycleDbWriterError::Settings(error) => {
+            ToggleModuleError::Policy(error.to_string())
+        }
+    }
+}
+
+fn map_lifecycle_writer_recovery_error(
+    error: ModuleLifecycleDbWriterError,
+) -> ModuleOperationRecoveryError {
+    match error {
+        ModuleLifecycleDbWriterError::Recovery(error) => map_module_recovery_error(error),
+        ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::InvalidIdempotencyKey,
+        ) => ModuleOperationRecoveryError::InvalidIdempotencyKey,
+        ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::IdempotencyConflict,
+        ) => ModuleOperationRecoveryError::IdempotencyConflict,
+        ModuleLifecycleDbWriterError::Lifecycle(error) => {
+            ModuleOperationRecoveryError::Toggle(map_toggle_execution_error(error))
+        }
+        ModuleLifecycleDbWriterError::Database(error) => {
+            ModuleOperationRecoveryError::Database(DbErr::Custom(error))
+        }
+        ModuleLifecycleDbWriterError::Configuration(error) => {
+            ModuleOperationRecoveryError::Policy(error)
+        }
+        ModuleLifecycleDbWriterError::Definition(error) => {
+            ModuleOperationRecoveryError::Policy(error.to_string())
+        }
+        ModuleLifecycleDbWriterError::UnknownModule(error) => {
+            ModuleOperationRecoveryError::Policy(error)
+        }
+        ModuleLifecycleDbWriterError::Settings(error) => {
+            ModuleOperationRecoveryError::Database(DbErr::Custom(error.to_string()))
+        }
+    }
+}
+
+fn map_lifecycle_writer_settings_error(
+    error: ModuleLifecycleDbWriterError,
+) -> UpdateModuleSettingsError {
+    match error {
+        ModuleLifecycleDbWriterError::UnknownModule(_) => UpdateModuleSettingsError::UnknownModule,
+        ModuleLifecycleDbWriterError::Settings(error) => map_module_settings_store_error(error),
+        ModuleLifecycleDbWriterError::Database(error) => {
+            UpdateModuleSettingsError::Database(DbErr::Custom(error))
+        }
+        ModuleLifecycleDbWriterError::Configuration(error) => {
+            UpdateModuleSettingsError::Policy(error)
+        }
+        ModuleLifecycleDbWriterError::Definition(error) => {
+            UpdateModuleSettingsError::Policy(error.to_string())
+        }
+        ModuleLifecycleDbWriterError::Lifecycle(error) => {
+            UpdateModuleSettingsError::Policy(error.to_string())
+        }
+        ModuleLifecycleDbWriterError::Recovery(error) => {
+            UpdateModuleSettingsError::Policy(error.to_string())
+        }
     }
 }
 
 fn map_module_recovery_error(error: ModulesRecoveryError) -> ModuleOperationRecoveryError {
     match error {
         ModulesRecoveryError::OperationNotFound => ModuleOperationRecoveryError::OperationNotFound,
+        ModulesRecoveryError::InvalidIdempotencyKey => {
+            ModuleOperationRecoveryError::InvalidIdempotencyKey
+        }
         ModulesRecoveryError::NotRetryable(reason) => {
             ModuleOperationRecoveryError::NotRetryable(reason)
         }
@@ -332,6 +356,9 @@ fn map_module_recovery_error(error: ModulesRecoveryError) -> ModuleOperationReco
         },
         ModulesRecoveryError::PostHookFailed(error) => {
             ModuleOperationRecoveryError::PostHookFailed(error)
+        }
+        ModulesRecoveryError::IdempotencyConflict => {
+            ModuleOperationRecoveryError::IdempotencyConflict
         }
         ModulesRecoveryError::Persistence(error) => {
             ModuleOperationRecoveryError::Database(DbErr::Custom(error))
@@ -347,6 +374,10 @@ fn map_module_settings_store_error(error: ModuleOperationStoreError) -> UpdateMo
         ModuleOperationStoreError::Database(error) => {
             UpdateModuleSettingsError::Database(DbErr::Custom(error))
         }
+        ModuleOperationStoreError::IdempotencyConflict
+        | ModuleOperationStoreError::MissingIdempotencyKey => UpdateModuleSettingsError::Policy(
+            "unexpected lifecycle idempotency error during settings persistence".to_string(),
+        ),
     }
 }
 

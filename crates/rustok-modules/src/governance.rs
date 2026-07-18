@@ -195,6 +195,8 @@ pub struct ModulePublishApprovalOverride {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModulePublishRequestPublicationCommand {
     pub request_id: String,
+    /// Stable external command identity for exactly-once final publication.
+    pub idempotency_key: Uuid,
     pub actor_principal: serde_json::Value,
     pub publisher_principal: serde_json::Value,
     pub allow_owner_rebind: bool,
@@ -668,6 +670,7 @@ impl ModulePublishRequestResumeCommand {
 impl ModulePublishRequestPublicationCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
+            || self.idempotency_key.is_nil()
             || !self.actor_principal.is_object()
             || !self.publisher_principal.is_object()
         {
@@ -1060,13 +1063,21 @@ impl ModulePlatformAdmissionCommand {
 
     fn publication_evidence(
         &self,
+        artifact_origin: ModulePublicationArtifactOrigin,
     ) -> Result<ModulePublicationEvidenceCommand, ModuleGovernanceError> {
+        let subject_digest_sha256 = match artifact_origin {
+            ModulePublicationArtifactOrigin::PlatformBuilt => {
+                receipt_digest_sha256(&self.reference.digest)
+            }
+            ModulePublicationArtifactOrigin::ExternalPrebuilt => {
+                receipt_digest_sha256(&self.evidence.payload_digest)
+            }
+        }
+        .map_err(|_| ModuleGovernanceError::InvalidPlatformAdmissionCommand)?;
         Ok(ModulePublicationEvidenceCommand {
             request_id: self.request_id.clone(),
             authority: ModulePublicationEvidenceAuthority::PlatformAdmission,
-            subject_digest_sha256: receipt_digest_sha256(&self.reference.digest)
-                .map_err(|_| ModuleGovernanceError::InvalidPlatformAdmissionCommand)?
-                .to_string(),
+            subject_digest_sha256: subject_digest_sha256.to_string(),
             evidence_reference: platform_admission_evidence_reference(
                 &self.reference,
                 &self.evidence,
@@ -1363,8 +1374,10 @@ impl SeaOrmModuleGovernanceService {
                 .query_one(Statement::from_sql_and_values(
                     backend,
                     format!(
-                        "SELECT id, CAST(build_request_id AS TEXT) AS build_request_id, \
-                         source_digest, component_digest \
+                        "SELECT id, CAST(tenant_id AS TEXT) AS tenant_id, \
+                         CAST(build_request_id AS TEXT) AS build_request_id, \
+                         source_digest, component_digest, \
+                         CAST(staged_by_principal AS TEXT) AS staged_by_principal \
                          FROM registry_publish_build_staging \
                          WHERE request_id = {} AND idempotency_key = {}",
                         mark(1),
@@ -1381,6 +1394,8 @@ impl SeaOrmModuleGovernanceService {
                     ModuleGovernanceError::Store("build-stage conflict lost its row".to_string())
                 })?;
             let existing_id: String = existing.try_get("", "id").map_err(store_error)?;
+            let existing_tenant_id: String =
+                existing.try_get("", "tenant_id").map_err(store_error)?;
             let existing_build_request_id: String = existing
                 .try_get("", "build_request_id")
                 .map_err(store_error)?;
@@ -1389,9 +1404,17 @@ impl SeaOrmModuleGovernanceService {
             let existing_component_digest: String = existing
                 .try_get("", "component_digest")
                 .map_err(store_error)?;
-            if existing_build_request_id != command.build_request_id.to_string()
+            let existing_actor: serde_json::Value = serde_json::from_str(
+                &existing
+                    .try_get::<String>("", "staged_by_principal")
+                    .map_err(store_error)?,
+            )
+            .map_err(store_error)?;
+            if existing_tenant_id != command.tenant_id.to_string()
+                || existing_build_request_id != command.build_request_id.to_string()
                 || existing_source_digest != completed.request.source.digest
                 || existing_component_digest != component_digest
+                || existing_actor != command.actor_principal
             {
                 return Err(ModuleGovernanceError::PlatformBuildStageIdempotencyConflict);
             }
@@ -1527,8 +1550,8 @@ impl SeaOrmModuleGovernanceService {
                     command.request_id.clone().into(),
                     command.artifact_digest.clone().into(),
                     source_evidence_kind.into(),
-                    source_reference.into(),
-                    source_digest.into(),
+                    source_reference.clone().into(),
+                    source_digest.clone().into(),
                     source_absence_reason.clone().into(),
                     command.provenance_reference.clone().into(),
                     command.provenance_digest.clone().into(),
@@ -1549,8 +1572,13 @@ impl SeaOrmModuleGovernanceService {
                 .query_one(Statement::from_sql_and_values(
                     backend,
                     format!(
-                        "SELECT id, artifact_digest, provenance_digest, provenance_policy_revision, \
-                         quarantine_review_reference FROM registry_publish_external_staging \
+                        "SELECT id, artifact_digest, source_evidence_kind, source_reference, source_digest, \
+                         source_absence_reason, provenance_reference, provenance_digest, \
+                         provenance_policy_revision, quarantine_review_reference, \
+                         quarantine_policy_revision, \
+                         CAST(quarantine_approved_by_principal AS TEXT) AS quarantine_approved_by_principal, \
+                         CAST(staged_by_principal AS TEXT) AS staged_by_principal \
+                         FROM registry_publish_external_staging \
                          WHERE request_id = {} AND idempotency_key = {}",
                         mark(1),
                         mark(2),
@@ -1569,6 +1597,20 @@ impl SeaOrmModuleGovernanceService {
             let existing_artifact_digest: String = existing
                 .try_get("", "artifact_digest")
                 .map_err(store_error)?;
+            let existing_source_evidence_kind: String = existing
+                .try_get("", "source_evidence_kind")
+                .map_err(store_error)?;
+            let existing_source_reference: Option<String> = existing
+                .try_get("", "source_reference")
+                .map_err(store_error)?;
+            let existing_source_digest: Option<String> =
+                existing.try_get("", "source_digest").map_err(store_error)?;
+            let existing_source_absence_reason: Option<String> = existing
+                .try_get("", "source_absence_reason")
+                .map_err(store_error)?;
+            let existing_provenance_reference: String = existing
+                .try_get("", "provenance_reference")
+                .map_err(store_error)?;
             let existing_provenance_digest: String = existing
                 .try_get("", "provenance_digest")
                 .map_err(store_error)?;
@@ -1578,10 +1620,33 @@ impl SeaOrmModuleGovernanceService {
             let existing_quarantine_reference: String = existing
                 .try_get("", "quarantine_review_reference")
                 .map_err(store_error)?;
+            let existing_quarantine_policy_revision: String = existing
+                .try_get("", "quarantine_policy_revision")
+                .map_err(store_error)?;
+            let existing_quarantine_approver: serde_json::Value = serde_json::from_str(
+                &existing
+                    .try_get::<String>("", "quarantine_approved_by_principal")
+                    .map_err(store_error)?,
+            )
+            .map_err(store_error)?;
+            let existing_actor: serde_json::Value = serde_json::from_str(
+                &existing
+                    .try_get::<String>("", "staged_by_principal")
+                    .map_err(store_error)?,
+            )
+            .map_err(store_error)?;
             if existing_artifact_digest != command.artifact_digest
+                || existing_source_evidence_kind != source_evidence_kind
+                || existing_source_reference != source_reference
+                || existing_source_digest != source_digest
+                || existing_source_absence_reason != source_absence_reason
+                || existing_provenance_reference != command.provenance_reference
                 || existing_provenance_digest != command.provenance_digest
                 || existing_policy_revision != command.provenance_policy_revision
                 || existing_quarantine_reference != command.quarantine_review_reference
+                || existing_quarantine_policy_revision != command.quarantine_policy_revision
+                || existing_quarantine_approver != command.quarantine_approved_by_principal
+                || existing_actor != command.actor_principal
             {
                 return Err(ModuleGovernanceError::ExternalPrebuiltStageIdempotencyConflict);
             }
@@ -1652,14 +1717,32 @@ impl SeaOrmModuleGovernanceService {
     }
 
     /// Records an admitted platform trust decision only after its exact OCI
-    /// manifest, policy revisions, and all mandatory verification outcomes are
-    /// bound to one immutable evidence fingerprint.
+    /// manifest, verified payload, policy revisions, and mandatory verification
+    /// outcomes are bound to one immutable evidence fingerprint.
     pub async fn record_platform_admission(
         &self,
         command: ModulePlatformAdmissionCommand,
     ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
         command.validate()?;
-        self.record_publication_evidence_inner(command.publication_evidence()?)
+        let backend = self.db.get_database_backend();
+        let artifact_origin = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT artifact_origin FROM registry_publish_requests WHERE id = {}",
+                    placeholder(backend, 1),
+                ),
+                vec![command.request_id.clone().into()],
+            ))
+            .await
+            .map_err(store_error)?
+            .ok_or(ModuleGovernanceError::PublishRequestNotFound)?
+            .try_get::<String>("", "artifact_origin")
+            .map_err(store_error)?;
+        let artifact_origin = ModulePublicationArtifactOrigin::parse(&artifact_origin)
+            .ok_or(ModuleGovernanceError::PublishRequestArtifactOriginUnclassified)?;
+        self.record_publication_evidence_inner(command.publication_evidence(artifact_origin)?)
             .await
     }
 
@@ -4183,6 +4266,102 @@ impl SeaOrmModuleGovernanceService {
         } else {
             ""
         };
+        tx.query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT id FROM registry_publish_requests WHERE id = {}{request_lock}",
+                mark(1)
+            ),
+            vec![command.request_id.clone().into()],
+        ))
+        .await
+        .map_err(store_error)?
+        .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        let command_approval_override = command
+            .approval_override
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(store_error)?;
+        let existing_operation = tx
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT CAST(actor_principal AS TEXT) AS actor_principal, \
+                     CAST(publisher_principal AS TEXT) AS publisher_principal, \
+                     CAST(allow_owner_rebind AS TEXT) AS allow_owner_rebind, \
+                     CAST(approval_override AS TEXT) AS approval_override, release_id \
+                     FROM registry_publication_operations \
+                     WHERE request_id = {} AND idempotency_key = {}{request_lock}",
+                    mark(1),
+                    mark(2),
+                ),
+                vec![
+                    command.request_id.clone().into(),
+                    registry_uuid_value(command.idempotency_key, backend),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
+        if let Some(operation) = existing_operation {
+            let stored_actor: serde_json::Value = serde_json::from_str(
+                &operation
+                    .try_get::<String>("", "actor_principal")
+                    .map_err(store_error)?,
+            )
+            .map_err(store_error)?;
+            let stored_publisher: serde_json::Value = serde_json::from_str(
+                &operation
+                    .try_get::<String>("", "publisher_principal")
+                    .map_err(store_error)?,
+            )
+            .map_err(store_error)?;
+            let stored_override = operation
+                .try_get::<Option<String>>("", "approval_override")
+                .map_err(store_error)?
+                .map(|value| serde_json::from_str::<serde_json::Value>(&value))
+                .transpose()
+                .map_err(store_error)?;
+            let stored_allow_owner_rebind = operation
+                .try_get::<String>("", "allow_owner_rebind")
+                .map_err(store_error)?;
+            let expected_allow_owner_rebind = if backend == sea_orm::DbBackend::Postgres {
+                if command.allow_owner_rebind {
+                    "true"
+                } else {
+                    "false"
+                }
+            } else if command.allow_owner_rebind {
+                "1"
+            } else {
+                "0"
+            };
+            if stored_actor != command.actor_principal
+                || stored_publisher != command.publisher_principal
+                || stored_allow_owner_rebind != expected_allow_owner_rebind
+                || stored_override != command_approval_override
+            {
+                return Err(ModuleGovernanceError::PublicationIdempotencyConflict);
+            }
+            let release_id: String = operation.try_get("", "release_id").map_err(store_error)?;
+            let release_exists = tx
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT id FROM registry_module_releases WHERE id = {} LIMIT 1",
+                        mark(1)
+                    ),
+                    vec![release_id.into()],
+                ))
+                .await
+                .map_err(store_error)?
+                .is_some();
+            if !release_exists {
+                return Err(ModuleGovernanceError::PublishedRequestMissingRelease);
+            }
+            tx.rollback().await.map_err(store_error)?;
+            return Ok(());
+        }
         let request = tx
             .query_one(Statement::from_sql_and_values(
                 backend,
@@ -4232,7 +4411,7 @@ impl SeaOrmModuleGovernanceService {
                 return Err(ModuleGovernanceError::PublishedRequestMissingRelease);
             }
             tx.rollback().await.map_err(store_error)?;
-            return Ok(());
+            return Err(ModuleGovernanceError::PublishedRequestMissingIdempotencyRecord);
         }
         if status != "approved" {
             return Err(ModuleGovernanceError::PublishRequestCannotBePublished(
@@ -4295,11 +4474,11 @@ impl SeaOrmModuleGovernanceService {
 
         match artifact_origin {
             ModulePublicationArtifactOrigin::PlatformBuilt => {
-                let platform_build_staged = tx
+                let platform_build_manifest = tx
                     .query_one(Statement::from_sql_and_values(
                         backend,
                         format!(
-                            "SELECT 1 FROM registry_publish_build_staging AS stage \
+                            "SELECT artifact_manifest_digest FROM registry_publish_build_staging AS stage \
                              WHERE stage.request_id = {} \
                                AND stage.component_digest = {} \
                                AND stage.staged_at >= ( \
@@ -4317,9 +4496,53 @@ impl SeaOrmModuleGovernanceService {
                     ))
                     .await
                     .map_err(store_error)?
-                    .is_some();
-                if !platform_build_staged {
+                    .map(|row| row.try_get::<String>("", "artifact_manifest_digest"))
+                    .transpose()
+                    .map_err(store_error)?;
+                let Some(platform_build_manifest) = platform_build_manifest else {
                     return Err(ModuleGovernanceError::PublishRequestMissingPlatformBuildStage);
+                };
+                let platform_build_manifest = receipt_digest_sha256(&platform_build_manifest)
+                    .map_err(|_| ModuleGovernanceError::PublishRequestMissingPlatformBuildStage)?;
+
+                let matched_build_and_platform_evidence = tx
+                    .query_one(Statement::from_sql_and_values(
+                        backend,
+                        format!(
+                            "SELECT 1 FROM registry_publication_evidence AS build \
+                             WHERE build.request_id = {} \
+                               AND build.authority = 'build_service_attestation' \
+                               AND build.subject_digest_sha256 = {} \
+                               AND build.created_at >= ( \
+                                   SELECT request.submitted_at FROM registry_publish_requests AS request \
+                                   WHERE request.id = build.request_id \
+                               ) \
+                               AND EXISTS ( \
+                                   SELECT 1 FROM registry_publication_evidence AS platform \
+                                   WHERE platform.request_id = build.request_id \
+                                     AND platform.authority = 'platform_admission' \
+                                     AND platform.subject_digest_sha256 = build.subject_digest_sha256 \
+                                     AND platform.created_at >= ( \
+                                         SELECT request.submitted_at FROM registry_publish_requests AS request \
+                                         WHERE request.id = platform.request_id \
+                                     ) \
+                               ) \
+                             LIMIT 1",
+                            mark(1),
+                            mark(2),
+                        ),
+                        vec![
+                            command.request_id.clone().into(),
+                            platform_build_manifest.to_string().into(),
+                        ],
+                    ))
+                    .await
+                    .map_err(store_error)?
+                    .is_some();
+                if !matched_build_and_platform_evidence {
+                    return Err(
+                        ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission,
+                    );
                 }
             }
             ModulePublicationArtifactOrigin::ExternalPrebuilt => {
@@ -4379,43 +4602,7 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::PublishRequestMissingAuthorSignature);
         }
         match artifact_origin {
-            ModulePublicationArtifactOrigin::PlatformBuilt => {
-                let matched_build_and_platform_evidence = tx
-                    .query_one(Statement::from_sql_and_values(
-                        backend,
-                        format!(
-                            "SELECT build.subject_digest_sha256 \
-                             FROM registry_publication_evidence AS build \
-                             WHERE build.request_id = {} \
-                               AND build.authority = 'build_service_attestation' \
-                               AND build.created_at >= ( \
-                                   SELECT request.submitted_at FROM registry_publish_requests AS request \
-                                   WHERE request.id = build.request_id \
-                               ) \
-                               AND EXISTS ( \
-                                   SELECT 1 FROM registry_publication_evidence AS platform \
-                                   WHERE platform.request_id = build.request_id \
-                                     AND platform.authority = 'platform_admission' \
-                                     AND platform.subject_digest_sha256 = build.subject_digest_sha256 \
-                                     AND platform.created_at >= ( \
-                                         SELECT request.submitted_at FROM registry_publish_requests AS request \
-                                         WHERE request.id = platform.request_id \
-                                     ) \
-                               ) \
-                             LIMIT 1",
-                            mark(1),
-                        ),
-                        vec![command.request_id.clone().into()],
-                    ))
-                    .await
-                    .map_err(store_error)?
-                    .is_some();
-                if !matched_build_and_platform_evidence {
-                    return Err(
-                        ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission,
-                    );
-                }
-            }
+            ModulePublicationArtifactOrigin::PlatformBuilt => {}
             ModulePublicationArtifactOrigin::ExternalPrebuilt => {
                 let platform_admission_recorded = tx
                     .query_one(Statement::from_sql_and_values(
@@ -4824,6 +5011,36 @@ impl SeaOrmModuleGovernanceService {
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         }
+
+        tx.execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO registry_publication_operations \
+                 (operation_id, request_id, idempotency_key, actor_principal, publisher_principal, \
+                  allow_owner_rebind, approval_override, release_id, committed_at) \
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {now})",
+                mark(1),
+                mark(2),
+                mark(3),
+                mark(4),
+                mark(5),
+                mark(6),
+                mark(7),
+                mark(8),
+            ),
+            vec![
+                registry_uuid_value(Uuid::new_v4(), backend),
+                command.request_id.clone().into(),
+                registry_uuid_value(command.idempotency_key, backend),
+                Value::Json(Some(Box::new(command.actor_principal.clone()))),
+                Value::Json(Some(Box::new(command.publisher_principal.clone()))),
+                command.allow_owner_rebind.into(),
+                Value::Json(command_approval_override.clone().map(Box::new)),
+                release_id.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
 
         tx.execute(Statement::from_sql_and_values(
             backend,
@@ -5438,6 +5655,10 @@ pub enum ModuleGovernanceError {
     PublishRequestCannotBePublished(String),
     #[error("published registry request has no matching durable release")]
     PublishedRequestMissingRelease,
+    #[error("registry publication idempotency key was reused for a different immutable command")]
+    PublicationIdempotencyConflict,
+    #[error("published registry request has no matching publication idempotency record")]
+    PublishedRequestMissingIdempotencyRecord,
     #[error("registry publish request in status `{0}` cannot accept an artifact")]
     PublishRequestCannotAttachArtifact(String),
     #[error("registry publish request in status `{0}` cannot accept publication evidence")]
@@ -5581,6 +5802,7 @@ mod tests {
     fn publication_contract_requires_structured_principals_and_reviewed_override() {
         let command = ModulePublishRequestPublicationCommand {
             request_id: "request-1".to_string(),
+            idempotency_key: Uuid::new_v4(),
             actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
             publisher_principal: serde_json::json!("publisher"),
             allow_owner_rebind: false,
@@ -6059,6 +6281,12 @@ mod tests {
                 release_id TEXT NOT NULL, locale TEXT NOT NULL, name TEXT NOT NULL, description TEXT NOT NULL,\
                 created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (release_id, locale)\
              )",
+            "CREATE TABLE registry_publication_operations (\
+                operation_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, idempotency_key TEXT NOT NULL,\
+                actor_principal TEXT NOT NULL, publisher_principal TEXT NOT NULL, allow_owner_rebind INTEGER NOT NULL,\
+                approval_override TEXT NULL, release_id TEXT NOT NULL, committed_at TEXT NOT NULL,\
+                UNIQUE (request_id, idempotency_key)\
+             )",
             "CREATE TABLE registry_module_owners (\
                 slug TEXT PRIMARY KEY, owner_principal TEXT NOT NULL, bound_by_principal TEXT NOT NULL,\
                 bound_at TEXT NOT NULL, updated_at TEXT NOT NULL\
@@ -6077,6 +6305,7 @@ mod tests {
              )",
             "CREATE TABLE registry_publish_build_staging (\
                 id TEXT PRIMARY KEY, request_id TEXT NOT NULL, component_digest TEXT NOT NULL,\
+                artifact_manifest_digest TEXT NOT NULL,\
                 staged_at TEXT NOT NULL\
              )",
             "INSERT INTO registry_publish_requests (\
@@ -6098,6 +6327,7 @@ mod tests {
 
         let command = ModulePublishRequestPublicationCommand {
             request_id: "request-1".to_string(),
+            idempotency_key: Uuid::new_v4(),
             actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
             publisher_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
             allow_owner_rebind: false,
@@ -6116,8 +6346,9 @@ mod tests {
             .execute(Statement::from_string(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_publish_build_staging \
-                 (id, request_id, component_digest, staged_at) VALUES (\
+                 (id, request_id, component_digest, artifact_manifest_digest, staged_at) VALUES (\
                  'stage-1', 'request-1', \
+                 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
                  'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
                  datetime('now'))"
                     .to_string(),
@@ -6199,8 +6430,9 @@ mod tests {
             .execute(Statement::from_string(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_publish_build_staging \
-                 (id, request_id, component_digest, staged_at) VALUES (\
+                 (id, request_id, component_digest, artifact_manifest_digest, staged_at) VALUES (\
                  'stage-2', 'request-1', \
+                 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
                  'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
                  datetime('now', '+2 seconds'))"
                     .to_string(),
@@ -6238,15 +6470,58 @@ mod tests {
                 .await
                 .expect("current publication evidence fixture");
         }
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE registry_publish_build_staging \
+                 SET artifact_manifest_digest = \
+                 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
+                 WHERE id = 'stage-2'"
+                    .to_string(),
+            ))
+            .await
+            .expect("mismatched build manifest fixture");
+        let blocked = service
+            .publish_request(command.clone())
+            .await
+            .expect_err("publication evidence must match the staged OCI manifest");
+        assert!(matches!(
+            blocked,
+            ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission
+        ));
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE registry_publish_build_staging \
+                 SET artifact_manifest_digest = \
+                 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+                 WHERE id = 'stage-2'"
+                    .to_string(),
+            ))
+            .await
+            .expect("matching build manifest fixture");
 
         service
             .publish_request(command.clone())
             .await
             .expect("publish request");
         service
-            .publish_request(command)
+            .publish_request(command.clone())
             .await
             .expect("published request replay");
+        let mut conflicting_replay = command;
+        conflicting_replay.publisher_principal = serde_json::json!({
+            "kind": "user",
+            "id": "different-publisher",
+        });
+        let conflict = service
+            .publish_request(conflicting_replay)
+            .await
+            .expect_err("idempotency key must bind the immutable publication command");
+        assert!(matches!(
+            conflict,
+            ModuleGovernanceError::PublicationIdempotencyConflict
+        ));
 
         let release_count = database
             .query_one(Statement::from_string(
@@ -6260,6 +6535,20 @@ mod tests {
             release_count
                 .try_get::<i64>("", "count")
                 .expect("release count"),
+            1
+        );
+        let publication_operation_count = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM registry_publication_operations".to_string(),
+            ))
+            .await
+            .expect("publication operation count query")
+            .expect("publication operation count row");
+        assert_eq!(
+            publication_operation_count
+                .try_get::<i64>("", "count")
+                .expect("publication operation count"),
             1
         );
 
@@ -6481,6 +6770,13 @@ mod tests {
             },
             actor_principal: serde_json::json!({ "kind": "service", "id": "verification-worker" }),
         };
+        assert_eq!(
+            platform_admission
+                .publication_evidence(ModulePublicationArtifactOrigin::ExternalPrebuilt)
+                .expect("external admission evidence")
+                .subject_digest_sha256,
+            "e".repeat(64)
+        );
         let admission = service
             .record_platform_admission(platform_admission.clone())
             .await

@@ -1,13 +1,17 @@
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use std::collections::HashSet;
 use thiserror::Error;
 use uuid::Uuid;
 
 use rustok_core::ModuleRegistry;
 
 use crate::{
-    execute_module_toggle, ArtifactLifecycleExecutor, ModuleDefinitionCatalog,
-    ModuleDefinitionError, ModuleEffectivePolicyQuery, ModuleExecutionDispatcher,
-    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationStoreError,
+    execute_module_toggle, module_operation_recovery_plan, retry_failed_post_hook_operation,
+    ArtifactLifecycleExecutor, ModuleDefinitionCatalog, ModuleDefinitionError,
+    ModuleDefinitionKind, ModuleEffectivePolicyQuery, ModuleExecutionDispatcher,
+    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationIssue,
+    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecoveryError,
+    ModuleOperationRequest, ModuleOperationStoreError, ModulePostHookRetryRequest,
     TenantModuleOverride, TenantModuleSettingsRecord, TenantModuleSettingsRequest,
     TenantModuleStateStore,
 };
@@ -70,28 +74,30 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         tenant_id: Uuid,
         module_slug: &str,
         enabled: bool,
-        actor: &str,
-    ) -> Result<(), ModuleLifecycleDbWriterError> {
-        let overrides = self.overrides(tenant_id).await?;
-        let catalog = match &self.catalog {
-            Some(catalog) => catalog.clone(),
-            None => ModuleDefinitionCatalog::from_static_registry(
-                self.static_registry.ok_or_else(|| {
-                    ModuleLifecycleDbWriterError::Configuration(
-                        "static lifecycle writer has no module registry".into(),
-                    )
-                })?,
-            )
-            .map_err(ModuleLifecycleDbWriterError::Definition)?,
-        };
-        let effective_enabled_modules = ModuleEffectivePolicyQuery::new(
-            &catalog,
-            self.default_enabled_modules.iter().cloned(),
-            overrides,
+        requested_by: Option<String>,
+    ) -> Result<crate::ModuleLifecycleToggleResult, ModuleLifecycleDbWriterError> {
+        self.toggle_with_operation_context(
+            tenant_id,
+            module_slug,
+            enabled,
+            requested_by,
+            None,
+            None,
         )
-        .execute()
-        .into_enabled_modules();
-        let current_settings = self.settings(tenant_id, module_slug).await?;
+        .await
+    }
+
+    async fn toggle_with_operation_context(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+        enabled: bool,
+        requested_by: Option<String>,
+        correlation_id: Option<String>,
+        idempotency_key: Option<Uuid>,
+    ) -> Result<crate::ModuleLifecycleToggleResult, ModuleLifecycleDbWriterError> {
+        let (catalog, effective_enabled_modules, current_settings) =
+            self.execution_context(tenant_id, module_slug).await?;
         let dispatcher = match (self.static_registry, self.artifact_executor) {
             (Some(registry), Some(executor)) => {
                 ModuleExecutionDispatcher::new(&catalog, registry).with_artifact_executor(executor)
@@ -111,14 +117,214 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 tenant_id,
                 module_slug: module_slug.to_string(),
                 enabled,
-                requested_by: Some(actor.to_string()),
+                requested_by,
+                correlation_id,
+                idempotency_key,
                 effective_enabled_modules,
                 current_settings,
             },
         )
         .await
-        .map_err(ModuleLifecycleDbWriterError::Lifecycle)?;
+        .map_err(ModuleLifecycleDbWriterError::Lifecycle)
+    }
+
+    /// Retries only a post-hook failure using the same owner-owned effective
+    /// policy, catalog, and dispatcher assembly as a normal lifecycle toggle.
+    pub async fn retry_post_hook(
+        &self,
+        operation_id: Uuid,
+        requested_by: Option<String>,
+        idempotency_key: Uuid,
+    ) -> Result<ModuleOperationRecord, ModuleLifecycleDbWriterError> {
+        let plan = module_operation_recovery_plan(&self.db, operation_id)
+            .await
+            .map_err(ModuleLifecycleDbWriterError::Recovery)?;
+        let (catalog, effective_enabled_modules, current_settings) = self
+            .execution_context(plan.tenant_id, &plan.module_slug)
+            .await?;
+        let dispatcher = match (self.static_registry, self.artifact_executor) {
+            (Some(registry), Some(executor)) => {
+                ModuleExecutionDispatcher::new(&catalog, registry).with_artifact_executor(executor)
+            }
+            (Some(registry), None) => ModuleExecutionDispatcher::new(&catalog, registry),
+            (None, Some(executor)) => ModuleExecutionDispatcher::artifact_only(&catalog, executor),
+            (None, None) => {
+                return Err(ModuleLifecycleDbWriterError::Configuration(
+                    "artifact lifecycle writer has no runtime executor".into(),
+                ));
+            }
+        };
+        retry_failed_post_hook_operation(
+            &self.db,
+            &dispatcher,
+            ModulePostHookRetryRequest {
+                operation_id,
+                requested_by,
+                idempotency_key,
+                effective_enabled_modules,
+                current_settings,
+            },
+        )
+        .await
+        .map_err(ModuleLifecycleDbWriterError::Recovery)
+    }
+
+    /// Compensates a committed operation only after the recovery contract
+    /// confirms that it failed in its post-hook and remains at the requested
+    /// effective state. The resulting reverse transition is a normal owner
+    /// lifecycle operation with its own journal record.
+    pub async fn compensate_failed_operation(
+        &self,
+        operation_id: Uuid,
+        requested_by: Option<String>,
+        idempotency_key: Uuid,
+    ) -> Result<crate::ModuleLifecycleToggleResult, ModuleLifecycleDbWriterError> {
+        if idempotency_key.is_nil() {
+            return Err(ModuleLifecycleDbWriterError::Lifecycle(
+                ModuleLifecycleExecutionError::InvalidIdempotencyKey,
+            ));
+        }
+        let plan = module_operation_recovery_plan(&self.db, operation_id)
+            .await
+            .map_err(ModuleLifecycleDbWriterError::Recovery)?;
+        if plan.issue != ModuleOperationIssue::PostHookFailed {
+            return Err(ModuleLifecycleDbWriterError::Recovery(
+                ModuleOperationRecoveryError::NotRetryable(plan.issue.as_str().to_string()),
+            ));
+        }
+        let (_, effective_enabled_modules, _) = self
+            .execution_context(plan.tenant_id, &plan.module_slug)
+            .await?;
+        let current_enabled = effective_enabled_modules.contains(&plan.module_slug);
+        let replay_request = ModuleOperationRequest {
+            tenant_id: plan.tenant_id,
+            module_slug: plan.module_slug.clone(),
+            requested_enabled: plan.previous_effective_enabled,
+            previous_effective_enabled: current_enabled,
+            requested_by: requested_by.clone(),
+            correlation_id: plan.operation_id.to_string(),
+            idempotency_key: Some(idempotency_key),
+        };
+        match ModuleOperationJournal::replay_idempotent_command(&self.db, &replay_request)
+            .await
+            .map_err(map_idempotency_command_error)?
+        {
+            Some(_) => {
+                return self
+                    .toggle_with_operation_context(
+                        plan.tenant_id,
+                        &plan.module_slug,
+                        plan.previous_effective_enabled,
+                        requested_by,
+                        Some(plan.operation_id.to_string()),
+                        Some(idempotency_key),
+                    )
+                    .await;
+            }
+            None => {}
+        }
+        if current_enabled != plan.requested_enabled {
+            return Err(ModuleLifecycleDbWriterError::Recovery(
+                ModuleOperationRecoveryError::StateMismatch {
+                    requested_enabled: plan.requested_enabled,
+                    current_enabled,
+                },
+            ));
+        }
+        self.toggle_with_operation_context(
+            plan.tenant_id,
+            &plan.module_slug,
+            plan.previous_effective_enabled,
+            requested_by,
+            Some(plan.operation_id.to_string()),
+            Some(idempotency_key),
+        )
+        .await
+    }
+
+    /// Persists a host-schema-normalized settings value while deriving module
+    /// identity, Core status, and effective enablement from owner state.
+    pub async fn persist_normalized_settings(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+        settings: serde_json::Value,
+    ) -> Result<TenantModuleSettingsRecord, ModuleLifecycleDbWriterError> {
+        let catalog = self.definition_catalog()?;
+        let definition = catalog
+            .get(module_slug)
+            .ok_or_else(|| ModuleLifecycleDbWriterError::UnknownModule(module_slug.to_string()))?;
+        let effective_enabled_modules = self.effective_enabled_modules(tenant_id).await?;
+        TenantModuleStateStore::persist_settings(
+            &self.db,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: module_slug.to_string(),
+                settings,
+                is_core: definition.kind == ModuleDefinitionKind::Core,
+                is_effectively_enabled: effective_enabled_modules.contains(module_slug),
+            },
+        )
+        .await
+        .map_err(ModuleLifecycleDbWriterError::Settings)
+    }
+
+    /// Confirms that the active owner catalog contains a module before a host
+    /// adapter resolves its static-only settings schema.
+    pub fn require_module_definition(
+        &self,
+        module_slug: &str,
+    ) -> Result<(), ModuleLifecycleDbWriterError> {
+        if self.definition_catalog()?.get(module_slug).is_none() {
+            return Err(ModuleLifecycleDbWriterError::UnknownModule(
+                module_slug.to_string(),
+            ));
+        }
         Ok(())
+    }
+
+    /// Resolves Core/default/tenant-override availability from the same owner
+    /// catalog and tenant-state source used by lifecycle commands.
+    pub async fn effective_enabled_modules(
+        &self,
+        tenant_id: Uuid,
+    ) -> Result<HashSet<String>, ModuleLifecycleDbWriterError> {
+        let catalog = self.definition_catalog()?;
+        Ok(ModuleEffectivePolicyQuery::new(
+            &catalog,
+            self.default_enabled_modules.iter().cloned(),
+            self.overrides(tenant_id).await?,
+        )
+        .execute()
+        .into_enabled_modules())
+    }
+
+    async fn execution_context(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<
+        (ModuleDefinitionCatalog, HashSet<String>, serde_json::Value),
+        ModuleLifecycleDbWriterError,
+    > {
+        let catalog = self.definition_catalog()?;
+        let effective_enabled_modules = self.effective_enabled_modules(tenant_id).await?;
+        let current_settings = self.settings(tenant_id, module_slug).await?;
+        Ok((catalog, effective_enabled_modules, current_settings))
+    }
+
+    fn definition_catalog(&self) -> Result<ModuleDefinitionCatalog, ModuleLifecycleDbWriterError> {
+        match &self.catalog {
+            Some(catalog) => Ok(catalog.clone()),
+            None => Ok(ModuleDefinitionCatalog::from_static_registry(
+                self.static_registry.ok_or_else(|| {
+                    ModuleLifecycleDbWriterError::Configuration(
+                        "static lifecycle writer has no module registry".into(),
+                    )
+                })?,
+            )
+            .map_err(ModuleLifecycleDbWriterError::Definition)?),
+        }
     }
 
     async fn overrides(
@@ -188,6 +394,23 @@ pub enum ModuleLifecycleDbWriterError {
     Lifecycle(#[from] ModuleLifecycleExecutionError),
     #[error(transparent)]
     Definition(#[from] ModuleDefinitionError),
+    #[error(transparent)]
+    Recovery(#[from] ModuleOperationRecoveryError),
+    #[error("module `{0}` is not part of the active definition catalog")]
+    UnknownModule(String),
+    #[error(transparent)]
+    Settings(#[from] ModuleOperationStoreError),
+}
+
+fn map_idempotency_command_error(error: ModuleOperationStoreError) -> ModuleLifecycleDbWriterError {
+    match error {
+        ModuleOperationStoreError::IdempotencyConflict => ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::IdempotencyConflict,
+        ),
+        error => ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::Persistence(error.to_string()),
+        ),
+    }
 }
 
 fn database_error(error: impl std::fmt::Display) -> ModuleLifecycleDbWriterError {

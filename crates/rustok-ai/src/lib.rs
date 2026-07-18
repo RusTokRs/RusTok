@@ -16,6 +16,7 @@ pub mod metrics;
 pub mod migrations;
 pub mod model;
 pub mod policy;
+pub mod rag;
 pub mod router;
 #[cfg(feature = "server")]
 mod runtime_extensions;
@@ -73,6 +74,10 @@ pub use model::{
     TaskProfile, ToolCall, ToolDefinition, ToolTrace,
 };
 pub use policy::ToolExecutionPolicy;
+pub use rag::{
+    AthanorRagPort, RagAtom, RagCandidate, RagCitation, RagContext, RagCoordinator, RagError,
+    RagExpandRequest, RagResult, RagRetrievalStrategy, RagSearchRequest, RagSourceRef,
+};
 pub use router::{AiRouter, ResolvedExecutionPlan, RouterProviderProfile};
 #[cfg(feature = "server")]
 pub use scheduler::{AiAgentWorkflowWorkAdapter, AGENT_WORKFLOW_STAGE_WORKER};

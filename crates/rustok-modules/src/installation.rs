@@ -513,6 +513,16 @@ pub enum ArtifactMigrationRollbackMode {
     Prohibited,
 }
 
+impl ArtifactMigrationRollbackMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Reversible => "reversible",
+            Self::Compensating => "compensating",
+            Self::Prohibited => "prohibited",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactRollbackResult {
     pub operation_id: Uuid,
@@ -762,7 +772,8 @@ pub struct ArtifactBlobRetentionRule {
 
 /// Small deterministic policy implementation for a loaded durable retention
 /// snapshot. Production storage supplies the snapshot; CAS never infers a
-/// deletion decision from object age alone.
+/// deletion decision from object age alone. Missing snapshot data fails closed:
+/// a collector needs an explicit eligible rule before it may delete a blob.
 pub struct SnapshotArtifactBlobRetentionPolicy {
     now: DateTime<Utc>,
     rules: HashMap<String, ArtifactBlobRetentionRule>,
@@ -778,7 +789,7 @@ impl SnapshotArtifactBlobRetentionPolicy {
 impl ArtifactBlobRetentionPolicy for SnapshotArtifactBlobRetentionPolicy {
     async fn may_delete(&self, digest: &str) -> Result<bool, ModuleInstallationError> {
         Ok(match self.rules.get(digest) {
-            None => true,
+            None => false,
             Some(rule) => {
                 !rule.legal_hold
                     && !rule.rollback_protected
@@ -1838,11 +1849,31 @@ impl SeaOrmArtifactInstallationStore {
         if request.expected_revision == 0
             || request.target_capability_grant_revision == 0
             || request.reason.trim().is_empty()
+            || request.actor_id.is_nil()
+            || request.idempotency_key.is_nil()
         {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                "rollback requires positive revisions and a non-empty reason".into(),
+                "rollback requires positive revisions, non-nil identities, and a non-empty reason"
+                    .into(),
             ));
         }
+        if matches!(&request.scope, ModuleInstallationScope::Tenant { tenant_id } if tenant_id.is_nil())
+        {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "tenant-scoped rollback requires a non-nil tenant identity".into(),
+            ));
+        }
+        let expected_revision = i64::try_from(request.expected_revision).map_err(|_| {
+            ModuleInstallationError::AdmissionRevisionConflict(
+                "rollback revision exceeds database range".into(),
+            )
+        })?;
+        let target_capability_grant_revision =
+            i64::try_from(request.target_capability_grant_revision).map_err(|_| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "capability grant revision exceeds database range".into(),
+                )
+            })?;
         let transaction = self
             .db
             .begin()
@@ -1850,6 +1881,103 @@ impl SeaOrmArtifactInstallationStore {
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
         let backend = transaction.get_database_backend();
+        let (scope_kind, tenant_id) = match &request.scope {
+            ModuleInstallationScope::Platform => ("platform", None),
+            ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(*tenant_id)),
+        };
+        let scope = match backend {
+            DbBackend::Postgres => {
+                "installation.scope_kind = $2 AND installation.tenant_id IS NOT DISTINCT FROM $3"
+            }
+            _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
+        };
+        let existing = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT operation.operation_id, operation.installation_id, \
+                     operation.target_installation_id, operation.expected_revision, \
+                     operation.actor_id, operation.reason, \
+                     operation.target_capability_grant_revision, \
+                     operation.migration_rollback_mode, operation.source_revision, \
+                     operation.target_revision \
+                     FROM module_artifact_rollback_operations operation \
+                     JOIN module_artifact_installations installation \
+                       ON installation.installation_id = operation.installation_id \
+                     WHERE operation.idempotency_key = {} AND {scope}",
+                    if backend == DbBackend::Postgres {
+                        "$1"
+                    } else {
+                        "?1"
+                    }
+                ),
+                vec![
+                    uuid_value(request.idempotency_key, backend),
+                    scope_kind.into(),
+                    optional_uuid_value(tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if let Some(existing) = existing {
+            let installation_id = required_uuid_from_row(&existing, "installation_id", backend)?;
+            let target_installation_id =
+                required_uuid_from_row(&existing, "target_installation_id", backend)?;
+            let stored_expected_revision: i64 = existing
+                .try_get("", "expected_revision")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            let actor_id = required_uuid_from_row(&existing, "actor_id", backend)?;
+            let reason: String = existing
+                .try_get("", "reason")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            let stored_grant_revision: Option<i64> = existing
+                .try_get("", "target_capability_grant_revision")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            let stored_mode: Option<String> = existing
+                .try_get("", "migration_rollback_mode")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            let source_revision: Option<i64> = existing
+                .try_get("", "source_revision")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            let target_revision: Option<i64> = existing
+                .try_get("", "target_revision")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            if installation_id != request.installation_id
+                || stored_expected_revision != expected_revision
+                || actor_id != request.actor_id
+                || reason != request.reason
+                || stored_grant_revision != Some(target_capability_grant_revision)
+                || stored_mode.as_deref() != Some(request.migration_rollback_mode.as_str())
+            {
+                return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                    "idempotency key was already used for a different rollback command".into(),
+                ));
+            }
+            let source_revision = source_revision.ok_or_else(|| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "rollback idempotency record lacks an immutable response fingerprint".into(),
+                )
+            })?;
+            let target_revision = target_revision.ok_or_else(|| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "rollback idempotency record lacks an immutable response fingerprint".into(),
+                )
+            })?;
+            return Ok(ArtifactRollbackResult {
+                operation_id: required_uuid_from_row(&existing, "operation_id", backend)?,
+                target_installation_id,
+                source_revision: u64::try_from(source_revision).map_err(|_| {
+                    ModuleInstallationError::Store(
+                        "rollback source revision is negative".to_string(),
+                    )
+                })?,
+                target_revision: u64::try_from(target_revision).map_err(|_| {
+                    ModuleInstallationError::Store(
+                        "rollback target revision is negative".to_string(),
+                    )
+                })?,
+            });
+        }
         let placeholders = match backend {
             DbBackend::Postgres => ("$1", "$2"),
             _ => ("?1", "?2"),
@@ -1912,10 +2040,41 @@ impl SeaOrmArtifactInstallationStore {
         let target_expected_revision: i64 = target_revision_row
             .try_get("", "revision")
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let source_revision = expected_revision.checked_add(1).ok_or_else(|| {
+            ModuleInstallationError::AdmissionRevisionConflict(
+                "rollback source revision exceeds database range".into(),
+            )
+        })?;
+        let target_revision = target_expected_revision.checked_add(1).ok_or_else(|| {
+            ModuleInstallationError::AdmissionRevisionConflict(
+                "rollback target revision exceeds database range".into(),
+            )
+        })?;
+        let operation_id = Uuid::new_v4();
+        transaction.execute(Statement::from_sql_and_values(
+            backend,
+            match backend {
+                DbBackend::Postgres => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, reason, idempotency_key, target_capability_grant_revision, migration_rollback_mode, source_revision, target_revision, committed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())",
+                _ => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, reason, idempotency_key, target_capability_grant_revision, migration_rollback_mode, source_revision, target_revision, committed_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,datetime('now'))",
+            }.to_string(),
+            vec![
+                uuid_value(operation_id, backend),
+                uuid_value(request.installation_id, backend),
+                uuid_value(target_installation_id, backend),
+                expected_revision.into(),
+                uuid_value(request.actor_id, backend),
+                request.reason.clone().into(),
+                uuid_value(request.idempotency_key, backend),
+                target_capability_grant_revision.into(),
+                request.migration_rollback_mode.as_str().into(),
+                source_revision.into(),
+                target_revision.into(),
+            ],
+        )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let source = transaction.execute(Statement::from_sql_and_values(
             backend,
             format!("UPDATE module_artifact_admissions SET status = 'rolled_back', revision = revision + 1 WHERE installation_id = {} AND revision = {}", placeholders.0, placeholders.1),
-            vec![uuid_value(request.installation_id, backend), i64::try_from(request.expected_revision).map_err(|_| ModuleInstallationError::AdmissionRevisionConflict("rollback revision exceeds database range".into()))?.into()],
+            vec![uuid_value(request.installation_id, backend), expected_revision.into()],
         )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         if source.rows_affected() != 1 {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
@@ -1932,17 +2091,10 @@ impl SeaOrmArtifactInstallationStore {
                 "rollback predecessor is not activatable".into(),
             ));
         }
-        let target_revision = target_expected_revision + 1;
         transaction.execute(Statement::from_sql_and_values(
             backend,
             format!("UPDATE module_artifact_installations SET capability_grant_revision = {} WHERE installation_id = {}", placeholders.0, placeholders.1),
-            vec![i64::try_from(request.target_capability_grant_revision).map_err(|_| ModuleInstallationError::AdmissionRevisionConflict("capability grant revision exceeds database range".into()))?.into(), uuid_value(target_installation_id, backend)],
-        )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-        let operation_id = Uuid::new_v4();
-        transaction.execute(Statement::from_sql_and_values(
-            backend,
-            match backend { DbBackend::Postgres => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, reason, idempotency_key, committed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())", _ => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, reason, idempotency_key, committed_at) VALUES (?1,?2,?3,?4,?5,?6,?7,datetime('now'))" }.to_string(),
-            vec![uuid_value(operation_id, backend), uuid_value(request.installation_id, backend), uuid_value(target_installation_id, backend), i64::try_from(request.expected_revision).map_err(|_| ModuleInstallationError::AdmissionRevisionConflict("rollback revision exceeds database range".into()))?.into(), uuid_value(request.actor_id, backend), request.reason.into(), uuid_value(request.idempotency_key, backend)],
+            vec![target_capability_grant_revision.into(), uuid_value(target_installation_id, backend)],
         )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let tenant_id = match &request.scope {
             ModuleInstallationScope::Platform => None,
@@ -1969,7 +2121,9 @@ impl SeaOrmArtifactInstallationStore {
         Ok(ArtifactRollbackResult {
             operation_id,
             target_installation_id,
-            source_revision: request.expected_revision + 1,
+            source_revision: u64::try_from(source_revision).map_err(|_| {
+                ModuleInstallationError::Store("rollback source revision is negative".into())
+            })?,
             target_revision: u64::try_from(target_revision).map_err(|_| {
                 ModuleInstallationError::Store("rollback target revision is negative".into())
             })?,
@@ -3695,6 +3849,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn retention_snapshot_requires_an_explicit_eligible_rule_for_deletion() {
+        let now = Utc::now();
+        let digest = sha256_digest(b"retained artifact payload");
+        let policy = SnapshotArtifactBlobRetentionPolicy::new(now, HashMap::new());
+
+        assert!(!policy
+            .may_delete(&digest)
+            .await
+            .expect("missing retention rule fails closed"));
+
+        let policy = SnapshotArtifactBlobRetentionPolicy::new(
+            now,
+            HashMap::from([(
+                digest.clone(),
+                ArtifactBlobRetentionRule {
+                    retain_until: now,
+                    legal_hold: false,
+                    rollback_protected: false,
+                    audit_retained: false,
+                },
+            )]),
+        );
+
+        assert!(policy
+            .may_delete(&digest)
+            .await
+            .expect("expired unprotected rule allows deletion"));
+    }
+
+    #[tokio::test]
     async fn digest_pinned_package_installs_without_changing_server_source() {
         let package = package(ArtifactPayloadKind::Rhai);
         let reference = package.reference.clone();
@@ -4342,6 +4526,106 @@ mod tests {
                 .await,
             Err(ModuleInstallationError::AdmissionRevisionConflict(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn rollback_replays_an_exact_command_after_the_source_state_changes() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        rustok_outbox::SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration");
+        let module = crate::ModulesModule;
+        for migration in module.migrations() {
+            migration
+                .up(&SchemaManager::new(&database))
+                .await
+                .expect("migration");
+        }
+
+        let predecessor_package = package(ArtifactPayloadKind::Rhai);
+        let mut successor_package = predecessor_package.clone();
+        successor_package.reference.digest = format!("sha256:{}", "b".repeat(64));
+        successor_package.descriptor.version = "2.0.0".to_string();
+        let store = SeaOrmArtifactInstallationStore::new(database.clone());
+        let predecessor = ModuleInstaller::new(
+            FixtureRegistry(predecessor_package.clone()),
+            store.clone(),
+            InMemoryArtifactBlobStore::default(),
+            trust_verifier(),
+            trust_policy(),
+            AllowArtifactPermissionRegistrar,
+        )
+        .admit(admission_command(
+            predecessor_package.reference.clone(),
+            ModuleInstallationScope::Platform,
+        ))
+        .await
+        .expect("predecessor admission");
+        let successor = ModuleInstaller::new(
+            FixtureRegistry(successor_package.clone()),
+            store.clone(),
+            InMemoryArtifactBlobStore::default(),
+            trust_verifier(),
+            trust_policy(),
+            AllowArtifactPermissionRegistrar,
+        )
+        .admit(admission_command(
+            successor_package.reference.clone(),
+            ModuleInstallationScope::Platform,
+        ))
+        .await
+        .expect("successor admission");
+
+        let request = ArtifactRollbackRequest {
+            installation_id: successor.installation_id,
+            scope: ModuleInstallationScope::Platform,
+            expected_revision: 1,
+            actor_id: Uuid::new_v4(),
+            reason: "restore predecessor after failed upgrade".to_string(),
+            idempotency_key: Uuid::new_v4(),
+            target_capability_grant_revision: 7,
+            migration_rollback_mode: ArtifactMigrationRollbackMode::Reversible,
+        };
+        let result = store
+            .rollback_artifact(request.clone())
+            .await
+            .expect("rollback");
+        assert_eq!(result.target_installation_id, predecessor.installation_id);
+        assert_eq!(result.source_revision, 2);
+        assert_eq!(result.target_revision, 2);
+        assert_eq!(
+            store
+                .rollback_artifact(request.clone())
+                .await
+                .expect("idempotent rollback"),
+            result
+        );
+        assert!(matches!(
+            store
+                .rollback_artifact(ArtifactRollbackRequest {
+                    target_capability_grant_revision: 8,
+                    ..request
+                })
+                .await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
+        let rollback_event_count = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM sys_events \
+                 WHERE event_type = 'module.artifact.rolled_back'"
+                    .to_string(),
+            ))
+            .await
+            .expect("rollback outbox query")
+            .expect("rollback outbox row");
+        assert_eq!(
+            i64::try_get(&rollback_event_count, "", "count").expect("rollback event count"),
+            1
+        );
     }
 
     #[tokio::test]

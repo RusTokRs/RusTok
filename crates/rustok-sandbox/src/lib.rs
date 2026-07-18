@@ -20,8 +20,8 @@ pub use capability::{
     CapabilityAuditOutcome, CapabilityAuditRecord, CapabilityBroker, CapabilityBrokerRouter,
     CapabilityCall, CapabilityCallContext, CapabilityGrant, CapabilityName, CapabilityObserver,
     CapabilityResponse, DataCapabilityConstraints, EventCapabilityConstraints,
-    HttpCapabilityConstraints, McpCapabilityConstraints, McpToolGrant, SandboxHost,
-    SecretReferenceCapabilityConstraints,
+    HttpCapabilityConstraints, McpCapabilityConstraints, McpToolGrant, ObjectCapabilityConstraints,
+    SandboxHost, SecretReferenceCapabilityConstraints,
 };
 pub use error::{SandboxError, SandboxResult};
 pub use executor::{ExecutorRegistry, SandboxExecutor};

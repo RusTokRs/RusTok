@@ -15,8 +15,9 @@ use rustok_sandbox::{
 };
 
 use crate::{
-    ArtifactBindingDispatch, ArtifactBindingExecutor, ArtifactBlobStore, ArtifactReleaseRef,
-    InstalledModuleArtifact, ModuleArtifactError, ModuleInstallationError, ModuleRuntimeBinding,
+    ArtifactBindingDispatch, ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
+    ArtifactBindingExecutor, ArtifactBlobStore, ArtifactReleaseRef, InstalledModuleArtifact,
+    ModuleArtifactError, ModuleInstallationError, ModuleRuntimeBinding,
 };
 
 const MAX_RUNTIME_SCHEMA_VALIDATORS: usize = 128;
@@ -197,7 +198,7 @@ where
         artifact: &InstalledModuleArtifact,
         binding: &ModuleRuntimeBinding,
         context: SandboxContext,
-        input: Value,
+        input: ArtifactBindingDispatchEnvelope,
         policy: SandboxPolicy,
     ) -> Result<SandboxOutcome, ArtifactRuntimeError> {
         artifact
@@ -212,11 +213,14 @@ where
         {
             return Err(ArtifactRuntimeError::BindingNotAdmitted(binding.id.clone()));
         }
-        self.validate_binding_value(artifact, binding, BindingSchemaStage::Input, &input)?;
+        input.validate_for(binding, context.phase)?;
+        self.validate_binding_value(artifact, binding, BindingSchemaStage::Input, &input.payload)?;
         let payload = self
             .blobs
             .get_verified(&artifact.descriptor.artifact_digest)
             .await?;
+        let input = serde_json::to_value(input)
+            .map_err(|error| ArtifactRuntimeError::DispatchEnvelopeEncoding(error.to_string()))?;
         let mut request = artifact.sandbox_request(payload, context, input, policy)?;
         request.payload.entrypoint = binding.entrypoint.clone();
         let outcome = self.sandbox.execute(request).await?;
@@ -401,8 +405,10 @@ where
         context.tenant_id = Some(dispatch.tenant_id);
         context.actor_id = dispatch.context.actor_id.clone();
         context.trace_id = dispatch.context.trace_id.clone();
+        let input =
+            ArtifactBindingDispatchEnvelope::new(dispatch.binding, dispatch.phase, dispatch.input);
         self.runtime
-            .execute_binding(&artifact, dispatch.binding, context, dispatch.input, policy)
+            .execute_binding(&artifact, dispatch.binding, context, input, policy)
             .await
             .map(|outcome| outcome.output)
             .map_err(|error| error.to_string())
@@ -415,6 +421,10 @@ pub enum ArtifactRuntimeError {
     BindingNotAdmitted(String),
     #[error("artifact Rhai binding is invalid: {0}")]
     RhaiBinding(String),
+    #[error("artifact binding dispatch envelope could not be encoded: {0}")]
+    DispatchEnvelopeEncoding(String),
+    #[error(transparent)]
+    DispatchEnvelope(#[from] ArtifactBindingDispatchEnvelopeError),
     #[error("artifact descriptor is invalid: {0}")]
     Descriptor(#[source] ModuleArtifactError),
     #[error("artifact binding `{binding}` references a schema not admitted by its descriptor: `{schema_digest}`")]
@@ -682,7 +692,11 @@ mod tests {
                 &installed,
                 &binding,
                 context.clone(),
-                json!({ "id": 1 }),
+                ArtifactBindingDispatchEnvelope::new(
+                    &binding,
+                    ExecutionPhase::Event,
+                    json!({ "id": 1 }),
+                ),
                 SandboxPolicy::default(),
             )
             .await
@@ -700,12 +714,20 @@ mod tests {
             request.subject,
             rustok_sandbox::SandboxSubject::ModuleArtifact { .. }
         ));
-        assert_eq!(
+        let envelope = serde_json::from_value::<ArtifactBindingDispatchEnvelope>(
             RhaiBindingInput::decode(request.input)
                 .expect("versioned Rhai input")
                 .input,
-            json!({ "id": 1 })
+        )
+        .expect("versioned artifact dispatch envelope");
+        assert_eq!(
+            envelope.dispatch_version,
+            crate::ARTIFACT_BINDING_DISPATCH_ENVELOPE_VERSION
         );
+        assert_eq!(envelope.binding_id, binding.id);
+        assert_eq!(envelope.binding_kind, binding.kind);
+        assert_eq!(envelope.phase, ExecutionPhase::Event);
+        assert_eq!(envelope.payload, json!({ "id": 1 }));
     }
 
     #[tokio::test]
@@ -724,12 +746,48 @@ mod tests {
                     &installed,
                     &binding,
                     SandboxContext::new(ExecutionPhase::Event),
-                    Value::Null,
+                    ArtifactBindingDispatchEnvelope::new(
+                        &binding,
+                        ExecutionPhase::Event,
+                        Value::Null,
+                    ),
                     SandboxPolicy::default(),
                 )
                 .await,
             Err(ArtifactRuntimeError::Installation(
                 ModuleInstallationError::BlobNotFound(_)
+            ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn dispatch_envelope_rejects_version_or_binding_tampering_before_payload_read() {
+        let package = package();
+        let installed = installed(&package);
+        let binding = installed.descriptor.bindings[0].clone();
+        let runtime = ArtifactRuntime::new(
+            InMemoryArtifactBlobStore::default(),
+            SandboxRuntime::new(ExecutorRegistry::new(), Arc::new(DenyBroker)),
+        );
+        let mut envelope = ArtifactBindingDispatchEnvelope::new(
+            &binding,
+            ExecutionPhase::Event,
+            json!({ "id": 1 }),
+        );
+        envelope.dispatch_version += 1;
+
+        assert!(matches!(
+            runtime
+                .execute_binding(
+                    &installed,
+                    &binding,
+                    SandboxContext::new(ExecutionPhase::Event),
+                    envelope,
+                    SandboxPolicy::default(),
+                )
+                .await,
+            Err(ArtifactRuntimeError::DispatchEnvelope(
+                ArtifactBindingDispatchEnvelopeError::UnsupportedVersion
             ))
         ));
     }
@@ -758,7 +816,11 @@ mod tests {
                     &installed,
                     &binding,
                     SandboxContext::new(ExecutionPhase::Event),
-                    json!({ "id": "invalid" }),
+                    ArtifactBindingDispatchEnvelope::new(
+                        &binding,
+                        ExecutionPhase::Event,
+                        json!({ "id": "invalid" }),
+                    ),
                     SandboxPolicy::default(),
                 )
                 .await,
@@ -802,7 +864,11 @@ mod tests {
                     &installed,
                     &binding,
                     SandboxContext::new(ExecutionPhase::Event),
-                    json!({ "id": 1 }),
+                    ArtifactBindingDispatchEnvelope::new(
+                        &binding,
+                        ExecutionPhase::Event,
+                        json!({ "id": 1 }),
+                    ),
                     SandboxPolicy::default(),
                 )
                 .await,

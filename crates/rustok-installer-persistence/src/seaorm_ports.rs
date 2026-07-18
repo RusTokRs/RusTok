@@ -10,10 +10,7 @@ use rustok_installer::{
     SeedTenantRequest, SeedUser, SeedUserRequest,
 };
 use rustok_migrations::Migrator;
-use rustok_modules::{
-    ModuleDefinitionCatalog, ModuleEffectivePolicyQuery, ModuleLifecycleDbWriter,
-    TenantModuleOverride,
-};
+use rustok_modules::ModuleControlPlane;
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_tenant::{
     CreateTenantInput, PortActor, PortContext, TenantReadPort, TenantReadRequest,
@@ -416,9 +413,11 @@ impl SeedModulePort for SeaOrmInstallerBootstrapPorts<'_> {
         enabled: bool,
         actor: &str,
     ) -> Result<(), SeedExecutionError> {
-        ModuleLifecycleDbWriter::new(self.db.clone(), self.registry, self.defaults.clone())
-            .toggle(tenant_id, module_slug, enabled, actor)
+        ModuleControlPlane::new(self.db.clone())
+            .lifecycle(self.registry, self.defaults.clone())
+            .toggle(tenant_id, module_slug, enabled, Some(actor.to_string()))
             .await
+            .map(|_| ())
             .map_err(seed_error)
     }
 }
@@ -490,26 +489,13 @@ async fn verify_standalone_installation(
                 plan.admin.email
             ))
         })?;
-    let overrides = tenant_service
-        .list_tenant_modules(tenant.id)
+    let mut enabled_modules = ModuleControlPlane::new(db.clone())
+        .effective_policy(registry, plan.seed_profile.default_enabled_modules())
+        .resolve_enabled(tenant.id)
         .await
         .map_err(execution_error)?
         .into_iter()
-        .map(|module| TenantModuleOverride {
-            module_slug: module.module_slug,
-            enabled: module.enabled,
-        });
-    let catalog =
-        ModuleDefinitionCatalog::from_static_registry(registry).map_err(execution_error)?;
-    let mut enabled_modules = ModuleEffectivePolicyQuery::new(
-        &catalog,
-        plan.seed_profile.default_enabled_modules(),
-        overrides,
-    )
-    .execute()
-    .into_enabled_modules()
-    .into_iter()
-    .collect::<Vec<_>>();
+        .collect::<Vec<_>>();
     enabled_modules.sort();
 
     Ok(InstallVerificationOutcome {

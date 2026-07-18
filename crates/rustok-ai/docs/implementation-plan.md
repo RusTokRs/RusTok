@@ -159,6 +159,26 @@ tasks in R0-R4. The current wave exposes embeddings, reranking, and local
 FastEmbed engine entrypoints only. Remote Alloy transport remains owned by the
 `rustok-ai-alloy` plan.
 
+### RAG v0.1 architecture track
+
+The next RAG slice is planned as two deployment profiles behind one
+`rustok-ai` retrieval contract:
+
+- **Basic RAG** owns source references, source versions, citations and
+  structure-aware retrieval through Athanor's document/atom graph. Tantivy
+  provides lexical candidates and metadata filters, while optional Rig
+  reranking improves the result set.
+- **Semantic RAG** adds Rig embeddings and Athanor/SurrealDB vector similarity
+  search. Additional Athanor modules may provide parsers, connectors,
+  embedding providers or retrieval strategies; no `pgvector` installation is
+  required for the embedded RusToK + Athanor deployment.
+
+The base AI schema remains provider-neutral. `rustok-search` keeps ownership
+of its own FTS/trigram read model; RAG does not reuse Search tables. Version
+0.1 uses embedded Athanor as the lexical, structural and semantic data plane,
+while future external providers must be added behind the same retrieval
+contract.
+
 ## Verification
 
 - `npm run verify:ai:admin-boundary`

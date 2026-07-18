@@ -1,7 +1,6 @@
 use rustok_modules::{
-    ModuleGovernanceError, ModuleRemoteValidationHeartbeatCommand,
+    ModuleControlPlane, ModuleGovernanceError, ModuleRemoteValidationHeartbeatCommand,
     ModuleRemoteValidationTerminalCommand, ModuleRemoteValidationTerminalOutcome,
-    SeaOrmModuleGovernanceService,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
@@ -33,7 +32,8 @@ pub async fn heartbeat_remote_validation_stage_atomic(
     runner_id: &str,
     lease_ttl_ms: u64,
 ) -> Result<registry_validation_stage::Model, RegistryRemoteTransitionError> {
-    SeaOrmModuleGovernanceService::new(db.clone())
+    ModuleControlPlane::new(db.clone())
+        .publication()
         .heartbeat_remote_validation_stage(ModuleRemoteValidationHeartbeatCommand {
             claim_id: claim_id.to_string(),
             runner_id: runner_id.to_string(),
@@ -53,7 +53,8 @@ pub async fn finish_remote_validation_stage_atomic(
     detail: Option<&str>,
     reason_code: Option<&str>,
 ) -> Result<registry_validation_stage::Model, RegistryRemoteTransitionError> {
-    let stage_id = SeaOrmModuleGovernanceService::new(db.clone())
+    let stage_id = ModuleControlPlane::new(db.clone())
+        .publication()
         .complete_remote_validation_stage(ModuleRemoteValidationTerminalCommand {
             claim_id: claim_id.to_string(),
             runner_id: runner_id.to_string(),

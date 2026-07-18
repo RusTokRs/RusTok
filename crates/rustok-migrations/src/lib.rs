@@ -48,6 +48,8 @@ mod m20260522_000001_add_module_operation_correlation_id;
 mod m20260717_000001_create_registry_publication_evidence;
 mod m20260717_000002_create_registry_publish_build_staging;
 mod m20260717_000003_add_registry_artifact_origin_and_external_staging;
+mod m20260718_000001_add_module_operation_idempotency_key;
+mod m20260718_000002_add_registry_publication_idempotency;
 
 pub struct Migrator;
 
@@ -57,6 +59,10 @@ struct ModuleMigrationSource {
 }
 
 static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
+    ModuleMigrationSource {
+        slug: "modules",
+        source: &rustok_modules::ModulesModule,
+    },
     ModuleMigrationSource {
         slug: "alloy",
         source: &alloy::AlloyModule,
@@ -231,6 +237,9 @@ impl MigratorTrait for Migrator {
         // Pull module-owned migrations from the domain crates and merge them into
         // the server migrator in chronological order.
         all.extend(alloy::migrations::migrations());
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_modules::ModulesModule,
+        ));
         all.extend(rustok_auth::migrations::migrations());
         all.extend(rustok_core::MigrationSource::migrations(
             &rustok_rbac::RbacModule,
@@ -261,6 +270,12 @@ impl MigratorTrait for Migrator {
         ));
         all.push(Box::new(
             m20260522_000001_add_module_operation_correlation_id::Migration,
+        ));
+        all.push(Box::new(
+            m20260718_000001_add_module_operation_idempotency_key::Migration,
+        ));
+        all.push(Box::new(
+            m20260718_000002_add_registry_publication_idempotency::Migration,
         ));
         let dependencies = collect_migration_descriptors();
 
@@ -394,8 +409,10 @@ mod tests {
         assert_eq!(
             slugs,
             vec![
+                "modules",
                 "alloy",
                 "auth",
+                "rbac",
                 "channel",
                 "cart",
                 "customer",

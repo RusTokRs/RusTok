@@ -596,6 +596,177 @@ impl DataCapabilityConstraints {
     }
 }
 
+/// Typed policy for the `platform.data.objects` capability. Object names are
+/// logical paths only; the owner never accepts a bucket, URL, or storage key
+/// from a sandbox call.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObjectCapabilityConstraints {
+    pub object_prefixes: Vec<String>,
+    pub operations: Vec<String>,
+}
+
+impl ObjectCapabilityConstraints {
+    fn from_grant(grant: &CapabilityGrant) -> SandboxResult<Self> {
+        let constraints =
+            serde_json::from_value::<Self>(grant.constraints.clone()).map_err(|error| {
+                SandboxError::CapabilityConstraintDenied {
+                    capability: grant.name.clone(),
+                    reason: format!("invalid object-data constraints: {error}"),
+                }
+            })?;
+        if constraints.object_prefixes.is_empty() || constraints.operations.is_empty() {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "object-data constraints require non-empty object_prefixes and operations"
+                    .to_string(),
+            });
+        }
+        let mut prefixes = std::collections::BTreeSet::new();
+        if constraints
+            .object_prefixes
+            .iter()
+            .any(|prefix| !valid_data_prefix(prefix) || !prefixes.insert(prefix))
+        {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "object-data prefixes must be unique logical paths ending in `/`"
+                    .to_string(),
+            });
+        }
+        let mut operations = std::collections::BTreeSet::new();
+        if constraints.operations.iter().any(|operation| {
+            !matches!(operation.as_str(), "get_metadata" | "read" | "put" | "list")
+                || !operations.insert(operation)
+        }) {
+            return Err(SandboxError::CapabilityConstraintDenied {
+                capability: grant.name.clone(),
+                reason: "object-data operations must be unique and limited to get_metadata, read, put, or list".to_string(),
+            });
+        }
+        Ok(constraints)
+    }
+
+    fn validate(&self, call: &CapabilityCall) -> SandboxResult<()> {
+        if !self
+            .operations
+            .iter()
+            .any(|allowed| allowed == &call.operation)
+        {
+            return Err(data_constraint_error(
+                call,
+                "object-data operation is not allowed",
+            ));
+        }
+        let input = call
+            .input
+            .as_object()
+            .ok_or_else(|| data_constraint_error(call, "object-data input must be an object"))?;
+        match call.operation.as_str() {
+            "get_metadata" | "read" => {
+                reject_unexpected_data_fields(call, input, &["name"])?;
+                self.validate_name(call, required_data_string(call, input, "name")?)
+            }
+            "put" => {
+                reject_unexpected_data_fields(
+                    call,
+                    input,
+                    &[
+                        "name",
+                        "content_type",
+                        "data_base64",
+                        "expected_revision",
+                        "idempotency_key",
+                    ],
+                )?;
+                self.validate_name(call, required_data_string(call, input, "name")?)?;
+                if input
+                    .get("content_type")
+                    .and_then(Value::as_str)
+                    .is_none_or(str::is_empty)
+                    || input
+                        .get("data_base64")
+                        .and_then(Value::as_str)
+                        .is_none_or(str::is_empty)
+                {
+                    return Err(data_constraint_error(
+                        call,
+                        "object-data put requires non-empty content_type and data_base64",
+                    ));
+                }
+                let idempotency_key = required_data_string(call, input, "idempotency_key")?;
+                if Uuid::parse_str(idempotency_key).is_err() {
+                    return Err(data_constraint_error(
+                        call,
+                        "object-data idempotency_key must be a UUID",
+                    ));
+                }
+                if let Some(revision) = input.get("expected_revision") {
+                    if revision.as_u64().filter(|revision| *revision > 0).is_none() {
+                        return Err(data_constraint_error(
+                            call,
+                            "object-data expected_revision must be a positive integer",
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            "list" => {
+                reject_unexpected_data_fields(call, input, &["prefix", "after_name", "limit"])?;
+                let prefix = required_data_string(call, input, "prefix")?;
+                if !self.object_prefixes.iter().any(|allowed| allowed == prefix) {
+                    return Err(data_constraint_error(
+                        call,
+                        "object-data prefix is not allowed",
+                    ));
+                }
+                if let Some(after_name) = input.get("after_name") {
+                    let after_name = after_name.as_str().ok_or_else(|| {
+                        data_constraint_error(call, "object-data after_name must be a string")
+                    })?;
+                    if !valid_data_key(after_name) || !after_name.starts_with(prefix) {
+                        return Err(data_constraint_error(
+                            call,
+                            "object-data after_name is outside the allowed prefix",
+                        ));
+                    }
+                }
+                if input
+                    .get("limit")
+                    .and_then(Value::as_u64)
+                    .filter(|limit| (1..=100).contains(limit))
+                    .is_none()
+                {
+                    return Err(data_constraint_error(
+                        call,
+                        "object-data list limit must be between 1 and 100",
+                    ));
+                }
+                Ok(())
+            }
+            _ => Err(data_constraint_error(
+                call,
+                "object-data operation is unsupported",
+            )),
+        }
+    }
+
+    fn validate_name(&self, call: &CapabilityCall, name: &str) -> SandboxResult<()> {
+        if !valid_data_key(name)
+            || !self
+                .object_prefixes
+                .iter()
+                .any(|prefix| name.starts_with(prefix))
+        {
+            return Err(data_constraint_error(
+                call,
+                "object-data name is not allowed",
+            ));
+        }
+        Ok(())
+    }
+}
+
 fn data_constraint_error(call: &CapabilityCall, reason: &str) -> SandboxError {
     SandboxError::CapabilityConstraintDenied {
         capability: call.capability.clone(),
@@ -1091,6 +1262,9 @@ impl SandboxHost {
         if call.capability.as_str() == "platform.data" {
             DataCapabilityConstraints::from_grant(grant)?.validate(call)?;
         }
+        if call.capability.as_str() == "platform.data.objects" {
+            ObjectCapabilityConstraints::from_grant(grant)?.validate(call)?;
+        }
         if call.capability.as_str() == "platform.mcp" {
             McpCapabilityConstraints::from_grant(grant)?.validate(call)?;
         }
@@ -1153,7 +1327,8 @@ mod tests {
     use super::{
         CapabilityBroker, CapabilityBrokerRouter, CapabilityCall, CapabilityCallContext,
         CapabilityGrant, CapabilityName, CapabilityResponse, DataCapabilityConstraints,
-        EventCapabilityConstraints, McpCapabilityConstraints, SecretReferenceCapabilityConstraints,
+        EventCapabilityConstraints, McpCapabilityConstraints, ObjectCapabilityConstraints,
+        SecretReferenceCapabilityConstraints,
     };
     use crate::{ExecutionPhase, SandboxError, SandboxResult, SandboxSubject};
 
@@ -1288,6 +1463,44 @@ mod tests {
             }]
         });
         assert!(constraints.validate(&data_call).is_err());
+    }
+
+    #[test]
+    fn object_data_constraints_reject_physical_identity_and_ungranted_names() {
+        let grant = CapabilityGrant {
+            name: CapabilityName::new("platform.data.objects").expect("capability name"),
+            constraints: json!({
+                "object_prefixes": ["exports/"],
+                "operations": ["get_metadata", "read", "put", "list"]
+            }),
+        };
+        let constraints =
+            ObjectCapabilityConstraints::from_grant(&grant).expect("valid object constraints");
+        let mut object_call = call(
+            "put",
+            json!({
+                "name": "exports/report.json",
+                "content_type": "application/json",
+                "data_base64": "e30=",
+                "idempotency_key": Uuid::new_v4().to_string(),
+            }),
+        );
+        object_call.capability =
+            CapabilityName::new("platform.data.objects").expect("capability name");
+        assert!(constraints.validate(&object_call).is_ok());
+
+        object_call.input = json!({ "name": "other/report.json" });
+        object_call.operation = "read".to_string();
+        assert!(constraints.validate(&object_call).is_err());
+        object_call.input = json!({
+            "name": "exports/report.json",
+            "content_type": "application/json",
+            "data_base64": "e30=",
+            "idempotency_key": Uuid::new_v4().to_string(),
+            "storage_key": "host/private/key",
+        });
+        object_call.operation = "put".to_string();
+        assert!(constraints.validate(&object_call).is_err());
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use rustok_modules::{
-    ModuleRemoteValidationClaim, ModuleRemoteValidationClaimCommand, SeaOrmModuleGovernanceService,
+    ModuleControlPlane, ModuleRemoteValidationClaim, ModuleRemoteValidationClaimCommand,
 };
 use sea_orm::DatabaseConnection;
 
@@ -14,7 +14,8 @@ pub async fn claim_remote_validation_stage_atomic(
     supported_stages: &[String],
     lease_ttl_ms: u64,
 ) -> anyhow::Result<Option<RegistryRemoteValidationClaim>> {
-    SeaOrmModuleGovernanceService::new(db.clone())
+    ModuleControlPlane::new(db.clone())
+        .publication()
         .claim_remote_validation_stage(ModuleRemoteValidationClaimCommand {
             runner_id: runner_id.to_string(),
             supported_stages: supported_stages.to_vec(),

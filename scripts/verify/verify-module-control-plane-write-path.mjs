@@ -5,9 +5,20 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const serverRoot = path.join(root, 'apps/server/src');
+const nonOwnerRoots = [
+  'apps/server/src',
+  'crates/rustok-installer-persistence/src',
+  'crates/rustok-module-build-worker/src',
+  'crates/rustok-registry-validation-worker/src',
+  'crates/rustok-module-build-transport/src',
+  'crates/rustok-verification-worker/src',
+  'crates/rustok-verification-transport/src',
+  'crates/rustok-module-build-dispatcher/src',
+  'crates/rustok-worker-transport/src',
+].map((relativePath) => path.join(root, relativePath));
 const writePattern = /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:platform_state|module_operations|tenant_modules|module_artifact_[a-z_]+|module_build_requests|registry_[a-z_]+)\b/i;
 const activeModelPattern = /\b(?:module_operations|tenant_modules|module_artifact_[a-z_]+|module_build_requests|registry_[a-z_]+)::ActiveModel\b/;
+const ownerServiceConstructorPattern = /\b(?:ModuleDefinitionCatalog::from_static_registry|ModuleEffectivePolicyQuery::new|ModuleLifecycleDbWriter::new|SeaOrmArtifactInstallationStore::new|SeaOrmArtifactSandboxPolicyResolver::new|SeaOrmModuleBuildService::new|SeaOrmModuleCompositionService::new|SeaOrmModuleGovernanceService::new)\s*\(/;
 const ownerBoundaries = [
   {
     path: 'crates/rustok-modules/src/composition.rs',
@@ -20,6 +31,10 @@ const ownerBoundaries = [
   {
     path: 'crates/rustok-modules/src/installation.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_artifact_[a-z_]+\b/i,
+  },
+  {
+    path: 'crates/rustok-modules/src/data.rs',
+    pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_artifact_data[a-z_]*\b/i,
   },
   {
     path: 'crates/rustok-modules/src/build.rs',
@@ -51,14 +66,35 @@ function writesControlPlane(source) {
   return writePattern.test(source) || activeModelPattern.test(source);
 }
 
+function constructsOwnerService(source) {
+  return ownerServiceConstructorPattern.test(source);
+}
+
+function isProductionSource(filePath) {
+  const file = relative(filePath);
+  return !file.includes('/tests/') && !file.endsWith('/tests.rs');
+}
+
 try {
-  const violations = rustFiles(serverRoot)
+  const productionSources = nonOwnerRoots
+    .flatMap((directory) => rustFiles(directory))
     .filter((filePath) => !relative(filePath).startsWith('apps/server/src/models/'))
+    .filter(isProductionSource);
+  const writeViolations = productionSources
     .filter((filePath) => writesControlPlane(fs.readFileSync(filePath, 'utf8')))
     .map(relative);
+  const constructionViolations = productionSources
+    .filter((filePath) => constructsOwnerService(fs.readFileSync(filePath, 'utf8')))
+    .map(relative);
 
-  if (violations.length > 0) {
-    fail(`control-plane writes must be owner-owned; found: ${violations.join(', ')}`);
+  if (writeViolations.length > 0) {
+    fail(`control-plane writes must be owner-owned; found: ${writeViolations.join(', ')}`);
+  }
+
+  if (constructionViolations.length > 0) {
+    fail(
+      `control-plane services must be obtained through ModuleControlPlane; found: ${constructionViolations.join(', ')}`,
+    );
   }
 
   for (const owner of ownerBoundaries) {

@@ -13,11 +13,20 @@ pub struct ModuleOperationRequest {
     pub previous_effective_enabled: bool,
     pub requested_by: Option<String>,
     pub correlation_id: String,
+    pub idempotency_key: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModuleOperationRecord {
     pub id: Uuid,
+}
+
+/// Result of recording a lifecycle command with a caller-supplied idempotency
+/// key. A replay must not dispatch the lifecycle hook a second time.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ModuleOperationRecordOutcome {
+    Recorded(ModuleOperationRecord),
+    Replayed(ModuleOperationRecord),
 }
 
 /// Durable lifecycle journal data exposed without leaking server ORM entities
@@ -32,6 +41,7 @@ pub struct ModuleOperationSnapshot {
     pub status: ModuleOperationStatus,
     pub requested_by: Option<String>,
     pub correlation_id: Option<String>,
+    pub idempotency_key: Option<Uuid>,
     pub error_message: Option<String>,
     pub created_at: DateTime<Utc>,
 }
@@ -42,6 +52,10 @@ pub enum ModuleOperationStoreError {
     Database(String),
     #[error("module `{0}` is not enabled for this tenant")]
     ModuleNotEnabled(String),
+    #[error("module operation idempotency key was reused for a different command")]
+    IdempotencyConflict,
+    #[error("module operation idempotency key is required")]
+    MissingIdempotencyKey,
 }
 
 /// Owner-owned persistence for lifecycle operation journaling.
@@ -160,6 +174,79 @@ impl ModuleOperationJournal {
             .collect()
     }
 
+    pub async fn record_idempotent<C: ConnectionTrait>(
+        db: &C,
+        request: ModuleOperationRequest,
+    ) -> Result<ModuleOperationRecordOutcome, ModuleOperationStoreError> {
+        let idempotency_key = request
+            .idempotency_key
+            .ok_or(ModuleOperationStoreError::MissingIdempotencyKey)?;
+        if let Some(existing) =
+            Self::find_by_idempotency_key(db, request.tenant_id, idempotency_key).await?
+        {
+            return replay_or_conflict(&request, existing);
+        }
+
+        match Self::record(db, request.clone()).await {
+            Ok(record) => Ok(ModuleOperationRecordOutcome::Recorded(record)),
+            Err(error) => {
+                if let Some(existing) =
+                    Self::find_by_idempotency_key(db, request.tenant_id, idempotency_key).await?
+                {
+                    replay_or_conflict(&request, existing)
+                } else {
+                    Err(error)
+                }
+            }
+        }
+    }
+
+    /// Returns a prior matching command before transient state validation.
+    /// This makes a completed or failed command replay stable even if the
+    /// tenant state changes after its first execution.
+    pub async fn replay_idempotent<C: ConnectionTrait>(
+        db: &C,
+        request: &ModuleOperationRequest,
+    ) -> Result<Option<ModuleOperationRecord>, ModuleOperationStoreError> {
+        let idempotency_key = request
+            .idempotency_key
+            .ok_or(ModuleOperationStoreError::MissingIdempotencyKey)?;
+        Self::find_by_idempotency_key(db, request.tenant_id, idempotency_key)
+            .await?
+            .map(|existing| match replay_or_conflict(request, existing)? {
+                ModuleOperationRecordOutcome::Replayed(record) => Ok(record),
+                ModuleOperationRecordOutcome::Recorded(_) => {
+                    unreachable!("existing record replays")
+                }
+            })
+            .transpose()
+    }
+
+    /// Replays a lifecycle command before recomputing transient effective
+    /// state. The caller must still use `record_idempotent` to retain the full
+    /// previous-state fingerprint during the initial write.
+    pub async fn replay_idempotent_command<C: ConnectionTrait>(
+        db: &C,
+        request: &ModuleOperationRequest,
+    ) -> Result<Option<ModuleOperationSnapshot>, ModuleOperationStoreError> {
+        let idempotency_key = request
+            .idempotency_key
+            .ok_or(ModuleOperationStoreError::MissingIdempotencyKey)?;
+        let Some(existing) =
+            Self::find_by_idempotency_key(db, request.tenant_id, idempotency_key).await?
+        else {
+            return Ok(None);
+        };
+        if existing.module_slug != request.module_slug
+            || existing.requested_enabled != request.requested_enabled
+            || existing.requested_by != request.requested_by
+            || existing.correlation_id.as_deref() != Some(request.correlation_id.as_str())
+        {
+            return Err(ModuleOperationStoreError::IdempotencyConflict);
+        }
+        Ok(Some(existing))
+    }
+
     pub async fn record<C: ConnectionTrait>(
         db: &C,
         request: ModuleOperationRequest,
@@ -167,7 +254,7 @@ impl ModuleOperationJournal {
         let id = rustok_core::generate_id();
         execute(
             db,
-            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, correlation_id, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, NULL)",
+            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, correlation_id, idempotency_key, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, NULL)",
             vec![
                 id.into(),
                 request.tenant_id.into(),
@@ -177,10 +264,38 @@ impl ModuleOperationJournal {
                 ModuleOperationStatus::Validated.as_str().into(),
                 request.requested_by.into(),
                 request.correlation_id.into(),
+                request.idempotency_key.into(),
             ],
         )
         .await?;
         Ok(ModuleOperationRecord { id })
+    }
+
+    async fn find_by_idempotency_key<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        idempotency_key: Uuid,
+    ) -> Result<Option<ModuleOperationSnapshot>, ModuleOperationStoreError> {
+        let backend = db.get_database_backend();
+        let sql = match backend {
+            DbBackend::Postgres => format!(
+                "{} WHERE tenant_id = $1 AND idempotency_key = $2 LIMIT 1",
+                operation_select_sql()
+            ),
+            _ => format!(
+                "{} WHERE tenant_id = ?1 AND idempotency_key = ?2 LIMIT 1",
+                operation_select_sql()
+            ),
+        };
+        db.query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![tenant_id.into(), idempotency_key.into()],
+        ))
+        .await
+        .map_err(database_error)?
+        .map(operation_snapshot)
+        .transpose()
     }
 
     pub async fn mark_running<C: ConnectionTrait>(
@@ -236,7 +351,24 @@ impl ModuleOperationJournal {
 
 fn operation_select_sql() -> &'static str {
     "SELECT id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, \
-     requested_by, correlation_id, error_message, created_at FROM module_operations"
+     requested_by, correlation_id, idempotency_key, error_message, created_at FROM module_operations"
+}
+
+fn replay_or_conflict(
+    request: &ModuleOperationRequest,
+    existing: ModuleOperationSnapshot,
+) -> Result<ModuleOperationRecordOutcome, ModuleOperationStoreError> {
+    if existing.module_slug != request.module_slug
+        || existing.requested_enabled != request.requested_enabled
+        || existing.previous_effective_enabled != request.previous_effective_enabled
+        || existing.requested_by != request.requested_by
+        || existing.correlation_id.as_deref() != Some(request.correlation_id.as_str())
+    {
+        return Err(ModuleOperationStoreError::IdempotencyConflict);
+    }
+    Ok(ModuleOperationRecordOutcome::Replayed(
+        ModuleOperationRecord { id: existing.id },
+    ))
 }
 
 fn operation_snapshot(
@@ -260,6 +392,7 @@ fn operation_snapshot(
         })?,
         requested_by: row.try_get("", "requested_by").map_err(database_error)?,
         correlation_id: row.try_get("", "correlation_id").map_err(database_error)?,
+        idempotency_key: row.try_get("", "idempotency_key").map_err(database_error)?,
         error_message: row.try_get("", "error_message").map_err(database_error)?,
         created_at: row.try_get("", "created_at").map_err(database_error)?,
     })
@@ -270,6 +403,38 @@ fn database_error(error: impl std::fmt::Display) -> ModuleOperationStoreError {
 }
 
 impl TenantModuleStateStore {
+    pub async fn read<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<TenantModuleStateRecord>, ModuleOperationStoreError> {
+        let backend = db.get_database_backend();
+        let sql = match backend {
+            DbBackend::Postgres => {
+                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
+            }
+            _ => {
+                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+            }
+        };
+        db.query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![tenant_id.into(), module_slug.into()],
+        ))
+        .await
+        .map_err(database_error)?
+        .map(|row| {
+            let enabled: bool = row.try_get("", "enabled").map_err(database_error)?;
+            Ok(TenantModuleStateRecord {
+                id: row.try_get("", "id").map_err(database_error)?,
+                previous_enabled: enabled,
+                changed: false,
+            })
+        })
+        .transpose()
+    }
+
     pub async fn persist<C: ConnectionTrait>(
         db: &C,
         request: TenantModuleStateRequest,
@@ -415,7 +580,7 @@ async fn execute<C: ConnectionTrait>(
 }
 
 fn render_parameters(sql_template: &str, backend: DbBackend) -> String {
-    (1..=8).fold(sql_template.to_string(), |sql, index| {
+    (1..=9).fold(sql_template.to_string(), |sql, index| {
         let parameter = match backend {
             DbBackend::Postgres => format!("${index}"),
             _ => format!("?{index}"),

@@ -2,7 +2,7 @@ use std::{env, sync::Arc, time::Duration};
 
 use rustok_iggy::{IggyConfig, IggyMode, IggyTransport, RemoteConfig};
 use rustok_module_build_transport::GrpcModuleBuildWorker;
-use rustok_modules::SeaOrmModuleBuildService;
+use rustok_modules::ModuleControlPlane;
 use rustok_worker_transport::MutualTlsClientConfig;
 use sea_orm::{ConnectOptions, Database};
 use tonic::transport::Endpoint;
@@ -110,7 +110,7 @@ pub async fn run_dispatcher(config: ModuleBuildDispatcherConfig) -> Result<(), S
         .check_readiness()
         .await
         .map_err(|error| format!("module-build worker is not ready: {error}"))?;
-    let service = SeaOrmModuleBuildService::new(db);
+    let service = ModuleControlPlane::new(db).build();
 
     info!(
         worker_endpoint = %config.worker_endpoint,

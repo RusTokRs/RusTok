@@ -72,26 +72,33 @@ Still outside the owner boundary:
   immutable evidence-reference fingerprint, then records the platform fact.
   Publication now fails closed unless an author signature is bound to the
   staged artifact SHA-256 and a build-service attestation plus platform
-  admission share one exact OCI manifest subject; marketplace approval is then
+  admission share the exact OCI manifest recorded by the current build stage;
+  marketplace approval is then
   created atomically with the final release transition. PostgreSQL locks the
-  publish request during finalization; a repeated request observes the same
-  durable release and returns without another release, evidence, or audit
-  event. A yank changes only the release lifecycle and records its reason;
+  publish request during finalization. A repeated final-publication command
+  must carry the same non-nil external idempotency UUID and immutable command
+  fingerprint recorded with the durable release, otherwise it fails closed.
+  The exact replay returns without another release, evidence, or audit event.
+  A yank changes only the release lifecycle and records its reason;
   immutable release storage identity remains unchanged while new resolution
   excludes the yanked release. Reupload advances the staged-artifact timestamp,
   so every required evidence fact must have been recorded after the current
   immutable staging operation. `stage_platform_build` reloads a completed build
   pair under tenant RLS, verifies its request slug/version and payload digest
   against the submitted artifact, and appends its immutable source/component/
-  OCI receipt identities. Final publication now requires that current stage.
+  OCI receipt identities. Its idempotency replay compares tenant, build,
+  source, component, and authenticated actor. Final publication now requires
+  that current stage.
   Artifact origin is explicit and `unclassified` records fail closed. External
   prebuilts use a separate current stage with an approved provenance policy,
   independent quarantine review, and either a reproducible source identity or
   an explicit source-absence reason; they require author signature and platform
-  admission but cannot use a build-worker attestation. The server external
+  admission bound to the staged payload digest but cannot use a build-worker
+  attestation. The server external
   staging adapter is operator-only and derives actor/quarantine approver from
-  authenticated `modules.manage` authority. The platform build-stage adapter
-  also requires `modules.manage`, derives its tenant only from the
+  authenticated `modules.manage` authority. Its replay compares all immutable
+  source/provenance/quarantine facts and both authenticated principals. The
+  platform build-stage adapter also requires `modules.manage`, derives its tenant only from the
   authenticated session, and forwards only the completed build ID plus an
   idempotency key to the tenant-RLS owner read;
 - manual validation-stage reports and requeues now use the owner transaction
@@ -135,7 +142,12 @@ Important intermediate limitations that must not be mistaken for the target:
 - the default `ModuleLifecycleDbWriter` host adapter still materializes its
   catalog from the compile-time `rustok_core::ModuleRegistry`; host composition
   must supply durable catalog loading before artifact-only modules reach that
-  adapter;
+  adapter. Server lifecycle transports now supply only the active distribution
+  defaults and actor identity to this writer for toggle, post-hook retry, and
+  compensation. For settings, the server supplies only the host-resolved schema
+  and owner-normalized JSON; the writer derives active identity, Core status,
+  effective enablement, and persistence, then the transport maps its owner
+  result to a host ORM view;
 - artifact lifecycle dispatch requires a configured
   `ArtifactLifecycleExecutor`; production host wiring for that executor remains
   to be supplied;
@@ -176,8 +188,16 @@ Important intermediate limitations that must not be mistaken for the target:
 Current implementation: the shared command context, revisioned command envelope,
 optimistic revision/CAS primitive, stable error envelope, and generic typed
 snapshot envelope are available from `rustok-modules`. Owner services will adopt
-these contracts as their write paths are moved; no server or admin compatibility
-facade was added.
+these contracts as their write paths are moved. `ModuleControlPlane` is the
+owner composition root for currently extracted database-backed services; it is
+not a server/admin compatibility facade or a parallel execution path. Server
+lifecycle, composition, artifact runtime/HTTP, and registry-governance adapters
+obtain their corresponding owner services through this root.
+`EffectivePolicyService` now exposes the same owner-owned catalog/default/tenant
+override resolution used by lifecycle commands, so server guards, GraphQL, and
+installer adapters do not query `tenant_modules` to reconstruct policy. The
+installer verification adapter also obtains its static catalog through the
+same facade rather than rebuilding it independently.
 
 M2 has started with a transport-neutral definition catalog. It derives static
 definitions from the compile-time registry while keeping registry handles
@@ -196,6 +216,14 @@ journal in one short transaction. Post-hooks and retry attempts run only after
 that commit, so their failure is retained as retry/compensation evidence rather
 than producing an implicit state rollback. Artifact lifecycle bindings use the
 same boundary and never receive a control-plane transaction handle.
+
+Post-hook retry and compensation now require non-nil caller UUID idempotency
+keys at the GraphQL boundary. The owner stores each key in the tenant-scoped
+lifecycle journal, links the derived operation to its source operation through
+the durable correlation field, and returns the existing journal operation
+without redispatching a hook when the same request is replayed. Reusing a key
+for another actor or operation is an explicit `IDEMPOTENCY_CONFLICT`; no server
+generated recovery key exists.
 
 Artifact descriptors now carry versioned declarative bindings with stable IDs,
 schema digests, permission, idempotency, limit profile, and declared
@@ -223,12 +251,25 @@ adapter contract: installation resolution is tenant/scope-aware, effective
 grants and limits come from a separate policy resolver, and only a binding
 present in the immutable installed descriptor can replace the sandbox
 entrypoint. Production host wiring selects the durable object-storage driver
-for `StorageArtifactBlobStore`. Rhai artifact inputs are wrapped in the neutral
-strict `RhaiBindingInput` v1 envelope and results must decode as
-`RhaiBindingOutput` v1 before the artifact owner receives its payload; raw
-Rhai input/output compatibility is not accepted. The binding's owner payload,
-not the neutral Rhai envelope, is then validated against the descriptor's
-input/output schema selectors.
+for `StorageArtifactBlobStore`. Rhai artifact inputs are wrapped first in the
+owner-owned strict `ArtifactBindingDispatchEnvelope` v1 and then in the neutral
+strict `RhaiBindingInput` v1 envelope; results must decode as
+`RhaiBindingOutput` v1 before the artifact owner receives its payload. Raw
+Rhai input/output compatibility is not accepted. The binding's payload, not
+either envelope, is then validated against the descriptor's input/output schema
+selectors.
+
+Artifact persistence is a strict descriptor contract: it contains only a
+positive revision and an admitted schema digest for brokered namespaced values.
+Unknown descriptor fields are rejected during decode, so marketplace artifacts
+cannot smuggle SQL, native migrations, object-store paths, or host handles into
+the control plane.
+
+Dynamic artifact UI is also strict and declarative: only `admin_settings` and
+`admin_actions` metadata surfaces are accepted, with immutable localization and
+a module-owned permission. A descriptor cannot include executable component
+source, a URL, an iframe, or a native frontend package. Action binding and host
+presentation details remain the separate Phase 7 contract.
 
 `SeaOrmArtifactInstallationStore` now implements the production
 `ArtifactInstallationResolver` port. It resolves only an active, non-uninstalled
@@ -396,7 +437,9 @@ payload digest acceptance. The current distribution library still buffers
 manifests and does not expose redirect, proxy, retry, per-request timeout, or
 decompression controls. Those controls therefore remain an explicit deployment
 egress responsibility, together with manifest and transfer ceilings; the worker
-separately bounds its complete publication window to 15 minutes. This is a
+separately bounds its complete publication window to 15 minutes. The OCI adapter
+also cancels a complete artifact-and-referrer publication after ten minutes,
+leaving bounded time for Cosign within that worker deadline. This is a
 deliberately partial OCI transport policy, not evidence that the remaining
 controls are implemented.
 
@@ -435,21 +478,26 @@ the exact active installation, tenant lifecycle, policy revision, and descriptor
 declarations before returning it; a missing row or revision mismatch denies
 execution. The server composes the shared CAS-backed executor before worker
 registration, with the Rhai `capability_call` bridge, Wasm component executor,
-durable execution audit, and exact policy resolver. It currently registers only
-the data owner route; every other capability remains default-deny until its
-deployment adapter is available.
+durable execution audit, and exact policy resolver. It registers structured
+`platform.data` plus bounded `platform.data.objects`: the latter accepts only
+logical object names and explicit prefix/operation grants, transfers at most
+44 KiB of decoded bytes in its base64 envelope, and never exposes physical
+storage identity. Secret, MCP, and every other capability remain default-deny
+until their deployment adapters are available.
 
 `resolve_granted_artifact_capability` is the shared gate for every dynamic
 owner route. It resolves the exact immutable installation, applies active
 admission, tenant lifecycle, uninstall state, durable policy revision, and the
 named explicit grant before a broker is constructed. The concrete
 `SeaOrmArtifactDataCapabilityBrokerResolver`,
+`SeaOrmArtifactDataObjectCapabilityBrokerResolver`,
 `SeaOrmArtifactSecretCapabilityBrokerResolver`, and
 `ArtifactMcpCapabilityBrokerResolver` derive their scopes only from that exact
 result. The sandbox host already enforces data operation/prefix, logical-secret,
-and MCP server/tool grant constraints before a route runs. The composed server
-executor registers `platform.data`; secret and MCP routes await their explicit
-deployment adapters, and there is no default or network fallback broker.
+object-data prefix/operation, logical-secret, and MCP server/tool grant
+constraints before a route runs. The composed server executor registers
+`platform.data` and `platform.data.objects`; secret and MCP routes await their
+explicit deployment adapters, and there is no default or network fallback broker.
 
 `ArtifactBindingExecutionContext` carries only bounded host-supplied actor and
 trace identities through generic artifact dispatch, sandbox capability calls,
@@ -509,7 +557,11 @@ GraphQL field or artifact-owned router.
 CAS admission is explicitly `stage -> durable CAS publish -> database
 transaction plus outbox -> reconciler`. A publish preceding a failed database
 commit is an orphan candidate, never a runtime installation; the reconciler
-may remove it only after reference and retention-policy checks.
+may remove it only after reference and retention-policy checks. The durable
+snapshot policy fails closed when a digest has no rule: deletion requires an
+explicit expired rule with no legal hold, rollback protection, or audit
+retention. Runtime has no registry fallback; it reads and rehashes admitted CAS
+bytes and returns `BlobNotFound` before sandbox execution when they are absent.
 
 `SeaOrmArtifactInstallationStore` uses the existing `OutboxTransport` in the
 same transaction as admission metadata, the selected dependency graph, and the
@@ -596,7 +648,8 @@ absence of a tenant identifier.
 - Own static `rustok-module.toml` metadata validation through the neutral
   `StaticModulePackageContract`; the host parses files and maps stable errors,
   while the owner validates package identity, SemVer dependencies/conflicts,
-  admin surfaces, and settings schemas.
+  admin surfaces, settings schemas, and crate-local runtime binding
+  normalization.
 - Own static catalog metadata through `StaticModuleCatalogContract`, including
   ownership/trust, admin-surface conflicts, description length, and allowed
   HTTP(S) marketplace asset URLs. Resolve the canonical static UI
@@ -608,8 +661,9 @@ absence of a tenant identifier.
   The host applies TOML/package overlays and supplies only neutral defaults,
   dependency/conflict/version facts, and its parsed platform version; the owner
   validates default enablement, direct dependencies, conflicts, dependency
-  ranges, and platform compatibility. Build-surface and filesystem checks stay
-  in the server host.
+  ranges, and platform compatibility. The owner validates host-decoded
+  deployment build-surface semantics (standalone requirements, URL syntax, and
+  storefront identity uniqueness); filesystem checks stay in the server host.
 - The owner also invokes the canonical shared manifest-versus-registry
   comparison contract. The server supplies neutral facts extracted from its
   compile-time `ModuleRegistry`; it does not reimplement comparison semantics.
@@ -625,8 +679,11 @@ absence of a tenant identifier.
 - Add a static guardrail preventing direct writes outside this crate. The
   repository verifier `verify-module-control-plane-write-path.mjs` rejects
   direct composition, lifecycle, artifact installation, build-request, and
-  registry governance aggregate writes from every server production source;
-  worker and transport adapters have no carve-outs.
+  registry governance aggregate writes from server, installer persistence,
+  worker, and transport production sources. It also covers artifact-data tables,
+  requires matching owner write implementations, and rejects direct construction
+  of extracted owner SeaORM services outside `rustok-modules`; production roots
+  must use `ModuleControlPlane` with no worker or transport carve-outs.
 
 ### M4 - Complete Artifact Admission
 
@@ -639,7 +696,11 @@ absence of a tenant identifier.
   artifact declaration and capability policy. The later rollback command will
   advance the predecessor atomically with its lifecycle transition. A separate
   rollback-operations record supplies durable actor/reason audit and a unique
-  idempotency key; it does not duplicate mutable lifecycle state.
+  idempotency key; it does not duplicate mutable lifecycle state. Its immutable
+  command fingerprint also records the selected capability-grant revision and
+  migration rollback mode, together with the committed source/target revisions,
+  so an exact retry replays after the source admission changes. Historical rows
+  without that complete fingerprint fail closed rather than guessing a result.
 - Enforce signature, signer, SBOM, provenance, compatibility, dependency, and
   capability admission before activation.
 - Use Cosign/Sigstore for digest-bound OCI signature and transparency-bundle
@@ -661,14 +722,17 @@ absence of a tenant identifier.
 - Add brokered tenant/module namespaced data and JSON-Schema validation;
   prohibit arbitrary untrusted SQL/native migrations.
 
-The Phase 3.6 entry contract is now `ArtifactDataBroker`: every operation
-carries host-owned tenant/module/data-contract/policy scope and logical keys
-only. It intentionally exposes no physical storage or secret clients. Its
-first durable adapter (`SeaOrmArtifactDataBroker`) supports bounded structured
-JSON values only (256-byte logical keys and 64 KiB payloads), using a
-tenant-RLS namespace, optimistic revisions, and immutable idempotency operation
-results. It cannot be constructed without a host-provided
-ArtifactDataAuthorizer and ArtifactDataSchemaValidator: the latter resolves the
+The Phase 3.6 entry contracts are `ArtifactDataBroker` and
+`ArtifactDataObjectBroker`: every operation carries host-owned
+tenant/module/data-contract/policy scope and logical names only. They expose no
+physical storage or secret clients. `SeaOrmArtifactDataBroker` supports bounded
+structured JSON values (256-byte logical keys and 64 KiB payloads), while
+`SeaOrmArtifactDataObjectBroker` accepts bounded private objects (32 MiB),
+derives their digest from accepted bytes, stores an owner-generated private key,
+and re-hashes bytes on every read. Both use a tenant-RLS namespace, optimistic
+revisions, and immutable idempotency operation results. Both brokers require a
+host-provided `ArtifactDataAuthorizer`; the structured broker also requires an
+`ArtifactDataSchemaValidator`: the latter resolves the
 admitted data-contract schema and must use the maintained `jsonschema`
 validator with bounded regular expressions before a value becomes durable.
 `SeaOrmArtifactDataSchemaValidator` is constructed with the exact immutable
@@ -684,6 +748,10 @@ the `get`/`put`/bounded-`put_batch`/bounded-`list` input shapes.
 service after tenant/subject checks; batch entries must have distinct keys and
 idempotency keys under declared prefixes, while list queries use an escaped
 logical-prefix filter and continuation validation.
+An authorized namespace purge removes structured records and private-object
+metadata in its transaction; it intentionally leaves the corresponding
+unreferenced storage bytes for the retention/GC policy rather than issuing a
+guest-driven physical delete.
 `CapabilityBrokerRouter` composes this data adapter with the durable secret
 handle adapter and future owner-owned capability adapters using exact capability
 names, rejecting duplicate or unregistered routes instead of adding a global
@@ -693,7 +761,8 @@ and forwards scoped execution identity to `ArtifactMcpInvoker`. It has no MCP
 endpoint, token, credential, or discovery input; deployment composition must
 still bind the owner port to the existing MCP access-policy, audit, and
 configured server-alias implementation.
-Object/file, indexed-query, export, and full retention policy remain separate
+The sandbox object capability supports only bounded base64 transfer; streaming
+object I/O, indexed-query, export, and full retention policy remain separate
 unfinished work. `put_batch` accepts at most 32 distinct logical keys and
 idempotency keys. It validates every schema and host authorization decision
 before opening one tenant-RLS transaction, then commits all structured writes

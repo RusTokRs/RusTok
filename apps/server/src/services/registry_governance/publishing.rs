@@ -6,7 +6,7 @@ use rustok_modules::{
     ModulePublishPlatformBuildStageResult, ModulePublishRequestChangesCommand,
     ModulePublishRequestCreateCommand, ModulePublishRequestHoldCommand,
     ModulePublishRequestPublicationCommand, ModulePublishRequestRejectCommand,
-    ModulePublishRequestResumeCommand, SeaOrmModuleGovernanceService,
+    ModulePublishRequestResumeCommand,
 };
 
 impl RegistryGovernanceService {
@@ -20,7 +20,8 @@ impl RegistryGovernanceService {
 
         let command =
             module_publish_request_create_command(request, authority.principal.to_json_value())?;
-        let request_id = SeaOrmModuleGovernanceService::new(self.db.clone())
+        let request_id = self
+            .publication_service()
             .create_publish_request(command)
             .await?;
         self.get_publish_request(&request_id).await?.ok_or_else(|| {
@@ -47,17 +48,6 @@ impl RegistryGovernanceService {
         Ok(RegistryPublishRequestEntity::find_by_id(request_id)
             .one(&self.db)
             .await?)
-    }
-
-    async fn upsert_publish_request_translation(
-        &self,
-        request_id: &str,
-        locale: &str,
-        name: &str,
-        description: &str,
-    ) -> anyhow::Result<()> {
-        upsert_publish_request_translation_record(&self.db, request_id, locale, name, description)
-            .await
     }
 
     pub async fn upload_publish_artifact(
@@ -88,7 +78,8 @@ impl RegistryGovernanceService {
             .store_registry_artifact(&request, &artifact)
             .await
             .context("failed to persist registry artifact")?;
-        let result = SeaOrmModuleGovernanceService::new(self.db.clone())
+        let result = self
+            .publication_service()
             .attach_publish_artifact(ModulePublishArtifactAttachCommand {
                 request_id: request_id.to_string(),
                 actor_principal: authority.principal.to_json_value(),
@@ -136,7 +127,7 @@ impl RegistryGovernanceService {
                 "Registry publish request '{request_id}' was not found"
             )));
         }
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.publication_service()
             .stage_external_prebuilt(ModuleExternalPrebuiltStageCommand {
                 request_id: request_id.to_string(),
                 artifact_digest: input.artifact_digest,
@@ -173,7 +164,7 @@ impl RegistryGovernanceService {
                 "Registry publish request '{request_id}' was not found"
             )));
         }
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.publication_service()
             .stage_platform_build(ModulePublishPlatformBuildStageCommand {
                 request_id: request_id.to_string(),
                 tenant_id: input.tenant_id,
@@ -189,6 +180,7 @@ impl RegistryGovernanceService {
         &self,
         request_id: &str,
         authority: &RegistryAuthority,
+        idempotency_key: Uuid,
         reason: Option<&str>,
         reason_code: Option<&str>,
     ) -> anyhow::Result<registry_publish_request::Model> {
@@ -199,7 +191,10 @@ impl RegistryGovernanceService {
         })?;
         self.ensure_authority_can_review_publish_request(authority, &request, "approve")
             .await?;
-        if request.status != RegistryPublishRequestStatus::Approved {
+        if !matches!(
+            request.status,
+            RegistryPublishRequestStatus::Approved | RegistryPublishRequestStatus::Published
+        ) {
             return Err(conflict_error(format!(
                 "Registry publish request '{}' is in status '{}' and cannot be approved",
                 request_id,
@@ -260,9 +255,10 @@ impl RegistryGovernanceService {
         } else {
             None
         };
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.publication_service()
             .publish_request(ModulePublishRequestPublicationCommand {
                 request_id: request.id.clone(),
+                idempotency_key,
                 actor_principal: authority.principal.to_json_value(),
                 publisher_principal: RegistryPrincipalRef::from_legacy_value(&effective_publisher)
                     .to_json_value(),
@@ -298,7 +294,7 @@ impl RegistryGovernanceService {
             "Registry publish reject",
         )?;
 
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.publication_service()
             .reject_publish_request(ModulePublishRequestRejectCommand {
                 request_id: request.id.clone(),
                 actor_principal: authority.principal.to_json_value(),
@@ -338,7 +334,7 @@ impl RegistryGovernanceService {
             REGISTRY_REQUEST_CHANGES_REASON_CODES,
             "Registry publish request-changes",
         )?;
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.publication_service()
             .request_publish_request_changes(ModulePublishRequestChangesCommand {
                 request_id: request.id.clone(),
                 actor_principal: authority.principal.to_json_value(),
@@ -373,7 +369,7 @@ impl RegistryGovernanceService {
             REGISTRY_HOLD_REASON_CODES,
             "Registry publish hold",
         )?;
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.publication_service()
             .hold_publish_request(ModulePublishRequestHoldCommand {
                 request_id: request.id.clone(),
                 actor_principal: authority.principal.to_json_value(),
@@ -408,7 +404,7 @@ impl RegistryGovernanceService {
             REGISTRY_RESUME_REASON_CODES,
             "Registry publish resume",
         )?;
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.publication_service()
             .resume_publish_request(ModulePublishRequestResumeCommand {
                 request_id: request.id.clone(),
                 actor_principal: authority.principal.to_json_value(),

@@ -291,6 +291,8 @@ async fn setup_db() -> DatabaseConnection {
             previous_effective_enabled BOOLEAN NOT NULL,
             status TEXT NOT NULL,
             requested_by TEXT NULL,
+            correlation_id TEXT NULL,
+            idempotency_key TEXT NULL,
             error_message TEXT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1113,11 +1115,13 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
     );
     assert!(plan.correlation_id.is_some());
 
+    let retry_idempotency_key = uuid::Uuid::new_v4();
     let retry_operation = ModuleLifecycleService::retry_failed_post_hook_operation(
         &db,
         &registry,
         failed_operation.id,
         Some("admin:retry".to_string()),
+        retry_idempotency_key,
     )
     .await
     .expect("post-hook retry should succeed");
@@ -1131,9 +1135,9 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
     assert!(retry_operation.previous_effective_enabled);
     assert!(retry_operation.error_message.is_none());
     assert_ne!(retry_operation.id, failed_operation.id);
-    assert_ne!(
+    assert_eq!(
         retry_operation.correlation_id,
-        failed_operation.correlation_id
+        Some(failed_operation.id.to_string())
     );
     assert_eq!(
         post_enable_calls.load(Ordering::SeqCst),
@@ -1148,6 +1152,18 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
         .await
         .expect("load analytics operations");
     assert_eq!(operations.len(), 2);
+
+    let replayed_operation = ModuleLifecycleService::retry_failed_post_hook_operation(
+        &db,
+        &registry,
+        failed_operation.id,
+        Some("admin:retry".to_string()),
+        retry_idempotency_key,
+    )
+    .await
+    .expect("same retry idempotency key should replay the journal operation");
+    assert_eq!(replayed_operation.id, retry_operation.id);
+    assert_eq!(post_enable_calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -1185,8 +1201,80 @@ async fn retry_failed_post_hook_operation_rejects_pre_hook_failures() {
         &registry,
         failed_operation.id,
         Some("admin:retry".to_string()),
+        uuid::Uuid::new_v4(),
     )
     .await
     .expect_err("pre-hook failures are not post-hook retryable");
     assert!(matches!(err, ModuleOperationRecoveryError::NotRetryable(_)));
+}
+
+#[tokio::test]
+async fn compensation_replays_its_reverse_lifecycle_operation_for_the_same_key() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let module = TestModule::new("billing").with_post_enable_failure();
+    let post_disable_calls = module.post_disable_calls.clone();
+    let registry = ModuleRegistry::new().register(module);
+
+    let err = ModuleLifecycleService::toggle_module_with_actor(
+        &db,
+        &registry,
+        tenant_id,
+        "billing",
+        true,
+        Some("admin:enable".to_string()),
+    )
+    .await
+    .expect_err("post-enable failure should leave a compensable operation");
+    assert!(matches!(err, ToggleModuleError::PostHookFailed(_)));
+
+    let failed_operation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("billing"))
+        .one(&db)
+        .await
+        .expect("query failed operation")
+        .expect("failed operation exists");
+    let idempotency_key = uuid::Uuid::new_v4();
+
+    let compensated = ModuleLifecycleService::compensate_failed_operation(
+        &db,
+        &registry,
+        failed_operation.id,
+        Some("admin:compensate".to_string()),
+        idempotency_key,
+    )
+    .await
+    .expect("compensation should disable the module");
+    assert!(!compensated.enabled);
+
+    let replayed = ModuleLifecycleService::compensate_failed_operation(
+        &db,
+        &registry,
+        failed_operation.id,
+        Some("admin:compensate".to_string()),
+        idempotency_key,
+    )
+    .await
+    .expect("same compensation key should replay the reverse operation");
+    assert_eq!(replayed.id, compensated.id);
+    assert_eq!(post_disable_calls.load(Ordering::SeqCst), 1);
+
+    let compensation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::IdempotencyKey.eq(idempotency_key))
+        .one(&db)
+        .await
+        .expect("query compensation operation")
+        .expect("compensation operation exists");
+    assert_eq!(
+        compensation.status,
+        ModuleOperationStatus::Committed.as_str()
+    );
+    assert_eq!(
+        compensation.correlation_id,
+        Some(failed_operation.id.to_string())
+    );
 }

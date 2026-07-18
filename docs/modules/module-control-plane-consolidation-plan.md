@@ -310,19 +310,46 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
 - [x] Freeze installation scope and the exact dependency-lock graph contract.
   `ModuleInstallationScope` is platform or tenant scoped, and every installed
   artifact carries a validated, digest-pinned `ModuleDependencyLockGraph`.
-- [ ] Freeze the v1 runtime binding set and dispatch envelope for lifecycle,
-  command, HTTP, event, schedule, and hook calls.
-- [ ] Freeze v1 artifact persistence: brokered namespaced storage only;
-  arbitrary artifact SQL/native migrations remain disabled pending a separate
-  ADR and threat model.
-- [ ] Freeze v1 dynamic UI delivery:
-  - host-rendered declarative settings/actions are required;
-  - untrusted custom web UI is isolated in a sandboxed iframe when introduced;
-  - native Leptos/Next/Flutter packages require static promotion;
-  - no marketplace artifact injects code into a host process.
-- [ ] Freeze the admitted artifact CAS, retention, garbage collection, and
-  external-registry outage behavior.
-- [ ] Add static guardrails prohibiting new direct writes outside owner modules.
+- [x] Freeze the v1 runtime binding set and dispatch envelope for lifecycle,
+  command, HTTP, event, schedule, and hook calls. Every artifact execution
+  passes the strict `ArtifactBindingDispatchEnvelope` v1 through the shared
+  sandbox path. It carries only the owner-selected binding ID/kind, execution
+  phase, and payload; the runtime rejects another version or a binding/phase
+  mismatch before it reads CAS bytes. Descriptor input schemas validate the
+  enclosed payload rather than the owner metadata, while artifact code never
+  selects a binding, phase, or installation.
+- [x] Freeze v1 artifact persistence: brokered namespaced storage only.
+  `ArtifactPersistenceContract` has only a revision and descriptor-bundled
+  schema digest, and the complete v1 descriptor tree rejects unknown fields at
+  decode time. Marketplace artifacts therefore cannot declare SQL, DDL, native
+  migrations, object-store paths, or host handles; arbitrary artifact
+  migrations remain disabled pending a separate ADR and threat model.
+- [x] Freeze v1 dynamic UI delivery:
+  - Marketplace descriptors admit only the host-rendered declarative
+    `admin_settings` and `admin_actions` surface vocabulary, immutable
+    localization metadata, and a declared module-owned permission. Phase 7
+    owns the later action-to-binding presentation contract.
+  - No untrusted custom web UI is admitted in v1. If it is introduced, it must
+    use a sandboxed iframe under a separate reviewed contract.
+  - Native Leptos, Next, and Flutter packages have no artifact descriptor
+    field and require static promotion.
+  - Strict descriptor decoding rejects component source, URLs, iframe fields,
+    and every other executable or host-specific UI field; marketplace artifacts
+    therefore cannot inject code into a host process.
+- [x] Freeze the admitted artifact CAS, retention, garbage collection, and
+  external-registry outage behavior. Admission is `stage -> durable CAS
+  publish -> database transaction plus outbox -> reconciliation`; the
+  reconciler deletes only an unreferenced published digest that an explicit
+  durable retention snapshot marks expired and unprotected. Missing snapshot
+  data fails closed. Runtime reads and rehashes only admitted CAS bytes, so an
+  external registry outage is immaterial while the blob exists and produces
+  `BlobNotFound` before sandbox execution when it does not.
+- [x] Add static guardrails prohibiting new direct writes outside owner modules.
+  `verify-module-control-plane-write-path.mjs` rejects direct composition,
+  lifecycle, artifact installation/data, build, and registry governance writes
+  from the server and module build/verification worker or transport crates. It
+  also requires a matching write implementation in the corresponding
+  `rustok-modules` owner source.
 
 ### Verification Gate
 
@@ -364,8 +391,9 @@ and installed artifacts.
 - [x] Define a versioned Rhai input/output binding shared by draft and published
   Rhai artifacts. `RhaiBindingInput`/`RhaiBindingOutput` v1 are strict neutral
   envelopes with no raw-value fallback. Alloy keeps its data-only draft payload
-  inside the envelope, while artifact runtime wraps admitted inputs and unwraps
-  only a valid versioned result for its owner.
+  inside the envelope, while artifact runtime wraps admitted inputs in its
+  strict binding-dispatch envelope and unwraps only a valid versioned result
+  for its owner.
 - [x] Freeze the WIT v1 package, world, entrypoint, JSON/error encoding, and ABI
   compatibility rules.
 - [x] Add request-scoped cancellation propagation through runtime, Rhai,
@@ -432,7 +460,10 @@ and installed artifacts.
   `platform.data` now requires declared logical-key prefixes and `get`/`put`/
   bounded-`list` operations; its input cannot name a table, bucket, path, or
   namespace, and its owner adapter uses escaped prefix queries plus a checked
-  continuation. `platform.mcp` now requires an exact server/tool pair and its
+  continuation. `platform.data.objects` separately requires declared logical
+  object prefixes and `get_metadata`/`read`/`put`/`list` operations; its strict
+  JSON/base64 bridge caps decoded data at 44 KiB and rejects physical storage
+  identity. `platform.mcp` now requires an exact server/tool pair and its
   `call` operation; endpoint, transport, credential, and tool-discovery fields
   are rejected before broker invocation. `CapabilityBrokerRouter` composes
   owner adapters by exact capability name, rejects duplicate ownership, and
@@ -607,16 +638,17 @@ adapter and must not be used as artifact identity or durable policy state.
   applies tenant lifecycle and uninstall state, reloads the current durable
   policy revision, and requires the named capability's explicit grant.
   `SeaOrmArtifactDataCapabilityBrokerResolver`,
+  `SeaOrmArtifactDataObjectCapabilityBrokerResolver`,
   `SeaOrmArtifactSecretCapabilityBrokerResolver`, and
   `ArtifactMcpCapabilityBrokerResolver` then derive their data-adjacent scopes
-  only from that result. The sandbox host checks data prefix/operation,
-  logical-secret, and MCP server/tool constraints before a route runs. The
+  only from that result. The sandbox host checks data and object-data
+  prefix/operation, logical-secret, and MCP server/tool constraints before a route runs. The
   server composes a real CAS-backed Rhai/WASM executor with the neutral
   `capability_call` bridge, exact policy resolver, and durable execution audit;
   it registers the event/schedule work entries before the native scheduler
-  starts. `platform.data` is the first composed sandbox capability route; secret,
-  MCP, and every other unregistered capability remain default-deny until their
-  deployment adapters exist. Artifact HTTP is separately composed as a
+  starts. `platform.data` and bounded `platform.data.objects` are composed
+  sandbox capability routes; secret, MCP, and every other unregistered
+  capability remain default-deny until their deployment adapters exist. Artifact HTTP is separately composed as a
   platform-owned authenticated transport and does not register a sandbox
   capability route or network fallback.
   The production server now provides the active-tenant enumerator through the
@@ -707,13 +739,45 @@ adapter and must not be used as artifact identity or durable policy state.
   - `EffectivePolicyService`;
   - `BuildService`;
   - `PromotionService`.
+  `ModuleControlPlane` now provides the owner composition root for the extracted
+  catalog, lifecycle, composition, build, installation, release, and
+  publication services. Server lifecycle, composition, artifact runtime/HTTP,
+  registry release/publication/validation adapters, the independent validation
+  worker, module-build dispatcher, and installer persistence adapter now consume
+  those services through the facade. `EffectivePolicyService` likewise owns the
+  tenant override read and Core/default composition shared by server guards,
+  GraphQL, and installer adapters. The static write-path verifier rejects direct
+  construction of these extracted SeaORM services outside the owner crate.
+  Promotion remains a separate unfinished subservice because no promotion
+  workflow has been admitted yet.
+- [x] Register the mandatory `ModulesModule` migration source in the shared
+  server/installer migrator. Control-plane tables are no longer fixture-only:
+  `rustok-migrations::Migrator` now includes the owner migration source before
+  schema application, so fresh installations receive artifact admission,
+  lifecycle, rollback, and subsequent owner migrations.
 - [ ] Define infrastructure ports for registry transport, artifact blob access,
   signature verification, SBOM/provenance verification, build scheduling,
   transactional storage, events, audit, clock, and ID generation.
 - [ ] Keep transaction boundaries inside owner services while accepting a
   caller-provided database/transaction adapter where required.
 - [ ] Add idempotency keys for install, publish, build, retry, rollback, and
-  promotion commands.
+  promotion commands. Post-hook retry is now the first lifecycle slice: its
+  GraphQL mutation requires a non-nil UUID key, and the owner persists a
+  tenant-scoped unique key in `module_operations`, binds it to the recovered
+  operation through durable correlation, replays the original retry journal
+  record without another hook dispatch, and rejects mismatched reuse with
+  `IDEMPOTENCY_CONFLICT`. Compensation uses the same contract for its reverse
+  lifecycle journal record. Artifact rollback now persists its complete
+  immutable fingerprint (source installation/revision, actor, reason, selected
+  capability-grant revision, and migration rollback mode) and committed
+  source/target revisions in the owner operation record; matching retries replay
+  after the admission state changes, while legacy incomplete records fail
+  closed. Final registry publication requires a non-nil `Idempotency-Key` UUID
+  at the live approval endpoint and stores its complete owner command
+  fingerprint with the resulting release; only an exact retry replays a
+  published request, while a missing legacy record or conflicting key reuse
+  fails closed. Install and promotion remain separate unfinished command
+  contracts.
 
 ### 2.5 Server Service Cutover
 
@@ -733,7 +797,7 @@ adapter and must not be used as artifact identity or durable policy state.
   is the owner port; the server adapter creates the existing build record only
   through the owner-owned transaction, and it publishes its non-transactional
   build notification after commit. A failed enqueue rolls the CAS update back.
-- [ ] Move registry ownership, publish-request, release, validation-stage,
+- [x] Move registry ownership, publish-request, release, validation-stage,
   yanking, and governance rules from `RegistryGovernanceService`. Release
   yanking, ownership binding, owner transfer, publish-request rejection,
   request-changes, hold, resume, and final publication have moved: the server
@@ -765,7 +829,7 @@ adapter and must not be used as artifact identity or durable policy state.
   authorization. Artifact object storage remains a host adapter; its immutable
   result is attached by an owner transaction that resets reupload validation
   attempts, transitions the request to `submitted`, and writes audit facts.
-- [ ] Move remaining manifest validation that is platform-domain policy into
+- [x] Move remaining manifest validation that is platform-domain policy into
   `rustok-modules`; keep only host boot/loading adapters in the server. Publish
   request slug/version/locale/metadata constraints, UI-package shape, and
   owner-derived publication warnings now live in
@@ -785,15 +849,20 @@ adapter and must not be used as artifact identity or durable policy state.
   against a host-supplied RusToK version. Static UI i18n contract semantics
   (locale normalization, default membership, declared bundle paths, and surface
   prerequisites) and static HTTP provider exclusivity are also owner-owned;
+  static crate-local runtime binding declarations are qualified by the same
+  owner boundary before the server attaches them to its runtime spec;
   filesystem path and locale-file checks remain host adapters. The owner now
   also validates the resolved static catalog topology (default-enabled entries,
   direct dependencies, conflicts, dependency-version requirements, and
   platform-version compatibility) after the host applies TOML/package overlays.
   It also invokes the canonical shared static manifest-versus-registry contract;
   the server supplies only facts extracted from its compile-time registry.
-  Build-surface and filesystem checks remain host adapters. Remaining manifest
-  validation outside the publication request and these static-package/catalog
-  rules is still to be cut over.
+  The owner also validates deployment build-surface semantics from host-decoded
+  facts: standalone admin/storefront requirements, URL syntax, and storefront
+  identity uniqueness. The remaining server code only reads host TOML/filesystem
+  paths and verifies declared crate/locale files exist; it invokes the owner
+  package, catalog, topology, i18n, and build-surface contracts for every
+  platform-domain decision.
 - [x] Move effective availability composition behind one typed query.
   `ModuleEffectivePolicyQuery` now owns core/default/tenant-override semantics
   for any supplied definition catalog. The server effective-policy adapter,
@@ -811,6 +880,12 @@ adapter and must not be used as artifact identity or durable policy state.
   before router, GraphQL, lifecycle, event-dispatch, and installer consumers
   receive it. Durable artifact definitions and effective policy remain owner
   services, so the static registry is never rebuilt from marketplace state.
+  The server lifecycle transport now obtains distribution defaults from the
+  active composition and calls `ModuleLifecycleDbWriter`; it no longer builds
+  an effective-policy set, catalog, or dispatcher for a toggle, post-hook retry,
+  compensation, or settings persistence. The server supplies a host-resolved
+  settings schema only; the writer derives active identity, Core status, and
+  effective enablement before it persists owner-normalized settings.
 - [ ] Replace server error taxonomies with transport mappings of owner errors.
   The marketplace registry HTTP adapter now maps the complete
   `ModuleGovernanceError` contract at its transport boundary: malformed owner
@@ -822,14 +897,18 @@ adapter and must not be used as artifact identity or durable policy state.
   The registry catalog adapter and router now expose only `/v1/catalog` and
   `/v1/catalog/{slug}`. The former `/catalog` compatibility routes, client
   fallback probes, and helper exports were removed rather than preserving a
-  dual transport path.
+  dual transport path. The superseded server-local publish-request translation
+  upsert was also removed: publication-request translations are now written
+  only by the owner create/publication transactions.
 
 ### 2.6 Write-Path Guardrail
 
 `scripts/verify/verify-module-control-plane-write-path.mjs` rejects direct
 composition, lifecycle, artifact installation, build-request, and registry
-governance aggregate writes from every server production source; no worker or
-transport adapter is excluded. All writes must pass through `rustok-modules`.
+governance aggregate writes from every server, installer persistence, worker,
+and transport production source. It also rejects direct construction of the
+extracted owner SeaORM services in those sources; all production composition
+must pass through `ModuleControlPlane` in `rustok-modules`.
 
 The static verifier must reject SQL/entity writes to these aggregates outside
 the owner implementation and migrations:
@@ -875,7 +954,8 @@ rollback without relying on workspace source composition.
   runtime bindings, localization catalog, data contract, and UI contribution
   metadata. Descriptor v4 carries those declarative fields; validation rejects
   unowned permissions, undeclared binding/UI permissions, duplicate UI IDs,
-  invalid localization digests, and unsafe persistence metadata.
+  invalid localization digests, unsafe persistence metadata, and unknown
+  descriptor fields.
 - [x] Require bundled JSON Schema documents and forbid network/file `$ref`
   resolution during validation. Descriptor v4 bundles bounded Draft 2020-12
   documents under canonical SHA-256 digests; settings, data, persistence, and
@@ -1091,14 +1171,22 @@ migrations or arbitrary SQL.
 
 - [ ] Provide brokered namespaced storage capabilities for structured values,
   objects/files, indexes/query patterns supported by the platform, and
-  secret-reference handles. The first durable slice provides bounded structured
-  JSON values only through a host-owned tenant/module/revision namespace with
-  optimistic revisions and durable idempotency results. Secret references now
+  secret-reference handles. The durable data owner provides bounded structured
+  JSON values and a private object broker through a host-owned
+  tenant/module/revision namespace with optimistic revisions and durable
+  idempotency results. Object metadata exposes logical name, content type, size,
+  digest, and revision only; its SeaORM/storage adapter generates and retains
+  the physical key privately, derives the digest from accepted bytes, and
+  re-hashes every private read before returning bytes. Secret references now
   have a separate owner-owned scoped binding table with revision CAS,
   idempotency, actor/reason audit data, and a redacted transactional-outbox fact;
   the injected `acquire_handle` broker returns only the logical handle and
-  revision after per-execution host authorization. Object, indexed-query, and
-  value-consuming secret-use capability kinds are still pending.
+  revision after per-execution host authorization. `platform.data.objects` now
+  admits owner-scoped `get_metadata`, `read`, `put`, and `list` calls only under
+  separately declared object-prefix/operation grants. Its JSON/base64 bridge is
+  deliberately capped at 44 KiB of decoded bytes per call; large-object transfer
+  needs a later streaming WIT protocol. Indexed-query and value-consuming
+  secret-use capability kinds are still pending.
 - [ ] Scope every operation by tenant, module slug, data-contract revision, and
   policy; the guest cannot choose a physical schema/table/bucket path. The
   structured-data validator is host-constructed with the immutable installation
@@ -1106,7 +1194,10 @@ migrations or arbitrary SQL.
   revision, never a latest-release lookup; the ID never crosses the artifact
   capability boundary. The structured-value adapter requires a host-owned
   authorizer for every logical read/write and a separate destructive-purge
-  authorizer; the remaining broker capability kinds still need the same boundary.
+  authorizer. The object adapter applies the same immutable scope and per-object
+  authorization while hiding storage keys. Authorized namespace purge removes
+  object metadata but leaves now-unreferenced private bytes for the retention/GC
+  policy; the remaining broker capability kinds still need the same boundary.
 - [ ] Validate data/settings/action payloads with bundled JSON Schema using the
   maintained `jsonschema` validator and bounded regular-expression settings.
   Structured-value writes now require a host-owned schema-validation port before
@@ -1146,11 +1237,16 @@ migrations or arbitrary SQL.
   after the page completes. It holds no control-plane transaction across the
   page. Uncertain-outcome recovery, distributed rollout, rollback, and
   quarantine policies remain pending.
-- [ ] Before allowing declarative DDL migrations, create a separate ADR and
+- [x] Before allowing declarative DDL migrations, create a separate ADR and
   threat model covering allowed operations, schema isolation, locks, rollback,
   backup, cross-module references, tenant rollout, and failure recovery.
-- [ ] Static-promoted modules continue to use reviewed module-owned
-  `MigrationSource` migrations in distribution builds.
+  [`2026-07-18-artifact-declarative-ddl-boundary`](../../DECISIONS/2026-07-18-artifact-declarative-ddl-boundary.md)
+  keeps v1 declarative DDL prohibited and records the required future admission
+  conditions without creating a descriptor escape hatch.
+- [x] Static-promoted modules continue to use reviewed module-owned
+  `MigrationSource` migrations in distribution builds. The shared migrator
+  aggregates only declared module migration sources and their dependency
+  descriptors; dynamic artifact descriptors expose no migration path.
 
 ### 3.7 Rollback, Uninstall, and Purge
 
@@ -1525,9 +1621,10 @@ trust policy before admission.
   reject bytes beyond their OCI-declared size before extending memory or disk
   staging, and require an exact final size before parsing or digest acceptance.
   The current client still buffers manifests, so manifest and transfer ceilings
-  remain egress controls. The worker's publication window remains separately
-  bounded to 15 minutes. This item remains open until the remaining egress
-  controls are configured and verified.
+  remain egress controls. The adapter also cancels a complete artifact-and-referrer
+  publication after ten minutes, leaving bounded time for Cosign inside the
+  worker's separate 15-minute credential window. This item remains open until
+  the remaining egress controls are configured and verified.
 
 ### 5.2 Signing
 
@@ -1583,7 +1680,7 @@ trust policy before admission.
 
 ### 5.3 Publication Governance
 
-- [ ] Stage release from an immutable source/build result. The prerequisite
+- [x] Stage release from an immutable source/build result. The prerequisite
   owner read is now `SeaOrmModuleBuildService::load_completed`: it returns only
   a tenant-RLS-scoped durable request/result pair after revalidating the result
   against its immutable stored request. `stage_platform_build` now consumes the
@@ -1600,7 +1697,11 @@ trust policy before admission.
   actor and quarantine approver from `modules.manage` authority. The parallel
   platform build-stage adapter derives the tenant exclusively from the
   authenticated session, requires `modules.manage`, and passes only a completed
-  build ID plus idempotency key to the owner RLS reload.
+  build ID plus idempotency key to the owner RLS reload. Both staging paths
+  persist and compare their full authenticated immutable command fingerprints
+  on replay: platform builds include tenant, build, source, component, and
+  actor; external prebuilts include source/provenance/quarantine facts and
+  both authenticated principals. Any conflicting reuse fails closed.
 - [ ] Run automated descriptor, compatibility, dependency, signature, SBOM,
   provenance, license, vulnerability, and sandbox smoke checks.
 - [x] Record review decisions, required changes, holds, approvals, rejections,
@@ -1611,20 +1712,25 @@ trust policy before admission.
   reference contents as trusted display or prompt content.
 - [x] Publish creates a release once; retry resumes idempotent stages instead of
   duplicating a release. The owner locks an approved request during finalization
-  on PostgreSQL. A replay of the terminal `published` request succeeds only
-  when it resolves the same request/slug/version release, then returns without
-  inserting another release, marketplace-approval fact, or audit event.
+  on PostgreSQL. The live approval transport requires a non-nil external UUID
+  key, and the owner persists its complete command fingerprint with the release.
+  A replay of a terminal `published` request succeeds only for that exact
+  fingerprint and durable release; a missing legacy record or conflicting key
+  reuse fails closed without inserting another release, marketplace-approval
+  fact, or audit event.
 - [x] Yanking prevents new resolution but does not mutate existing installed
   artifact identity. The owner changes only the release lifecycle to `yanked`
   and records the reason/audit fact; the immutable resolver snapshot excludes
   yanked releases while storage key, checksum, and size remain unchanged.
-- [ ] Distinguish platform-built and externally-built artifacts. The owner now
+- [x] Distinguish platform-built and externally-built artifacts. The owner now
   persists immutable origin on both requests and releases and fails closed for
   `unclassified` history. Platform-built releases require the current build
-  stage plus build-service and platform-admission facts. External prebuilts
+  stage plus build-service and platform-admission facts for that stage's exact
+  OCI manifest. External prebuilts
   require a current external stage with an approved provenance-policy revision,
   quarantine review, explicit source/reproducibility classification, author
-  signature, and matching platform admission; they cannot claim a build-worker
+  signature, and platform admission whose verified payload digest matches that
+  stage; they cannot claim a build-worker
   attestation. The server transport accepts only evidence fields and an
   idempotency key, deriving the actor and quarantine approver from authenticated
   `modules.manage` authority. The parallel platform build-stage adapter accepts

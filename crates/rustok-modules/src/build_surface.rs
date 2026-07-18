@@ -63,10 +63,7 @@ pub fn validate_platform_build_surface_contract(
         if contract.admin.redirect_uris.is_empty() {
             return Err(PlatformBuildSurfaceValidationError::MissingAdminRedirectUris);
         }
-        validate_urls(
-            &contract.admin.redirect_uris,
-            "build.admin.redirect_uris",
-        )?;
+        validate_urls(&contract.admin.redirect_uris, "build.admin.redirect_uris")?;
         validate_url(&contract.admin.public_url, "build.admin.public_url")?;
     }
 
@@ -112,10 +109,7 @@ pub fn validate_platform_build_surface_contract(
     Ok(())
 }
 
-fn validate_urls(
-    urls: &[String],
-    field: &str,
-) -> Result<(), PlatformBuildSurfaceValidationError> {
+fn validate_urls(urls: &[String], field: &str) -> Result<(), PlatformBuildSurfaceValidationError> {
     for value in urls {
         validate_url(value, field)?;
     }
@@ -170,7 +164,9 @@ mod tests {
             .push(duplicate_storefront.storefronts[0].clone());
         assert!(matches!(
             validate_platform_build_surface_contract(&duplicate_storefront),
-            Err(PlatformBuildSurfaceValidationError::DuplicateStorefrontId(_))
+            Err(PlatformBuildSurfaceValidationError::DuplicateStorefrontId(
+                _
+            ))
         ));
     }
 }

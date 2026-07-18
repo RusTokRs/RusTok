@@ -1,14 +1,15 @@
 #![allow(clippy::too_many_arguments, clippy::unnecessary_lazy_evaluations)]
 
 use anyhow::{anyhow, Context};
-use chrono::{Duration, Utc};
+use chrono::Duration;
 use rustok_api::{
     build_locale_candidates, locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE,
 };
+use rustok_modules::{ModuleControlPlane, SeaOrmModuleGovernanceService};
 use rustok_storage::StorageService;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -35,9 +36,7 @@ use crate::models::registry_publish_request::{
     RegistryPublishRequestStatus,
 };
 use crate::models::registry_publish_request_translation::{
-    self as registry_publish_request_translation,
-    ActiveModel as RegistryPublishRequestTranslationActiveModel,
-    Entity as RegistryPublishRequestTranslationEntity,
+    self as registry_publish_request_translation, Entity as RegistryPublishRequestTranslationEntity,
 };
 use crate::models::registry_validation_job::{
     self, ActiveModel as RegistryValidationJobActiveModel, Entity as RegistryValidationJobEntity,
@@ -338,6 +337,14 @@ impl RegistryGovernanceService {
         self
     }
 
+    pub(crate) fn release_service(&self) -> SeaOrmModuleGovernanceService {
+        ModuleControlPlane::new(self.db.clone()).release()
+    }
+
+    pub(crate) fn publication_service(&self) -> SeaOrmModuleGovernanceService {
+        ModuleControlPlane::new(self.db.clone()).publication()
+    }
+
     fn require_storage(&self) -> anyhow::Result<&StorageService> {
         self.storage
             .as_ref()
@@ -529,45 +536,6 @@ where
         |translation| translation.description.as_str(),
     )
     .ok_or_else(|| anyhow!("Registry release '{release_id}' is missing metadata translations"))
-}
-
-async fn upsert_publish_request_translation_record<C>(
-    db: &C,
-    request_id: &str,
-    locale: &str,
-    name: &str,
-    description: &str,
-) -> anyhow::Result<()>
-where
-    C: ConnectionTrait,
-{
-    let locale = normalize_registry_locale(locale);
-    if let Some(existing) = RegistryPublishRequestTranslationEntity::find_by_id((
-        request_id.to_string(),
-        locale.clone(),
-    ))
-    .one(db)
-    .await?
-    {
-        let mut active: RegistryPublishRequestTranslationActiveModel = existing.into();
-        active.name = Set(name.trim().to_string());
-        active.description = Set(description.trim().to_string());
-        active.updated_at = Set(Utc::now());
-        active.update(db).await?;
-    } else {
-        RegistryPublishRequestTranslationActiveModel {
-            request_id: Set(request_id.to_string()),
-            locale: Set(locale),
-            name: Set(name.trim().to_string()),
-            description: Set(description.trim().to_string()),
-            created_at: Set(Utc::now()),
-            updated_at: Set(Utc::now()),
-        }
-        .insert(db)
-        .await?;
-    }
-
-    Ok(())
 }
 
 pub(crate) fn actor_principal(actor: &str) -> RegistryPrincipalRef {

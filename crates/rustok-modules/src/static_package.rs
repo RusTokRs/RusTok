@@ -197,6 +197,33 @@ pub struct StaticModuleHttpProvidesContract {
     pub has_axum_webhook_router: bool,
 }
 
+/// Host-parsed crate-local binding declarations. The owner normalizes these
+/// into stable Rust paths after validating the mutually exclusive HTTP shape.
+#[derive(Debug, Clone, Default)]
+pub struct StaticModuleEntrypointContract {
+    pub crate_name: String,
+    pub entry_type: Option<String>,
+    pub graphql_query_type: Option<String>,
+    pub graphql_mutation_type: Option<String>,
+    pub http_routes_fn: Option<String>,
+    pub http_axum_router_fn: Option<String>,
+    pub http_webhook_routes_fn: Option<String>,
+    pub http_axum_webhook_router_fn: Option<String>,
+}
+
+/// Owner-normalized runtime bindings that a host may attach to its static
+/// module specification. They do not contain executable handles.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StaticModuleEntrypoints {
+    pub entry_type: Option<String>,
+    pub graphql_query_type: Option<String>,
+    pub graphql_mutation_type: Option<String>,
+    pub http_routes_fn: Option<String>,
+    pub http_axum_router_fn: Option<String>,
+    pub http_webhook_routes_fn: Option<String>,
+    pub http_axum_webhook_router_fn: Option<String>,
+}
+
 /// Stable semantic failures for static HTTP surface declarations.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum StaticModuleHttpProvidesValidationError {
@@ -204,6 +231,13 @@ pub enum StaticModuleHttpProvidesValidationError {
     RoutesAndAxumRouter,
     #[error("[provides.http] cannot declare both webhook_routes and axum_webhook_router")]
     WebhookRoutesAndAxumWebhookRouter,
+}
+
+/// Stable semantic failures while resolving host-parsed static bindings.
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum StaticModuleEntrypointValidationError {
+    #[error(transparent)]
+    Http(#[from] StaticModuleHttpProvidesValidationError),
 }
 
 /// Validates module-domain metadata from a host-parsed `rustok-module.toml`.
@@ -651,6 +685,55 @@ pub fn validate_static_module_http_provides_contract(
     Ok(())
 }
 
+/// Validates the static HTTP surface shape and qualifies crate-local binding
+/// declarations without depending on the server's manifest or runtime types.
+pub fn resolve_static_module_entrypoints(
+    contract: StaticModuleEntrypointContract,
+) -> Result<StaticModuleEntrypoints, StaticModuleEntrypointValidationError> {
+    validate_static_module_http_provides_contract(StaticModuleHttpProvidesContract {
+        has_routes: contract.http_routes_fn.is_some(),
+        has_axum_router: contract.http_axum_router_fn.is_some(),
+        has_webhook_routes: contract.http_webhook_routes_fn.is_some(),
+        has_axum_webhook_router: contract.http_axum_webhook_router_fn.is_some(),
+    })?;
+
+    Ok(StaticModuleEntrypoints {
+        entry_type: qualify_static_module_symbol(&contract.crate_name, contract.entry_type),
+        graphql_query_type: qualify_static_module_symbol(
+            &contract.crate_name,
+            contract.graphql_query_type,
+        ),
+        graphql_mutation_type: qualify_static_module_symbol(
+            &contract.crate_name,
+            contract.graphql_mutation_type,
+        ),
+        http_routes_fn: qualify_static_module_symbol(&contract.crate_name, contract.http_routes_fn),
+        http_axum_router_fn: qualify_static_module_symbol(
+            &contract.crate_name,
+            contract.http_axum_router_fn,
+        ),
+        http_webhook_routes_fn: qualify_static_module_symbol(
+            &contract.crate_name,
+            contract.http_webhook_routes_fn,
+        ),
+        http_axum_webhook_router_fn: qualify_static_module_symbol(
+            &contract.crate_name,
+            contract.http_axum_webhook_router_fn,
+        ),
+    })
+}
+
+fn qualify_static_module_symbol(crate_name: &str, value: Option<String>) -> Option<String> {
+    let value = value?.trim().to_string();
+    if value.is_empty() {
+        return None;
+    }
+
+    let crate_ident = crate_name.replace('-', "_");
+    let relative = value.strip_prefix("crate::").unwrap_or(&value);
+    Some(format!("{crate_ident}::{relative}"))
+}
+
 fn parse_static_platform_version_requirement(
     value: &str,
     is_maximum: bool,
@@ -780,9 +863,11 @@ fn validate_marketplace_asset_url(
 #[cfg(test)]
 mod tests {
     use super::{
-        resolve_static_module_ui_classification, static_module_platform_version_is_compatible,
+        resolve_static_module_entrypoints, resolve_static_module_ui_classification,
+        static_module_platform_version_is_compatible,
         validate_static_module_http_provides_contract, validate_static_module_topology_contract,
-        validate_static_module_ui_i18n_contract, StaticModuleHttpProvidesContract,
+        validate_static_module_ui_i18n_contract, StaticModuleEntrypointContract,
+        StaticModuleEntrypointValidationError, StaticModuleHttpProvidesContract,
         StaticModuleHttpProvidesValidationError, StaticModulePlatformVersionError,
         StaticModuleTopologyContract, StaticModuleTopologyModule,
         StaticModuleTopologyValidationError, StaticModuleUiClassificationError,
@@ -878,6 +963,41 @@ mod tests {
             }),
             Ok(())
         );
+    }
+
+    #[test]
+    fn entrypoint_resolution_qualifies_crate_local_bindings_in_the_owner() {
+        let resolved = resolve_static_module_entrypoints(StaticModuleEntrypointContract {
+            crate_name: "rustok-example-module".to_string(),
+            entry_type: Some("crate::Module".to_string()),
+            graphql_query_type: Some("Query".to_string()),
+            http_routes_fn: Some("crate::http::routes".to_string()),
+            ..Default::default()
+        })
+        .expect("valid static entrypoints");
+        assert_eq!(
+            resolved.entry_type.as_deref(),
+            Some("rustok_example_module::Module")
+        );
+        assert_eq!(
+            resolved.graphql_query_type.as_deref(),
+            Some("rustok_example_module::Query")
+        );
+        assert_eq!(
+            resolved.http_routes_fn.as_deref(),
+            Some("rustok_example_module::http::routes")
+        );
+
+        assert!(matches!(
+            resolve_static_module_entrypoints(StaticModuleEntrypointContract {
+                http_routes_fn: Some("routes".to_string()),
+                http_axum_router_fn: Some("router".to_string()),
+                ..Default::default()
+            }),
+            Err(StaticModuleEntrypointValidationError::Http(
+                StaticModuleHttpProvidesValidationError::RoutesAndAxumRouter
+            ))
+        ));
     }
 
     #[test]

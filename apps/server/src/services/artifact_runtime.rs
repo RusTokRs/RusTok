@@ -9,9 +9,9 @@ use std::sync::Arc;
 
 use rustok_modules::{
     ArtifactCapabilityBrokerResolverRouter, ArtifactRuntime, ArtifactRuntimeLifecycleExecutor,
-    ResolvingArtifactCapabilityBroker, SeaOrmArtifactDataCapabilityBrokerResolver,
-    SeaOrmArtifactExecutionObserver, SeaOrmArtifactInstallationStore,
-    SeaOrmArtifactSandboxPolicyResolver, SharedArtifactBindingExecutor, StorageArtifactBlobStore,
+    ModuleControlPlane, ResolvingArtifactCapabilityBroker,
+    SeaOrmArtifactDataCapabilityBrokerResolver, SeaOrmArtifactDataObjectCapabilityBrokerResolver,
+    SeaOrmArtifactExecutionObserver, SharedArtifactBindingExecutor, StorageArtifactBlobStore,
 };
 use rustok_sandbox::{CapabilityName, ExecutorRegistry, RhaiCapabilityBridge, SandboxRuntime};
 use rustok_storage::StorageService;
@@ -31,6 +31,9 @@ pub fn compose_artifact_binding_executor(
     })?;
     let data_capability = CapabilityName::new("platform.data")
         .map_err(|error| Error::Message(format!("invalid artifact data capability: {error}")))?;
+    let object_data_capability = CapabilityName::new("platform.data.objects").map_err(|error| {
+        Error::Message(format!("invalid artifact object-data capability: {error}"))
+    })?;
     let resolver = ArtifactCapabilityBrokerResolverRouter::new()
         .route(
             data_capability,
@@ -38,6 +41,15 @@ pub fn compose_artifact_binding_executor(
                 ctx.db_clone(),
             )),
         )
+        .and_then(|router| {
+            router.route(
+                object_data_capability,
+                Arc::new(SeaOrmArtifactDataObjectCapabilityBrokerResolver::new(
+                    ctx.db_clone(),
+                    storage.clone(),
+                )),
+            )
+        })
         .map_err(|error| Error::Message(format!("artifact capability route failed: {error}")))?;
     let mut executors = ExecutorRegistry::new();
     executors
@@ -58,9 +70,10 @@ pub fn compose_artifact_binding_executor(
         ctx.db_clone(),
     )));
     let runtime = ArtifactRuntime::new(StorageArtifactBlobStore::new(storage), sandbox);
+    let control_plane = ModuleControlPlane::new(ctx.db_clone());
     Ok(Arc::new(ArtifactRuntimeLifecycleExecutor::new(
         runtime,
-        SeaOrmArtifactInstallationStore::new(ctx.db_clone()),
-        SeaOrmArtifactSandboxPolicyResolver::new(ctx.db_clone()),
+        control_plane.installation(),
+        control_plane.artifact_sandbox_policy(),
     )))
 }

@@ -667,10 +667,14 @@ What it checks:
 
 ---
 ### `verify-module-control-plane-write-path.mjs`
-Guardrail against direct server writes to module control-plane aggregates. The
-server may map authenticated requests and supply host adapters, but writes to
-composition, lifecycle, artifact installation, build, and registry governance
-tables must remain in `rustok-modules` owner services.
+Guardrail against direct writes to module control-plane aggregates. The server,
+installer persistence adapter, and module build/verification worker or
+transport crates may map authenticated requests and supply host adapters, but
+writes to composition, lifecycle, artifact installation/data, build, and
+registry governance tables must remain in `rustok-modules` owner services. It
+also rejects direct construction of extracted owner SeaORM services outside
+`rustok-modules`; production composition roots must obtain them through
+`ModuleControlPlane`.
 
 ---
 ### `verify-module-build-worker-isolation.mjs`

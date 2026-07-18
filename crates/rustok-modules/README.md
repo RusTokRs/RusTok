@@ -11,6 +11,13 @@ are being moved here from the server incrementally.
 - Define immutable module artifact identity, payload kind and source lineage.
 - Verify digest-pinned OCI packages before installation and admit only isolated
   payload kinds to the sandbox.
+- Retain and collect admitted CAS bytes through explicit owner retention
+  snapshots; execution reads verified CAS only and never retries an OCI
+  registry at runtime.
+- Enforce descriptor-only brokered persistence; marketplace artifacts cannot
+  declare SQL, native migrations, storage paths, or host handles.
+- Restrict marketplace UI contributions to host-rendered declarative metadata;
+  native UI packages remain static-promotion-only.
 - Define the owner ports for marketplace publication, installation, activation,
   rollback and policy.
 - Map installed artifacts to neutral sandbox requests and capability grants.

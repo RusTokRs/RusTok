@@ -1,4 +1,6 @@
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+use bytes::Bytes;
 use jsonschema::{Draft, PatternOptions};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
@@ -17,6 +19,7 @@ use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutionPhase,
     SandboxError, SandboxResult, SandboxSubject,
 };
+use rustok_storage::StorageService;
 
 use crate::{
     resolve_granted_artifact_capability, ArtifactBindingDispatch, ArtifactBindingExecutor,
@@ -31,6 +34,9 @@ const MAX_ARTIFACT_DATA_VALUE_BYTES: usize = 64 * 1024;
 const MAX_ARTIFACT_DATA_PAGE_SIZE: u32 = 100;
 const MAX_ARTIFACT_DATA_BATCH_SIZE: usize = 32;
 const MAX_DATA_SCHEMA_REGEX_BYTES: usize = 64 * 1024;
+const MAX_ARTIFACT_OBJECT_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_ARTIFACT_OBJECT_CONTENT_TYPE_BYTES: usize = 128;
+const MAX_SANDBOX_ARTIFACT_OBJECT_BYTES: usize = 44 * 1024;
 
 /// Host-owned namespace for untrusted artifact data. Guests never supply a
 /// physical table, bucket, database schema, or secret-store location.
@@ -68,6 +74,59 @@ pub struct ArtifactDataRecord {
     pub key: String,
     pub value: Value,
     pub revision: u64,
+}
+
+/// Immutable logical metadata for one brokered artifact object. It deliberately
+/// excludes the driver storage key, URL, bucket, and any host credential.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataObject {
+    pub name: String,
+    pub content_type: String,
+    pub size_bytes: u64,
+    pub digest_sha256: String,
+    pub revision: u64,
+}
+
+/// Owner command for replacing one bounded private object. The payload is not
+/// serializable guest state and is never persisted in an operation record.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArtifactDataObjectUpload {
+    pub name: String,
+    pub content_type: String,
+    pub data: Bytes,
+    pub expected_revision: Option<u64>,
+    pub idempotency_key: Uuid,
+}
+
+/// A verified private object returned only after the owner re-hashes bytes
+/// read from its private storage key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArtifactDataObjectContent {
+    pub object: ArtifactDataObject,
+    pub data: Bytes,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataObjectPage {
+    pub objects: Vec<ArtifactDataObject>,
+    pub next_after_name: Option<String>,
+}
+
+impl ArtifactDataObject {
+    pub fn validate(&self) -> Result<(), ArtifactDataError> {
+        if validate_artifact_data_key(&self.name).is_err()
+            || self.content_type.trim().is_empty()
+            || self.content_type.len() > MAX_ARTIFACT_OBJECT_CONTENT_TYPE_BYTES
+            || self.content_type.chars().any(char::is_control)
+            || self.size_bytes == 0
+            || self.size_bytes > MAX_ARTIFACT_OBJECT_BYTES
+            || !prefixed_sha256_digest(&self.digest_sha256)
+            || self.revision == 0
+        {
+            return Err(ArtifactDataError::InvalidObject);
+        }
+        Ok(())
+    }
 }
 
 /// A bounded keyset page. The continuation is a validated logical key; guests
@@ -160,6 +219,9 @@ pub enum ArtifactDataAccess {
     Read { key: String },
     Write { key: String },
     List,
+    ObjectRead { name: String },
+    ObjectWrite { name: String },
+    ObjectList,
 }
 
 /// An explicit destructive command. The authorizer receives this exact request
@@ -314,6 +376,34 @@ fn valid_upgrade_hook_binding_id(value: &str) -> bool {
         })
 }
 
+fn prefixed_sha256_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
+}
+
+fn object_for_upload(
+    upload: &ArtifactDataObjectUpload,
+) -> Result<ArtifactDataObject, ArtifactDataError> {
+    if upload.idempotency_key.is_nil() {
+        return Err(ArtifactDataError::InvalidIdempotencyKey);
+    }
+    let size_bytes =
+        u64::try_from(upload.data.len()).map_err(|_| ArtifactDataError::InvalidObject)?;
+    let object = ArtifactDataObject {
+        name: upload.name.clone(),
+        content_type: upload.content_type.clone(),
+        size_bytes,
+        digest_sha256: format!("sha256:{}", hex::encode(Sha256::digest(&upload.data))),
+        revision: 1,
+    };
+    object.validate()?;
+    if upload.expected_revision == Some(0) {
+        return Err(ArtifactDataError::RevisionConflict);
+    }
+    Ok(object)
+}
+
 /// Read and write calls are self-contained owner operations. An implementation
 /// must finish any storage transaction before returning; it must not expose a
 /// live transaction to a caller that may invoke untrusted code next.
@@ -342,6 +432,36 @@ pub trait ArtifactDataBroker: Send + Sync {
         scope: &ArtifactDataScope,
         page: ArtifactDataPageRequest,
     ) -> Result<ArtifactDataPage, ArtifactDataError>;
+}
+
+/// Owner-owned broker for bounded binary artifact data. Its public contract
+/// contains logical names and verified bytes only; storage keys are private
+/// implementation details and never cross this boundary.
+#[async_trait]
+pub trait ArtifactDataObjectBroker: Send + Sync {
+    async fn get_object(
+        &self,
+        scope: &ArtifactDataScope,
+        name: &str,
+    ) -> Result<Option<ArtifactDataObject>, ArtifactDataError>;
+
+    async fn read_object(
+        &self,
+        scope: &ArtifactDataScope,
+        name: &str,
+    ) -> Result<Option<ArtifactDataObjectContent>, ArtifactDataError>;
+
+    async fn put_object(
+        &self,
+        scope: &ArtifactDataScope,
+        upload: ArtifactDataObjectUpload,
+    ) -> Result<ArtifactDataObject, ArtifactDataError>;
+
+    async fn list_objects(
+        &self,
+        scope: &ArtifactDataScope,
+        page: ArtifactDataPageRequest,
+    ) -> Result<ArtifactDataObjectPage, ArtifactDataError>;
 }
 
 /// Host-owned invocation of a pre-bound sandbox transformation. The hook has
@@ -998,6 +1118,506 @@ where
     }
 }
 
+/// SeaORM and storage implementation of the private artifact object broker.
+/// The generated path is intentionally not configurable through any artifact
+/// command, metadata field, or capability payload.
+#[derive(Clone)]
+pub struct SeaOrmArtifactDataObjectBroker<A> {
+    db: DatabaseConnection,
+    storage: StorageService,
+    authorizer: A,
+}
+
+impl<A> SeaOrmArtifactDataObjectBroker<A>
+where
+    A: ArtifactDataAuthorizer,
+{
+    pub fn new(db: DatabaseConnection, storage: StorageService, authorizer: A) -> Self {
+        Self {
+            db,
+            storage,
+            authorizer,
+        }
+    }
+}
+
+#[async_trait]
+impl<A> ArtifactDataObjectBroker for SeaOrmArtifactDataObjectBroker<A>
+where
+    A: ArtifactDataAuthorizer,
+{
+    async fn get_object(
+        &self,
+        scope: &ArtifactDataScope,
+        name: &str,
+    ) -> Result<Option<ArtifactDataObject>, ArtifactDataError> {
+        scope.validate()?;
+        validate_artifact_data_key(name)?;
+        self.authorizer
+            .authorize_data(
+                scope,
+                ArtifactDataAccess::ObjectRead {
+                    name: name.to_owned(),
+                },
+            )
+            .await?;
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let object = find_artifact_data_object(&transaction, scope, name).await?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(object.map(|stored| stored.object))
+    }
+
+    async fn read_object(
+        &self,
+        scope: &ArtifactDataScope,
+        name: &str,
+    ) -> Result<Option<ArtifactDataObjectContent>, ArtifactDataError> {
+        scope.validate()?;
+        validate_artifact_data_key(name)?;
+        self.authorizer
+            .authorize_data(
+                scope,
+                ArtifactDataAccess::ObjectRead {
+                    name: name.to_owned(),
+                },
+            )
+            .await?;
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let stored = find_artifact_data_object(&transaction, scope, name).await?;
+        transaction.commit().await.map_err(storage_error)?;
+        let Some(stored) = stored else {
+            return Ok(None);
+        };
+        let data = self
+            .storage
+            .read(&stored.storage_key)
+            .await
+            .map_err(storage_error)?;
+        if u64::try_from(data.len()).ok() != Some(stored.object.size_bytes)
+            || format!("sha256:{}", hex::encode(Sha256::digest(&data)))
+                != stored.object.digest_sha256
+        {
+            return Err(ArtifactDataError::ObjectIntegrity);
+        }
+        Ok(Some(ArtifactDataObjectContent {
+            object: stored.object,
+            data,
+        }))
+    }
+
+    async fn put_object(
+        &self,
+        scope: &ArtifactDataScope,
+        upload: ArtifactDataObjectUpload,
+    ) -> Result<ArtifactDataObject, ArtifactDataError> {
+        scope.validate()?;
+        let requested = object_for_upload(&upload)?;
+        self.authorizer
+            .authorize_data(
+                scope,
+                ArtifactDataAccess::ObjectWrite {
+                    name: requested.name.clone(),
+                },
+            )
+            .await?;
+
+        if let Some(existing) = self
+            .find_object_operation(scope, &upload, &requested)
+            .await?
+        {
+            return Ok(existing);
+        }
+
+        let generated_key = private_artifact_data_object_key(scope);
+        let uploaded = self
+            .storage
+            .store(&generated_key, upload.data.clone(), &requested.content_type)
+            .await
+            .map_err(storage_error)?;
+        if uploaded.size != requested.size_bytes {
+            let _ = self.storage.delete(&uploaded.path).await;
+            return Err(ArtifactDataError::ObjectIntegrity);
+        }
+
+        let transaction = match self.db.begin().await.map_err(storage_error) {
+            Ok(transaction) => transaction,
+            Err(error) => {
+                let _ = self.storage.delete(&uploaded.path).await;
+                return Err(error);
+            }
+        };
+        if let Err(error) = configure_tenant_scope(&transaction, scope.tenant_id).await {
+            let _ = self.storage.delete(&uploaded.path).await;
+            return Err(error);
+        }
+        let stored = match persist_artifact_data_object(
+            &transaction,
+            scope,
+            &upload,
+            &requested,
+            &uploaded.path,
+        )
+        .await
+        {
+            Ok(stored) => stored,
+            Err(error) => {
+                let _ = self.storage.delete(&uploaded.path).await;
+                return Err(error);
+            }
+        };
+        if let Err(error) = transaction.commit().await.map_err(storage_error) {
+            // A commit error can represent an unknown outcome. Retain this
+            // owner-generated object for retention/GC reconciliation instead
+            // of risking a delete of a now-committed object.
+            return Err(error);
+        }
+        if stored.storage_key != uploaded.path {
+            let _ = self.storage.delete(&uploaded.path).await;
+        }
+        Ok(stored.object)
+    }
+
+    async fn list_objects(
+        &self,
+        scope: &ArtifactDataScope,
+        page: ArtifactDataPageRequest,
+    ) -> Result<ArtifactDataObjectPage, ArtifactDataError> {
+        scope.validate()?;
+        validate_page_request(&page)?;
+        self.authorizer
+            .authorize_data(scope, ArtifactDataAccess::ObjectList)
+            .await?;
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        let limit = i64::from(page.limit) + 1;
+        let prefix = format!("{}%", escape_like_prefix(&page.prefix));
+        let (query, values) = match page.after_key {
+            Some(after_name) => (
+                format!(
+                    "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key
+                     FROM module_artifact_data_objects
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND object_name LIKE {} ESCAPE '\\' AND object_name > {}
+                     ORDER BY object_name ASC LIMIT {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    placeholder(backend, 6),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    prefix.clone().into(),
+                    after_name.into(),
+                    limit.into(),
+                ],
+            ),
+            None => (
+                format!(
+                    "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key
+                     FROM module_artifact_data_objects
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND object_name LIKE {} ESCAPE '\\'
+                     ORDER BY object_name ASC LIMIT {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    prefix.into(),
+                    limit.into(),
+                ],
+            ),
+        };
+        let mut objects = transaction
+            .query_all(Statement::from_sql_and_values(backend, query, values))
+            .await
+            .map_err(storage_error)?
+            .into_iter()
+            .map(stored_artifact_data_object_from_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        transaction.commit().await.map_err(storage_error)?;
+        let next_after_name = if objects.len() > page.limit as usize {
+            objects.truncate(page.limit as usize);
+            objects.last().map(|object| object.object.name.clone())
+        } else {
+            None
+        };
+        Ok(ArtifactDataObjectPage {
+            objects: objects.into_iter().map(|stored| stored.object).collect(),
+            next_after_name,
+        })
+    }
+}
+
+impl<A> SeaOrmArtifactDataObjectBroker<A>
+where
+    A: ArtifactDataAuthorizer,
+{
+    async fn find_object_operation(
+        &self,
+        scope: &ArtifactDataScope,
+        upload: &ArtifactDataObjectUpload,
+        requested: &ArtifactDataObject,
+    ) -> Result<Option<ArtifactDataObject>, ArtifactDataError> {
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        ensure_active_namespace(&transaction, scope, backend).await?;
+        let operation =
+            find_artifact_data_object_operation(&transaction, scope, upload.idempotency_key)
+                .await?;
+        transaction.commit().await.map_err(storage_error)?;
+        let Some((stored, expected_revision)) = operation else {
+            return Ok(None);
+        };
+        validate_object_operation(&stored, upload, requested, expected_revision)?;
+        Ok(Some(stored.object))
+    }
+}
+
+#[derive(Clone)]
+struct StoredArtifactDataObject {
+    object: ArtifactDataObject,
+    storage_key: String,
+}
+
+async fn find_artifact_data_object<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    name: &str,
+) -> Result<Option<StoredArtifactDataObject>, ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    connection
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key
+                 FROM module_artifact_data_objects
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND object_name = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+            ),
+            scope_values(scope, backend, name)?,
+        ))
+        .await
+        .map_err(storage_error)?
+        .map(stored_artifact_data_object_from_row)
+        .transpose()
+}
+
+async fn persist_artifact_data_object(
+    transaction: &DatabaseTransaction,
+    scope: &ArtifactDataScope,
+    upload: &ArtifactDataObjectUpload,
+    requested: &ArtifactDataObject,
+    storage_key: &str,
+) -> Result<StoredArtifactDataObject, ArtifactDataError> {
+    let backend = transaction.get_database_backend();
+    ensure_active_namespace(transaction, scope, backend).await?;
+    if let Some((existing, expected_revision)) =
+        find_artifact_data_object_operation(transaction, scope, upload.idempotency_key).await?
+    {
+        validate_object_operation(&existing, upload, requested, expected_revision)?;
+        return Ok(existing);
+    }
+    let current = find_artifact_data_object(transaction, scope, &requested.name).await?;
+    let revision = match current {
+        Some(current) => {
+            if upload.expected_revision != Some(current.object.revision) {
+                return Err(ArtifactDataError::RevisionConflict);
+            }
+            let revision = current
+                .object
+                .revision
+                .checked_add(1)
+                .ok_or(ArtifactDataError::RevisionConflict)?;
+            let result = transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "UPDATE module_artifact_data_objects
+                         SET storage_key = {}, content_type = {}, size_bytes = {}, digest_sha256 = {}, revision = {}, updated_at = {}
+                         WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND object_name = {} AND revision = {}",
+                        placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
+                        placeholder(backend, 4), placeholder(backend, 5), now_expression(backend),
+                        placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8),
+                        placeholder(backend, 9), placeholder(backend, 10),
+                    ),
+                    vec![
+                        storage_key.to_owned().into(), requested.content_type.clone().into(),
+                        revision_value(requested.size_bytes)?, requested.digest_sha256.clone().into(),
+                        revision_value(revision)?, uuid_value(scope.tenant_id, backend),
+                        scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?,
+                        requested.name.clone().into(), revision_value(current.object.revision)?,
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?;
+            if result.rows_affected() != 1 {
+                return Err(ArtifactDataError::RevisionConflict);
+            }
+            revision
+        }
+        None => {
+            if upload.expected_revision.is_some() {
+                return Err(ArtifactDataError::RevisionConflict);
+            }
+            let result = transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "INSERT INTO module_artifact_data_objects
+                         (tenant_id, module_slug, data_contract_revision, object_name, storage_key, content_type, size_bytes, digest_sha256, revision, created_at, updated_at)
+                         VALUES ({}, {}, {}, {}, {}, {}, {}, {}, 1, {}, {}) ON CONFLICT DO NOTHING",
+                        placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
+                        placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6),
+                        placeholder(backend, 7), placeholder(backend, 8), now_expression(backend), now_expression(backend),
+                    ),
+                    vec![
+                        uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(),
+                        revision_value(scope.data_contract_revision)?, requested.name.clone().into(),
+                        storage_key.to_owned().into(), requested.content_type.clone().into(),
+                        revision_value(requested.size_bytes)?, requested.digest_sha256.clone().into(),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?;
+            if result.rows_affected() != 1 {
+                return Err(ArtifactDataError::RevisionConflict);
+            }
+            1
+        }
+    };
+    let stored = StoredArtifactDataObject {
+        object: ArtifactDataObject {
+            name: requested.name.clone(),
+            content_type: requested.content_type.clone(),
+            size_bytes: requested.size_bytes,
+            digest_sha256: requested.digest_sha256.clone(),
+            revision,
+        },
+        storage_key: storage_key.to_owned(),
+    };
+    transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO module_artifact_data_object_operations
+                 (tenant_id, module_slug, data_contract_revision, idempotency_key, object_name, storage_key, content_type, size_bytes, digest_sha256, expected_revision, revision, completed_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
+                placeholder(backend, 5), placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8),
+                placeholder(backend, 9), placeholder(backend, 10), placeholder(backend, 11), now_expression(backend),
+            ),
+            vec![
+                uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(),
+                revision_value(scope.data_contract_revision)?, uuid_value(upload.idempotency_key, backend),
+                stored.object.name.clone().into(), stored.storage_key.clone().into(),
+                stored.object.content_type.clone().into(), revision_value(stored.object.size_bytes)?,
+                stored.object.digest_sha256.clone().into(), optional_revision_value(upload.expected_revision)?,
+                revision_value(stored.object.revision)?,
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    Ok(stored)
+}
+
+async fn find_artifact_data_object_operation<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    idempotency_key: Uuid,
+) -> Result<Option<(StoredArtifactDataObject, Option<u64>)>, ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    connection
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key, expected_revision
+                 FROM module_artifact_data_object_operations
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND idempotency_key = {}",
+                placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
+            ),
+            vec![
+                uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(),
+                revision_value(scope.data_contract_revision)?, uuid_value(idempotency_key, backend),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?
+        .map(|row| {
+            let expected_revision: Option<i64> = row
+                .try_get("", "expected_revision")
+                .map_err(storage_error)?;
+            let expected_revision = expected_revision
+                .map(u64::try_from)
+                .transpose()
+                .map_err(|_| ArtifactDataError::IdempotencyConflict)?;
+            Ok((stored_artifact_data_object_from_row(row)?, expected_revision))
+        })
+        .transpose()
+}
+
+fn validate_object_operation(
+    stored: &StoredArtifactDataObject,
+    upload: &ArtifactDataObjectUpload,
+    requested: &ArtifactDataObject,
+    expected_revision: Option<u64>,
+) -> Result<(), ArtifactDataError> {
+    if stored.object.name != requested.name
+        || stored.object.content_type != requested.content_type
+        || stored.object.size_bytes != requested.size_bytes
+        || stored.object.digest_sha256 != requested.digest_sha256
+        || expected_revision != upload.expected_revision
+    {
+        return Err(ArtifactDataError::IdempotencyConflict);
+    }
+    Ok(())
+}
+
+fn stored_artifact_data_object_from_row(
+    row: sea_orm::QueryResult,
+) -> Result<StoredArtifactDataObject, ArtifactDataError> {
+    let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
+    let size_bytes: i64 = row.try_get("", "size_bytes").map_err(storage_error)?;
+    let object = ArtifactDataObject {
+        name: row.try_get("", "object_name").map_err(storage_error)?,
+        content_type: row.try_get("", "content_type").map_err(storage_error)?,
+        size_bytes: u64::try_from(size_bytes).map_err(|_| ArtifactDataError::ObjectIntegrity)?,
+        digest_sha256: row.try_get("", "digest_sha256").map_err(storage_error)?,
+        revision: u64::try_from(revision).map_err(|_| ArtifactDataError::ObjectIntegrity)?,
+    };
+    object.validate()?;
+    Ok(StoredArtifactDataObject {
+        object,
+        storage_key: row.try_get("", "storage_key").map_err(storage_error)?,
+    })
+}
+
+fn private_artifact_data_object_key(scope: &ArtifactDataScope) -> String {
+    format!(
+        "module-artifact-data/{}/{}/{}/{}",
+        scope.tenant_id,
+        scope.module_slug,
+        scope.data_contract_revision,
+        Uuid::new_v4(),
+    )
+}
+
 async fn persist_artifact_data_write(
     transaction: &DatabaseTransaction,
     scope: &ArtifactDataScope,
@@ -1326,6 +1946,268 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerReso
     }
 }
 
+/// The `platform.data.objects` adapter for bounded binary object calls. It is
+/// deliberately a distinct capability from structured `platform.data`, so
+/// policies can grant object prefixes and operations without broadening JSON
+/// value access.
+#[derive(Clone)]
+pub struct SeaOrmArtifactDataObjectCapabilityBroker<A> {
+    objects: SeaOrmArtifactDataObjectBroker<A>,
+    scope: ArtifactDataScope,
+}
+
+impl<A> SeaOrmArtifactDataObjectCapabilityBroker<A>
+where
+    A: ArtifactDataAuthorizer,
+{
+    pub fn new(
+        db: DatabaseConnection,
+        storage: StorageService,
+        authorizer: A,
+        scope: ArtifactDataScope,
+    ) -> Self {
+        Self {
+            objects: SeaOrmArtifactDataObjectBroker::new(db, storage, authorizer),
+            scope,
+        }
+    }
+}
+
+#[async_trait]
+impl<A> CapabilityBroker for SeaOrmArtifactDataObjectCapabilityBroker<A>
+where
+    A: ArtifactDataAuthorizer,
+{
+    async fn invoke(
+        &self,
+        call: &CapabilityCall,
+        _grant: &CapabilityGrant,
+    ) -> SandboxResult<CapabilityResponse> {
+        if call.capability.as_str() != "platform.data.objects"
+            || call.context.tenant_id != Some(self.scope.tenant_id)
+            || !matches!(
+                &call.subject,
+                SandboxSubject::ModuleArtifact { slug, .. } if slug == &self.scope.module_slug
+            )
+        {
+            return Err(SandboxError::CapabilityDenied(call.capability.clone()));
+        }
+        match decode_object_data_capability_call(call)? {
+            ObjectDataCapabilityCall::GetMetadata { name } => {
+                let object = self
+                    .objects
+                    .get_object(&self.scope, &name)
+                    .await
+                    .map_err(|error| data_capability_error(&call.capability, error))?;
+                Ok(CapabilityResponse {
+                    output: json!({ "object": object }),
+                })
+            }
+            ObjectDataCapabilityCall::Read { name } => {
+                let object = self
+                    .objects
+                    .read_object(&self.scope, &name)
+                    .await
+                    .map_err(|error| data_capability_error(&call.capability, error))?;
+                let output = match object {
+                    Some(content) if content.data.len() <= MAX_SANDBOX_ARTIFACT_OBJECT_BYTES => {
+                        json!({
+                            "object": content.object,
+                            "data_base64": BASE64_STANDARD.encode(content.data),
+                        })
+                    }
+                    Some(_) => {
+                        return Err(data_capability_constraint(
+                            call,
+                            "object exceeds the sandbox transfer limit",
+                        ));
+                    }
+                    None => json!({ "object": Value::Null }),
+                };
+                Ok(CapabilityResponse { output })
+            }
+            ObjectDataCapabilityCall::Put { upload } => {
+                let object = self
+                    .objects
+                    .put_object(&self.scope, upload)
+                    .await
+                    .map_err(|error| data_capability_error(&call.capability, error))?;
+                Ok(CapabilityResponse {
+                    output: json!({ "object": object }),
+                })
+            }
+            ObjectDataCapabilityCall::List { page } => {
+                let page = self
+                    .objects
+                    .list_objects(&self.scope, page)
+                    .await
+                    .map_err(|error| data_capability_error(&call.capability, error))?;
+                Ok(CapabilityResponse {
+                    output: json!({
+                        "objects": page.objects,
+                        "next_after_name": page.next_after_name,
+                    }),
+                })
+            }
+        }
+    }
+}
+
+/// Production resolver for the bounded `platform.data.objects` owner. The
+/// storage service is deployment-provided, but artifact scope and every
+/// physical object key remain owner-controlled.
+#[derive(Clone)]
+pub struct SeaOrmArtifactDataObjectCapabilityBrokerResolver {
+    db: DatabaseConnection,
+    storage: StorageService,
+}
+
+impl SeaOrmArtifactDataObjectCapabilityBrokerResolver {
+    pub fn new(db: DatabaseConnection, storage: StorageService) -> Self {
+        Self { db, storage }
+    }
+}
+
+#[async_trait]
+impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataObjectCapabilityBrokerResolver {
+    async fn resolve_broker(
+        &self,
+        execution: &ArtifactCapabilityExecution,
+        capability: &rustok_sandbox::CapabilityName,
+    ) -> SandboxResult<Arc<dyn CapabilityBroker>> {
+        if capability.as_str() != "platform.data.objects" {
+            return Err(SandboxError::CapabilityDenied(capability.clone()));
+        }
+        let installation =
+            resolve_granted_artifact_capability(&self.db, execution, capability).await?;
+        let scope = artifact_data_scope_for_execution(&installation, execution, capability)?;
+        let authorizer = ExactArtifactDataAuthorizer {
+            scope: scope.clone(),
+        };
+        Ok(Arc::new(SeaOrmArtifactDataObjectCapabilityBroker::new(
+            self.db.clone(),
+            self.storage.clone(),
+            authorizer,
+            scope,
+        )))
+    }
+}
+
+enum ObjectDataCapabilityCall {
+    GetMetadata { name: String },
+    Read { name: String },
+    Put { upload: ArtifactDataObjectUpload },
+    List { page: ArtifactDataPageRequest },
+}
+
+fn decode_object_data_capability_call(
+    call: &CapabilityCall,
+) -> SandboxResult<ObjectDataCapabilityCall> {
+    let input = call
+        .input
+        .as_object()
+        .ok_or_else(|| data_capability_constraint(call, "object-data input must be an object"))?;
+    match call.operation.as_str() {
+        "get_metadata" => {
+            reject_data_capability_fields(call, input, &["name"])?;
+            Ok(ObjectDataCapabilityCall::GetMetadata {
+                name: required_data_capability_string(call, input, "name")?.to_string(),
+            })
+        }
+        "read" => {
+            reject_data_capability_fields(call, input, &["name"])?;
+            Ok(ObjectDataCapabilityCall::Read {
+                name: required_data_capability_string(call, input, "name")?.to_string(),
+            })
+        }
+        "put" => {
+            reject_data_capability_fields(
+                call,
+                input,
+                &[
+                    "name",
+                    "content_type",
+                    "data_base64",
+                    "expected_revision",
+                    "idempotency_key",
+                ],
+            )?;
+            let data = BASE64_STANDARD
+                .decode(required_data_capability_string(call, input, "data_base64")?)
+                .map_err(|_| data_capability_constraint(call, "object data_base64 is invalid"))?;
+            if data.is_empty() || data.len() > MAX_SANDBOX_ARTIFACT_OBJECT_BYTES {
+                return Err(data_capability_constraint(
+                    call,
+                    "object exceeds the sandbox transfer limit",
+                ));
+            }
+            let expected_revision = input
+                .get("expected_revision")
+                .map(|value| {
+                    value
+                        .as_u64()
+                        .filter(|revision| *revision > 0)
+                        .ok_or_else(|| {
+                            data_capability_constraint(
+                                call,
+                                "object expected_revision must be a positive integer",
+                            )
+                        })
+                })
+                .transpose()?;
+            let idempotency_key = Uuid::parse_str(required_data_capability_string(
+                call,
+                input,
+                "idempotency_key",
+            )?)
+            .map_err(|_| {
+                data_capability_constraint(call, "object idempotency_key must be a UUID")
+            })?;
+            Ok(ObjectDataCapabilityCall::Put {
+                upload: ArtifactDataObjectUpload {
+                    name: required_data_capability_string(call, input, "name")?.to_string(),
+                    content_type: required_data_capability_string(call, input, "content_type")?
+                        .to_string(),
+                    data: Bytes::from(data),
+                    expected_revision,
+                    idempotency_key,
+                },
+            })
+        }
+        "list" => {
+            reject_data_capability_fields(call, input, &["prefix", "after_name", "limit"])?;
+            let after_key = input
+                .get("after_name")
+                .map(|value| {
+                    value.as_str().map(str::to_string).ok_or_else(|| {
+                        data_capability_constraint(call, "object after_name must be a string")
+                    })
+                })
+                .transpose()?;
+            let limit = input
+                .get("limit")
+                .and_then(Value::as_u64)
+                .filter(|limit| (1..=100).contains(limit))
+                .ok_or_else(|| {
+                    data_capability_constraint(call, "object list limit must be between 1 and 100")
+                })?;
+            Ok(ObjectDataCapabilityCall::List {
+                page: ArtifactDataPageRequest {
+                    prefix: required_data_capability_string(call, input, "prefix")?.to_string(),
+                    after_key,
+                    limit: u32::try_from(limit).map_err(|_| {
+                        data_capability_constraint(call, "object list limit must fit u32")
+                    })?,
+                },
+            })
+        }
+        _ => Err(data_capability_constraint(
+            call,
+            "object-data operation is unsupported",
+        )),
+    }
+}
+
 enum DataCapabilityCall {
     Get { key: String },
     Put { write: ArtifactDataWrite },
@@ -1492,6 +2374,7 @@ fn data_capability_error(
     match error {
         ArtifactDataError::InvalidScope
         | ArtifactDataError::InvalidKey
+        | ArtifactDataError::InvalidObject
         | ArtifactDataError::InvalidPage
         | ArtifactDataError::InvalidBatch
         | ArtifactDataError::RevisionConflict
@@ -1508,6 +2391,7 @@ fn data_capability_error(
         | ArtifactDataError::MigrationCheckpoint(_)
         | ArtifactDataError::DataContractUnavailable
         | ArtifactDataError::DataContractSchemaInvalid
+        | ArtifactDataError::ObjectIntegrity
         | ArtifactDataError::Storage(_) => SandboxError::HostCapability {
             capability: capability.clone(),
             message: "artifact data capability is unavailable".to_string(),
@@ -1619,7 +2503,7 @@ where
         {
             return Err(ArtifactDataError::PurgePrecondition);
         }
-        let purged_records = transaction
+        let structured_records = transaction
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
@@ -1639,6 +2523,35 @@ where
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_operations
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                ),
+                namespace_values(&request.scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+        let object_records = transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "DELETE FROM module_artifact_data_objects
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                ),
+                namespace_values(&request.scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?
+            .rows_affected();
+        transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "DELETE FROM module_artifact_data_object_operations
                      WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -1681,8 +2594,10 @@ where
         if updated.rows_affected() != 1 {
             return Err(ArtifactDataError::PurgePrecondition);
         }
-        let purged_records =
-            i64::try_from(purged_records).map_err(|_| ArtifactDataError::PurgePrecondition)?;
+        let purged_records = structured_records
+            .checked_add(object_records)
+            .and_then(|count| i64::try_from(count).ok())
+            .ok_or(ArtifactDataError::PurgePrecondition)?;
         transaction
             .execute(Statement::from_sql_and_values(
                 backend,
@@ -1919,6 +2834,10 @@ pub enum ArtifactDataError {
     InvalidScope,
     #[error("artifact data key is invalid")]
     InvalidKey,
+    #[error("artifact data object metadata is invalid")]
+    InvalidObject,
+    #[error("artifact data object failed its stored integrity check")]
+    ObjectIntegrity,
     #[error("artifact data page is invalid")]
     InvalidPage,
     #[error("artifact data batch is invalid")]
@@ -2278,6 +3197,45 @@ mod tests {
         assert!(decode_data_capability_call(&duplicate).is_err());
     }
 
+    #[test]
+    fn sandbox_object_data_adapter_accepts_only_bounded_base64_payloads() {
+        let mut call = CapabilityCall {
+            execution_id: Uuid::new_v4(),
+            subject: SandboxSubject::ModuleArtifact {
+                installation_id: Uuid::new_v4(),
+                slug: "sample_module".to_string(),
+                version: "1.0.0".to_string(),
+                digest: "sha256:sample".to_string(),
+            },
+            context: CapabilityCallContext {
+                phase: ExecutionPhase::Manual,
+                tenant_id: Some(Uuid::new_v4()),
+                actor_id: None,
+                trace_id: None,
+            },
+            capability: CapabilityName::new("platform.data.objects").expect("capability name"),
+            operation: "put".to_string(),
+            input: json!({
+                "name": "exports/report.json",
+                "content_type": "application/json",
+                "data_base64": "e30=",
+                "idempotency_key": Uuid::new_v4(),
+            }),
+        };
+        assert!(matches!(
+            decode_object_data_capability_call(&call),
+            Ok(ObjectDataCapabilityCall::Put { .. })
+        ));
+
+        call.input = json!({
+            "name": "exports/report.json",
+            "content_type": "application/json",
+            "data_base64": "not-base64",
+            "idempotency_key": Uuid::new_v4(),
+        });
+        assert!(decode_object_data_capability_call(&call).is_err());
+    }
+
     #[tokio::test]
     async fn upgrade_planning_reads_before_transforming_and_never_writes() {
         let completed = Arc::new(AtomicBool::new(false));
@@ -2455,6 +3413,50 @@ mod tests {
         assert_eq!(
             checkpoints.requests.lock().expect("checkpoint lock").len(),
             1
+        );
+    }
+
+    #[test]
+    fn object_metadata_never_accepts_a_physical_or_unbounded_identity() {
+        let object = ArtifactDataObject {
+            name: "exports/report.json".to_string(),
+            content_type: "application/json".to_string(),
+            size_bytes: 1024,
+            digest_sha256: format!("sha256:{}", "a".repeat(64)),
+            revision: 1,
+        };
+        assert!(object.validate().is_ok());
+
+        let mut invalid = object;
+        invalid.name = "../storage-key".to_string();
+        assert_eq!(invalid.validate(), Err(ArtifactDataError::InvalidObject));
+        invalid.name = "exports/report.json".to_string();
+        invalid.digest_sha256 = "sha256:not-a-digest".to_string();
+        assert_eq!(invalid.validate(), Err(ArtifactDataError::InvalidObject));
+    }
+
+    #[test]
+    fn object_upload_derives_owner_verified_metadata() {
+        let upload = ArtifactDataObjectUpload {
+            name: "exports/report.json".to_string(),
+            content_type: "application/json".to_string(),
+            data: Bytes::from_static(b"{}"),
+            expected_revision: None,
+            idempotency_key: Uuid::new_v4(),
+        };
+        let object = object_for_upload(&upload).expect("bounded object upload");
+        assert_eq!(object.size_bytes, 2);
+        assert_eq!(
+            object.digest_sha256,
+            "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21e4d8f3f2a2fdb7fbe7a1b4d"
+        );
+        assert!(object.name.contains("report"));
+
+        let mut invalid = upload;
+        invalid.idempotency_key = Uuid::nil();
+        assert_eq!(
+            object_for_upload(&invalid),
+            Err(ArtifactDataError::InvalidIdempotencyKey)
         );
     }
 }

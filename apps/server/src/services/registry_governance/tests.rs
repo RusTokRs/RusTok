@@ -13,6 +13,7 @@ mod tests {
     use crate::models::registry_publish_request::{
         self, ActiveModel as RegistryPublishRequestActiveModel, RegistryPublishRequestStatus,
     };
+    use crate::models::registry_publish_request_translation::ActiveModel as RegistryPublishRequestTranslationActiveModel;
     use crate::models::registry_validation_job::{
         self as registry_validation_job, ActiveModel as RegistryValidationJobActiveModel,
         Entity as RegistryValidationJobEntity, RegistryValidationJobStatus,

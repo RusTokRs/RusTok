@@ -13,6 +13,7 @@ use crate::services::event_transport_factory::{
 };
 use crate::services::registry_governance::RegistryGovernanceService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use rustok_modules::ModuleControlPlane;
 #[cfg(feature = "mod-seo")]
 use rustok_seo::SeoService;
 
@@ -321,7 +322,7 @@ async fn remote_executor_reaper_loop(
     scan_interval_ms: u64,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
-    let governance = rustok_modules::SeaOrmModuleGovernanceService::new(runtime_ctx.db_clone());
+    let governance = ModuleControlPlane::new(runtime_ctx.db_clone()).publication();
     let poll_interval = Duration::from_millis(scan_interval_ms.max(1));
 
     loop {

@@ -23,6 +23,7 @@ sha2.workspace = true
 hex.workspace = true
 uuid.workspace = true
 bytes = "1.0"
+base64.workspace = true
 futures-util = "0.3"
 http = "1.1"
 tokio.workspace = true

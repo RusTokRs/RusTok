@@ -1,7 +1,6 @@
 use super::*;
 use rustok_modules::{
     ModuleOwnerBindCommand, ModuleOwnerTransferCommand, ModuleReleaseYankCommand,
-    SeaOrmModuleGovernanceService,
 };
 
 impl RegistryGovernanceService {
@@ -29,7 +28,7 @@ impl RegistryGovernanceService {
         let normalized_reason_code =
             normalize_reason_code(reason_code, REGISTRY_YANK_REASON_CODES, "Registry yank")?;
 
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.release_service()
             .yank_release(ModuleReleaseYankCommand {
                 slug: release.slug.clone(),
                 version: release.version.clone(),
@@ -85,7 +84,7 @@ impl RegistryGovernanceService {
             "Registry owner transfer",
         )?;
 
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.release_service()
             .transfer_owner(ModuleOwnerTransferCommand {
                 slug: slug.to_string(),
                 new_owner_principal: new_owner.to_json_value(),
@@ -480,7 +479,7 @@ impl RegistryGovernanceService {
             false
         };
 
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        self.release_service()
             .bind_owner(ModuleOwnerBindCommand {
                 slug: slug.to_string(),
                 owner_principal: owner_principal.to_json_value(),

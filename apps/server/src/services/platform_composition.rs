@@ -11,7 +11,7 @@ use rustok_build::build::Model as Build;
 use rustok_build::{BuildEventPublisher, BuildRequest, BuildService};
 use rustok_modules::{
     ModuleCompositionBuildEnqueuer, ModuleCompositionError, ModuleCompositionSnapshot,
-    ModuleCompositionUpdate, ModuleDefinitionError, SeaOrmModuleCompositionService,
+    ModuleCompositionUpdate, ModuleControlPlane, ModuleDefinitionError,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +35,8 @@ pub enum PlatformCompositionError {
     Serialize(String),
     #[error("Failed to deserialize platform manifest: {0}")]
     Deserialize(String),
+    #[error("module effective-policy resolution failed: {0}")]
+    EffectivePolicy(String),
     #[error("Platform manifest revision conflict: expected {expected}, current {current}")]
     RevisionConflict { expected: i64, current: i64 },
 }
@@ -97,7 +99,7 @@ impl PlatformCompositionService {
     pub async fn active_snapshot(
         db: &DatabaseConnection,
     ) -> Result<PlatformCompositionSnapshot, PlatformCompositionError> {
-        let owner = SeaOrmModuleCompositionService::new(db.clone());
+        let owner = ModuleControlPlane::new(db.clone()).composition();
         let snapshot = match owner.active_snapshot().await {
             Ok(snapshot) => snapshot,
             Err(ModuleCompositionError::MissingActiveComposition) => {
@@ -128,7 +130,8 @@ impl PlatformCompositionService {
         ManifestManager::validate_with_registry(&manifest, registry)?;
 
         let manifest_json = Self::manifest_snapshot_json(&manifest)?;
-        let snapshot = SeaOrmModuleCompositionService::new(db.clone())
+        let snapshot = ModuleControlPlane::new(db.clone())
+            .composition()
             .replace_active_snapshot(ModuleCompositionUpdate {
                 expected_revision,
                 manifest: manifest_json,
@@ -198,7 +201,8 @@ impl PlatformCompositionBuildService {
             requested_by: requested_by.clone(),
             reason,
         };
-        let (owner_snapshot, build) = SeaOrmModuleCompositionService::new(db.clone())
+        let (owner_snapshot, build) = ModuleControlPlane::new(db.clone())
+            .composition()
             .replace_active_snapshot_and_enqueue(
                 ModuleCompositionUpdate {
                     expected_revision,

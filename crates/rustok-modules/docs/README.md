@@ -56,9 +56,21 @@ runtime. Missing or corrupted blobs fail closed before a sandbox request is
 created.
 
 Every dynamic execution is selected by an admitted `ModuleRuntimeBinding`.
-Before the sandbox runs, `ArtifactRuntime` validates the owner input against the
-binding's exact descriptor-bundled Draft 2020-12 schema; after execution it
-validates the decoded owner output against the corresponding output schema.
+`ArtifactRuntime` wraps the owner payload in the strict versioned
+`ArtifactBindingDispatchEnvelope` before the sandbox runs, so artifact code
+cannot select its binding or phase. It validates the enclosed owner payload
+against the binding's exact descriptor-bundled Draft 2020-12 schema; after
+execution it validates the decoded owner output against the corresponding output
+schema.
+Artifact persistence is limited to a revision plus a bundled schema digest for
+brokered namespaced values; descriptor decoding rejects unknown fields, so an
+artifact cannot attach SQL, DDL, native migrations, a bucket path, or a host
+storage handle.
+Dynamic artifact UI is similarly declarative-only: v1 accepts only
+`admin_settings` and `admin_actions` contribution surfaces with immutable
+localization and declared permissions. Descriptor fields cannot carry a
+component, URL, iframe, or native frontend package; native UI remains a static
+promotion concern.
 Schemas are keyed by their canonical digest, compile into a bounded node-local
 LRU cache with linear-time regex limits, and use a `jsonschema` build without
 filesystem or HTTP resolver features. Non-local `$ref`, `$dynamicRef`, and
@@ -81,7 +93,12 @@ bytes. `StorageArtifactBlobStore` supplies the production CAS adapter over the
 platform `StorageService`: it uses private staging keys, conditional creation
 of digest-derived final keys with the admitted media type, and verified reads. CAS publication remains
 outside the database transaction; the reconciler removes an orphan only after
-it has no committed admission reference and retention policy allows deletion.
+it has no committed admission reference and an explicit durable retention
+snapshot rule allows deletion. A missing snapshot rule fails closed; the rule
+must be expired and free of legal hold, rollback protection, and audit
+retention. Runtime never falls back to the OCI registry: it executes only a
+verified admitted CAS blob and returns `BlobNotFound` before sandbox execution
+when that blob is unavailable.
 `InMemoryArtifactBlobStore` is test/local-only. Host production configuration
 must wire `StorageArtifactBlobStore` to a durable object-storage driver, never
 a node-local cache.
