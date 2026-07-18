@@ -13,28 +13,19 @@ interface DataTableSkeletonProps extends React.ComponentProps<'div'> {
   columnCount: number;
   rowCount?: number;
   filterCount?: number;
-  cellWidths?: string[];
   withViewOptions?: boolean;
   withPagination?: boolean;
-  shrinkZero?: boolean;
 }
 
 export function DataTableSkeleton({
   columnCount,
   rowCount = 10,
   filterCount = 0,
-  cellWidths = ['auto'],
   withViewOptions = true,
   withPagination = true,
-  shrinkZero = false,
   className,
   ...props
 }: DataTableSkeletonProps) {
-  const cozyCellWidths = Array.from(
-    { length: columnCount },
-    (_, index) => cellWidths[index % cellWidths.length] ?? 'auto'
-  );
-
   return (
     <div className={cn('flex flex-1 flex-col space-y-4', className)} {...props}>
       <div className='flex w-full items-center justify-between gap-2 overflow-auto p-1'>
@@ -53,16 +44,10 @@ export function DataTableSkeleton({
       <div className='flex-1 rounded-md border'>
         <Table>
           <TableHeader>
-            {Array.from({ length: 1 }).map((_, i) => (
-              <TableRow key={i} className='hover:bg-transparent'>
-                {Array.from({ length: columnCount }).map((_, j) => (
-                  <TableHead
-                    key={j}
-                    style={{
-                      width: cozyCellWidths[j],
-                      minWidth: shrinkZero ? cozyCellWidths[j] : 'auto'
-                    }}
-                  >
+            {Array.from({ length: 1 }).map((_, rowIndex) => (
+              <TableRow key={rowIndex} className='hover:bg-transparent'>
+                {Array.from({ length: columnCount }).map((_, columnIndex) => (
+                  <TableHead key={columnIndex}>
                     <Skeleton className='h-6 w-full' />
                   </TableHead>
                 ))}
@@ -70,16 +55,10 @@ export function DataTableSkeleton({
             ))}
           </TableHeader>
           <TableBody>
-            {Array.from({ length: rowCount }).map((_, i) => (
-              <TableRow key={i} className='hover:bg-transparent'>
-                {Array.from({ length: columnCount }).map((_, j) => (
-                  <TableCell
-                    key={j}
-                    style={{
-                      width: cozyCellWidths[j],
-                      minWidth: shrinkZero ? cozyCellWidths[j] : 'auto'
-                    }}
-                  >
+            {Array.from({ length: rowCount }).map((_, rowIndex) => (
+              <TableRow key={rowIndex} className='hover:bg-transparent'>
+                {Array.from({ length: columnCount }).map((_, columnIndex) => (
+                  <TableCell key={columnIndex}>
                     <Skeleton className='h-6 w-full' />
                   </TableCell>
                 ))}
