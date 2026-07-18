@@ -67,7 +67,7 @@ jobs:
           node "$GITHUB_WORKSPACE/base/scripts/verify/verify-release-infrastructure-approval.mjs"
           --self-test
 
-      - name: Require approval for release infrastructure changes
+      - name: Require release-infra-approved for release infrastructure changes
         id: policy
         env:
           PR_LABELS_JSON: ${{ github.event_name == 'pull_request_target' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
