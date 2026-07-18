@@ -74,11 +74,7 @@ pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
                     "seller creation result is not draft".to_string(),
                 ));
             }
-            (
-                MarketplaceSellerEventKind::Created,
-                None,
-                status_metadata(),
-            )
+            (MarketplaceSellerEventKind::Created, None, status_metadata())
         }
         "update_seller_profile" => (
             MarketplaceSellerEventKind::ProfileUpdated,
@@ -113,7 +109,11 @@ pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
                     ));
                 }
             };
-            (event_kind, response.onboarding_note.clone(), status_metadata())
+            (
+                event_kind,
+                response.onboarding_note.clone(),
+                status_metadata(),
+            )
         }
         "suspend_seller" => {
             if response.status != MarketplaceSellerStatus::Suspended {

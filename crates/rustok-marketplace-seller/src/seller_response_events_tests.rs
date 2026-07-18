@@ -36,13 +36,7 @@ async fn create_profile_and_submit_commit_one_event_per_receipt() {
         .await
         .unwrap();
     let replayed = service
-        .create_seller_with_receipt(
-            tenant_id,
-            actor_id,
-            "create-event-coverage",
-            "en",
-            create,
-        )
+        .create_seller_with_receipt(tenant_id, actor_id, "create-event-coverage", "en", create)
         .await
         .unwrap();
     assert_eq!(replayed.id, created.id);
@@ -105,13 +99,18 @@ async fn create_profile_and_submit_commit_one_event_per_receipt() {
         .await
         .unwrap();
 
-    let events = service.list_events(tenant_id, created.id, 20).await.unwrap();
-    assert_eq!(events.len(), 3, "completed replay must not duplicate events");
-    assert!(events
-        .iter()
-        .all(|event| event.actor_id == Some(actor_id)
-            && event.locale.as_deref() == Some("en")
-            && event.provenance == MarketplaceSellerEventProvenance::Command));
+    let events = service
+        .list_events(tenant_id, created.id, 20)
+        .await
+        .unwrap();
+    assert_eq!(
+        events.len(),
+        3,
+        "completed replay must not duplicate events"
+    );
+    assert!(events.iter().all(|event| event.actor_id == Some(actor_id)
+        && event.locale.as_deref() == Some("en")
+        && event.provenance == MarketplaceSellerEventProvenance::Command));
     let kinds = events
         .iter()
         .map(|event| event.event_kind)
