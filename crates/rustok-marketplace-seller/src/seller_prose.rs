@@ -12,8 +12,10 @@ use crate::error::MarketplaceSellerResult;
 pub(crate) struct SellerProseProjection {
     pub onboarding_note: Option<String>,
     pub onboarding_at: Option<DateTime<FixedOffset>>,
+    pub onboarding_kind: Option<MarketplaceSellerEventKind>,
     pub suspension_reason: Option<String>,
     pub suspension_at: Option<DateTime<FixedOffset>>,
+    pub suspension_kind: Option<MarketplaceSellerEventKind>,
 }
 
 #[derive(Default)]
@@ -75,6 +77,7 @@ pub(crate) async fn load_seller_prose_map<C: ConnectionTrait>(
             {
                 state.projection.onboarding_note = event.note;
                 state.projection.onboarding_at = Some(event.created_at);
+                state.projection.onboarding_kind = Some(kind);
                 state.onboarding_seen = true;
             }
             MarketplaceSellerEventKind::Suspended
@@ -83,11 +86,13 @@ pub(crate) async fn load_seller_prose_map<C: ConnectionTrait>(
             {
                 state.projection.suspension_reason = event.note;
                 state.projection.suspension_at = Some(event.created_at);
+                state.projection.suspension_kind = Some(kind);
                 state.suspension_seen = true;
             }
             MarketplaceSellerEventKind::Reactivated if !state.suspension_seen => {
                 state.projection.suspension_reason = None;
                 state.projection.suspension_at = Some(event.created_at);
+                state.projection.suspension_kind = Some(kind);
                 state.suspension_seen = true;
             }
             _ => {}
