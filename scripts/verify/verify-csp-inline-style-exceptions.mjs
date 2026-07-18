@@ -333,7 +333,7 @@ forbidMarkers("crates/rustok-forum/admin/src/ui/leptos.rs", [
 requireMarkers("apps/admin/src/features/modules/components/modules_list.rs", [
   "let progress_value = build.progress.clamp(0, 100)",
   "<progress",
-  "max="100"",
+  'max="100"',
   "value=progress_value",
 ]);
 forbidMarkers("apps/admin/src/features/modules/components/modules_list.rs", [
