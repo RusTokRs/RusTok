@@ -40,3 +40,5 @@ jobs:
         run: node scripts/verify/verify-csp-inline-style-exceptions.mjs
       - name: Verify Next CSP style boundary
         run: node scripts/verify/verify-csp-next-style-boundary.mjs
+      - name: Verify API compatibility comparator fixtures
+        run: node scripts/verify/verify-api-compatibility-self-test.mjs
