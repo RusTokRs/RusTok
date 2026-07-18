@@ -28,7 +28,9 @@ pub(crate) enum CommandReceiptAdmission {
     New(NewCommandReceipt),
 }
 
-pub(crate) fn normalize_idempotency_key(value: impl Into<String>) -> MarketplaceSellerResult<String> {
+pub(crate) fn normalize_idempotency_key(
+    value: impl Into<String>,
+) -> MarketplaceSellerResult<String> {
     let value = value.into().trim().to_string();
     if value.is_empty() || value.len() > MAX_IDEMPOTENCY_KEY_LENGTH {
         return Err(MarketplaceSellerError::Validation(format!(
@@ -59,7 +61,7 @@ pub(crate) fn command_request_hash<T: Serialize>(
             "marketplace seller command could not be hashed".to_string(),
         )
     })?;
-    Ok(format!("{:x}", Sha256::digest(encoded)))
+    Ok(hex::encode(Sha256::digest(encoded)))
 }
 
 pub(crate) async fn admit_command(
@@ -247,5 +249,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(left, right);
+        assert_eq!(left.len(), 64);
+        assert!(left.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_eq!(left, left.to_ascii_lowercase());
     }
 }

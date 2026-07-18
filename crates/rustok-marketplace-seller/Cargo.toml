@@ -9,6 +9,7 @@ description = "Marketplace Family seller identity, lifecycle, and membership own
 async-graphql = { workspace = true, optional = true }
 async-trait.workspace = true
 chrono.workspace = true
+hex.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
 sea-orm.workspace = true
