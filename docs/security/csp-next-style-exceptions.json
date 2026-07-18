@@ -19,15 +19,6 @@
       "exit_criteria": "Move the surface to the shared storefront utility-class and component system, including explicit active/error variants."
     },
     {
-      "path": "apps/next-admin/src/shared/ui/shadcn/sonner.tsx",
-      "expected_style_attribute_occurrences": 1,
-      "expected_runtime_style_element_occurrences": 0,
-      "owner": "Next admin design-system maintainers",
-      "reason": "The Sonner adapter passes three fixed theme CSS custom properties to the third-party toaster root.",
-      "constraints": "Only fixed references to existing design tokens are present; arbitrary caller style props must not override the reviewed variables.",
-      "exit_criteria": "Move the toaster token bridge to a static wrapper class or a stylesheet selector owned by the adapter."
-    },
-    {
       "path": "apps/next-admin/src/shared/ui/shadcn/progress.tsx",
       "expected_style_attribute_occurrences": 1,
       "expected_runtime_style_element_occurrences": 0,
@@ -46,15 +37,6 @@
       "exit_criteria": "Move pinning geometry to a reviewed DOM adapter or stylesheet/custom-property boundary that does not require JSX style props."
     },
     {
-      "path": "apps/next-admin/src/shared/ui/forms/form-textarea.tsx",
-      "expected_style_attribute_occurrences": 1,
-      "expected_runtime_style_element_occurrences": 0,
-      "owner": "Next admin forms maintainers",
-      "reason": "Textarea resize behavior is selected from the typed form configuration.",
-      "constraints": "The resize value must remain a closed union and must never accept an arbitrary CSS token.",
-      "exit_criteria": "Map the finite resize modes to reviewed utility classes."
-    },
-    {
       "path": "apps/next-admin/src/widgets/data-table/data-table-skeleton.tsx",
       "expected_style_attribute_occurrences": 2,
       "expected_runtime_style_element_occurrences": 0,
@@ -62,15 +44,6 @@
       "reason": "Skeleton header and body cells reuse configured preview widths.",
       "constraints": "Widths are component configuration only and must not originate from remote row data or tenant-authored CSS.",
       "exit_criteria": "Replace free-form width strings with a finite column-width scale or a reviewed table layout contract."
-    },
-    {
-      "path": "apps/next-admin/src/features/overview/components/bar-graph-skeleton.tsx",
-      "expected_style_attribute_occurrences": 1,
-      "expected_runtime_style_element_occurrences": 0,
-      "owner": "Next admin overview maintainers",
-      "reason": "Placeholder bars receive random percentage heights during render.",
-      "constraints": "No external input is involved, but render-time randomness and CSS text are both unnecessary for a loading skeleton.",
-      "exit_criteria": "Use a deterministic finite height-class sequence."
     },
     {
       "path": "apps/next-admin/src/shared/ui/shadcn/chart.tsx",
