@@ -1,7 +1,7 @@
 name: API Compatibility
 
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - "**"
   workflow_dispatch:
@@ -14,6 +14,16 @@ on:
         description: Head git ref or commit
         required: true
         default: main
+      allow_exception_changes:
+        description: Explicitly approve compatibility exception register changes
+        required: true
+        type: boolean
+        default: false
+      allow_infrastructure_changes:
+        description: Explicitly approve API contract infrastructure changes
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -29,15 +39,16 @@ env:
   PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_TARGET_DIR: ${{ github.workspace }}/target/api-compatibility
-  BASE_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || github.repository }}
-  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
-  BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
-  HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref }}
+  BASE_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.repo.full_name || github.repository }}
+  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+  BASE_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || inputs.base_ref }}
+  HEAD_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || inputs.head_ref }}
 
 jobs:
   compatibility:
     name: OpenAPI and GraphQL Compatibility
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout base contract source
         uses: actions/checkout@v7
@@ -46,6 +57,7 @@ jobs:
           ref: ${{ env.BASE_REF }}
           path: base
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Checkout head contract source
         uses: actions/checkout@v7
@@ -54,6 +66,7 @@ jobs:
           ref: ${{ env.HEAD_REF }}
           path: head
           fetch-depth: 1
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v6
@@ -62,6 +75,28 @@ jobs:
 
       - name: Verify base comparator fixtures
         run: node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility.mjs" --self-test
+
+      - name: Require approval for compatibility infrastructure changes
+        env:
+          PR_LABELS_JSON: ${{ github.event_name == 'pull_request_target' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
+          EXPLICIT_APPROVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_infrastructure_changes || false }}
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility-infrastructure-approval.mjs"
+          --base-dir "$GITHUB_WORKSPACE/base"
+          --head-dir "$GITHUB_WORKSPACE/head"
+          --labels-json "$PR_LABELS_JSON"
+          --explicitly-approved "$EXPLICIT_APPROVAL"
+
+      - name: Require approval for compatibility exception changes
+        env:
+          PR_LABELS_JSON: ${{ github.event_name == 'pull_request_target' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
+          EXPLICIT_APPROVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_exception_changes || false }}
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility-exception-approval.mjs"
+          --base-file "$GITHUB_WORKSPACE/base/docs/api/compatibility-exceptions.json"
+          --head-file "$GITHUB_WORKSPACE/head/docs/api/compatibility-exceptions.json"
+          --labels-json "$PR_LABELS_JSON"
+          --explicitly-approved "$EXPLICIT_APPROVAL"
 
       - name: Validate head compatibility exceptions with base policy
         run: >-
@@ -98,11 +133,13 @@ jobs:
           test -s "$GITHUB_WORKSPACE/contracts/head/schema.graphql"
 
       - name: Compare API contracts with base policy
-        run: >-
-          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility.mjs"
-          --base-dir "$GITHUB_WORKSPACE/contracts/base"
-          --head-dir "$GITHUB_WORKSPACE/contracts/head"
-          --exceptions "$GITHUB_WORKSPACE/head/docs/api/compatibility-exceptions.json"
+        run: |
+          set -o pipefail
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility.mjs" \
+            --base-dir "$GITHUB_WORKSPACE/contracts/base" \
+            --head-dir "$GITHUB_WORKSPACE/contracts/head" \
+            --exceptions "$GITHUB_WORKSPACE/head/docs/api/compatibility-exceptions.json" \
+            2>&1 | tee "$GITHUB_WORKSPACE/contracts/api-compatibility.log"
 
       - name: Upload generated contracts
         if: always()

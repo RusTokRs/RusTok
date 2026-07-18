@@ -42,9 +42,21 @@ jobs:
         run: node scripts/verify/verify-csp-next-style-boundary.mjs
       - name: Verify API compatibility comparator fixtures
         run: node scripts/verify/verify-api-compatibility-self-test.mjs
+      - name: Verify API compatibility exception approval fixtures
+        run: node scripts/verify/verify-api-compatibility-exception-approval-self-test.mjs
+      - name: Verify API compatibility infrastructure approval fixtures
+        run: node scripts/verify/verify-api-compatibility-infra-self-test.mjs
       - name: Verify API compatibility exceptions
         run: >-
           node scripts/verify/verify-api-compatibility-exceptions.mjs
           --file docs/api/compatibility-exceptions.json
       - name: Verify API compatibility gate structure
         run: node scripts/verify/verify-api-compatibility-contract.mjs
+      - name: Verify migration plan comparator fixtures
+        run: node scripts/verify/verify-migration-plan-self-test.mjs
+      - name: Verify migration backfill contract fixtures
+        run: node scripts/verify/verify-migration-backfill-self-test.mjs
+      - name: Verify migration infrastructure approval fixtures
+        run: node scripts/verify/verify-migration-infra-self-test.mjs
+      - name: Verify migration compatibility gate structure
+        run: node scripts/verify/verify-migration-compatibility-contract.mjs

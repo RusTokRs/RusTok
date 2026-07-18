@@ -1,0 +1,109 @@
+name: One-off Wire Migration Backfill Workflow
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  wire-backfill-workflow:
+    if: >-
+      github.event.issue.title == '[automation] wire migration backfill workflow' &&
+      (github.event_name == 'issues' || github.event.comment.body == '/wire-migration-backfill-workflow')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: git pull --rebase origin main
+      - name: Apply bounded workflow wiring
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path(".github/workflows/migration-compatibility.yml")
+          source = path.read_text()
+
+          def sub_once(pattern: str, replacement: str) -> None:
+              global source
+              source, count = re.subn(
+                  pattern,
+                  replacement,
+                  source,
+                  count=1,
+                  flags=re.MULTILINE | re.DOTALL,
+              )
+              if count != 1:
+                  raise SystemExit(f"expected one workflow regex match, found {count}: {pattern!r}")
+
+          sub_once(
+              r'(      - name: Compare migration plans with base policy\n        run: >-\n          node "\$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-plan-compatibility\.mjs"\n          --base "\$GITHUB_WORKSPACE/migration-plans/base\.json"\n          --head "\$GITHUB_WORKSPACE/migration-plans/head\.json"\n)\n(      - name: Upload migration plans)',
+              r'''\1
+      - name: Select appended migration backfill fixtures
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-backfill-contracts.mjs"
+          --base-plan "$GITHUB_WORKSPACE/migration-plans/base.json"
+          --head-plan "$GITHUB_WORKSPACE/migration-plans/head.json"
+          --contracts "$GITHUB_WORKSPACE/head/docs/migrations/backfill-contracts.json"
+          --output "$GITHUB_WORKSPACE/migration-plans/backfill-fixtures.json"
+
+      - name: Verify selected backfill fixture artifact
+        run: test -s "$GITHUB_WORKSPACE/migration-plans/backfill-fixtures.json"
+
+\2''',
+          )
+          sub_once(
+              r'(  n-minus-one-upgrade:.*?      - uses: dtolnay/rust-toolchain@stable\n)\n(      - name: Apply base migrations and preserve database)',
+              r'''\1
+      - name: Download selected backfill fixtures
+        uses: actions/download-artifact@v5
+        with:
+          name: migration-plans-${{ github.run_id }}
+          path: migration-backfill
+
+      - name: Verify selected backfill fixtures
+        run: test -s "$GITHUB_WORKSPACE/migration-backfill/backfill-fixtures.json"
+
+\2''',
+          )
+          sub_once(
+              r'(      - name: Upgrade preserved database with head migrations\n        env:.*?          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "1")',
+              r'''\1
+          RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES: ${{ github.workspace }}/migration-backfill/backfill-fixtures.json''',
+          )
+
+          path.write_text(source)
+          workflow = Path(".github/workflows/one-off-wire-migration-backfill-workflow.yml")
+          if not workflow.exists():
+              raise SystemExit("one-off workflow is missing")
+          workflow.unlink()
+          PY
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          grep -Fq 'verify-migration-backfill-contracts.mjs' .github/workflows/migration-compatibility.yml
+          grep -Fq 'actions/download-artifact@v5' .github/workflows/migration-compatibility.yml
+          grep -Fq 'RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES' .github/workflows/migration-compatibility.yml
+          test ! -e .github/workflows/one-off-wire-migration-backfill-workflow.yml
+      - name: Commit workflow wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "ci(migrations): execute appended backfill fixtures"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --comment "Appended migration backfill selection and N-1 fixture handoff wired; one-off workflow removed itself."
