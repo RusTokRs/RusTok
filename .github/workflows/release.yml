@@ -1,0 +1,485 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  CARGO_NET_GIT_FETCH_WITH_CLI: true
+  CARGO_PROFILE_RELEASE_DEBUG: 0
+  LC_ALL: C
+  TZ: UTC
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  validate:
+    name: Validate signed release tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.contract.outputs.tag }}
+      version: ${{ steps.contract.outputs.version }}
+      major: ${{ steps.contract.outputs.major }}
+      minor: ${{ steps.contract.outputs.minor }}
+      patch: ${{ steps.contract.outputs.patch }}
+      prerelease: ${{ steps.contract.outputs.prerelease }}
+      release_date: ${{ steps.contract.outputs.release_date }}
+      created_epoch: ${{ steps.source.outputs.created_epoch }}
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Require signed annotated tag on main history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = "tag"
+          tag_object=$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{tag}")
+          tagged_commit=$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")
+          test "$tagged_commit" = "$GITHUB_SHA"
+          verified=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_object}" --jq '.verification.verified')
+          reason=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_object}" --jq '.verification.reason')
+          test "$verified" = "true" || {
+            echo "Release tag ${GITHUB_REF_NAME} is not cryptographically verified: ${reason}" >&2
+            exit 1
+          }
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || {
+            echo "Release tag must point to a commit reachable from main" >&2
+            exit 1
+          }
+
+      - name: Validate semantic release contract
+        id: contract
+        run: >-
+          node scripts/release/verify-release-contract.mjs
+          --tag "$GITHUB_REF_NAME"
+          --workspace Cargo.toml
+          --lock Cargo.lock
+          --changelog CHANGELOG.md
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Capture deterministic source timestamp
+        id: source
+        run: echo "created_epoch=$(git show -s --format=%ct "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build deterministic Linux artifact
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    outputs:
+      archive_name: ${{ steps.package.outputs.archive_name }}
+      archive_sha256: ${{ steps.package.outputs.archive_sha256 }}
+      sbom_name: ${{ steps.sbom.outputs.sbom_name }}
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.created_epoch }}
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target/release-build
+      RUSTFLAGS: >-
+        --remap-path-prefix=${{ github.workspace }}=.
+        -C strip=symbols
+        -C link-arg=-Wl,--build-id=none
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+          rustc --version --verbose
+
+      - name: Build locked release binary
+        run: |
+          test "$(uname -m)" = "x86_64"
+          cargo build --locked --release -p rustok-server --bin rustok-server
+          test -x "$CARGO_TARGET_DIR/release/rustok-server"
+
+      - name: Package deterministic archive
+        id: package
+        run: >-
+          bash scripts/release/package-server.sh
+          --binary "$CARGO_TARGET_DIR/release/rustok-server"
+          --version "${{ needs.validate.outputs.version }}"
+          --created-epoch "$SOURCE_DATE_EPOCH"
+          --config-dir apps/server/config
+          --license LICENSE
+          --output-dir release-artifacts
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Export locked Cargo dependency graph
+        run: cargo metadata --locked --format-version 1 > cargo-metadata.json
+
+      - name: Generate deterministic SPDX SBOM
+        id: sbom
+        env:
+          SBOM_NAME: rustok-server-${{ needs.validate.outputs.version }}.spdx.json
+        run: |
+          node scripts/release/generate-spdx-sbom.mjs \
+            --metadata cargo-metadata.json \
+            --output "release-artifacts/$SBOM_NAME" \
+            --version "${{ needs.validate.outputs.version }}" \
+            --commit "$GITHUB_SHA" \
+            --repository "$GITHUB_REPOSITORY" \
+            --created-epoch "$SOURCE_DATE_EPOCH" \
+            --root-package rustok-server
+          echo "sbom_name=$SBOM_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload binary and SBOM
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-binary-${{ github.run_id }}
+          path: release-artifacts
+          if-no-files-found: error
+          retention-days: 14
+
+  reproducibility:
+    name: Rebuild and compare archive digest
+    needs: [validate, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.created_epoch }}
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target/release-build
+      RUSTFLAGS: >-
+        --remap-path-prefix=${{ github.workspace }}=.
+        -C strip=symbols
+        -C link-arg=-Wl,--build-id=none
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+          rustc --version --verbose
+
+      - name: Rebuild locked release binary
+        run: |
+          test "$(uname -m)" = "x86_64"
+          cargo build --locked --release -p rustok-server --bin rustok-server
+          test -x "$CARGO_TARGET_DIR/release/rustok-server"
+
+      - name: Repackage and compare digest
+        env:
+          EXPECTED_SHA256: ${{ needs.build.outputs.archive_sha256 }}
+        run: |
+          bash scripts/release/package-server.sh \
+            --binary "$CARGO_TARGET_DIR/release/rustok-server" \
+            --version "${{ needs.validate.outputs.version }}" \
+            --created-epoch "$SOURCE_DATE_EPOCH" \
+            --config-dir apps/server/config \
+            --license LICENSE \
+            --output-dir release-artifacts
+          archive="release-artifacts/${{ needs.build.outputs.archive_name }}"
+          actual=$(sha256sum "$archive" | awk '{print $1}')
+          test "$actual" = "$EXPECTED_SHA256" || {
+            echo "Release archive is not reproducible: expected $EXPECTED_SHA256, rebuilt $actual" >&2
+            exit 1
+          }
+
+  container:
+    name: Publish attested GHCR image
+    needs: [validate, build, reproducibility]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    outputs:
+      image: ${{ steps.image-metadata.outputs.image }}
+      digest: ${{ steps.image-metadata.outputs.digest }}
+    steps:
+      - name: Checkout release image definition
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download reproducible server archive
+        uses: actions/download-artifact@v5
+        with:
+          name: release-binary-${{ github.run_id }}
+          path: binary-artifacts
+
+      - name: Prepare runtime-only image context
+        run: |
+          set -euo pipefail
+          archive="binary-artifacts/${{ needs.build.outputs.archive_name }}"
+          test -s "$archive"
+          mkdir -p extracted release-image-context
+          tar -xzf "$archive" -C extracted
+          mapfile -t roots < <(find extracted -mindepth 1 -maxdepth 1 -type d -print)
+          test "${#roots[@]}" -eq 1
+          test -x "${roots[0]}/rustok-server"
+          if find "${roots[0]}" -type l -print -quit | grep -q .; then
+            echo "Release archive must not contain symlinks" >&2
+            exit 1
+          fi
+          install -m 0755 "${roots[0]}/rustok-server" release-image-context/rustok-server
+          cp -R "${roots[0]}/config" release-image-context/config
+          install -m 0644 apps/server/Dockerfile.release release-image-context/Dockerfile
+
+      - name: Define immutable and convenience image tags
+        id: image
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          MAJOR: ${{ needs.validate.outputs.major }}
+          MINOR: ${{ needs.validate.outputs.minor }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+        run: |
+          image=$(printf 'ghcr.io/%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          tags=("$image:$VERSION")
+          if [[ "$PRERELEASE" != "true" ]]; then
+            tags+=("$image:$MAJOR.$MINOR" "$image:$MAJOR" "$image:latest")
+          fi
+          {
+            echo "image=$image"
+            echo "tags<<EOF"
+            printf '%s\n' "${tags[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to GHCR with repository token
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and publish runtime image
+        id: image-metadata
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.image }}
+          IMAGE_TAGS: ${{ steps.image.outputs.tags }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          CREATED_EPOCH: ${{ needs.validate.outputs.created_epoch }}
+        run: |
+          set -euo pipefail
+          docker buildx create --name "rustok-release-${GITHUB_RUN_ID}" --driver docker-container --use
+          docker buildx inspect --bootstrap
+          mapfile -t tags <<< "$IMAGE_TAGS"
+          tag_args=()
+          for tag in "${tags[@]}"; do
+            [[ -n "$tag" ]] && tag_args+=(--tag "$tag")
+          done
+          test "${#tag_args[@]}" -ge 2
+          docker buildx build \
+            --file release-image-context/Dockerfile \
+            --platform linux/amd64 \
+            --push \
+            --provenance=mode=max \
+            --sbom=true \
+            --metadata-file image-build-metadata.json \
+            --build-arg "OCI_SOURCE=https://github.com/${GITHUB_REPOSITORY}" \
+            --build-arg "OCI_VERSION=$VERSION" \
+            --build-arg "OCI_REVISION=$GITHUB_SHA" \
+            "${tag_args[@]}" \
+            release-image-context
+          mkdir -p container-artifacts
+          IMAGE_NAME="$IMAGE_NAME" IMAGE_TAGS="$IMAGE_TAGS" VERSION="$VERSION" node <<'NODE'
+          const fs = require("node:fs");
+          const metadata = JSON.parse(fs.readFileSync("image-build-metadata.json", "utf8"));
+          const digest = metadata["containerimage.digest"];
+          if (!/^sha256:[0-9a-f]{64}$/.test(digest || "")) {
+            throw new Error(`buildx did not return a canonical image digest: ${digest}`);
+          }
+          const tags = process.env.IMAGE_TAGS.split(/\r?\n/).filter(Boolean);
+          const document = {
+            schema_version: 1,
+            version: process.env.VERSION,
+            commit: process.env.GITHUB_SHA,
+            image: process.env.IMAGE_NAME,
+            digest,
+            tags,
+          };
+          fs.writeFileSync(
+            "container-artifacts/container-image.json",
+            `${JSON.stringify(document, null, 2)}\n`,
+          );
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `image=${process.env.IMAGE_NAME}\ndigest=${digest}\n`);
+          NODE
+
+      - name: Attest container provenance
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.image-metadata.outputs.image }}
+          subject-digest: ${{ steps.image-metadata.outputs.digest }}
+          push-to-registry: true
+
+      - name: Upload container identity
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-container-${{ github.run_id }}
+          path: container-artifacts
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Log out from GHCR
+        if: always()
+        run: docker logout ghcr.io || true
+
+  finalize:
+    name: Finalize and attest release assets
+    needs: [validate, build, container]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Checkout release scripts
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Download binary assets
+        uses: actions/download-artifact@v5
+        with:
+          name: release-binary-${{ github.run_id }}
+          path: release-artifacts
+
+      - name: Download container identity
+        uses: actions/download-artifact@v5
+        with:
+          name: release-container-${{ github.run_id }}
+          path: release-artifacts
+
+      - name: Generate release manifest and checksums
+        run: >-
+          node scripts/release/finalize-release-artifacts.mjs
+          --directory release-artifacts
+          --version "${{ needs.validate.outputs.version }}"
+          --tag "${{ needs.validate.outputs.tag }}"
+          --commit "$GITHUB_SHA"
+          --repository "$GITHUB_REPOSITORY"
+          --created-epoch "${{ needs.validate.outputs.created_epoch }}"
+          --image-metadata release-artifacts/container-image.json
+
+      - name: Attest every checksummed release asset
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release-artifacts/SHA256SUMS
+
+      - name: Attach SPDX SBOM attestation to server archive
+        uses: actions/attest@v4
+        with:
+          subject-path: release-artifacts/${{ needs.build.outputs.archive_name }}
+          sbom-path: release-artifacts/${{ needs.build.outputs.sbom_name }}
+
+      - name: Upload finalized release asset set
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-final-${{ github.run_id }}
+          path: release-artifacts
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish GitHub Release
+    needs: [validate, build, finalize]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout exact release notes
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Download finalized release assets
+        uses: actions/download-artifact@v5
+        with:
+          name: release-final-${{ github.run_id }}
+          path: release-artifacts
+
+      - name: Verify finalized checksums
+        run: (cd release-artifacts && sha256sum --check SHA256SUMS)
+
+      - name: Extract versioned release notes
+        run: >-
+          node scripts/release/extract-release-notes.mjs
+          --changelog CHANGELOG.md
+          --version "${{ needs.validate.outputs.version }}"
+          --output release-notes.md
+
+      - name: Publish immutable asset set
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; refusing to mutate published assets" >&2
+            exit 1
+          fi
+          mapfile -d '' assets < <(find release-artifacts -maxdepth 1 -type f -print0 | sort -z)
+          test "${#assets[@]}" -ge 5
+          args=(
+            release create "$RELEASE_TAG"
+            --repo "$GITHUB_REPOSITORY"
+            --verify-tag
+            --title "RusToK $RELEASE_VERSION"
+            --notes-file release-notes.md
+          )
+          if [[ "$PRERELEASE" = "true" ]]; then
+            args+=(--prerelease)
+          fi
+          gh "${args[@]}" "${assets[@]}"
