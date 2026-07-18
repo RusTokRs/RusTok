@@ -40,22 +40,31 @@ function forbidMarkers(relativePath, markers) {
 const smokeTest = "crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs";
 requireMarkers(smokeTest, [
   'env_binary_flag("RUSTOK_MIGRATION_SMOKE_REUSE_DB")',
+  'env_binary_flag("RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST")',
   "if reuse_database {",
   "reused migration smoke database",
   "must already exist and be reachable",
   "drop_database_if_exists(&admin, &database_name).await?;",
   "create_database(&admin, &database_name).await?;",
-  "apply_migrations_and_assert_schema(&target_url, incremental)",
+  "apply_migrations_and_assert_schema(&target_url, incremental, rollback_latest)",
   "apply_migrations_incrementally(&db)",
-  "Migrator::get_pending_migrations(&db)",
-  'assert_trigger_exists(&db, "trg_products_normalize_channel_visibility")',
-  'parse_binary_flag("RUSTOK_MIGRATION_SMOKE_REUSE_DB", Some("true"))',
+  "rollback_latest_and_reapply(&db)",
+  "Migrator::down(db, Some(1))",
+  "one-step rollback must expose exactly one pending migration",
+  "rolled-back migration {rolled_back_name} must reapply successfully",
+  'assert_no_pending_migrations(db, "rollback reapply")',
+  "assert_schema_contract(&db).await?;",
+  "Migrator::get_pending_migrations(db)",
+  'assert_trigger_exists(db, "trg_products_normalize_channel_visibility")',
+  'parse_binary_flag("RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST", Some("1"))',
 ]);
 
 const smokeScript = "scripts/verify/verify-migration-smoke.sh";
 requireMarkers(smokeScript, [
   "RUSTOK_MIGRATION_SMOKE_REUSE_DB",
+  "RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST",
   'mode="reuse-upgrade-incremental"',
+  'mode="${mode}+rollback-latest"',
   "cargo test --locked -p rustok-migrations",
   "postgres_zero_migration_smoke_applies_from_empty_database",
 ]);
@@ -133,6 +142,10 @@ requireMarkers(workflow, [
   "PostgreSQL N-1 to head upgrade",
   "name: apply-all",
   "name: incremental",
+  "name: rollback-latest",
+  'rollback_latest: "1"',
+  "RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: ${{ matrix.rollback_latest }}",
+  'RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"',
   "Checkout base migration source",
   "Checkout head migration source",
   "Apply base migrations and preserve database",
@@ -176,5 +189,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ append-only planning plus PostgreSQL fresh, incremental, and N-1 migration paths are structurally bound",
+  "✔ append-only planning plus PostgreSQL fresh, incremental, rollback, and N-1 migration paths are structurally bound",
 );
