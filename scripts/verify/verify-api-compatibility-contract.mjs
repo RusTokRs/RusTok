@@ -104,7 +104,10 @@ requireMarkers("apps/server/src/controllers/swagger.rs", [
   "openapi.merge(rustok_commerce::openapi::openapi_document())",
 ]);
 requireMarkers("apps/server/src/bin/export_api_contracts.rs", [
-  "build_openapi_document",
+  "let settings = RustokSettings::default();",
+  "settings.runtime.is_registry_only()",
+  "API compatibility export requires the full runtime host profile",
+  "build_openapi_document(&settings)",
   "Schema::build(",
   "Query::default()",
   "Mutation::default()",
@@ -140,6 +143,11 @@ requireMarkers("scripts/verify/verify-api-compatibility-exceptions.mjs", [
   "expires_on",
   "openapi|graphql",
   "VERIFICATION_DATE",
+]);
+requireMarkers("scripts/verify/verify-api-compatibility-exceptions-local.mjs", [
+  "verify-api-compatibility-exceptions.mjs",
+  "docs/api/compatibility-exceptions.json",
+  '"--file"',
 ]);
 
 requireMarkers(".github/workflows/api-compatibility.yml", [
