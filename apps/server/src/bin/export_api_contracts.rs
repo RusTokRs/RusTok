@@ -20,9 +20,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let output_dir = parse_output_dir()?;
     fs::create_dir_all(&output_dir)?;
 
-    let openapi = rustok_server::controllers::swagger::build_openapi_document(
-        &RustokSettings::default(),
-    );
+    let settings = RustokSettings::default();
+    if settings.runtime.is_registry_only() {
+        return Err(
+            "API compatibility export requires the full runtime host profile, not registry-only"
+                .into(),
+        );
+    }
+
+    let openapi = rustok_server::controllers::swagger::build_openapi_document(&settings);
     let openapi_json = serde_json::to_string_pretty(&openapi)?;
     write_contract(&output_dir.join("openapi.json"), &openapi_json)?;
 
