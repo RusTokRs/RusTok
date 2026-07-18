@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 90
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16-bookworm@sha256:05bb94c3949035f4da16815d91b389443f3dbc5db95d65e2cb9b1abbf8565974
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
