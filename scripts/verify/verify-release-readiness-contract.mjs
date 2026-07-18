@@ -61,6 +61,9 @@ requireMarkers(checklistPath, [
   "repository immutable releases are enabled",
   "cryptographically verified **annotated** tag",
   "release-infra-approved",
+  "signed-tag ancestry validation uses the local ref without a post-checkout credentialed fetch",
+  "embedded admin bundle was built from locked npm inputs with Trunk `0.21.14` for public URL `/admin/`",
+  "Both isolated build jobs prepare the same locked embedded admin input",
   "Deploy the image by immutable digest",
   "Do not move, recreate or overwrite a published SemVer tag",
   "Failure after the version image tag is pushed but before GitHub Release publication",
@@ -77,15 +80,20 @@ requireMarkers(checklistPath, [
 
 requireMarkers("docs/verification/PLATFORM_HARDENING_STATUS_2026-07-18.md", [
   "HARD-101 — CSP enforcement",
+  "HARD-202 — Rust-host browser smoke",
   "HARD-204 — API compatibility",
   "HARD-205 — migration compatibility",
   "HARD-206 — release source contract",
-  "Release ancestry fetch residual",
+  "Embedded admin release inputs",
+  "Development container topology",
+  "Standalone admin production container remains open",
   "Failed-release recovery must be rehearsed",
   "It does **not** mean tests, CI, a browser smoke, a migration run or a production release succeeded.",
 ]);
 
 requireMarkers(".github/workflows/release.yml", [
+  "git show-ref --verify --quiet refs/remotes/origin/main",
+  "scripts/build/build-embedded-admin.sh",
   "verify-release-collisions.mjs",
   'test "${#assets[@]}" -eq 5',
   "sha256sum --check SHA256SUMS",
@@ -113,5 +121,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `✔ release readiness, exact asset evidence, digest rollback and failed-release recovery are bound in ${repoRoot}`,
+  `✔ release readiness, local ancestry evidence, locked admin inputs, exact assets, digest rollback and failed-release recovery are bound in ${repoRoot}`,
 );
