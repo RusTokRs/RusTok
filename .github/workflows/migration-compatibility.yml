@@ -146,6 +146,17 @@ jobs:
           --base "$GITHUB_WORKSPACE/migration-plans/base.json"
           --head "$GITHUB_WORKSPACE/migration-plans/head.json"
 
+      - name: Select appended migration backfill fixtures
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-backfill-contracts.mjs"
+          --base-plan "$GITHUB_WORKSPACE/migration-plans/base.json"
+          --head-plan "$GITHUB_WORKSPACE/migration-plans/head.json"
+          --contracts "$GITHUB_WORKSPACE/head/docs/migrations/backfill-contracts.json"
+          --output "$GITHUB_WORKSPACE/migration-plans/backfill-fixtures.json"
+
+      - name: Verify selected backfill fixture artifact
+        run: test -s "$GITHUB_WORKSPACE/migration-plans/backfill-fixtures.json"
+
       - name: Upload migration plans
         if: always()
         uses: actions/upload-artifact@v7
@@ -261,6 +272,15 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Download selected backfill fixtures
+        uses: actions/download-artifact@v5
+        with:
+          name: migration-plans-${{ github.run_id }}
+          path: migration-backfill
+
+      - name: Verify selected backfill fixtures
+        run: test -s "$GITHUB_WORKSPACE/migration-backfill/backfill-fixtures.json"
+
       - name: Apply base migrations and preserve database
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-base
@@ -288,6 +308,7 @@ jobs:
           RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"
           RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
           RUSTOK_MIGRATION_SMOKE_REUSE_DB: "1"
+          RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES: ${{ github.workspace }}/migration-backfill/backfill-fixtures.json
         run: >-
           cargo test
           --locked
