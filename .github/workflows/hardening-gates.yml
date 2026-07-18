@@ -72,3 +72,5 @@ jobs:
         run: node scripts/verify/verify-release-readiness-contract.mjs
       - name: Verify Rust-host browser smoke structure
         run: node scripts/verify/verify-rust-host-browser-contract.mjs
+      - name: Verify development container topology
+        run: node scripts/verify/verify-development-container-topology.mjs
