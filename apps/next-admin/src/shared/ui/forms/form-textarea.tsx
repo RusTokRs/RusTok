@@ -12,6 +12,16 @@ import {
 import { Textarea } from '@/shared/ui/shadcn/textarea';
 import { BaseFormFieldProps, TextareaConfig } from '@/types/base-form';
 
+const TEXTAREA_RESIZE_CLASSES: Record<
+  NonNullable<TextareaConfig['resize']>,
+  string
+> = {
+  none: 'resize-none',
+  vertical: 'resize-y',
+  horizontal: 'resize-x',
+  both: 'resize'
+};
+
 interface FormTextareaProps<
   TFieldValues extends FieldValues = FieldValues,
   TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>
@@ -56,10 +66,10 @@ function FormTextarea<
           <FormControl>
             <div className='space-y-2'>
               <Textarea
+                className={TEXTAREA_RESIZE_CLASSES[resize]}
                 placeholder={placeholder}
                 disabled={disabled}
                 rows={rows}
-                style={{ resize }}
                 maxLength={maxLength}
                 {...field}
               />
