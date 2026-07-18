@@ -61,11 +61,34 @@ requireMarkers(smokeScript, [
 ]);
 forbidMarkers(smokeScript, ["-p migration ", "|| true"]);
 
+requireMarkers("crates/rustok-migrations/src/bin/export_migration_plan.rs", [
+  "Migrator::migrations()",
+  '"schema_version": 1',
+  '"migrations": migrations',
+  "composed migration plan must not be empty",
+  '"--output"',
+]);
+requireMarkers("scripts/verify/verify-migration-plan-compatibility.mjs", [
+  "function readPlan",
+  "function comparePlans",
+  "head migration plan has",
+  "migration ${index + 1} changed from",
+  "migration history is append-only",
+  "function runSelfTest",
+]);
+requireMarkers("scripts/verify/verify-migration-plan-self-test.mjs", [
+  "verify-migration-plan-compatibility.mjs",
+  '"--self-test"',
+]);
+
 requireMarkers("scripts/verify/verify-migration-infrastructure-approval.mjs", [
   'const APPROVAL_LABEL = "migration-infra-approved"',
   "const PROTECTED_PATHS",
   ".github/workflows/migration-compatibility.yml",
+  "export_migration_plan.rs",
   "postgres_zero_migration_smoke.rs",
+  "verify-migration-plan-compatibility.mjs",
+  "verify-migration-plan-self-test.mjs",
   "verify-migration-compatibility-contract.mjs",
   "verify-migration-infra-self-test.mjs",
   "function changedProtectedPaths",
@@ -90,7 +113,19 @@ requireMarkers(workflow, [
   "Require approval for migration harness changes",
   "migration-infra-approved",
   "base/scripts/verify/verify-migration-infrastructure-approval.mjs",
+  "Append-only migration plan",
+  "timeout-minutes: 25",
+  "Export base migration plan",
+  "Export head migration plan",
+  "--bin export_migration_plan",
+  "migration-plans/base.json",
+  "migration-plans/head.json",
+  "Compare migration plans with base policy",
+  "base/scripts/verify/verify-migration-plan-compatibility.mjs",
+  "actions/upload-artifact@v7",
+  "migration-plans-${{ github.run_id }}",
   "needs: infrastructure-approval",
+  "needs: migration-plan",
   "image: postgres:16",
   "timeout-minutes: 35",
   "timeout-minutes: 45",
@@ -116,16 +151,20 @@ forbidMarkers(workflow, [
   "\n  pull_request:\n",
   "continue-on-error: true",
   "|| true",
+  'head/scripts/verify/verify-migration-plan-compatibility.mjs',
   'bash "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-smoke.sh"',
 ]);
 
 requireMarkers(".github/workflows/hardening-gates.yml", [
+  "Verify migration plan comparator fixtures",
+  "verify-migration-plan-self-test.mjs",
   "Verify migration infrastructure approval fixtures",
   "verify-migration-infra-self-test.mjs",
   "Verify migration compatibility gate structure",
   "verify-migration-compatibility-contract.mjs",
 ]);
 requireMarkers("scripts/verify/verify-all.sh", [
+  "verify-migration-plan-self-test.mjs:Migration Plan Comparator Fixtures",
   "verify-migration-infra-self-test.mjs:Migration Infrastructure Approval Fixtures",
   "verify-migration-compatibility-contract.mjs:Migration Compatibility Gate Structure",
 ]);
@@ -137,5 +176,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ PostgreSQL fresh, incremental, and N-1 migration compatibility paths are structurally bound",
+  "✔ append-only planning plus PostgreSQL fresh, incremental, and N-1 migration paths are structurally bound",
 );
