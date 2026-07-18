@@ -90,7 +90,7 @@ for (const marker of [
 for (const marker of [
   "marketplace_listings",
   "marketplace_listing_terms",
-  "marketplace_listing_command_receipts",
+  "MarketplaceListingCommandReceipts",
   "uq_marketplace_listings_scope",
   "uq_marketplace_listings_seller_sku",
   "uq_marketplace_listing_terms_version",
@@ -168,6 +168,7 @@ for (const marker of [
 for (const marker of [
   "canonical_json",
   "Sha256::digest",
+  "hex::encode",
   "replay_existing",
   "STATUS_COMPLETED",
   "event_bus: TransactionalEventBus",
