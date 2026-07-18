@@ -9,6 +9,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 const commands = [
   ["node", ["scripts/release/verify-release-contract.mjs", "--self-test"]],
+  ["node", ["scripts/release/verify-release-collisions.mjs", "--self-test"]],
   ["node", ["scripts/release/generate-spdx-sbom.mjs", "--self-test"]],
   ["node", ["scripts/release/finalize-release-artifacts.mjs", "--self-test"]],
   ["node", ["scripts/release/extract-release-notes.mjs", "--self-test"]],
