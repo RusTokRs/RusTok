@@ -73,6 +73,9 @@ for (const marker of [
   '"buy_box_ranking_owned": false',
   '"direct_write_methods_in_service": false',
   '"atomic_with_owner_write": true',
+  '"atomic_with_external_contract_event": true',
+  '"event_bus_composition": "injected_through_marketplace_listing_service"',
+  '"receipt_executor_constructs_transport": false',
   "replay_checked_before_provider_reads",
   "lost_response_replay_returns_saved_result",
 ]) requireMarker(sources.registry, marker, files.registry);
@@ -87,7 +90,7 @@ for (const marker of [
 for (const marker of [
   "marketplace_listings",
   "marketplace_listing_terms",
-  "marketplace_listing_command_receipts",
+  "MarketplaceListingCommandReceipts",
   "uq_marketplace_listings_scope",
   "uq_marketplace_listings_seller_sku",
   "uq_marketplace_listing_terms_version",
@@ -132,8 +135,10 @@ for (const marker of [
 ]) requireMarker(sources.eventEntity, marker, files.eventEntity);
 
 for (const marker of [
+  "event_bus: TransactionalEventBus",
   "Arc<dyn MarketplaceSellerReadPort>",
   "Arc<dyn ProductCatalogReadPort>",
+  "pub(crate) fn event_bus(&self) -> &TransactionalEventBus",
   "seller_reader(&self)",
   "product_reader(&self)",
   "listing_not_active",
@@ -155,6 +160,7 @@ for (const marker of [
   "pub async fn archive_listing(",
   "rustok_marketplace_seller::entities",
   "rustok_product::entities",
+  "OutboxTransport::new",
   "buy_box",
   "rank_score",
 ]) forbidMarker(sources.service, marker, files.service);
@@ -162,16 +168,21 @@ for (const marker of [
 for (const marker of [
   "canonical_json",
   "Sha256::digest",
+  "hex::encode",
   "replay_existing",
   "STATUS_COMPLETED",
+  "event_bus: TransactionalEventBus",
+  "publish_contract_in_tx(&transaction, tenant_id, Some(actor_id), event)",
   "transaction.commit().await?",
   "IdempotencyConflict",
 ]) requireMarker(sources.receipt, marker, files.receipt);
+forbidMarker(sources.receipt, "OutboxTransport::new", files.receipt);
 for (const marker of [
   "create_listing_replay_safe",
   "publish_listing_replay_safe",
   "reactivate_listing_replay_safe",
   "replay_existing(",
+  "self.event_bus().clone()",
   "MarketplaceListingEventKind::Created",
   "MarketplaceListingEventKind::Published",
   "MarketplaceListingEventKind::Reactivated",

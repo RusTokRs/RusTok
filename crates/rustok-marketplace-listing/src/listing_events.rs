@@ -16,6 +16,7 @@ use crate::error::{MarketplaceListingError, MarketplaceListingResult};
 
 const MAX_EVENTS_PER_READ: u64 = 200;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn append_listing_event<C: ConnectionTrait>(
     connection: &C,
     tenant_id: Uuid,

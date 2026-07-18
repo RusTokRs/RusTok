@@ -67,6 +67,7 @@ impl MarketplaceListingService {
 
         match admit(
             self.database(),
+            self.event_bus().clone(),
             tenant_id,
             actor_id,
             key,
@@ -120,6 +121,7 @@ impl MarketplaceListingService {
 
         match admit(
             self.database(),
+            self.event_bus().clone(),
             tenant_id,
             actor_id,
             key,
@@ -147,6 +149,7 @@ impl MarketplaceListingService {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn review_in_transaction(
     receipt: &NewListingCommandReceipt,
     tenant_id: Uuid,
@@ -168,20 +171,14 @@ async fn review_in_transaction(
     let now = Utc::now();
     let mut active: listing::ActiveModel = current.into();
     active.status = Set(MarketplaceListingStatus::Draft.as_str().to_string());
-    active.approval_status = Set(
-        if approved {
-            MarketplaceListingApprovalStatus::Approved
-        } else {
-            MarketplaceListingApprovalStatus::Rejected
-        }
-        .as_str()
-        .to_string(),
-    );
-    active.approved_at = Set(if approved {
-        Some(now.clone().into())
+    active.approval_status = Set(if approved {
+        MarketplaceListingApprovalStatus::Approved
     } else {
-        None
-    });
+        MarketplaceListingApprovalStatus::Rejected
+    }
+    .as_str()
+    .to_string());
+    active.approved_at = Set(if approved { Some(now.into()) } else { None });
     active.updated_at = Set(now.into());
     let model = active.update(&receipt.transaction).await?;
 
@@ -260,9 +257,7 @@ fn parse_actor_id(context: &rustok_api::PortContext) -> MarketplaceListingResult
     })
 }
 
-fn required_idempotency_key(
-    context: &rustok_api::PortContext,
-) -> MarketplaceListingResult<String> {
+fn required_idempotency_key(context: &rustok_api::PortContext) -> MarketplaceListingResult<String> {
     context.idempotency_key.clone().ok_or_else(|| {
         MarketplaceListingError::Validation(
             "marketplace listing write requires an idempotency key".to_string(),

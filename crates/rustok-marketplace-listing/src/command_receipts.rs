@@ -1,5 +1,6 @@
 use chrono::Utc;
 use rustok_core::generate_id;
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, Set, TransactionTrait,
@@ -9,8 +10,10 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use crate::dto::MarketplaceListingResponse;
 use crate::entities::listing_command_receipt;
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
+use crate::external_events::event_for_completed_command;
 
 const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
 const STATUS_PENDING: &str = "pending";
@@ -20,6 +23,9 @@ pub(crate) struct NewListingCommandReceipt {
     pub transaction: DatabaseTransaction,
     pub receipt_id: Uuid,
     pub tenant_id: Uuid,
+    actor_id: Uuid,
+    command_kind: String,
+    event_bus: TransactionalEventBus,
 }
 
 pub(crate) enum ListingCommandAdmission {
@@ -60,7 +66,7 @@ pub(crate) fn request_hash<T: Serialize>(
             "marketplace listing command could not be hashed".to_string(),
         )
     })?;
-    Ok(format!("{:x}", Sha256::digest(encoded)))
+    Ok(hex::encode(Sha256::digest(encoded)))
 }
 
 pub(crate) async fn replay_existing<R: DeserializeOwned>(
@@ -78,6 +84,7 @@ pub(crate) async fn replay_existing<R: DeserializeOwned>(
 
 pub(crate) async fn admit(
     db: &DatabaseConnection,
+    event_bus: TransactionalEventBus,
     tenant_id: Uuid,
     actor_id: Uuid,
     idempotency_key: String,
@@ -108,6 +115,9 @@ pub(crate) async fn admit(
             transaction,
             receipt_id,
             tenant_id,
+            actor_id,
+            command_kind: command_kind.to_string(),
+            event_bus,
         })),
         Err(error) if is_unique_constraint(&error) => {
             transaction.rollback().await?;
@@ -140,15 +150,45 @@ pub(crate) fn replay<R: DeserializeOwned>(
     serde_json::from_value(response).map_err(|_| MarketplaceListingError::CommandReceiptCorrupt)
 }
 
-pub(crate) async fn complete<R: Serialize + Clone>(
+pub(crate) async fn complete(
     receipt: NewListingCommandReceipt,
-    response: &R,
-) -> MarketplaceListingResult<R> {
+    response: &MarketplaceListingResponse,
+) -> MarketplaceListingResult<MarketplaceListingResponse> {
+    let NewListingCommandReceipt {
+        transaction,
+        receipt_id,
+        tenant_id,
+        actor_id,
+        command_kind,
+        event_bus,
+    } = receipt;
     let response_json = serde_json::to_value(response).map_err(|_| {
         MarketplaceListingError::Validation(
             "marketplace listing command result could not be serialized".to_string(),
         )
     })?;
+    let event = match event_for_completed_command(command_kind.as_str(), response) {
+        Ok(event) => event,
+        Err(error) => {
+            transaction.rollback().await?;
+            return Err(error);
+        }
+    };
+    if let Err(error) = event_bus
+        .publish_contract_in_tx(&transaction, tenant_id, Some(actor_id), event)
+        .await
+    {
+        tracing::error!(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            receipt_id = %receipt_id,
+            command_kind = command_kind.as_str(),
+            error = %error,
+            "Marketplace listing transactional event publication failed"
+        );
+        transaction.rollback().await?;
+        return Err(MarketplaceListingError::EventPublicationUnavailable);
+    }
     let result = listing_command_receipt::Entity::update_many()
         .col_expr(
             listing_command_receipt::Column::Status,
@@ -162,16 +202,16 @@ pub(crate) async fn complete<R: Serialize + Clone>(
             listing_command_receipt::Column::CompletedAt,
             sea_orm::sea_query::Expr::value(Some(Utc::now().fixed_offset())),
         )
-        .filter(listing_command_receipt::Column::Id.eq(receipt.receipt_id))
-        .filter(listing_command_receipt::Column::TenantId.eq(receipt.tenant_id))
+        .filter(listing_command_receipt::Column::Id.eq(receipt_id))
+        .filter(listing_command_receipt::Column::TenantId.eq(tenant_id))
         .filter(listing_command_receipt::Column::Status.eq(STATUS_PENDING))
-        .exec(&receipt.transaction)
+        .exec(&transaction)
         .await?;
     if result.rows_affected != 1 {
-        receipt.transaction.rollback().await?;
+        transaction.rollback().await?;
         return Err(MarketplaceListingError::CommandReceiptCorrupt);
     }
-    receipt.transaction.commit().await?;
+    transaction.commit().await?;
     Ok(response.clone())
 }
 
@@ -217,4 +257,30 @@ fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
         error.sql_err(),
         Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_hash_is_stable_lowercase_sha256_hex() {
+        let left = request_hash(
+            "create_listing",
+            Uuid::nil(),
+            &serde_json::json!({"metadata": {"b": 2, "a": 1}}),
+        )
+        .unwrap();
+        let right = request_hash(
+            "create_listing",
+            Uuid::nil(),
+            &serde_json::json!({"metadata": {"a": 1, "b": 2}}),
+        )
+        .unwrap();
+
+        assert_eq!(left, right);
+        assert_eq!(left.len(), 64);
+        assert!(left.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_eq!(left, left.to_ascii_lowercase());
+    }
 }

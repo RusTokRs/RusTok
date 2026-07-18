@@ -102,6 +102,7 @@ impl MarketplaceListingService {
 
         match admit(
             self.database(),
+            self.event_bus().clone(),
             tenant_id,
             actor_id,
             key,
@@ -224,6 +225,7 @@ impl MarketplaceListingService {
 
         match admit(
             self.database(),
+            self.event_bus().clone(),
             tenant_id,
             actor_id,
             key,
@@ -296,8 +298,8 @@ async fn create_in_transaction(
         metadata: Set(metadata),
         published_at: Set(None),
         approved_at: Set(None),
-        created_at: Set(now.clone().into()),
-        updated_at: Set(now.clone().into()),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
     }
     .insert(&receipt.transaction)
     .await
@@ -368,7 +370,7 @@ async fn activate_in_transaction(
     let now = Utc::now();
     let mut active: listing::ActiveModel = current.into();
     active.status = Set(MarketplaceListingStatus::Active.as_str().to_string());
-    active.published_at = Set(Some(now.clone().into()));
+    active.published_at = Set(Some(now.into()));
     active.updated_at = Set(now.into());
     let model = active.update(&receipt.transaction).await?;
     append_listing_event(
@@ -411,9 +413,7 @@ fn parse_actor_id(context: &rustok_api::PortContext) -> MarketplaceListingResult
     })
 }
 
-fn required_idempotency_key(
-    context: &rustok_api::PortContext,
-) -> MarketplaceListingResult<String> {
+fn required_idempotency_key(context: &rustok_api::PortContext) -> MarketplaceListingResult<String> {
     context.idempotency_key.clone().ok_or_else(|| {
         MarketplaceListingError::Validation(
             "marketplace listing write requires an idempotency key".to_string(),

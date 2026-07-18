@@ -75,7 +75,7 @@ impl MigrationTrait for Migration {
                         "original_actor_known": false,
                         "original_locale_known": false
                     }),
-                    imported_at.clone(),
+                    imported_at,
                 )
                 .await?;
             }
@@ -93,7 +93,7 @@ impl MigrationTrait for Migration {
                         "original_actor_known": false,
                         "original_locale_known": false
                     }),
-                    imported_at.clone(),
+                    imported_at,
                 )
                 .await?;
             }

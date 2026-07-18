@@ -4,6 +4,7 @@ use rustok_api::{PortContext, PortErrorKind};
 use rustok_marketplace_seller::{
     MarketplaceSellerReadPort, MarketplaceSellerStatus, ReadMarketplaceSellerRequest,
 };
+use rustok_outbox::TransactionalEventBus;
 use rustok_product::ProductCatalogReadPort;
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
@@ -24,6 +25,7 @@ const MAX_LISTINGS_PER_PAGE: u64 = 100;
 
 pub struct MarketplaceListingService {
     db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
     seller_reader: Arc<dyn MarketplaceSellerReadPort>,
     product_reader: Arc<dyn ProductCatalogReadPort>,
 }
@@ -31,11 +33,13 @@ pub struct MarketplaceListingService {
 impl MarketplaceListingService {
     pub fn new(
         db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
         seller_reader: Arc<dyn MarketplaceSellerReadPort>,
         product_reader: Arc<dyn ProductCatalogReadPort>,
     ) -> Self {
         Self {
             db,
+            event_bus,
             seller_reader,
             product_reader,
         }
@@ -43,6 +47,10 @@ impl MarketplaceListingService {
 
     pub fn database(&self) -> &DatabaseConnection {
         &self.db
+    }
+
+    pub(crate) fn event_bus(&self) -> &TransactionalEventBus {
+        &self.event_bus
     }
 
     pub(crate) fn seller_reader(&self) -> &dyn MarketplaceSellerReadPort {
@@ -253,11 +261,11 @@ pub(crate) fn map_listing(
     })?;
     let approval_status = MarketplaceListingApprovalStatus::parse(model.approval_status.as_str())
         .ok_or_else(|| {
-            MarketplaceListingError::Validation(format!(
-                "unknown marketplace listing approval status `{}`",
-                model.approval_status
-            ))
-        })?;
+        MarketplaceListingError::Validation(format!(
+            "unknown marketplace listing approval status `{}`",
+            model.approval_status
+        ))
+    })?;
     Ok(MarketplaceListingResponse {
         id: model.id,
         tenant_id: model.tenant_id,
