@@ -261,11 +261,11 @@ pub(crate) fn map_listing(
     })?;
     let approval_status = MarketplaceListingApprovalStatus::parse(model.approval_status.as_str())
         .ok_or_else(|| {
-            MarketplaceListingError::Validation(format!(
-                "unknown marketplace listing approval status `{}`",
-                model.approval_status
-            ))
-        })?;
+        MarketplaceListingError::Validation(format!(
+            "unknown marketplace listing approval status `{}`",
+            model.approval_status
+        ))
+    })?;
     Ok(MarketplaceListingResponse {
         id: model.id,
         tenant_id: model.tenant_id,
