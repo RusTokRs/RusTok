@@ -12,7 +12,9 @@ pub mod css;
 pub mod route_selection;
 pub mod ui;
 
-pub use css::{css_hex_accent_class, normalize_css_hex_color};
+pub use css::{
+    css_background_accent_class, css_hex_accent_class, normalize_css_hex_color,
+};
 pub use route_selection::{
     admin_route_query_schema, is_legacy_admin_query_key, sanitize_admin_route_query,
     AdminQueryDependency, AdminQueryKey, AdminRouteQuerySchema,
