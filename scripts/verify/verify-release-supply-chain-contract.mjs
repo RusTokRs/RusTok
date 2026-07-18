@@ -112,13 +112,21 @@ requireMarkers(releaseWorkflow, [
   "cancel-in-progress: false",
   "refs/tags/${GITHUB_REF_NAME}^{tag}",
   ".verification.verified",
+  "git show-ref --verify --quiet refs/remotes/origin/main",
   "git merge-base --is-ancestor",
   "repos/${GITHUB_REPOSITORY}/immutable-releases",
   "verify-release-collisions.mjs",
   "--github-release",
   "verify-release-contract.mjs",
+  "Build embedded admin assets",
+  "Rebuild embedded admin assets",
+  "scripts/build/build-embedded-admin.sh",
+  "--tool-root \"$GITHUB_WORKSPACE/.tools/trunk-0.21.14\"",
+  "--target-dir \"$GITHUB_WORKSPACE/target/admin-assets\"",
+  "test -s apps/admin/dist/index.html",
   "cargo build --locked --release -p rustok-server --bin rustok-server",
   "rustup toolchain install 1.96.0 --profile minimal --no-self-update",
+  "cache-dependency-path: apps/admin/package-lock.json",
   "package-server.sh",
   "cargo metadata --locked --format-version 1",
   "generate-spdx-sbom.mjs",
@@ -143,6 +151,8 @@ requireMarkers(releaseWorkflow, [
 ]);
 requireCount(releaseWorkflow, "persist-credentials: false", 6);
 requireCount(releaseWorkflow, "verify-release-collisions.mjs", 3);
+requireCount(releaseWorkflow, "scripts/build/build-embedded-admin.sh", 2);
+requireCount(releaseWorkflow, "test -s apps/admin/dist/index.html", 2);
 requireCount(releaseWorkflow, "cargo build --locked --release -p rustok-server --bin rustok-server", 2);
 forbidMarkers(releaseWorkflow, [
   "workflow_dispatch:",
@@ -150,12 +160,14 @@ forbidMarkers(releaseWorkflow, [
   "pull_request_target:",
   "continue-on-error:",
   "runs-on: ubuntu-latest",
+  "git fetch --no-tags origin main",
   "gh release upload",
   "gh release view",
   "docker buildx imagetools inspect",
   "--clobber",
   "--provenance=false",
   "--sbom=false",
+  "cargo install trunk --version latest",
   "actions/checkout@v",
   "actions/setup-node@v",
   "actions/upload-artifact@v",
@@ -166,7 +178,7 @@ requirePinnedGithubActions(
   releaseWorkflow,
   new Map([
     [ACTIONS.checkout, 6],
-    [ACTIONS.setupNode, 5],
+    [ACTIONS.setupNode, 6],
     [ACTIONS.uploadArtifact, 3],
     [ACTIONS.downloadArtifact, 4],
     [ACTIONS.attest, 3],
@@ -184,8 +196,12 @@ requireMarkers(infrastructureWorkflow, [
   "base/scripts/verify/verify-release-infrastructure-approval.mjs",
   "steps.policy.outputs.changed == 'false'",
   "base/scripts/verify/verify-release-supply-chain-contract.mjs",
+  "base/scripts/verify/verify-release-runtime-image-contract.mjs",
+  "base/scripts/verify/verify-release-readiness-contract.mjs",
   "steps.policy.outputs.changed == 'true'",
   "head/scripts/verify/verify-release-tooling-self-test.mjs",
+  "head/scripts/verify/verify-release-runtime-image-contract.mjs",
+  "head/scripts/verify/verify-release-readiness-contract.mjs",
   "--root \"$GITHUB_WORKSPACE/head\"",
   "persist-credentials: false",
 ]);
@@ -218,6 +234,10 @@ requireMarkers(hardeningWorkflow, [
   "verify-release-infra-self-test.mjs",
   "Verify release supply-chain gate structure",
   "verify-release-supply-chain-contract.mjs",
+  "Verify release runtime image pin",
+  "verify-release-runtime-image-contract.mjs",
+  "Verify release readiness documentation",
+  "verify-release-readiness-contract.mjs",
 ]);
 forbidMarkers(hardeningWorkflow, ["actions/checkout@v", "actions/setup-node@v"]);
 requirePinnedGithubActions(
@@ -280,6 +300,32 @@ requireMarkers("scripts/release/extract-release-notes.mjs", [
   "exactly one release heading",
   "function runSelfTest",
 ]);
+requireMarkers("scripts/build/build-embedded-admin.sh", [
+  "set -euo pipefail",
+  "cargo install trunk --version 0.21.14 --locked",
+  'CARGO_TARGET_DIR="$tool_root/target"',
+  "rustup target add wasm32-unknown-unknown",
+  'npm ci --prefix "$repo_root/apps/admin" --no-audit --no-fund',
+  'TRUNK_BUILD_PUBLIC_URL="/admin/"',
+  'TRUNK_BUILD_LOCKED="true"',
+  "embedded admin output contains a root-mounted asset URL",
+]);
+forbidMarkers("scripts/build/build-embedded-admin.sh", ["cargo install trunk --locked", "|| true", "eval "]);
+requireMarkers("apps/admin/Trunk.toml", [
+  'trunk-version = "=0.21.14"',
+  "locked = true",
+  'command = "node"',
+  'command_arguments = ["scripts/tailwind-build.mjs"]',
+]);
+forbidMarkers("apps/admin/Trunk.toml", ["tailwind-build.cmd", "locked = false"]);
+requireMarkers("apps/admin/scripts/tailwind-build.mjs", [
+  "TRUNK_STAGING_DIR",
+  'path.join(adminRoot, "node_modules", ".bin", "tailwindcss")',
+  'spawnSync(executable, ["-i", "input.css", "-o", output, "--minify"]',
+  "Tailwind hook did not create a non-empty",
+]);
+requireMarkers("apps/admin/index.html", ['href="output.css"', "RusToK Admin"]);
+forbidMarkers("apps/admin/index.html", ['href="/output.css"']);
 requireMarkers("scripts/verify/verify-release-tooling-self-test.mjs", [
   "verify-release-contract.mjs",
   "verify-release-collisions.mjs",
@@ -293,6 +339,10 @@ requireMarkers("scripts/verify/verify-release-infrastructure-approval.mjs", [
   ".github/workflows/release.yml",
   ".github/workflows/release-infrastructure.yml",
   ".github/workflows/hardening-gates.yml",
+  "apps/server/Dockerfile.release",
+  "docs/release/RELEASE_READINESS_CHECKLIST.md",
+  "scripts/verify/verify-release-runtime-image-contract.mjs",
+  "scripts/verify/verify-release-readiness-contract.mjs",
   "scripts/verify/verify-all.sh",
   "verify-release-collisions.mjs",
   "function changedProtectedPaths",
@@ -300,8 +350,10 @@ requireMarkers("scripts/verify/verify-release-infrastructure-approval.mjs", [
 ]);
 
 requireMarkers("apps/server/Dockerfile.release", [
-  "FROM debian:${DEBIAN_VERSION}-slim",
-  "org.opencontainers.image.revision",
+  "FROM debian:bookworm-20260713-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818",
+  "org.opencontainers.image.base.digest",
+  "snapshot.debian.org/archive/debian/20260713T000000Z",
+  'Acquire::Check-Valid-Until "false";',
   "--uid 10001 --gid 10001",
   "COPY --chown=10001:10001 rustok-server",
   "release image config must not contain symlinks",
@@ -309,6 +361,10 @@ requireMarkers("apps/server/Dockerfile.release", [
   'ENTRYPOINT ["/app/rustok-server"]',
 ]);
 forbidMarkers("apps/server/Dockerfile.release", [
+  "FROM debian:bookworm-slim",
+  "FROM debian:${DEBIAN_VERSION}-slim",
+  "deb.debian.org",
+  "security.debian.org",
   "postgresql-client",
   "curl",
   "USER root",
@@ -334,5 +390,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `✔ release workflows use commit-pinned GitHub actions and preserve signed tags, immutable releases, reproducible exact assets, scoped SPDX, attestations and base-owned approval in ${repoRoot}`,
+  `✔ release workflows use commit-pinned GitHub actions and preserve signed tags, embedded admin assets, immutable releases, reproducible exact assets, scoped SPDX, attestations and base-owned approval in ${repoRoot}`,
 );
