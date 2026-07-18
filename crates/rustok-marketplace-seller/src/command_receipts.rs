@@ -145,9 +145,8 @@ pub(crate) fn replay_command<R: DeserializeOwned>(
     let response = receipt.response_json.ok_or_else(|| {
         MarketplaceSellerError::CommandReceiptCorrupt(receipt.idempotency_key.clone())
     })?;
-    serde_json::from_value(response).map_err(|_| {
-        MarketplaceSellerError::CommandReceiptCorrupt(receipt.idempotency_key)
-    })
+    serde_json::from_value(response)
+        .map_err(|_| MarketplaceSellerError::CommandReceiptCorrupt(receipt.idempotency_key))
 }
 
 pub(crate) async fn complete_command<R: Serialize + Clone>(
