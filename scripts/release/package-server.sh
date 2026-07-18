@@ -47,7 +47,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-package_once() {
+package_once() (
+  set -euo pipefail
   local source_binary=$1
   local release_version=$2
   local epoch=$3
@@ -68,7 +69,7 @@ package_once() {
   mkdir -p "$destination"
   local stage
   stage=$(mktemp -d)
-  trap 'rm -rf "$stage"' RETURN
+  trap 'rm -rf "$stage"' EXIT
   local package_name="rustok-server-${release_version}-linux-x86_64"
   local package_root="$stage/$package_name"
   mkdir -p "$package_root/config"
@@ -91,7 +92,7 @@ package_once() {
     | gzip -n -9 > "$archive"
   [[ -s "$archive" ]] || fail "archive was not created"
   printf '%s\n' "$archive"
-}
+)
 
 if [[ $self_test -eq 1 ]]; then
   root=$(mktemp -d)
