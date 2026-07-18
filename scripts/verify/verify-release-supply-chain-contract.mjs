@@ -302,11 +302,14 @@ requireMarkers("scripts/release/extract-release-notes.mjs", [
 ]);
 requireMarkers("scripts/build/build-embedded-admin.sh", [
   "set -euo pipefail",
+  "--public-url",
+  'public_url="/admin/"',
+  '[[ "$public_url" =~ ^/([A-Za-z0-9._-]+/)*$ ]]',
   "cargo install trunk --version 0.21.14 --locked",
   'CARGO_TARGET_DIR="$tool_root/target"',
   "rustup target add wasm32-unknown-unknown",
   'npm ci --prefix "$repo_root/apps/admin" --no-audit --no-fund',
-  'TRUNK_BUILD_PUBLIC_URL="/admin/"',
+  'TRUNK_BUILD_PUBLIC_URL="$public_url"',
   'TRUNK_BUILD_LOCKED="true"',
   "embedded admin output contains a root-mounted asset URL",
 ]);
@@ -339,6 +342,10 @@ requireMarkers("scripts/verify/verify-release-infrastructure-approval.mjs", [
   ".github/workflows/release.yml",
   ".github/workflows/release-infrastructure.yml",
   ".github/workflows/hardening-gates.yml",
+  "apps/admin/Trunk.toml",
+  "apps/admin/package-lock.json",
+  "apps/admin/scripts/tailwind-build.mjs",
+  "scripts/build/build-embedded-admin.sh",
   "apps/server/Dockerfile.release",
   "docs/release/RELEASE_READINESS_CHECKLIST.md",
   "scripts/verify/verify-release-runtime-image-contract.mjs",
@@ -372,10 +379,17 @@ forbidMarkers("apps/server/Dockerfile.release", [
   "cargo build",
 ]);
 requireMarkers("apps/server/Dockerfile", [
+  "FROM node:22-bookworm-slim AS node-runtime",
+  "COPY --from=node-runtime /usr/local /usr/local",
+  "cargo install trunk --version 0.21.14 --locked --root /opt/trunk",
+  "bash scripts/build/build-embedded-admin.sh",
+  "--skip-tool-install",
+  "test -s /workspace/apps/admin/dist/index.html",
   "cargo build --locked --release -p rustok-server --bin rustok-server",
   "--uid 10001 --gid 10001",
   "USER 10001:10001",
 ]);
+requireCount("apps/server/Dockerfile", "bash scripts/build/build-embedded-admin.sh", 2);
 requireMarkers(".dockerignore", [".git", ".github", "**/target", "**/node_modules", ".env.*"]);
 requireMarkers("scripts/verify/verify-all.sh", [
   "verify-release-tooling-self-test.mjs:Release Tooling Fixtures",
@@ -390,5 +404,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `✔ release workflows use commit-pinned GitHub actions and preserve signed tags, embedded admin assets, immutable releases, reproducible exact assets, scoped SPDX, attestations and base-owned approval in ${repoRoot}`,
+  `✔ release workflows use commit-pinned GitHub actions and preserve signed tags, bounded admin mounts, immutable releases, reproducible exact assets, scoped SPDX, attestations and base-owned approval in ${repoRoot}`,
 );
