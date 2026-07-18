@@ -7,9 +7,9 @@ use crate::dto::{
     CreateMarketplaceListingInput, ListMarketplaceListingEventsRequest,
     ListMarketplaceListingsInput, MarketplaceListingEligibilityProjection,
     MarketplaceListingEligibilityRequest, MarketplaceListingEventResponse,
-    MarketplaceListingListResponse, MarketplaceListingResponse,
-    ReadMarketplaceListingRequest, ReviewMarketplaceListingInput,
-    SuspendMarketplaceListingInput, UpdateMarketplaceListingTermsInput,
+    MarketplaceListingListResponse, MarketplaceListingResponse, ReadMarketplaceListingRequest,
+    ReviewMarketplaceListingInput, SuspendMarketplaceListingInput,
+    UpdateMarketplaceListingTermsInput,
 };
 use crate::error::MarketplaceListingError;
 
@@ -241,12 +241,13 @@ fn map_owner_error(error: MarketplaceListingError) -> PortError {
             "marketplace_listing.not_found",
             format!("marketplace listing {id} not found"),
         ),
-        MarketplaceListingError::TermsNotFound { listing_id, version } => {
-            PortError::invariant_violation(
-                "marketplace_listing.terms_missing",
-                format!("listing {listing_id} terms version {version} requires operator review"),
-            )
-        }
+        MarketplaceListingError::TermsNotFound {
+            listing_id,
+            version,
+        } => PortError::invariant_violation(
+            "marketplace_listing.terms_missing",
+            format!("listing {listing_id} terms version {version} requires operator review"),
+        ),
         MarketplaceListingError::SellerUnavailable(_) => PortError::unavailable(
             "marketplace_listing.seller_unavailable",
             "marketplace seller service is temporarily unavailable",
