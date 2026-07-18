@@ -94,10 +94,7 @@ mod tests {
         let listing = listing();
         for (command_kind, event_type) in [
             ("create_listing", "marketplace.listing.created"),
-            (
-                "update_listing_terms",
-                "marketplace.listing.terms_updated",
-            ),
+            ("update_listing_terms", "marketplace.listing.terms_updated"),
             (
                 "submit_listing_for_review",
                 "marketplace.listing.submitted_for_review",
@@ -105,10 +102,7 @@ mod tests {
             ("review_listing", "marketplace.listing.approved"),
             ("publish_listing", "marketplace.listing.published"),
             ("suspend_listing", "marketplace.listing.suspended"),
-            (
-                "reactivate_listing",
-                "marketplace.listing.reactivated",
-            ),
+            ("reactivate_listing", "marketplace.listing.reactivated"),
             ("archive_listing", "marketplace.listing.archived"),
         ] {
             let event = event_for_completed_command(command_kind, &listing).unwrap();
