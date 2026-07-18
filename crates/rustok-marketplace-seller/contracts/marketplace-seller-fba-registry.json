@@ -13,7 +13,8 @@
         "read_seller",
         "list_sellers",
         "read_membership",
-        "list_members"
+        "list_members",
+        "list_seller_events"
       ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
@@ -56,6 +57,43 @@
       }
     }
   ],
+  "event_storage": {
+    "table": "marketplace_seller_events",
+    "status": "schema_and_read_port_ready_write_path_pending",
+    "append_only": true,
+    "identity": "uuid",
+    "scope": [
+      "tenant_id",
+      "seller_id"
+    ],
+    "audit_fields": [
+      "actor_id",
+      "event_kind",
+      "locale",
+      "provenance",
+      "note",
+      "metadata",
+      "created_at"
+    ],
+    "provenance_contract": {
+      "command": {
+        "actor_id_required": true,
+        "locale_required": true
+      },
+      "legacy_snapshot": {
+        "actor_id_must_be_null": true,
+        "locale_must_be_null": true,
+        "fabricated_attribution_forbidden": true
+      }
+    },
+    "timeline_order": [
+      "created_at_desc",
+      "id_desc"
+    ],
+    "max_read_limit": 200,
+    "write_commands_atomic": false,
+    "compatibility_columns_removed": false
+  },
   "localized_storage": {
     "base_table": "marketplace_sellers",
     "translation_table": "marketplace_seller_translations",
@@ -111,6 +149,10 @@
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs",
     "base_entity": "crates/rustok-marketplace-seller/src/entities/seller.rs",
+    "event_entity": "crates/rustok-marketplace-seller/src/entities/seller_event.rs",
+    "event_migration": "crates/rustok-marketplace-seller/src/migrations/m20260718_000003_create_marketplace_seller_events.rs",
+    "event_read_service": "crates/rustok-marketplace-seller/src/seller_events.rs",
+    "event_execution_tests": "crates/rustok-marketplace-seller/src/seller_events_tests.rs",
     "translation_entity": "crates/rustok-marketplace-seller/src/entities/seller_translation.rs",
     "localized_storage": "crates/rustok-marketplace-seller/src/localized_sellers.rs",
     "receipt_entity": "crates/rustok-marketplace-seller/src/entities/seller_command_receipt.rs",
@@ -159,6 +201,18 @@
           "seller_scope_preserved",
           "tenant_scope_preserved",
           "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "list_seller_events",
+        "assertions": [
+          "tenant_and_seller_scope_preserved",
+          "bounded_limit",
+          "newest_first_order",
+          "typed_event_kind",
+          "typed_provenance",
+          "command_attribution_required",
+          "legacy_attribution_must_be_unknown"
         ]
       },
       {
@@ -214,6 +268,6 @@
         ]
       }
     ],
-    "known_gap": "compiled migration, locale-row contention, replay contention, mounted native and GraphQL execution, and remote-profile evidence are not yet retained"
+    "known_gap": "seller event write-path atomicity, legacy snapshot backfill/removal, transactional outbox publication, compiled clean/upgraded SQLite and PostgreSQL migrations, contention, mounted native and GraphQL execution, and remote-profile evidence are not yet retained"
   }
 }
