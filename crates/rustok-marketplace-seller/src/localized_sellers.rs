@@ -8,7 +8,8 @@ use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::dto::{
-    MarketplaceSellerOnboardingStatus, MarketplaceSellerResponse, MarketplaceSellerStatus,
+    MarketplaceSellerEventKind, MarketplaceSellerOnboardingStatus, MarketplaceSellerResponse,
+    MarketplaceSellerStatus,
 };
 use crate::entities::{seller, seller_translation};
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
@@ -188,18 +189,39 @@ fn map_seller(
             },
         )?;
     let row_updated_at = model.updated_at;
-    let onboarding_note = if prose
-        .onboarding_at
-        .is_some_and(|event_at| event_at >= row_updated_at)
-    {
+    let onboarding_event_matches = matches!(
+        (prose.onboarding_kind, onboarding_status),
+        (
+            Some(MarketplaceSellerEventKind::OnboardingSubmitted),
+            MarketplaceSellerOnboardingStatus::Submitted
+        ) | (
+            Some(MarketplaceSellerEventKind::OnboardingApproved),
+            MarketplaceSellerOnboardingStatus::Approved
+        ) | (
+            Some(MarketplaceSellerEventKind::OnboardingRejected),
+            MarketplaceSellerOnboardingStatus::Rejected
+        ) | (Some(MarketplaceSellerEventKind::LegacyOnboardingSnapshot), _)
+    );
+    let suspension_event_matches = matches!(
+        (prose.suspension_kind, status),
+        (
+            Some(MarketplaceSellerEventKind::Suspended),
+            MarketplaceSellerStatus::Suspended
+        ) | (
+            Some(MarketplaceSellerEventKind::Reactivated),
+            MarketplaceSellerStatus::Active
+        ) | (Some(MarketplaceSellerEventKind::LegacySuspensionSnapshot), _)
+    );
+    let onboarding_note = if prose.onboarding_at.is_some_and(|event_at| {
+        event_at > row_updated_at || (event_at == row_updated_at && onboarding_event_matches)
+    }) {
         prose.onboarding_note
     } else {
         model.onboarding_note
     };
-    let suspension_reason = if prose
-        .suspension_at
-        .is_some_and(|event_at| event_at >= row_updated_at)
-    {
+    let suspension_reason = if prose.suspension_at.is_some_and(|event_at| {
+        event_at > row_updated_at || (event_at == row_updated_at && suspension_event_matches)
+    }) {
         prose.suspension_reason
     } else {
         model.suspension_reason
