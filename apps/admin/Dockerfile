@@ -1,77 +1,35 @@
-# Dockerfile for Leptos Admin Panel (CSR / WASM)
-# Supports both development and production builds
+# syntax=docker/dockerfile:1.7
 
-# ============================================================================
-# Base stage: Install Rust and dependencies
-# ============================================================================
-FROM rust:1.96-slim AS base
+# Development-only CSR host for the standalone Leptos admin surface.
+# Production standalone admin must use the nonce-bearing SSR binary; this file
+# intentionally exposes no nginx/static "production" target that would bypass
+# apps/admin/src/app/security.rs.
+FROM node:22-bookworm-slim AS node-runtime
+FROM rust:1.96-slim-bookworm AS development
 
-WORKDIR /app
+ENV CARGO_INCREMENTAL=0 \
+    CARGO_TERM_COLOR=always \
+    TRUNK_BUILD_PUBLIC_URL=/ \
+    TRUNK_BUILD_LOCKED=true
+WORKDIR /workspace
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=node-runtime /usr/local /usr/local
 
-# Install trunk for building Leptos apps
-RUN cargo install trunk --locked
-RUN cargo install wasm-bindgen-cli --locked
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        ca-certificates \
+        curl \
+        libssl-dev \
+        pkg-config \
+    && rm -rf /var/lib/apt/lists/* \
+    && rustup target add wasm32-unknown-unknown \
+    && CARGO_TARGET_DIR=/tmp/trunk-target \
+       cargo install trunk --version 0.21.14 --locked --root /opt/trunk \
+    && rm -rf /tmp/trunk-target
 
-# Add wasm32 target
-RUN rustup target add wasm32-unknown-unknown
-
-# ============================================================================
-# Development stage
-# ============================================================================
-FROM base AS development
-
-# Copy workspace files
-COPY Cargo.toml Cargo.lock ./
-COPY crates ./crates
-COPY apps/admin ./apps/admin
-
-WORKDIR /app/apps/admin
+COPY . .
+WORKDIR /workspace/apps/admin
 
 EXPOSE 3001
 
-# Use trunk serve for hot reload in dev
-CMD ["trunk", "serve", "--address", "0.0.0.0", "--port", "3001"]
-
-# ============================================================================
-# Builder stage: Build production WASM
-# ============================================================================
-FROM base AS builder
-
-# Copy workspace files
-COPY Cargo.toml Cargo.lock ./
-COPY crates ./crates
-COPY apps/admin ./apps/admin
-
-WORKDIR /app/apps/admin
-
-# Build for production
-RUN trunk build --release
-
-# ============================================================================
-# Production stage: Serve static files
-# ============================================================================
-FROM nginx:alpine AS production
-
-# Copy built WASM app
-COPY --from=builder /app/apps/admin/dist /usr/share/nginx/html
-
-# Copy nginx config for SPA routing
-RUN echo 'server { \
-    listen 3001; \
-    root /usr/share/nginx/html; \
-    index index.html; \
-    location / { \
-        try_files $uri /index.html; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
-
-EXPOSE 3001
-
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["bash", "-lc", "npm ci --no-audit --no-fund && exec /opt/trunk/bin/trunk serve --address 0.0.0.0 --port 3001"]
