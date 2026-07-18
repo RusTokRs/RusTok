@@ -5,12 +5,12 @@ use uuid::Uuid;
 
 use crate::dto::{
     AddMarketplaceSellerMemberInput, CreateMarketplaceSellerInput,
-    ListMarketplaceSellerMembersRequest, ListMarketplaceSellersInput,
-    MarketplaceSellerMemberResponse, MarketplaceSellerResponse,
-    ReadMarketplaceSellerMembershipRequest, ReadMarketplaceSellerRequest,
-    ReviewMarketplaceSellerOnboardingInput, SubmitMarketplaceSellerOnboardingInput,
-    SuspendMarketplaceSellerInput, UpdateMarketplaceSellerMemberInput,
-    UpdateMarketplaceSellerProfileInput,
+    ListMarketplaceSellerEventsRequest, ListMarketplaceSellerMembersRequest,
+    ListMarketplaceSellersInput, MarketplaceSellerEventResponse, MarketplaceSellerMemberResponse,
+    MarketplaceSellerResponse, ReadMarketplaceSellerMembershipRequest,
+    ReadMarketplaceSellerRequest, ReviewMarketplaceSellerOnboardingInput,
+    SubmitMarketplaceSellerOnboardingInput, SuspendMarketplaceSellerInput,
+    UpdateMarketplaceSellerMemberInput, UpdateMarketplaceSellerProfileInput,
 };
 use crate::error::MarketplaceSellerError;
 
@@ -87,6 +87,12 @@ pub trait MarketplaceSellerReadPort: Send + Sync {
         context: PortContext,
         request: ListMarketplaceSellerMembersRequest,
     ) -> Result<Vec<MarketplaceSellerMemberResponse>, PortError>;
+
+    async fn list_seller_events(
+        &self,
+        context: PortContext,
+        request: ListMarketplaceSellerEventsRequest,
+    ) -> Result<Vec<MarketplaceSellerEventResponse>, PortError>;
 }
 
 #[async_trait]
@@ -164,11 +170,7 @@ impl MarketplaceSellerReadPort for crate::MarketplaceSellerService {
     ) -> Result<MarketplaceSellerListResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let (items, total) = self
-            .list_sellers(
-                parse_tenant_id(&context)?,
-                context.locale.as_str(),
-                request,
-            )
+            .list_sellers(parse_tenant_id(&context)?, context.locale.as_str(), request)
             .await
             .map_err(map_owner_error)?;
         Ok(MarketplaceSellerListResponse { items, total })
@@ -196,6 +198,17 @@ impl MarketplaceSellerReadPort for crate::MarketplaceSellerService {
     ) -> Result<Vec<MarketplaceSellerMemberResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         self.list_members(parse_tenant_id(&context)?, request.seller_id)
+            .await
+            .map_err(map_owner_error)
+    }
+
+    async fn list_seller_events(
+        &self,
+        context: PortContext,
+        request: ListMarketplaceSellerEventsRequest,
+    ) -> Result<Vec<MarketplaceSellerEventResponse>, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        self.list_events(parse_tenant_id(&context)?, request.seller_id, request.limit)
             .await
             .map_err(map_owner_error)
     }
@@ -449,13 +462,17 @@ mod tests {
             "marketplace-seller-contract",
         );
         assert_eq!(
-            base.require_policy(PortCallPolicy::read()).unwrap_err().kind,
+            base.require_policy(PortCallPolicy::read())
+                .unwrap_err()
+                .kind,
             PortErrorKind::Timeout
         );
         let read = base.clone().with_deadline(Duration::from_secs(3));
         assert!(read.require_policy(PortCallPolicy::read()).is_ok());
         assert_eq!(
-            read.require_policy(PortCallPolicy::write()).unwrap_err().code,
+            read.require_policy(PortCallPolicy::write())
+                .unwrap_err()
+                .code,
             "port.idempotency_key_required"
         );
         assert!(read

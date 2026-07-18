@@ -6,6 +6,9 @@ use sea_orm_migration::MigrationTrait;
 mod command_receipts;
 mod localized_sellers;
 mod receipted_commands;
+mod seller_events;
+#[cfg(test)]
+mod seller_events_tests;
 
 pub mod dto;
 pub mod entities;

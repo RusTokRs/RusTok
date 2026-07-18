@@ -5,18 +5,17 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::dto::{
-    ListMarketplaceSellersInput, MarketplaceSellerMemberResponse, MarketplaceSellerMemberRole,
-    MarketplaceSellerMemberStatus, MarketplaceSellerResponse, UpdateMarketplaceSellerMemberInput,
+    ListMarketplaceSellersInput, MarketplaceSellerEventResponse, MarketplaceSellerMemberResponse,
+    MarketplaceSellerMemberRole, MarketplaceSellerMemberStatus, MarketplaceSellerResponse,
+    UpdateMarketplaceSellerMemberInput,
 };
 use crate::entities::{seller, seller_member};
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
-use crate::localized_sellers::{
-    load_seller_responses, localized_seller_ids_for_search,
-};
+use crate::localized_sellers::{load_seller_responses, localized_seller_ids_for_search};
+use crate::seller_events::list_seller_events;
 
 pub(crate) use crate::localized_sellers::{
-    load_seller_response, normalize_seller_locale, upsert_translation,
-    MISSING_TRANSLATION_PREFIX,
+    load_seller_response, normalize_seller_locale, upsert_translation, MISSING_TRANSLATION_PREFIX,
 };
 
 pub struct MarketplaceSellerService {
@@ -64,13 +63,9 @@ impl MarketplaceSellerService {
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            let translation_ids = localized_seller_ids_for_search(
-                &self.db,
-                tenant_id,
-                locale.as_str(),
-                search,
-            )
-            .await?;
+            let translation_ids =
+                localized_seller_ids_for_search(&self.db, tenant_id, locale.as_str(), search)
+                    .await?;
             let mut condition = Condition::any()
                 .add(seller::Column::Handle.contains(search))
                 .add(seller::Column::LegalName.contains(search));
@@ -120,6 +115,16 @@ impl MarketplaceSellerService {
             .into_iter()
             .map(map_member)
             .collect()
+    }
+
+    pub async fn list_events(
+        &self,
+        tenant_id: Uuid,
+        seller_id: Uuid,
+        limit: u64,
+    ) -> MarketplaceSellerResult<Vec<MarketplaceSellerEventResponse>> {
+        find_seller(&self.db, tenant_id, seller_id).await?;
+        list_seller_events(&self.db, tenant_id, seller_id, limit).await
     }
 }
 
@@ -207,10 +212,7 @@ pub(crate) fn normalize_handle(value: &str) -> MarketplaceSellerResult<String> {
     Ok(normalized)
 }
 
-pub(crate) fn required_text(
-    value: String,
-    field: &str,
-) -> MarketplaceSellerResult<String> {
+pub(crate) fn required_text(value: String, field: &str) -> MarketplaceSellerResult<String> {
     let value = value.trim();
     if value.is_empty() {
         return Err(MarketplaceSellerError::Validation(format!(
