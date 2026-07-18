@@ -344,33 +344,19 @@ forbidMarkers("apps/admin/src/features/modules/components/modules_list.rs", [
   "style=progress_width",
 ]);
 
-for (const [file, required] of [
-  [
-    "apps/server/src/middleware/security_headers.rs",
-    ["style-src 'self' {nonce}", "style-src-attr 'unsafe-inline'", "style-src-attr 'none'", "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES", "strict_style_attributes_enabled"],
-  ],
-  [
-    "apps/admin/src/app/security.rs",
-    ["style-src 'self' {nonce}", "style-src-attr 'unsafe-inline'", "style-src-attr 'none'", "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES", "strict_style_attributes_enabled"],
-  ],
-]) {
-  const source = read(file);
-  for (const marker of required) {
-    if (!source.includes(marker)) failures.push(`${file}: missing CSP marker ${marker}`);
-  }
-  if (source.includes("style-src 'self' 'unsafe-inline'")) {
-    failures.push(`${file}: blanket inline style elements must remain forbidden`);
-  }
-}
-
 for (const file of [
   "apps/server/src/middleware/security_headers.rs",
   "apps/admin/src/app/security.rs",
 ]) {
-  requireMarkers(file, ["style-src-attr 'none'"]);
+  requireMarkers(file, [
+    "style-src 'self' {nonce}",
+    "style-src-attr 'none'",
+  ]);
   forbidMarkers(file, [
+    "style-src 'self' 'unsafe-inline'",
     "style-src-attr 'unsafe-inline'",
     "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES",
+    "strict_style_attributes_enabled",
     "STRICT_STYLE_TEMPLATE",
   ]);
 }

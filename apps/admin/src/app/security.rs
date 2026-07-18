@@ -115,7 +115,6 @@ fn hsts_enabled() -> bool {
         .unwrap_or(false)
 }
 
-
 fn parse_env_flag(value: &str) -> bool {
     matches!(
         value.trim().to_ascii_lowercase().as_str(),

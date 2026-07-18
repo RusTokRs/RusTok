@@ -28,9 +28,8 @@ const UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; sc
 const SECURE_UI_CONNECT_SOURCES: &str = "'self' https: wss:";
 const DEVELOPMENT_UI_CONNECT_SOURCES: &str = "'self' https: ws: wss:";
 
-/// Target UI policy used during style-attribute migration. It carries the same trusted nonce as the
-/// enforced policy, blocks inline style attributes and plaintext connection schemes, and remains
-/// report-only until the component style inventory is clean.
+/// Reporting mirror for strict UI violations. It carries the same trusted nonce as the enforced
+/// policy, additionally fixes worker sources, and reports violations without weakening enforcement.
 const UI_CSP_REPORT_ONLY_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/security/csp-report; report-to rustok-csp";
 const REPORTING_ENDPOINTS: &str = "rustok-csp=\"/api/security/csp-report\"";
 
@@ -130,7 +129,6 @@ pub(crate) fn hsts_enabled() -> bool {
         .map(|value| parse_env_flag(&value))
         .unwrap_or(false)
 }
-
 
 fn parse_env_flag(value: &str) -> bool {
     matches!(
