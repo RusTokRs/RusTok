@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout base policy source
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           repository: ${{ env.BASE_REPOSITORY }}
           ref: ${{ env.BASE_REF }}
@@ -50,7 +50,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout proposed release source
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           repository: ${{ env.HEAD_REPOSITORY }}
           ref: ${{ env.HEAD_REF }}
@@ -58,7 +58,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
 
