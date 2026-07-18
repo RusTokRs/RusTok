@@ -206,12 +206,12 @@ fn listing_response(tenant_id: Uuid) -> MarketplaceListingResponse {
             inventory_reference: Some("inventory-item".to_string()),
             fulfillment_profile_slug: Some("standard".to_string()),
             metadata: serde_json::json!({"owner_private": true}),
-            created_at: now.clone(),
+            created_at: now,
         },
         metadata: serde_json::json!({"owner_private": true}),
         published_at: None,
         approved_at: None,
-        created_at: now.clone(),
+        created_at: now,
         updated_at: now,
     }
 }
