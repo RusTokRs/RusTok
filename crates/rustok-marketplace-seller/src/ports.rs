@@ -332,6 +332,7 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
             parse_idempotency_key(&context)?,
+            context.locale.as_str(),
             request.seller_id,
             request.input,
         )
@@ -349,6 +350,7 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
             parse_idempotency_key(&context)?,
+            context.locale.as_str(),
             request.seller_id,
             request.member_id,
             request.input,
