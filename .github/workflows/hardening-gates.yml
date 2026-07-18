@@ -44,6 +44,8 @@ jobs:
         run: node scripts/verify/verify-api-compatibility-self-test.mjs
       - name: Verify API compatibility exception approval fixtures
         run: node scripts/verify/verify-api-compatibility-exception-approval-self-test.mjs
+      - name: Verify API compatibility infrastructure approval fixtures
+        run: node scripts/verify/verify-api-compatibility-infra-self-test.mjs
       - name: Verify API compatibility exceptions
         run: >-
           node scripts/verify/verify-api-compatibility-exceptions.mjs
