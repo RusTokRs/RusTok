@@ -36,6 +36,10 @@ function parseArguments(argv) {
   return options;
 }
 
+function compareText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function spdxId(packageId) {
   const digest = crypto.createHash("sha256").update(packageId).digest("hex").slice(0, 24);
   return `SPDXRef-Package-${digest}`;
@@ -94,7 +98,45 @@ function normalizeCreatedEpoch(raw) {
   return created.toISOString().replace(".000Z", "Z");
 }
 
-function buildRelationships(metadata, packageIds, rootPackageId) {
+function resolveNodes(metadata) {
+  const nodes = metadata.resolve?.nodes;
+  if (!Array.isArray(nodes)) {
+    throw new Error("cargo metadata resolve.nodes must be present; do not use --no-deps");
+  }
+  const nodesById = new Map();
+  for (const node of nodes) {
+    if (!node?.id || !Array.isArray(node.dependencies)) {
+      throw new Error("every cargo metadata resolve node must include id and dependencies");
+    }
+    if (nodesById.has(node.id)) throw new Error(`duplicate cargo metadata resolve node ${node.id}`);
+    nodesById.set(node.id, node);
+  }
+  return nodesById;
+}
+
+function reachablePackageIds(rootPackageId, packagesById, nodesById) {
+  const reachable = new Set();
+  const queue = [rootPackageId];
+  while (queue.length > 0) {
+    const packageId = queue.shift();
+    if (reachable.has(packageId)) continue;
+    if (!packagesById.has(packageId)) {
+      throw new Error(`dependency graph references unknown package ${packageId}`);
+    }
+    const node = nodesById.get(packageId);
+    if (!node) throw new Error(`dependency graph is missing resolve node ${packageId}`);
+    reachable.add(packageId);
+    for (const dependency of [...new Set(node.dependencies)].sort(compareText)) {
+      if (!packagesById.has(dependency)) {
+        throw new Error(`resolve node ${packageId} references unknown dependency ${dependency}`);
+      }
+      if (!reachable.has(dependency)) queue.push(dependency);
+    }
+  }
+  return reachable;
+}
+
+function buildRelationships(nodesById, packageIds, rootPackageId) {
   const relationships = [
     {
       spdxElementId: "SPDXRef-DOCUMENT",
@@ -102,22 +144,15 @@ function buildRelationships(metadata, packageIds, rootPackageId) {
       relatedSpdxElement: packageIds.get(rootPackageId),
     },
   ];
-
-  const nodes = metadata.resolve?.nodes;
-  if (!Array.isArray(nodes)) {
-    throw new Error("cargo metadata resolve.nodes must be present; do not use --no-deps");
-  }
-  for (const node of [...nodes].sort((left, right) => left.id.localeCompare(right.id))) {
-    const sourceId = packageIds.get(node.id);
-    if (!sourceId) throw new Error(`resolve node references unknown package ${node.id}`);
-    const dependencies = [...new Set(node.dependencies || [])].sort();
-    for (const dependency of dependencies) {
-      const targetId = packageIds.get(dependency);
-      if (!targetId) throw new Error(`resolve node ${node.id} references unknown dependency ${dependency}`);
+  for (const packageId of [...packageIds.keys()].sort(compareText)) {
+    const node = nodesById.get(packageId);
+    if (!node) throw new Error(`dependency graph is missing resolve node ${packageId}`);
+    for (const dependency of [...new Set(node.dependencies)].sort(compareText)) {
+      if (!packageIds.has(dependency)) continue;
       relationships.push({
-        spdxElementId: sourceId,
+        spdxElementId: packageIds.get(packageId),
         relationshipType: "DEPENDS_ON",
-        relatedSpdxElement: targetId,
+        relatedSpdxElement: packageIds.get(dependency),
       });
     }
   }
@@ -151,7 +186,11 @@ function generateSbom(metadata, options) {
     );
   }
 
-  const sortedPackages = [...metadata.packages].sort((left, right) => left.id.localeCompare(right.id));
+  const nodesById = resolveNodes(metadata);
+  const reachable = reachablePackageIds(rootPackage.id, packagesById, nodesById);
+  const sortedPackages = [...reachable]
+    .sort(compareText)
+    .map((packageId) => packagesById.get(packageId));
   const packageIds = new Map(sortedPackages.map((pkg) => [pkg.id, spdxId(pkg.id)]));
   const created = normalizeCreatedEpoch(options.createdEpoch);
   const repository = options.repository.replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, "");
@@ -171,11 +210,10 @@ function generateSbom(metadata, options) {
     creationInfo: {
       created,
       creators: ["Tool: rustok-release-spdx-generator/1"],
-      licenseListVersion: "3.27",
     },
     documentDescribes: [packageIds.get(rootPackage.id)],
     packages: sortedPackages.map(packageEntry),
-    relationships: buildRelationships(metadata, packageIds, rootPackage.id),
+    relationships: buildRelationships(nodesById, packageIds, rootPackage.id),
   };
 }
 
@@ -186,9 +224,17 @@ function stableJson(value) {
 function runSelfTest() {
   const rootId = "path+file:///repo/apps/server#rustok-server@1.2.3";
   const dependencyId = "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.0";
+  const unrelatedId = "path+file:///repo/apps/admin#rustok-admin@1.2.3";
   const metadata = {
     version: 1,
     packages: [
+      {
+        id: unrelatedId,
+        name: "rustok-admin",
+        version: "1.2.3",
+        source: null,
+        license: "BUSL-1.1",
+      },
       {
         id: dependencyId,
         name: "serde",
@@ -207,6 +253,7 @@ function runSelfTest() {
     ],
     resolve: {
       nodes: [
+        { id: unrelatedId, dependencies: [] },
         { id: rootId, dependencies: [dependencyId] },
         { id: dependencyId, dependencies: [] },
       ],
@@ -225,8 +272,10 @@ function runSelfTest() {
   const parsed = JSON.parse(first);
   assert.equal(parsed.spdxVersion, "SPDX-2.3");
   assert.equal(parsed.packages.length, 2);
+  assert(!parsed.packages.some((pkg) => pkg.name === "rustok-admin"));
   assert.equal(parsed.relationships.filter((item) => item.relationshipType === "DEPENDS_ON").length, 1);
   assert.equal(parsed.creationInfo.created, "2026-07-18T00:00:00Z");
+  assert.equal("licenseListVersion" in parsed.creationInfo, false);
   assert.throws(
     () => generateSbom(metadata, { ...options, version: "1.2.4" }),
     /does not match release/,
@@ -241,7 +290,11 @@ function main() {
     return;
   }
   for (const name of ["metadata", "output", "version", "commit", "repository", "createdEpoch"]) {
-    if (!options[name]) throw new Error(`--${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`);
+    if (!options[name]) {
+      throw new Error(
+        `--${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`,
+      );
+    }
   }
   const metadata = JSON.parse(fs.readFileSync(path.resolve(options.metadata), "utf8"));
   const sbom = generateSbom(metadata, options);
