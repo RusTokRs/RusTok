@@ -66,7 +66,7 @@ pub(crate) fn request_hash<T: Serialize>(
             "marketplace listing command could not be hashed".to_string(),
         )
     })?;
-    Ok(format!("{:x}", Sha256::digest(encoded)))
+    Ok(hex::encode(Sha256::digest(encoded)))
 }
 
 pub(crate) async fn replay_existing<R: DeserializeOwned>(
@@ -257,4 +257,30 @@ fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
         error.sql_err(),
         Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_hash_is_stable_lowercase_sha256_hex() {
+        let left = request_hash(
+            "create_listing",
+            Uuid::nil(),
+            &serde_json::json!({"metadata": {"b": 2, "a": 1}}),
+        )
+        .unwrap();
+        let right = request_hash(
+            "create_listing",
+            Uuid::nil(),
+            &serde_json::json!({"metadata": {"a": 1, "b": 2}}),
+        )
+        .unwrap();
+
+        assert_eq!(left, right);
+        assert_eq!(left.len(), 64);
+        assert!(left.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_eq!(left, left.to_ascii_lowercase());
+    }
 }
