@@ -25,7 +25,7 @@ jobs:
           ref: main
           fetch-depth: 0
       - run: git pull --rebase origin main
-      - name: Apply exact chart migrations
+      - name: Apply bounded chart migrations
         shell: bash
         run: |
           python3 - <<'PY'
@@ -58,20 +58,9 @@ jobs:
               file.write_text(updated)
 
           chart = "apps/next-admin/src/shared/ui/shadcn/chart.tsx"
-          replace_once(
+          sub_once(
               chart,
-              """// Format: { THEME_NAME: CSS_SELECTOR }
-          const THEMES = { light: '', dark: '.dark' } as const;
-
-          export type ChartConfig = {
-            [key in string]: {
-              label?: React.ReactNode;
-              icon?: React.ComponentType;
-            } & (
-              | { color?: string; theme?: never }
-              | { color?: never; theme: Record<keyof typeof THEMES, string> }
-            );
-          };""",
+              r"// Format: \{ THEME_NAME: CSS_SELECTOR \}\s*const THEMES = \{ light: '', dark: '\.dark' \} as const;\s*export type ChartConfig = \{\s*\[key in string\]: \{\s*label\?: React\.ReactNode;\s*icon\?: React\.ComponentType;\s*\} & \(\s*\| \{ color\?: string; theme\?: never \}\s*\| \{ color\?: never; theme: Record<keyof typeof THEMES, string> \}\s*\);\s*\};",
               """export type ChartIndicatorTone = 'primary' | 'muted' | 'subtle' | 'strong';
 
           const CHART_INDICATOR_CLASSES: Record<ChartIndicatorTone, string> = {
@@ -96,24 +85,9 @@ jobs:
             };
           };""",
           )
-          replace_once(
+          sub_once(
               chart,
-              """function ChartContainer({
-            id,
-            className,
-            children,
-            config,
-            ...props
-          }: React.ComponentProps<'div'> & {
-            config: ChartConfig;
-            children: React.ComponentProps<
-              typeof RechartsPrimitive.ResponsiveContainer
-            >['children'];
-          }) {
-            const uniqueId = React.useId();
-            const chartId = `chart-${id || uniqueId.replace(/:/g, '')}`;
-
-            return (""",
+              r"function ChartContainer\(\{\s*id,\s*className,\s*children,\s*config,\s*\.\.\.props\s*\}: React\.ComponentProps<'div'> & \{\s*config: ChartConfig;\s*children: React\.ComponentProps<\s*typeof RechartsPrimitive\.ResponsiveContainer\s*>\['children'\];\s*\}\) \{\s*const uniqueId = React\.useId\(\);\s*const chartId = `chart-\$\{id \|\| uniqueId\.replace\(/:/g, ''\)\}`;\s*return \(",
               """function ChartContainer({
             className,
             children,
@@ -127,11 +101,11 @@ jobs:
           }) {
             return (""",
           )
-          replace_once(chart, "        data-chart={chartId}\n", "")
-          replace_once(chart, "        <ChartStyle id={chartId} config={config} />\n", "")
+          sub_once(chart, r"\s*data-chart=\{chartId\}", "")
+          sub_once(chart, r"\s*<ChartStyle id=\{chartId\} config=\{config\} />", "")
           sub_once(
               chart,
-              r"const ChartStyle = \(\{ id, config \}: \{ id: string; config: ChartConfig \}\) => \{.*?\n\};\n\nconst ChartTooltip",
+              r"const ChartStyle = \(\{ id, config \}: \{ id: string; config: ChartConfig \}\) => \{.*?\n\};\s*const ChartTooltip",
               "const ChartTooltip",
           )
           replace_once(chart, "  color,\n", "")
@@ -140,10 +114,10 @@ jobs:
               "          const indicatorColor = color || item.payload?.fill || item.color;",
               "          const indicatorClassName = chartIndicatorClass(itemConfig?.tone, index);",
           )
-          replace_once(
+          sub_once(
               chart,
-              "                          'shrink-0 rounded-[2px] border-(--color-border) bg-(--color-bg)',\n                          {",
-              "                          'shrink-0 rounded-[2px] border',\n                          indicatorClassName,\n                          {",
+              r"'shrink-0 rounded-\[2px\] border-\(--color-border\) bg-\(--color-bg\)',\s*\{",
+              "'shrink-0 rounded-[2px] border',\n                          indicatorClassName,\n                          {",
           )
           sub_once(
               chart,
@@ -151,15 +125,10 @@ jobs:
               "",
           )
           replace_once(chart, "      {payload.map((item) => {", "      {payload.map((item, index) => {")
-          replace_once(
+          sub_once(
               chart,
-              """              <div
-                className='h-2 w-2 shrink-0 rounded-[2px]'
-                style={{
-                  backgroundColor: item.color
-                }}
-              />""",
-              """              <div
+              r"<div\s*className='h-2 w-2 shrink-0 rounded-\[2px\]'\s*style=\{\{\s*backgroundColor: item\.color\s*\}\}\s*/>",
+              """<div
                 className={cn(
                   'h-2 w-2 shrink-0 rounded-[2px]',
                   chartIndicatorClass(itemConfig?.tone, index)
@@ -180,7 +149,11 @@ jobs:
           // Helper to extract item config from a payload.
           """,
           )
-          replace_once(chart, "  ChartLegendContent,\n  ChartStyle\n", "  ChartLegendContent\n")
+          sub_once(
+              chart,
+              r"ChartLegend,\s*ChartLegendContent,\s*ChartStyle\s*\};",
+              "ChartLegend,\n  ChartLegendContent\n};",
+          )
 
           area = "apps/next-admin/src/features/overview/components/area-graph.tsx"
           replace_count(area, ",\n    color: 'var(--primary)'", "", 2)
