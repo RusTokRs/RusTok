@@ -60,6 +60,14 @@ jobs:
         with:
           node-version: 22
 
+      - name: Verify base comparator fixtures
+        run: node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility.mjs" --self-test
+
+      - name: Validate head compatibility exceptions with base policy
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility-exceptions.mjs"
+          --file "$GITHUB_WORKSPACE/head/docs/api/compatibility-exceptions.json"
+
       - name: Export base API contracts
         run: >-
           cargo run
@@ -89,9 +97,9 @@ jobs:
           test -s "$GITHUB_WORKSPACE/contracts/head/openapi.json"
           test -s "$GITHUB_WORKSPACE/contracts/head/schema.graphql"
 
-      - name: Compare API contracts
+      - name: Compare API contracts with base policy
         run: >-
-          node "$GITHUB_WORKSPACE/head/scripts/verify/verify-api-compatibility.mjs"
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-api-compatibility.mjs"
           --base-dir "$GITHUB_WORKSPACE/contracts/base"
           --head-dir "$GITHUB_WORKSPACE/contracts/head"
           --exceptions "$GITHUB_WORKSPACE/head/docs/api/compatibility-exceptions.json"
