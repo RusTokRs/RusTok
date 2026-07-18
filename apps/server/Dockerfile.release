@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG DEBIAN_VERSION=bookworm
-FROM debian:${DEBIAN_VERSION}-slim
+FROM debian:bookworm-20260713-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
 
 ARG OCI_SOURCE=https://github.com/RusTokRs/RusTok
 ARG OCI_VERSION=dev
@@ -11,12 +10,24 @@ LABEL org.opencontainers.image.title="RusToK Server" \
       org.opencontainers.image.source="${OCI_SOURCE}" \
       org.opencontainers.image.version="${OCI_VERSION}" \
       org.opencontainers.image.revision="${OCI_REVISION}" \
-      org.opencontainers.image.licenses="BUSL-1.1"
+      org.opencontainers.image.licenses="BUSL-1.1" \
+      org.opencontainers.image.base.name="docker.io/library/debian:bookworm-20260713-slim" \
+      org.opencontainers.image.base.digest="sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818"
 
 ENV RUST_BACKTRACE=1
 WORKDIR /app
 
-RUN apt-get update \
+# Keep runtime packages reproducible and independent from moving Debian mirrors.
+# Snapshot metadata remains authenticated by Debian archive signatures; Valid-Until
+# is disabled because historical snapshots are intentionally immutable.
+RUN rm -f /etc/apt/sources.list /etc/apt/sources.list.d/* \
+    && printf '%s\n' \
+       'deb http://snapshot.debian.org/archive/debian/20260713T000000Z bookworm main' \
+       'deb http://snapshot.debian.org/archive/debian/20260713T000000Z bookworm-updates main' \
+       'deb http://snapshot.debian.org/archive/debian-security/20260713T000000Z bookworm-security main' \
+       > /etc/apt/sources.list \
+    && printf '%s\n' 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99snapshot \
+    && apt-get update \
     && apt-get install --yes --no-install-recommends \
         ca-certificates \
         libssl3 \
