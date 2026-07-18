@@ -149,6 +149,17 @@ requireMarkers("scripts/verify/verify-api-compatibility-exceptions-local.mjs", [
   "docs/api/compatibility-exceptions.json",
   '"--file"',
 ]);
+requireMarkers("scripts/verify/verify-api-compatibility-exception-approval.mjs", [
+  "api-breaking-approved",
+  "function approvalDecision",
+  "--labels-json",
+  "--explicitly-approved",
+  "function runSelfTest",
+]);
+requireMarkers("scripts/verify/verify-api-compatibility-exception-approval-self-test.mjs", [
+  "verify-api-compatibility-exception-approval.mjs",
+  '"--self-test"',
+]);
 
 requireMarkers(".github/workflows/api-compatibility.yml", [
   "name: API Compatibility",
@@ -160,6 +171,13 @@ requireMarkers(".github/workflows/api-compatibility.yml", [
   "repository: ${{ env.HEAD_REPOSITORY }}",
   "Verify base comparator fixtures",
   'base/scripts/verify/verify-api-compatibility.mjs" --self-test',
+  "Require approval for compatibility exception changes",
+  "api-breaking-approved",
+  "PR_LABELS_JSON",
+  "EXPLICIT_APPROVAL",
+  "base/scripts/verify/verify-api-compatibility-exception-approval.mjs",
+  "base/docs/api/compatibility-exceptions.json",
+  "head/docs/api/compatibility-exceptions.json",
   "Validate head compatibility exceptions with base policy",
   "base/scripts/verify/verify-api-compatibility-exceptions.mjs",
   "head/docs/api/compatibility-exceptions.json",
@@ -186,10 +204,18 @@ forbidMarkers(".github/workflows/api-compatibility.yml", [
 requireMarkers(".github/workflows/hardening-gates.yml", [
   "Verify API compatibility comparator fixtures",
   "verify-api-compatibility-self-test.mjs",
+  "Verify API compatibility exception approval fixtures",
+  "verify-api-compatibility-exception-approval-self-test.mjs",
   "Verify API compatibility exceptions",
   "verify-api-compatibility-exceptions.mjs",
   "Verify API compatibility gate structure",
   "verify-api-compatibility-contract.mjs",
+]);
+requireMarkers("scripts/verify/verify-all.sh", [
+  "verify-api-compatibility-self-test.mjs:API Compatibility Comparator Fixtures",
+  "verify-api-compatibility-exception-approval-self-test.mjs:API Compatibility Exception Approval Fixtures",
+  "verify-api-compatibility-exceptions-local.mjs:API Compatibility Exceptions",
+  "verify-api-compatibility-contract.mjs:API Compatibility Gate Structure",
 ]);
 
 if (failures.length > 0) {
