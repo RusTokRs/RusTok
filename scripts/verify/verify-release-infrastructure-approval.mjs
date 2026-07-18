@@ -13,6 +13,8 @@ const PROTECTED_PATHS = [
   ".dockerignore",
   "apps/server/Dockerfile",
   "apps/server/Dockerfile.release",
+  "docs/release/RELEASE_READINESS_CHECKLIST.md",
+  "docs/verification/PLATFORM_HARDENING_STATUS_2026-07-18.md",
   "scripts/release/verify-release-contract.mjs",
   "scripts/release/verify-release-collisions.mjs",
   "scripts/release/generate-spdx-sbom.mjs",
@@ -23,6 +25,7 @@ const PROTECTED_PATHS = [
   "scripts/verify/verify-release-tooling-self-test.mjs",
   "scripts/verify/verify-release-supply-chain-contract.mjs",
   "scripts/verify/verify-release-runtime-image-contract.mjs",
+  "scripts/verify/verify-release-readiness-contract.mjs",
   "scripts/verify/verify-release-infrastructure-approval.mjs",
   "scripts/verify/verify-release-infra-self-test.mjs",
 ];
@@ -122,9 +125,12 @@ function runSelfTest() {
   assert(PROTECTED_PATHS.includes(".github/workflows/hardening-gates.yml"));
   assert(PROTECTED_PATHS.includes("scripts/verify/verify-all.sh"));
   assert(PROTECTED_PATHS.includes("apps/server/Dockerfile.release"));
+  assert(PROTECTED_PATHS.includes("docs/release/RELEASE_READINESS_CHECKLIST.md"));
+  assert(PROTECTED_PATHS.includes("docs/verification/PLATFORM_HARDENING_STATUS_2026-07-18.md"));
   assert(PROTECTED_PATHS.includes("scripts/release/verify-release-collisions.mjs"));
   assert(PROTECTED_PATHS.includes("scripts/release/generate-spdx-sbom.mjs"));
   assert(PROTECTED_PATHS.includes("scripts/verify/verify-release-runtime-image-contract.mjs"));
+  assert(PROTECTED_PATHS.includes("scripts/verify/verify-release-readiness-contract.mjs"));
   console.log("✔ release infrastructure approval self-test passed");
 }
 
