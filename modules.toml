@@ -60,7 +60,8 @@ marketplace_seller = { crate = "rustok-marketplace-seller", source = "path", pat
 marketplace_listing = { crate = "rustok-marketplace-listing", source = "path", path = "crates/rustok-marketplace-listing", depends_on = ["marketplace_seller", "product"] }
 marketplace_allocation = { crate = "rustok-marketplace-allocation", source = "path", path = "crates/rustok-marketplace-allocation", depends_on = ["order", "marketplace_seller", "marketplace_listing"] }
 marketplace_commission = { crate = "rustok-marketplace-commission", source = "path", path = "crates/rustok-marketplace-commission", depends_on = ["marketplace_allocation"] }
-marketplace = { crate = "rustok-marketplace", source = "path", path = "crates/rustok-marketplace", depends_on = ["marketplace_seller", "marketplace_listing", "marketplace_allocation", "marketplace_commission"] }
+marketplace_ledger = { crate = "rustok-marketplace-ledger", source = "path", path = "crates/rustok-marketplace-ledger", depends_on = ["marketplace_commission"] }
+marketplace = { crate = "rustok-marketplace", source = "path", path = "crates/rustok-marketplace", depends_on = ["marketplace_seller", "marketplace_listing", "marketplace_allocation", "marketplace_commission", "marketplace_ledger"] }
 blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content", "comments", "taxonomy"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content", "taxonomy", "page_builder"] }
 comments = { crate = "rustok-comments", source = "path", path = "crates/rustok-comments" }
