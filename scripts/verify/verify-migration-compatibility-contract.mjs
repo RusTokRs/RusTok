@@ -182,8 +182,24 @@ const workflow = ".github/workflows/migration-compatibility.yml";
 requireMarkers(workflow, [
   "name: Migration Compatibility",
   "pull_request:",
+  "types:",
+  "opened",
+  "synchronize",
+  "reopened",
+  "labeled",
+  "unlabeled",
+  "allow_infrastructure_changes:",
   "permissions:\n  contents: read",
   "persist-credentials: false",
+  "Migration harness preflight",
+  "Checkout base policy source",
+  "Checkout head policy as untrusted data",
+  "Verify base approval policy fixtures",
+  "Require approval for migration harness changes",
+  "PR_LABELS_JSON:",
+  "EXPLICIT_APPROVAL:",
+  "base/scripts/verify/verify-migration-infrastructure-approval.mjs",
+  "needs: infrastructure-preflight",
   "Append-only migration plan",
   "timeout-minutes: 25",
   "Export base migration plan",
@@ -242,9 +258,7 @@ requireOccurrenceCount(
 );
 forbidMarkers(workflow, [
   "pull_request_target:",
-  "allow_infrastructure_changes:",
   "Migration harness approval",
-  "Require approval for migration harness changes",
   "needs: infrastructure-approval",
   "continue-on-error: true",
   "|| true",
@@ -322,5 +336,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ append-only planning, declared backfills, strict fixture assertions, base-owned data-only approval, symlink-safe policy comparison, sandboxed pull-request execution, bounded PostgreSQL roles, fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
+  "✔ append-only planning, declared backfills, strict fixture assertions, base-owned data-only approval, symlink-safe policy comparison, sandboxed pull-request preflight and execution, bounded PostgreSQL roles, fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
 );
