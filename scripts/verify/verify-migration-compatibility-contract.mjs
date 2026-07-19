@@ -163,7 +163,8 @@ requireMarkers("scripts/verify/verify-migration-infrastructure-approval.mjs", [
   "verify-migration-backfill-self-test.mjs",
   "verify-migration-compatibility-contract.mjs",
   "verify-migration-infra-self-test.mjs",
-  "fs.lstatSync(file)",
+  'import os from "node:os"',
+  "fs.lstatSync(file, { throwIfNoEntry: false })",
   "stats.isSymbolicLink()",
   "stats.isFile()",
   "function isUnsafeFileState",
@@ -171,6 +172,8 @@ requireMarkers("scripts/verify/verify-migration-infrastructure-approval.mjs", [
   "protected migration infrastructure must be regular files",
   "function changedProtectedPaths",
   "function approvalDecision",
+  'fs.symlinkSync("missing.txt", path.join(fixtureRoot, "dangling.txt"))',
+  'fileState(fixtureRoot, "dangling.txt")',
   "function runSelfTest",
 ]);
 requireMarkers("scripts/verify/verify-migration-infra-self-test.mjs", [
@@ -336,5 +339,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ append-only planning, declared backfills, strict fixture assertions, base-owned data-only approval, symlink-safe policy comparison, sandboxed pull-request preflight and execution, bounded PostgreSQL roles, fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
+  "✔ append-only planning, declared backfills, strict fixture assertions, base-owned data-only approval, symlink- and dangling-symlink-safe policy comparison, sandboxed pull-request preflight and execution, bounded PostgreSQL roles, fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
 );
