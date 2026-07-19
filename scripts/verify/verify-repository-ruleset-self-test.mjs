@@ -11,6 +11,7 @@ const commands = [
   [path.join(directory, "verify-repository-ruleset-admin-payload.mjs")],
   [path.join(directory, "verify-repository-ruleset-structure.mjs")],
   [path.join(directory, "verify-main-protection-rollout.mjs")],
+  [path.join(directory, "verify-ruleset-activation-request.mjs")],
 ];
 
 for (const command of commands) {
