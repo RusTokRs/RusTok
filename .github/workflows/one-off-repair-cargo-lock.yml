@@ -1,0 +1,154 @@
+name: One-off Repair Cargo Lock
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: one-off-repair-cargo-lock
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://rustok_lock_repair:rustok_lock_repair@127.0.0.1:5432/postgres
+
+jobs:
+  repair:
+    if: >-
+      github.event.issue.title == '[automation] apply minimal Cargo lock repair' &&
+      github.event.issue.user.login == 'loid345' &&
+      (github.event_name == 'issues' ||
+       (github.event.comment.user.login == 'loid345' && github.event.comment.body == '/apply-minimal-cargo-lock-repair'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-bookworm@sha256:05bb94c3949035f4da16815d91b389443f3dbc5db95d65e2cb9b1abbf8565974
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Rebase onto current main
+        run: git pull --rebase origin main
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+      - name: Apply minimal lockfile repair
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("Cargo.lock")
+          source = path.read_text()
+
+          def patch_package(name: str, dependency: str, anchor: str) -> None:
+              global source
+              pattern = re.compile(
+                  rf'(\[\[package\]\]\nname = "{re.escape(name)}"\nversion = "0\.1\.0"\ndependencies = \[\n)(.*?)(\n\])',
+                  re.DOTALL,
+              )
+              match = pattern.search(source)
+              if match is None:
+                  raise SystemExit(f"package block not found: {name}")
+              body = match.group(2)
+              line = f' "{dependency}",'
+              if line in body:
+                  raise SystemExit(f"dependency already present in {name}: {dependency}")
+              anchor_line = f' "{anchor}",'
+              if body.count(anchor_line) != 1:
+                  raise SystemExit(f"expected one anchor in {name}: {anchor}")
+              body = body.replace(anchor_line, f'{anchor_line}\n{line}', 1)
+              source = source[:match.start(2)] + body + source[match.end(2):]
+
+          patch_package("rustok-modules", "base64 0.22.1", "async-trait")
+          patch_package("rustok-worker-transport", "tokio", "tonic")
+          path.write_text(source)
+          PY
+      - name: Verify exact lockfile patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check -- Cargo.lock
+          test "$(git diff --numstat -- Cargo.lock)" = $'2\t0\tCargo.lock'
+          git diff -- Cargo.lock | grep -Fq '+ "base64 0.22.1",'
+          git diff -- Cargo.lock | grep -Fq '+ "tokio",'
+          test "$(git diff -- Cargo.lock | grep -c '^+ "')" = "2"
+          cargo metadata --locked --no-deps --format-version 1 > /tmp/cargo-metadata.json
+          test -s /tmp/cargo-metadata.json
+      - name: Export migration plan with repaired lock
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/cargo-lock-plan
+        run: >-
+          cargo run --locked -p rustok-migrations --bin export_migration_plan --
+          --output /tmp/migration-plan.json
+      - name: Verify migration plan artifact
+        run: test -s /tmp/migration-plan.json
+      - name: Create bounded PostgreSQL role
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname postgres \
+            --set ON_ERROR_STOP=1 \
+            --command "CREATE ROLE rustok_lock_repair LOGIN PASSWORD 'rustok_lock_repair' CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8"
+      - name: Run migration smoke with repaired lock
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/cargo-lock-migration-smoke
+          RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_lock_repair_${{ github.run_id }}
+          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "0"
+          RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"
+          RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
+          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
+        run: >-
+          cargo test --locked -p rustok-migrations
+          --test postgres_zero_migration_smoke
+          postgres_zero_migration_smoke_applies_from_empty_database
+          -- --ignored --nocapture
+      - name: Remove one-off workflow
+        run: rm .github/workflows/one-off-repair-cargo-lock.yml
+      - name: Verify final commit scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(.github/workflows/one-off-repair-cargo-lock.yml Cargo.lock)
+          test "${#changed[@]}" = "${#expected[@]}"
+          test "${changed[0]}" = "${expected[0]}"
+          test "${changed[1]}" = "${expected[1]}"
+      - name: Commit repaired lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(deps): repair Cargo.lock workspace edges"
+          git push origin HEAD:main
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh issue close "${{ github.event.issue.number }}"
+          --comment "Minimal Cargo.lock repair validated with locked metadata, migration-plan export and PostgreSQL smoke; one-off workflow removed itself."
