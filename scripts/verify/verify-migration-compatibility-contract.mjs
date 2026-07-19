@@ -273,8 +273,11 @@ requireMarkers(approvalWorkflow, [
   "allow-unsafe-pr-checkout: true",
   "Verify base approval policy fixtures",
   "Require approval for migration harness changes",
-  "migration-infra-approved",
+  "PR_LABELS_JSON:",
+  "EXPLICIT_APPROVAL:",
   "base/scripts/verify/verify-migration-infrastructure-approval.mjs",
+  '--labels-json "$PR_LABELS_JSON"',
+  '--explicitly-approved "$EXPLICIT_APPROVAL"',
   '--base-dir "$GITHUB_WORKSPACE/base"',
   '--head-dir "$GITHUB_WORKSPACE/head"',
 ]);
