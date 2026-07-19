@@ -1,0 +1,5 @@
+owner=loid345
+status=pending-administrative-cutover
+contract=docs/ci/repository-ruleset-contract.json
+payload=docs/ci/repository-ruleset-admin-payload.json
+rollout=docs/ci/main-protection-rollout.md
