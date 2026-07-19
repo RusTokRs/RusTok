@@ -5,7 +5,8 @@ This checklist is the final administrative handoff for moving RusTok from direct
 ## Preconditions
 
 - The `Migration Infrastructure Approval` workflow has run on at least one pull request and published the `Migration harness approval` Check Run on that pull request's head SHA.
-- `Repository Ruleset Contract` and `Hardening Gates` are green for the same repository state.
+- The `Repository Ruleset Contract` workflow has run on at least one pull request and published the `Repository ruleset contract` Check Run on that pull request's head SHA.
+- `Hardening Gates` is green for the same repository state.
 - Emergency access and ownership are documented before removing direct pushes.
 
 ## Ruleset configuration
@@ -16,20 +17,22 @@ Create an active branch ruleset targeting `refs/heads/main` with:
 2. Require status checks to pass before merging.
 3. Require branches to be up to date before merging.
 4. Require `Migration harness approval` from GitHub Actions (`integration_id: 15368`).
-5. Set `do_not_enforce_on_create` to `false`.
-6. Block force pushes and branch deletion.
-7. Require conversation resolution before merging.
-8. Do not configure permanent bypass actors. Emergency bypass must be temporary, attributable and reviewed.
+5. Require `Repository ruleset contract` from GitHub Actions (`integration_id: 15368`).
+6. Set `do_not_enforce_on_create` to `false`.
+7. Block force pushes and branch deletion.
+8. Require conversation resolution before merging.
+9. Do not configure permanent bypass actors. Emergency bypass must be temporary, attributable and reviewed.
 
 ## Cutover
 
 1. Finish the currently authorized direct-to-`main` implementation series.
-2. Open a test pull request that does not change migration infrastructure and confirm a successful head-SHA `Migration harness approval` Check Run.
-3. Open a second test pull request that changes a protected migration file without the approval label and confirm the Check Run fails.
-4. Apply `migration-infra-approved` and confirm both the base-owned evaluator and the PR sandbox preflight rerun successfully.
-5. Enable the active ruleset.
+2. Open a test pull request that does not change migration infrastructure and confirm successful head-SHA `Migration harness approval` and `Repository ruleset contract` Check Runs.
+3. Open a second test pull request that changes a protected migration file without the approval label and confirm `Migration harness approval` fails.
+4. Apply `migration-infra-approved` and confirm the base-owned migration evaluator, repository ruleset evaluator and PR sandbox preflight rerun successfully.
+5. Create or update the active ruleset from `docs/ci/repository-ruleset-admin-payload.json`.
 6. Rerun `Repository Ruleset Contract` manually and confirm the live API audit passes.
-7. Make pull requests the only normal delivery path from that point onward.
+7. Confirm both required checks are attached to the latest PR head SHA and originate from GitHub Actions.
+8. Make pull requests the only normal delivery path from that point onward.
 
 ## Rollback
 
@@ -37,6 +40,6 @@ If the ruleset blocks all recovery paths:
 
 1. Use a time-bounded organization or repository owner bypass.
 2. Correct the ruleset or required-check source binding.
-3. Rerun the live audit.
+3. Rerun the live audit and both head-SHA checks.
 4. Remove the temporary bypass immediately.
 5. Record the incident and remediation in the repository issue that tracks this rollout.
