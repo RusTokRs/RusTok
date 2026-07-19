@@ -29,9 +29,13 @@ if (request !== null) {
     "repository-ruleset-admin-payload.json",
     "POST /repos/RusTokRs/RusTok/rulesets",
     "Migration harness approval",
+    "Repository ruleset contract",
     "head SHA",
     "migration-infra-approved",
-    "Repository Ruleset Contract",
+    "live `Repository Ruleset Contract` audit",
+    "GitHub Actions integration `15368`",
+    "strict freshness",
+    "branch-creation enforcement",
     "Direct pushes to `main`, force pushes and branch deletion are rejected",
     "No permanent bypass actor is configured.",
     "positive and negative test pull requests",
@@ -75,4 +79,6 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ ruleset owner action, issue 1837, pending cutover state and acceptance criteria are bound");
+console.log(
+  "✔ ruleset owner action, issue 1837, two required head-SHA checks, pending cutover state and acceptance criteria are bound",
+);
