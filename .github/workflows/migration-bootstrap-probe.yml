@@ -16,7 +16,7 @@ jobs:
   probe:
     name: Browser migration bootstrap probe
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     services:
       postgres:
         image: postgres:16-bookworm@sha256:05bb94c3949035f4da16815d91b389443f3dbc5db95d65e2cb9b1abbf8565974
@@ -39,7 +39,55 @@ jobs:
         run: |
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
+      - name: Apply minimal Cargo lock repair in probe
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("Cargo.lock")
+          source = path.read_text()
+
+          def patch_package(name: str, dependency: str, anchor: str) -> None:
+              global source
+              pattern = re.compile(
+                  rf'(\[\[package\]\]\nname = "{re.escape(name)}"\nversion = "0\.1\.0"\ndependencies = \[\n)(.*?)(\n\])',
+                  re.DOTALL,
+              )
+              match = pattern.search(source)
+              if match is None:
+                  raise SystemExit(f"package block not found: {name}")
+              body = match.group(2)
+              line = f' "{dependency}",'
+              if line not in body:
+                  anchor_line = f' "{anchor}",'
+                  if body.count(anchor_line) != 1:
+                      raise SystemExit(f"expected one anchor in {name}: {anchor}")
+                  body = body.replace(anchor_line, f'{anchor_line}\n{line}', 1)
+                  source = source[:match.start(2)] + body + source[match.end(2):]
+
+          patch_package("rustok-modules", "base64 0.22.1", "async-trait")
+          patch_package("rustok-worker-transport", "tokio", "tonic")
+          path.write_text(source)
+          PY
+          cargo metadata --locked --no-deps --format-version 1 > /tmp/cargo-metadata.json
+          test -s /tmp/cargo-metadata.json
+      - name: Export migration plan after lock repair
+        id: export
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-bootstrap-probe
+        shell: bash
+        run: |
+          set +e
+          cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
+            --output /tmp/migration-plan.json > migration-export-output.txt 2>&1
+          exit_code=$?
+          set -e
+          tail -n 200 migration-export-output.txt
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
       - name: Create bounded PostgreSQL role
+        if: steps.export.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           container=$(docker ps --filter publish=5432 --format '{{.ID}}' | head -n 1)
@@ -55,6 +103,7 @@ jobs:
             CONNECTION LIMIT 10;
           SQL
       - name: Run isolated migration smoke
+        if: steps.export.outputs.exit_code == '0'
         id: migration
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-bootstrap-probe
@@ -73,16 +122,26 @@ jobs:
             -- --ignored --nocapture > migration-bootstrap-output.txt 2>&1
           exit_code=$?
           set -e
-          tail -n 160 migration-bootstrap-output.txt
+          tail -n 200 migration-bootstrap-output.txt
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
-      - name: Upload migration bootstrap output
+      - name: Ensure migration output exists
+        if: always()
+        run: |
+          touch migration-export-output.txt
+          touch migration-bootstrap-output.txt
+      - name: Upload migration compiler outputs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: migration-bootstrap-output-${{ github.run_id }}
-          path: migration-bootstrap-output.txt
+          path: |
+            migration-export-output.txt
+            migration-bootstrap-output.txt
           if-no-files-found: error
           retention-days: 1
-      - name: Enforce migration bootstrap result
-        if: steps.migration.outputs.exit_code != '0'
+      - name: Enforce migration exporter result
+        if: steps.export.outputs.exit_code != '0'
+        run: exit 1
+      - name: Enforce migration smoke result
+        if: steps.export.outputs.exit_code == '0' && steps.migration.outputs.exit_code != '0'
         run: exit 1
