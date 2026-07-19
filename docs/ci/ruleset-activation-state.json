@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "owner": "loid345",
+  "state": "pending_administrative_cutover",
+  "blocked_by": "current_direct_to_main_implementation_series",
+  "contract": "docs/ci/repository-ruleset-contract.json",
+  "payload": "docs/ci/repository-ruleset-admin-payload.json",
+  "rollout": "docs/ci/main-protection-rollout.md"
+}
