@@ -6,14 +6,16 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
-const result = spawnSync(
-  process.execPath,
+const commands = [
   [path.join(directory, "verify-repository-ruleset-contract.mjs"), "--self-test"],
-  { stdio: "inherit" },
-);
+  [path.join(directory, "verify-repository-ruleset-structure.mjs")],
+];
 
-if (result.error) {
-  console.error(result.error.message);
-  process.exit(1);
+for (const command of commands) {
+  const result = spawnSync(process.execPath, command, { stdio: "inherit" });
+  if (result.error) {
+    console.error(result.error.message);
+    process.exit(1);
+  }
+  if ((result.status ?? 1) !== 0) process.exit(result.status ?? 1);
 }
-process.exit(result.status ?? 1);
