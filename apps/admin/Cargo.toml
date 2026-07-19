@@ -9,7 +9,7 @@ description.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "rustok-admin-app"
+name = "rustok-admin"
 path = "src/main.rs"
 test = false
 bench = false
