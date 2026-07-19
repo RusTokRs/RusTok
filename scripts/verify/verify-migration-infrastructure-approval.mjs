@@ -61,13 +61,34 @@ function parseLabels(value) {
 
 function fileState(root, relativePath) {
   const file = path.join(root, relativePath);
-  if (!fs.existsSync(file)) return null;
-  return fs.readFileSync(file, "utf8").replaceAll("\r\n", "\n");
+  if (!fs.existsSync(file)) return { kind: "missing" };
+
+  const stats = fs.lstatSync(file);
+  if (stats.isSymbolicLink()) {
+    return { kind: "symlink", target: fs.readlinkSync(file) };
+  }
+  if (!stats.isFile()) {
+    return { kind: "non-regular" };
+  }
+  return {
+    kind: "file",
+    content: fs.readFileSync(file, "utf8").replaceAll("\r\n", "\n"),
+  };
+}
+
+function isUnsafeFileState(state) {
+  return state.kind === "symlink" || state.kind === "non-regular";
+}
+
+function unsafeProtectedPaths(root) {
+  return PROTECTED_PATHS.filter((relativePath) => isUnsafeFileState(fileState(root, relativePath)));
 }
 
 function changedProtectedPaths(baseRoot, headRoot) {
   return PROTECTED_PATHS.filter(
-    (relativePath) => fileState(baseRoot, relativePath) !== fileState(headRoot, relativePath),
+    (relativePath) =>
+      JSON.stringify(fileState(baseRoot, relativePath)) !==
+      JSON.stringify(fileState(headRoot, relativePath)),
   );
 }
 
@@ -96,6 +117,10 @@ function runSelfTest() {
     approvalDecision([PROTECTED_PATHS[2]], new Set(), true),
     { required: true, approved: true },
   );
+  assert.equal(isUnsafeFileState({ kind: "file", content: "policy" }), false);
+  assert.equal(isUnsafeFileState({ kind: "missing" }), false);
+  assert.equal(isUnsafeFileState({ kind: "symlink", target: "../base/policy" }), true);
+  assert.equal(isUnsafeFileState({ kind: "non-regular" }), true);
   console.log("✔ migration infrastructure approval self-test passed");
 }
 
@@ -111,10 +136,21 @@ function main() {
     );
   }
 
-  const changedPaths = changedProtectedPaths(
-    path.resolve(options.baseDir),
-    path.resolve(options.headDir),
-  );
+  const baseRoot = path.resolve(options.baseDir);
+  const headRoot = path.resolve(options.headDir);
+  const unsafeBasePaths = unsafeProtectedPaths(baseRoot);
+  const unsafeHeadPaths = unsafeProtectedPaths(headRoot);
+  if (unsafeBasePaths.length > 0 || unsafeHeadPaths.length > 0) {
+    const details = [
+      ...unsafeBasePaths.map((relativePath) => `base:${relativePath}`),
+      ...unsafeHeadPaths.map((relativePath) => `head:${relativePath}`),
+    ];
+    throw new Error(
+      `protected migration infrastructure must be regular files, refusing symlink or non-regular path(s): ${details.join(", ")}`,
+    );
+  }
+
+  const changedPaths = changedProtectedPaths(baseRoot, headRoot);
   const decision = approvalDecision(
     changedPaths,
     parseLabels(options.labelsJson),
