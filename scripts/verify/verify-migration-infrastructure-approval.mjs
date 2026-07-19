@@ -8,6 +8,7 @@ import process from "node:process";
 const APPROVAL_LABEL = "migration-infra-approved";
 const PROTECTED_PATHS = [
   ".github/workflows/migration-compatibility.yml",
+  ".github/workflows/migration-infrastructure-approval.yml",
   "crates/rustok-migrations/src/bin/export_migration_plan.rs",
   "crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs",
   "crates/rustok-migrations/tests/support/mod.rs",
