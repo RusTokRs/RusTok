@@ -15,11 +15,20 @@ permissions:
 
 jobs:
   probe:
-    name: Observe Cargo lock repair
+    name: Observe guarded repairs
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: List repair workflow runs
+      - name: List migration compile repair runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh run list
+          --repo "$GITHUB_REPOSITORY"
+          --workflow one-off-fix-migration-compile.yml
+          --limit 10
+          --json databaseId,event,status,conclusion,createdAt,updatedAt,headSha,displayTitle,url
+      - name: List Cargo lock repair runs
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
