@@ -137,7 +137,7 @@ requireMarkers("scripts/verify/verify-migration-backfill-contracts.mjs", [
   "function appendedMigrations",
   "function validateContracts",
   "appended migration ${migration} has no backfill contract",
-  "contract.mode === \"fixture\"",
+  'contract.mode === "fixture"',
   "setup_sql",
   "assertion_sql",
   "backfill fixture(s) selected",
@@ -162,6 +162,12 @@ requireMarkers("scripts/verify/verify-migration-infrastructure-approval.mjs", [
   "verify-migration-backfill-self-test.mjs",
   "verify-migration-compatibility-contract.mjs",
   "verify-migration-infra-self-test.mjs",
+  "fs.lstatSync(file)",
+  "stats.isSymbolicLink()",
+  "stats.isFile()",
+  "function isUnsafeFileState",
+  "function unsafeProtectedPaths",
+  "protected migration infrastructure must be regular files",
   "function changedProtectedPaths",
   "function approvalDecision",
   "function runSelfTest",
@@ -278,5 +284,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ append-only planning, declared backfills, strict fixtures, bounded PostgreSQL roles, fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
+  "✔ append-only planning, declared backfills, strict fixture assertions, symlink-safe approval, bounded PostgreSQL roles, fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
 );
