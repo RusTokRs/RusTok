@@ -1,0 +1,76 @@
+name: Migration Bootstrap Probe
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Browser migration bootstrap probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-bookworm@sha256:05bb94c3949035f4da16815d91b389443f3dbc5db95d65e2cb9b1abbf8565974
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+      - name: Create bounded PostgreSQL role
+        run: |
+          set -euo pipefail
+          container=$(docker ps --filter publish=5432 --format '{{.ID}}' | head -n 1)
+          docker exec "$container" psql --set ON_ERROR_STOP=1 --username postgres --dbname postgres <<'SQL'
+          CREATE ROLE rustok_browser
+            LOGIN
+            PASSWORD 'rustok_browser_password'
+            CREATEDB
+            NOSUPERUSER
+            NOCREATEROLE
+            NOREPLICATION
+            NOBYPASSRLS
+            CONNECTION LIMIT 10;
+          SQL
+      - name: Run isolated migration smoke
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-bootstrap-probe
+          RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://rustok_browser:rustok_browser_password@127.0.0.1:5432/postgres
+          RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_browser_smoke_probe
+          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "0"
+          RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"
+          RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
+          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
+        shell: bash
+        run: |
+          set +e
+          cargo test --locked -p rustok-migrations \
+            --test postgres_zero_migration_smoke \
+            postgres_zero_migration_smoke_applies_from_empty_database \
+            -- --ignored --nocapture > /tmp/migration-bootstrap.log 2>&1
+          exit_code=$?
+          set -e
+          tail -n 160 /tmp/migration-bootstrap.log
+          exit "$exit_code"
