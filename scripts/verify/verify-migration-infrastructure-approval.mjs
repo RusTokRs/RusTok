@@ -2,6 +2,7 @@
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
@@ -62,9 +63,8 @@ function parseLabels(value) {
 
 function fileState(root, relativePath) {
   const file = path.join(root, relativePath);
-  if (!fs.existsSync(file)) return { kind: "missing" };
-
-  const stats = fs.lstatSync(file);
+  const stats = fs.lstatSync(file, { throwIfNoEntry: false });
+  if (!stats) return { kind: "missing" };
   if (stats.isSymbolicLink()) {
     return { kind: "symlink", target: fs.readlinkSync(file) };
   }
@@ -122,6 +122,23 @@ function runSelfTest() {
   assert.equal(isUnsafeFileState({ kind: "missing" }), false);
   assert.equal(isUnsafeFileState({ kind: "symlink", target: "../base/policy" }), true);
   assert.equal(isUnsafeFileState({ kind: "non-regular" }), true);
+
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rustok-migration-approval-"));
+  try {
+    fs.writeFileSync(path.join(fixtureRoot, "target.txt"), "policy");
+    fs.symlinkSync("target.txt", path.join(fixtureRoot, "link.txt"));
+    fs.symlinkSync("missing.txt", path.join(fixtureRoot, "dangling.txt"));
+    assert.deepEqual(fileState(fixtureRoot, "link.txt"), {
+      kind: "symlink",
+      target: "target.txt",
+    });
+    assert.deepEqual(fileState(fixtureRoot, "dangling.txt"), {
+      kind: "symlink",
+      target: "missing.txt",
+    });
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
   console.log("✔ migration infrastructure approval self-test passed");
 }
 
