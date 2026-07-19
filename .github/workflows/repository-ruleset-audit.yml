@@ -45,8 +45,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify repository ruleset fixtures
-        run: node "$GITHUB_WORKSPACE/base/scripts/verify/verify-repository-ruleset-contract.mjs" --self-test
+      - name: Verify full repository ruleset contract suite
+        run: node "$GITHUB_WORKSPACE/base/scripts/verify/verify-repository-ruleset-self-test.mjs"
 
       - name: Audit active main branch rules
         id: audit
