@@ -180,7 +180,7 @@ requireMarkers("scripts/verify/verify-migration-infra-self-test.mjs", [
 const workflow = ".github/workflows/migration-compatibility.yml";
 requireMarkers(workflow, [
   "name: Migration Compatibility",
-  "pull_request_target:",
+  "pull_request:",
   "allow_infrastructure_changes:",
   "permissions:\n  contents: read",
   "persist-credentials: false",
@@ -248,7 +248,7 @@ requireOccurrenceCount(
   2,
 );
 forbidMarkers(workflow, [
-  "\n  pull_request:\n",
+  "pull_request_target:",
   "continue-on-error: true",
   "|| true",
   "RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@",
@@ -284,5 +284,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ append-only planning, declared backfills, strict fixture assertions, symlink-safe approval, bounded PostgreSQL roles, fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
+  "✔ append-only planning, declared backfills, strict fixture assertions, symlink-safe approval, sandboxed pull-request execution, bounded PostgreSQL roles, fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
 );
