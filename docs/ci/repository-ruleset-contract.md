@@ -1,0 +1,28 @@
+# Repository ruleset contract
+
+The `main` branch must have an active GitHub ruleset whose `required_status_checks` rule contains the exact context `Migration harness approval`.
+
+The check must:
+
+- originate from the GitHub Actions application (`integration_id: 15368`), not from `any source`;
+- use strict required-status-check policy so a pull request is tested against the current base branch;
+- set `do_not_enforce_on_create` to `false`;
+- target `refs/heads/main` through an active repository or organization ruleset.
+
+The machine-readable source of truth is [`repository-ruleset-contract.json`](repository-ruleset-contract.json). The live audit is implemented by `.github/workflows/repository-ruleset-audit.yml` and `scripts/verify/verify-repository-ruleset-contract.mjs`.
+
+## Administrative setup
+
+1. Open repository or organization rulesets and create an active branch ruleset targeting `main`.
+2. Enable **Require status checks to pass before merging**.
+3. Add `Migration harness approval` as a required check.
+4. Select GitHub Actions as the expected source rather than `any source`.
+5. Enable **Require branches to be up to date before merging**.
+6. Do not enable the option that skips required checks when the branch is created.
+7. Avoid permanent bypass actors. Any temporary bypass must be time-bounded and reviewed separately because the public active-rules endpoint does not expose bypass actors.
+
+The `Repository Ruleset Contract` workflow runs on pull requests targeting `main`, pushes to `main`, a daily schedule, and manual dispatch. It checks the active rules returned by GitHub's branch rules API and fails closed on missing, duplicated, loose, source-unbound, malformed, or symlinked policy data.
+
+## Stronger organization-level option
+
+GitHub Enterprise Cloud organizations should additionally use **Require workflows to pass before merging** and bind the base-owned `.github/workflows/migration-infrastructure-approval.yml` workflow from `main`. A required workflow is stronger than a status-context-only rule because required status check names do not identify a specific workflow file or trigger. The repository-level status-check contract remains the minimum portable baseline.
