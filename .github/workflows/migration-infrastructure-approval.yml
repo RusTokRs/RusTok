@@ -28,6 +28,7 @@ on:
 
 permissions:
   contents: read
+  checks: write
 
 concurrency:
   group: migration-infrastructure-approval-${{ github.event.pull_request.number || github.ref }}
@@ -42,12 +43,12 @@ env:
 
 jobs:
   infrastructure-approval:
-    name: Migration harness approval
+    name: Migration harness approval evaluator
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout base policy source
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           repository: ${{ env.BASE_REPOSITORY }}
           ref: ${{ env.BASE_REF }}
@@ -56,7 +57,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout head policy as untrusted data
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           repository: ${{ env.HEAD_REPOSITORY }}
           ref: ${{ env.HEAD_REF }}
@@ -65,7 +66,7 @@ jobs:
           persist-credentials: false
           allow-unsafe-pr-checkout: true
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
 
@@ -74,13 +75,53 @@ jobs:
           node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-infrastructure-approval.mjs"
           --self-test
 
-      - name: Require approval for migration harness changes
+      - name: Evaluate migration harness approval
+        id: approval
+        shell: bash
         env:
           PR_LABELS_JSON: ${{ github.event_name == 'pull_request_target' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
           EXPLICIT_APPROVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_infrastructure_changes || false }}
-        run: >-
-          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-infrastructure-approval.mjs"
-          --base-dir "$GITHUB_WORKSPACE/base"
-          --head-dir "$GITHUB_WORKSPACE/head"
-          --labels-json "$PR_LABELS_JSON"
-          --explicitly-approved "$EXPLICIT_APPROVAL"
+        run: |
+          set +e
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-infrastructure-approval.mjs" \
+            --base-dir "$GITHUB_WORKSPACE/base" \
+            --head-dir "$GITHUB_WORKSPACE/head" \
+            --labels-json "$PR_LABELS_JSON" \
+            --explicitly-approved "$EXPLICIT_APPROVAL"
+          exit_code=$?
+          set -e
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+      - name: Publish migration approval check on PR head
+        if: github.event_name == 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXIT_CODE: ${{ steps.approval.outputs.exit_code }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EXIT_CODE" == "0" ]]; then
+            conclusion=success
+            title="Migration infrastructure approval passed"
+            summary="Protected migration infrastructure is unchanged or explicitly approved."
+          else
+            conclusion=failure
+            title="Migration infrastructure approval required"
+            summary="Protected migration infrastructure changed without migration-infra-approved."
+          fi
+          gh api --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "/repos/$GITHUB_REPOSITORY/check-runs" \
+            -f name="Migration harness approval" \
+            -f head_sha="$HEAD_SHA" \
+            -f status="completed" \
+            -f conclusion="$conclusion" \
+            -f details_url="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            -f "output[title]=$title" \
+            -f "output[summary]=$summary"
+
+      - name: Enforce migration approval decision
+        if: steps.approval.outputs.exit_code != '0'
+        run: exit 1
