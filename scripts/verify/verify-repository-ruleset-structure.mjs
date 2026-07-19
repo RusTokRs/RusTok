@@ -83,9 +83,10 @@ requireMarkers("docs/ci/main-protection-rollout.md", [
   "Finish the currently authorized direct-to-`main` implementation series.",
   "Require a pull request before merging.",
   "Require conversation resolution before merging.",
-  "head-SHA `Migration harness approval`",
+  "successful head-SHA `Migration harness approval` and `Repository ruleset contract` Check Runs",
   "changes a protected migration file without the approval label",
   "Apply `migration-infra-approved`",
+  "both required checks are attached to the latest PR head SHA",
   "Make pull requests the only normal delivery path",
   "Use a time-bounded organization or repository owner bypass.",
   "Remove the temporary bypass immediately.",
@@ -94,6 +95,8 @@ requireMarkers("docs/ci/main-protection-rollout.md", [
 requireMarkers("docs/ci/ruleset-activation-request.md", [
   "POST /repos/RusTokRs/RusTok/rulesets",
   "Migration harness approval",
+  "Repository ruleset contract",
+  "GitHub Actions integration `15368`",
   "Direct pushes to `main`, force pushes and branch deletion are rejected",
   "No permanent bypass actor is configured.",
 ]);
@@ -139,14 +142,17 @@ requireMarkers("scripts/verify/verify-repository-ruleset-admin-payload.mjs", [
 requireMarkers("scripts/verify/verify-main-protection-rollout.mjs", [
   "docs/ci/main-protection-rollout.md",
   "must be a regular non-symlink file",
-  "head-SHA `Migration harness approval`",
+  "successful head-SHA `Migration harness approval` and `Repository ruleset contract` Check Runs",
   "Apply `migration-infra-approved`",
+  "both required checks are attached to the latest PR head SHA",
   "Make pull requests the only normal delivery path",
 ]);
 
 requireMarkers("scripts/verify/verify-ruleset-activation-request.mjs", [
   "docs/ci/ruleset-activation-request.md",
   "docs/ci/ruleset-activation-state.json",
+  "Repository ruleset contract",
+  "GitHub Actions integration `15368`",
   "pending_administrative_cutover",
   "current_direct_to_main_implementation_series",
   "issue: 1837",
@@ -215,7 +221,8 @@ requireMarkers(workflow, [
   "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
   "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38",
   "persist-credentials: false",
-  "Verify repository ruleset fixtures",
+  "Verify full repository ruleset contract suite",
+  "base/scripts/verify/verify-repository-ruleset-self-test.mjs",
   "Audit active main branch rules",
   "id: audit",
   "set +e",
@@ -284,5 +291,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ strict GitHub-Actions-bound PR-head migration approval and live ruleset audit, active payload, pending owner issue, deterministic fixtures, protected wiring and PR-only main cutover are structurally bound",
+  "✔ strict GitHub-Actions-bound PR-head migration approval and live ruleset audit, standalone full contract suite, active payload, pending owner issue, protected wiring and PR-only main cutover are structurally bound",
 );
