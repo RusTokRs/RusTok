@@ -81,7 +81,7 @@ jobs:
         run: cargo check -p rustok-page-builder-storefront --lib
 
       - name: Check admin SSR Page Builder endpoint
-        run: cargo check -p rustok-admin --bin rustok-admin-app --no-default-features --features ssr
+        run: cargo check -p rustok-admin --bin rustok-admin --no-default-features --features ssr
 
       - name: Lint Fly
         run: cargo clippy -p fly --lib -- -D warnings
