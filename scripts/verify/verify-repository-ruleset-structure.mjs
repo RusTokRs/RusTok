@@ -49,6 +49,22 @@ requireMarkers("docs/ci/repository-ruleset-contract.json", [
   '"strict": true',
 ]);
 
+requireMarkers("docs/ci/repository-ruleset-admin-payload.json", [
+  '"enforcement": "active"',
+  '"bypass_actors": []',
+  '"refs/heads/main"',
+  '"type": "deletion"',
+  '"type": "non_fast_forward"',
+  '"type": "pull_request"',
+  '"required_approving_review_count": 1',
+  '"require_last_push_approval": true',
+  '"required_review_thread_resolution": true',
+  '"type": "required_status_checks"',
+  '"strict_required_status_checks_policy": true',
+  '"context": "Migration harness approval"',
+  '"integration_id": 15368',
+]);
+
 requireMarkers("docs/ci/repository-ruleset-contract.md", [
   "Migration harness approval",
   "integration_id: 15368",
@@ -71,6 +87,19 @@ requireMarkers("docs/ci/main-protection-rollout.md", [
   "Remove the temporary bypass immediately.",
 ]);
 
+requireMarkers("docs/ci/ruleset-activation-request.md", [
+  "POST /repos/RusTokRs/RusTok/rulesets",
+  "Migration harness approval",
+  "Direct pushes to `main`, force pushes and branch deletion are rejected",
+  "No permanent bypass actor is configured.",
+]);
+requireMarkers("docs/ci/ruleset-activation-state.json", [
+  '"owner": "loid345"',
+  '"state": "pending_administrative_cutover"',
+  '"issue": 1837',
+  '"payload": "docs/ci/repository-ruleset-admin-payload.json"',
+]);
+
 const verifier = "scripts/verify/verify-repository-ruleset-contract.mjs";
 requireMarkers(verifier, [
   'const API_VERSION = "2026-03-10"',
@@ -91,6 +120,18 @@ requireMarkers(verifier, [
 ]);
 forbidMarkers(verifier, ["continue-on-error", "|| true", "redirect: \"follow\""]);
 
+requireMarkers("scripts/verify/verify-repository-ruleset-admin-payload.mjs", [
+  "payload enforcement must be active",
+  "payload must not define permanent bypass actors",
+  "payload must target only refs/heads/${contract.branch}",
+  "non-fast-forward rule",
+  "pull request rule must require exactly one approving review",
+  "pull request rule must require approval after the last push",
+  "pull request rule must require conversation resolution",
+  "required status checks must use strict branch freshness",
+  "admin payload required checks differ from the ruleset contract",
+]);
+
 requireMarkers("scripts/verify/verify-main-protection-rollout.mjs", [
   "docs/ci/main-protection-rollout.md",
   "must be a regular non-symlink file",
@@ -99,11 +140,22 @@ requireMarkers("scripts/verify/verify-main-protection-rollout.mjs", [
   "Make pull requests the only normal delivery path",
 ]);
 
+requireMarkers("scripts/verify/verify-ruleset-activation-request.mjs", [
+  "docs/ci/ruleset-activation-request.md",
+  "docs/ci/ruleset-activation-state.json",
+  "pending_administrative_cutover",
+  "current_direct_to_main_implementation_series",
+  "issue: 1837",
+  "ruleset owner action, issue 1837",
+]);
+
 requireMarkers("scripts/verify/verify-repository-ruleset-self-test.mjs", [
   "verify-repository-ruleset-contract.mjs",
   '"--self-test"',
+  "verify-repository-ruleset-admin-payload.mjs",
   "verify-repository-ruleset-structure.mjs",
   "verify-main-protection-rollout.mjs",
+  "verify-ruleset-activation-request.mjs",
 ]);
 
 const approvalWorkflow = ".github/workflows/migration-infrastructure-approval.yml";
@@ -185,11 +237,16 @@ requireMarkers("scripts/verify/verify-migration-infrastructure-approval.mjs", [
   ".github/workflows/hardening-gates.yml",
   "docs/ci/repository-ruleset-contract.json",
   "docs/ci/repository-ruleset-contract.md",
+  "docs/ci/repository-ruleset-admin-payload.json",
   "docs/ci/main-protection-rollout.md",
+  "docs/ci/ruleset-activation-request.md",
+  "docs/ci/ruleset-activation-state.json",
   "scripts/verify/verify-repository-ruleset-contract.mjs",
+  "scripts/verify/verify-repository-ruleset-admin-payload.mjs",
   "scripts/verify/verify-repository-ruleset-self-test.mjs",
   "scripts/verify/verify-repository-ruleset-structure.mjs",
   "scripts/verify/verify-main-protection-rollout.mjs",
+  "scripts/verify/verify-ruleset-activation-request.mjs",
   "scripts/verify/verify-all.sh",
 ]);
 
@@ -209,5 +266,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ strict GitHub-Actions-bound PR-head migration approval, base-owned live audit, deterministic fixtures, protected verification wiring and PR-only main cutover are structurally bound",
+  "✔ strict GitHub-Actions-bound PR-head migration approval, active payload, base-owned live audit, pending owner issue, deterministic fixtures, protected wiring and PR-only main cutover are structurally bound",
 );
