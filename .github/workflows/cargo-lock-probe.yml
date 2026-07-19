@@ -1,0 +1,48 @@
+name: Cargo Lockfile Probe
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Generate Cargo lockfile diff
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+      - name: Generate lockfile and bounded diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp Cargo.lock Cargo.lock.before
+          cargo generate-lockfile
+          git diff --check -- Cargo.lock
+          git diff --stat -- Cargo.lock | tee cargo-lock-stat.txt
+          git diff -- Cargo.lock > cargo-lock.diff
+          test -s cargo-lock.diff
+      - name: Upload lockfile evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cargo-lock-drift-${{ github.run_id }}
+          path: |
+            Cargo.lock
+            Cargo.lock.before
+            cargo-lock.diff
+            cargo-lock-stat.txt
+          if-no-files-found: error
+          retention-days: 1
