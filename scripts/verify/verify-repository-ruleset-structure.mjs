@@ -52,6 +52,7 @@ requireMarkers("docs/ci/repository-ruleset-contract.json", [
 requireMarkers("docs/ci/repository-ruleset-contract.md", [
   "Migration harness approval",
   "integration_id: 15368",
+  "PR head SHA",
   "Require status checks to pass before merging",
   "Require branches to be up to date before merging",
   "Avoid permanent bypass actors",
@@ -84,6 +85,44 @@ requireMarkers("scripts/verify/verify-repository-ruleset-self-test.mjs", [
   "verify-repository-ruleset-structure.mjs",
 ]);
 
+const approvalWorkflow = ".github/workflows/migration-infrastructure-approval.yml";
+requireMarkers(approvalWorkflow, [
+  "pull_request_target:",
+  "permissions:\n  contents: read\n  checks: write",
+  "Migration harness approval evaluator",
+  "Checkout base policy source",
+  "Checkout head policy as untrusted data",
+  "allow-unsafe-pr-checkout: true",
+  "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+  "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38",
+  "Require approval for migration harness changes",
+  "id: approval",
+  "set +e",
+  "exit_code=$?",
+  'echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"',
+  "Publish migration approval check on PR head",
+  "HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
+  "EXIT_CODE: ${{ steps.approval.outputs.exit_code }}",
+  '"/repos/$GITHUB_REPOSITORY/check-runs"',
+  '-f name="Migration harness approval"',
+  '-f head_sha="$HEAD_SHA"',
+  '-f status="completed"',
+  '-f conclusion="$conclusion"',
+  "Enforce migration approval decision",
+  "if: steps.approval.outputs.exit_code != '0'",
+]);
+forbidMarkers(approvalWorkflow, [
+  "contents: write",
+  "pull-requests: write",
+  "statuses: write",
+  "secrets:",
+  'node "$GITHUB_WORKSPACE/head/',
+  'bash "$GITHUB_WORKSPACE/head/',
+  "uses: ./head",
+  "continue-on-error: true",
+  "|| true",
+]);
+
 const workflow = ".github/workflows/repository-ruleset-audit.yml";
 requireMarkers(workflow, [
   "name: Repository Ruleset Contract",
@@ -109,6 +148,7 @@ requireMarkers(workflow, [
 ]);
 forbidMarkers(workflow, [
   "contents: write",
+  "checks: write",
   "pull-requests: write",
   "secrets:",
   "Checkout head",
@@ -146,5 +186,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ strict GitHub-Actions-bound migration approval, base-owned live audit, deterministic fixtures and protected verification wiring are structurally bound",
+  "✔ strict GitHub-Actions-bound PR-head migration approval, base-owned live audit, deterministic fixtures and protected verification wiring are structurally bound",
 );
