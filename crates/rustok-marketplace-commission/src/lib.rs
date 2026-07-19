@@ -3,21 +3,25 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+mod allocation_filter;
+mod commission_service;
 mod receipts;
+mod service;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod cancelled_allocation_tests;
 
 pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
 pub mod ports;
-pub mod service;
 
+pub use commission_service::MarketplaceCommissionService;
 pub use dto::*;
 pub use error::{MarketplaceCommissionError, MarketplaceCommissionResult};
 pub use ports::*;
-pub use service::MarketplaceCommissionService;
 
 /// Owns versioned commission rules and immutable assessments derived from allocations.
 pub struct MarketplaceCommissionModule;
