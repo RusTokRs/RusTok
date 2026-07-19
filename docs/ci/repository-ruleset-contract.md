@@ -37,3 +37,5 @@ The `Repository Ruleset Contract` workflow runs on pull requests targeting `main
 ## Stronger organization-level option
 
 GitHub Enterprise Cloud organizations should additionally use **Require workflows to pass before merging** and bind the base-owned migration and ruleset evaluator workflows from `main`. A required workflow is stronger than a status-context-only rule because required status check names do not identify a specific workflow file or trigger. The repository-level two-check contract remains the minimum portable baseline.
+
+<!-- smoke-only protected change; this branch must never merge -->
