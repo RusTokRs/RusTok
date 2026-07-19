@@ -21,7 +21,9 @@
       "usage": ["list_allocations_by_order"],
       "foreign_entities_imported": false,
       "provider_read_before_owner_transaction": true,
-      "completed_receipt_replay_before_provider_read": true
+      "completed_receipt_replay_before_provider_read": true,
+      "required_allocation_status": "allocated",
+      "cancelled_allocation": "reject_before_receipt_admission"
     }
   ],
   "ports": [
@@ -89,8 +91,12 @@
       "seller_proceeds_amount"
     ]
   },
+  "composition": {
+    "modules_manifest": true,
+    "distribution_feature": "mod-marketplace_commission",
+    "marketplace_root_read_projection": true
+  },
   "known_gaps": [
-    "platform composition registration",
     "automatic assessment orchestration",
     "assessment reversal lifecycle",
     "external event contracts and outbox",
