@@ -10,6 +10,12 @@
       "integration_slug": "github-actions",
       "integration_id": 15368,
       "strict": true
+    },
+    {
+      "context": "Repository ruleset contract",
+      "integration_slug": "github-actions",
+      "integration_id": 15368,
+      "strict": true
     }
   ]
 }
