@@ -14,6 +14,7 @@ const PROTECTED_PATHS = [
   ".github/workflows/hardening-gates.yml",
   "docs/ci/repository-ruleset-contract.json",
   "docs/ci/repository-ruleset-contract.md",
+  "docs/ci/main-protection-rollout.md",
   "crates/rustok-migrations/src/bin/export_migration_plan.rs",
   "crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs",
   "crates/rustok-migrations/tests/support/mod.rs",
@@ -29,6 +30,7 @@ const PROTECTED_PATHS = [
   "scripts/verify/verify-repository-ruleset-contract.mjs",
   "scripts/verify/verify-repository-ruleset-self-test.mjs",
   "scripts/verify/verify-repository-ruleset-structure.mjs",
+  "scripts/verify/verify-main-protection-rollout.mjs",
   "scripts/verify/verify-all.sh",
 ];
 
