@@ -28,6 +28,7 @@ const PROTECTED_PATHS = [
   "scripts/verify/verify-migration-infra-self-test.mjs",
   "scripts/verify/verify-repository-ruleset-contract.mjs",
   "scripts/verify/verify-repository-ruleset-self-test.mjs",
+  "scripts/verify/verify-repository-ruleset-structure.mjs",
   "scripts/verify/verify-all.sh",
 ];
 
