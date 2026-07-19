@@ -1,0 +1,74 @@
+name: Ruleset Check Run Probe
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  checks: read
+
+jobs:
+  probe:
+    name: Observe ruleset custom checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Poll PR head check runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 24); do
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "/repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" \
+              > /tmp/check-runs.json
+            node <<'NODE'
+          const fs = require('fs');
+          const checks = JSON.parse(fs.readFileSync('/tmp/check-runs.json', 'utf8')).check_runs ?? [];
+          for (const check of checks) {
+            if (["Migration harness approval", "Repository ruleset contract"].includes(check.name)) {
+              console.log(`${check.name}\t${check.status}\t${check.conclusion ?? ""}\t${check.app?.slug ?? ""}`);
+            }
+          }
+          NODE
+            if node <<'NODE'
+          const fs = require('fs');
+          const checks = JSON.parse(fs.readFileSync('/tmp/check-runs.json', 'utf8')).check_runs ?? [];
+          const byName = new Map(checks.map((check) => [check.name, check]));
+          const migration = byName.get('Migration harness approval');
+          const ruleset = byName.get('Repository ruleset contract');
+          process.exit(migration?.status === 'completed' && ruleset?.status === 'completed' ? 0 : 1);
+          NODE
+            then
+              break
+            fi
+            sleep 5
+          done
+          node <<'NODE'
+          const fs = require('fs');
+          const checks = JSON.parse(fs.readFileSync('/tmp/check-runs.json', 'utf8')).check_runs ?? [];
+          const byName = new Map(checks.map((check) => [check.name, check]));
+          const migration = byName.get('Migration harness approval');
+          const ruleset = byName.get('Repository ruleset contract');
+          if (!migration || !ruleset) throw new Error('both ruleset custom checks must be published');
+          if (migration.status !== 'completed' || migration.conclusion !== 'success') {
+            throw new Error(`Migration harness approval expected completed/success, got ${migration.status}/${migration.conclusion}`);
+          }
+          if (ruleset.status !== 'completed' || ruleset.conclusion !== 'failure') {
+            throw new Error(`Repository ruleset contract expected completed/failure before activation, got ${ruleset.status}/${ruleset.conclusion}`);
+          }
+          if (migration.app?.slug !== 'github-actions' || ruleset.app?.slug !== 'github-actions') {
+            throw new Error('both custom checks must originate from github-actions');
+          }
+          console.log('✔ observed expected pre-activation custom check results on PR head SHA');
+          NODE
