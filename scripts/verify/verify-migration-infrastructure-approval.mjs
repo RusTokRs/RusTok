@@ -10,6 +10,10 @@ const APPROVAL_LABEL = "migration-infra-approved";
 const PROTECTED_PATHS = [
   ".github/workflows/migration-compatibility.yml",
   ".github/workflows/migration-infrastructure-approval.yml",
+  ".github/workflows/repository-ruleset-audit.yml",
+  ".github/workflows/hardening-gates.yml",
+  "docs/ci/repository-ruleset-contract.json",
+  "docs/ci/repository-ruleset-contract.md",
   "crates/rustok-migrations/src/bin/export_migration_plan.rs",
   "crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs",
   "crates/rustok-migrations/tests/support/mod.rs",
@@ -22,6 +26,9 @@ const PROTECTED_PATHS = [
   "scripts/verify/verify-migration-compatibility-contract.mjs",
   "scripts/verify/verify-migration-infrastructure-approval.mjs",
   "scripts/verify/verify-migration-infra-self-test.mjs",
+  "scripts/verify/verify-repository-ruleset-contract.mjs",
+  "scripts/verify/verify-repository-ruleset-self-test.mjs",
+  "scripts/verify/verify-all.sh",
 ];
 
 function parseArguments(argv) {
