@@ -46,26 +46,26 @@ function requireCount(relativePath, marker, expected) {
 }
 
 requireMarkers("apps/admin/Dockerfile", [
-  "Development-only CSR host",
-  "Production standalone admin must use the nonce-bearing SSR binary",
   "FROM node:22-bookworm-slim AS node-runtime",
-  "FROM rust:1.96-slim-bookworm AS development",
+  "FROM rust:1.96-slim-bookworm AS admin-toolchain",
   "COPY --from=node-runtime /usr/local /usr/local",
+  "FROM admin-toolchain AS development",
   "TRUNK_BUILD_PUBLIC_URL=/",
   "TRUNK_BUILD_LOCKED=true",
   "cargo install trunk --version 0.21.14 --locked --root /opt/trunk",
-  "COPY . .",
   "npm ci --no-audit --no-fund",
   "exec /opt/trunk/bin/trunk serve --address 0.0.0.0 --port 3001",
+  "FROM admin-toolchain AS ssr-builder",
+  "build-standalone-admin-ssr.sh",
+  "FROM debian:bookworm-20260713-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818 AS production",
+  'ENTRYPOINT ["/app/rustok-admin"]',
 ]);
 forbidMarkers("apps/admin/Dockerfile", [
-  "AS production",
   "FROM nginx:",
   'CMD ["nginx"',
   "/usr/share/nginx/html",
   "cargo install trunk --locked\n",
   "cargo install wasm-bindgen-cli",
-  "trunk build --release",
   "COPY crates ./crates",
   "COPY apps/admin ./apps/admin",
 ]);
@@ -197,5 +197,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ development containers use bounded PostgreSQL ownership, non-destructive migrations, locked admin tooling, real health paths and server-hosted Rust storefront topology",
+  "✔ development containers use bounded PostgreSQL ownership, non-destructive migrations, locked admin tooling, SSR-only admin production and server-hosted Rust storefront topology",
 );
