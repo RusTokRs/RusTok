@@ -16,6 +16,8 @@ const PROTECTED_PATHS = [
   "docs/ci/repository-ruleset-contract.md",
   "docs/ci/repository-ruleset-admin-payload.json",
   "docs/ci/main-protection-rollout.md",
+  "docs/ci/ruleset-activation-request.md",
+  "docs/ci/ruleset-activation-state.json",
   "crates/rustok-migrations/src/bin/export_migration_plan.rs",
   "crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs",
   "crates/rustok-migrations/tests/support/mod.rs",
@@ -33,6 +35,7 @@ const PROTECTED_PATHS = [
   "scripts/verify/verify-repository-ruleset-self-test.mjs",
   "scripts/verify/verify-repository-ruleset-structure.mjs",
   "scripts/verify/verify-main-protection-rollout.mjs",
+  "scripts/verify/verify-ruleset-activation-request.mjs",
   "scripts/verify/verify-all.sh",
 ];
 
