@@ -1,0 +1,57 @@
+name: Repository Ruleset Contract
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-ruleset-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  repository-ruleset-contract:
+    name: Repository ruleset contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout base-owned ruleset policy
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.sha }}
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+
+      - name: Verify repository ruleset fixtures
+        run: node "$GITHUB_WORKSPACE/base/scripts/verify/verify-repository-ruleset-contract.mjs" --self-test
+
+      - name: Audit active main branch rules
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-repository-ruleset-contract.mjs"
+          --contract "$GITHUB_WORKSPACE/base/docs/ci/repository-ruleset-contract.json"
+          --repository "$GITHUB_REPOSITORY"
+          --branch main
