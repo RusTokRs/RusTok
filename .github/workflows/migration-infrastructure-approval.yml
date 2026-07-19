@@ -75,7 +75,7 @@ jobs:
           node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-infrastructure-approval.mjs"
           --self-test
 
-      - name: Evaluate migration harness approval
+      - name: Require approval for migration harness changes
         id: approval
         shell: bash
         env:
