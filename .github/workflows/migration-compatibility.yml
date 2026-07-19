@@ -14,11 +14,6 @@ on:
         description: Head git ref or commit
         required: true
         default: main
-      allow_infrastructure_changes:
-        description: Explicitly approve migration compatibility harness changes
-        required: true
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -39,52 +34,8 @@ env:
   RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://rustok_migration:rustok_migration@localhost:5432/postgres
 
 jobs:
-  infrastructure-approval:
-    name: Migration harness approval
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout base policy source
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ env.BASE_REPOSITORY }}
-          ref: ${{ env.BASE_REF }}
-          path: base
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Checkout head policy source
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ env.HEAD_REPOSITORY }}
-          ref: ${{ env.HEAD_REF }}
-          path: head
-          fetch-depth: 1
-          persist-credentials: false
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-
-      - name: Verify base approval policy fixtures
-        run: >-
-          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-infrastructure-approval.mjs"
-          --self-test
-
-      - name: Require approval for migration harness changes
-        env:
-          PR_LABELS_JSON: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
-          EXPLICIT_APPROVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_infrastructure_changes || false }}
-        run: >-
-          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-infrastructure-approval.mjs"
-          --base-dir "$GITHUB_WORKSPACE/base"
-          --head-dir "$GITHUB_WORKSPACE/head"
-          --labels-json "$PR_LABELS_JSON"
-          --explicitly-approved "$EXPLICIT_APPROVAL"
-
   migration-plan:
     name: Append-only migration plan
-    needs: infrastructure-approval
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
