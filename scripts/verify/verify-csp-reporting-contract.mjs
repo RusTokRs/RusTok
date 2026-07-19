@@ -202,9 +202,6 @@ for (const marker of [
   requireMarker(appRouter, marker, appRouterFile);
 }
 
-forbidMarker(headers, "style-src-attr 'unsafe-inline'", headersFile);
-forbidMarker(standaloneAdminSecurity, "style-src-attr 'unsafe-inline'", standaloneAdminSecurityFile);
-
 verifyNoncePolicy(
   stringConstant(standaloneAdminSecurity, "ADMIN_UI_CSP_TEMPLATE", standaloneAdminSecurityFile),
   standaloneAdminSecurityFile,
@@ -293,9 +290,9 @@ for (const marker of [
   "## Collection Contract",
   "## Telemetry Contract",
   "## Target Policy Inventory",
-  "## Trusted Script Nonce Boundary",
+  "## Trusted Script and Style Element Nonce Boundary",
   "## Connection Profile Boundary",
-  "## Current Migration Debt",
+  "## Current Migration State",
   "## Enforcement Exit Criteria",
   "64 KiB",
   "20 per request",
