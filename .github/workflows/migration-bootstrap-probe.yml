@@ -55,6 +55,7 @@ jobs:
             CONNECTION LIMIT 10;
           SQL
       - name: Run isolated migration smoke
+        id: migration
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-bootstrap-probe
           RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://rustok_browser:rustok_browser_password@127.0.0.1:5432/postgres
@@ -69,8 +70,19 @@ jobs:
           cargo test --locked -p rustok-migrations \
             --test postgres_zero_migration_smoke \
             postgres_zero_migration_smoke_applies_from_empty_database \
-            -- --ignored --nocapture > /tmp/migration-bootstrap.log 2>&1
+            -- --ignored --nocapture > migration-bootstrap-output.txt 2>&1
           exit_code=$?
           set -e
-          tail -n 160 /tmp/migration-bootstrap.log
-          exit "$exit_code"
+          tail -n 160 migration-bootstrap-output.txt
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+      - name: Upload migration bootstrap output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: migration-bootstrap-output-${{ github.run_id }}
+          path: migration-bootstrap-output.txt
+          if-no-files-found: error
+          retention-days: 1
+      - name: Enforce migration bootstrap result
+        if: steps.migration.outputs.exit_code != '0'
+        run: exit 1
