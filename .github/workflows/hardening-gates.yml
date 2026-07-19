@@ -58,6 +58,8 @@ jobs:
         run: node scripts/verify/verify-migration-backfill-self-test.mjs
       - name: Verify migration infrastructure approval fixtures
         run: node scripts/verify/verify-migration-infra-self-test.mjs
+      - name: Verify repository ruleset contract fixtures
+        run: node scripts/verify/verify-repository-ruleset-self-test.mjs
       - name: Verify migration compatibility gate structure
         run: node scripts/verify/verify-migration-compatibility-contract.mjs
       - name: Verify release tooling fixtures
