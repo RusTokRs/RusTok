@@ -5,9 +5,12 @@ The `main` branch must have an active GitHub ruleset whose `required_status_chec
 The check must:
 
 - originate from the GitHub Actions application (`integration_id: 15368`), not from `any source`;
+- be published on the latest PR head SHA by the base-owned migration approval evaluator;
 - use strict required-status-check policy so a pull request is tested against the current base branch;
 - set `do_not_enforce_on_create` to `false`;
 - target `refs/heads/main` through an active repository or organization ruleset.
+
+The `pull_request_target` evaluator itself runs against trusted base policy. It does not rely on its workflow job status as the merge gate because that workflow context is based on the base revision. After comparing protected files as untrusted data, it creates a completed GitHub Check Run named `Migration harness approval` directly on the PR head SHA and then fails its evaluator job when approval is missing.
 
 The machine-readable source of truth is [`repository-ruleset-contract.json`](repository-ruleset-contract.json). The live audit is implemented by `.github/workflows/repository-ruleset-audit.yml` and `scripts/verify/verify-repository-ruleset-contract.mjs`.
 
@@ -15,7 +18,7 @@ The machine-readable source of truth is [`repository-ruleset-contract.json`](rep
 
 1. Open repository or organization rulesets and create an active branch ruleset targeting `main`.
 2. Enable **Require status checks to pass before merging**.
-3. Add `Migration harness approval` as a required check.
+3. Add `Migration harness approval` as a required check after the base-owned evaluator has published it at least once.
 4. Select GitHub Actions as the expected source rather than `any source`.
 5. Enable **Require branches to be up to date before merging**.
 6. Do not enable the option that skips required checks when the branch is created.
