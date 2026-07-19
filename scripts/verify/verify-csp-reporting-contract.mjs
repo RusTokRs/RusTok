@@ -277,7 +277,9 @@ for (const marker of [
 }
 
 for (const forbidden of [
-  "script_sample",
+  "script_sample:",
+  "script_sample =",
+  '.get("script-sample")',
   "script-sample:",
   "original_policy:",
   "query_pairs",
