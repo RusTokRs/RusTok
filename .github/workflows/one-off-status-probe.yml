@@ -1,0 +1,30 @@
+name: One-off Status Probe
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    name: Observe Cargo lock repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: List repair workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh run list
+          --repo "$GITHUB_REPOSITORY"
+          --workflow one-off-repair-cargo-lock.yml
+          --limit 10
+          --json databaseId,event,status,conclusion,createdAt,updatedAt,headSha,displayTitle,url
