@@ -38,6 +38,7 @@ usage() {
     echo "  migration-plan-self-test  Verify append-only migration-plan comparator fixtures"
     echo "  migration-backfill-self-test  Verify appended-migration backfill contract fixtures"
     echo "  migration-infra-self-test  Verify migration-harness approval policy fixtures"
+    echo "  repository-ruleset-self-test  Verify required migration approval ruleset fixtures"
     echo "  migration-compatibility-contract  Verify fresh/incremental/N-1 migration harness structure"
     echo "  release-tooling-self-test  Verify deterministic release tooling fixtures"
     echo "  release-infra-self-test  Verify release-infrastructure approval policy fixtures"
@@ -97,6 +98,7 @@ SCRIPTS=(
     "verify-migration-plan-self-test.mjs:Migration Plan Comparator Fixtures"
     "verify-migration-backfill-self-test.mjs:Migration Backfill Contract Fixtures"
     "verify-migration-infra-self-test.mjs:Migration Infrastructure Approval Fixtures"
+    "verify-repository-ruleset-self-test.mjs:Repository Ruleset Contract Fixtures"
     "verify-migration-compatibility-contract.mjs:Migration Compatibility Gate Structure"
     "verify-release-tooling-self-test.mjs:Release Tooling Fixtures"
     "verify-release-infra-self-test.mjs:Release Infrastructure Approval Fixtures"
@@ -238,23 +240,3 @@ for result in "${RESULTS[@]}"; do
 done
 
 echo ""
-echo -e "${SEPARATOR}"
-TOTAL=$((TOTAL_PASSED + TOTAL_FAILED))
-echo -e "  Total: $TOTAL suites | ${GREEN}$TOTAL_PASSED passed${NC} | ${RED}$TOTAL_FAILED failed${NC}"
-
-if [[ $TOTAL_FAILED -eq 0 ]]; then
-    echo ""
-    echo -e "  ${GREEN}${BOLD}All verification suites passed!${NC}"
-    exit 0
-else
-    echo ""
-    echo -e "  ${RED}${BOLD}$TOTAL_FAILED suite(s) have errors. Review output above.${NC}"
-    echo -e "  Run with ${BOLD}-v${NC} for full output: ${BOLD}./scripts/verify/verify-all.sh -v${NC}"
-    # POSIX process exit codes are limited to 0..255.
-    # Preserve "N errors" semantics while avoiding wraparound ambiguity.
-    if [[ $TOTAL_ERRORS -gt 255 ]]; then
-        echo -e "  ${YELLOW}Warning:${NC} aggregated error count $TOTAL_ERRORS exceeds exit-code limit; returning 255."
-        exit 255
-    fi
-    exit "$TOTAL_ERRORS"
-fi
