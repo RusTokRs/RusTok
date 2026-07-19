@@ -18,8 +18,7 @@ use rustok_marketplace_commission::{
     ReadMarketplaceCommissionAssessmentRequest,
 };
 use sea_orm::{
-    ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter,
+    ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
