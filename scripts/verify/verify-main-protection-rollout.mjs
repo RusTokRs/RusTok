@@ -23,15 +23,18 @@ if (!stats) {
     "Require status checks to pass before merging.",
     "Require branches to be up to date before merging.",
     "Migration harness approval",
+    "Repository ruleset contract",
     "integration_id: 15368",
     "do_not_enforce_on_create",
     "Block force pushes and branch deletion.",
     "Require conversation resolution before merging.",
     "Do not configure permanent bypass actors.",
-    "head-SHA `Migration harness approval`",
+    "successful head-SHA `Migration harness approval` and `Repository ruleset contract` Check Runs",
     "changes a protected migration file without the approval label",
     "Apply `migration-infra-approved`",
+    "repository-ruleset-admin-payload.json",
     "Rerun `Repository Ruleset Contract` manually",
+    "both required checks are attached to the latest PR head SHA",
     "Make pull requests the only normal delivery path",
     "Use a time-bounded organization or repository owner bypass.",
     "Remove the temporary bypass immediately.",
@@ -47,4 +50,6 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ PR-only main protection rollout, negative approval test and time-bounded recovery are documented");
+console.log(
+  "✔ PR-only main protection rollout, two required head-SHA checks, negative approval test and time-bounded recovery are documented",
+);
