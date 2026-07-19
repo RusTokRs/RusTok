@@ -1,7 +1,7 @@
 name: Migration Compatibility
 
 on:
-  pull_request_target:
+  pull_request:
     branches:
       - "**"
   workflow_dispatch:
@@ -32,10 +32,10 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_TEST_DEBUG: 0
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  BASE_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.repo.full_name || github.repository }}
-  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
-  BASE_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || inputs.base_ref }}
-  HEAD_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || inputs.head_ref }}
+  BASE_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || github.repository }}
+  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+  BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
+  HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref }}
   RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://rustok_migration:rustok_migration@localhost:5432/postgres
 
 jobs:
@@ -73,7 +73,7 @@ jobs:
 
       - name: Require approval for migration harness changes
         env:
-          PR_LABELS_JSON: ${{ github.event_name == 'pull_request_target' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
+          PR_LABELS_JSON: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
           EXPLICIT_APPROVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_infrastructure_changes || false }}
         run: >-
           node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-infrastructure-approval.mjs"
