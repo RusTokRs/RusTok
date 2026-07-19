@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "repository": "RusTokRs/RusTok",
+  "repository_id": 1144063896,
+  "branch": "main",
+  "do_not_enforce_on_create": false,
+  "required_status_checks": [
+    {
+      "context": "Migration harness approval",
+      "integration_slug": "github-actions",
+      "integration_id": 15368,
+      "strict": true
+    }
+  ]
+}
