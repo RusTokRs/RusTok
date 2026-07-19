@@ -9,6 +9,7 @@ const directory = path.dirname(fileURLToPath(import.meta.url));
 const commands = [
   [path.join(directory, "verify-repository-ruleset-contract.mjs"), "--self-test"],
   [path.join(directory, "verify-repository-ruleset-structure.mjs")],
+  [path.join(directory, "verify-main-protection-rollout.mjs")],
 ];
 
 for (const command of commands) {
