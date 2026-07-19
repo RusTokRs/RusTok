@@ -152,6 +152,7 @@ requireMarkers("scripts/verify/verify-migration-infrastructure-approval.mjs", [
   'const APPROVAL_LABEL = "migration-infra-approved"',
   "const PROTECTED_PATHS",
   ".github/workflows/migration-compatibility.yml",
+  ".github/workflows/migration-infrastructure-approval.yml",
   "export_migration_plan.rs",
   "postgres_zero_migration_smoke.rs",
   "tests/support/mod.rs",
@@ -181,15 +182,8 @@ const workflow = ".github/workflows/migration-compatibility.yml";
 requireMarkers(workflow, [
   "name: Migration Compatibility",
   "pull_request:",
-  "allow_infrastructure_changes:",
   "permissions:\n  contents: read",
   "persist-credentials: false",
-  "Migration harness approval",
-  "timeout-minutes: 5",
-  "Verify base approval policy fixtures",
-  "Require approval for migration harness changes",
-  "migration-infra-approved",
-  "base/scripts/verify/verify-migration-infrastructure-approval.mjs",
   "Append-only migration plan",
   "timeout-minutes: 25",
   "Export base migration plan",
@@ -206,7 +200,6 @@ requireMarkers(workflow, [
   "Verify selected backfill fixture artifact",
   "actions/upload-artifact@v7",
   "migration-plans-${{ github.run_id }}",
-  "needs: infrastructure-approval",
   "needs: migration-plan",
   "image: postgres:16",
   "timeout-minutes: 35",
@@ -249,6 +242,10 @@ requireOccurrenceCount(
 );
 forbidMarkers(workflow, [
   "pull_request_target:",
+  "allow_infrastructure_changes:",
+  "Migration harness approval",
+  "Require approval for migration harness changes",
+  "needs: infrastructure-approval",
   "continue-on-error: true",
   "|| true",
   "RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@",
@@ -256,6 +253,44 @@ forbidMarkers(workflow, [
   'head/scripts/verify/verify-migration-backfill-contracts.mjs',
   'bash "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-smoke.sh"',
 ]);
+
+const approvalWorkflow = ".github/workflows/migration-infrastructure-approval.yml";
+requireMarkers(approvalWorkflow, [
+  "name: Migration Infrastructure Approval",
+  "pull_request_target:",
+  "types:",
+  "opened",
+  "synchronize",
+  "reopened",
+  "labeled",
+  "unlabeled",
+  "allow_infrastructure_changes:",
+  "permissions:\n  contents: read",
+  "Migration harness approval",
+  "Checkout base policy source",
+  "Checkout head policy as untrusted data",
+  "persist-credentials: false",
+  "allow-unsafe-pr-checkout: true",
+  "Verify base approval policy fixtures",
+  "Require approval for migration harness changes",
+  "migration-infra-approved",
+  "base/scripts/verify/verify-migration-infrastructure-approval.mjs",
+  '--base-dir "$GITHUB_WORKSPACE/base"',
+  '--head-dir "$GITHUB_WORKSPACE/head"',
+]);
+forbidMarkers(approvalWorkflow, [
+  "cargo ",
+  "npm ",
+  "pnpm ",
+  "yarn ",
+  'node "$GITHUB_WORKSPACE/head/',
+  'bash "$GITHUB_WORKSPACE/head/',
+  'uses: ./head',
+  "contents: write",
+  "pull-requests: write",
+  "secrets:",
+]);
+
 forbidFile(".github/workflows/one-off-wire-migration-backfill-workflow.yml");
 forbidFile(".github/workflows/one-off-wire-migration-backfill-master.yml");
 forbidFile(".github/workflows/one-off-wire-migration-backfill-fixtures.yml");
@@ -284,5 +319,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ append-only planning, declared backfills, strict fixture assertions, symlink-safe approval, sandboxed pull-request execution, bounded PostgreSQL roles, fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
+  "✔ append-only planning, declared backfills, strict fixture assertions, base-owned data-only approval, symlink-safe policy comparison, sandboxed pull-request execution, bounded PostgreSQL roles, fresh/incremental/rollback, and N-1 upgrade paths are structurally bound",
 );
