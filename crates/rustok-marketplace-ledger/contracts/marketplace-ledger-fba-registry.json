@@ -86,8 +86,12 @@
     "seller_entries_account": "seller_payable",
     "max_page_size": 200
   },
+  "composition": {
+    "modules_manifest": true,
+    "distribution_feature": "mod-marketplace_ledger",
+    "marketplace_root_read_projection": true
+  },
   "known_gaps": [
-    "platform composition registration",
     "automatic posting orchestration",
     "reversal transactions",
     "external event contracts and outbox",
