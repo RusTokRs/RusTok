@@ -59,6 +59,18 @@ requireMarkers("docs/ci/repository-ruleset-contract.md", [
   "Require workflows to pass before merging",
 ]);
 
+requireMarkers("docs/ci/main-protection-rollout.md", [
+  "Finish the currently authorized direct-to-`main` implementation series.",
+  "Require a pull request before merging.",
+  "Require conversation resolution before merging.",
+  "head-SHA `Migration harness approval`",
+  "changes a protected migration file without the approval label",
+  "Apply `migration-infra-approved`",
+  "Make pull requests the only normal delivery path",
+  "Use a time-bounded organization or repository owner bypass.",
+  "Remove the temporary bypass immediately.",
+]);
+
 const verifier = "scripts/verify/verify-repository-ruleset-contract.mjs";
 requireMarkers(verifier, [
   'const API_VERSION = "2026-03-10"',
@@ -79,10 +91,19 @@ requireMarkers(verifier, [
 ]);
 forbidMarkers(verifier, ["continue-on-error", "|| true", "redirect: \"follow\""]);
 
+requireMarkers("scripts/verify/verify-main-protection-rollout.mjs", [
+  "docs/ci/main-protection-rollout.md",
+  "must be a regular non-symlink file",
+  "head-SHA `Migration harness approval`",
+  "Apply `migration-infra-approved`",
+  "Make pull requests the only normal delivery path",
+]);
+
 requireMarkers("scripts/verify/verify-repository-ruleset-self-test.mjs", [
   "verify-repository-ruleset-contract.mjs",
   '"--self-test"',
   "verify-repository-ruleset-structure.mjs",
+  "verify-main-protection-rollout.mjs",
 ]);
 
 const approvalWorkflow = ".github/workflows/migration-infrastructure-approval.yml";
@@ -164,9 +185,11 @@ requireMarkers("scripts/verify/verify-migration-infrastructure-approval.mjs", [
   ".github/workflows/hardening-gates.yml",
   "docs/ci/repository-ruleset-contract.json",
   "docs/ci/repository-ruleset-contract.md",
+  "docs/ci/main-protection-rollout.md",
   "scripts/verify/verify-repository-ruleset-contract.mjs",
   "scripts/verify/verify-repository-ruleset-self-test.mjs",
   "scripts/verify/verify-repository-ruleset-structure.mjs",
+  "scripts/verify/verify-main-protection-rollout.mjs",
   "scripts/verify/verify-all.sh",
 ]);
 
@@ -186,5 +209,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ strict GitHub-Actions-bound PR-head migration approval, base-owned live audit, deterministic fixtures and protected verification wiring are structurally bound",
+  "✔ strict GitHub-Actions-bound PR-head migration approval, base-owned live audit, deterministic fixtures, protected verification wiring and PR-only main cutover are structurally bound",
 );
