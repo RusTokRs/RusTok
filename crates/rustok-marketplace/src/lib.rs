@@ -3,10 +3,12 @@ use rustok_api::Permission;
 use rustok_core::RusToKModule;
 
 pub mod allocation_directory;
+pub mod commission_directory;
 pub mod listing_directory;
 pub mod seller_directory;
 
 pub use allocation_directory::MarketplaceAllocationDirectoryService;
+pub use commission_directory::MarketplaceCommissionDirectoryService;
 pub use listing_directory::MarketplaceListingDirectoryService;
 pub use seller_directory::MarketplaceSellerDirectoryService;
 
