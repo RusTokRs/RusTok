@@ -1,0 +1,86 @@
+name: Migration Infrastructure Approval
+
+on:
+  pull_request_target:
+    branches:
+      - "**"
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Base git ref or commit
+        required: true
+        default: main
+      head_ref:
+        description: Head git ref or commit
+        required: true
+        default: main
+      allow_infrastructure_changes:
+        description: Explicitly approve migration compatibility harness changes
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-infrastructure-approval-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  BASE_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.repo.full_name || github.repository }}
+  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+  BASE_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || inputs.base_ref }}
+  HEAD_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || inputs.head_ref }}
+
+jobs:
+  infrastructure-approval:
+    name: Migration harness approval
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout base policy source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.BASE_REPOSITORY }}
+          ref: ${{ env.BASE_REF }}
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout head policy as untrusted data
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.HEAD_REPOSITORY }}
+          ref: ${{ env.HEAD_REF }}
+          path: head
+          fetch-depth: 1
+          persist-credentials: false
+          allow-unsafe-pr-checkout: true
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Verify base approval policy fixtures
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-infrastructure-approval.mjs"
+          --self-test
+
+      - name: Require approval for migration harness changes
+        env:
+          PR_LABELS_JSON: ${{ github.event_name == 'pull_request_target' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
+          EXPLICIT_APPROVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_infrastructure_changes || false }}
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-infrastructure-approval.mjs"
+          --base-dir "$GITHUB_WORKSPACE/base"
+          --head-dir "$GITHUB_WORKSPACE/head"
+          --labels-json "$PR_LABELS_JSON"
+          --explicitly-approved "$EXPLICIT_APPROVAL"
