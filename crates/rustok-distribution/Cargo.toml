@@ -21,7 +21,8 @@ mod-commerce = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product"
 mod-marketplace_seller = ["dep:rustok-marketplace-seller"]
 mod-marketplace_listing = ["dep:rustok-marketplace-listing", "mod-marketplace_seller", "mod-product"]
 mod-marketplace_allocation = ["dep:rustok-marketplace-allocation", "mod-order", "mod-marketplace_seller", "mod-marketplace_listing"]
-mod-marketplace = ["dep:rustok-marketplace", "mod-marketplace_seller", "mod-marketplace_listing", "mod-marketplace_allocation"]
+mod-marketplace_commission = ["dep:rustok-marketplace-commission", "mod-marketplace_allocation"]
+mod-marketplace = ["dep:rustok-marketplace", "mod-marketplace_seller", "mod-marketplace_listing", "mod-marketplace_allocation", "mod-marketplace_commission"]
 mod-content = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content"]
 mod-blog = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog"]
 mod-forum = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum"]
@@ -62,6 +63,7 @@ rustok-commerce = { workspace = true, optional = true }
 rustok-marketplace-seller = { workspace = true, optional = true }
 rustok-marketplace-listing = { workspace = true, optional = true }
 rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation", optional = true }
+rustok-marketplace-commission = { path = "../rustok-marketplace-commission", optional = true }
 rustok-marketplace = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-content-orchestration.workspace = true
