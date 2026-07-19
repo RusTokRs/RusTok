@@ -59,17 +59,20 @@ version=$(PATH="$tool_root/bin:$PATH" cargo leptos --version)
 
 rustup target add wasm32-unknown-unknown
 npm ci --prefix "$repo_root/apps/admin" --no-audit --no-fund
-rm -rf "$target_dir/site" "$target_dir/server"
+site_root="$target_dir/site"
+site_pkg="$site_root/pkg"
+server_binary="$target_dir/release/rustok-admin"
+rm -rf "$site_root"
+rm -f "$server_binary"
 
 (
   cd "$repo_root"
   PATH="$tool_root/bin:$PATH" \
   CARGO_TARGET_DIR="$target_dir" \
-  cargo leptos build --release --locked -p rustok-admin
+  LEPTOS_SITE_ROOT="$site_root" \
+  cargo leptos build --release -p rustok-admin
 )
 
-site_pkg="$target_dir/site/pkg"
-server_binary="$target_dir/server/release/rustok-admin"
 mkdir -p "$site_pkg"
 TRUNK_STAGING_DIR="$site_pkg" node "$repo_root/apps/admin/scripts/tailwind-build.mjs"
 mv "$site_pkg/output.css" "$site_pkg/rustok-admin.css"
