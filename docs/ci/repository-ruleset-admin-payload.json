@@ -37,6 +37,10 @@
           {
             "context": "Migration harness approval",
             "integration_id": 15368
+          },
+          {
+            "context": "Repository ruleset contract",
+            "integration_id": 15368
           }
         ]
       }
