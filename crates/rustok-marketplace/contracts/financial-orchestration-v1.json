@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "module": "marketplace",
+  "operation": "process_order_financials",
+  "status": "source_ready",
+  "stores_own_state": false,
+  "write_context_required": true,
+  "stages": [
+    {
+      "position": 1,
+      "module": "marketplace_commission",
+      "operation": "assess_order",
+      "key_suffix": ":commission:v1"
+    },
+    {
+      "position": 2,
+      "module": "marketplace_ledger",
+      "operation": "post_order_commissions",
+      "key_suffix": ":ledger:v1"
+    }
+  ],
+  "context_copy": [
+    "tenant_id",
+    "actor",
+    "claims",
+    "roles",
+    "channel",
+    "locale",
+    "correlation_id",
+    "traceparent",
+    "deadline_ms"
+  ],
+  "checks": [
+    "order identities match",
+    "commission assessments are present",
+    "commission aggregates match allocation totals",
+    "ledger debits equal credits",
+    "ledger total matches commission derived total"
+  ],
+  "payout_stage_included": false
+}

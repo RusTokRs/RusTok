@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "module": "marketplace_commission",
+  "family": "marketplace",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "marketplace.commission.v1",
+  "ownership": {
+    "rule_table": "marketplace_commission_rules",
+    "assessment_table": "marketplace_commission_assessments",
+    "receipt_table": "marketplace_commission_receipts",
+    "cross_module_foreign_keys": false,
+    "rule_versions_append_only": true,
+    "one_assessment_per_allocation": true,
+    "amount_representation": "signed_64_bit_minor_units"
+  },
+  "dependencies": [
+    {
+      "module": "marketplace_allocation",
+      "port": "MarketplaceAllocationReadPort",
+      "usage": ["list_allocations_by_order"],
+      "foreign_entities_imported": false,
+      "provider_read_before_owner_transaction": true,
+      "completed_receipt_replay_before_provider_read": true,
+      "required_allocation_status": "allocated",
+      "cancelled_allocation": "reject_before_receipt_admission"
+    }
+  ],
+  "ports": [
+    {
+      "name": "MarketplaceCommissionReadPort",
+      "operations": [
+        "read_assessment",
+        "list_assessments_by_order",
+        "list_assessments_by_seller",
+        "list_rules"
+      ],
+      "deadline_required": true,
+      "idempotency_required": false
+    },
+    {
+      "name": "MarketplaceCommissionCommandPort",
+      "operations": [
+        "create_rule_version",
+        "assess_order"
+      ],
+      "deadline_required": true,
+      "idempotency_required": true
+    }
+  ],
+  "rule_selection": {
+    "specificity_order": ["listing", "seller", "global"],
+    "tie_break_order": [
+      "priority_desc",
+      "version_desc",
+      "effective_from_desc",
+      "id_asc"
+    ],
+    "effective_window": "effective_from <= assessed_at < effective_until_or_infinity",
+    "fixed_amount_requires_matching_currency": true
+  },
+  "calculation": {
+    "formula": "floor(allocation_total_amount * rate_bps / 10000) + fixed_amount",
+    "rate_bps_range": [0, 10000],
+    "negative_amounts_allowed": false,
+    "commission_above_allocation_total": "reject",
+    "seller_proceeds_formula": "allocation_total_amount - commission_amount",
+    "checked_arithmetic": true
+  },
+  "assessment": {
+    "atomic_order_batch": true,
+    "partial_assessment_allowed": false,
+    "receipt_identity_scope": ["tenant_id", "idempotency_key"],
+    "request_identity": "canonical_sha256_v1",
+    "lost_response_replay_returns_saved_result": true,
+    "conflicting_payload": "marketplace_commission.idempotency_conflict",
+    "snapshot_fields": [
+      "allocation_id",
+      "order_id",
+      "order_line_item_id",
+      "seller_id",
+      "listing_id",
+      "rule_id",
+      "rule_key",
+      "rule_version",
+      "currency_code",
+      "allocation_total_amount",
+      "rate_bps",
+      "fixed_amount",
+      "commission_amount",
+      "seller_proceeds_amount"
+    ]
+  },
+  "composition": {
+    "modules_manifest": true,
+    "distribution_feature": "mod-marketplace_commission",
+    "marketplace_root_read_projection": true
+  },
+  "known_gaps": [
+    "automatic assessment orchestration",
+    "assessment reversal lifecycle",
+    "external event contracts and outbox",
+    "ledger posting",
+    "postgres contention evidence",
+    "admin rule management surface"
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "module": "marketplace_ledger",
+  "family": "marketplace",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "marketplace.ledger.v1",
+  "ownership": {
+    "transaction_table": "marketplace_ledger_transactions",
+    "entry_table": "marketplace_ledger_entries",
+    "receipt_table": "marketplace_ledger_receipts",
+    "cross_module_foreign_keys": false,
+    "entries_append_only": true,
+    "one_commission_batch_transaction_per_order": true,
+    "one_entry_per_assessment_account": true,
+    "amount_representation": "signed_64_bit_minor_units"
+  },
+  "dependencies": [
+    {
+      "module": "marketplace_commission",
+      "port": "MarketplaceCommissionReadPort",
+      "usage": ["list_assessments_by_order"],
+      "foreign_entities_imported": false,
+      "provider_read_before_owner_transaction": true,
+      "completed_receipt_replay_before_provider_read": true,
+      "required_assessment_status": "assessed"
+    }
+  ],
+  "ports": [
+    {
+      "name": "MarketplaceLedgerReadPort",
+      "operations": [
+        "read_order_ledger",
+        "list_seller_entries"
+      ],
+      "deadline_required": true,
+      "idempotency_required": false
+    },
+    {
+      "name": "MarketplaceLedgerCommandPort",
+      "operations": [
+        "post_order_commissions"
+      ],
+      "deadline_required": true,
+      "idempotency_required": true
+    }
+  ],
+  "posting": {
+    "source_kind": "commission_assessment_batch",
+    "atomic_order_batch": true,
+    "partial_posting_allowed": false,
+    "single_currency_required": true,
+    "receipt_identity_scope": ["tenant_id", "idempotency_key"],
+    "request_identity": "canonical_sha256_v1",
+    "lost_response_replay_returns_saved_result": true,
+    "conflicting_payload": "marketplace_ledger.idempotency_conflict",
+    "reposting_with_another_key": "marketplace_ledger.order_already_posted"
+  },
+  "double_entry": {
+    "per_assessment_entries": [
+      {
+        "account": "marketplace_clearing",
+        "direction": "debit",
+        "amount": "allocation_total_amount"
+      },
+      {
+        "account": "platform_commission_revenue",
+        "direction": "credit",
+        "amount": "commission_amount"
+      },
+      {
+        "account": "seller_payable",
+        "direction": "credit",
+        "amount": "seller_proceeds_amount",
+        "seller_scoped": true
+      }
+    ],
+    "assessment_invariant": "commission_amount + seller_proceeds_amount = allocation_total_amount",
+    "transaction_invariant": "debit_total_amount = credit_total_amount",
+    "negative_amounts_allowed": false,
+    "checked_arithmetic": true
+  },
+  "read_model": {
+    "order_transaction_includes_entries": true,
+    "seller_entries_bounded": true,
+    "seller_entries_account": "seller_payable",
+    "max_page_size": 200
+  },
+  "composition": {
+    "modules_manifest": true,
+    "distribution_feature": "mod-marketplace_ledger",
+    "marketplace_root_read_projection": true
+  },
+  "known_gaps": [
+    "automatic posting orchestration",
+    "reversal transactions",
+    "external event contracts and outbox",
+    "seller balance materialization",
+    "payout consumption",
+    "postgres contention evidence",
+    "admin accounting surface"
+  ]
+}
