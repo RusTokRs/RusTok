@@ -61,6 +61,25 @@ pub struct MarketplaceSellerAdminMember {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct MarketplaceSellerAdminEvent {
+    pub id: String,
+    pub seller_id: String,
+    pub actor_id: Option<String>,
+    pub event_kind: String,
+    pub locale: Option<String>,
+    pub provenance: String,
+    pub note: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct MarketplaceSellerAdminEventHistory {
+    pub seller_id: String,
+    pub items: Vec<MarketplaceSellerAdminEvent>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct MarketplaceSellerAdminDetail {
     pub seller: MarketplaceSellerAdminRecord,
     pub members: Vec<MarketplaceSellerAdminMember>,

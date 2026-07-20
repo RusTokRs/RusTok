@@ -1,5 +1,8 @@
+use std::sync::Arc;
+
 use chrono::Utc;
 use rustok_core::generate_id;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, Set, TransactionTrait,
@@ -11,6 +14,7 @@ use uuid::Uuid;
 
 use crate::entities::seller_command_receipt;
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
+use crate::external_events::event_for_completed_command;
 use crate::seller_events::append_receipted_seller_event;
 
 const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
@@ -24,6 +28,7 @@ pub(crate) struct NewCommandReceipt {
     pub actor_id: Uuid,
     pub idempotency_key: String,
     pub command_kind: String,
+    event_bus: TransactionalEventBus,
 }
 
 pub(crate) enum CommandReceiptAdmission {
@@ -106,6 +111,7 @@ pub(crate) async fn admit_command(
             actor_id,
             idempotency_key,
             command_kind: command_kind.to_string(),
+            event_bus: TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
         })),
         Err(error) if is_unique_constraint(&error) => {
             transaction.rollback().await?;
@@ -172,6 +178,41 @@ pub(crate) async fn complete_command<R: Serialize + Clone>(
     {
         receipt.transaction.rollback().await?;
         return Err(error);
+    }
+
+    let external_event = match event_for_completed_command(
+        receipt.command_kind.as_str(),
+        response_kind,
+        &response_json,
+    ) {
+        Ok(event) => event,
+        Err(error) => {
+            receipt.transaction.rollback().await?;
+            return Err(error);
+        }
+    };
+    if let Err(error) = receipt
+        .event_bus
+        .publish_contract_in_tx(
+            &receipt.transaction,
+            receipt.tenant_id,
+            Some(receipt.actor_id),
+            external_event,
+        )
+        .await
+    {
+        tracing::error!(
+            tenant_id = %receipt.tenant_id,
+            actor_id = %receipt.actor_id,
+            receipt_id = %receipt.receipt_id,
+            command_kind = receipt.command_kind.as_str(),
+            error = %error,
+            "Marketplace seller transactional event publication failed"
+        );
+        receipt.transaction.rollback().await?;
+        return Err(MarketplaceSellerError::Database(sea_orm::DbErr::Custom(
+            "marketplace seller event publication unavailable".to_string(),
+        )));
     }
 
     let result = seller_command_receipt::Entity::update_many()

@@ -1,14 +1,19 @@
+#[path = "transport/event_history_graphql.rs"]
+mod event_history_graphql;
+#[path = "transport/event_history_native.rs"]
+mod event_history_native;
 #[path = "transport/graphql_adapter.rs"]
 mod graphql_adapter;
 #[path = "transport/native_server_adapter.rs"]
 mod native_server_adapter;
 
-use rustok_ui_transport::{UiTransportPath, UiTransportResult, execute_selected_transport};
+use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTransportResult};
 
 use crate::core::MarketplaceSellerAdminTransportProfile;
 use crate::model::{
     MarketplaceSellerAdminCommand, MarketplaceSellerAdminCommandResult,
-    MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory, MarketplaceSellerAdminFilters,
+    MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory,
+    MarketplaceSellerAdminEventHistory, MarketplaceSellerAdminFilters,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,6 +76,30 @@ pub async fn load_marketplace_seller_detail(
         context.path(),
         move || native_server_adapter::load_detail(native_id),
         move || graphql_adapter::load_detail(graphql_token, graphql_tenant, seller_id),
+    )
+    .await
+}
+
+pub async fn load_marketplace_seller_event_history(
+    context: MarketplaceSellerAdminTransportContext,
+    seller_id: String,
+    limit: u64,
+) -> UiTransportResult<MarketplaceSellerAdminEventHistory> {
+    let graphql_token = context.access_token.clone();
+    let graphql_tenant = context.tenant_slug.clone();
+    let native_id = seller_id.clone();
+    execute_selected_transport(
+        "marketplace_seller.event_history",
+        context.path(),
+        move || event_history_native::load_event_history(native_id, limit),
+        move || {
+            event_history_graphql::load_event_history(
+                graphql_token,
+                graphql_tenant,
+                seller_id,
+                limit,
+            )
+        },
     )
     .await
 }
