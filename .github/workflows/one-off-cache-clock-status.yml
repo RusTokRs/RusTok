@@ -1,6 +1,10 @@
 name: One-off Cache Clock Status
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-off-cache-clock-status.yml
   issue_comment:
     types: [created]
 
@@ -12,40 +16,34 @@ permissions:
 jobs:
   status:
     if: >-
-      github.event.issue.title == '[automation] harden cache system clock' &&
-      github.event.issue.user.login == 'loid345' &&
-      github.event.comment.user.login == 'loid345' &&
-      github.event.comment.body == '/status-cache-system-clock'
+      (github.event_name == 'push' &&
+       github.event.head_commit.message == 'test(ci): extract cache clock test failure') ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.title == '[automation] harden cache system clock' &&
+       github.event.issue.user.login == 'loid345' &&
+       github.event.comment.user.login == 'loid345' &&
+       github.event.comment.body == '/status-cache-system-clock')
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    env:
+      ISSUE_NUMBER: 1841
     steps:
-      - name: Persist cache clock workflow status and failure tail
+      - name: Persist cache clock workflow status and exact test failure
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
         shell: bash
         run: |
           set -euo pipefail
           runs=$(gh run list \
             --repo "$GITHUB_REPOSITORY" \
             --workflow one-off-harden-cache-clock.yml \
-            --limit 5 \
+            --limit 8 \
             --json databaseId,event,status,conclusion,createdAt,updatedAt,headSha,url)
-          run_id=$(printf '%s' "$runs" | node -e '
-            let input = "";
-            process.stdin.on("data", chunk => input += chunk);
-            process.stdin.on("end", () => {
-              const run = JSON.parse(input).find(item => item.conclusion && item.conclusion !== "skipped");
-              if (run) process.stdout.write(String(run.databaseId));
-            });
-          ')
-          failure_tail="No completed non-skipped run found."
-          if [ -n "$run_id" ]; then
-            set +e
-            failure_tail=$(gh run view "$run_id" \
-              --repo "$GITHUB_REPOSITORY" \
-              --log-failed 2>&1 | tail -n 120)
-            set -e
+          failure_tail=$(gh api \
+            "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/comments?per_page=100" \
+            --jq '[.[] | select(.body | startswith("Cache clock library tests failed"))] | last | .body // ""')
+          if [ -z "$failure_tail" ]; then
+            failure_tail="No captured cache clock test failure comment found."
           fi
           current_body=$(gh issue view "$ISSUE_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
@@ -55,7 +53,7 @@ jobs:
             printf '%s\n\n' "$base_body"
             printf '## Latest cache clock diagnostic\n\n'
             printf 'Run status:\n\n```json\n%s\n```\n\n' "$runs"
-            printf 'Failure tail:\n\n```text\n%s\n```\n' "$failure_tail"
+            printf 'Captured test failure:\n\n%s\n' "$failure_tail"
           } > /tmp/cache-clock-issue-body.md
           gh issue edit "$ISSUE_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
