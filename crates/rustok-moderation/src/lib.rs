@@ -3,7 +3,7 @@ pub mod migrations;
 pub mod ports;
 
 use async_trait::async_trait;
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use domain::*;
@@ -34,6 +34,10 @@ impl MigrationSource for ModerationModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
     }
+
+    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        migrations::migration_dependencies()
+    }
 }
 
 #[cfg(test)]
@@ -46,6 +50,7 @@ mod tests {
         assert_eq!(module.slug(), "moderation");
         assert!(module.dependencies().is_empty());
         assert_eq!(module.migrations().len(), 1);
+        assert_eq!(module.migration_dependencies().len(), 1);
         assert!(module.permissions().is_empty());
     }
 }
