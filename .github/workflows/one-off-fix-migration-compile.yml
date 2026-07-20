@@ -1,8 +1,6 @@
 name: One-off Fix Migration Compilation
 
 on:
-  issues:
-    types: [opened]
   issue_comment:
     types: [created]
 
@@ -25,8 +23,8 @@ jobs:
     if: >-
       github.event.issue.title == '[automation] fix migration graph compilation' &&
       github.event.issue.user.login == 'loid345' &&
-      (github.event_name == 'issues' ||
-       (github.event.comment.user.login == 'loid345' && github.event.comment.body == '/fix-migration-graph-compilation'))
+      github.event.comment.user.login == 'loid345' &&
+      github.event.comment.body == '/fix-migration-graph-compilation'
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     steps:
@@ -40,33 +38,23 @@ jobs:
         run: |
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
-      - name: Apply bounded source repair
+      - name: Apply remaining bounded source repair
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          old_format = "CONTENT_FORMAT_GRAPESJS_FORMAT"
-          new_format = "CONTENT_FORMAT_GRAPESJS_V1"
-          for path in [
-              Path("crates/rustok-pages/src/graphql/mutation.rs"),
-              Path("crates/rustok-pages/src/services/page.rs"),
-              Path("crates/rustok-pages/src/services/scenario_baseline.rs"),
-          ]:
-              source = path.read_text()
-              if old_format not in source:
-                  raise SystemExit(f"{path}: obsolete format reference is absent")
-              updated = source.replace(old_format, new_format)
-              if old_format in updated or updated == source:
-                  raise SystemExit(f"{path}: format replacement was incomplete")
-              path.write_text(updated)
+          obsolete_format = "CONTENT_FORMAT_GRAPESJS_FORMAT"
+          for path in Path("crates/rustok-pages").rglob("*.rs"):
+              if obsolete_format in path.read_text():
+                  raise SystemExit(f"obsolete Pages content format remains in {path}")
 
           commerce = Path("crates/rustok-commerce/src/migrations/mod.rs")
           old_dependency = '"m20260325_000111_create_provider_operation_journal"'
           new_dependency = '"m20260713_000110_create_provider_operation_journal"'
           source = commerce.read_text()
           if source.count(old_dependency) != 1:
-              raise SystemExit("expected one obsolete provider journal dependency")
+              raise SystemExit("expected exactly one obsolete provider journal dependency")
           commerce.write_text(source.replace(old_dependency, new_dependency, 1))
 
           migrations = {
@@ -81,19 +69,11 @@ jobs:
                   raise SystemExit(f"{path}: expected one incompatible down() tail")
               path.write_text(source.replace(old_tail, old_tail[:-1] + '?;\n        Ok(())\n', 1))
           PY
-      - name: Verify bounded source patch
+      - name: Verify repair and current lockfile
         shell: bash
         run: |
           set -euo pipefail
           git diff --check
-          test "$(git grep -n 'CONTENT_FORMAT_GRAPESJS_FORMAT' -- crates/rustok-pages || true)" = ""
-          for path in \
-            crates/rustok-pages/src/graphql/mutation.rs \
-            crates/rustok-pages/src/services/page.rs \
-            crates/rustok-pages/src/services/scenario_baseline.rs
-          do
-            grep -Fq 'CONTENT_FORMAT_GRAPESJS_V1' "$path"
-          done
           ! grep -Fq 'm20260325_000111_create_provider_operation_journal' crates/rustok-commerce/src/migrations/mod.rs
           grep -Fq 'm20260713_000110_create_provider_operation_journal' crates/rustok-commerce/src/migrations/mod.rs
           for path in \
@@ -108,56 +88,35 @@ jobs:
             crates/rustok-commerce/src/migrations/mod.rs
             crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs
             crates/rustok-modules/src/migrations/m20260718_000026_artifact_data_object_operations.rs
-            crates/rustok-pages/src/graphql/mutation.rs
-            crates/rustok-pages/src/services/page.rs
-            crates/rustok-pages/src/services/scenario_baseline.rs
           )
           test "${#changed[@]}" = "${#expected[@]}"
           for index in "${!expected[@]}"; do
             test "${changed[$index]}" = "${expected[$index]}"
           done
-      - name: Apply temporary minimal lock repair
-        shell: bash
-        run: |
           python3 - <<'PY'
           from pathlib import Path
           import re
-
-          path = Path("Cargo.lock")
-          source = path.read_text()
-          def ensure_dependency(name: str, dependency: str, anchor: str) -> None:
-              global source
-              pattern = re.compile(
-                  rf'(\[\[package\]\]\nname = "{re.escape(name)}"\nversion = "0\.1\.0"\ndependencies = \[\n)(.*?)(\n\])',
+          source = Path("Cargo.lock").read_text()
+          for package, dependency in [
+              ("rustok-modules", ' "base64 0.22.1",'),
+              ("rustok-worker-transport", ' "tokio",'),
+          ]:
+              match = re.search(
+                  rf'\[\[package\]\]\nname = "{package}"\nversion = "0\.1\.0"\ndependencies = \[\n(.*?)\n\]',
+                  source,
                   re.DOTALL,
               )
-              match = pattern.search(source)
-              if match is None:
-                  raise SystemExit(f"package block not found: {name}")
-              body = match.group(2)
-              line = f' "{dependency}",'
-              if line in body:
-                  return
-              anchor_line = f' "{anchor}",'
-              if body.count(anchor_line) != 1:
-                  raise SystemExit(f"expected one anchor in {name}: {anchor}")
-              body = body.replace(anchor_line, f'{anchor_line}\n{line}', 1)
-              source = source[:match.start(2)] + body + source[match.end(2):]
-          ensure_dependency("rustok-modules", "base64 0.22.1", "async-trait")
-          ensure_dependency("rustok-worker-transport", "tokio", "tonic")
-          path.write_text(source)
+              if match is None or dependency not in match.group(1):
+                  raise SystemExit(f"Cargo.lock is missing {dependency.strip()} for {package}")
           PY
           cargo metadata --locked --no-deps --format-version 1 > /tmp/cargo-metadata.json
           test -s /tmp/cargo-metadata.json
-      - name: Verify formatting of implementation files
+      - name: Verify formatting
         run: >-
           rustfmt --edition 2021 --check
-          crates/rustok-pages/src/graphql/mutation.rs
-          crates/rustok-pages/src/services/page.rs
-          crates/rustok-pages/src/services/scenario_baseline.rs
           crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs
           crates/rustok-modules/src/migrations/m20260718_000026_artifact_data_object_operations.rs
-      - name: Check affected crates
+      - name: Check affected graph
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-compile-repair
         run: cargo check --locked -p rustok-pages -p rustok-modules -p rustok-commerce
@@ -187,10 +146,10 @@ jobs:
         run: exit 1
       - name: Verify migration plan artifact
         run: test -s /tmp/migration-plan.json
-      - name: Restore lockfile and remove one-off workflow
+      - name: Remove superseded one-off workflows
         run: |
-          git checkout -- Cargo.lock
           rm .github/workflows/one-off-fix-migration-compile.yml
+          rm .github/workflows/one-off-repair-cargo-lock.yml
       - name: Verify final commit scope
         shell: bash
         run: |
@@ -199,27 +158,44 @@ jobs:
           mapfile -t changed < <(git diff --name-only | sort)
           expected=(
             .github/workflows/one-off-fix-migration-compile.yml
+            .github/workflows/one-off-repair-cargo-lock.yml
             crates/rustok-commerce/src/migrations/mod.rs
             crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs
             crates/rustok-modules/src/migrations/m20260718_000026_artifact_data_object_operations.rs
-            crates/rustok-pages/src/graphql/mutation.rs
-            crates/rustok-pages/src/services/page.rs
-            crates/rustok-pages/src/services/scenario_baseline.rs
           )
           test "${#changed[@]}" = "${#expected[@]}"
           for index in "${!expected[@]}"; do
             test "${changed[$index]}" = "${expected[$index]}"
           done
-      - name: Commit source repair
+      - name: Commit, revalidate after rebase, and publish
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-compile-repair
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "fix(migrations): restore migration graph compilation"
-          git push origin HEAD:main
-      - name: Close trigger issue
+          git commit -m "fix(migrations): restore composed migration graph"
+
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              git rebase origin/main
+              cargo metadata --locked --no-deps --format-version 1 > /tmp/cargo-metadata-rebased.json
+              cargo check --locked -p rustok-pages -p rustok-modules -p rustok-commerce
+              cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
+                --output /tmp/migration-plan-rebased.json
+              test -s /tmp/migration-plan-rebased.json
+            fi
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+          done
+          exit 1
+      - name: Close source repair issue
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh issue close "${{ github.event.issue.number }}"
-          --comment "Migration graph compilation and dependency descriptors repaired; affected crates and composed migration-plan exporter passed with the minimal temporary lock correction; one-off workflow removed itself."
+          --comment "Remaining migration descriptor and down() defects repaired; locked crate checks and composed migration-plan export passed; superseded one-off workflows removed."
