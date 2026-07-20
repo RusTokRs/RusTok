@@ -1,0 +1,295 @@
+name: One-off Rebase Moderation Stack Main
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-off-rebase-moderation-stack-main
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  rebase-stack:
+    if: github.repository == 'RusTokRs/RusTok' && github.head_ref == 'agent/moderation-owner-core'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: agent/moderation-owner-core
+          fetch-depth: 0
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+
+      - name: Remove one-off workflow before rebasing
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/one-off-rebase-moderation-stack-main.yml
+          git add .github/workflows/one-off-rebase-moderation-stack-main.yml
+          git commit -m "chore(moderation): remove completed main rebase installer"
+
+      - name: Rebase owner core onto current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          set +e
+          git rebase origin/main
+          status=$?
+          set -e
+          while [ "$status" -ne 0 ]; do
+            test -d .git/rebase-merge -o -d .git/rebase-apply
+            mapfile -t unmerged < <(git diff --name-only --diff-filter=U)
+            if [ "${#unmerged[@]}" -eq 0 ]; then
+              echo "owner rebase failed without resolvable conflicts" >&2
+              exit "$status"
+            fi
+            for path in "${unmerged[@]}"; do
+              case "$path" in
+                Cargo.lock|\
+                Cargo.toml|\
+                crates/rustok-migrations/Cargo.toml|\
+                crates/rustok-migrations/src/lib.rs|\
+                docs/migrations/backfill-contracts.json|\
+                docs/modules/implementation-plans-registry.md)
+                  git checkout --ours -- "$path"
+                  git add "$path"
+                  ;;
+                *)
+                  echo "unexpected owner rebase conflict: $path" >&2
+                  exit 1
+                  ;;
+              esac
+            done
+            set +e
+            GIT_EDITOR=true git rebase --continue
+            status=$?
+            set -e
+          done
+
+      - name: Restore owner integration over current main
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          def insert_after_once(path: Path, marker: str, addition: str) -> None:
+              source = path.read_text()
+              if addition in source:
+                  return
+              if source.count(marker) != 1:
+                  raise SystemExit(f"{path}: expected one marker for integration")
+              path.write_text(source.replace(marker, marker + addition, 1))
+
+          insert_after_once(
+              Path("Cargo.toml"),
+              'rustok-comments = { path = "crates/rustok-comments", default-features = false }\n',
+              'rustok-moderation = { path = "crates/rustok-moderation" }\n',
+          )
+          insert_after_once(
+              Path("crates/rustok-migrations/Cargo.toml"),
+              "rustok-comments.workspace = true\n",
+              "rustok-moderation.workspace = true\n",
+          )
+
+          migrator = Path("crates/rustok-migrations/src/lib.rs")
+          source = migrator.read_text()
+          source_block = '''    ModuleMigrationSource {
+                  slug: "comments",
+                  source: &rustok_comments::CommentsModule,
+              },
+          '''
+          moderation_block = '''    ModuleMigrationSource {
+                  slug: "moderation",
+                  source: &rustok_moderation::ModerationModule,
+              },
+          '''
+          if moderation_block not in source:
+              if source.count(source_block) != 1:
+                  raise SystemExit("migrator source integration marker not found")
+              source = source.replace(source_block, source_block + moderation_block, 1)
+          extend_marker = "        all.extend(rustok_comments::migrations::migrations());\n"
+          extend_addition = "        all.extend(rustok_moderation::migrations::migrations());\n"
+          if extend_addition not in source:
+              if source.count(extend_marker) != 1:
+                  raise SystemExit("migrator extension marker not found")
+              source = source.replace(extend_marker, extend_marker + extend_addition, 1)
+          migrator.write_text(source)
+
+          registry = Path("docs/modules/implementation-plans-registry.md")
+          source = registry.read_text()
+          row = "| `moderation` | [plan](../../crates/rustok-moderation/docs/implementation-plan.md) | `in_progress` | Add repository-backed receipt-first report and case services, then prove active-case deduplication and revision CAS under PostgreSQL contention. |\n"
+          if row not in source:
+              lines = source.splitlines(keepends=True)
+              for index, line in enumerate(lines):
+                  if line.startswith("| `comments` |"):
+                      lines.insert(index + 1, row)
+                      break
+              else:
+                  raise SystemExit("implementation registry comments row not found")
+              registry.write_text("".join(lines))
+
+          contracts_path = Path("docs/migrations/backfill-contracts.json")
+          document = json.loads(contracts_path.read_text())
+          contracts = [
+              contract for contract in document.get("contracts", [])
+              if contract.get("migration") != "m20260720_000001_create_moderation_core"
+              and contract.get("id") != "moderation-core-ddl"
+          ]
+          contracts.append({
+              "id": "moderation-core-ddl",
+              "migration": "m20260720_000001_create_moderation_core",
+              "mode": "none",
+              "owner": "rustok-moderation",
+              "reason": "Creates new moderation-owned tables and indexes without transforming existing rows",
+          })
+          document["schema_version"] = 1
+          document["contracts"] = contracts
+          contracts_path.write_text(json.dumps(document, indent=2) + "\n")
+          PY
+
+      - name: Verify rebased owner core
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/moderation-main-rebase-owner
+        run: |
+          cargo metadata --format-version 1 > /tmp/cargo-metadata-owner.json
+          cargo fmt -p rustok-moderation
+          cargo check --locked -p rustok-moderation -p rustok-migrations
+          cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
+            --output /tmp/moderation-owner-plan.json
+          test -s /tmp/moderation-owner-plan.json
+          git diff --check
+
+      - name: Commit and publish rebased owner core
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add Cargo.toml Cargo.lock \
+            crates/rustok-migrations/Cargo.toml \
+            crates/rustok-migrations/src/lib.rs \
+            crates/rustok-moderation \
+            docs/migrations/backfill-contracts.json \
+            docs/modules/implementation-plans-registry.md \
+            .github/workflows/one-off-rebase-moderation-stack-main.yml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(moderation): reconcile owner core with main"
+          fi
+          git push --force-with-lease origin HEAD:agent/moderation-owner-core
+
+      - name: Rebase service branch onto rebased owner core
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner_head=$(git rev-parse HEAD)
+          git fetch origin agent/moderation-report-case-service
+          git checkout -B agent/moderation-report-case-service origin/agent/moderation-report-case-service
+          set +e
+          git rebase "$owner_head"
+          status=$?
+          set -e
+          while [ "$status" -ne 0 ]; do
+            test -d .git/rebase-merge -o -d .git/rebase-apply
+            mapfile -t unmerged < <(git diff --name-only --diff-filter=U)
+            if [ "${#unmerged[@]}" -eq 0 ]; then
+              echo "service rebase failed without resolvable conflicts" >&2
+              exit "$status"
+            fi
+            for path in "${unmerged[@]}"; do
+              case "$path" in
+                Cargo.lock|docs/migrations/backfill-contracts.json)
+                  git checkout --ours -- "$path"
+                  git add "$path"
+                  ;;
+                crates/rustok-moderation/Cargo.toml|\
+                crates/rustok-moderation/docs/implementation-plan.md|\
+                crates/rustok-moderation/src/domain.rs|\
+                crates/rustok-moderation/src/lib.rs|\
+                crates/rustok-moderation/src/migrations/mod.rs|\
+                crates/rustok-moderation/src/ports.rs)
+                  git checkout --theirs -- "$path"
+                  git add "$path"
+                  ;;
+                *)
+                  echo "unexpected service rebase conflict: $path" >&2
+                  exit 1
+                  ;;
+              esac
+            done
+            set +e
+            GIT_EDITOR=true git rebase --continue
+            status=$?
+            set -e
+          done
+
+      - name: Restore service backfill contract and verify
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/moderation-main-rebase-service
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          path = Path("docs/migrations/backfill-contracts.json")
+          document = json.loads(path.read_text())
+          wanted = {
+              "m20260720_000001_create_moderation_core": {
+                  "id": "moderation-core-ddl",
+                  "migration": "m20260720_000001_create_moderation_core",
+                  "mode": "none",
+                  "owner": "rustok-moderation",
+                  "reason": "Creates new moderation-owned tables and indexes without transforming existing rows",
+              },
+              "m20260720_000002_add_active_case_deduplication": {
+                  "id": "moderation-active-case-ddl",
+                  "migration": "m20260720_000002_add_active_case_deduplication",
+                  "mode": "none",
+                  "owner": "rustok-moderation",
+                  "reason": "Adds owner-local deduplication columns and an index before production case data exists",
+              },
+          }
+          contracts = [
+              contract for contract in document.get("contracts", [])
+              if contract.get("migration") not in wanted
+              and contract.get("id") not in {item["id"] for item in wanted.values()}
+          ]
+          contracts.extend(wanted.values())
+          document["schema_version"] = 1
+          document["contracts"] = contracts
+          path.write_text(json.dumps(document, indent=2) + "\n")
+          PY
+
+          cargo metadata --format-version 1 > /tmp/cargo-metadata-service.json
+          cargo fmt -p rustok-moderation
+          cargo test --locked -p rustok-moderation
+          cargo check --locked -p rustok-migrations
+          cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
+            --output /tmp/moderation-service-plan.json
+          test -s /tmp/moderation-service-plan.json
+          git diff --check
+
+      - name: Commit and publish rebased service
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add Cargo.lock crates/rustok-moderation docs/migrations/backfill-contracts.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(moderation): reconcile service stack with main"
+          fi
+          git push --force-with-lease origin HEAD:agent/moderation-report-case-service
