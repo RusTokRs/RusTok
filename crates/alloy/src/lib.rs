@@ -649,7 +649,7 @@ mod tests {
         let results = orchestrator
             .run_on_commit(
                 "invoice",
-                EntityProxy::empty("invoice"),
+                EntityProxy::new("invoice-1", "invoice", std::collections::HashMap::new()),
                 Some("operator-3".to_string()),
             )
             .await;

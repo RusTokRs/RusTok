@@ -269,7 +269,7 @@ impl ScriptRegistry for InMemoryStorage {
             let lease_token = uuid::Uuid::new_v4();
             leases.insert(
                 existing.id,
-                (lease_token, crate::test_run_lease_expires_at(now)),
+                (lease_token, crate::model::test_run_lease_expires_at(now)),
             );
             return Ok(TestRunClaim::Claimed(TestRunLease {
                 run: existing,
@@ -319,10 +319,10 @@ impl ScriptRegistry for InMemoryStorage {
             completed_at: None,
         };
         let lease_token = uuid::Uuid::new_v4();
-        self.test_leases
-            .write()
-            .await
-            .insert(run.id, (lease_token, crate::test_run_lease_expires_at(now)));
+        self.test_leases.write().await.insert(
+            run.id,
+            (lease_token, crate::model::test_run_lease_expires_at(now)),
+        );
         runs.insert(key, run.clone());
         Ok(TestRunClaim::Claimed(TestRunLease {
             run,

@@ -409,7 +409,7 @@ pub struct ScheduledJobInfo {
 }
 
 #[cfg(test)]
-mod tests {
+mod execution_log_tests {
     use super::*;
     use chrono::{TimeZone, Utc};
 

@@ -69,7 +69,7 @@ fn bounded_error(error: String) -> String {
         .collect::<String>();
     let bounded = normalized
         .chars()
-        .take(crate::MAX_TEST_ERROR_LENGTH)
+        .take(crate::model::MAX_TEST_ERROR_LENGTH)
         .collect::<String>();
     if bounded.trim().is_empty() {
         "sandbox test failed without an error message".to_string()
@@ -81,7 +81,7 @@ fn bounded_error(error: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::bounded_error;
-    use crate::TEST_RUN_LEASE_SECONDS;
+    use crate::model::TEST_RUN_LEASE_SECONDS;
 
     #[test]
     fn terminal_test_errors_are_bounded_and_control_free() {
