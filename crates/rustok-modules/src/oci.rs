@@ -716,7 +716,7 @@ impl ArtifactRegistry for OciDistributionArtifactRegistry {
             let config = self
                 .pull_config_to_memory(&image, &manifest.config, limits)
                 .await?;
-            let config_size = config.len() as u64;
+            let _config_size = config.len() as u64;
             let config_digest = format!("sha256:{}", hex::encode(Sha256::digest(&config)));
             if manifest.config.digest != config_digest {
                 return Err(ModuleInstallationError::Registry(format!(

@@ -2,7 +2,7 @@
 
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, TryGetable,
+    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
     Value as SqlValue,
 };
 use serde_json::Value;

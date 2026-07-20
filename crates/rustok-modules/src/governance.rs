@@ -6050,7 +6050,7 @@ pub enum ModuleGovernanceError {
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TryGetable};
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 
     use super::*;
 

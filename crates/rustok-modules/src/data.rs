@@ -28,7 +28,7 @@ use crate::{
     resolve_granted_artifact_capability, ArtifactBindingDispatch, ArtifactBindingExecutor,
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactDataIndexField,
     ArtifactDataIndexValueType, ArtifactInstallationTarget, ArtifactMigrationCheckpointRequest,
-    ArtifactReleaseRef, InstalledModuleArtifact, ModuleArtifactDescriptor, ModuleInstallationScope,
+    ArtifactReleaseRef, InstalledModuleArtifact, ModuleInstallationScope,
     ModuleRuntimeBinding, ModuleRuntimeBindingKind,
 };
 

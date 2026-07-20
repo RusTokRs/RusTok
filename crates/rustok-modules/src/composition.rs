@@ -331,7 +331,7 @@ fn optional_string_value(value: Option<String>) -> SqlValue {
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
-    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TryGetable};
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 
     use super::*;
 
