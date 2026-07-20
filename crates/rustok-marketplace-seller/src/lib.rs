@@ -4,11 +4,15 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 mod command_receipts;
+mod external_events;
 mod localized_sellers;
 mod receipted_commands;
 mod seller_events;
+mod seller_prose;
 #[cfg(test)]
 mod seller_events_tests;
+#[cfg(test)]
+mod seller_member_events_tests;
 #[cfg(test)]
 mod seller_response_events_tests;
 
@@ -17,6 +21,10 @@ pub mod entities;
 pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
+#[cfg(feature = "graphql")]
+pub mod graphql_events;
+#[cfg(feature = "graphql")]
+pub mod graphql_root;
 pub mod migrations;
 pub mod ports;
 pub mod service;

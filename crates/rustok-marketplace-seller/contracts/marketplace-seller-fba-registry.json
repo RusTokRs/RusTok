@@ -48,7 +48,7 @@
         "request_identity_includes": [
           "command_kind",
           "actor_id",
-          "effective_locale_for_localized_commands",
+          "effective_locale",
           "normalized_request"
         ],
         "result_snapshot": "normalized_owner_response_json",
@@ -59,7 +59,7 @@
   ],
   "event_storage": {
     "table": "marketplace_seller_events",
-    "status": "seller_commands_atomic",
+    "status": "all_live_commands_atomic",
     "append_only": true,
     "identity": "uuid",
     "scope": [
@@ -98,12 +98,11 @@
       "submit_seller_onboarding",
       "review_seller_onboarding",
       "suspend_seller",
-      "reactivate_seller"
-    ],
-    "write_commands_pending": [
+      "reactivate_seller",
       "add_seller_member",
       "update_seller_member"
     ],
+    "write_commands_pending": [],
     "compatibility_columns_removed": false
   },
   "localized_storage": {
@@ -166,6 +165,7 @@
     "event_read_service": "crates/rustok-marketplace-seller/src/seller_events.rs",
     "event_execution_tests": "crates/rustok-marketplace-seller/src/seller_events_tests.rs",
     "seller_response_event_tests": "crates/rustok-marketplace-seller/src/seller_response_events_tests.rs",
+    "seller_member_event_tests": "crates/rustok-marketplace-seller/src/seller_member_events_tests.rs",
     "translation_entity": "crates/rustok-marketplace-seller/src/entities/seller_translation.rs",
     "localized_storage": "crates/rustok-marketplace-seller/src/localized_sellers.rs",
     "receipt_entity": "crates/rustok-marketplace-seller/src/entities/seller_command_receipt.rs",
@@ -289,10 +289,25 @@
         ]
       },
       {
+        "operation": "add_seller_member",
+        "assertions": [
+          "seller_scope_preserved",
+          "effective_locale_in_request_identity",
+          "member_event_and_receipt_atomic",
+          "lost_response_replay_returns_saved_result",
+          "lost_response_replay_does_not_duplicate_event",
+          "conflicting_locale_rejected"
+        ]
+      },
+      {
         "operation": "update_seller_member",
         "assertions": [
           "seller_scope_preserved",
-          "receipt_and_member_write_atomic",
+          "effective_locale_in_request_identity",
+          "member_event_and_receipt_atomic",
+          "lost_response_replay_returns_saved_result",
+          "lost_response_replay_does_not_duplicate_event",
+          "conflicting_locale_rejected",
           "owner_membership_cannot_be_disabled",
           "owner_membership_cannot_be_demoted"
         ]
@@ -309,6 +324,6 @@
         ]
       }
     ],
-    "known_gap": "event production and effective-locale command identity for member commands, legacy snapshot backfill/removal, transactional outbox publication, compiled clean/upgraded SQLite and PostgreSQL migrations, contention, mounted native and GraphQL execution, and remote-profile evidence are not yet retained"
+    "known_gap": "legacy snapshot backfill/removal, transactional outbox publication, compiled clean/upgraded SQLite and PostgreSQL migrations, contention, mounted native and GraphQL execution, and remote-profile evidence are not yet retained"
   }
 }
