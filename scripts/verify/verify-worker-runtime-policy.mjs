@@ -37,10 +37,28 @@ function forbidMarkers(relativePath, markers) {
   }
 }
 
+function countMarker(source, marker) {
+  return source.split(marker).length - 1;
+}
+
 function requireCount(relativePath, marker, expected) {
-  const actual = read(relativePath).split(marker).length - 1;
+  const actual = countMarker(read(relativePath), marker);
   if (actual !== expected) {
     failures.push(`${relativePath}: expected ${expected} occurrence(s) of ${marker}, found ${actual}`);
+  }
+}
+
+function requireMatchedCount(relativePath, constructorMarker, cancellationMarker) {
+  const source = read(relativePath);
+  const constructors = countMarker(source, constructorMarker);
+  const cancellations = countMarker(source, cancellationMarker);
+  if (constructors === 0) {
+    failures.push(`${relativePath}: expected at least one subprocess constructor`);
+  }
+  if (constructors !== cancellations) {
+    failures.push(
+      `${relativePath}: expected one ${cancellationMarker} per ${constructorMarker}; found ${constructors} constructor(s) and ${cancellations} cancellation marker(s)`,
+    );
   }
 }
 
@@ -116,14 +134,21 @@ requireCount(
   2,
 );
 requireMarkers("crates/rustok-module-build-worker/src/runner.rs", [
-  "command.kill_on_drop(true);",
-  "timeout(timeout_window, command.output())",
+  "let mut child = Command::new(&self.job_launcher_path)",
+  ".kill_on_drop(true)",
+  "timeout(job_timeout, child.wait())",
 ]);
-requireCount(
+
+for (const subprocessFile of [
+  "crates/rustok-module-build-worker/src/artifact.rs",
+  "crates/rustok-module-build-worker/src/credentials.rs",
+  "crates/rustok-module-build-worker/src/materializer.rs",
+  "crates/rustok-module-build-worker/src/policy.rs",
   "crates/rustok-module-build-worker/src/runner.rs",
-  "kill_on_drop(true)",
-  1,
-);
+  "crates/rustok-module-build-worker/src/signing.rs",
+]) {
+  requireMatchedCount(subprocessFile, "Command::new(", "kill_on_drop(true)");
+}
 
 requireMarkers(".github/workflows/hardening-gates.yml", [
   "Verify worker runtime backpressure policy",
@@ -150,5 +175,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ worker admission is bounded, readiness remains available, hosts stop gracefully, and cancelled subprocesses are killed",
+  "✔ worker admission is bounded, readiness remains available, hosts stop gracefully, and every module-build subprocess is killed on cancellation",
 );

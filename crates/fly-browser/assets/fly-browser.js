@@ -567,6 +567,11 @@ export function mountAllFlyBrowsers(options = {}) {
     .filter(Boolean);
 }
 
+export function bootstrapFlyBrowsers(options = {}) {
+  if (options.autoMount === false) return [];
+  return mountAllFlyBrowsers(options);
+}
+
 export function unmountAllFlyBrowsers(selector = ROOT_SELECTOR) {
   for (const root of document.querySelectorAll(selector)) root[ADAPTER_KEY]?.stop();
 }
@@ -577,14 +582,21 @@ const api = {
   FlyBrowserAdapter,
   mount: mountFlyBrowser,
   mountAll: mountAllFlyBrowsers,
+  bootstrap: bootstrapFlyBrowsers,
   unmountAll: unmountAllFlyBrowsers,
 };
 
 globalThis.FlyBrowser = Object.assign(globalThis.FlyBrowser || {}, api);
 
 const bootstrapConfig = globalThis.__FLY_BROWSER_CONFIG__ || {};
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => mountAllFlyBrowsers(bootstrapConfig), { once: true });
-} else {
-  mountAllFlyBrowsers(bootstrapConfig);
+if (bootstrapConfig.autoMount !== false) {
+  if (document.readyState === "loading") {
+    document.addEventListener(
+      "DOMContentLoaded",
+      () => bootstrapFlyBrowsers(bootstrapConfig),
+      { once: true },
+    );
+  } else {
+    bootstrapFlyBrowsers(bootstrapConfig);
+  }
 }
