@@ -45,16 +45,17 @@ jobs:
         run: python3 scripts/maintenance/apply-cache-clock-hardening.py
       - name: Verify structural cache clock contract
         run: node scripts/verify/verify-cache-clock-contract.mjs
-      - name: Verify changed-file scope and formatting
+      - name: Format and verify bounded change scope
         shell: bash
         run: |
           set -euo pipefail
-          git diff --check
-          rustfmt --edition 2021 --check \
+          rustfmt --edition 2021 \
             crates/rustok-cache/src/clock.rs \
             crates/rustok-cache/src/negative.rs \
             crates/rustok-cache/src/typed.rs \
             crates/rustok-cache/src/refresh.rs
+          node scripts/verify/verify-cache-clock-contract.mjs
+          git diff --check
           mapfile -t changed < <(git diff --name-only | sort)
           expected=(
             .github/workflows/hardening-gates.yml
