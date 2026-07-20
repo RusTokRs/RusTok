@@ -10,7 +10,6 @@ use std::sync::Arc;
 use rustok_modules::{
     ArtifactCapabilityBrokerResolverRouter, ArtifactRuntime, ArtifactRuntimeLifecycleExecutor,
     ModuleControlPlane, ResolvingArtifactCapabilityBroker, SharedArtifactBindingExecutor,
-    StorageArtifactBlobStore,
 };
 use rustok_sandbox::{CapabilityName, ExecutorRegistry, RhaiCapabilityBridge, SandboxRuntime};
 use rustok_storage::StorageService;
@@ -62,7 +61,7 @@ pub fn compose_artifact_binding_executor(
         Arc::new(ResolvingArtifactCapabilityBroker::new(resolver)),
     )
     .with_observer(Arc::new(control_plane.artifact_execution_audit()));
-    let runtime = ArtifactRuntime::new(StorageArtifactBlobStore::new(storage), sandbox);
+    let runtime = ArtifactRuntime::new(control_plane.artifact_blob_store(storage), sandbox);
     Ok(Arc::new(ArtifactRuntimeLifecycleExecutor::new(
         runtime,
         control_plane.installation(),

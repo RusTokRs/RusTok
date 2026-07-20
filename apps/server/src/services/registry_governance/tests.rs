@@ -334,7 +334,7 @@ mod tests {
         let snapshots =
             derive_follow_up_gate_snapshots(Some(&request), &events, &validation_stages);
 
-        assert_eq!(snapshots.len(), 3);
+        assert_eq!(snapshots.len(), 2);
         assert_eq!(
             snapshots
                 .iter()
@@ -349,13 +349,25 @@ mod tests {
                 .map(|gate| gate.status.as_str()),
             Some("failed")
         );
-        assert_eq!(
-            snapshots
-                .iter()
-                .find(|gate| gate.key == "security_policy_review")
-                .map(|gate| gate.status.as_str()),
-            Some("pending")
-        );
+        assert!(snapshots
+            .iter()
+            .all(|gate| gate.key != "security_policy_review"));
+    }
+
+    #[test]
+    fn derive_follow_up_gate_snapshots_selects_security_gate_for_external_prebuilt() {
+        let now = Utc::now();
+        let mut request = sample_publish_request_model();
+        request.status = RegistryPublishRequestStatus::Approved;
+        request.artifact_origin = "external_prebuilt".to_string();
+        request.validated_at = Some(now);
+
+        let validation_stages = derive_validation_stage_snapshots(Some(&request), &[], &[]);
+        let snapshots = derive_follow_up_gate_snapshots(Some(&request), &[], &validation_stages);
+
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].key, "security_policy_review");
+        assert_eq!(snapshots[0].status, "pending");
     }
 
     #[tokio::test]
@@ -476,7 +488,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn report_validation_stage_requeue_increments_attempt_number() {
+    async fn report_validation_stage_rejects_manual_platform_build_evidence() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let request = insert_publish_request(&db, RegistryPublishRequestStatus::Approved).await;
         let actor = request_actor_label(&request);
@@ -493,7 +505,7 @@ mod tests {
         let service = RegistryGovernanceService::new(db.clone());
         let authority = authority_from_actor(&actor);
 
-        let failed = service
+        let error = service
             .report_validation_stage(
                 &request.id,
                 &authority,
@@ -504,35 +516,11 @@ mod tests {
                 false,
             )
             .await
-            .unwrap();
-        assert_eq!(failed.stage.attempt_number, 1);
-        assert_eq!(failed.stage.status, RegistryValidationStageStatus::Failed);
+            .expect_err("platform build evidence must not be replaced by a manual report");
 
-        let requeued = service
-            .report_validation_stage(
-                &request.id,
-                &authority,
-                "compile_smoke",
-                "queued",
-                Some("Compile smoke queued again after fixes."),
-                None,
-                true,
-            )
-            .await
-            .unwrap();
-        assert_eq!(requeued.stage.attempt_number, 2);
-        assert_eq!(requeued.stage.status, RegistryValidationStageStatus::Queued);
-
-        let stages = RegistryValidationStageEntity::find()
-            .filter(registry_validation_stage::Column::RequestId.eq(request.id))
-            .filter(registry_validation_stage::Column::StageKey.eq("compile_smoke"))
-            .order_by_asc(registry_validation_stage::Column::AttemptNumber)
-            .all(&db)
-            .await
-            .unwrap();
-        assert_eq!(stages.len(), 2);
-        assert_eq!(stages[0].status, RegistryValidationStageStatus::Failed);
-        assert_eq!(stages[1].status, RegistryValidationStageStatus::Queued);
+        assert!(error
+            .to_string()
+            .contains("cannot be changed by a manual report"));
     }
 
     #[tokio::test]

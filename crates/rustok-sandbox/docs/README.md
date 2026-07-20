@@ -10,6 +10,9 @@ identity, marketplace governance, installation state or Alloy source workflows.
 The crate owns sandbox requests, executor selection, default-deny capability
 enforcement, shared limits, outcomes and execution observers. Executor adapters
 may implement Rhai, WebAssembly or sidecar isolation behind the same contract.
+It also owns the stable `RHAI_SANDBOX_RUNTIME_ABI` identity consumed by Alloy
+publication smoke and admitted Rhai module artifacts; consumers must not
+duplicate or reinterpret that ABI string in their own release contracts.
 
 ## Integration
 

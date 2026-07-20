@@ -1,4 +1,5 @@
 use super::*;
+use sha2::{Digest, Sha256};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn run_remote_validation_runner_once(
@@ -152,6 +153,19 @@ fn execute_remote_validation_claim(
             preview.version
         );
     }
+    if preview.crate_name != claim.crate_name {
+        anyhow::bail!("Remote runner claim crate identity does not match the local publish bundle");
+    }
+    if claim.requires_manual_confirmation != (claim.stage_key == "security_policy_review") {
+        anyhow::bail!("Remote runner claim has inconsistent manual confirmation policy");
+    }
+    let publish_artifact = build_publish_artifact_bytes(&preview)?;
+    let local_checksum = format!("{:x}", Sha256::digest(&publish_artifact));
+    if local_checksum != claim.artifact_checksum_sha256 {
+        anyhow::bail!(
+            "Remote runner local publish bundle does not match the owner-issued artifact digest"
+        );
+    }
 
     build_module_validation_stage_run_preview(
         &preview,
@@ -163,7 +177,7 @@ fn execute_remote_validation_claim(
 
 fn remote_claim_running_detail(claim: &RegistryRunnerClaimHttpPayload) -> String {
     format!(
-        "Remote runner '{}' executing '{}' for module '{}' from {}.",
-        claim.execution_mode, claim.stage_key, claim.slug, claim.artifact_download_url
+        "Remote runner '{}' executing '{}' for module '{}' against the owner-issued artifact identity.",
+        claim.execution_mode, claim.stage_key, claim.slug
     )
 }

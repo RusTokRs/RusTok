@@ -34,13 +34,19 @@ pub struct TrustVerificationDecision {
     pub signature_verified: bool,
     pub provenance_verified: bool,
     pub sbom_verified: bool,
+    pub license_policy_verified: bool,
+    pub vulnerability_policy_verified: bool,
     #[serde(default)]
     pub evidence_references: Vec<String>,
 }
 
 impl TrustVerificationDecision {
     pub fn admitted(&self) -> bool {
-        self.signature_verified && self.provenance_verified && self.sbom_verified
+        self.signature_verified
+            && self.provenance_verified
+            && self.sbom_verified
+            && self.license_policy_verified
+            && self.vulnerability_policy_verified
     }
 }
 
@@ -51,4 +57,36 @@ pub trait TrustVerifier: Send + Sync {
         &self,
         request: TrustVerificationRequest,
     ) -> Result<TrustVerificationDecision, String>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TrustVerificationDecision;
+
+    fn admitted_decision() -> TrustVerificationDecision {
+        TrustVerificationDecision {
+            signer_identity: "build-service:production".to_string(),
+            trust_policy_revision: 7,
+            capability_policy_revision: 9,
+            signature_verified: true,
+            provenance_verified: true,
+            sbom_verified: true,
+            license_policy_verified: true,
+            vulnerability_policy_verified: true,
+            evidence_references: vec!["oci://evidence".to_string()],
+        }
+    }
+
+    #[test]
+    fn admission_requires_independent_license_and_vulnerability_policy_results() {
+        let mut decision = admitted_decision();
+        assert!(decision.admitted());
+
+        decision.license_policy_verified = false;
+        assert!(!decision.admitted());
+
+        decision.license_policy_verified = true;
+        decision.vulnerability_policy_verified = false;
+        assert!(!decision.admitted());
+    }
 }

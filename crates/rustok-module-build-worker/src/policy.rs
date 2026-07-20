@@ -827,3 +827,126 @@ fn url_has_credentials(value: &str) -> bool {
                 .is_some_and(|authority| authority.contains('@'))
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{inspect_resolved_lock_graph, SourcePolicyError};
+    use rustok_modules::ModuleBuildDependencyPolicy;
+
+    fn policy() -> ModuleBuildDependencyPolicy {
+        ModuleBuildDependencyPolicy {
+            lock_digest: format!("sha256:{}", "a".repeat(64)),
+            allowed_registries: vec!["https://crates.io".to_string()],
+            allow_git_dependencies: false,
+            allow_build_scripts: false,
+            allow_native_links: false,
+        }
+    }
+
+    fn lock(source: &str) -> toml::Value {
+        source.parse().expect("Cargo.lock fixture")
+    }
+
+    fn package_mut(lock: &mut toml::Value, index: usize) -> &mut toml::Value {
+        lock.get_mut("package")
+            .and_then(toml::Value::as_array_mut)
+            .and_then(|packages| packages.get_mut(index))
+            .expect("package fixture")
+    }
+
+    #[test]
+    fn resolved_lock_fixture_accepts_only_allowlisted_checksummed_registry_graph() {
+        let valid = lock(&format!(
+            r#"
+[[package]]
+name = "module"
+version = "1.0.0"
+dependencies = ["dependency 1.2.3"]
+
+[[package]]
+name = "dependency"
+version = "1.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "{}"
+"#,
+            "b".repeat(64)
+        ));
+
+        assert!(inspect_resolved_lock_graph(&valid, &policy()).is_ok());
+
+        let mut missing_checksum = valid.clone();
+        package_mut(&mut missing_checksum, 1)
+            .as_table_mut()
+            .expect("dependency package")
+            .remove("checksum");
+        assert!(matches!(
+            inspect_resolved_lock_graph(&missing_checksum, &policy()),
+            Err(SourcePolicyError::DependencyPolicyDenied)
+        ));
+
+        let mut credential_source = valid.clone();
+        package_mut(&mut credential_source, 1)
+            .as_table_mut()
+            .expect("dependency package")
+            .insert(
+                "source".to_string(),
+                toml::Value::String("registry+https://token@crates.io/index".to_string()),
+            );
+        assert!(matches!(
+            inspect_resolved_lock_graph(&credential_source, &policy()),
+            Err(SourcePolicyError::DependencyPolicyDenied)
+        ));
+    }
+
+    #[test]
+    fn resolved_lock_fixture_rejects_unpinned_git_and_dangling_dependencies() {
+        let git = lock(
+            r#"
+[[package]]
+name = "module"
+version = "1.0.0"
+
+[[package]]
+name = "dependency"
+version = "1.2.3"
+source = "git+https://github.com/example/dependency"
+"#,
+        );
+        let mut git_policy = policy();
+        git_policy.allow_git_dependencies = true;
+        assert!(matches!(
+            inspect_resolved_lock_graph(&git, &git_policy),
+            Err(SourcePolicyError::DependencyPolicyDenied)
+        ));
+
+        let dangling = lock(
+            r#"
+[[package]]
+name = "module"
+version = "1.0.0"
+dependencies = ["missing 9.9.9"]
+"#,
+        );
+        assert!(matches!(
+            inspect_resolved_lock_graph(&dangling, &policy()),
+            Err(SourcePolicyError::DependencyPolicyDenied)
+        ));
+    }
+
+    #[test]
+    fn resolved_lock_fixture_accepts_allowlisted_git_only_with_exact_revision() {
+        let revision = "c".repeat(40);
+        let git = lock(&format!(
+            r#"
+[[package]]
+name = "dependency"
+version = "1.2.3"
+source = "git+https://github.com/example/dependency#{revision}"
+"#
+        ));
+        let mut git_policy = policy();
+        git_policy.allow_git_dependencies = true;
+
+        assert!(inspect_resolved_lock_graph(&git, &git_policy).is_ok());
+    }
+}

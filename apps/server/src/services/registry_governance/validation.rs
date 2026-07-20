@@ -1,6 +1,5 @@
 use super::*;
 use rustok_modules::{
-    ModulePublicationArtifactOrigin, ModulePublishValidationContract,
     ModuleRemoteValidationClaimCommand, ModuleRemoteValidationHeartbeatCommand,
     ModuleRemoteValidationTerminalCommand, ModuleRemoteValidationTerminalOutcome,
     ModuleValidationJobEnqueueCommand, ModuleValidationStageReportCommand,
@@ -292,16 +291,6 @@ pub fn validation_stage_status_label(status: RegistryValidationStageStatus) -> &
     }
 }
 
-fn validation_stage_event_type(status: &RegistryValidationStageStatus) -> &'static str {
-    match status {
-        RegistryValidationStageStatus::Queued => "validation_stage_queued",
-        RegistryValidationStageStatus::Running => "validation_stage_running",
-        RegistryValidationStageStatus::Passed => "validation_stage_passed",
-        RegistryValidationStageStatus::Failed => "validation_stage_failed",
-        RegistryValidationStageStatus::Blocked => "validation_stage_blocked",
-    }
-}
-
 fn parse_validation_stage_status(value: &str) -> anyhow::Result<RegistryValidationStageStatus> {
     match value.trim().to_ascii_lowercase().as_str() {
         "queued" => Ok(RegistryValidationStageStatus::Queued),
@@ -358,147 +347,6 @@ fn default_validation_stage_detail(
     }
 }
 
-fn ensure_validation_stage_transition_allowed(
-    current: &RegistryValidationStageStatus,
-    next: &RegistryValidationStageStatus,
-    stage_key: &str,
-) -> anyhow::Result<()> {
-    let allowed = match current {
-        RegistryValidationStageStatus::Queued => matches!(
-            next,
-            RegistryValidationStageStatus::Running
-                | RegistryValidationStageStatus::Passed
-                | RegistryValidationStageStatus::Failed
-                | RegistryValidationStageStatus::Blocked
-        ),
-        RegistryValidationStageStatus::Running => matches!(
-            next,
-            RegistryValidationStageStatus::Running
-                | RegistryValidationStageStatus::Passed
-                | RegistryValidationStageStatus::Failed
-                | RegistryValidationStageStatus::Blocked
-        ),
-        RegistryValidationStageStatus::Blocked => matches!(
-            next,
-            RegistryValidationStageStatus::Running
-                | RegistryValidationStageStatus::Passed
-                | RegistryValidationStageStatus::Failed
-                | RegistryValidationStageStatus::Blocked
-        ),
-        RegistryValidationStageStatus::Passed | RegistryValidationStageStatus::Failed => false,
-    };
-
-    if allowed {
-        return Ok(());
-    }
-
-    Err(conflict_error(format!(
-        "Validation stage '{}' cannot move from '{}' to '{}' without requeue",
-        stage_key,
-        validation_stage_status_label(current.clone()),
-        validation_stage_status_label(next.clone())
-    )))
-}
-
-fn remote_validation_runner_actor(runner_id: &str) -> String {
-    normalize_actor(&format!("remote-runner:{runner_id}"))
-}
-
-fn remote_validation_execution_mode(_stage_key: &str) -> &'static str {
-    "local_workspace"
-}
-
-fn remote_validation_stage_requires_manual_confirmation(stage_key: &str) -> bool {
-    stage_key == "security_policy_review"
-}
-
-fn remote_validation_pass_reason_code(stage_key: &str) -> &'static str {
-    match stage_key {
-        "security_policy_review" => "manual_review_complete",
-        _ => "local_runner_passed",
-    }
-}
-
-fn remote_validation_failure_reason_code(stage_key: &str) -> &'static str {
-    match stage_key {
-        "compile_smoke" => "build_failure",
-        "targeted_tests" => "test_failure",
-        "security_policy_review" => "policy_preflight_failed",
-        _ => "manual_override",
-    }
-}
-
-fn remote_validation_blocked_reason_code(stage_key: &str) -> &'static str {
-    match stage_key {
-        "security_policy_review" => "security_findings",
-        _ => "manual_override",
-    }
-}
-
-fn remote_validation_stage_claim_detail(stage_key: &str, runner_id: &str) -> String {
-    format!(
-        "Remote runner '{}' claimed validation stage '{}'.",
-        runner_id, stage_key
-    )
-}
-
-fn remote_validation_success_detail(stage_key: &str, slug: &str) -> String {
-    match stage_key {
-        "compile_smoke" => {
-            format!("Remote compile smoke completed successfully for module '{slug}'.")
-        }
-        "targeted_tests" => {
-            format!("Remote targeted tests completed successfully for module '{slug}'.")
-        }
-        "security_policy_review" => format!(
-            "Remote security/policy preflight completed and manual review was confirmed for module '{slug}'."
-        ),
-        _ => format!("Remote validation stage '{stage_key}' completed successfully for '{slug}'."),
-    }
-}
-
-fn remote_validation_failure_detail(stage_key: &str, slug: &str) -> String {
-    match stage_key {
-        "compile_smoke" => format!("Remote compile smoke failed for module '{slug}'."),
-        "targeted_tests" => format!("Remote targeted tests failed for module '{slug}'."),
-        "security_policy_review" => {
-            format!("Remote security/policy preflight failed for module '{slug}'.")
-        }
-        _ => format!("Remote validation stage '{stage_key}' failed for '{slug}'."),
-    }
-}
-
-fn remote_validation_lease_ttl(lease_ttl_ms: u64) -> Duration {
-    Duration::milliseconds(lease_ttl_ms.max(1).min(i64::MAX as u64) as i64)
-}
-
-fn ensure_remote_validation_claim_runner(
-    stage: &registry_validation_stage::Model,
-    runner_id: &str,
-) -> anyhow::Result<()> {
-    let claimed_by = stage.claimed_by.as_deref().ok_or_else(|| {
-        conflict_error(format!(
-            "Remote validation stage '{}' is not currently claimed",
-            stage.id
-        ))
-    })?;
-    if claimed_by != runner_id {
-        return Err(forbidden_error(format!(
-            "Remote validation claim '{}' belongs to runner '{}', not '{}'",
-            stage.claim_id.as_deref().unwrap_or("unknown"),
-            claimed_by,
-            runner_id
-        )));
-    }
-    if stage.runner_kind.as_deref() != Some("remote") {
-        return Err(forbidden_error(format!(
-            "Remote validation claim '{}' is not owned by a remote runner",
-            stage.claim_id.as_deref().unwrap_or("unknown")
-        )));
-    }
-    Ok(())
-}
-
 pub(crate) fn validation_stage_details_value(
     stage: &registry_validation_stage::Model,
 ) -> serde_json::Value {
@@ -513,18 +361,6 @@ pub(crate) fn validation_stage_details_value(
         "finished_at": stage.finished_at.as_ref().map(|value| value.to_rfc3339()),
         "updated_at": stage.updated_at.to_rfc3339(),
     })
-}
-
-fn merge_json_object(target: &mut serde_json::Value, extra: serde_json::Value) {
-    let Some(target_map) = target.as_object_mut() else {
-        return;
-    };
-    let Some(extra_map) = extra.as_object() else {
-        return;
-    };
-    for (key, value) in extra_map {
-        target_map.insert(key.clone(), value.clone());
-    }
 }
 
 pub(crate) fn derive_validation_stage_snapshots(
@@ -542,7 +378,10 @@ pub(crate) fn derive_validation_stage_snapshots(
         }
     }
 
-    for stage_key in REGISTRY_VALIDATION_FOLLOW_UP_GATES {
+    let required_gates = latest_request
+        .map(|request| validation_follow_up_gates_for_origin(&request.artifact_origin))
+        .unwrap_or(&[]);
+    for stage_key in required_gates {
         if let Some(stage) = latest_by_stage.get(stage_key) {
             snapshots.push(RegistryValidationStageSnapshot {
                 key: (*stage_key).to_string(),
@@ -650,7 +489,10 @@ pub(crate) fn derive_follow_up_gate_snapshots(
 
     let mut snapshots = Vec::new();
 
-    for gate in REGISTRY_VALIDATION_FOLLOW_UP_GATES {
+    let required_gates = latest_request
+        .map(|request| validation_follow_up_gates_for_origin(&request.artifact_origin))
+        .unwrap_or(&[]);
+    for gate in required_gates {
         let latest_event = recent_events.iter().find(|event| {
             matches!(
                 event.event_type.as_str(),
@@ -725,30 +567,6 @@ pub(crate) fn rejected_publish_request_can_retry(
         .is_some_and(|reason| !reason.trim().starts_with("Governance rejection reason:"))
 }
 
-pub(crate) fn normalize_actor(value: &str) -> String {
-    let actor = value.trim();
-    if actor.is_empty() {
-        "system:auto".to_string()
-    } else {
-        actor.to_string()
-    }
-}
-
-pub(crate) fn dedupe_message_list(values: Vec<String>) -> Vec<String> {
-    let mut seen = HashSet::new();
-    let mut deduped = Vec::new();
-    for value in values {
-        let value = value.trim().to_string();
-        if value.is_empty() {
-            continue;
-        }
-        if seen.insert(value.clone()) {
-            deduped.push(value);
-        }
-    }
-    deduped
-}
-
 pub(crate) fn deserialize_message_list(value: &serde_json::Value) -> Vec<String> {
     value
         .as_array()
@@ -765,50 +583,4 @@ pub(crate) fn compare_semver_desc(left: &str, right: &str) -> std::cmp::Ordering
         (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
         (Err(_), Err(_)) => std::cmp::Ordering::Equal,
     }
-}
-
-pub(crate) async fn validate_registry_artifact(
-    db: &DatabaseConnection,
-    request: &registry_publish_request::Model,
-    artifact: &RegistryArtifactUpload,
-) -> anyhow::Result<rustok_modules::ModulePublishBundleValidation> {
-    let request_metadata = load_publish_request_metadata(
-        db,
-        &request.id,
-        Some(request.default_locale.as_str()),
-        Some(request.default_locale.as_str()),
-    )
-    .await?;
-
-    let marketplace: RegistryPublishMarketplaceRequest =
-        serde_json::from_value(request.marketplace.clone()).unwrap_or_default();
-    let ui_packages = request_ui_packages(request);
-    let contract = ModulePublishValidationContract {
-        slug: request.slug.clone(),
-        version: request.version.clone(),
-        crate_name: request.crate_name.clone(),
-        module_name: request_metadata.name,
-        module_description: request_metadata.description,
-        ownership: request.ownership.clone(),
-        trust_level: request.trust_level.clone(),
-        license: request.license.clone(),
-        entry_type: request.entry_type.clone(),
-        marketplace_category: marketplace.category,
-        marketplace_tags: marketplace.tags,
-        admin_ui_crate_name: ui_packages.admin.map(|ui| ui.crate_name),
-        storefront_ui_crate_name: ui_packages.storefront.map(|ui| ui.crate_name),
-    };
-
-    let artifact_origin = match request.artifact_origin.as_str() {
-        "platform_built" => ModulePublicationArtifactOrigin::PlatformBuilt,
-        "external_prebuilt" => ModulePublicationArtifactOrigin::ExternalPrebuilt,
-        "alloy_authored" => ModulePublicationArtifactOrigin::AlloyAuthored,
-        _ => anyhow::bail!("registry publish request artifact origin is unclassified"),
-    };
-    Ok(rustok_modules::validate_module_publish_artifact(
-        artifact_origin,
-        &contract,
-        &artifact.content_type,
-        &artifact.bytes,
-    ))
 }

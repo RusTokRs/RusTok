@@ -21,7 +21,11 @@ The crate defines the common installer contract reused by:
 - `SeedProfile` owns its canonical default module set; host installers may only
   apply explicit enable/disable overrides from the install plan.
 - `SeedExecutionRequest` composes tenant, identity, role and module owner ports;
-  it has no server model or database adapter dependency.
+  it has no server model or database adapter dependency and is exposed by the
+  default `seed-runtime` feature.
+- Install-plan, state, receipt, preflight, deployment, secret, and executor
+  contracts remain available without default features so the web wizard can
+  share their exact types without linking the native seed runtime.
 - Rollback after schema application must not promise a universal reverse
   migration; production restore relies on backup/snapshot.
 

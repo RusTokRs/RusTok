@@ -28,8 +28,8 @@ use crate::{
     artifact::{event_topic_matches, valid_event_topic},
     data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
     ArtifactBindingDispatch, ArtifactInstallationTarget, ArtifactReleaseRef,
-    ModuleArtifactDescriptor, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
-    SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
+    ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleRuntimeBinding,
+    ModuleRuntimeBindingKind, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
 };
 
 const MAX_EVENT_TYPE_BYTES: usize = 128;
@@ -141,6 +141,7 @@ impl ArtifactEventDeliveryConfig {
 pub struct SeaOrmArtifactEventDeliveryQueue {
     db: DatabaseConnection,
     config: ArtifactEventDeliveryConfig,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 /// Projects a platform event from `sys_events` into every effective immutable
@@ -157,7 +158,19 @@ impl SeaOrmArtifactEventSubscriptionProjector {
         db: DatabaseConnection,
         config: ArtifactEventDeliveryConfig,
     ) -> Result<Self, ArtifactEventDeliveryError> {
-        let deliveries = SeaOrmArtifactEventDeliveryQueue::new(db.clone(), config)?;
+        Self::with_infrastructure(db, config, ControlPlaneInfrastructure::default())
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        config: ArtifactEventDeliveryConfig,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Result<Self, ArtifactEventDeliveryError> {
+        let deliveries = SeaOrmArtifactEventDeliveryQueue::with_infrastructure(
+            db.clone(),
+            config,
+            infrastructure,
+        )?;
         Ok(Self { db, deliveries })
     }
 
@@ -482,7 +495,7 @@ impl ModuleWorkSource for ArtifactEventDeliveryWorkAdapter {
                     id: item.delivery_id,
                     tenant_id: item.tenant_id,
                     worker_slug: ARTIFACT_EVENT_DELIVERY_WORKER.to_string(),
-                    lease_token: Uuid::new_v4().to_string(),
+                    lease_token: self.queue.infrastructure.new_id().to_string(),
                     payload: serde_json::to_value(item).expect("event work item must serialize"),
                 }));
             }
@@ -587,8 +600,20 @@ impl SeaOrmArtifactEventDeliveryQueue {
         db: DatabaseConnection,
         config: ArtifactEventDeliveryConfig,
     ) -> Result<Self, ArtifactEventDeliveryError> {
+        Self::with_infrastructure(db, config, ControlPlaneInfrastructure::default())
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        config: ArtifactEventDeliveryConfig,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Result<Self, ArtifactEventDeliveryError> {
         config.validate()?;
-        Ok(Self { db, config })
+        Ok(Self {
+            db,
+            config,
+            infrastructure,
+        })
     }
 
     pub fn config(&self) -> &ArtifactEventDeliveryConfig {
@@ -630,7 +655,7 @@ impl SeaOrmArtifactEventDeliveryQueue {
             return Err(ArtifactEventDeliveryError::BindingUnavailable);
         }
 
-        let delivery_id = Uuid::new_v4();
+        let delivery_id = self.infrastructure.new_id();
         let inserted = transaction
             .execute(Statement::from_sql_and_values(
                 backend,

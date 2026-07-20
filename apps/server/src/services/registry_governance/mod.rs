@@ -1,10 +1,7 @@
 #![allow(clippy::too_many_arguments, clippy::unnecessary_lazy_evaluations)]
 
 use anyhow::{Context, anyhow};
-use chrono::Duration;
-use rustok_api::{
-    PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match, normalize_locale_tag,
-};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match};
 use rustok_modules::{ModuleControlPlane, SeaOrmModuleGovernanceService};
 use rustok_storage::StorageService;
 use sea_orm::{
@@ -15,7 +12,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use crate::models::registry_governance_event::Entity as RegistryGovernanceEventEntity;
+use crate::models::registry_governance_event::{self, Entity as RegistryGovernanceEventEntity};
 use crate::models::registry_module_owner::{self, Entity as RegistryModuleOwnerEntity};
 use crate::models::registry_module_release::{
     self, Entity as RegistryModuleReleaseEntity, RegistryModuleReleaseStatus,
@@ -26,23 +23,20 @@ use crate::models::registry_module_release_translation::{
 use crate::models::registry_publish_request::{
     self, Entity as RegistryPublishRequestEntity, RegistryPublishRequestStatus,
 };
-use crate::models::registry_publish_request_translation::{
-    self as registry_publish_request_translation, Entity as RegistryPublishRequestTranslationEntity,
-};
 use crate::models::registry_validation_stage::{
     self, Entity as RegistryValidationStageEntity, RegistryValidationStageStatus,
 };
 use crate::modules::{CatalogManifestModule, CatalogModuleVersion};
-use crate::services::marketplace_catalog::{
-    RegistryPublishArtifactOrigin, RegistryPublishMarketplaceRequest, RegistryPublishRequest,
-    RegistryPublishUiPackagesRequest,
-};
+use crate::services::marketplace_catalog::{RegistryPublishArtifactOrigin, RegistryPublishRequest};
 use crate::services::registry_principal::{RegistryAuthority, RegistryPrincipalRef};
 use thiserror::Error;
 
 pub use rustok_modules::MODULE_PUBLISH_ARTIFACT_MAX_BYTES;
 const REGISTRY_VALIDATION_FOLLOW_UP_GATES: &[&str] =
     &["compile_smoke", "targeted_tests", "security_policy_review"];
+const PLATFORM_BUILT_VALIDATION_FOLLOW_UP_GATES: &[&str] = &["compile_smoke", "targeted_tests"];
+const EXTERNAL_PREBUILT_VALIDATION_FOLLOW_UP_GATES: &[&str] = &["security_policy_review"];
+const ALLOY_AUTHORED_VALIDATION_FOLLOW_UP_GATES: &[&str] = &["security_policy_review"];
 pub use rustok_modules::REGISTRY_APPROVE_OVERRIDE_REASON_CODES;
 pub use rustok_modules::REGISTRY_HOLD_REASON_CODES;
 pub use rustok_modules::REGISTRY_OWNER_TRANSFER_REASON_CODES;
@@ -286,16 +280,8 @@ pub struct RegistryPublishRequestFollowUpSnapshot {
     pub governance_actions: Vec<RegistryGovernanceActionSnapshot>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub(crate) struct RegistryValidationCheckDetail {
-    key: String,
-    status: String,
-    detail: String,
-}
-
 #[derive(Debug, Clone)]
 struct RegistryLocalizedMetadata {
-    locale: String,
     name: String,
     description: String,
 }
@@ -315,10 +301,9 @@ pub(crate) use publishing::{
     lifecycle_governance_actions, publish_request_governance_actions,
     publish_request_governance_actions_for_authority,
 };
-pub(crate) use releases::request_ui_packages;
 pub(crate) use validation::{
     compare_semver_desc, derive_follow_up_gate_snapshots, derive_validation_stage_snapshots,
-    deserialize_message_list, normalize_actor, validation_stage_details_value,
+    deserialize_message_list, validation_stage_details_value,
 };
 
 impl RegistryGovernanceService {
@@ -388,46 +373,24 @@ fn registry_artifact_download_path(request_id: &str) -> String {
     format!("/v2/catalog/publish/{request_id}/artifact/download")
 }
 
-fn follow_up_validation_warning() -> &'static str {
-    "Automated artifact and manifest contract checks passed, but compile smoke, targeted test smoke, and security/policy review still remain external follow-up gates before production approval."
+fn validation_follow_up_gates_for_origin(artifact_origin: &str) -> &'static [&'static str] {
+    match artifact_origin {
+        "platform_built" => PLATFORM_BUILT_VALIDATION_FOLLOW_UP_GATES,
+        "external_prebuilt" => EXTERNAL_PREBUILT_VALIDATION_FOLLOW_UP_GATES,
+        "alloy_authored" => ALLOY_AUTHORED_VALIDATION_FOLLOW_UP_GATES,
+        _ => &[],
+    }
 }
 
 fn follow_up_gate_detail(gate: &str) -> &'static str {
     match gate {
-        "compile_smoke" => "Compile smoke still runs outside the current registry validator.",
-        "targeted_tests" => {
-            "Targeted module tests still run outside the current registry validator."
-        }
+        "compile_smoke" => "Compile smoke awaits exact platform build-worker validation evidence.",
+        "targeted_tests" => "Targeted tests await exact platform build-worker validation evidence.",
         "security_policy_review" => {
-            "Security and policy review still require an external gate before production approval."
+            "Security and policy review await exact origin-specific owner evidence."
         }
         _ => "External follow-up gate is still pending.",
     }
-}
-
-fn follow_up_validation_gate_details() -> Vec<RegistryValidationCheckDetail> {
-    REGISTRY_VALIDATION_FOLLOW_UP_GATES
-        .iter()
-        .map(|gate| RegistryValidationCheckDetail {
-            key: (*gate).to_string(),
-            status: "pending_follow_up".to_string(),
-            detail: follow_up_gate_detail(gate).to_string(),
-        })
-        .collect()
-}
-
-async fn load_publish_request_translation_rows<C>(
-    db: &C,
-    request_id: &str,
-) -> anyhow::Result<Vec<registry_publish_request_translation::Model>>
-where
-    C: ConnectionTrait,
-{
-    Ok(RegistryPublishRequestTranslationEntity::find()
-        .filter(registry_publish_request_translation::Column::RequestId.eq(request_id))
-        .order_by_asc(registry_publish_request_translation::Column::Locale)
-        .all(db)
-        .await?)
 }
 
 async fn load_release_translation_rows<C>(
@@ -472,7 +435,6 @@ where
             .find(|translation| locale_tags_match(locale_of(translation), &candidate))
         {
             return Some(RegistryLocalizedMetadata {
-                locale: normalize_registry_locale(locale_of(translation)),
                 name: name_of(translation).to_string(),
                 description: description_of(translation).to_string(),
             });
@@ -482,33 +444,9 @@ where
     translations
         .first()
         .map(|translation| RegistryLocalizedMetadata {
-            locale: normalize_registry_locale(locale_of(translation)),
             name: name_of(translation).to_string(),
             description: description_of(translation).to_string(),
         })
-}
-
-async fn load_publish_request_metadata<C>(
-    db: &C,
-    request_id: &str,
-    preferred_locale: Option<&str>,
-    fallback_locale: Option<&str>,
-) -> anyhow::Result<RegistryLocalizedMetadata>
-where
-    C: ConnectionTrait,
-{
-    let translations = load_publish_request_translation_rows(db, request_id).await?;
-    resolve_registry_metadata(
-        &translations,
-        preferred_locale,
-        fallback_locale,
-        |translation| translation.locale.as_str(),
-        |translation| translation.name.as_str(),
-        |translation| translation.description.as_str(),
-    )
-    .ok_or_else(|| {
-        anyhow!("Registry publish request '{request_id}' is missing metadata translations")
-    })
 }
 
 async fn load_release_metadata<C>(
@@ -530,14 +468,6 @@ where
         |translation| translation.description.as_str(),
     )
     .ok_or_else(|| anyhow!("Registry release '{release_id}' is missing metadata translations"))
-}
-
-pub(crate) fn actor_principal(actor: &str) -> RegistryPrincipalRef {
-    RegistryPrincipalRef::from_legacy_value(&normalize_actor(actor))
-}
-
-pub(crate) fn optional_actor_principal(actor: Option<&str>) -> Option<RegistryPrincipalRef> {
-    actor.map(actor_principal)
 }
 
 pub(crate) fn principal_from_json(value: &serde_json::Value) -> RegistryPrincipalRef {
@@ -741,8 +671,4 @@ pub(crate) fn normalize_required_reason(
         )));
     }
     Ok(normalized.to_string())
-}
-
-pub(crate) fn normalize_registry_locale(locale: &str) -> String {
-    normalize_locale_tag(locale).unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
 }

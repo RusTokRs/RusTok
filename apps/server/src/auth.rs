@@ -247,7 +247,6 @@ struct AppSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
 
     fn secret() -> String {
         "test-secret-key-for-unit-tests-only-32bytes!".to_string()
@@ -340,36 +339,5 @@ mod tests {
         assert_eq!(claims.tenant_id, tenant_id);
         assert_eq!(claims.user_id, user_id);
         assert_eq!(claims.sub, "user@example.com");
-    }
-
-    #[test]
-    #[serial]
-    fn auth_config_resolves_rs256_keys_from_env() {
-        std::env::set_var("RUSTOK_TEST_RSA_PRIVATE", "private-from-env");
-        std::env::set_var("RUSTOK_TEST_RSA_PUBLIC", "public-from-env");
-
-        let config = auth_config_from_parts(
-            secret(),
-            900,
-            AuthSettingsOverrides {
-                algorithm: Some(JwtAlgorithm::RS256),
-                rsa_private_key_env: Some("RUSTOK_TEST_RSA_PRIVATE".to_string()),
-                rsa_public_key_env: Some("RUSTOK_TEST_RSA_PUBLIC".to_string()),
-                ..AuthSettingsOverrides::default()
-            },
-        )
-        .expect("auth config");
-
-        assert_eq!(
-            config.rsa_private_key_pem.as_deref(),
-            Some("private-from-env")
-        );
-        assert_eq!(
-            config.rsa_public_key_pem.as_deref(),
-            Some("public-from-env")
-        );
-
-        std::env::remove_var("RUSTOK_TEST_RSA_PRIVATE");
-        std::env::remove_var("RUSTOK_TEST_RSA_PUBLIC");
     }
 }

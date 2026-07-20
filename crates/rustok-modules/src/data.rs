@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use bytes::Bytes;
-use jsonschema::{Draft, PatternOptions};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, Value as SqlValue,
@@ -17,7 +16,6 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use rustok_events::{DomainEvent, EventEnvelope};
-use rustok_outbox::OutboxTransport;
 use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutionPhase,
     SandboxError, SandboxResult, SandboxSubject,
@@ -25,11 +23,12 @@ use rustok_sandbox::{
 use rustok_storage::StorageService;
 
 use crate::{
+    artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
     resolve_granted_artifact_capability, ArtifactBindingDispatch, ArtifactBindingExecutor,
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactDataIndexField,
     ArtifactDataIndexValueType, ArtifactInstallationTarget, ArtifactMigrationCheckpointRequest,
-    ArtifactReleaseRef, InstalledModuleArtifact, ModuleInstallationScope,
-    ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+    ArtifactReleaseRef, ControlPlaneInfrastructure, InstalledModuleArtifact,
+    ModuleInstallationScope, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
 };
 
 const MAX_ARTIFACT_DATA_KEY_BYTES: usize = 256;
@@ -37,7 +36,6 @@ const MAX_ARTIFACT_DATA_VALUE_BYTES: usize = 64 * 1024;
 const MAX_ARTIFACT_DATA_PAGE_SIZE: u32 = 100;
 const MAX_ARTIFACT_DATA_BATCH_SIZE: usize = 32;
 const MAX_ARTIFACT_DATA_INDEX_VALUE_BYTES: usize = 256;
-const MAX_DATA_SCHEMA_REGEX_BYTES: usize = 64 * 1024;
 const MAX_ARTIFACT_OBJECT_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_ARTIFACT_OBJECT_CONTENT_TYPE_BYTES: usize = 128;
 const MAX_SANDBOX_ARTIFACT_OBJECT_BYTES: usize = 44 * 1024;
@@ -750,6 +748,7 @@ pub trait ArtifactDataSchemaValidator: Send + Sync {
 pub struct SeaOrmArtifactDataSchemaValidator {
     db: DatabaseConnection,
     installation_id: Uuid,
+    schema_validators: Arc<ArtifactSchemaValidatorCache>,
 }
 
 impl SeaOrmArtifactDataSchemaValidator {
@@ -760,13 +759,14 @@ impl SeaOrmArtifactDataSchemaValidator {
         Self {
             db,
             installation_id,
+            schema_validators: Arc::new(ArtifactSchemaValidatorCache::default()),
         }
     }
 
     async fn data_contract_schema(
         &self,
         scope: &ArtifactDataScope,
-    ) -> Result<Value, ArtifactDataError> {
+    ) -> Result<(String, Value), ArtifactDataError> {
         scope.validate()?;
         if self.installation_id.is_nil() {
             return Err(ArtifactDataError::DataContractUnavailable);
@@ -815,10 +815,11 @@ impl SeaOrmArtifactDataSchemaValidator {
             .as_ref()
             .filter(|contract| contract.revision == scope.data_contract_revision)
             .ok_or(ArtifactDataError::DataContractUnavailable)?;
-        descriptor
+        let schema = descriptor
             .schema_document(&contract.schema_digest)
             .cloned()
-            .ok_or(ArtifactDataError::DataContractUnavailable)
+            .ok_or(ArtifactDataError::DataContractUnavailable)?;
+        Ok((contract.schema_digest.clone(), schema))
     }
 }
 
@@ -829,21 +830,18 @@ impl ArtifactDataSchemaValidator for SeaOrmArtifactDataSchemaValidator {
         scope: &ArtifactDataScope,
         value: &Value,
     ) -> Result<(), ArtifactDataError> {
-        let schema = self.data_contract_schema(scope).await?;
-        let validator = jsonschema::options()
-            .with_draft(Draft::Draft202012)
-            .should_validate_formats(true)
-            .should_ignore_unknown_formats(false)
-            .with_pattern_options(
-                PatternOptions::fancy_regex()
-                    .backtrack_limit(MAX_DATA_SCHEMA_REGEX_BYTES)
-                    .dfa_size_limit(MAX_DATA_SCHEMA_REGEX_BYTES),
-            )
-            .build(&schema)
-            .map_err(|_| ArtifactDataError::DataContractSchemaInvalid)?;
-        validator
-            .validate(value)
-            .map_err(|_| ArtifactDataError::DataContractSchemaViolation)
+        let (schema_digest, schema) = self.data_contract_schema(scope).await?;
+        self.schema_validators
+            .validate(&schema_digest, &schema, value)
+            .map_err(|error| match error {
+                ArtifactSchemaValidationError::Compilation
+                | ArtifactSchemaValidationError::CachePoisoned => {
+                    ArtifactDataError::DataContractSchemaInvalid
+                }
+                ArtifactSchemaValidationError::Violation => {
+                    ArtifactDataError::DataContractSchemaViolation
+                }
+            })
     }
 }
 
@@ -1472,6 +1470,7 @@ pub struct SeaOrmArtifactDataObjectBroker<A> {
     db: DatabaseConnection,
     storage: StorageService,
     authorizer: A,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 impl<A> SeaOrmArtifactDataObjectBroker<A>
@@ -1479,10 +1478,25 @@ where
     A: ArtifactDataAuthorizer,
 {
     pub fn new(db: DatabaseConnection, storage: StorageService, authorizer: A) -> Self {
+        Self::with_infrastructure(
+            db,
+            storage,
+            authorizer,
+            ControlPlaneInfrastructure::default(),
+        )
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        storage: StorageService,
+        authorizer: A,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
         Self {
             db,
             storage,
             authorizer,
+            infrastructure,
         }
     }
 }
@@ -1496,6 +1510,7 @@ pub struct SeaOrmArtifactDataObjectUploadService<A> {
     storage: StorageService,
     objects: SeaOrmArtifactDataObjectBroker<A>,
     authorizer: A,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 impl<A> SeaOrmArtifactDataObjectUploadService<A>
@@ -1503,15 +1518,31 @@ where
     A: ArtifactDataAuthorizer + Clone,
 {
     pub fn new(db: DatabaseConnection, storage: StorageService, authorizer: A) -> Self {
+        Self::with_infrastructure(
+            db,
+            storage,
+            authorizer,
+            ControlPlaneInfrastructure::default(),
+        )
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        storage: StorageService,
+        authorizer: A,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
         Self {
-            objects: SeaOrmArtifactDataObjectBroker::new(
+            objects: SeaOrmArtifactDataObjectBroker::with_infrastructure(
                 db.clone(),
                 storage.clone(),
                 authorizer.clone(),
+                infrastructure.clone(),
             ),
             db,
             storage,
             authorizer,
+            infrastructure,
         }
     }
 
@@ -1561,7 +1592,7 @@ where
             transaction.commit().await.map_err(storage_error)?;
             return Ok(session);
         }
-        let session_id = Uuid::new_v4();
+        let session_id = self.infrastructure.new_id();
         transaction.execute(Statement::from_sql_and_values(
             backend,
             format!(
@@ -1687,7 +1718,12 @@ where
             let _ = transaction.rollback().await;
             return Err(ArtifactDataError::InvalidObject);
         }
-        let key = private_artifact_data_upload_chunk_key(scope, chunk.session_id, chunk.sequence);
+        let key = private_artifact_data_upload_chunk_key(
+            &self.infrastructure,
+            scope,
+            chunk.session_id,
+            chunk.sequence,
+        );
         let stored = self
             .storage
             .store(&key, chunk.data, "application/octet-stream")
@@ -1816,7 +1852,13 @@ where
         let rows = transaction.query_all(Statement::from_sql_and_values(backend, format!("SELECT storage_key FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend,1), placeholder(backend,2)), vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
         for row in rows {
             let key: String = row.try_get("", "storage_key").map_err(storage_error)?;
-            queue_artifact_data_object_gc_candidate(&transaction, scope, &key).await?;
+            queue_artifact_data_object_gc_candidate(
+                &transaction,
+                &self.infrastructure,
+                scope,
+                &key,
+            )
+            .await?;
         }
         transaction.execute(Statement::from_sql_and_values(backend, format!("DELETE FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend,1), placeholder(backend,2)), vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
@@ -1923,7 +1965,13 @@ where
             for chunk in chunks {
                 let storage_key: String =
                     chunk.try_get("", "storage_key").map_err(storage_error)?;
-                queue_artifact_data_object_gc_candidate(&transaction, &scope, &storage_key).await?;
+                queue_artifact_data_object_gc_candidate(
+                    &transaction,
+                    &self.infrastructure,
+                    &scope,
+                    &storage_key,
+                )
+                .await?;
                 queued_chunks = queued_chunks.checked_add(1).ok_or_else(|| {
                     ArtifactDataError::Storage("upload reaper overflow".to_string())
                 })?;
@@ -2122,6 +2170,7 @@ fn upload_session_request_digest(
 }
 
 fn private_artifact_data_upload_chunk_key(
+    infrastructure: &ControlPlaneInfrastructure,
     scope: &ArtifactDataScope,
     session_id: Uuid,
     sequence: u64,
@@ -2131,7 +2180,7 @@ fn private_artifact_data_upload_chunk_key(
         scope.tenant_id,
         scope.module_slug,
         scope.data_contract_revision,
-        Uuid::new_v4(),
+        infrastructure.new_id(),
     )
 }
 
@@ -2351,7 +2400,7 @@ where
             return Ok(existing);
         }
 
-        let generated_key = private_artifact_data_object_key(scope);
+        let generated_key = private_artifact_data_object_key(&self.infrastructure, scope);
         let uploaded = self
             .storage
             .store(&generated_key, upload.data.clone(), &requested.content_type)
@@ -2375,6 +2424,7 @@ where
         }
         let stored = match persist_artifact_data_object(
             &transaction,
+            &self.infrastructure,
             scope,
             &upload,
             &requested,
@@ -2542,6 +2592,7 @@ async fn find_artifact_data_object<C: ConnectionTrait>(
 
 async fn queue_artifact_data_object_gc_candidate<C: ConnectionTrait>(
     connection: &C,
+    infrastructure: &ControlPlaneInfrastructure,
     scope: &ArtifactDataScope,
     storage_key: &str,
 ) -> Result<(), ArtifactDataError> {
@@ -2562,7 +2613,7 @@ async fn queue_artifact_data_object_gc_candidate<C: ConnectionTrait>(
                 now_expression(backend),
             ),
             vec![
-                uuid_value(Uuid::new_v4(), backend),
+                uuid_value(infrastructure.new_id(), backend),
                 uuid_value(scope.tenant_id, backend),
                 scope.module_slug.clone().into(),
                 revision_value(scope.data_contract_revision)?,
@@ -2577,6 +2628,7 @@ async fn queue_artifact_data_object_gc_candidate<C: ConnectionTrait>(
 
 async fn persist_artifact_data_object(
     transaction: &DatabaseTransaction,
+    infrastructure: &ControlPlaneInfrastructure,
     scope: &ArtifactDataScope,
     upload: &ArtifactDataObjectUpload,
     requested: &ArtifactDataObject,
@@ -2627,8 +2679,13 @@ async fn persist_artifact_data_object(
                 return Err(ArtifactDataError::RevisionConflict);
             }
             if current.storage_key != storage_key {
-                queue_artifact_data_object_gc_candidate(transaction, scope, &current.storage_key)
-                    .await?;
+                queue_artifact_data_object_gc_candidate(
+                    transaction,
+                    infrastructure,
+                    scope,
+                    &current.storage_key,
+                )
+                .await?;
             }
             revision
         }
@@ -2768,13 +2825,16 @@ fn stored_artifact_data_object_from_row(
     })
 }
 
-fn private_artifact_data_object_key(scope: &ArtifactDataScope) -> String {
+fn private_artifact_data_object_key(
+    infrastructure: &ControlPlaneInfrastructure,
+    scope: &ArtifactDataScope,
+) -> String {
     format!(
         "module-artifact-data/{}/{}/{}/{}",
         scope.tenant_id,
         scope.module_slug,
         scope.data_contract_revision,
-        Uuid::new_v4(),
+        infrastructure.new_id(),
     )
 }
 
@@ -3245,13 +3305,35 @@ where
         authorizer: A,
         scope: ArtifactDataScope,
     ) -> Self {
+        Self::with_infrastructure(
+            db,
+            storage,
+            authorizer,
+            scope,
+            ControlPlaneInfrastructure::default(),
+        )
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        storage: StorageService,
+        authorizer: A,
+        scope: ArtifactDataScope,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
         Self {
-            objects: SeaOrmArtifactDataObjectBroker::new(
+            objects: SeaOrmArtifactDataObjectBroker::with_infrastructure(
                 db.clone(),
                 storage.clone(),
                 authorizer.clone(),
+                infrastructure.clone(),
             ),
-            uploads: SeaOrmArtifactDataObjectUploadService::new(db, storage, authorizer),
+            uploads: SeaOrmArtifactDataObjectUploadService::with_infrastructure(
+                db,
+                storage,
+                authorizer,
+                infrastructure,
+            ),
             scope,
         }
     }
@@ -3371,11 +3453,24 @@ where
 pub struct SeaOrmArtifactDataObjectCapabilityBrokerResolver {
     db: DatabaseConnection,
     storage: StorageService,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 impl SeaOrmArtifactDataObjectCapabilityBrokerResolver {
     pub fn new(db: DatabaseConnection, storage: StorageService) -> Self {
-        Self { db, storage }
+        Self::with_infrastructure(db, storage, ControlPlaneInfrastructure::default())
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        storage: StorageService,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
+        Self {
+            db,
+            storage,
+            infrastructure,
+        }
     }
 }
 
@@ -3395,12 +3490,15 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataObjectCapabilityBrok
         let authorizer = ExactArtifactDataAuthorizer {
             scope: scope.clone(),
         };
-        Ok(Arc::new(SeaOrmArtifactDataObjectCapabilityBroker::new(
-            self.db.clone(),
-            self.storage.clone(),
-            authorizer,
-            scope,
-        )))
+        Ok(Arc::new(
+            SeaOrmArtifactDataObjectCapabilityBroker::with_infrastructure(
+                self.db.clone(),
+                self.storage.clone(),
+                authorizer,
+                scope,
+                self.infrastructure.clone(),
+            ),
+        ))
     }
 }
 
@@ -3880,6 +3978,7 @@ fn data_capability_error(
 pub struct SeaOrmArtifactDataExportService<A> {
     db: DatabaseConnection,
     authorizer: A,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 impl<A> SeaOrmArtifactDataExportService<A>
@@ -3887,7 +3986,20 @@ where
     A: ArtifactDataExportAuthorizer,
 {
     pub fn new(db: DatabaseConnection, authorizer: A) -> Self {
-        Self { db, authorizer }
+        let infrastructure = ControlPlaneInfrastructure::for_database(db.clone());
+        Self::with_infrastructure(db, authorizer, infrastructure)
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        authorizer: A,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
+        Self {
+            db,
+            authorizer,
+            infrastructure,
+        }
     }
 
     pub async fn export(
@@ -3969,7 +4081,7 @@ where
             records,
             next_after_key,
         };
-        let export_id = Uuid::new_v4();
+        let export_id = self.infrastructure.new_id();
         let exported_records =
             i64::try_from(page.records.len()).map_err(|_| ArtifactDataError::ExportPrecondition)?;
         transaction
@@ -4013,11 +4125,11 @@ where
             ))
             .await
             .map_err(storage_error)?;
-        OutboxTransport::new(self.db.clone())
-            .write_to_outbox(
+        self.infrastructure
+            .write_event(
                 &transaction,
                 EventEnvelope::new(
-                    Uuid::new_v4(),
+                    self.infrastructure.new_id(),
                     Some(request.scope.tenant_id),
                     DomainEvent::ModuleArtifactDataExported {
                         export_id,
@@ -4049,6 +4161,7 @@ where
 pub struct SeaOrmArtifactDataPurgeService<A> {
     db: DatabaseConnection,
     authorizer: A,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 impl<A> SeaOrmArtifactDataPurgeService<A>
@@ -4056,7 +4169,20 @@ where
     A: ArtifactDataPurgeAuthorizer,
 {
     pub fn new(db: DatabaseConnection, authorizer: A) -> Self {
-        Self { db, authorizer }
+        let infrastructure = ControlPlaneInfrastructure::for_database(db.clone());
+        Self::with_infrastructure(db, authorizer, infrastructure)
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        authorizer: A,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
+        Self {
+            db,
+            authorizer,
+            infrastructure,
+        }
     }
 
     pub async fn purge(
@@ -4218,8 +4344,13 @@ where
             .map_err(storage_error)?;
         for row in object_storage_keys {
             let storage_key: String = row.try_get("", "storage_key").map_err(storage_error)?;
-            queue_artifact_data_object_gc_candidate(&transaction, &request.scope, &storage_key)
-                .await?;
+            queue_artifact_data_object_gc_candidate(
+                &transaction,
+                &self.infrastructure,
+                &request.scope,
+                &storage_key,
+            )
+            .await?;
         }
         let object_records = transaction
             .execute(Statement::from_sql_and_values(
@@ -4320,11 +4451,11 @@ where
             ))
             .await
             .map_err(storage_error)?;
-        OutboxTransport::new(self.db.clone())
-            .write_to_outbox(
+        self.infrastructure
+            .write_event(
                 &transaction,
                 EventEnvelope::new(
-                    Uuid::new_v4(),
+                    self.infrastructure.new_id(),
                     Some(request.scope.tenant_id),
                     DomainEvent::ModuleArtifactDataPurged {
                         tenant_id: request.scope.tenant_id,

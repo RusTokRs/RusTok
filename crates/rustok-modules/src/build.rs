@@ -13,13 +13,12 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use rustok_events::{DomainEvent, EventEnvelope};
-use rustok_outbox::OutboxTransport;
 
 use crate::OciArtifactReference;
 
 use crate::{
     data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
-    ModuleCommandContext,
+    ControlPlaneInfrastructure, ModuleCommandContext,
 };
 
 const MAX_BUILD_REFERENCE_BYTES: usize = 512;
@@ -397,11 +396,20 @@ pub struct ModuleBuildCompletedResult {
 #[derive(Clone)]
 pub struct SeaOrmModuleBuildService {
     db: DatabaseConnection,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 impl SeaOrmModuleBuildService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        let infrastructure = ControlPlaneInfrastructure::for_database(db.clone());
+        Self::with_infrastructure(db, infrastructure)
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
+        Self { db, infrastructure }
     }
 
     pub async fn submit(
@@ -494,11 +502,11 @@ impl SeaOrmModuleBuildService {
             });
         }
 
-        OutboxTransport::new(self.db.clone())
-            .write_to_outbox(
+        self.infrastructure
+            .write_event(
                 &transaction,
                 EventEnvelope::new(
-                    Uuid::new_v4(),
+                    self.infrastructure.new_id(),
                     Some(tenant_id),
                     DomainEvent::ModuleBuildQueued {
                         request_id: request.request_id,
@@ -597,11 +605,11 @@ impl SeaOrmModuleBuildService {
         if updated.rows_affected() != 1 {
             return Err(ModuleBuildProtocolError::ResultConflict);
         }
-        OutboxTransport::new(self.db.clone())
-            .write_to_outbox(
+        self.infrastructure
+            .write_event(
                 &transaction,
                 EventEnvelope::new(
-                    Uuid::new_v4(),
+                    self.infrastructure.new_id(),
                     Some(result.tenant_id),
                     DomainEvent::ModuleBuildCompleted {
                         request_id: result.request_id,

@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use rustok_modules::{MODULE_MARKETPLACE_CONTENT_FORMAT, MODULE_MARKETPLACE_CONTENT_TRUST};
+
 use crate::modules::{
     CatalogManifestModule, CatalogModuleVersion, ManifestManager, ModuleSettingSpec,
     ModulesManifest,
@@ -71,15 +73,6 @@ impl MarketplaceCatalogQuery {
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-    }
-
-    fn cache_fragment(&self) -> String {
-        format!(
-            "search={}|category={}|tag={}",
-            self.normalized_search().unwrap_or_default(),
-            self.normalized_category().unwrap_or_default(),
-            self.normalized_tag().unwrap_or_default()
-        )
     }
 }
 
@@ -160,6 +153,10 @@ pub struct RegistryCatalogModule {
     pub version: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default = "default_marketplace_content_format")]
+    pub content_format: String,
+    #[serde(default = "default_marketplace_content_trust")]
+    pub content_trust: String,
     #[serde(default)]
     pub git: Option<String>,
     #[serde(default)]
@@ -195,6 +192,7 @@ pub struct RegistryCatalogModule {
 }
 
 impl RegistryCatalogModule {
+    #[cfg(test)]
     fn into_catalog_module(self) -> CatalogManifestModule {
         let publisher = normalize_optional_registry_publisher(self.publisher);
         let checksum_sha256 = normalize_optional_registry_checksum(self.checksum_sha256);
@@ -315,6 +313,8 @@ impl RegistryCatalogModule {
             screenshots,
             version,
             description,
+            content_format: default_marketplace_content_format(),
+            content_trust: default_marketplace_content_trust(),
             git: None,
             rev: None,
             path: None,
@@ -333,6 +333,14 @@ impl RegistryCatalogModule {
             settings_schema,
         }
     }
+}
+
+fn default_marketplace_content_format() -> String {
+    MODULE_MARKETPLACE_CONTENT_FORMAT.to_string()
+}
+
+fn default_marketplace_content_trust() -> String {
+    MODULE_MARKETPLACE_CONTENT_TRUST.to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -1163,6 +1171,8 @@ mod tests {
             ],
             version: Some("1.2.0".to_string()),
             description: Some("SEO tools".to_string()),
+            content_format: default_marketplace_content_format(),
+            content_trust: default_marketplace_content_trust(),
             git: None,
             rev: None,
             path: None,
@@ -1356,6 +1366,8 @@ mod tests {
             vec!["https://cdn.example.test/modules/seo/screenshot-1.png"]
         );
         assert_eq!(module.description.as_deref(), Some("SEO tools"));
+        assert_eq!(module.content_format, MODULE_MARKETPLACE_CONTENT_FORMAT);
+        assert_eq!(module.content_trust, MODULE_MARKETPLACE_CONTENT_TRUST);
         assert_eq!(module.ownership, "third_party");
         assert_eq!(module.trust_level, "unverified");
         assert_eq!(module.publisher.as_deref(), Some("RusTok Labs"));
@@ -1376,6 +1388,8 @@ mod tests {
             screenshots: Vec::new(),
             version: Some("1.2.0".to_string()),
             description: Some("SEO tools".to_string()),
+            content_format: default_marketplace_content_format(),
+            content_trust: default_marketplace_content_trust(),
             git: None,
             rev: None,
             path: None,
@@ -1422,6 +1436,8 @@ mod tests {
             screenshots: Vec::new(),
             version: None,
             description: Some("SEO tools".to_string()),
+            content_format: default_marketplace_content_format(),
+            content_trust: default_marketplace_content_trust(),
             git: None,
             rev: None,
             path: None,
@@ -1562,6 +1578,7 @@ fn compare_registry_semver_desc(left: &str, right: &str) -> Ordering {
     }
 }
 
+#[cfg(test)]
 fn validate_registry_schema_version(schema_version: u32) -> anyhow::Result<()> {
     if schema_version == REGISTRY_CATALOG_SCHEMA_VERSION {
         return Ok(());

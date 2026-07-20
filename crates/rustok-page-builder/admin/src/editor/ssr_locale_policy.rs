@@ -1,9 +1,11 @@
 use crate::AdminCanvasController;
 use crate::editor::AdminEditorRuntime;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
 use fly::{EditorCommand, ProjectLocalePolicy, TranslationCommand, normalize_locale_tag};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use rustok_ui_core::UiRouteContext;
 use serde::{Deserialize, Serialize};
 use serde_json::Map;

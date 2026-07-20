@@ -20,7 +20,12 @@ are being moved here from the server incrementally.
   native UI packages remain static-promotion-only.
 - Define the owner ports for marketplace publication, installation, activation,
   rollback and policy.
+- Supply owner clock and identity ports through one
+  `ControlPlaneInfrastructure` context rather than process-global calls.
 - Map installed artifacts to neutral sandbox requests and capability grants.
+- Validate artifact settings, structured data, and every runtime binding payload
+  against exact descriptor-bundled schemas through one bounded validator
+  implementation.
 - Keep marketplace release, platform installation and tenant enablement separate.
 
 ## Entry points
@@ -30,7 +35,9 @@ are being moved here from the server incrementally.
 - `ArtifactReleaseDraft`
 - `ArtifactRelease`
 - `ModuleInstaller`
+- `ControlPlaneInfrastructure`
 - `ArtifactRuntime`
+- `ModuleLifecycleDbWriter`
 - `OciArtifactReference`
 - `OciRegistryTransportPolicy`
 - `OciDistributionArtifactRegistry`

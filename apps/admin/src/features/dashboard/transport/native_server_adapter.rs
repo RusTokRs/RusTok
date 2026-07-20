@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 
-use crate::features::dashboard::model::{
-    ActivityItem, ActivityUser, DashboardStats, DashboardStatsResponse, RecentActivityResponse,
-};
+#[cfg(feature = "ssr")]
+use crate::features::dashboard::model::{ActivityItem, ActivityUser, DashboardStats};
+use crate::features::dashboard::model::{DashboardStatsResponse, RecentActivityResponse};
 
 #[cfg(feature = "ssr")]
 use chrono::Utc;

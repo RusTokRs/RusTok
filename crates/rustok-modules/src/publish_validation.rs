@@ -738,6 +738,80 @@ mod tests {
         }
     }
 
+    fn bundle() -> serde_json::Value {
+        serde_json::json!({
+            "schema_version": 1,
+            "artifact_type": MODULE_PUBLISH_BUNDLE_TYPE,
+            "module": {
+                "slug": "sample-module",
+                "version": "1.0.0",
+                "crate_name": "sample_module",
+                "module_name": "Sample module",
+                "module_description": "Sample module description",
+                "ownership": "first_party",
+                "trust_level": "sandboxed",
+                "license": "MIT",
+                "module_entry_type": null,
+                "marketplace": { "category": null, "tags": [] },
+                "ui_packages": { "admin": null, "storefront": null }
+            },
+            "files": {
+                "rustok-module.toml": "[module]\nslug = \"sample-module\"\nname = \"Sample module\"\nversion = \"1.0.0\"\ndescription = \"Sample module description\"\nownership = \"first_party\"\ntrust_level = \"sandboxed\"\n\n[marketplace]\ntags = []\n",
+                "Cargo.toml": "[package]\nname = \"sample_module\"\nversion = \"1.0.0\"\nlicense = \"MIT\"\n"
+            }
+        })
+    }
+
+    fn validate_bundle(bundle: &serde_json::Value) -> ModulePublishBundleValidation {
+        validate_module_publish_bundle(
+            &contract(),
+            "application/json",
+            &serde_json::to_vec(bundle).expect("bundle JSON"),
+        )
+    }
+
+    #[test]
+    fn registry_bundle_fixture_binds_metadata_and_manifests_to_owner_contract() {
+        let accepted = validate_bundle(&bundle());
+        assert!(accepted.errors.is_empty(), "{:?}", accepted.errors);
+
+        let mut substituted_metadata = bundle();
+        substituted_metadata["module"]["version"] = serde_json::json!("9.9.9");
+        assert!(!validate_bundle(&substituted_metadata).errors.is_empty());
+
+        let mut substituted_package_manifest = bundle();
+        substituted_package_manifest["files"]["rustok-module.toml"] = serde_json::json!(
+            "[module]\nslug = \"other-module\"\nname = \"Sample module\"\nversion = \"1.0.0\"\ndescription = \"Sample module description\"\nownership = \"first_party\"\ntrust_level = \"sandboxed\"\n\n[marketplace]\ntags = []\n"
+        );
+        assert!(!validate_bundle(&substituted_package_manifest)
+            .errors
+            .is_empty());
+
+        let mut substituted_cargo_manifest = bundle();
+        substituted_cargo_manifest["files"]["Cargo.toml"] = serde_json::json!(
+            "[package]\nname = \"other_module\"\nversion = \"1.0.0\"\nlicense = \"GPL-3.0\"\n"
+        );
+        assert!(!validate_bundle(&substituted_cargo_manifest)
+            .errors
+            .is_empty());
+    }
+
+    #[test]
+    fn registry_bundle_fixture_rejects_undeclared_ui_manifest_without_echoing_it() {
+        let marker = "<untrusted-ui-manifest-marker>";
+        let mut unexpected_ui = bundle();
+        unexpected_ui["files"]["admin/Cargo.toml"] = serde_json::json!(format!(
+            "[package]\nname = \"unexpected\"\nversion = \"1.0.0\"\n# {marker}\n"
+        ));
+
+        let validation = validate_bundle(&unexpected_ui);
+        assert!(!validation.errors.is_empty());
+        assert!(validation
+            .errors
+            .iter()
+            .all(|diagnostic| !diagnostic.contains(marker)));
+    }
+
     #[test]
     fn alloy_delivery_accepts_only_the_bounded_workspace_envelope() {
         let workspace = br#"{"schema_version":1,"entrypoint":"src/main.rhai","files":[{"path":"src/main.rhai","kind":"source","contents":"40 + 2"}]}"#;

@@ -1,4 +1,7 @@
-use super::{CachedTenantMiss, TenantCacheKeyBuilder, tenant_context_from_projection, unix_ms_at};
+use super::{
+    CachedTenantMiss, TenantCacheKeyBuilder, TenantContextLoadError,
+    tenant_context_from_projection, unix_ms_at,
+};
 use crate::middleware::tenant_resolution::TenantIdentifierKind;
 use rustok_tenant::TenantReadProjection;
 use std::time::{Duration, UNIX_EPOCH};
@@ -43,10 +46,8 @@ fn tenant_context_from_projection_maps_active_tenant() {
 fn tenant_context_from_projection_rejects_disabled_tenant_as_forbidden() {
     let result = tenant_context_from_projection(sample_tenant_projection(false));
     assert!(matches!(result, Err(CachedTenantMiss::Disabled)));
-    assert_eq!(
-        CachedTenantMiss::Disabled.status_code(),
-        axum::http::StatusCode::FORBIDDEN
-    );
+    let error = TenantContextLoadError::from(CachedTenantMiss::Disabled);
+    assert_eq!(error.status_code(), axum::http::StatusCode::FORBIDDEN);
 }
 
 #[test]

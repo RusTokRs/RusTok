@@ -2739,15 +2739,6 @@ fn publish_request_status_next_step(
 ) -> Option<String> {
     if request.status
         == crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
-        && validation_stages
-            .iter()
-            .any(|stage| !stage.status.eq_ignore_ascii_case("passed"))
-    {
-        return Some(approval_override_next_step(request_id, validation_stages));
-    }
-
-    if request.status
-        == crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
         && request.artifact_origin == "external_prebuilt"
     {
         return Some(format!(
@@ -2774,6 +2765,15 @@ fn publish_request_status_next_step(
             "Stage the reviewed Alloy source through POST /api/alloy/scripts/{id}/releases/stage before final publication."
                 .to_string(),
         );
+    }
+
+    if request.status
+        == crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
+        && validation_stages
+            .iter()
+            .any(|stage| !stage.status.eq_ignore_ascii_case("passed"))
+    {
+        return Some(approval_override_next_step(request_id, validation_stages));
     }
 
     publish_request_next_step(&request.status, request_id)
@@ -2898,6 +2898,8 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         | ModuleGovernanceError::InvalidPublishRequestPublicationCommand
         | ModuleGovernanceError::InvalidPublishApprovalOverride
         | ModuleGovernanceError::InvalidValidationStageReportCommand
+        | ModuleGovernanceError::ValidationStageNotRequiredForArtifactOrigin { .. }
+        | ModuleGovernanceError::OwnerEvidenceValidationStageCannotBeReported(_)
         | ModuleGovernanceError::InvalidValidationStageRequeue
         | ModuleGovernanceError::InvalidRemoteValidationLeaseCommand
         | ModuleGovernanceError::InvalidValidationJobEnqueueCommand

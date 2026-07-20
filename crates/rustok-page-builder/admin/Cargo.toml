@@ -10,8 +10,8 @@ crate-type = ["rlib"]
 
 [features]
 default = ["ssr", "browser-js"]
-browser-js = []
-wasm-client = ["fly-leptos/wasm-client"]
+browser-js = ["dep:wasm-bindgen", "dep:web-sys"]
+wasm-client = ["fly-leptos/wasm-client", "browser-js"]
 csr = ["leptos/csr", "wasm-client"]
 hydrate = ["leptos/hydrate", "wasm-client"]
 ssr = ["leptos/ssr", "fly-leptos/ssr"]
@@ -29,3 +29,13 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = { version = "0.2", optional = true }
+web-sys = { version = "0.3", optional = true, features = [
+  "Element",
+  "EventTarget",
+  "KeyboardEvent",
+  "PointerEvent",
+  "Window",
+] }

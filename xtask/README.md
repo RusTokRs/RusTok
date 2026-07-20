@@ -44,6 +44,14 @@ cargo xtask module yank <slug> <version> --dry-run --auth-token <token> --reason
 ```
 
 Use `--dry-run` first for commands that would contact the registry or mutate publish lifecycle state.
+The live remote runner consumes the canonical camelCase claim contract and
+reconstructs the local publish bundle before every executable stage. It refuses
+the claim unless the bundle SHA-256 and crate identity match the owner-issued
+artifact identity; the claim's artifact URL is neither executed nor copied into
+durable validation detail. It can claim only stages explicitly owned by a
+`remote` runner. Platform compile/test gates are owner-evidence stages and can
+be completed only by a verified durable platform build result; `module publish`
+does not translate local Cargo execution into that evidence.
 
 ## Local Non-Docker Install
 
@@ -114,7 +122,7 @@ cargo xtask module test <slug>
 - Checks admin/storefront UI host wiring against module-owned `provides.admin_ui` and `provides.storefront_ui` metadata.
 - Writes `apps/server/src/modules/generated.rs` only through `cargo xtask generate-registry`.
 - Contacts registry HTTP endpoints only for live operator commands when `--dry-run` is not used.
-- Live registry operator commands target the clean V2 contract only: bearer auth via `--auth-token` / `RUSTOK_MODULE_AUTH_TOKEN`, `new_owner_user_id` for owner transfer, `artifact_download_url` for remote runner claims, and no legacy actor/publisher header path.
+- Live registry operator commands target the clean V2 contract only: bearer auth via `--auth-token` / `RUSTOK_MODULE_AUTH_TOKEN`, `new_owner_user_id` for owner transfer, owner-issued digest/crate identity for remote runner claims, and no legacy actor/publisher header path.
 
 ## Verification
 

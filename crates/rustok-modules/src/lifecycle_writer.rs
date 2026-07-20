@@ -6,23 +6,16 @@ use uuid::Uuid;
 use rustok_core::ModuleRegistry;
 
 use crate::{
+    artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
     execute_module_toggle, module_operation_recovery_plan, retry_failed_post_hook_operation,
-    ArtifactLifecycleExecutor, ModuleDefinitionCatalog, ModuleDefinitionError,
-    ModuleDefinitionKind, ModuleEffectivePolicyQuery, ModuleExecutionDispatcher,
-    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationIssue,
-    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecoveryError,
-    ModuleOperationRequest, ModuleOperationStoreError, ModulePostHookRetryRequest,
-    TenantModuleOverride, TenantModuleSettingsRecord, TenantModuleSettingsRequest,
-    TenantModuleStateStore,
+    ArtifactLifecycleExecutor, ControlPlaneInfrastructure, ModuleDefinitionCatalog,
+    ModuleDefinitionError, ModuleDefinitionKind, ModuleDefinitionSource,
+    ModuleEffectivePolicyQuery, ModuleExecutionDispatcher, ModuleLifecycleExecutionError,
+    ModuleLifecycleToggleRequest, ModuleOperationIssue, ModuleOperationJournal,
+    ModuleOperationRecord, ModuleOperationRecoveryError, ModuleOperationRequest,
+    ModuleOperationStoreError, ModulePostHookRetryRequest, TenantModuleOverride,
+    TenantModuleSettingsRecord, TenantModuleSettingsRequest, TenantModuleStateStore,
 };
-
-/// Persists validated module settings through the module-owned lifecycle state store.
-pub async fn persist_module_settings(
-    db: &DatabaseConnection,
-    request: TenantModuleSettingsRequest,
-) -> Result<TenantModuleSettingsRecord, ModuleOperationStoreError> {
-    TenantModuleStateStore::persist_settings(db, request).await
-}
 
 /// Database-backed adapter for module lifecycle execution in a host composition.
 ///
@@ -30,10 +23,12 @@ pub async fn persist_module_settings(
 /// defaults; this adapter owns the durable override read and lifecycle write.
 pub struct ModuleLifecycleDbWriter<'a> {
     db: DatabaseConnection,
+    infrastructure: ControlPlaneInfrastructure,
     catalog: Option<ModuleDefinitionCatalog>,
     static_registry: Option<&'a ModuleRegistry>,
     artifact_executor: Option<&'a dyn ArtifactLifecycleExecutor>,
     default_enabled_modules: Vec<String>,
+    settings_schema_validators: ArtifactSchemaValidatorCache,
 }
 
 impl<'a> ModuleLifecycleDbWriter<'a> {
@@ -42,12 +37,28 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         registry: &'a ModuleRegistry,
         default_enabled_modules: Vec<String>,
     ) -> Self {
+        Self::with_infrastructure(
+            db,
+            registry,
+            default_enabled_modules,
+            ControlPlaneInfrastructure::default(),
+        )
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        registry: &'a ModuleRegistry,
+        default_enabled_modules: Vec<String>,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
         Self {
             db,
+            infrastructure,
             catalog: None,
             static_registry: Some(registry),
             artifact_executor: None,
             default_enabled_modules,
+            settings_schema_validators: ArtifactSchemaValidatorCache::default(),
         }
     }
 
@@ -60,12 +71,30 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         artifact_executor: &'a dyn ArtifactLifecycleExecutor,
         default_enabled_modules: Vec<String>,
     ) -> Self {
+        Self::artifact_only_with_infrastructure(
+            db,
+            catalog,
+            artifact_executor,
+            default_enabled_modules,
+            ControlPlaneInfrastructure::default(),
+        )
+    }
+
+    pub fn artifact_only_with_infrastructure(
+        db: DatabaseConnection,
+        catalog: ModuleDefinitionCatalog,
+        artifact_executor: &'a dyn ArtifactLifecycleExecutor,
+        default_enabled_modules: Vec<String>,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
         Self {
             db,
+            infrastructure,
             catalog: Some(catalog),
             static_registry: None,
             artifact_executor: Some(artifact_executor),
             default_enabled_modules,
+            settings_schema_validators: ArtifactSchemaValidatorCache::default(),
         }
     }
 
@@ -111,6 +140,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             }
         };
         execute_module_toggle(
+            &self.infrastructure,
             &self.db,
             &dispatcher,
             ModuleLifecycleToggleRequest {
@@ -242,9 +272,9 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         .await
     }
 
-    /// Persists a host-schema-normalized settings value while deriving module
-    /// identity, Core status, and effective enablement from owner state.
-    pub async fn persist_normalized_settings(
+    /// Persists a static module settings value after the host adapter has
+    /// normalized it through the trusted distribution manifest schema.
+    pub async fn persist_static_normalized_settings(
         &self,
         tenant_id: Uuid,
         module_slug: &str,
@@ -254,15 +284,89 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         let definition = catalog
             .get(module_slug)
             .ok_or_else(|| ModuleLifecycleDbWriterError::UnknownModule(module_slug.to_string()))?;
+        if !matches!(&definition.source, ModuleDefinitionSource::Static { .. }) {
+            return Err(ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "artifact settings must use owner-resolved admitted schema validation",
+            });
+        }
+        self.persist_settings_value(tenant_id, definition, settings)
+            .await
+    }
+
+    /// Validates and persists artifact settings against the exact immutable
+    /// schema selected by the admitted definition. Callers cannot supply a
+    /// schema or bypass this owner boundary with a pre-normalized payload.
+    pub async fn persist_artifact_settings(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+        settings: serde_json::Value,
+    ) -> Result<TenantModuleSettingsRecord, ModuleLifecycleDbWriterError> {
+        let catalog = self.definition_catalog()?;
+        let definition = catalog
+            .get(module_slug)
+            .ok_or_else(|| ModuleLifecycleDbWriterError::UnknownModule(module_slug.to_string()))?;
+        if !matches!(&definition.source, ModuleDefinitionSource::Artifact { .. }) {
+            return Err(ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "static settings require trusted host-manifest normalization",
+            });
+        }
+        if !settings.is_object() {
+            return Err(ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "artifact settings must be a JSON object",
+            });
+        }
+        let schema_digest = definition
+            .settings_schema_digest
+            .as_deref()
+            .ok_or_else(|| ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "artifact does not declare a settings schema",
+            })?;
+        let schema = definition.settings_schema().ok_or_else(|| {
+            ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "artifact settings schema is absent from the admitted bundle",
+            }
+        })?;
+        self.settings_schema_validators
+            .validate(schema_digest, schema, &settings)
+            .map_err(|error| ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: match error {
+                    ArtifactSchemaValidationError::Compilation => {
+                        "admitted artifact settings schema cannot be compiled"
+                    }
+                    ArtifactSchemaValidationError::Violation => {
+                        "artifact settings do not satisfy the admitted schema"
+                    }
+                    ArtifactSchemaValidationError::CachePoisoned => {
+                        "artifact settings validator cache is unavailable"
+                    }
+                },
+            })?;
+        self.persist_settings_value(tenant_id, definition, settings)
+            .await
+    }
+
+    async fn persist_settings_value(
+        &self,
+        tenant_id: Uuid,
+        definition: &crate::ModuleDefinition,
+        settings: serde_json::Value,
+    ) -> Result<TenantModuleSettingsRecord, ModuleLifecycleDbWriterError> {
         let effective_enabled_modules = self.effective_enabled_modules(tenant_id).await?;
         TenantModuleStateStore::persist_settings(
             &self.db,
             TenantModuleSettingsRequest {
                 tenant_id,
-                module_slug: module_slug.to_string(),
+                module_slug: definition.slug.clone(),
                 settings,
                 is_core: definition.kind == ModuleDefinitionKind::Core,
-                is_effectively_enabled: effective_enabled_modules.contains(module_slug),
+                is_effectively_enabled: effective_enabled_modules.contains(&definition.slug),
             },
         )
         .await
@@ -398,6 +502,11 @@ pub enum ModuleLifecycleDbWriterError {
     Recovery(#[from] ModuleOperationRecoveryError),
     #[error("module `{0}` is not part of the active definition catalog")]
     UnknownModule(String),
+    #[error("artifact settings for module `{module_slug}` are invalid: {reason}")]
+    ArtifactSettings {
+        module_slug: String,
+        reason: &'static str,
+    },
     #[error(transparent)]
     Settings(#[from] ModuleOperationStoreError),
 }

@@ -1,6 +1,19 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_events::EventEnvelope;
+use sea_orm::DatabaseTransaction;
 use serde::{Deserialize, Serialize};
+
+/// Object-safe transactional boundary for appending a domain event to the
+/// platform outbox owned by the caller's database transaction.
+#[async_trait]
+pub trait TransactionalEventWriter: Send + Sync {
+    async fn write_event(
+        &self,
+        transaction: &DatabaseTransaction,
+        envelope: EventEnvelope,
+    ) -> rustok_core::Result<()>;
+}
 
 /// Require shared write semantics for relay control calls.
 pub fn require_outbox_relay_policy(context: &PortContext) -> Result<(), PortError> {

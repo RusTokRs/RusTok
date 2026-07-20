@@ -35,16 +35,22 @@ The iframe is sandboxed with `allow-scripts` and without `allow-same-origin`. A 
 an opaque `null` origin, so the parent validates both that origin and the exact `contentWindow`
 identity before decoding the feature protocol. Browser listener, observer, pointer-capture and
 postMessage lifecycle primitives live in `fly-leptos` and are compiled only for `wasm32`.
+The admin package's direct DOM bindings are owned by its `browser-js` feature;
+`csr` and `hydrate` enable that feature through `wasm-client`, while `ssr`
+keeps the native rendering path independent from browser APIs.
 
 The current canvas supports rendering, geometry, hover, selection, overlays and persistence. It
-does not yet provide the full block palette, drag-and-drop insertion, resize handles, keyboard
-editing, traits/styles editors, asset management or storefront real-DOM editing.
+also provides the block palette, drag-and-drop insertion, resize handles, keyboard editing,
+traits/styles editors and asset management. Storefront real-DOM editing remains outside this
+authoring package.
 
 ## Verification
 
 ```bash
 node scripts/verify/verify-fly-admin-browser-runtime.mjs
 node scripts/verify/verify-pages-ui-boundary.mjs
+cargo check -p rustok-page-builder-admin --no-default-features --features hydrate --target wasm32-unknown-unknown
+cargo check -p rustok-page-builder-admin --no-default-features --features ssr
 ```
 
 Rust unit and browser interaction tests must also be run in a checkout with the repository Rust

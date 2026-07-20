@@ -326,6 +326,8 @@ impl TrustVerifier for CosignTrustVerifier {
             signature_verified: true,
             provenance_verified: true,
             sbom_verified: true,
+            license_policy_verified: true,
+            vulnerability_policy_verified: true,
             evidence_references: vec![
                 format!("{}#cosign-signature", request.reference.canonical()),
                 format!("{}#slsa-provenance", request.reference.canonical()),
@@ -353,7 +355,7 @@ mod tests {
     use base64::{engine::general_purpose::STANDARD, Engine};
     use serde_json::json;
 
-    use super::{validate_cyclonedx, validate_slsa};
+    use super::{attestation_statements, validate_cyclonedx, validate_slsa};
     use crate::{VerificationPolicy, VerificationTrustRoot, VerificationTrustRoots};
 
     const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -385,6 +387,14 @@ mod tests {
             .expect("fixture output")
     }
 
+    fn statement(source: &str) -> serde_json::Value {
+        serde_json::from_str(source).expect("statement fixture")
+    }
+
+    fn cosign_output_value(statement: &serde_json::Value) -> Vec<u8> {
+        cosign_output(&serde_json::to_string(statement).expect("statement JSON"))
+    }
+
     #[test]
     fn slsa_fixture_requires_exact_subject_digest() {
         let output = cosign_output(include_str!("../fixtures/slsa-statement.json"));
@@ -395,6 +405,38 @@ mod tests {
             &policy()
         )
         .is_err());
+    }
+
+    #[test]
+    fn slsa_fixture_requires_exact_builder_build_type_source_and_ref() {
+        let fixture = statement(include_str!("../fixtures/slsa-statement.json"));
+        for (pointer, replacement) in [
+            (
+                "/predicate/runDetails/builder/id",
+                "https://attacker.invalid/worker",
+            ),
+            (
+                "/predicate/buildDefinition/buildType",
+                "https://attacker.invalid/build",
+            ),
+            (
+                "/predicate/buildDefinition/externalParameters/source/uri",
+                "https://attacker.invalid/module",
+            ),
+            (
+                "/predicate/buildDefinition/externalParameters/source/ref",
+                "refs/heads/unreviewed",
+            ),
+        ] {
+            let mut substituted = fixture.clone();
+            *substituted
+                .pointer_mut(pointer)
+                .expect("fixture policy field") = json!(replacement);
+            assert!(
+                validate_slsa(&cosign_output_value(&substituted), DIGEST, &policy()).is_err(),
+                "substituted SLSA field {pointer} must fail closed"
+            );
+        }
     }
 
     #[test]
@@ -409,5 +451,51 @@ mod tests {
         let mut denied_severity = policy();
         denied_severity.maximum_vulnerability_severity = "low".into();
         assert!(validate_cyclonedx(&output, DIGEST, &denied_severity).is_err());
+    }
+
+    #[test]
+    fn cyclonedx_fixture_requires_subject_schema_component_licenses_and_ratings() {
+        let fixture = statement(include_str!("../fixtures/cyclonedx-statement.json"));
+        let cases = [
+            "/subject/0/digest/sha256",
+            "/predicate/specVersion",
+            "/predicate/metadata/component/licenses",
+            "/predicate/components/0/licenses",
+            "/predicate/vulnerabilities/0/ratings",
+        ];
+        for pointer in cases {
+            let mut invalid = fixture.clone();
+            *invalid.pointer_mut(pointer).expect("fixture policy field") = match pointer {
+                "/subject/0/digest/sha256" => json!("b".repeat(64)),
+                "/predicate/specVersion" => json!("0.1"),
+                _ => json!([]),
+            };
+            assert!(
+                validate_cyclonedx(&cosign_output_value(&invalid), DIGEST, &policy()).is_err(),
+                "invalid CycloneDX field {pointer} must fail closed"
+            );
+        }
+    }
+
+    #[test]
+    fn cyclonedx_fixture_rejects_unknown_or_over_policy_severity() {
+        let fixture = statement(include_str!("../fixtures/cyclonedx-statement.json"));
+        for severity in ["unknown", "high", "critical"] {
+            let mut invalid = fixture.clone();
+            *invalid
+                .pointer_mut("/predicate/vulnerabilities/0/ratings/0/severity")
+                .expect("fixture severity") = json!(severity);
+            assert!(
+                validate_cyclonedx(&cosign_output_value(&invalid), DIGEST, &policy()).is_err(),
+                "severity {severity} must fail medium policy"
+            );
+        }
+    }
+
+    #[test]
+    fn cosign_envelope_rejects_missing_malformed_or_empty_attestations() {
+        assert!(attestation_statements(br#"[{"payload":"%%%"}]"#).is_err());
+        assert!(attestation_statements(br#"[{"not_payload":"value"}]"#).is_err());
+        assert!(attestation_statements(b"[]").is_err());
     }
 }

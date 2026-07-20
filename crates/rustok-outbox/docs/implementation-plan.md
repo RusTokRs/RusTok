@@ -7,6 +7,11 @@ semantics, and relay-worker control. The server and other modules consume this
 runtime through owner contracts; they must not reimplement event delivery or
 relay lifecycle.
 
+`TransactionalEventWriter` is the object-safe write-side port for services that
+already own a SeaORM transaction. `OutboxTransport` is its platform adapter;
+domain operations receive the port through composition and cannot silently fall
+back to non-transactional publication.
+
 The read-only admin surface uses a module-owned core, transport facade, and UI
 adapter. Native transport uses `HostRuntimeContext`. `OutboxRelayPort` uses the
 canonical `rustok_api::ports` write policy, including deadline and idempotency

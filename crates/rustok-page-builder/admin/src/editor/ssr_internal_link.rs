@@ -1,9 +1,11 @@
 use crate::AdminCanvasController;
 use crate::editor::AdminEditorRuntime;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
 use fly::{ComponentPatch, EditorCommand, FLY_PAGE_LINK_FIELD, InternalPageLink};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use rustok_ui_core::UiRouteContext;
 use serde::{Deserialize, Serialize};
 use serde_json::Map;

@@ -118,9 +118,11 @@ mod tests {
 
     #[test]
     fn schema_applied_rolls_forward_to_restore_required() {
-        assert!(InstallState::SchemaApplied
-            .transition_to(InstallState::RestoreRequired)
-            .is_ok());
+        assert!(
+            InstallState::SchemaApplied
+                .transition_to(InstallState::RestoreRequired)
+                .is_ok()
+        );
     }
 
     #[test]

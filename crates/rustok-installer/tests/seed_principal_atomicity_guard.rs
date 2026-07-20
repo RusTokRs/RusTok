@@ -35,8 +35,11 @@ fn seaorm_principal_adapter_uses_one_transaction() {
 
     assert!(body.contains("let tx = self.db.begin().await"));
     assert!(body.contains("AuthUserBootstrapDbWriter::ensure_user_on(\n                &tx"));
-    assert!(body
-        .contains("RbacRoleAssignmentDbWriter::assign_role_permissions_on(\n                &tx"));
+    assert!(
+        body.contains(
+            "RbacRoleAssignmentDbWriter::assign_role_permissions_on(\n                &tx"
+        )
+    );
     assert!(body.contains("tx.commit().await"));
     assert!(body.contains("tx.rollback().await"));
 }

@@ -6,20 +6,19 @@ use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 
 use crate::model::{
-    AiAdminBootstrap, AiAgentDescriptorPayload, AiAgentModelAssignmentPayload,
-    AiAgentPrincipalPayload, AiAgentWorkflowPayload, AiAgentWorkflowStageBindingInputPayload,
-    AiAgentWorkflowStagePayload, AiChatRunPayload, AiChatSessionDetailPayload,
-    AiCredentialRefPayload, AiProviderProfilePayload, AiProviderSettingPayload,
-    AiProviderTargetPayload, AiProviderTestResultPayload, AiSendMessageResultPayload,
-    AiTaskProfilePayload, AiTenantRbacPermissionPayload, AiTenantRbacRolePayload,
-    AiToolProfilePayload,
+    AiAdminBootstrap, AiAgentModelAssignmentPayload, AiAgentPrincipalPayload,
+    AiAgentWorkflowStageBindingInputPayload, AiChatRunPayload, AiChatSessionDetailPayload,
+    AiCredentialRefPayload, AiProviderProfilePayload, AiProviderTestResultPayload,
+    AiSendMessageResultPayload, AiTaskProfilePayload, AiToolProfilePayload,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
+    AiAgentDescriptorPayload, AiAgentWorkflowPayload, AiAgentWorkflowStagePayload,
     AiApprovalRequestPayload, AiChatMessagePayload, AiChatSessionSummaryPayload,
     AiMetricBucketPayload, AiProviderCatalogEntryPayload, AiProviderFieldPayload,
-    AiRecentRunPayload, AiRunStreamEventPayload, AiRuntimeMetricsPayload, AiToolCallPayload,
-    AiToolTracePayload,
+    AiProviderSettingPayload, AiProviderTargetPayload, AiRecentRunPayload, AiRunStreamEventPayload,
+    AiRuntimeMetricsPayload, AiTenantRbacPermissionPayload, AiTenantRbacRolePayload,
+    AiToolCallPayload, AiToolTracePayload,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

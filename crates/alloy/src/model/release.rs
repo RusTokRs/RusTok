@@ -8,6 +8,18 @@ use super::{ReviewDecision, ReviewStatus, ScriptId};
 pub const MAX_RELEASE_ACTOR_ID_LENGTH: usize = 255;
 pub const MAX_RELEASE_REQUEST_ID_LENGTH: usize = 128;
 
+/// Redacted proof that the exact reviewed source revision completed the
+/// capability-free publication smoke entrypoint in the production sandbox.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AlloyPublicationSmokeEvidence {
+    pub execution_id: Uuid,
+    pub test_path: String,
+    pub executor: String,
+    pub runtime_abi: String,
+    pub policy_digest: String,
+    pub capability_grants: u32,
+}
+
 /// Authenticated request to stage one reviewed immutable Alloy source revision
 /// at the owner-owned module publication boundary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,6 +92,8 @@ pub enum AlloyReleaseError {
     ReviewNotApproved,
     #[error("Alloy artifact digest does not match the reviewed source workspace")]
     ArtifactSourceDigestMismatch,
+    #[error("Alloy publication sandbox smoke failed: {0}")]
+    SandboxSmokeFailed(String),
     #[error("Alloy release evidence serialization failed: {0}")]
     Serialize(String),
     #[error("module publication staging conflict: {0}")]

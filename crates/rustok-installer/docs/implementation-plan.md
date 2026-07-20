@@ -27,6 +27,11 @@ that distributed installation is implemented.
   owns terminal parsing and output; `apps/server` owns HTTP request handling;
   a wizard is a client of the same typed executor. Domain modules retain their
   own seed and lifecycle behavior.
+- The feature-neutral surface is browser-safe and exposes the shared plan,
+  state, receipt, preflight, deployment, secret, and executor contracts. The
+  default `seed-runtime` feature owns native seed execution and its platform
+  role dependency; browser clients disable it because they cannot execute seed
+  owner ports.
 
 ## Target topology contract
 

@@ -199,7 +199,6 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::artifact::RHAI_MODULE_ABI;
 
     #[derive(Default)]
     struct CapturingBroker(Mutex<Vec<CapabilityCall>>);
@@ -236,7 +235,7 @@ mod tests {
                 executor: rustok_sandbox::SandboxExecutorKind::Rhai,
                 media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
                 digest: "sha256:test".to_string(),
-                runtime_abi: RHAI_MODULE_ABI.to_string(),
+                runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
                 entrypoint: "main".to_string(),
                 bytes: b"http_get(\"https://service.example/test\")".to_vec(),
             },

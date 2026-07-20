@@ -23,8 +23,9 @@ bootstrap logic.
   adapter work.
 - Provide deterministic checksums for idempotent step skipping.
 - Provide preflight policy checks that are independent from any specific UI.
-- Define a consumer-owned seed workflow over narrow tenant, identity, role and
-  module ports, without server model dependencies.
+- With the default `seed-runtime` feature, define a consumer-owned seed
+  workflow over narrow tenant, identity, role and module ports, without server
+  model dependencies.
 - Define versioned topology, trusted composition binding, and neutral
   distributed-role deployment hand-offs without build-provider dependencies.
 
@@ -51,6 +52,16 @@ bootstrap logic.
   adapter will fulfill this crate's `InstallDeploymentPort` without moving
   deployment-provider code into the installer.
 
+## Feature Boundary
+
+- The feature-neutral crate surface contains install plans, state, receipts,
+  preflight, deployment hand-offs, secret references, and executor ports. It is
+  safe for browser clients that only consume installer contracts.
+- `seed-runtime` is enabled by default for native server and CLI consumers. It
+  adds the seed workflow and its platform role dependency.
+- Browser consumers must disable default features; they do not execute tenant,
+  identity, role, or module seed operations.
+
 ## Entry Points
 
 The current foundation API is exposed from the crate root:
@@ -66,4 +77,5 @@ The current foundation API is exposed from the crate root:
 
 ```powershell
 cargo test -p rustok-installer
+cargo check -p rustok-installer --no-default-features
 ```

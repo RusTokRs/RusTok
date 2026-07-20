@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use rhai::{Engine, Scope};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -16,7 +17,6 @@ use rustok_sandbox::{
 };
 
 use crate::{
-    artifact::RHAI_MODULE_ABI,
     register_entity_proxy,
     utils::{dynamic_to_json, json_to_dynamic},
     AlloyWorkspace, Bridge, EntityProxy, ExecutionContext, ExecutionPhase, Script, ScriptError,
@@ -166,6 +166,48 @@ impl AlloyDraftRuntime {
         })
     }
 
+    /// Executes the fixed publication smoke entrypoint through the same
+    /// production sandbox runtime used by Alloy. The request builder removes
+    /// every capability grant, pins the exact source digest/revision, and the
+    /// returned evidence contains no script input or output.
+    pub async fn execute_publication_smoke(
+        &self,
+        script: &Script,
+        context: &ExecutionContext,
+    ) -> ScriptResult<crate::AlloyPublicationSmokeEvidence> {
+        let request = self
+            .requests
+            .build_test(
+                script,
+                rustok_modules::ALLOY_PUBLICATION_SMOKE_TEST_PATH,
+                context,
+                AlloyDraftInput::default(),
+            )
+            .map_err(|error| ScriptError::Runtime(error.to_string()))?;
+        let policy_bytes = serde_json::to_vec(&request.policy)
+            .map_err(|error| ScriptError::Runtime(error.to_string()))?;
+        let evidence = crate::AlloyPublicationSmokeEvidence {
+            execution_id: request.context.execution_id,
+            test_path: request.payload.entrypoint.clone(),
+            executor: request.payload.executor.to_string(),
+            runtime_abi: request.payload.runtime_abi.clone(),
+            policy_digest: format!("sha256:{}", hex::encode(Sha256::digest(policy_bytes))),
+            capability_grants: request.policy.grants.len().try_into().unwrap_or(u32::MAX),
+        };
+        let (return_value, changes) = self.execute_request(request).await?;
+        if !changes.is_empty() {
+            return Err(ScriptError::Runtime(
+                "Alloy publication smoke must not mutate an entity".to_string(),
+            ));
+        }
+        if dynamic_to_json(return_value).as_bool() != Some(true) {
+            return Err(ScriptError::Runtime(
+                "Alloy publication smoke must return true".to_string(),
+            ));
+        }
+        Ok(evidence)
+    }
+
     async fn execute_request(
         &self,
         request: SandboxRequest,
@@ -212,6 +254,13 @@ impl RhaiHostExtension for AlloyDraftScopeExtension {
                         "invalid Alloy workspace payload: {error}"
                     ))
                 })?;
+            if request.payload.entrypoint == rustok_modules::ALLOY_PUBLICATION_SMOKE_TEST_PATH {
+                workspace.validate_rhai_workspace().map_err(|error| {
+                    SandboxError::InvalidRequest(format!(
+                        "invalid Alloy production entrypoint for publication: {error}"
+                    ))
+                })?;
+            }
             workspace
                 .configure_rhai_engine_for_entrypoint(engine, &request.payload.entrypoint)
                 .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
@@ -379,7 +428,7 @@ impl AlloyDraftRequestBuilder {
                 executor: SandboxExecutorKind::Rhai,
                 media_type: ALLOY_DRAFT_RHAI_MEDIA_TYPE.to_string(),
                 digest,
-                runtime_abi: RHAI_MODULE_ABI.to_string(),
+                runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
                 entrypoint: entrypoint.to_string(),
                 bytes,
             },
@@ -655,6 +704,39 @@ mod tests {
             script.workspace.digest().expect("workspace digest")
         );
         assert!(request.policy.grants.is_empty());
+    }
+
+    #[tokio::test]
+    async fn publication_smoke_returns_redacted_exact_sandbox_evidence() {
+        let mut script = script();
+        script.workspace.files.push(crate::WorkspaceFile {
+            path: rustok_modules::ALLOY_PUBLICATION_SMOKE_TEST_PATH.into(),
+            kind: crate::WorkspaceFileKind::Test,
+            contents: "true".into(),
+        });
+        let execution_id = Uuid::new_v4();
+        let mut context = ExecutionContext::new(ExecutionPhase::Manual)
+            .with_tenant(Uuid::new_v4().to_string())
+            .with_user("release-operator");
+        context.execution_id = execution_id;
+
+        let evidence = crate::create_default_alloy_draft_runtime()
+            .execute_publication_smoke(&script, &context)
+            .await
+            .expect("publication smoke");
+
+        assert_eq!(evidence.execution_id, execution_id);
+        assert_eq!(
+            evidence.test_path,
+            rustok_modules::ALLOY_PUBLICATION_SMOKE_TEST_PATH
+        );
+        assert_eq!(evidence.executor, "rhai");
+        assert_eq!(
+            evidence.runtime_abi,
+            rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI
+        );
+        assert!(evidence.policy_digest.starts_with("sha256:"));
+        assert_eq!(evidence.capability_grants, 0);
     }
 
     #[test]

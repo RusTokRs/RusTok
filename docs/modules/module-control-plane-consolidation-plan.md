@@ -769,13 +769,47 @@ adapter and must not be used as artifact identity or durable policy state.
   `rustok-migrations::Migrator` now includes the owner migration source before
   schema application, so fresh installations receive artifact admission,
   lifecycle, rollback, and subsequent owner migrations.
-- [ ] Define infrastructure ports for registry transport, artifact blob access,
+- [x] Define infrastructure ports for registry transport, artifact blob access,
   signature verification, SBOM/provenance verification, build scheduling,
-  transactional storage, events, audit, clock, and ID generation.
-- [ ] Keep transaction boundaries inside owner services while accepting a
-  caller-provided database/transaction adapter where required.
+  transactional storage, events, audit, clock, and ID generation. The runtime
+  boundaries now expose `ArtifactRegistry`, `ArtifactBlobStore` /
+  `DurableArtifactBlobStore`, `TrustVerifier`, `OciArtifactPublisher`,
+  `ModuleCompositionBuildEnqueuer`, and `ModuleBuildWorker`. The owner-owned
+  `ControlPlaneInfrastructure` supplies injected clock and UUID ports;
+  admission, installation lifecycle, build, governance, binding-idempotency,
+  event/schedule delivery, and identity-allocating data operations use it for
+  installation, operation, outbox, verification, commit-evidence, publication
+  aggregate, validation-stage, validation-claim, delivery, work-lease,
+  data-upload, private-object, GC-candidate, export, and lease-time identities
+  instead of process globals. Schedule work materialization also receives the
+  injected owner time. Secret outbox facts, generated lifecycle correlations,
+  durable/in-memory CAS stage identities, and OCI temporary staging paths now
+  use the same context. A crate-wide production-source audit leaves direct
+  system clock and random UUID access only inside the default infrastructure
+  adapters; test fixtures remain free to create their own identities.
+  Database-expression timestamps remain a transactional storage concern. The
+  caller-supplied SeaORM connection and owner-opened `DatabaseTransaction` are
+  the explicit transactional storage adapter. `rustok-outbox` now exposes the
+  object-safe `TransactionalEventWriter`; `ControlPlaneInfrastructure` composes
+  its `OutboxTransport` adapter once and owner operations append through that
+  port without constructing a transport or publishing outside their
+  transaction. Runtime audit uses the existing redacted `ExecutionObserver`
+  port, while governance, lifecycle, data, secret, and installation audit facts
+  remain owner rows/outbox facts in the same transaction; no second audit
+  journal or fire-and-forget audit sink is introduced.
+- [x] Keep transaction boundaries inside owner services while accepting a
+  caller-provided database/transaction adapter where required. Composition,
+  build, governance, installation, lifecycle, data, secret, and delivery
+  services open and complete their own transactions. The composition build
+  enqueuer is the explicit exception: it receives only the owner-opened
+  `DatabaseTransaction`, cannot commit it, and a failed enqueue rolls the
+  composition CAS mutation back.
 - [ ] Add idempotency keys for install, publish, build, retry, rollback, and
-  promotion commands. Post-hook retry is now the first lifecycle slice: its
+  promotion commands. Artifact admission now requires a non-nil actor and
+  idempotency UUID, reserves the complete immutable request digest inside the
+  installation transaction, replays the original installation identity for an
+  exact retry, and rejects conflicting reuse. Build submission applies the same
+  tenant/project request-fingerprint rule. Post-hook retry
   GraphQL mutation requires a non-nil UUID key, and the owner persists a
   tenant-scoped unique key in `module_operations`, binds it to the recovered
   operation through durable correlation, replays the original retry journal
@@ -790,8 +824,7 @@ adapter and must not be used as artifact identity or durable policy state.
   at the live approval endpoint and stores its complete owner command
   fingerprint with the resulting release; only an exact retry replays a
   published request, while a missing legacy record or conflicting key reuse
-  fails closed. Install and promotion remain separate unfinished command
-  contracts.
+  fails closed. Promotion is the remaining command without this contract.
 
 ### 2.5 Server Service Cutover
 
@@ -1244,8 +1277,22 @@ migrations or arbitrary SQL.
   Structured-value writes now require a host-owned schema-validation port before
   persistence. `SeaOrmArtifactDataSchemaValidator` resolves the exact admitted
   installation descriptor and persistence schema under tenant RLS, then uses
-  Draft 2020-12 with strict formats and bounded regular expressions. Settings
-  and action payload adapters remain unfinished.
+  the same bounded Draft 2020-12 compiled-validator cache as runtime dispatch
+  and settings, with strict formats, linear-time regular expressions, and no
+  external resolvers. Artifact
+  settings now have a distinct owner write entrypoint: the immutable definition
+  retains only its admitted settings-schema digest plus schema bundle,
+  `ModuleLifecycleDbWriter::persist_artifact_settings` resolves that exact
+  document and validates the object before persistence, and the static
+  pre-normalized entrypoint rejects artifact definitions. The lower-level
+  tenant settings store is no longer exported, so a host cannot bypass this
+  split. `ModuleControlPlane::artifact_lifecycle` composes that dynamic owner
+  with the same infrastructure and admitted lifecycle executor. Binding inputs
+  and decoded outputs, including command/action payloads,
+  already use the same bounded compiled-validator cache in `ArtifactRuntime`.
+  The checklist remains open only for the Phase 7 declarative admin-action to
+  admitted-binding presentation/transport adapter; no such UI action adapter is
+  claimed here.
 - [ ] Define quotas, pagination, transactions/batches, optimistic revisions,
   idempotency, backup/export, retention, and deletion semantics.
   Structured-value writes currently have a 256-byte logical-key bound, a
@@ -1725,8 +1772,8 @@ trust policy before admission.
   digest and one of `author_signature`, `build_service_attestation`,
   `marketplace_approval`, or `platform_admission`; repeat submission of the
   same fact is idempotent through a domain-separated evidence digest and a
-  database uniqueness constraint. Promotion/admission must still require the
-  applicable distinct facts before this item can close. Marketplace approval
+  database uniqueness constraint. Promotion/admission requires the applicable
+  distinct facts. Marketplace approval
   is not accepted through the generic evidence command: the owner creates it
   only in the atomic final-publication transaction, bound to the canonical
   staged artifact SHA-256 and the approving principal. Build-service
@@ -1736,7 +1783,8 @@ trust policy before admission.
   payload/SBOM/provenance/signature identities. Platform admission is reserved
   too: `ModulePlatformAdmissionCommand` accepts only an admitted immutable
   verification decision for the exact OCI manifest, binds signature/SLSA/SBOM
-  outcomes, signer, policy revisions, and evidence-reference fingerprint, and
+  plus independent license/vulnerability policy outcomes, signer, policy
+  revisions, and evidence-reference fingerprint, and
   records the platform decision without exposing verifier output. The owner
   now fails publication closed unless author-signature evidence is bound to the
   staged artifact SHA-256 and build-service attestation plus platform-admission
@@ -1747,9 +1795,11 @@ trust policy before admission.
 - [x] Do not equate a valid signature with a trusted module; policy must verify
   who signed what under which build/provenance conditions. Admission accepts a
   decision only when its exact policy revisions match and signature, SLSA
-  provenance, and CycloneDX SBOM verification all succeed. The verifier also
-  requires a configured signer identity plus builder, build-type, source,
-  license, and vulnerability-policy facts.
+  provenance, CycloneDX SBOM, license-policy, and vulnerability-policy
+  verification all succeed. The verifier also requires a configured signer
+  identity plus builder, build-type, source, license, and vulnerability-policy
+  facts. Missing license or vulnerability outcome fields fail decoding rather
+  than receiving compatibility defaults.
 
 ### 5.3 Publication Governance
 
@@ -1759,8 +1809,11 @@ trust policy before admission.
   against its immutable stored request. `stage_platform_build` now consumes the
   pair, validates the expected slug/version and component digest against the
   submitted artifact, and appends the source, component, and OCI receipt
-  identities in `registry_publish_build_staging`. Publication requires a stage
-  newer than the current upload. `artifact_origin` is now explicit and legacy
+  identities in `registry_publish_build_staging`. The component/payload digest
+  and registry-returned OCI manifest digest are separate immutable identities:
+  staging validates both but never compares them for equality, while final
+  signature/admission joins use the manifest identity. Publication requires a
+  stage newer than the current upload. `artifact_origin` is now explicit and legacy
   rows are `unclassified`, which fails closed. External prebuilts use the
   separate immutable `registry_publish_external_staging` record with either a
   reproducible source identity or an explicit absence reason, an approved
@@ -1775,8 +1828,30 @@ trust policy before admission.
   on replay: platform builds include tenant, build, source, component, and
   actor; external prebuilts include source/provenance/quarantine facts and
   both authenticated principals. Any conflicting reuse fails closed.
-- [ ] Run automated descriptor, compatibility, dependency, signature, SBOM,
-  provenance, license, vulnerability, and sandbox smoke checks.
+- [x] Run automated descriptor, compatibility, dependency, signature, SBOM,
+  provenance, license, vulnerability, and sandbox smoke checks. The owner
+  validates the claimed canonical bundle against the exact SHA-256, crate,
+  publish metadata, `rustok-module.toml`, and `Cargo.toml`; fixture substitutions
+  and undeclared UI manifests fail closed without echoing artifact content.
+  Build-worker lock fixtures cover checksummed allow-listed registries,
+  credential rejection, exact git revisions, and dangling dependency denial.
+  Platform-built gates consume only durable passed `check`, `test`, dependency
+  policy, and vulnerability profiles from the exact completed build. The
+  verification-worker fixture matrix covers Cosign envelope shape, exact SLSA
+  subject/builder/build-type/source/ref, CycloneDX schema and subject binding,
+  component licenses, vulnerability ratings, and severity policy. Its typed
+  decision exposes signature, provenance, SBOM, license-policy, and
+  vulnerability-policy outcomes independently; the owner requires and
+  fingerprints every outcome. External-prebuilt reconciliation additionally
+  requires exact provenance/quarantine staging and author signature. Alloy
+  staging executes the fixed capability-free `tests/publication_smoke.rhai`
+  entrypoint through the production neutral sandbox, requires `true` without
+  entity mutations, and binds execution ID, executor, runtime ABI, and effective
+  policy digest. Origin-specific stages accept only their owner evidence and
+  reconcile idempotently regardless of arrival order. Lightweight structural
+  verification on 2026-07-20 passed `rustfmt --edition 2021`,
+  `git diff --check`, and `cargo metadata --no-deps`; compile and test suites
+  were intentionally not run in this worktree.
 - [x] Record review decisions, required changes, holds, approvals, rejections,
   yanks, and reasons as owner events. `SeaOrmModuleGovernanceService` writes
   the transition and its reason in the same owner transaction. It also records
@@ -1809,13 +1884,26 @@ trust policy before admission.
   `modules.manage` authority. The parallel platform build-stage adapter accepts
   no caller-supplied tenant identifier and derives its owner RLS scope from the
   authenticated session.
-- [ ] Treat marketplace README, metadata, source comments, test output, and
+- [x] Treat marketplace README, metadata, source comments, test output, and
   artifact text as untrusted content for both UI rendering and AI prompts. The
   registry bundle validator caps the complete upload at 2 MiB before JSON
-  parsing, bounds embedded manifest parsing, and emits content-free diagnostics,
-  preventing raw artifact/request strings from flowing into governance events
-  through that path. Rendering and prompt-boundary policy remain to be completed
-  across all publication inputs.
+  parsing, bounds embedded manifest parsing, and emits content-free diagnostics.
+  Publisher name and description now pass through the owner-owned bounded
+  plain-text projection, which rejects control, invisible, and bidirectional
+  override characters. Marketplace category and tags are bounded canonical
+  identifier tokens with a bounded, duplicate-free tag set. Catalog responses
+  declare `content_format = plain_text`
+  and `content_trust = untrusted_publisher_content`; the current React and
+  Leptos marketplace surfaces render both fields through framework text nodes,
+  never HTML/Markdown injection APIs. The same projection exposes AI input only
+  as a trust-tagged structured data object with no instruction field; no current
+  AI runtime consumes marketplace content, and future adapters must place that
+  object in a non-system data/tool boundary rather than concatenate it into
+  instructions. README, source comments, and artifact text have no catalog or
+  prompt projection. Manual and remote stage reports discard caller/runner
+  detail, and validation-delivery retry events replace raw errors with stable
+  owner-owned diagnostics, so test output and artifact-derived failure strings
+  cannot enter governance events through those paths.
 
 ### Verification Gate
 

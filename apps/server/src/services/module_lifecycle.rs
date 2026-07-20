@@ -3,16 +3,16 @@ use thiserror::Error;
 
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ModuleControlPlane, ModuleLifecycleDbWriterError, ModuleLifecycleExecutionError,
-    ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
-    ModuleOperationStoreError, ModuleToggleValidationError, failed_module_operation_recovery_plans,
-    module_operation_recovery_plan, normalize_module_settings,
+    failed_module_operation_recovery_plans, module_operation_recovery_plan,
+    normalize_module_settings, ModuleControlPlane, ModuleLifecycleDbWriterError,
+    ModuleLifecycleExecutionError, ModuleOperationRecoveryError as ModulesRecoveryError,
+    ModuleOperationRecoveryPlan, ModuleOperationStoreError, ModuleToggleValidationError,
 };
 
 use crate::models::_entities::module_operations::Entity as ModuleOperationsEntity;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
 use crate::models::_entities::{module_operations, tenant_modules};
-use crate::modules::{ManifestError, ManifestManager, map_module_settings_validation_error};
+use crate::modules::{map_module_settings_validation_error, ManifestError, ManifestManager};
 use crate::services::platform_composition::PlatformCompositionService;
 
 pub struct ModuleLifecycleService;
@@ -218,7 +218,7 @@ impl ModuleLifecycleService {
         )?;
 
         let state = writer
-            .persist_normalized_settings(tenant_id, module_slug, settings)
+            .persist_static_normalized_settings(tenant_id, module_slug, settings)
             .await
             .map_err(map_lifecycle_writer_settings_error)?;
         TenantModulesEntity::find_by_id(state.id)
@@ -276,6 +276,10 @@ fn map_lifecycle_writer_error(error: ModuleLifecycleDbWriterError) -> ToggleModu
             ToggleModuleError::Policy(error.to_string())
         }
         ModuleLifecycleDbWriterError::UnknownModule(error) => ToggleModuleError::Policy(error),
+        ModuleLifecycleDbWriterError::ArtifactSettings {
+            module_slug,
+            reason,
+        } => ToggleModuleError::Policy(format!("artifact settings for `{module_slug}`: {reason}")),
         ModuleLifecycleDbWriterError::Settings(error) => {
             ToggleModuleError::Policy(error.to_string())
         }
@@ -308,6 +312,12 @@ fn map_lifecycle_writer_recovery_error(
         ModuleLifecycleDbWriterError::UnknownModule(error) => {
             ModuleOperationRecoveryError::Policy(error)
         }
+        ModuleLifecycleDbWriterError::ArtifactSettings {
+            module_slug,
+            reason,
+        } => ModuleOperationRecoveryError::Policy(format!(
+            "artifact settings for `{module_slug}`: {reason}"
+        )),
         ModuleLifecycleDbWriterError::Settings(error) => {
             ModuleOperationRecoveryError::Database(DbErr::Custom(error.to_string()))
         }
@@ -319,6 +329,12 @@ fn map_lifecycle_writer_settings_error(
 ) -> UpdateModuleSettingsError {
     match error {
         ModuleLifecycleDbWriterError::UnknownModule(_) => UpdateModuleSettingsError::UnknownModule,
+        ModuleLifecycleDbWriterError::ArtifactSettings {
+            module_slug,
+            reason,
+        } => UpdateModuleSettingsError::Validation(format!(
+            "artifact settings for `{module_slug}`: {reason}"
+        )),
         ModuleLifecycleDbWriterError::Settings(error) => map_module_settings_store_error(error),
         ModuleLifecycleDbWriterError::Database(error) => {
             UpdateModuleSettingsError::Database(DbErr::Custom(error))
@@ -386,7 +402,7 @@ mod tests {
     use super::{ModuleLifecycleService, UpdateModuleSettingsError};
     use crate::models::_entities::tenant_modules;
     use crate::models::tenants;
-    use crate::modules::{ManifestManager, ManifestModuleSpec, ModulesManifest, build_registry};
+    use crate::modules::{build_registry, ManifestManager, ManifestModuleSpec, ModulesManifest};
     use rustok_core::ModuleRegistry;
     use rustok_index::IndexModule;
     use rustok_migrations::Migrator;

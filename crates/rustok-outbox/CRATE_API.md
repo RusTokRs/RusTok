@@ -9,6 +9,7 @@
 - `pub async fn TransactionalEventBus::publish_contract_in_tx<C, E>(...) where E: EventContract`
 - `pub struct OutboxRelay`, `pub struct RelayConfig`, `pub struct RelayMetricsSnapshot`
 - `pub struct OutboxTransport`
+- `pub trait TransactionalEventWriter`
 - `pub struct SysEventsMigration`
 - `pub use entity::{Entity as SysEvents, Model as SysEvent}`
 
@@ -26,6 +27,8 @@
 ## Common AI Mistakes
 - Publishes an event directly to a transport instead of the transactional bus inside the owner transaction.
 - Calls non-transactional `publish` from an owner command.
+- Constructs `OutboxTransport` inside a domain operation instead of receiving a
+  composed `TransactionalEventWriter`.
 - Confuses `OutboxTransport` with the real L2 streaming transport (`rustok-iggy`).
 - Deserializes every outbox payload only as `EventEnvelope<DomainEvent>` and sends bounded-family events to the DLQ.
 - Trusts duplicated `sys_events` metadata without comparing it to the envelope.

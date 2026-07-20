@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityTrait, Set};
+use sea_orm::{
+    ActiveModelTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, Set,
+};
 use std::any::Any;
 
 use rustok_core::events::{EventTransport, ReliabilityLevel};
@@ -9,6 +11,7 @@ use rustok_events::{ContractEventEnvelope, EventEnvelope};
 
 use crate::entity;
 use crate::entity::SysEventStatus;
+use crate::ports::TransactionalEventWriter;
 
 #[derive(Clone, Debug)]
 pub struct OutboxTransport {
@@ -109,6 +112,17 @@ impl OutboxTransport {
             created_at: Set(Utc::now()),
             dispatched_at: Set(None),
         })
+    }
+}
+
+#[async_trait]
+impl TransactionalEventWriter for OutboxTransport {
+    async fn write_event(
+        &self,
+        transaction: &DatabaseTransaction,
+        envelope: EventEnvelope,
+    ) -> Result<()> {
+        self.write_to_outbox(transaction, envelope).await
     }
 }
 

@@ -207,9 +207,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        execute_seed_profile, SeedExecutionError, SeedExecutionRequest, SeedModulePort,
-        SeedPrincipalPort, SeedTenant, SeedTenantPort, SeedTenantRequest, SeedUser,
-        SeedUserRequest,
+        SeedExecutionError, SeedExecutionRequest, SeedModulePort, SeedPrincipalPort, SeedTenant,
+        SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest, execute_seed_profile,
     };
     use crate::SeedProfile;
 
