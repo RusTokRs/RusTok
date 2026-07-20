@@ -19,7 +19,7 @@ jobs:
       - name: Persist latest migration pin run
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: 76dc3f6ee47e8170f0a25840d6572290bdf1f014
+          TARGET_SHA: be80d56450b850384c5c5eb6e9ce703fc553db97
         shell: bash
         run: |
           set -euo pipefail
