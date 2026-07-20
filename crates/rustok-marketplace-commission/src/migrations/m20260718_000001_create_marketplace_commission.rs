@@ -1,0 +1,279 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(CommissionRules::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(CommissionRules::Id).uuid().not_null().primary_key())
+                    .col(ColumnDef::new(CommissionRules::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(CommissionRules::RuleKey).uuid().not_null())
+                    .col(ColumnDef::new(CommissionRules::Version).integer().not_null())
+                    .col(ColumnDef::new(CommissionRules::SellerId).uuid())
+                    .col(ColumnDef::new(CommissionRules::ListingId).uuid())
+                    .col(ColumnDef::new(CommissionRules::RateBps).integer().not_null())
+                    .col(ColumnDef::new(CommissionRules::FixedAmount).big_integer().not_null())
+                    .col(ColumnDef::new(CommissionRules::CurrencyCode).string_len(3))
+                    .col(ColumnDef::new(CommissionRules::Priority).integer().not_null())
+                    .col(
+                        ColumnDef::new(CommissionRules::EffectiveFrom)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionRules::EffectiveUntil)
+                            .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionRules::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionRules::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionRules::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        for index in [
+            Index::create()
+                .name("uq_marketplace_commission_rule_version")
+                .table(CommissionRules::Table)
+                .col(CommissionRules::TenantId)
+                .col(CommissionRules::RuleKey)
+                .col(CommissionRules::Version)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("idx_marketplace_commission_rule_listing")
+                .table(CommissionRules::Table)
+                .col(CommissionRules::TenantId)
+                .col(CommissionRules::ListingId)
+                .col(CommissionRules::Status)
+                .col(CommissionRules::Priority)
+                .to_owned(),
+            Index::create()
+                .name("idx_marketplace_commission_rule_seller")
+                .table(CommissionRules::Table)
+                .col(CommissionRules::TenantId)
+                .col(CommissionRules::SellerId)
+                .col(CommissionRules::Status)
+                .col(CommissionRules::Priority)
+                .to_owned(),
+            Index::create()
+                .name("idx_marketplace_commission_rule_global")
+                .table(CommissionRules::Table)
+                .col(CommissionRules::TenantId)
+                .col(CommissionRules::Status)
+                .col(CommissionRules::EffectiveFrom)
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(CommissionAssessments::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(CommissionAssessments::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(CommissionAssessments::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(CommissionAssessments::AllocationId).uuid().not_null())
+                    .col(ColumnDef::new(CommissionAssessments::OrderId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(CommissionAssessments::OrderLineItemId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(CommissionAssessments::SellerId).uuid().not_null())
+                    .col(ColumnDef::new(CommissionAssessments::ListingId).uuid().not_null())
+                    .col(ColumnDef::new(CommissionAssessments::RuleId).uuid().not_null())
+                    .col(ColumnDef::new(CommissionAssessments::RuleKey).uuid().not_null())
+                    .col(ColumnDef::new(CommissionAssessments::RuleVersion).integer().not_null())
+                    .col(
+                        ColumnDef::new(CommissionAssessments::CurrencyCode)
+                            .string_len(3)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::AllocationTotalAmount)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(CommissionAssessments::RateBps).integer().not_null())
+                    .col(
+                        ColumnDef::new(CommissionAssessments::FixedAmount)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::CommissionAmount)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::SellerProceedsAmount)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::AssessedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        for index in [
+            Index::create()
+                .name("uq_marketplace_commission_assessment_allocation")
+                .table(CommissionAssessments::Table)
+                .col(CommissionAssessments::TenantId)
+                .col(CommissionAssessments::AllocationId)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("idx_marketplace_commission_assessment_order")
+                .table(CommissionAssessments::Table)
+                .col(CommissionAssessments::TenantId)
+                .col(CommissionAssessments::OrderId)
+                .col(CommissionAssessments::Id)
+                .to_owned(),
+            Index::create()
+                .name("idx_marketplace_commission_assessment_seller")
+                .table(CommissionAssessments::Table)
+                .col(CommissionAssessments::TenantId)
+                .col(CommissionAssessments::SellerId)
+                .col(CommissionAssessments::Status)
+                .col(CommissionAssessments::AssessedAt)
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(CommissionReceipts::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(CommissionReceipts::Id).uuid().not_null().primary_key())
+                    .col(ColumnDef::new(CommissionReceipts::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(CommissionReceipts::ActorId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(CommissionReceipts::IdempotencyKey)
+                            .string_len(191)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionReceipts::CommandKind)
+                            .string_len(80)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionReceipts::RequestHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionReceipts::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(CommissionReceipts::ResponseKind).string_len(32))
+                    .col(ColumnDef::new(CommissionReceipts::ResponseJson).json_binary())
+                    .col(
+                        ColumnDef::new(CommissionReceipts::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionReceipts::CompletedAt)
+                            .timestamp_with_time_zone(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("uq_marketplace_commission_receipt_key")
+                    .table(CommissionReceipts::Table)
+                    .col(CommissionReceipts::TenantId)
+                    .col(CommissionReceipts::IdempotencyKey)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(CommissionReceipts::Table).if_exists().to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(CommissionAssessments::Table).if_exists().to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(CommissionRules::Table).if_exists().to_owned())
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(Iden)]
+enum CommissionRules {
+    Table, Id, TenantId, RuleKey, Version, SellerId, ListingId, RateBps, FixedAmount,
+    CurrencyCode, Priority, EffectiveFrom, EffectiveUntil, Status, Metadata, CreatedAt,
+}
+
+#[derive(Iden)]
+enum CommissionAssessments {
+    Table, Id, TenantId, AllocationId, OrderId, OrderLineItemId, SellerId, ListingId,
+    RuleId, RuleKey, RuleVersion, CurrencyCode, AllocationTotalAmount, RateBps,
+    FixedAmount, CommissionAmount, SellerProceedsAmount, Status, Metadata, AssessedAt, CreatedAt,
+}
+
+#[derive(Iden)]
+enum CommissionReceipts {
+    Table, Id, TenantId, ActorId, IdempotencyKey, CommandKind, RequestHash, Status,
+    ResponseKind, ResponseJson, CreatedAt, CompletedAt,
+}

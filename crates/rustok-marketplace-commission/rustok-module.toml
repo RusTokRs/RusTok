@@ -1,0 +1,27 @@
+[module]
+slug = "marketplace_commission"
+name = "Marketplace Commission"
+version = "0.1.0"
+description = "Marketplace Family versioned commission rule and assessment owner"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "api_only"
+
+[marketplace]
+category = "commerce"
+tags = ["marketplace", "commission", "fees", "allocations"]
+
+[crate]
+entry_type = "MarketplaceCommissionModule"
+
+[fba.provider]
+status = "in_progress"
+role = "provider"
+contract_version = "marketplace.commission.v1"
+registry = "contracts/marketplace-commission-fba-registry.json"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+
+[fba.provider.rollout]
+fallback_profiles = ["embedded_native", "remote_adapter_placeholder"]
+degraded_modes = ["commission_storage_unavailable", "allocation_provider_unavailable", "commission_receipt_requires_review"]

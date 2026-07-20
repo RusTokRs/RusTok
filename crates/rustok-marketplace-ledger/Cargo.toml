@@ -1,23 +1,26 @@
 [package]
-name = "rustok-marketplace"
+name = "rustok-marketplace-ledger"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Marketplace family root and cross-marketplace orchestration boundary"
+description = "Marketplace Family immutable double-entry ledger owner"
 
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+hex.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
-rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation" }
 rustok-marketplace-commission = { path = "../rustok-marketplace-commission" }
-rustok-marketplace-ledger = { path = "../rustok-marketplace-ledger" }
-rustok-marketplace-listing = { path = "../rustok-marketplace-listing" }
-rustok-marketplace-seller.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
+utoipa = { workspace = true, features = ["uuid", "chrono"] }
 uuid.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
+rustok-test-utils.workspace = true
