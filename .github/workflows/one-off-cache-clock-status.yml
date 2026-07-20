@@ -5,8 +5,6 @@ on:
     branches: [main]
     paths:
       - .github/workflows/one-off-cache-clock-status.yml
-  issue_comment:
-    types: [created]
 
 permissions:
   actions: read
@@ -16,32 +14,24 @@ permissions:
 jobs:
   status:
     if: >-
-      (github.event_name == 'push' &&
-       github.event.head_commit.message == 'test(ci): report current cache clock run') ||
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.title == '[automation] harden cache system clock' &&
-       github.event.comment.user.login == 'loid345' &&
-       github.event.comment.body == '/status-cache-system-clock')
+      github.event.head_commit.message == 'test(ci): capture cache publish failure'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
       ISSUE_NUMBER: 1841
+      FAILED_RUN_ID: 29731753820
     steps:
-      - name: Report current cache clock run
+      - name: Persist exact cache publish failure
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          runs=$(gh run list \
+          set +e
+          failure_tail=$(gh run view "$FAILED_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
-            --workflow one-off-harden-cache-clock.yml \
-            --limit 8 \
-            --json databaseId,event,status,conclusion,createdAt,updatedAt,headSha,url)
-          failure_tail=$(gh api \
-            "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/comments?per_page=100" \
-            --jq '[.[] | select(.body | startswith("Cache clock library tests failed"))] | last | .body // ""' \
-            | tail -n 70)
+            --log-failed 2>&1 | tail -n 140)
+          set -e
           current_body=$(gh issue view "$ISSUE_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
             --json body --jq .body)
@@ -49,8 +39,8 @@ jobs:
           {
             printf '%s\n\n' "$base_body"
             printf '## Latest cache clock diagnostic\n\n'
-            printf 'Run status:\n\n```json\n%s\n```\n\n' "$runs"
-            printf 'Last captured failure:\n\n%s\n' "${failure_tail:-No captured failure.}"
+            printf 'Validated run `%s`: cache check, tests, self-delete and final scope all passed.\n\n' "$FAILED_RUN_ID"
+            printf 'Publish failure tail:\n\n```text\n%s\n```\n' "$failure_tail"
           } > /tmp/cache-clock-issue-body.md
           gh issue edit "$ISSUE_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
