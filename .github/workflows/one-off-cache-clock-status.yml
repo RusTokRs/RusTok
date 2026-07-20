@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Report cache clock workflow status
+      - name: Report cache clock workflow status and failure tail
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -31,6 +31,22 @@ jobs:
             --workflow one-off-harden-cache-clock.yml \
             --limit 5 \
             --json databaseId,event,status,conclusion,createdAt,updatedAt,headSha,url)
+          run_id=$(printf '%s' "$runs" | node -e '
+            let input = "";
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => {
+              const run = JSON.parse(input).find(item => item.conclusion && item.conclusion !== "skipped");
+              if (run) process.stdout.write(String(run.databaseId));
+            });
+          ')
+          failure_tail="No completed non-skipped run found."
+          if [ -n "$run_id" ]; then
+            set +e
+            failure_tail=$(gh run view "$run_id" \
+              --repo "$GITHUB_REPOSITORY" \
+              --log-failed 2>&1 | tail -n 160)
+            set -e
+          fi
           gh issue comment "$ISSUE_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
-            --body "Cache clock workflow status:\n\n\`\`\`json\n$runs\n\`\`\`"
+            --body "Cache clock workflow status:\n\n\`\`\`json\n$runs\n\`\`\`\n\nLatest failure tail:\n\n\`\`\`text\n$failure_tail\n\`\`\`"
