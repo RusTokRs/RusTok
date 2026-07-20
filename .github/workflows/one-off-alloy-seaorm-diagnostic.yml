@@ -1,80 +1,130 @@
-name: One-off Alloy SeaORM Diagnostic
+name: One-off Alloy SeaORM Repair
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/one-off-alloy-seaorm-diagnostic.yml
+  issue_comment:
+    types: [created]
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  REPAIR_ISSUE: 1853
   CARGO_TERM_COLOR: never
-  DIAGNOSTIC_ISSUE: 1853
 
 jobs:
-  diagnose:
+  repair:
     if: >-
-      github.event.head_commit.message == 'test(alloy): capture SeaORM compiler diagnostics'
+      github.event.issue.number == 1853 &&
+      github.event.comment.body == '/repair-alloy-seaorm'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: main
+          fetch-depth: 0
       - name: Install exact Rust toolchain
         run: |
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
-      - name: Capture alloy compiler diagnostics
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Apply exact compatibility repair
         shell: bash
         run: |
-          set +e
-          cargo check --locked -p alloy --message-format=json \
-            > /tmp/alloy-check.jsonl 2> /tmp/alloy-cargo.stderr
-          status=$?
-          set -e
+          set -euo pipefail
           python3 - <<'PY'
-          import json
           from pathlib import Path
 
-          rendered = []
-          for raw in Path('/tmp/alloy-check.jsonl').read_text().splitlines():
-              try:
-                  item = json.loads(raw)
-              except json.JSONDecodeError:
-                  continue
-              if item.get('reason') != 'compiler-message':
-                  continue
-              message = item.get('message', {})
-              if message.get('level') != 'error':
-                  continue
-              text = message.get('rendered') or message.get('message') or 'unrendered compiler error'
-              rendered.append(text.rstrip())
+          replacements = {
+              Path('crates/alloy/src/runner/test.rs'): [
+                  ('crate::MAX_TEST_ERROR_LENGTH', 'crate::model::MAX_TEST_ERROR_LENGTH', 1),
+              ],
+              Path('crates/alloy/src/storage/memory.rs'): [
+                  ('crate::test_run_lease_expires_at', 'crate::model::test_run_lease_expires_at', 2),
+              ],
+              Path('crates/alloy/src/storage/sea_orm.rs'): [
+                  ('crate::test_run_lease_expires_at', 'crate::model::test_run_lease_expires_at', 2),
+                  (
+                      '.col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt))',
+                      '.col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt).into())',
+                      2,
+                  ),
+              ],
+              Path('crates/alloy/src/runner/release.rs'): [
+                  ('G: AlloyReleaseGovernance,', 'G: AlloyReleaseGovernance + ?Sized,', 2),
+              ],
+          }
 
-          body = [
-              'Capture the exact locked `alloy` compiler diagnostics before a bounded SeaORM compatibility repair.',
-              '',
-              f'## Compiler errors ({len(rendered)})',
-              '',
-              '```text',
-              '\n\n'.join(rendered) if rendered else 'No compiler errors were emitted.',
-              '```',
-              '',
-              '## Cargo stderr tail',
-              '',
-              '```text',
-              '\n'.join(Path('/tmp/alloy-cargo.stderr').read_text().splitlines()[-40:]),
-              '```',
-          ]
-          Path('/tmp/alloy-diagnostic.md').write_text('\n'.join(body) + '\n')
+          for path, edits in replacements.items():
+              source = path.read_text()
+              for old, new, count in edits:
+                  observed = source.count(old)
+                  if observed != count:
+                      raise SystemExit(
+                          f'{path}: expected {count} occurrences of {old!r}, observed {observed}'
+                      )
+                  source = source.replace(old, new)
+              path.write_text(source)
           PY
-          gh issue edit "$DIAGNOSTIC_ISSUE" \
-            --repo "$GITHUB_REPOSITORY" \
-            --body-file /tmp/alloy-diagnostic.md
-          exit "$status"
+          if grep -R --line-number -E \
+            'crate::(MAX_TEST_ERROR_LENGTH|test_run_lease_expires_at)' \
+            crates/alloy/src --include='*.rs'; then
+            echo 'stale Alloy crate-root test-run symbol path remains' >&2
+            exit 1
+          fi
+          if grep -n --fixed-strings \
+            '.col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt))' \
+            crates/alloy/src/storage/sea_orm.rs; then
+            echo 'SeaORM col_expr still receives Expr instead of SimpleExpr' >&2
+            exit 1
+          fi
+          test "$(grep -c 'G: AlloyReleaseGovernance + ?Sized,' crates/alloy/src/runner/release.rs)" = 2
+      - name: Verify bounded diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            crates/alloy/src/runner/release.rs
+            crates/alloy/src/runner/test.rs
+            crates/alloy/src/storage/memory.rs
+            crates/alloy/src/storage/sea_orm.rs
+          )
+          test "${#changed[@]}" = "${#expected[@]}"
+          for index in "${!expected[@]}"; do
+            test "${changed[$index]}" = "${expected[$index]}"
+          done
+      - name: Compile alloy
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/alloy-seaorm-compat
+        run: cargo check --locked -p alloy
+      - name: Publish Alloy compatibility repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add crates/alloy/src/runner/release.rs \
+            crates/alloy/src/runner/test.rs \
+            crates/alloy/src/storage/memory.rs \
+            crates/alloy/src/storage/sea_orm.rs
+          git commit -m 'fix(alloy): restore SeaORM 1.1 compatibility'
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              git rebase origin/main
+              cargo check --locked -p alloy
+            fi
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+          done
+          exit 1
+      - name: Record repair evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "$REPAIR_ISSUE" --repo "$GITHUB_REPOSITORY" --body \
+            'Bounded Alloy compatibility repair published; `cargo check --locked -p alloy` passed.'
