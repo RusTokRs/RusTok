@@ -376,8 +376,11 @@ RusTok-owned and authoritative.
 - [ ] Integrate the existing rich-text capability where a text editor is activated.
 - [ ] Test no-builder, admin-only, storefront-only and full profiles.
 - [x] Add real GrapesJS/Fly cross-editor round trips.
+- [x] Add production-browser contracts for iframe handshake, source/origin/instance rejection,
+  sequence replay protection, geometry/zoom overlays, teardown cleanup and fail-closed stale-save
+  revision handling with an explicit refreshed retry.
 
-**Gate:** open pending Rust/WASM/browser execution and both-surface data-loss tests.
+**Gate:** open pending complete Rust/WASM execution and both-surface data-loss tests.
 
 ### Phase 10 — Module rollout
 
@@ -412,8 +415,8 @@ RusTok-owned and authoritative.
 
 1. Run the full Rust, WASM and browser suites against the current real GrapesJS capture and
    retain reproducible evidence.
-2. Add browser tests for handshake, source/origin rejection, geometry, teardown, stale saves and
-   revision conflicts.
+2. Extend the established browser contract suite with nested scrolling, DnD race coverage,
+   accessibility and resource limits.
 3. Complete capability/degraded-state policy, asset authoring and accessibility coverage.
 4. Integrate authoritative backend Fly traversal/sanitization before treating iframe output as
    publish-ready rendering.

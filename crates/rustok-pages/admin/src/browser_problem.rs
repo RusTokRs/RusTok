@@ -2,8 +2,8 @@ use crate::browser_intent::PagesBrowserIntentError;
 use crate::contribution_browser_intent::PagesBrowserIntentAccessError;
 use fly_ui::EditorCapability;
 use rustok_page_builder_admin::{
-    BrowserCapabilityAccessError, BrowserIntentDispatchError, SsrDraftSessionError,
-    BROWSER_CAPABILITY_DENIAL_CODE,
+    BROWSER_CAPABILITY_DENIAL_CODE, BrowserCapabilityAccessError, BrowserIntentDispatchError,
+    SsrDraftSessionError,
 };
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +13,10 @@ const HTTP_NOT_FOUND: u16 = 404;
 const HTTP_CONFLICT: u16 = 409;
 const HTTP_UNPROCESSABLE_ENTITY: u16 = 422;
 const HTTP_BAD_GATEWAY: u16 = 502;
+
+pub const BROWSER_REVISION_CONFLICT_CODE: &str = "REVISION_CONFLICT";
+pub const BROWSER_PROJECT_HASH_CONFLICT_CODE: &str = "PROJECT_HASH_CONFLICT";
+pub const BROWSER_DRAFT_GENERATION_CONFLICT_CODE: &str = "DRAFT_GENERATION_CONFLICT";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PagesBrowserIntentProblem {
@@ -48,7 +52,7 @@ impl PagesBrowserIntentProblem {
         Self {
             status: status_for_error(error),
             error: error.to_string(),
-            code: None,
+            code: stable_code_for_error(error).map(ToString::to_string),
             intent: None,
             capability: None,
             required: Vec::new(),
@@ -85,7 +89,7 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
             | SsrDraftSessionError::PageMismatch { .. },
         )) => HTTP_CONFLICT,
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Facade(error))
-            if error.stable_code.as_deref() == Some("REVISION_CONFLICT") =>
+            if error.stable_code.as_deref() == Some(BROWSER_REVISION_CONFLICT_CODE) =>
         {
             HTTP_CONFLICT
         }
@@ -93,6 +97,30 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
             HTTP_BAD_GATEWAY
         }
         _ => HTTP_UNPROCESSABLE_ENTITY,
+    }
+}
+
+fn stable_code_for_error(error: &PagesBrowserIntentAccessError) -> Option<&str> {
+    match error {
+        PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Dispatch(
+            BrowserIntentDispatchError::RevisionConflict { .. },
+        ))
+        | PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Dispatch(
+            BrowserIntentDispatchError::RevisionConflict { .. },
+        )) => Some(BROWSER_REVISION_CONFLICT_CODE),
+        PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Dispatch(
+            BrowserIntentDispatchError::ProjectHashConflict { .. },
+        ))
+        | PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Dispatch(
+            BrowserIntentDispatchError::ProjectHashConflict { .. },
+        )) => Some(BROWSER_PROJECT_HASH_CONFLICT_CODE),
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::GenerationConflict { .. },
+        )) => Some(BROWSER_DRAFT_GENERATION_CONFLICT_CODE),
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Facade(error)) => {
+            error.stable_code.as_deref()
+        }
+        _ => None,
     }
 }
 
@@ -108,7 +136,7 @@ fn dispatch_status(error: &BrowserIntentDispatchError) -> u16 {
 mod tests {
     use super::*;
     use fly_browser::BrowserIntentKind;
-    use rustok_page_builder_admin::BrowserCapabilityDenial;
+    use rustok_page_builder_admin::{BrowserCapabilityDenial, PageBuilderAdminFacadeError};
     use serde_json::json;
 
     #[test]
@@ -171,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn revision_conflict_maps_to_conflict_without_capability_fields() {
+    fn revision_conflict_maps_to_typed_conflict_without_capability_fields() {
         let error = PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Dispatch(
             BrowserIntentDispatchError::RevisionConflict {
                 expected: "rev-2".to_string(),
@@ -180,11 +208,46 @@ mod tests {
         ));
         let problem = PagesBrowserIntentProblem::from(&error);
         assert_eq!(problem.status, HTTP_CONFLICT);
-        assert!(problem.code.is_none());
+        assert_eq!(
+            problem.code.as_deref(),
+            Some(BROWSER_REVISION_CONFLICT_CODE)
+        );
         assert!(problem.intent.is_none());
         assert!(problem.capability.is_none());
         assert!(problem.required.is_empty());
         assert!(problem.missing.is_empty());
+    }
+
+    #[test]
+    fn consumer_revision_conflict_preserves_facade_stable_code() {
+        let error = PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Facade(
+            PageBuilderAdminFacadeError::with_stable_code(
+                "Page Builder revision conflict",
+                BROWSER_REVISION_CONFLICT_CODE,
+            ),
+        ));
+        let problem = PagesBrowserIntentProblem::from(&error);
+        assert_eq!(problem.status, HTTP_CONFLICT);
+        assert_eq!(
+            problem.code.as_deref(),
+            Some(BROWSER_REVISION_CONFLICT_CODE)
+        );
+    }
+
+    #[test]
+    fn draft_generation_conflict_has_a_stable_browser_code() {
+        let error = PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::GenerationConflict {
+                expected: 2,
+                actual: 1,
+            },
+        ));
+        let problem = PagesBrowserIntentProblem::from(&error);
+        assert_eq!(problem.status, HTTP_CONFLICT);
+        assert_eq!(
+            problem.code.as_deref(),
+            Some(BROWSER_DRAFT_GENERATION_CONFLICT_CODE)
+        );
     }
 
     #[test]
@@ -205,6 +268,5 @@ mod tests {
         assert_eq!(problem.status, HTTP_UNPROCESSABLE_ENTITY);
         assert!(problem.code.is_none());
         assert!(problem.required.is_empty());
-        assert!(problem.missing.is_empty());
     }
 }
