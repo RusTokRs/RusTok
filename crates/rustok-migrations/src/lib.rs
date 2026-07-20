@@ -132,6 +132,10 @@ static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
         source: &rustok_comments::CommentsModule,
     },
     ModuleMigrationSource {
+        slug: "moderation",
+        source: &rustok_moderation::ModerationModule,
+    },
+    ModuleMigrationSource {
         slug: "pages",
         source: &rustok_pages::PagesModule,
     },
@@ -258,6 +262,7 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_content::migrations::migrations());
         all.extend(rustok_blog::migrations::migrations());
         all.extend(rustok_comments::migrations::migrations());
+        all.extend(rustok_moderation::migrations::migrations());
         all.extend(rustok_pages::migrations::migrations());
         all.extend(rustok_seo::migrations::migrations());
         all.extend(rustok_forum::migrations::migrations());

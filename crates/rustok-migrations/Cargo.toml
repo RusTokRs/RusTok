@@ -37,6 +37,7 @@ rustok-commerce.workspace = true
 rustok-content.workspace = true
 rustok-blog.workspace = true
 rustok-comments.workspace = true
+rustok-moderation.workspace = true
 rustok-pages.workspace = true
 rustok-seo.workspace = true
 rustok-forum.workspace = true

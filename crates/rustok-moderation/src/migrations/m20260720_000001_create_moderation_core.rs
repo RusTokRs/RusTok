@@ -11,8 +11,17 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(ModerationReports::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(ModerationReports::Id).uuid().not_null().primary_key())
-                    .col(ColumnDef::new(ModerationReports::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ModerationReports::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ModerationReports::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ModerationReports::ScopeKind)
                             .string_len(64)
@@ -29,7 +38,11 @@ impl MigrationTrait for Migration {
                             .string_len(80)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(ModerationReports::SubjectId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ModerationReports::SubjectId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ModerationReports::SubjectRevision)
                             .big_integer()
@@ -94,7 +107,12 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(ModerationCases::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(ModerationCases::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(ModerationCases::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(ModerationCases::TenantId).uuid().not_null())
                     .col(
                         ColumnDef::new(ModerationCases::ScopeKind)
@@ -213,9 +231,21 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(ModerationCaseReports::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(ModerationCaseReports::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(ModerationCaseReports::CaseId).uuid().not_null())
-                    .col(ColumnDef::new(ModerationCaseReports::ReportId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ModerationCaseReports::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ModerationCaseReports::CaseId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ModerationCaseReports::ReportId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ModerationCaseReports::CreatedAt)
                             .timestamp_with_time_zone()
@@ -233,7 +263,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_moderation_case_reports_report")
-                            .from(ModerationCaseReports::Table, ModerationCaseReports::ReportId)
+                            .from(
+                                ModerationCaseReports::Table,
+                                ModerationCaseReports::ReportId,
+                            )
                             .to(ModerationReports::Table, ModerationReports::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
@@ -260,9 +293,22 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(ModerationDecisions::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(ModerationDecisions::Id).uuid().not_null().primary_key())
-                    .col(ColumnDef::new(ModerationDecisions::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(ModerationDecisions::CaseId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ModerationDecisions::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ModerationDecisions::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ModerationDecisions::CaseId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ModerationDecisions::DecisionKind)
                             .string_len(80)
@@ -288,7 +334,11 @@ impl MigrationTrait for Migration {
                             .string_len(64)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(ModerationDecisions::DecidedBy).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ModerationDecisions::DecidedBy)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ModerationDecisions::DecidedAt)
                             .timestamp_with_time_zone()
@@ -330,8 +380,17 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(ModerationReceipts::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(ModerationReceipts::Id).uuid().not_null().primary_key())
-                    .col(ColumnDef::new(ModerationReceipts::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ModerationReceipts::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ModerationReceipts::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ModerationReceipts::OperationKind)
                             .string_len(80)
@@ -390,14 +449,23 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(ModerationEvents::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(ModerationEvents::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(ModerationEvents::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(ModerationEvents::TenantId).uuid().not_null())
                     .col(
                         ColumnDef::new(ModerationEvents::AggregateKind)
                             .string_len(64)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(ModerationEvents::AggregateId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ModerationEvents::AggregateId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ModerationEvents::EventType)
                             .string_len(100)
