@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Report cache clock workflow status and failure tail
+      - name: Persist cache clock workflow status and failure tail
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -44,9 +44,19 @@ jobs:
             set +e
             failure_tail=$(gh run view "$run_id" \
               --repo "$GITHUB_REPOSITORY" \
-              --log-failed 2>&1 | tail -n 160)
+              --log-failed 2>&1 | tail -n 120)
             set -e
           fi
-          gh issue comment "$ISSUE_NUMBER" \
+          current_body=$(gh issue view "$ISSUE_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
-            --body "Cache clock workflow status:\n\n\`\`\`json\n$runs\n\`\`\`\n\nLatest failure tail:\n\n\`\`\`text\n$failure_tail\n\`\`\`"
+            --json body --jq .body)
+          base_body=$(printf '%s\n' "$current_body" | sed '/^## Latest cache clock diagnostic$/,$d')
+          {
+            printf '%s\n\n' "$base_body"
+            printf '## Latest cache clock diagnostic\n\n'
+            printf 'Run status:\n\n```json\n%s\n```\n\n' "$runs"
+            printf 'Failure tail:\n\n```text\n%s\n```\n' "$failure_tail"
+          } > /tmp/cache-clock-issue-body.md
+          gh issue edit "$ISSUE_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/cache-clock-issue-body.md

@@ -59,7 +59,9 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check
-          mapfile -t changed < <(git diff --name-only | sort)
+          mapfile -t changed < <(
+            { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u
+          )
           printf 'Observed cache clock files:\n%s\n' "${changed[*]}"
           expected=(
             .github/workflows/hardening-gates.yml
@@ -93,7 +95,9 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check
-          mapfile -t changed < <(git diff --name-only | sort)
+          mapfile -t changed < <(
+            { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u
+          )
           expected=(
             .github/workflows/hardening-gates.yml
             .github/workflows/one-off-harden-cache-clock.yml
