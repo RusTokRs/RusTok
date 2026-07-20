@@ -208,6 +208,7 @@ async fn grapesjs_body_round_trips_on_update() {
             security,
             created.id,
             UpdatePageInput {
+                expected_version: None,
                 translations: None,
                 template: Some("builder".to_string()),
                 body: Some(PageBodyInput {
@@ -268,6 +269,7 @@ async fn legacy_block_driven_page_round_trips_without_body() {
             security.clone(),
             created.id,
             UpdatePageInput {
+                expected_version: None,
                 translations: None,
                 template: Some("legacy-updated".to_string()),
                 body: None,
@@ -327,6 +329,7 @@ async fn grapesjs_body_update_preserves_legacy_blocks() {
             security.clone(),
             created.id,
             UpdatePageInput {
+                expected_version: None,
                 translations: None,
                 template: Some("builder".to_string()),
                 body: Some(PageBodyInput {

@@ -4,15 +4,13 @@ use rustok_api::{
     has_any_effective_permission, AuthContext, TenantContext,
 };
 use rustok_api::{Action, Permission, Resource};
-use rustok_core::CONTENT_FORMAT_GRAPESJS_FORMAT;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
     BlockService, BlockTranslationInput, BlockType, CreateBlockInput, CreatePageInput,
-    PageBodyInput, PageBuilderScenarioBaselineService, PageService, PageTranslationInput,
-    UpdateBlockInput, UpdatePageInput,
+    PageBodyInput, PageService, PageTranslationInput, UpdateBlockInput, UpdatePageInput,
 };
 
 use super::types::*;
@@ -93,24 +91,9 @@ impl PagesMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth =
-            require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
+        let auth = require_pages_permission(ctx, Permission::PAGES_UPDATE)?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
-
-        if let Some(body) = input.body.as_ref() {
-            if body.format.as_deref() == Some(CONTENT_FORMAT_GRAPESJS_FORMAT) {
-                let project_data = body.content_json.clone().ok_or_else(|| {
-                    async_graphql::Error::new(
-                        "contentJson is required when updating a grapesjs page body",
-                    )
-                })?;
-                PageBuilderScenarioBaselineService::new(db.clone())
-                    .ensure_published_candidate_allowed(tenant_id, id, project_data)
-                    .await
-                    .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-            }
-        }
 
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
@@ -119,6 +102,7 @@ impl PagesMutation {
                 page_security(&auth),
                 id,
                 UpdatePageInput {
+                    expected_version: input.expected_version,
                     translations: input.translations.map(|translations| {
                         translations
                             .into_iter()
@@ -152,6 +136,7 @@ impl PagesMutation {
         &self,
         ctx: &Context<'_>,
         id: Uuid,
+        expected_version: Option<i32>,
         tenant_id: Option<Uuid>,
     ) -> Result<GqlPage> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -162,14 +147,9 @@ impl PagesMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        PageBuilderScenarioBaselineService::new(db.clone())
-            .ensure_publish_allowed(tenant_id, id)
-            .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
-            .publish(tenant_id, page_security(&auth), id)
+            .publish_if_current(tenant_id, page_security(&auth), id, expected_version)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
@@ -180,18 +160,20 @@ impl PagesMutation {
         &self,
         ctx: &Context<'_>,
         id: Uuid,
+        expected_version: Option<i32>,
         tenant_id: Option<Uuid>,
     ) -> Result<GqlPage> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_pages_permission(ctx, Permission::PAGES_UPDATE)?;
+        let auth =
+            require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
-            .unpublish(tenant_id, page_security(&auth), id)
+            .unpublish_if_current(tenant_id, page_security(&auth), id, expected_version)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 

@@ -1,10 +1,11 @@
 use crate::{
     evaluate_landing_readiness, render_page, ComponentNode, ComponentObject, FlyError, FlyResult,
     LandingPropertyValidationReport, LandingReadinessPolicy, LandingReadinessReport, PageHead,
-    PageSelection, ProjectDocument, ProjectHash, RegistrySet, RenderPolicy,
+    PageSelection, ProjectDocument, RegistrySet, RenderPolicy,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 pub const FLY_LANDING_SECTION_FIELD: &str = "flyLandingSection";
@@ -258,7 +259,7 @@ fn validate_landing_section(
         path: path.to_string(),
         component_id: component.id.clone(),
         kind,
-        content_hash: ProjectHash::from_bytes(&bytes).hex(),
+        content_hash: sha256_hex(&bytes),
     });
     Ok(())
 }
@@ -373,7 +374,87 @@ pub struct RegistryCompatibilityReport {
     pub issues: Vec<RegistryCompatibilityIssue>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LandingRendererManifest {
+    pub id: String,
+    pub release: String,
+}
+
+impl LandingRendererManifest {
+    pub fn new(id: impl Into<String>, release: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            release: release.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LandingRenderedPage {
+    pub page_index: usize,
+    pub page_id: Option<String>,
+    pub slug: Option<String>,
+    pub head: PageHead,
+    pub document_html: String,
+    pub body_html: String,
+    pub css: String,
+}
+
+/// Framework-neutral rendering boundary for static landing output.
+///
+/// Fly ships the canonical HTML renderer. Leptos and Dioxus adapters can implement this trait
+/// without changing the document model, readiness checks or artifact persistence contract.
+pub trait LandingRenderer: Send + Sync {
+    fn manifest(&self) -> LandingRendererManifest;
+
+    fn render_page(
+        &self,
+        document: &ProjectDocument,
+        page_index: usize,
+        policy: &RenderPolicy,
+    ) -> FlyResult<LandingRenderedPage>;
+}
+
+pub const FLY_HTML_RENDERER_ID: &str = "fly_html";
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FlyHtmlLandingRenderer;
+
+impl LandingRenderer for FlyHtmlLandingRenderer {
+    fn manifest(&self) -> LandingRendererManifest {
+        LandingRendererManifest::new(FLY_HTML_RENDERER_ID, env!("CARGO_PKG_VERSION"))
+    }
+
+    fn render_page(
+        &self,
+        document: &ProjectDocument,
+        page_index: usize,
+        policy: &RenderPolicy,
+    ) -> FlyResult<LandingRenderedPage> {
+        let rendered = render_page(document, &PageSelection::Index(page_index), policy)?;
+        let document_html = rendered.document_html();
+        Ok(LandingRenderedPage {
+            page_index,
+            page_id: rendered.page_id,
+            slug: rendered.metadata.slug,
+            head: rendered.head,
+            document_html,
+            body_html: rendered.html,
+            css: rendered.css,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StaticLandingBuildIdentity {
+    pub source_hash: String,
+    pub renderer: LandingRendererManifest,
+    pub registry_hash: String,
+    pub render_policy_hash: String,
+    pub build_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StaticLandingPage {
     pub page_index: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -381,18 +462,64 @@ pub struct StaticLandingPage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slug: Option<String>,
     pub head: PageHead,
-    pub html: String,
+    pub document_html: String,
+    pub body_html: String,
+    pub css: String,
     pub content_hash: String,
     #[serde(default)]
     pub landing_sections: Vec<LandingSectionSnapshot>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StaticLandingArtifact {
-    pub source_hash: String,
+    pub identity: StaticLandingBuildIdentity,
     pub artifact_hash: String,
     pub registry: ComponentRegistryManifest,
     pub pages: Vec<StaticLandingPage>,
+}
+
+impl StaticLandingArtifact {
+    pub fn verify_integrity(&self) -> FlyResult<()> {
+        validate_renderer_manifest(&self.identity.renderer)?;
+        if self.pages.is_empty() {
+            return Err(FlyError::Encode(
+                "static landing artifact must contain at least one page".to_string(),
+            ));
+        }
+        let registry_hash = stable_hash(&self.registry)?;
+        if registry_hash != self.identity.registry_hash {
+            return Err(FlyError::Encode(
+                "static landing registry hash does not match the artifact identity".to_string(),
+            ));
+        }
+        let build_hash = stable_hash(&(
+            &self.identity.source_hash,
+            &self.identity.renderer,
+            &self.identity.registry_hash,
+            &self.identity.render_policy_hash,
+        ))?;
+        if build_hash != self.identity.build_hash {
+            return Err(FlyError::Encode(
+                "static landing build hash does not match the artifact identity".to_string(),
+            ));
+        }
+        for page in &self.pages {
+            let content_hash = sha256_hex(page.document_html.as_bytes());
+            if content_hash != page.content_hash {
+                return Err(FlyError::Encode(format!(
+                    "static landing page {} content hash mismatch",
+                    page.page_index
+                )));
+            }
+        }
+        let artifact_hash = stable_hash(&(&self.identity, &self.registry, &self.pages))?;
+        if artifact_hash != self.artifact_hash {
+            return Err(FlyError::Encode(
+                "static landing artifact hash mismatch".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -412,6 +539,25 @@ pub fn build_static_landing_artifact(
     readiness_policy: LandingReadinessPolicy,
     render_policy: &RenderPolicy,
 ) -> FlyResult<StaticLandingBuildResult> {
+    build_static_landing_artifact_with_renderer(
+        document,
+        registries,
+        readiness_policy,
+        render_policy,
+        &FlyHtmlLandingRenderer,
+    )
+}
+
+pub fn build_static_landing_artifact_with_renderer<R>(
+    document: &ProjectDocument,
+    registries: &RegistrySet,
+    readiness_policy: LandingReadinessPolicy,
+    render_policy: &RenderPolicy,
+    renderer: &R,
+) -> FlyResult<StaticLandingBuildResult>
+where
+    R: LandingRenderer + ?Sized,
+{
     let registry = ComponentRegistryManifest::for_document(document, registries);
     let registry_compatibility = registry.compatibility_with(registries);
     let landing_sections = LandingSectionValidationReport::for_document(document)?;
@@ -432,30 +578,61 @@ pub fn build_static_landing_artifact(
         });
     }
 
+    let renderer_manifest = renderer.manifest();
+    validate_renderer_manifest(&renderer_manifest)?;
+    let source_hash = stable_hash(document)?;
+    let registry_hash = stable_hash(&registry)?;
+    let render_policy_hash = stable_hash(render_policy)?;
+    let build_hash = stable_hash(&(
+        &source_hash,
+        &renderer_manifest,
+        &registry_hash,
+        &render_policy_hash,
+    ))?;
+
     let mut pages = Vec::with_capacity(document.project.pages.len());
     for page_index in 0..document.project.pages.len() {
-        let rendered = render_page(document, &PageSelection::Index(page_index), render_policy)?;
-        let html = rendered.document_html();
+        let rendered = renderer.render_page(document, page_index, render_policy)?;
+        if rendered.page_index != page_index {
+            return Err(FlyError::Encode(format!(
+                "landing renderer returned page index {} for requested page {page_index}",
+                rendered.page_index
+            )));
+        }
+        if rendered.document_html.trim().is_empty() || rendered.body_html.trim().is_empty() {
+            return Err(FlyError::Encode(format!(
+                "landing renderer returned empty output for page {page_index}"
+            )));
+        }
+        let content_hash = sha256_hex(rendered.document_html.as_bytes());
         pages.push(StaticLandingPage {
-            page_index,
+            page_index: rendered.page_index,
             page_id: rendered.page_id,
-            slug: rendered.metadata.slug,
+            slug: rendered.slug,
             head: rendered.head,
-            content_hash: ProjectHash::from_bytes(html.as_bytes()).hex(),
-            html,
+            document_html: rendered.document_html,
+            body_html: rendered.body_html,
+            css: rendered.css,
+            content_hash,
             landing_sections: landing_sections.pages[page_index].sections.clone(),
         });
     }
 
-    let source_hash = document.hash().hex();
-    let artifact_bytes = serde_json::to_vec(&(&source_hash, &registry, &pages))
-        .map_err(|error| FlyError::Encode(error.to_string()))?;
-    let artifact = StaticLandingArtifact {
+    let identity = StaticLandingBuildIdentity {
         source_hash,
-        artifact_hash: ProjectHash::from_bytes(&artifact_bytes).hex(),
+        renderer: renderer_manifest,
+        registry_hash,
+        render_policy_hash,
+        build_hash,
+    };
+    let artifact_hash = stable_hash(&(&identity, &registry, &pages))?;
+    let artifact = StaticLandingArtifact {
+        identity,
+        artifact_hash,
         registry,
         pages,
     };
+    artifact.verify_integrity()?;
 
     Ok(StaticLandingBuildResult {
         ready,
@@ -465,6 +642,27 @@ pub fn build_static_landing_artifact(
         landing_properties,
         artifact: Some(artifact),
     })
+}
+
+fn validate_renderer_manifest(manifest: &LandingRendererManifest) -> FlyResult<()> {
+    if manifest.id.trim().is_empty() || manifest.release.trim().is_empty() {
+        return Err(FlyError::Encode(
+            "landing renderer id and release must not be empty".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn stable_hash(value: &impl Serialize) -> FlyResult<String> {
+    let bytes = serde_json::to_vec(value).map_err(|error| FlyError::Encode(error.to_string()))?;
+    Ok(sha256_hex(&bytes))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[cfg(test)]
@@ -573,10 +771,83 @@ mod tests {
         let first = first.artifact.expect("artifact");
         let second = second.artifact.expect("artifact");
         assert_eq!(first.artifact_hash, second.artifact_hash);
+        assert_eq!(first.artifact_hash.len(), 64);
+        assert_eq!(first.identity.source_hash.len(), 64);
+        assert_eq!(first.identity.build_hash.len(), 64);
         assert_eq!(first.pages[0].content_hash, second.pages[0].content_hash);
         assert!(first.pages[0].landing_sections.is_empty());
-        assert!(first.pages[0].html.starts_with("<!doctype html>"));
-        assert!(first.pages[0].html.contains("<title>Home</title>"));
+        assert!(first.pages[0].document_html.starts_with("<!doctype html>"));
+        assert!(first.pages[0].document_html.contains("<title>Home</title>"));
+        assert!(first.pages[0].body_html.contains("Stable landing"));
+        first.verify_integrity().expect("valid artifact");
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct ReleasedRenderer {
+        release: &'static str,
+    }
+
+    impl LandingRenderer for ReleasedRenderer {
+        fn manifest(&self) -> LandingRendererManifest {
+            LandingRendererManifest::new("test_html", self.release)
+        }
+
+        fn render_page(
+            &self,
+            document: &ProjectDocument,
+            page_index: usize,
+            policy: &RenderPolicy,
+        ) -> FlyResult<LandingRenderedPage> {
+            FlyHtmlLandingRenderer.render_page(document, page_index, policy)
+        }
+    }
+
+    #[test]
+    fn renderer_release_is_part_of_build_identity() {
+        let project = ready_project();
+        let registries = RegistrySet::with_builtins();
+        let first = build_static_landing_artifact_with_renderer(
+            &project,
+            &registries,
+            LandingReadinessPolicy::default(),
+            &RenderPolicy::default(),
+            &ReleasedRenderer { release: "1" },
+        )
+        .expect("first renderer build")
+        .artifact
+        .expect("first artifact");
+        let second = build_static_landing_artifact_with_renderer(
+            &project,
+            &registries,
+            LandingReadinessPolicy::default(),
+            &RenderPolicy::default(),
+            &ReleasedRenderer { release: "2" },
+        )
+        .expect("second renderer build")
+        .artifact
+        .expect("second artifact");
+
+        assert_eq!(first.identity.source_hash, second.identity.source_hash);
+        assert_ne!(first.identity.build_hash, second.identity.build_hash);
+        assert_ne!(first.artifact_hash, second.artifact_hash);
+    }
+
+    #[test]
+    fn artifact_integrity_detects_document_tampering() {
+        let project = ready_project();
+        let mut artifact = build_static_landing_artifact(
+            &project,
+            &RegistrySet::with_builtins(),
+            LandingReadinessPolicy::default(),
+            &RenderPolicy::default(),
+        )
+        .expect("build")
+        .artifact
+        .expect("artifact");
+        artifact.pages[0]
+            .document_html
+            .push_str("<!-- tampered -->");
+        assert!(artifact.verify_integrity().is_err());
     }
 
     #[test]

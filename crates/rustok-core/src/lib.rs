@@ -50,8 +50,8 @@ pub use config::{
     ServerConfig,
 };
 pub use content_format::{
-    normalize_content_format, prepare_content_payload, PreparedContent, CONTENT_FORMAT_GRAPESJS_V1,
-    CONTENT_FORMAT_MARKDOWN, CONTENT_FORMAT_RT_JSON_V1,
+    is_grapesjs_content_format, normalize_content_format, prepare_content_payload, PreparedContent,
+    CONTENT_FORMAT_GRAPESJS, CONTENT_FORMAT_MARKDOWN, CONTENT_FORMAT_RT_JSON_V1,
 };
 pub use context::{AppContext, CacheBackend, CacheCompareAndSetOutcome, SearchBackend};
 pub use error::{

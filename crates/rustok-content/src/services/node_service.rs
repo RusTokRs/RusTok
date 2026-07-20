@@ -1122,7 +1122,10 @@ fn normalize_body_input(input: BodyInput) -> ContentResult<BodyInput> {
         .clone()
         .unwrap_or_else(|| "markdown".to_string());
 
-    if format == "rt_json" || format == "rt_json_v1" || format == "grapesjs_v1" {
+    if matches!(
+        format.as_str(),
+        "rt_json" | "rt_json_v1" | "grapesjs" | "grapesjs_v1"
+    ) {
         let locale = input.locale.clone();
         let body = input
             .body

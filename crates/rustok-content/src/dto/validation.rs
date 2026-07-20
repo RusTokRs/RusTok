@@ -8,10 +8,11 @@ use validator::ValidationError;
 /// Custom validator for body format
 ///
 /// `rt_json_v1` is canonical rich-text format; `rt_json` is an existing compatibility alias.
-/// `grapesjs_v1` is the canonical page-builder project payload format for pages.
+/// `grapesjs` is the canonical page-builder project payload format; `grapesjs_v1` is accepted as an input compatibility alias.
 pub fn validate_body_format(format: &str) -> Result<(), ValidationError> {
     match format {
-        "markdown" | "html" | "plain" | "json" | "rt_json_v1" | "rt_json" | "grapesjs_v1" => Ok(()),
+        "markdown" | "html" | "plain" | "json" | "rt_json_v1" | "rt_json" | "grapesjs"
+        | "grapesjs_v1" => Ok(()),
         _ => Err(ValidationError::new("invalid_format")),
     }
 }
@@ -151,6 +152,7 @@ mod tests {
         assert!(validate_body_format("json").is_ok());
         assert!(validate_body_format("rt_json_v1").is_ok());
         assert!(validate_body_format("rt_json").is_ok());
+        assert!(validate_body_format("grapesjs").is_ok());
         assert!(validate_body_format("grapesjs_v1").is_ok());
     }
 

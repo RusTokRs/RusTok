@@ -35,7 +35,9 @@ async fn storefront_pages_native(
         use rustok_content::entities::node::ContentStatus;
         use rustok_core::SecurityContext;
         use rustok_outbox::TransactionalEventBus;
-        use rustok_pages::{ListPagesFilter as RuntimeListPagesFilter, PageService};
+        use rustok_pages::{
+            ListPagesFilter as RuntimeListPagesFilter, PageBuilderArtifactService, PageService,
+        };
         use rustok_tenant::TenantService;
 
         let runtime_ctx = expect_context::<HostRuntimeContext>();
@@ -117,8 +119,76 @@ async fn storefront_pages_native(
             .map_err(ServerFnError::new)?
             .filter(|page| {
                 is_visible_for_public_channel(&page.channel_slugs, public_channel_slug.as_deref())
-            })
-            .map(map_page_detail);
+            });
+        let selected_page = match selected_page {
+            Some(page) => {
+                let page_id = page.id;
+                let body = match page.body {
+                    Some(body) if body.format.eq_ignore_ascii_case("grapesjs") => {
+                        let published = PageBuilderArtifactService::new(runtime_ctx.db_clone())
+                            .load_public_bound_artifact_with_fallback(
+                                tenant_id,
+                                page_id,
+                                &body.locale,
+                                Some(fallback_locale.as_str()),
+                                public_channel_slug.as_deref(),
+                            )
+                            .await
+                            .map_err(ServerFnError::new)?;
+                        published_artifact_page_body(
+                            page_id,
+                            published,
+                            public_channel_slug.as_deref(),
+                        )
+                    }
+                    Some(body) => Some(PageBody {
+                        locale: body.locale,
+                        content: body.content,
+                        format: body.format,
+                    }),
+                    None => None,
+                };
+
+                Some(PageDetail {
+                    effective_locale: page.effective_locale,
+                    translation: page.translation.map(|translation| PageTranslation {
+                        locale: translation.locale,
+                        title: translation.title,
+                        slug: translation.slug,
+                        meta_title: translation.meta_title,
+                        meta_description: translation.meta_description,
+                    }),
+                    body,
+                    blocks: page
+                        .blocks
+                        .into_iter()
+                        .map(|block| PageBlock {
+                            id: block.id.to_string(),
+                            block_type: match block.block_type {
+                                rustok_pages::dto::BlockType::Hero => "hero",
+                                rustok_pages::dto::BlockType::Text => "text",
+                                rustok_pages::dto::BlockType::Image => "image",
+                                rustok_pages::dto::BlockType::Gallery => "gallery",
+                                rustok_pages::dto::BlockType::Cta => "cta",
+                                rustok_pages::dto::BlockType::Features => "features",
+                                rustok_pages::dto::BlockType::Testimonials => "testimonials",
+                                rustok_pages::dto::BlockType::Pricing => "pricing",
+                                rustok_pages::dto::BlockType::Faq => "faq",
+                                rustok_pages::dto::BlockType::Contact => "contact",
+                                rustok_pages::dto::BlockType::ProductGrid => "product_grid",
+                                rustok_pages::dto::BlockType::Newsletter => "newsletter",
+                                rustok_pages::dto::BlockType::Video => "video",
+                                rustok_pages::dto::BlockType::Html => "html",
+                                rustok_pages::dto::BlockType::Spacer => "spacer",
+                            }
+                            .to_string(),
+                            position: block.position,
+                        })
+                        .collect(),
+                })
+            }
+            None => None,
+        };
 
         let (items, total) = service
             .list_public_visible(
@@ -153,6 +223,50 @@ async fn storefront_pages_native(
 }
 
 #[cfg(feature = "ssr")]
+fn published_artifact_page_body(
+    page_id: impl std::fmt::Display,
+    published: Option<rustok_pages::PublishedLandingArtifact>,
+    channel_slug: Option<&str>,
+) -> Option<PageBody> {
+    published.map(|artifact| PageBody {
+        locale: artifact.locale.clone(),
+        content: artifact_url(page_id, &artifact.locale, channel_slug),
+        format: "fly_artifact_url".to_string(),
+    })
+}
+
+#[cfg(feature = "ssr")]
+fn artifact_url(
+    page_id: impl std::fmt::Display,
+    locale: &str,
+    channel_slug: Option<&str>,
+) -> String {
+    let mut query = format!("locale={}", form_urlencode_component(locale));
+    if let Some(channel_slug) = channel_slug {
+        query.push_str("&channel=");
+        query.push_str(&form_urlencode_component(channel_slug));
+    }
+    format!("/api/pages/{page_id}/artifact?{query}")
+}
+
+#[cfg(feature = "ssr")]
+fn form_urlencode_component(value: &str) -> String {
+    use std::fmt::Write as _;
+
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(byte as char);
+            }
+            b' ' => encoded.push('+'),
+            _ => write!(encoded, "%{byte:02X}").expect("writing to a String cannot fail"),
+        }
+    }
+    encoded
+}
+
+#[cfg(feature = "ssr")]
 fn normalize_channel_slug(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -179,51 +293,6 @@ fn is_visible_for_public_channel(
 }
 
 #[cfg(feature = "ssr")]
-fn map_page_detail(page: rustok_pages::PageResponse) -> PageDetail {
-    PageDetail {
-        effective_locale: page.effective_locale,
-        translation: page.translation.map(|translation| PageTranslation {
-            locale: translation.locale,
-            title: translation.title,
-            slug: translation.slug,
-            meta_title: translation.meta_title,
-            meta_description: translation.meta_description,
-        }),
-        body: page.body.map(|body| PageBody {
-            locale: body.locale,
-            content: body.content,
-            format: body.format,
-        }),
-        blocks: page
-            .blocks
-            .into_iter()
-            .map(|block| PageBlock {
-                id: block.id.to_string(),
-                block_type: match block.block_type {
-                    rustok_pages::dto::BlockType::Hero => "hero",
-                    rustok_pages::dto::BlockType::Text => "text",
-                    rustok_pages::dto::BlockType::Image => "image",
-                    rustok_pages::dto::BlockType::Gallery => "gallery",
-                    rustok_pages::dto::BlockType::Cta => "cta",
-                    rustok_pages::dto::BlockType::Features => "features",
-                    rustok_pages::dto::BlockType::Testimonials => "testimonials",
-                    rustok_pages::dto::BlockType::Pricing => "pricing",
-                    rustok_pages::dto::BlockType::Faq => "faq",
-                    rustok_pages::dto::BlockType::Contact => "contact",
-                    rustok_pages::dto::BlockType::ProductGrid => "product_grid",
-                    rustok_pages::dto::BlockType::Newsletter => "newsletter",
-                    rustok_pages::dto::BlockType::Video => "video",
-                    rustok_pages::dto::BlockType::Html => "html",
-                    rustok_pages::dto::BlockType::Spacer => "spacer",
-                }
-                .to_string(),
-                position: block.position,
-            })
-            .collect(),
-    }
-}
-
-#[cfg(feature = "ssr")]
 fn map_page_list_item(page: rustok_pages::PageListItem) -> PageListItem {
     PageListItem {
         id: page.id.to_string(),
@@ -236,5 +305,43 @@ fn map_page_list_item(page: rustok_pages::PageListItem) -> PageListItem {
         }
         .to_string(),
         template: page.template,
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::{artifact_url, published_artifact_page_body};
+
+    const PAGE_ID: &str = "00000000-0000-0000-0000-000000000000";
+
+    #[test]
+    fn missing_published_artifact_fails_closed() {
+        assert!(published_artifact_page_body(PAGE_ID, None, Some("web")).is_none());
+    }
+
+    #[test]
+    fn artifact_url_carries_locale_and_resolved_channel() {
+        assert_eq!(
+            artifact_url(PAGE_ID, "pt-BR", Some("web store")),
+            format!("/api/pages/{PAGE_ID}/artifact?locale=pt-BR&channel=web+store")
+        );
+    }
+
+    #[test]
+    fn artifact_url_omits_channel_for_unrestricted_requests() {
+        assert_eq!(
+            artifact_url(PAGE_ID, "en", None),
+            format!("/api/pages/{PAGE_ID}/artifact?locale=en")
+        );
+    }
+
+    #[test]
+    fn artifact_url_percent_encodes_reserved_and_unicode_bytes() {
+        assert_eq!(
+            artifact_url(PAGE_ID, "pt BR/ç", Some("web/store?x=1")),
+            format!(
+                "/api/pages/{PAGE_ID}/artifact?locale=pt+BR%2F%C3%A7&channel=web%2Fstore%3Fx%3D1"
+            )
+        );
     }
 }

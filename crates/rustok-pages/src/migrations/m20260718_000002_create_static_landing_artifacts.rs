@@ -1,0 +1,286 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(PageStaticLandingArtifacts::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::PageId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::Locale)
+                            .string_len(35)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::SourceHash)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::BuildHash)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::ArtifactHash)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::RendererId)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::RendererRelease)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::Identity)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::Registry)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::PageIndex)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::FlyPageId)
+                            .string_len(255)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::Slug)
+                            .string_len(255)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::Head)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::DocumentHtml)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::BodyHtml)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::Css)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::ContentHash)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::LandingSections)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageStaticLandingArtifacts::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_page_static_landing_artifacts_page")
+                            .from(
+                                PageStaticLandingArtifacts::Table,
+                                PageStaticLandingArtifacts::PageId,
+                            )
+                            .to(Pages::Table, Pages::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_static_landing_artifacts_build")
+                    .table(PageStaticLandingArtifacts::Table)
+                    .col(PageStaticLandingArtifacts::TenantId)
+                    .col(PageStaticLandingArtifacts::PageId)
+                    .col(PageStaticLandingArtifacts::Locale)
+                    .col(PageStaticLandingArtifacts::BuildHash)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_static_landing_artifacts_hash")
+                    .table(PageStaticLandingArtifacts::Table)
+                    .col(PageStaticLandingArtifacts::TenantId)
+                    .col(PageStaticLandingArtifacts::ArtifactHash)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(PagePublishedLandingArtifacts::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(PagePublishedLandingArtifacts::PageBodyId)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishedLandingArtifacts::ArtifactId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishedLandingArtifacts::PublishedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_page_published_landing_artifacts_body")
+                            .from(
+                                PagePublishedLandingArtifacts::Table,
+                                PagePublishedLandingArtifacts::PageBodyId,
+                            )
+                            .to(PageBodies::Table, PageBodies::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_page_published_landing_artifacts_artifact")
+                            .from(
+                                PagePublishedLandingArtifacts::Table,
+                                PagePublishedLandingArtifacts::ArtifactId,
+                            )
+                            .to(
+                                PageStaticLandingArtifacts::Table,
+                                PageStaticLandingArtifacts::Id,
+                            )
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_published_landing_artifacts_artifact")
+                    .table(PagePublishedLandingArtifacts::Table)
+                    .col(PagePublishedLandingArtifacts::ArtifactId)
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(PagePublishedLandingArtifacts::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(PageStaticLandingArtifacts::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum PageBodies {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum PageStaticLandingArtifacts {
+    Table,
+    Id,
+    TenantId,
+    PageId,
+    Locale,
+    SourceHash,
+    BuildHash,
+    ArtifactHash,
+    RendererId,
+    RendererRelease,
+    Identity,
+    Registry,
+    PageIndex,
+    FlyPageId,
+    Slug,
+    Head,
+    DocumentHtml,
+    BodyHtml,
+    Css,
+    ContentHash,
+    LandingSections,
+    CreatedAt,
+}
+
+#[derive(DeriveIden)]
+enum PagePublishedLandingArtifacts {
+    Table,
+    PageBodyId,
+    ArtifactId,
+    PublishedAt,
+}
+
+#[derive(DeriveIden)]
+enum Pages {
+    Table,
+    Id,
+}

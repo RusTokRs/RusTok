@@ -3773,6 +3773,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
 ]
 
@@ -11832,6 +11833,7 @@ name = "rustok-modules"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "bytes",
  "chrono",
  "chrono-tz",
@@ -12029,6 +12031,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
  "toml 1.1.2+spec-1.1.0",
@@ -13036,6 +13039,7 @@ dependencies = [
 name = "rustok-worker-transport"
 version = "0.1.0"
 dependencies = [
+ "tokio",
  "tonic",
 ]
 

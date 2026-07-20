@@ -326,6 +326,7 @@ async fn update_grapesjs_body_returns_feature_disabled_when_builder_toggle_is_fa
             security,
             page.id,
             UpdatePageInput {
+                expected_version: None,
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
                     content: "".to_string(),
@@ -393,6 +394,7 @@ async fn update_markdown_body_is_allowed_when_builder_toggle_is_false() {
             security,
             page.id,
             UpdatePageInput {
+                expected_version: None,
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
                     content: "Updated markdown body".to_string(),
@@ -630,6 +632,7 @@ async fn update_to_published_is_blocked_for_existing_grapesjs_page_when_builder_
             security,
             draft.id,
             UpdatePageInput {
+                expected_version: None,
                 status: Some(rustok_content::entities::node::ContentStatus::Published),
                 ..Default::default()
             },
@@ -685,6 +688,7 @@ async fn update_to_published_markdown_is_allowed_when_builder_disabled_but_publi
             security,
             draft.id,
             UpdatePageInput {
+                expected_version: None,
                 status: Some(rustok_content::entities::node::ContentStatus::Published),
                 ..Default::default()
             },
@@ -741,6 +745,7 @@ async fn update_to_published_markdown_is_allowed_when_builder_publish_toggle_is_
             security,
             draft.id,
             UpdatePageInput {
+                expected_version: None,
                 status: Some(rustok_content::entities::node::ContentStatus::Published),
                 ..Default::default()
             },

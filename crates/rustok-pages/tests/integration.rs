@@ -158,6 +158,7 @@ async fn test_update_page_rt_json_v1_sanitizes_payload() -> TestResult<()> {
             SecurityContext::system(),
             created.id,
             UpdatePageInput {
+                expected_version: None,
                 translations: None,
                 template: None,
                 status: None,

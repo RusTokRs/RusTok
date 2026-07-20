@@ -27,11 +27,20 @@ pub enum PagesError {
     #[error("Duplicate slug: {slug} already exists for locale {locale}")]
     DuplicateSlug { slug: String, locale: String },
 
+    #[error("Page version conflict: expected {expected_version}, found {actual_version}")]
+    VersionConflict {
+        expected_version: i32,
+        actual_version: i32,
+    },
+
     #[error("Cannot delete published page")]
     CannotDeletePublished,
 
     #[error("Validation error: {0}")]
     Validation(String),
+
+    #[error("Static landing artifact integrity error: {0}")]
+    ArtifactIntegrity(String),
 
     #[error("Forbidden: {0}")]
     Forbidden(String),
@@ -127,6 +136,21 @@ impl From<PagesError> for RichError {
             .with_field("slug", slug)
             .with_field("locale", locale)
             .with_error_code("DUPLICATE_SLUG"),
+            PagesError::VersionConflict {
+                expected_version,
+                actual_version,
+            } => RichError::new(
+                ErrorKind::Conflict,
+                format!(
+                    "Page changed concurrently: expected version {expected_version}, found {actual_version}"
+                ),
+            )
+            .with_user_message(
+                "The page changed while you were editing it. Reload the latest version and try again.",
+            )
+            .with_field("expected_version", expected_version.to_string())
+            .with_field("actual_version", actual_version.to_string())
+            .with_error_code("PAGE_VERSION_CONFLICT"),
             PagesError::CannotDeletePublished => {
                 RichError::new(ErrorKind::BusinessLogic, "Cannot delete published page")
                     .with_user_message("Published pages cannot be deleted. Unpublish them first.")
@@ -135,6 +159,9 @@ impl From<PagesError> for RichError {
             PagesError::Validation(msg) => {
                 RichError::new(ErrorKind::Validation, msg).with_user_message("Invalid input data")
             }
+            PagesError::ArtifactIntegrity(msg) => RichError::new(ErrorKind::Internal, msg)
+                .with_user_message("The published page artifact is unavailable")
+                .with_error_code("PAGE_ARTIFACT_INTEGRITY"),
             PagesError::Forbidden(msg) => RichError::new(ErrorKind::Forbidden, msg)
                 .with_user_message("You do not have permission to perform this action"),
             PagesError::FeatureDisabled { feature } => RichError::new(
@@ -184,6 +211,11 @@ impl PagesError {
     /// Create a validation error
     pub fn validation(message: impl Into<String>) -> Self {
         PagesError::Validation(message.into())
+    }
+
+    /// Create an artifact integrity error
+    pub fn artifact_integrity(message: impl Into<String>) -> Self {
+        PagesError::ArtifactIntegrity(message.into())
     }
 
     /// Create a forbidden error

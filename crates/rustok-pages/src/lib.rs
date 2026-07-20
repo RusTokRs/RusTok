@@ -53,12 +53,15 @@ mod seo_targets;
 pub mod services;
 
 pub use dto::*;
-pub use entities::{Block, Menu, Page, PageBuilderScenarioBaseline};
+pub use entities::{
+    Block, Menu, Page, PageBuilderScenarioBaseline, PagePublishedLandingArtifact,
+    PageStaticLandingArtifact,
+};
 pub use error::{PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{
-    BlockService, MenuService, PageBuilderScenarioBaselineService, PageService,
-    SaveIfCurrentScenarioBaselineRequest,
+    BlockService, MenuService, PageBuilderArtifactService, PageBuilderScenarioBaselineService,
+    PageService, PublishedLandingArtifact, SaveIfCurrentScenarioBaselineRequest,
 };
 
 use async_trait::async_trait;

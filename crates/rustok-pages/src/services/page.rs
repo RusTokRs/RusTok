@@ -3,19 +3,20 @@ use sea_orm::{
     sea_query::{Expr, Query, SelectStatement},
     ActiveModelTrait,
     ActiveValue::Set,
-    ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, Select, TransactionTrait,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Select, TransactionTrait,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
 use rustok_content::{
-    available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
+    available_locales_from, entities::node::ContentStatus, normalize_locale_code,
+    resolve_by_locale_with_fallback,
 };
 use rustok_core::{
-    normalize_content_format, prepare_content_payload, SecurityContext, CONTENT_FORMAT_GRAPESJS_FORMAT,
+    normalize_content_format, prepare_content_payload, SecurityContext, CONTENT_FORMAT_GRAPESJS,
     CONTENT_FORMAT_RT_JSON_V1,
 };
 use rustok_events::DomainEvent;
@@ -27,8 +28,11 @@ use crate::error::{
     PagesError, PagesResult, FEATURE_BUILDER_ENABLED, FEATURE_BUILDER_PREVIEW_ENABLED,
     FEATURE_BUILDER_PROPERTIES_ENABLED, FEATURE_BUILDER_PUBLISH_ENABLED,
 };
+use crate::services::page_builder_artifact::CompiledLandingArtifact;
 use crate::services::rbac::{can_read_non_public_pages, enforce_owned_scope, enforce_scope};
-use crate::services::BlockService;
+use crate::services::{
+    BlockService, PageBuilderArtifactService, PageBuilderScenarioBaselineService,
+};
 use rustok_tenant::TenantService;
 
 const PAGE_KIND: &str = "page";
@@ -49,6 +53,32 @@ struct PreparedPageBody {
     locale: String,
     content: String,
     format: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PageTransition {
+    Publish,
+    Unpublish,
+    Archive,
+}
+
+impl PageTransition {
+    fn from_status(status: Option<&ContentStatus>) -> Option<Self> {
+        match status {
+            Some(ContentStatus::Published) => Some(Self::Publish),
+            Some(ContentStatus::Draft) => Some(Self::Unpublish),
+            Some(ContentStatus::Archived) => Some(Self::Archive),
+            None => None,
+        }
+    }
+
+    fn status(self) -> ContentStatus {
+        match self {
+            Self::Publish => ContentStatus::Published,
+            Self::Unpublish => ContentStatus::Draft,
+            Self::Archive => ContentStatus::Archived,
+        }
+    }
 }
 
 struct ResolvedTranslationRecord<'a> {
@@ -89,16 +119,25 @@ impl PageService {
         let metadata = build_page_metadata(&template, &input.translations, None);
         let channel_slugs = normalize_channel_slugs(input.channel_slugs.as_deref().unwrap_or(&[]));
         let body = normalize_page_body_input(input.body)?;
-        if body_uses_builder_capability(body.as_ref()) {
+        let builder_body = body_uses_builder_capability(body.as_ref());
+        if builder_body {
             self.ensure_builder_enabled(tenant_id).await?;
             if input.publish {
                 self.ensure_builder_publish_enabled(tenant_id).await?;
             }
         }
+        let compiled = if input.publish {
+            body.as_ref()
+                .filter(|body| body.format == CONTENT_FORMAT_GRAPESJS)
+                .map(|body| PageBuilderArtifactService::compile_source(&body.locale, &body.content))
+                .transpose()?
+        } else {
+            None
+        };
         let now = Utc::now();
         let page_id = Uuid::new_v4();
-
         let txn = self.db.begin().await?;
+
         for translation in &input.translations {
             let slug = normalize_slug(
                 translation
@@ -111,11 +150,10 @@ impl PageService {
         }
 
         let initial_status = if input.publish {
-            rustok_content::entities::node::ContentStatus::Published
+            ContentStatus::Published
         } else {
-            rustok_content::entities::node::ContentStatus::Draft
+            ContentStatus::Draft
         };
-
         page::ActiveModel {
             id: Set(page_id),
             tenant_id: Set(tenant_id),
@@ -125,11 +163,7 @@ impl PageService {
             metadata: Set(metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
-            published_at: Set(if input.publish {
-                Some(now.into())
-            } else {
-                None
-            }),
+            published_at: Set(input.publish.then(|| now.into())),
             archived_at: Set(None),
             version: Set(1),
         }
@@ -141,6 +175,20 @@ impl PageService {
         self.replace_channel_visibility_in_tx(&txn, tenant_id, page_id, &channel_slugs)
             .await?;
         self.upsert_body_in_tx(&txn, page_id, body, now).await?;
+        if let Some(compiled) = compiled.as_ref() {
+            let artifact_id = PageBuilderArtifactService::stage_compiled_in_tx(
+                &txn, tenant_id, page_id, compiled,
+            )
+            .await?;
+            PageBuilderArtifactService::bind_existing_body_in_tx(
+                &txn,
+                tenant_id,
+                page_id,
+                &compiled.locale,
+                artifact_id,
+            )
+            .await?;
+        }
         if let Some(blocks) = input.blocks {
             for block in blocks {
                 BlockService::create_in_tx(&txn, tenant_id, security.clone(), page_id, block)
@@ -160,6 +208,19 @@ impl PageService {
                 },
             )
             .await?;
+        if input.publish {
+            self.event_bus
+                .publish_in_tx(
+                    &txn,
+                    tenant_id,
+                    security.user_id,
+                    DomainEvent::NodePublished {
+                        node_id: page_id,
+                        kind: PAGE_KIND.to_string(),
+                    },
+                )
+                .await?;
+        }
 
         txn.commit().await?;
         self.get(tenant_id, security, page_id).await
@@ -394,35 +455,78 @@ impl PageService {
         page_id: Uuid,
         input: UpdatePageInput,
     ) -> PagesResult<PageResponse> {
-        let existing = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(
-            &security,
-            Resource::Pages,
-            Action::Update,
-            existing.author_id,
-        )?;
-        if input.status.is_some() {
-            enforce_scope(&security, Resource::Pages, Action::Publish)?;
-            if matches!(
-                input.status,
-                Some(rustok_content::entities::node::ContentStatus::Published)
-            ) {
-                self.ensure_builder_publish_capabilities_for_page(tenant_id, page_id)
-                    .await?;
-            }
-        }
         if let Some(ref translations) = input.translations {
             validate_page_translations(translations)?;
         }
 
+        let observed = self.find_page(tenant_id, page_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Update,
+            observed.author_id,
+        )?;
+        enforce_expected_version(input.expected_version, observed.version)?;
+
+        let transition = PageTransition::from_status(input.status.as_ref());
+        let current_status = storage_to_status(&observed.status)?;
+        let body = normalize_page_body_input(input.body)?;
+        let candidate_uses_builder = body_uses_builder_capability(body.as_ref());
+        let changes_page_content = input.translations.is_some()
+            || input.template.is_some()
+            || body.is_some()
+            || input.channel_slugs.is_some();
+        let mutates_public_page =
+            current_status == ContentStatus::Published && changes_page_content;
+        if transition.is_some() || mutates_public_page {
+            enforce_scope(&security, Resource::Pages, Action::Publish)?;
+        }
+        if candidate_uses_builder {
+            self.ensure_builder_enabled(tenant_id).await?;
+        }
+
+        let existing_bodies = if transition == Some(PageTransition::Publish) {
+            self.load_bodies(page_id).await?
+        } else {
+            Vec::new()
+        };
+        let effective_builder_projects = if transition == Some(PageTransition::Publish) {
+            collect_builder_project_values(&existing_bodies, body.as_ref(), true)?
+        } else if transition.is_none()
+            && current_status == ContentStatus::Published
+            && candidate_uses_builder
+        {
+            collect_builder_project_values(&[], body.as_ref(), false)?
+        } else {
+            Vec::new()
+        };
+        if !effective_builder_projects.is_empty() {
+            self.ensure_builder_enabled(tenant_id).await?;
+            self.ensure_builder_publish_enabled(tenant_id).await?;
+            PageBuilderScenarioBaselineService::new(self.db.clone())
+                .ensure_candidates_allowed(tenant_id, page_id, effective_builder_projects)
+                .await?;
+        }
+
+        let compiled = if transition == Some(PageTransition::Publish) {
+            compile_builder_sources(&existing_bodies, body.as_ref(), true)?
+        } else if transition.is_none()
+            && current_status == ContentStatus::Published
+            && candidate_uses_builder
+        {
+            compile_builder_sources(&[], body.as_ref(), false)?
+        } else {
+            Vec::new()
+        };
+
         let template = input
             .template
             .clone()
-            .unwrap_or_else(|| existing.template.clone());
+            .unwrap_or_else(|| observed.template.clone());
         let metadata = build_page_metadata(
             &template,
             input.translations.as_deref().unwrap_or(&[]),
-            Some(&existing.metadata),
+            Some(&observed.metadata),
         );
         let channel_slugs = input
             .channel_slugs
@@ -430,44 +534,55 @@ impl PageService {
             .map(|items| normalize_channel_slugs(items))
             .unwrap_or_default();
         let replace_channel_visibility = input.channel_slugs.is_some();
-        let body = normalize_page_body_input(input.body)?;
-        if body_uses_builder_capability(body.as_ref()) {
-            self.ensure_builder_enabled(tenant_id).await?;
-        }
-        let locale = input
-            .translations
+        let response_locale = body
             .as_ref()
-            .and_then(|items| items.first().map(|item| item.locale.clone()))
+            .map(|body| body.locale.clone())
+            .or_else(|| {
+                input
+                    .translations
+                    .as_ref()
+                    .and_then(|items| items.first().map(|item| item.locale.clone()))
+            })
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
 
         let txn = self.db.begin().await?;
-        if let Some(ref translations) = input.translations {
-            for translation in translations {
-                let slug = normalize_slug(
-                    translation
-                        .slug
-                        .as_deref()
-                        .unwrap_or(translation.title.as_str()),
-                );
-                self.ensure_slug_unique_in_tx(
-                    &txn,
-                    tenant_id,
-                    &translation.locale,
-                    &slug,
-                    Some(page_id),
-                )
-                .await?;
-            }
+        let locked = self.find_page_for_update(&txn, tenant_id, page_id).await?;
+        enforce_expected_version(Some(observed.version), locked.version)?;
+        enforce_owned_scope(&security, Resource::Pages, Action::Update, locked.author_id)?;
+
+        for translation in input.translations.as_deref().unwrap_or(&[]) {
+            let slug = normalize_slug(
+                translation
+                    .slug
+                    .as_deref()
+                    .unwrap_or(translation.title.as_str()),
+            );
+            self.ensure_slug_unique_in_tx(
+                &txn,
+                tenant_id,
+                &translation.locale,
+                &slug,
+                Some(page_id),
+            )
+            .await?;
         }
 
-        let mut active: page::ActiveModel = existing.into();
+        let mut staged_artifacts = Vec::with_capacity(compiled.len());
+        for compiled in &compiled {
+            let artifact_id = PageBuilderArtifactService::stage_compiled_in_tx(
+                &txn, tenant_id, page_id, compiled,
+            )
+            .await?;
+            staged_artifacts.push((compiled.locale.clone(), artifact_id));
+        }
+
+        let now = Utc::now();
+        let mut active: page::ActiveModel = locked.into();
         active.template = Set(template);
         active.metadata = Set(metadata);
-        active.updated_at = Set(Utc::now().into());
+        active.updated_at = Set(now.into());
         active.version = Set(active.version.take().unwrap_or(1) + 1);
-        if let Some(status) = input.status {
-            active.status = Set(status_to_storage(&status).to_string());
-        }
+        apply_transition(&mut active, transition, now);
         active.update(&txn).await?;
 
         if let Some(ref translations) = input.translations {
@@ -478,8 +593,28 @@ impl PageService {
             self.replace_channel_visibility_in_tx(&txn, tenant_id, page_id, &channel_slugs)
                 .await?;
         }
-        self.upsert_body_in_tx(&txn, page_id, body, Utc::now())
+        if let Some(body) = body
+            .as_ref()
+            .filter(|body| body.format != CONTENT_FORMAT_GRAPESJS)
+        {
+            PageBuilderArtifactService::clear_existing_body_binding_in_tx(
+                &txn,
+                page_id,
+                &body.locale,
+            )
             .await?;
+        }
+        self.upsert_body_in_tx(&txn, page_id, body, now).await?;
+        for (locale, artifact_id) in staged_artifacts {
+            PageBuilderArtifactService::bind_existing_body_in_tx(
+                &txn,
+                tenant_id,
+                page_id,
+                &locale,
+                artifact_id,
+            )
+            .await?;
+        }
 
         self.event_bus
             .publish_in_tx(
@@ -492,12 +627,17 @@ impl PageService {
                 },
             )
             .await?;
+        if let Some(event) = transition_event(transition, page_id) {
+            self.event_bus
+                .publish_in_tx(&txn, tenant_id, security.user_id, event)
+                .await?;
+        }
         txn.commit().await?;
         self.get_with_locale_fallback(
             tenant_id,
             security,
             page_id,
-            &locale,
+            &response_locale,
             Some(PLATFORM_FALLBACK_LOCALE),
         )
         .await
@@ -510,24 +650,43 @@ impl PageService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<PageResponse> {
-        let existing = self.find_page(tenant_id, page_id).await?;
+        self.publish_if_current(tenant_id, security, page_id, None)
+            .await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn publish_if_current(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        page_id: Uuid,
+        expected_version: Option<i32>,
+    ) -> PagesResult<PageResponse> {
+        let observed = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
             Resource::Pages,
             Action::Publish,
-            existing.author_id,
+            observed.author_id,
         )?;
-        self.ensure_builder_publish_capabilities_for_page(tenant_id, page_id)
-            .await?;
-        self.set_status(
+        enforce_expected_version(expected_version, observed.version)?;
+        let bodies = self.load_bodies(page_id).await?;
+        let project_values = collect_builder_project_values(&bodies, None, true)?;
+        if !project_values.is_empty() {
+            self.ensure_builder_enabled(tenant_id).await?;
+            self.ensure_builder_publish_enabled(tenant_id).await?;
+            PageBuilderScenarioBaselineService::new(self.db.clone())
+                .ensure_candidates_allowed(tenant_id, page_id, project_values)
+                .await?;
+        }
+        let compiled = compile_builder_sources(&bodies, None, true)?;
+        self.transition_page(
             tenant_id,
             security,
             page_id,
-            rustok_content::entities::node::ContentStatus::Published,
-            Some(DomainEvent::NodePublished {
-                node_id: page_id,
-                kind: PAGE_KIND.to_string(),
-            }),
+            PageTransition::Publish,
+            observed.version,
+            &compiled,
         )
         .await
     }
@@ -539,15 +698,33 @@ impl PageService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<PageResponse> {
-        self.set_status(
+        self.unpublish_if_current(tenant_id, security, page_id, None)
+            .await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn unpublish_if_current(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        page_id: Uuid,
+        expected_version: Option<i32>,
+    ) -> PagesResult<PageResponse> {
+        let observed = self.find_page(tenant_id, page_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Publish,
+            observed.author_id,
+        )?;
+        enforce_expected_version(expected_version, observed.version)?;
+        self.transition_page(
             tenant_id,
             security,
             page_id,
-            rustok_content::entities::node::ContentStatus::Draft,
-            Some(DomainEvent::NodeUnpublished {
-                node_id: page_id,
-                kind: PAGE_KIND.to_string(),
-            }),
+            PageTransition::Unpublish,
+            observed.version,
+            &[],
         )
         .await
     }
@@ -627,37 +804,49 @@ impl PageService {
         Ok(())
     }
 
-    async fn set_status(
+    async fn transition_page(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         page_id: Uuid,
-        status: rustok_content::entities::node::ContentStatus,
-        follow_up_event: Option<DomainEvent>,
+        transition: PageTransition,
+        expected_version: i32,
+        compiled: &[CompiledLandingArtifact],
     ) -> PagesResult<PageResponse> {
-        let existing = self.find_page(tenant_id, page_id).await?;
+        let txn = self.db.begin().await?;
+        let existing = self.find_page_for_update(&txn, tenant_id, page_id).await?;
+        enforce_expected_version(Some(expected_version), existing.version)?;
         enforce_owned_scope(
             &security,
             Resource::Pages,
             Action::Publish,
             existing.author_id,
         )?;
-        let txn = self.db.begin().await?;
-        let mut active: page::ActiveModel = existing.into();
-        active.status = Set(status_to_storage(&status).to_string());
-        active.updated_at = Set(Utc::now().into());
-        active.version = Set(active.version.take().unwrap_or(1) + 1);
-        if matches!(
-            status,
-            rustok_content::entities::node::ContentStatus::Published
-        ) {
-            active.published_at = Set(Some(Utc::now().into()));
-            active.archived_at = Set(None);
-        } else {
-            active.published_at = Set(None);
-            active.archived_at = Set(None);
+
+        if transition == PageTransition::Publish {
+            for compiled in compiled {
+                let artifact_id = PageBuilderArtifactService::stage_compiled_in_tx(
+                    &txn, tenant_id, page_id, compiled,
+                )
+                .await?;
+                PageBuilderArtifactService::bind_existing_body_in_tx(
+                    &txn,
+                    tenant_id,
+                    page_id,
+                    &compiled.locale,
+                    artifact_id,
+                )
+                .await?;
+            }
         }
+
+        let now = Utc::now();
+        let mut active: page::ActiveModel = existing.into();
+        active.updated_at = Set(now.into());
+        active.version = Set(active.version.take().unwrap_or(1) + 1);
+        apply_transition(&mut active, Some(transition), now);
         active.update(&txn).await?;
+
         self.event_bus
             .publish_in_tx(
                 &txn,
@@ -669,7 +858,7 @@ impl PageService {
                 },
             )
             .await?;
-        if let Some(event) = follow_up_event {
+        if let Some(event) = transition_event(Some(transition), page_id) {
             self.event_bus
                 .publish_in_tx(&txn, tenant_id, security.user_id, event)
                 .await?;
@@ -701,31 +890,6 @@ impl PageService {
         Ok(())
     }
 
-    async fn ensure_builder_publish_capabilities_for_page(
-        &self,
-        tenant_id: Uuid,
-        page_id: Uuid,
-    ) -> PagesResult<()> {
-        if self
-            .page_uses_builder_capability_for_id(tenant_id, page_id)
-            .await?
-        {
-            self.ensure_builder_enabled(tenant_id).await?;
-            self.ensure_builder_publish_enabled(tenant_id).await?;
-        }
-        Ok(())
-    }
-
-    async fn page_uses_builder_capability_for_id(
-        &self,
-        tenant_id: Uuid,
-        page_id: Uuid,
-    ) -> PagesResult<bool> {
-        let page = self.find_page(tenant_id, page_id).await?;
-        let bodies = self.load_bodies(page.id).await?;
-        Ok(page_uses_builder_capability(&bodies))
-    }
-
     async fn load_tenant_pages_module(
         &self,
         tenant_id: Uuid,
@@ -735,6 +899,21 @@ impl PageService {
             .await
             .map(|module| module.map(|module| module.settings))
             .map_err(Into::into)
+    }
+
+    async fn find_page_for_update(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<page::Model> {
+        let query =
+            || page::Entity::find_by_id(page_id).filter(page::Column::TenantId.eq(tenant_id));
+        let page = match txn.get_database_backend() {
+            DbBackend::Sqlite => query().one(txn).await?,
+            DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
+        };
+        page.ok_or_else(|| PagesError::page_not_found(page_id))
     }
 
     async fn find_page(&self, tenant_id: Uuid, page_id: Uuid) -> PagesResult<page::Model> {
@@ -972,6 +1151,7 @@ impl PageService {
         };
         Ok(PageResponse {
             id: page.id,
+            version: page.version,
             status: storage_to_status(&page.status)?,
             requested_locale: Some(parts.locale),
             effective_locale,
@@ -1011,6 +1191,7 @@ fn normalize_page_body_input(body: Option<PageBodyInput>) -> PagesResult<Option<
     let Some(body) = body else {
         return Ok(None);
     };
+    let locale = normalize_locale(&body.locale)?;
     let format =
         normalize_content_format(body.format.as_deref()).map_err(PagesError::validation)?;
     if body_requires_json_payload(&format)
@@ -1030,12 +1211,12 @@ fn normalize_page_body_input(body: Option<PageBodyInput>) -> PagesResult<Option<
         Some(&format),
         markdown_source,
         body.content_json.as_ref(),
-        &body.locale,
+        &locale,
         "Body",
     )
     .map_err(PagesError::validation)?;
     Ok(Some(PreparedPageBody {
-        locale: body.locale,
+        locale,
         content: prepared_body.body,
         format: prepared_body.format,
     }))
@@ -1096,13 +1277,7 @@ fn is_builder_properties_enabled(settings: &serde_json::Value) -> bool {
 }
 
 fn body_uses_builder_capability(body: Option<&PreparedPageBody>) -> bool {
-    body.is_some_and(|item| item.format == CONTENT_FORMAT_GRAPESJS_FORMAT)
-}
-
-fn page_uses_builder_capability(bodies: &[page_body::Model]) -> bool {
-    bodies
-        .iter()
-        .any(|item| item.format == CONTENT_FORMAT_GRAPESJS_FORMAT)
+    body.is_some_and(|item| item.format == CONTENT_FORMAT_GRAPESJS)
 }
 
 fn resolve_translation_record<'a>(
@@ -1131,6 +1306,108 @@ fn resolve_body_record<'a>(
     ResolvedBodyRecord {
         body: resolved.item,
         effective_locale: resolved.effective_locale,
+    }
+}
+
+fn collect_builder_project_values(
+    existing_bodies: &[page_body::Model],
+    candidate: Option<&PreparedPageBody>,
+    include_existing: bool,
+) -> PagesResult<Vec<serde_json::Value>> {
+    collect_builder_sources(existing_bodies, candidate, include_existing)
+        .into_iter()
+        .map(|(locale, content)| {
+            serde_json::from_str(&content).map_err(|error| {
+                PagesError::validation(format!(
+                    "Page Builder project for locale `{locale}` is not valid JSON: {error}"
+                ))
+            })
+        })
+        .collect()
+}
+
+fn collect_builder_sources(
+    existing_bodies: &[page_body::Model],
+    candidate: Option<&PreparedPageBody>,
+    include_existing: bool,
+) -> BTreeMap<String, String> {
+    let mut sources = BTreeMap::<String, String>::new();
+    if include_existing {
+        for body in existing_bodies {
+            if body.format == CONTENT_FORMAT_GRAPESJS {
+                sources.insert(body.locale.clone(), body.content.clone());
+            }
+        }
+    }
+    if let Some(candidate) = candidate {
+        if candidate.format == CONTENT_FORMAT_GRAPESJS {
+            sources.insert(candidate.locale.clone(), candidate.content.clone());
+        } else {
+            sources.remove(&candidate.locale);
+        }
+    }
+    sources
+}
+
+fn compile_builder_sources(
+    existing_bodies: &[page_body::Model],
+    candidate: Option<&PreparedPageBody>,
+    include_existing: bool,
+) -> PagesResult<Vec<CompiledLandingArtifact>> {
+    collect_builder_sources(existing_bodies, candidate, include_existing)
+        .into_iter()
+        .map(|(locale, content)| PageBuilderArtifactService::compile_source(&locale, &content))
+        .collect()
+}
+
+fn enforce_expected_version(expected: Option<i32>, actual: i32) -> PagesResult<()> {
+    if let Some(expected_version) = expected {
+        if expected_version != actual {
+            return Err(PagesError::VersionConflict {
+                expected_version,
+                actual_version: actual,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn apply_transition(
+    active: &mut page::ActiveModel,
+    transition: Option<PageTransition>,
+    now: chrono::DateTime<Utc>,
+) {
+    let Some(transition) = transition else {
+        return;
+    };
+    active.status = Set(status_to_storage(&transition.status()).to_string());
+    match transition {
+        PageTransition::Publish => {
+            active.published_at = Set(Some(now.into()));
+            active.archived_at = Set(None);
+        }
+        PageTransition::Unpublish => {
+            active.published_at = Set(None);
+            active.archived_at = Set(None);
+        }
+        PageTransition::Archive => {
+            active.published_at = Set(None);
+            active.archived_at = Set(Some(now.into()));
+        }
+    }
+}
+
+fn transition_event(transition: Option<PageTransition>, page_id: Uuid) -> Option<DomainEvent> {
+    match transition {
+        Some(PageTransition::Publish) => Some(DomainEvent::NodePublished {
+            node_id: page_id,
+            kind: PAGE_KIND.to_string(),
+        }),
+        Some(PageTransition::Unpublish) => Some(DomainEvent::NodeUnpublished {
+            node_id: page_id,
+            kind: PAGE_KIND.to_string(),
+        }),
+        Some(PageTransition::Archive) | None => None,
     }
 }
 
@@ -1288,7 +1565,7 @@ fn page_translation_response(translation: &page_translation::Model) -> PageTrans
 
 fn page_body_response(body: &page_body::Model) -> PageBodyResponse {
     let content_json =
-        if body.format == CONTENT_FORMAT_RT_JSON_V1 || body.format == CONTENT_FORMAT_GRAPESJS_FORMAT {
+        if body.format == CONTENT_FORMAT_RT_JSON_V1 || body.format == CONTENT_FORMAT_GRAPESJS {
             serde_json::from_str(&body.content).ok()
         } else {
             None
@@ -1303,10 +1580,7 @@ fn page_body_response(body: &page_body::Model) -> PageBodyResponse {
 }
 
 fn body_requires_json_payload(format: &str) -> bool {
-    matches!(
-        format,
-        CONTENT_FORMAT_RT_JSON_V1 | CONTENT_FORMAT_GRAPESJS_FORMAT
-    )
+    matches!(format, CONTENT_FORMAT_RT_JSON_V1 | CONTENT_FORMAT_GRAPESJS)
 }
 
 #[cfg(test)]
@@ -1331,6 +1605,19 @@ mod tests {
         assert!(is_page_visible_for_channel(&channel_slugs, Some("web")));
         assert!(!is_page_visible_for_channel(&channel_slugs, Some("blog")));
         assert!(!is_page_visible_for_channel(&channel_slugs, None));
+    }
+
+    #[test]
+    fn expected_version_fails_closed_on_stale_writes() {
+        assert!(enforce_expected_version(None, 4).is_ok());
+        assert!(enforce_expected_version(Some(4), 4).is_ok());
+        assert!(matches!(
+            enforce_expected_version(Some(3), 4),
+            Err(PagesError::VersionConflict {
+                expected_version: 3,
+                actual_version: 4,
+            })
+        ));
     }
 
     #[test]
@@ -1403,5 +1690,21 @@ mod tests {
         assert!(is_builder_properties_enabled(&serde_json::json!({
             "builder": { "properties": { "enabled": true } }
         })));
+    }
+
+    #[test]
+    fn builder_body_locale_is_normalized_before_source_collection() {
+        let prepared = normalize_page_body_input(Some(PageBodyInput {
+            locale: " EN ".to_string(),
+            content: String::new(),
+            format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
+            content_json: Some(serde_json::json!({})),
+        }))
+        .expect("valid builder body")
+        .expect("prepared body");
+
+        assert_eq!(prepared.locale, "en");
+        let sources = collect_builder_sources(&[], Some(&prepared), false);
+        assert_eq!(sources.keys().cloned().collect::<Vec<_>>(), vec!["en"]);
     }
 }

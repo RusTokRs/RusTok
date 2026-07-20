@@ -489,7 +489,7 @@ fn audit_document_structure(state: &AuditState, report: &mut AuditReport) {
 
 fn semantic_tag(component_type: &str, tag_name: Option<&str>) -> &'static str {
     let tag = tag_name
-        .unwrap_or_else(|| match component_type {
+        .unwrap_or(match component_type {
             "heading" => "h2",
             "text" => "p",
             "link" => "a",

@@ -1,9 +1,9 @@
 use fly::{
-    build_static_landing_artifact, validate_project, ComponentRegistryManifest, FlyError,
-    GrapesJsCodec, LandingPropertyValidationReport, LandingReadinessPolicy, ProjectDocument,
-    RegistryCompatibilityIssue, RegistryCompatibilityIssueKind, RegistryCompatibilityReport,
-    RegistrySet, RenderPolicy, StaticLandingBuildResult, ValidationDiagnostic, ValidationLimits,
-    ValidationReport,
+    build_static_landing_artifact, build_static_landing_artifact_with_renderer, validate_project,
+    ComponentRegistryManifest, FlyError, GrapesJsCodec, LandingPropertyValidationReport,
+    LandingReadinessPolicy, LandingRenderer, ProjectDocument, RegistryCompatibilityIssue,
+    RegistryCompatibilityIssueKind, RegistryCompatibilityReport, RegistrySet, RenderPolicy,
+    StaticLandingBuildResult, ValidationDiagnostic, ValidationLimits, ValidationReport,
 };
 use serde_json::Value;
 
@@ -94,6 +94,27 @@ impl LandingProjectInspection {
         build_static_landing_artifact(&self.document, registries, readiness_policy, render_policy)
             .map_err(LandingProjectError::Fly)
     }
+
+    pub fn build_static_with_renderer<R>(
+        &self,
+        registries: &RegistrySet,
+        readiness_policy: LandingReadinessPolicy,
+        render_policy: &RenderPolicy,
+        renderer: &R,
+    ) -> LandingProjectResult<StaticLandingBuildResult>
+    where
+        R: LandingRenderer + ?Sized,
+    {
+        self.require_contract_valid()?;
+        build_static_landing_artifact_with_renderer(
+            &self.document,
+            registries,
+            readiness_policy,
+            render_policy,
+            renderer,
+        )
+        .map_err(LandingProjectError::Fly)
+    }
 }
 
 fn registry_compatibility(
@@ -146,6 +167,8 @@ pub enum LandingProjectError {
     PropertyContractInvalid { issue_count: usize },
     #[error("page-builder component registry is incompatible ({issue_count} issue(s))")]
     RegistryIncompatible { issue_count: usize },
+    #[error("page-builder static publish is not ready")]
+    PublishNotReady { blocking_codes: Vec<String> },
     #[error(transparent)]
     Fly(#[from] FlyError),
 }
