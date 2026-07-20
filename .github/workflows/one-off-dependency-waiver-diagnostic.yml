@@ -1,4 +1,4 @@
-name: One-off Capture Atomic Advisory Tree
+name: One-off Trace Atomic Target Triples
 
 on:
   push:
@@ -18,7 +18,7 @@ env:
 jobs:
   trace:
     if: >-
-      github.event.head_commit.message == 'test(security): capture atomic advisory tree'
+      github.event.head_commit.message == 'test(security): trace atomic target triples'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -29,22 +29,34 @@ jobs:
         run: |
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
-      - name: Persist atomic inverse tree
+      - name: Persist target-specific atomic inverse trees
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          cargo tree --locked --workspace --all-features --target all -i atomic-polyfill \
-            > /tmp/atomic-polyfill.tree 2> /tmp/atomic-polyfill.stderr
+          targets=(
+            thumbv6m-none-eabi
+            riscv32i-unknown-none-elf
+            riscv32imc-unknown-none-elf
+            xtensa-esp32s2-none-elf
+          )
           {
-            printf 'Capture the exact locked all-target atomic-polyfill inverse tree.\n\n'
-            printf '## Atomic inverse tree\n\n```text\n'
-            cat /tmp/atomic-polyfill.tree
-            printf '\n```\n\n## Cargo diagnostics\n\n```text\n'
-            tail -n 20 /tmp/atomic-polyfill.stderr
-            printf '\n```\n'
-          } >/tmp/atomic-tree-body.md
+            printf 'Trace atomic-polyfill reachability for the exact target conditions reported by locked metadata.\n\n'
+            for target in "${targets[@]}"; do
+              set +e
+              cargo tree --locked --workspace --all-features --target "$target" -i atomic-polyfill \
+                > "/tmp/${target}.tree" 2> "/tmp/${target}.stderr"
+              status=$?
+              set -e
+              printf '## %s (exit %s)\n\n```text\n' "$target" "$status"
+              cat "/tmp/${target}.tree"
+              if [ ! -s "/tmp/${target}.tree" ]; then
+                tail -n 8 "/tmp/${target}.stderr"
+              fi
+              printf '\n```\n\n'
+            done
+          } >/tmp/atomic-target-trees.md
           gh issue edit "$SECURITY_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
-            --body-file /tmp/atomic-tree-body.md
+            --body-file /tmp/atomic-target-trees.md
