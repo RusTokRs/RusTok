@@ -14,31 +14,32 @@ permissions:
 jobs:
   status:
     if: >-
-      github.event.head_commit.message == 'test(ci): persist dependency waiver repair status'
+      github.event.head_commit.message == 'test(ci): capture dependency waiver failure'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
       STATUS_ISSUE: 1851
+      FAILED_RUN_ID: 29733400572
     steps:
-      - name: Persist waiver repair runs
+      - name: Persist waiver repair failure
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          runs=$(gh run list \
+          set +e
+          failure_tail=$(gh run view "$FAILED_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
-            --workflow one-off-dependency-waiver-diagnostic.yml \
-            --limit 8 \
-            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
+            --log-failed 2>&1 | tail -n 140)
+          set -e
           current_body=$(gh issue view "$STATUS_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
             --json body --jq .body)
-          base_body=$(printf '%s\n' "$current_body" | sed '/^## Repair run status$/,$d')
+          base_body=$(printf '%s\n' "$current_body" | sed '/^## Repair failure$/,$d')
           {
             printf '%s\n\n' "$base_body"
-            printf '## Repair run status\n\n```json\n%s\n```\n' "$runs"
-          } >/tmp/dependency-waiver-status.md
+            printf '## Repair failure\n\n```text\n%s\n```\n' "$failure_tail"
+          } >/tmp/dependency-waiver-failure.md
           gh issue edit "$STATUS_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
-            --body-file /tmp/dependency-waiver-status.md
+            --body-file /tmp/dependency-waiver-failure.md
