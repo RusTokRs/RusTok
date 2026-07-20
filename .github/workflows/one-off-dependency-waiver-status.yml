@@ -11,17 +11,16 @@ permissions:
   contents: read
   issues: write
 
-env:
-  STATUS_ISSUE: 1851
-
 jobs:
   status:
     if: >-
-      github.event.head_commit.message == 'test(ci): report dependency waiver repair'
+      github.event.head_commit.message == 'test(ci): persist dependency waiver repair status'
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    env:
+      STATUS_ISSUE: 1851
     steps:
-      - name: Report waiver repair runs
+      - name: Persist waiver repair runs
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -32,6 +31,14 @@ jobs:
             --workflow one-off-dependency-waiver-diagnostic.yml \
             --limit 8 \
             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
-          gh issue comment "$STATUS_ISSUE" \
+          current_body=$(gh issue view "$STATUS_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
-            --body "Dependency waiver repair runs:\n\n\`\`\`json\n$runs\n\`\`\`"
+            --json body --jq .body)
+          base_body=$(printf '%s\n' "$current_body" | sed '/^## Repair run status$/,$d')
+          {
+            printf '%s\n\n' "$base_body"
+            printf '## Repair run status\n\n```json\n%s\n```\n' "$runs"
+          } >/tmp/dependency-waiver-status.md
+          gh issue edit "$STATUS_ISSUE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/dependency-waiver-status.md
