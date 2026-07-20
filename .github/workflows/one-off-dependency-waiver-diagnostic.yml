@@ -17,7 +17,7 @@ env:
 jobs:
   retire:
     if: >-
-      github.event.head_commit.message == 'fix(security): validate workspace-root lock pruning'
+      github.event.head_commit.message == 'test(security): capture waiver pruning exception'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -40,10 +40,30 @@ jobs:
           test -z "$(cargo tree --locked -i atomic-polyfill --workspace --all-features --target all 2>/dev/null)"
           test -z "$(cargo tree --locked -i rsa --workspace --all-features --target all 2>/dev/null)"
       - name: Prune disconnected lock packages and close waivers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
+          set -euo pipefail
           cargo metadata --locked --all-features --format-version 1 \
             > /tmp/cargo-metadata-all-features.json
-          python3 scripts/maintenance/retire-dependency-waivers.py
+          set +e
+          python3 scripts/maintenance/retire-dependency-waivers.py \
+            > /tmp/waiver-prune.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            {
+              printf 'Retire the two temporary dependency waivers after proving all-target unreachability.\n\n'
+              printf '## Exact workspace-root pruning failure\n\n```text\n'
+              cat /tmp/waiver-prune.log
+              printf '\n```\n'
+            } > /tmp/waiver-prune-failure.md
+            gh issue edit "$SECURITY_ISSUE" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body-file /tmp/waiver-prune-failure.md
+            exit "$status"
+          fi
       - name: Verify retired-waiver contract
         shell: bash
         run: |
