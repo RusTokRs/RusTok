@@ -1,10 +1,17 @@
 (() => {
   const protocol = __FLY_PROTOCOL__;
   const instanceId = __FLY_INSTANCE__;
+  const configuredGeometryLimit = __FLY_MAX_GEOMETRY_COMPONENTS__;
+  const maxGeometryComponents = Number.isSafeInteger(configuredGeometryLimit)
+    && configuredGeometryLimit > 0
+    ? configuredGeometryLimit
+    : 4096;
   let sequence = 0;
   let measureScheduled = false;
   let pointerScheduled = false;
-  let dragScheduled = false;
+  let pendingPointerSample = null;
+  let dragFrame = null;
+  let dragEpoch = 0;
   let lastDragPoint = null;
 
   const send = (type, payload = {}) => {
@@ -51,7 +58,19 @@
 
   const measure = () => {
     measureScheduled = false;
-    const components = Array.from(document.querySelectorAll('[data-fly-component-id]')).map((element) => {
+    const nodes = document.querySelectorAll('[data-fly-component-id]');
+    if (nodes.length > maxGeometryComponents) {
+      send('geometry_snapshot', {
+        components: [],
+        resource_limit: {
+          kind: 'geometry_components',
+          limit: maxGeometryComponents,
+          observed: nodes.length,
+        },
+      });
+      return;
+    }
+    const components = Array.from(nodes).map((element) => {
       const rect = element.getBoundingClientRect();
       const parentElement = element.parentElement?.closest('[data-fly-component-id]');
       return {
@@ -70,15 +89,31 @@
     requestAnimationFrame(measure);
   };
 
-  const scheduleDragPoint = (position) => {
-    lastDragPoint = position;
-    if (dragScheduled) return;
-    dragScheduled = true;
-    requestAnimationFrame(() => {
-      dragScheduled = false;
-      if (!lastDragPoint) return;
-      send('drag_moved', { position: lastDragPoint });
+  const cancelScheduledDrag = () => {
+    dragEpoch += 1;
+    lastDragPoint = null;
+    if (dragFrame !== null) {
+      cancelAnimationFrame(dragFrame);
+      dragFrame = null;
+    }
+  };
+
+  const scheduleDragPoint = (position, epoch = dragEpoch) => {
+    if (epoch !== dragEpoch) return;
+    lastDragPoint = { position, epoch };
+    if (dragFrame !== null) return;
+    dragFrame = requestAnimationFrame(() => {
+      dragFrame = null;
+      const sample = lastDragPoint;
+      lastDragPoint = null;
+      if (!sample || sample.epoch !== dragEpoch) return;
+      send('drag_moved', { position: sample.position });
     });
+  };
+
+  const finishDrag = (position) => {
+    cancelScheduledDrag();
+    send('drop_requested', { position });
   };
 
   const announce = () => {
@@ -103,28 +138,34 @@
     send('hover_requested', { component_id: null });
   });
   document.addEventListener('pointermove', (event) => {
+    pendingPointerSample = {
+      drag_epoch: dragEpoch,
+      pointer_id: event.pointerId,
+      kind: ['mouse', 'touch', 'pen'].includes(event.pointerType)
+        ? event.pointerType
+        : 'unknown',
+      position: point(event),
+      buttons: event.buttons,
+      primary: event.isPrimary,
+    };
     if (pointerScheduled) return;
     pointerScheduled = true;
     requestAnimationFrame(() => {
       pointerScheduled = false;
-      const kind = ['mouse', 'touch', 'pen'].includes(event.pointerType)
-        ? event.pointerType
-        : 'unknown';
-      const position = point(event);
-      send('pointer_moved', {
-        sample: {
-          pointer_id: event.pointerId,
-          kind,
-          position,
-          buttons: event.buttons,
-          primary: event.isPrimary,
-        },
-      });
-      scheduleDragPoint(position);
+      const pending = pendingPointerSample;
+      pendingPointerSample = null;
+      if (!pending) return;
+      const { drag_epoch: epoch, ...sample } = pending;
+      send('pointer_moved', { sample });
+      scheduleDragPoint(sample.position, epoch);
     });
   }, { passive: true });
   document.addEventListener('pointerup', (event) => {
-    send('drop_requested', { position: point(event) });
+    finishDrag(point(event));
+  }, { passive: true });
+  document.addEventListener('pointercancel', () => {
+    cancelScheduledDrag();
+    send('cancel_drag_requested');
   }, { passive: true });
 
   document.addEventListener('dragover', (event) => {
@@ -133,7 +174,7 @@
   });
   document.addEventListener('drop', (event) => {
     event.preventDefault();
-    send('drop_requested', { position: point(event) });
+    finishDrag(point(event));
   });
   document.addEventListener('keydown', (event) => {
     const editingText = acceptsTextInput(event.target);
@@ -157,6 +198,7 @@
   const observer = new ResizeObserver(scheduleMeasure);
   observer.observe(document.documentElement);
   document.querySelectorAll('[data-fly-component-id]').forEach((node) => observer.observe(node));
+  document.addEventListener('scroll', scheduleMeasure, { capture: true, passive: true });
   window.addEventListener('resize', () => { reportViewport(); scheduleMeasure(); }, { passive: true });
   window.addEventListener('scroll', () => { reportViewport(); scheduleMeasure(); }, { passive: true });
 

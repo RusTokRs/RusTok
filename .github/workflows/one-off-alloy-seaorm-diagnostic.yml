@@ -1,0 +1,131 @@
+name: One-off Alloy SeaORM Repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-off-alloy-seaorm-diagnostic.yml
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  REPAIR_ISSUE: 1853
+  CARGO_TERM_COLOR: never
+
+jobs:
+  repair:
+    if: >-
+      github.event.head_commit.message == 'fix(alloy): validate SeaORM compatibility repair'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+      - name: Apply exact compatibility repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path('crates/alloy/src/runner/test.rs'): [
+                  ('crate::MAX_TEST_ERROR_LENGTH', 'crate::model::MAX_TEST_ERROR_LENGTH', 1),
+              ],
+              Path('crates/alloy/src/storage/memory.rs'): [
+                  ('crate::test_run_lease_expires_at', 'crate::model::test_run_lease_expires_at', 2),
+              ],
+              Path('crates/alloy/src/storage/sea_orm.rs'): [
+                  ('crate::test_run_lease_expires_at', 'crate::model::test_run_lease_expires_at', 2),
+                  (
+                      '.col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt))',
+                      '.col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt).into())',
+                      2,
+                  ),
+              ],
+              Path('crates/alloy/src/runner/release.rs'): [
+                  ('G: AlloyReleaseGovernance,', 'G: AlloyReleaseGovernance + ?Sized,', 2),
+              ],
+          }
+
+          for path, edits in replacements.items():
+              source = path.read_text()
+              for old, new, count in edits:
+                  observed = source.count(old)
+                  if observed != count:
+                      raise SystemExit(
+                          f'{path}: expected {count} occurrences of {old!r}, observed {observed}'
+                      )
+                  source = source.replace(old, new)
+              path.write_text(source)
+          PY
+          if grep -R --line-number -E \
+            'crate::(MAX_TEST_ERROR_LENGTH|test_run_lease_expires_at)' \
+            crates/alloy/src --include='*.rs'; then
+            echo 'stale Alloy crate-root test-run symbol path remains' >&2
+            exit 1
+          fi
+          if grep -n --fixed-strings \
+            '.col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt))' \
+            crates/alloy/src/storage/sea_orm.rs; then
+            echo 'SeaORM col_expr still receives Expr instead of SimpleExpr' >&2
+            exit 1
+          fi
+          test "$(grep -c 'G: AlloyReleaseGovernance + ?Sized,' crates/alloy/src/runner/release.rs)" = 2
+      - name: Verify bounded diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            crates/alloy/src/runner/release.rs
+            crates/alloy/src/runner/test.rs
+            crates/alloy/src/storage/memory.rs
+            crates/alloy/src/storage/sea_orm.rs
+          )
+          test "${#changed[@]}" = "${#expected[@]}"
+          for index in "${!expected[@]}"; do
+            test "${changed[$index]}" = "${expected[$index]}"
+          done
+      - name: Compile alloy
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/alloy-seaorm-compat
+        run: cargo check --locked -p alloy
+      - name: Publish Alloy compatibility repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add crates/alloy/src/runner/release.rs \
+            crates/alloy/src/runner/test.rs \
+            crates/alloy/src/storage/memory.rs \
+            crates/alloy/src/storage/sea_orm.rs
+          git commit -m 'fix(alloy): restore SeaORM 1.1 compatibility'
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              git rebase origin/main
+              cargo check --locked -p alloy
+            fi
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+          done
+          exit 1
+      - name: Record repair evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "$REPAIR_ISSUE" --repo "$GITHUB_REPOSITORY" --body \
+            'Bounded Alloy compatibility repair published; `cargo check --locked -p alloy` passed.'

@@ -13,10 +13,21 @@ function read(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
-function dependencySpec(source, name) {
+function dependencySpecs(source, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = new RegExp(`^${escaped}\\s*=\\s*\\{([^\\n]+)\\}$`, "m").exec(source);
-  return match?.[1] ?? null;
+  const starts = [...source.matchAll(new RegExp(`^${escaped}\\s*=\\s*\\{`, "gm"))];
+  return starts.map((match) => {
+    const end = source.indexOf("}", match.index);
+    if (end < 0) {
+      failures.push(`${name}: dependency specification has no closing brace`);
+      return source.slice(match.index);
+    }
+    return source.slice(match.index, end + 1);
+  });
+}
+
+function dependencySpec(source, name) {
+  return dependencySpecs(source, name)[0] ?? null;
 }
 
 function requireSpec(spec, marker, dependency) {
@@ -56,9 +67,41 @@ function walkFiles(relativeRoot, predicate) {
   return files;
 }
 
+const parserFixture = `sea-orm = { version = "1.1", default-features = false, features = [
+  "sqlx-postgres",
+  "sqlx-sqlite",
+] }`;
+if (!dependencySpec(parserFixture, "sea-orm")?.includes('"sqlx-sqlite"')) {
+  failures.push("dependency parser must retain multiline inline-table specifications");
+}
+
 const cargo = read("Cargo.toml");
+const orm = dependencySpec(cargo, "sea-orm");
 const migration = dependencySpec(cargo, "sea-orm-migration");
 const postcard = dependencySpec(cargo, "postcard");
+
+if (!orm) {
+  failures.push("Cargo.toml: sea-orm workspace dependency not found");
+} else {
+  requireSpec(orm, "default-features = false", "sea-orm");
+  for (const feature of [
+    '"sqlx-postgres"',
+    '"sqlx-sqlite"',
+    '"runtime-tokio-rustls"',
+    '"macros"',
+    '"with-uuid"',
+    '"with-chrono"',
+    '"with-json"',
+    '"with-rust_decimal"',
+    '"with-bigdecimal"',
+    '"with-time"',
+  ]) {
+    requireSpec(orm, feature, "sea-orm");
+  }
+  forbidSpec(orm, '"sqlx-mysql"', "sea-orm");
+  forbidSpec(orm, '"sqlx-all"', "sea-orm");
+  forbidSpec(orm, '"runtime-tokio-native-tls"', "sea-orm");
+}
 
 if (!migration) {
   failures.push("Cargo.toml: sea-orm-migration workspace dependency not found");
@@ -68,6 +111,7 @@ if (!migration) {
   requireSpec(migration, '"sqlx-sqlite"', "sea-orm-migration");
   requireSpec(migration, '"runtime-tokio-rustls"', "sea-orm-migration");
   forbidSpec(migration, '"sqlx-mysql"', "sea-orm-migration");
+  forbidSpec(migration, '"sqlx-all"', "sea-orm-migration");
   forbidSpec(migration, '"cli"', "sea-orm-migration");
 }
 
@@ -92,11 +136,8 @@ const memberManifests = [
 for (const absolutePath of memberManifests) {
   const source = fs.readFileSync(absolutePath, "utf8");
   const relativePath = path.relative(repoRoot, absolutePath);
-  for (const dependency of ["sea-orm-migration", "postcard"]) {
-    const escaped = dependency.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const specs = [...source.matchAll(new RegExp(`^${escaped}\\s*=\\s*\\{([^\\n]+)\\}$`, "gm"))];
-    for (const match of specs) {
-      const spec = match[1];
+  for (const dependency of ["sea-orm", "sea-orm-migration", "postcard"]) {
+    for (const spec of dependencySpecs(source, dependency)) {
       if (!spec.includes("workspace = true")) {
         failures.push(`${relativePath}: ${dependency} must inherit the workspace dependency policy`);
       }
@@ -104,6 +145,8 @@ for (const absolutePath of memberManifests) {
         "default-features = true",
         '"cli"',
         '"sqlx-mysql"',
+        '"sqlx-all"',
+        '"runtime-tokio-native-tls"',
         '"heapless"',
         '"heapless-cas"',
       ]) {
@@ -143,4 +186,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ unused SeaORM CLI/MySQL and Postcard heapless defaults remain disabled");
+console.log("✔ SeaORM feature parity is explicit while MySQL/native-TLS and Postcard heapless defaults remain disabled");

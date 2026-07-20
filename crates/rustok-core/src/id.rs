@@ -4,7 +4,7 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 
 pub fn generate_id() -> Uuid {
-    Uuid::from_bytes(Ulid::from_datetime(std::time::SystemTime::now()).to_bytes())
+    Uuid::from_bytes(Ulid::r#gen().to_bytes())
 }
 
 pub fn parse_id(value: &str) -> Result<Uuid> {

@@ -50,7 +50,10 @@ attached and are not silently converted or removed.
 - After mutation, Pages re-reads the document and acknowledges the persisted
   body `updated_at`, not the separate Page entity timestamp.
 - A stale editor receives stable code `REVISION_CONFLICT` and does not overwrite
-  newer page data.
+  newer page data. The browser problem transport now preserves stable codes for revision,
+  project-hash and draft-generation conflicts.
+- Chromium coverage proves that HTTP 409 leaves the adapter revision, project hash and draft
+  session unchanged; only a successful retry after an explicit host refresh advances them.
 - The Page Builder iframe reports viewport, component geometry, pointer, hover
   and focus events through a source/origin/protocol/instance/sequence validated
   bridge.
@@ -100,8 +103,8 @@ attached and are not silently converted or removed.
 - `npm run verify:page-builder:wave1-readiness-draft`
 - targeted Rust tests for `rustok-pages-admin`, `rustok-page-builder-admin`,
   `fly`, `fly-ui` and `fly-leptos`
-- WASM/browser interaction tests for iframe handshake, selection, geometry,
-  teardown and save conflict behavior
+- Browser interaction tests for iframe handshake, source/origin/instance rejection,
+  sequence replay protection, selection, geometry, teardown and stale-save retry behavior
 
 ## Boundaries
 

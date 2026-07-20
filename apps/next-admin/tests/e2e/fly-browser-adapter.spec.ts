@@ -17,6 +17,7 @@ async function mountAdapter(page: Page) {
       data-fly-revision="rev-1"
       data-fly-project-hash="hash-1"
       data-fly-expected-origin="null"
+      data-fly-intent-endpoint="/fly-intent"
       style="position:relative"
     >
       <iframe
@@ -45,6 +46,24 @@ async function mountAdapter(page: Page) {
         messageType: (event as CustomEvent).detail?.message?.type
       });
     });
+    root.addEventListener('fly:browser-intent-response', (event) => {
+      const detail = (event as CustomEvent).detail;
+      events.push({
+        type: event.type,
+        ok: detail?.ok,
+        status: detail?.status,
+        code: detail?.result?.code,
+        intent: detail?.request?.intent,
+        revision: detail?.request?.revision,
+        projectHash: detail?.request?.project_hash
+      });
+    });
+    root.addEventListener('fly:browser-error', (event) => {
+      events.push({
+        type: event.type,
+        error: (event as CustomEvent).detail?.error
+      });
+    });
     (globalThis as typeof globalThis & { __flyEvents?: unknown[] }).__flyEvents =
       events;
 
@@ -65,6 +84,10 @@ async function mountAdapter(page: Page) {
 }
 
 type BrowserMessage = Record<string, unknown> & { type: string };
+type MockBrowserResponse = {
+  status: number;
+  body: Record<string, unknown>;
+};
 
 async function dispatchCanvasMessage(
   page: Page,
@@ -104,6 +127,72 @@ async function dispatchCanvasMessage(
       source: options.source,
       instanceId: options.instanceId
     }
+  );
+}
+
+async function installMockFetch(
+  page: Page,
+  responses: MockBrowserResponse[]
+) {
+  await page.evaluate((configuredResponses) => {
+    const requests: unknown[] = [];
+    let responseIndex = 0;
+    (
+      globalThis as typeof globalThis & {
+        __flyRequests?: unknown[];
+      }
+    ).__flyRequests = requests;
+    globalThis.fetch = async (input, init = {}) => {
+      const body =
+        typeof init.body === 'string' ? JSON.parse(init.body) : init.body ?? null;
+      requests.push({
+        input: String(input),
+        method: init.method ?? 'GET',
+        headers: init.headers ?? {},
+        body
+      });
+      const response =
+        configuredResponses[
+          Math.min(responseIndex, configuredResponses.length - 1)
+        ];
+      responseIndex += 1;
+      if (!response) throw new Error('mock response is unavailable');
+      return new Response(JSON.stringify(response.body), {
+        status: response.status,
+        headers: { 'content-type': 'application/json' }
+      });
+    };
+  }, responses);
+}
+
+async function emitBrowserIntent(
+  page: Page,
+  intent: string,
+  payload: Record<string, unknown> = {}
+) {
+  return page.evaluate(
+    async ({ intent, payload }) => {
+      const root = document.querySelector('#fly-root');
+      if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
+      const flyBrowser = (
+        globalThis as typeof globalThis & {
+          FlyBrowser?: {
+            mount?: (
+              root: Element
+            ) => {
+              emitIntent: (
+                intent: string,
+                payload: Record<string, unknown>
+              ) => Promise<unknown>;
+            } | null;
+          };
+        }
+      ).FlyBrowser;
+      const adapter = flyBrowser?.mount?.(root);
+      if (!adapter) throw new Error('Fly browser adapter unavailable');
+      return adapter.emitIntent(intent, payload);
+    },
+    { intent, payload }
   );
 }
 
@@ -237,4 +326,138 @@ test('unmount removes overlays, listeners and connected state', async ({ page })
 
   await dispatchCanvasMessage(page, { type: 'ready' }, { sequence: 2 });
   await expect(root).toHaveAttribute('data-fly-canvas-connected', 'false');
+});
+
+test('stale save conflict preserves optimistic state and refreshed retry advances it', async ({
+  page
+}) => {
+  await mountAdapter(page);
+  await installMockFetch(page, [
+    {
+      status: 409,
+      body: {
+        status: 409,
+        error: 'Page Builder revision conflict',
+        code: 'REVISION_CONFLICT'
+      }
+    },
+    {
+      status: 200,
+      body: {
+        result: {
+          revision_id: 'rev-3',
+          project_hash: 'hash-3'
+        },
+        reload: false,
+        draft_token: 'draft-3',
+        draft_generation: 3
+      }
+    }
+  ]);
+
+  const conflict = await emitBrowserIntent(page, 'save');
+  expect(conflict).toMatchObject({
+    status: 409,
+    code: 'REVISION_CONFLICT'
+  });
+
+  let state = await page.evaluate(() => {
+    const root = document.querySelector('#fly-root');
+    const adapter = (
+      globalThis as typeof globalThis & {
+        FlyBrowser?: { mount?: (root: Element) => { draftSession?: unknown } | null };
+      }
+    ).FlyBrowser?.mount?.(root as Element);
+    return {
+      revision: root?.getAttribute('data-fly-revision'),
+      projectHash: root?.getAttribute('data-fly-project-hash'),
+      draftSession: adapter?.draftSession ?? null,
+      requests: (
+        globalThis as typeof globalThis & { __flyRequests?: unknown[] }
+      ).__flyRequests,
+      events: (
+        globalThis as typeof globalThis & { __flyEvents?: unknown[] }
+      ).__flyEvents
+    };
+  });
+
+  expect(state.revision).toBe('rev-1');
+  expect(state.projectHash).toBe('hash-1');
+  expect(state.draftSession).toBeNull();
+  expect(state.requests).toHaveLength(1);
+  expect(state.requests?.[0]).toMatchObject({
+    input: '/fly-intent',
+    method: 'POST',
+    body: {
+      protocol: 'fly_iframe',
+      instance_id: 'canvas-a',
+      intent: 'save',
+      page_id: 'home',
+      revision: 'rev-1',
+      project_hash: 'hash-1',
+      draft_token: null,
+      draft_generation: null
+    }
+  });
+  expect(state.events).toContainEqual({
+    type: 'fly:browser-intent-response',
+    ok: false,
+    status: 409,
+    code: 'REVISION_CONFLICT',
+    intent: 'save',
+    revision: 'rev-1',
+    projectHash: 'hash-1'
+  });
+  expect(state.events).not.toContainEqual(
+    expect.objectContaining({ type: 'fly:browser-error' })
+  );
+
+  await page.evaluate(() => {
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
+    root.dataset.flyRevision = 'rev-2';
+    root.dataset.flyProjectHash = 'hash-2';
+  });
+
+  const success = await emitBrowserIntent(page, 'save');
+  expect(success).toMatchObject({
+    result: {
+      revision_id: 'rev-3',
+      project_hash: 'hash-3'
+    },
+    draft_token: 'draft-3',
+    draft_generation: 3
+  });
+
+  state = await page.evaluate(() => {
+    const root = document.querySelector('#fly-root');
+    const adapter = (
+      globalThis as typeof globalThis & {
+        FlyBrowser?: {
+          mount?: (
+            root: Element
+          ) => { draftSession?: { token?: string; generation?: number } } | null;
+        };
+      }
+    ).FlyBrowser?.mount?.(root as Element);
+    return {
+      revision: root?.getAttribute('data-fly-revision'),
+      projectHash: root?.getAttribute('data-fly-project-hash'),
+      draftSession: adapter?.draftSession ?? null,
+      requests: (
+        globalThis as typeof globalThis & { __flyRequests?: unknown[] }
+      ).__flyRequests
+    };
+  });
+
+  expect(state.requests).toHaveLength(2);
+  expect(state.requests?.[1]).toMatchObject({
+    body: {
+      revision: 'rev-2',
+      project_hash: 'hash-2'
+    }
+  });
+  expect(state.revision).toBe('rev-3');
+  expect(state.projectHash).toBe('hash-3');
+  expect(state.draftSession).toEqual({ token: 'draft-3', generation: 3 });
 });

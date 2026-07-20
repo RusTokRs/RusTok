@@ -7,6 +7,7 @@ use fly_leptos::FLY_IFRAME_PROTOCOL;
 use serde_json::Value;
 
 const CANVAS_SCRIPT: &str = include_str!("canvas_runtime.js");
+const CANVAS_MAX_GEOMETRY_COMPONENTS: usize = 4096;
 
 #[cfg(any(target_arch = "wasm32", test))]
 pub fn render_canvas_srcdoc(document: &ProjectDocument, instance_id: &str) -> String {
@@ -65,9 +66,11 @@ fn render_srcdoc(
         serde_json::to_string(FLY_IFRAME_PROTOCOL).unwrap_or_else(|_| "\"fly_iframe\"".to_string());
     let instance =
         serde_json::to_string(instance_id).unwrap_or_else(|_| "\"fly-canvas\"".to_string());
+    let geometry_limit = CANVAS_MAX_GEOMETRY_COMPONENTS.to_string();
     let script = CANVAS_SCRIPT
         .replace("__FLY_PROTOCOL__", &protocol)
-        .replace("__FLY_INSTANCE__", &instance);
+        .replace("__FLY_INSTANCE__", &instance)
+        .replace("__FLY_MAX_GEOMETRY_COMPONENTS__", &geometry_limit);
 
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https: http:; media-src data: https: http:; font-src data: https: http:;\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{head}<style>{}{}</style></head><body data-runtime-diagnostics=\"{runtime_diagnostics}\" data-repeated-nodes=\"{repeated_nodes}\"><main id=\"fly-canvas-root\">{canvas}</main><script>{script}</script></body></html>",
@@ -117,6 +120,9 @@ mod tests {
         assert!(!html.contains("<script>alert(1)</script>"));
         assert!(html.contains("geometry_snapshot"));
         assert!(html.contains("setTimeout(announce, 100)"));
+        assert!(html.contains("const configuredGeometryLimit = 4096"));
+        assert!(html.contains("geometry_components"));
+        assert!(!html.contains("__FLY_MAX_GEOMETRY_COMPONENTS__"));
         assert!(html.contains("canvas-home"));
     }
 

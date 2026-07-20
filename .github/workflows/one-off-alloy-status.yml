@@ -1,4 +1,4 @@
-name: One-off Dependency Waiver Status
+name: One-off Alloy Repair Status
 
 on:
   issue_comment:
@@ -12,14 +12,12 @@ permissions:
 jobs:
   status:
     if: >-
-      github.event.issue.number == 1851 &&
-      github.event.comment.body == '/status-dependency-waivers'
+      github.event.issue.number == 1853 &&
+      github.event.comment.body == '/status-alloy-repair'
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    env:
-      STATUS_ISSUE: 1851
     steps:
-      - name: Persist compact waiver repair diagnostics
+      - name: Persist Alloy repair runs and failure tail
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -27,7 +25,7 @@ jobs:
           set -euo pipefail
           runs=$(gh run list \
             --repo "$GITHUB_REPOSITORY" \
-            --workflow one-off-dependency-waiver-diagnostic.yml \
+            --workflow one-off-alloy-seaorm-diagnostic.yml \
             --limit 10 \
             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
           failed_run=$(printf '%s' "$runs" | node -e '
@@ -38,19 +36,17 @@ jobs:
               if (run) process.stdout.write(String(run.databaseId));
             });
           ')
-          failure_tail="No failed repair run found."
+          failure_tail="No failed Alloy repair run found."
           if [ -n "$failed_run" ]; then
             set +e
             failure_tail=$(gh run view "$failed_run" \
               --repo "$GITHUB_REPOSITORY" \
-              --log-failed 2>&1 | tail -n 35)
+              --log-failed 2>&1 | tail -n 80)
             set -e
           fi
           {
-            printf 'Retire the two temporary dependency waivers after proving lock-only reachability.\n\n'
-            printf '## Current diagnostic runs\n\n```json\n%s\n```\n\n' "$runs"
-            printf '## Latest diagnostic failure\n\n```text\n%s\n```\n' "$failure_tail"
-          } >/tmp/dependency-waiver-status.md
-          gh issue edit "$STATUS_ISSUE" \
-            --repo "$GITHUB_REPOSITORY" \
-            --body-file /tmp/dependency-waiver-status.md
+            printf 'Track the bounded Alloy SeaORM compatibility repair.\n\n'
+            printf '## Repair runs\n\n```json\n%s\n```\n\n' "$runs"
+            printf '## Latest repair failure\n\n```text\n%s\n```\n' "$failure_tail"
+          } >/tmp/alloy-repair-status.md
+          gh issue edit 1853 --repo "$GITHUB_REPOSITORY" --body-file /tmp/alloy-repair-status.md

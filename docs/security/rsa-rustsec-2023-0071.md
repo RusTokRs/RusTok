@@ -7,23 +7,33 @@ source_language: markdown
 status: verified
 ---
 
-# RUSTSEC-2023-0071 remediation note
+# RUSTSEC-2023-0071 containment note
 
 ## Status
 
-Resolved on June 25, 2026.
+Contained; the temporary audit exception remains active through July 24, 2026.
 
-Workspace migrated from backend `jsonwebtoken/rust_crypto` to
-`jsonwebtoken/aws_lc_rs`. Support for `HS256` and `RS256` is preserved, and the
-transitive dependency on `rsa 0.9.10` has been removed.
+RusToK uses `jsonwebtoken/aws_lc_rs` for application JWT verification. The root `sea-orm`
+and `sea-orm-migration` workspace dependencies disable default features and explicitly select only
+PostgreSQL, SQLite, Tokio/Rustls and the same data-type integrations that were previously supplied
+by SeaORM defaults. The permanent feature-hygiene verifier rejects MySQL, `sqlx-all`, native-TLS
+and migration CLI drift without reducing the supported ORM type surface.
+
+The locked all-workspace, all-feature, all-target inverse tree for `rsa` is empty. The package
+remains as a lockfile-only optional dependency of the SQLx MySQL path, so `cargo audit` still reports
+RUSTSEC-2023-0071 even though no RusToK build selects or compiles it. The waiver must remain until
+upstream dependency or lockfile behavior removes that package, or a patched RSA release resolves
+the advisory.
 
 ## Verification
 
 ```bash
-cargo tree -i rsa@0.9.10 --workspace
-cargo deny check advisories
-cargo test -p rustok-auth --lib
+node scripts/verify/verify-dependency-feature-hygiene.mjs
+node scripts/verify/verify-advisory-exceptions.mjs
+cargo tree --locked --workspace --all-features --target all -i rsa
+cargo check --locked -p rustok-server --no-default-features
+cargo audit
 ```
 
-The first command should not find any reverse dependencies. The
-`RUSTSEC-2023-0071` exception has been removed from `deny.toml`.
+The inverse-tree command must produce no dependency tree. Do not manually delete package blocks
+from `Cargo.lock`; removal must come from a reproducible dependency or tooling change.
