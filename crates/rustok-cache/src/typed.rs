@@ -1,15 +1,13 @@
-use std::future::Future;
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::future::Future;
+use std::sync::Arc;
 
 use rustok_core::CacheBackend;
 
 use crate::{
-    CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CacheLoadPolicy, CacheLoadSource,
-    CacheService, DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+    clock::unix_time_millis, CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness,
+    CacheLoadPolicy, CacheLoadSource, CacheService, DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
 };
 
 pub const MAX_TYPED_CACHE_KEY_BYTES: usize = crate::service::MAX_CACHE_LOAD_KEY_BYTES;
@@ -53,7 +51,7 @@ impl CacheService {
                 expected_schema_version,
                 policy,
                 max_encoded_bytes: DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
-                now_unix_ms: current_unix_ms(),
+                now_unix_ms: unix_time_millis()?,
             },
             loader,
         )
@@ -217,14 +215,6 @@ fn typed_result<T>(
 
 fn envelope_error_to_core(error: CacheEnvelopeError) -> rustok_core::Error {
     rustok_core::Error::Cache(format!("cache envelope error: {error}"))
-}
-
-fn current_unix_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .min(u128::from(u64::MAX)) as u64
 }
 
 #[cfg(test)]

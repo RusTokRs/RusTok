@@ -4,6 +4,7 @@ mod backend_generation {
 }
 mod bounded_invalidation;
 mod cas_observability;
+mod clock;
 mod durable_invalidation;
 mod durable_invalidation_service;
 mod durable_invalidation_transport;
