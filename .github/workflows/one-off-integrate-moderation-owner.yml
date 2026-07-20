@@ -115,13 +115,43 @@ jobs:
             crates/rustok-moderation/src/migrations/m20260720_000001_create_moderation_core.rs
 
       - name: Verify owner and composed migrator
+        id: verify
+        shell: bash
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/moderation-owner-integration
         run: |
-          cargo check --locked -p rustok-moderation -p rustok-migrations
-          cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
-            --output /tmp/moderation-migration-plan.json
-          test -s /tmp/moderation-migration-plan.json
+          set +e
+          {
+            cargo check --locked -p rustok-moderation -p rustok-migrations
+            check_exit=$?
+            if [ "$check_exit" -eq 0 ]; then
+              cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
+                --output /tmp/moderation-migration-plan.json
+              check_exit=$?
+            fi
+            if [ "$check_exit" -eq 0 ]; then
+              test -s /tmp/moderation-migration-plan.json
+              check_exit=$?
+            fi
+            exit "$check_exit"
+          } > moderation-owner-verify.log 2>&1
+          exit_code=$?
+          set -e
+          tail -n 240 moderation-owner-verify.log
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+      - name: Upload owner integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: moderation-owner-verify-${{ github.run_id }}
+          path: moderation-owner-verify.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Enforce owner verification
+        if: steps.verify.outputs.exit_code != '0'
+        run: exit 1
 
       - name: Verify bounded integration
         shell: bash
