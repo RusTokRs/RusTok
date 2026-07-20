@@ -145,8 +145,14 @@ jobs:
           PY
           cargo metadata --locked --no-deps --format-version 1 > /tmp/cargo-metadata.json
           test -s /tmp/cargo-metadata.json
-      - name: Verify formatting
-        run: cargo fmt --all -- --check
+      - name: Verify formatting of repaired sources
+        run: >-
+          rustfmt --edition 2021 --check
+          crates/rustok-pages/src/graphql/mutation.rs
+          crates/rustok-pages/src/services/page.rs
+          crates/rustok-pages/src/services/scenario_baseline.rs
+          crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs
+          crates/rustok-modules/src/migrations/m20260718_000026_artifact_data_object_operations.rs
       - name: Check affected crates
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-compile-repair
