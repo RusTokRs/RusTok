@@ -1,9 +1,15 @@
 name: Migration Compatibility
 
 on:
-  pull_request_target:
+  pull_request:
     branches:
       - "**"
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
   workflow_dispatch:
     inputs:
       base_ref:
@@ -32,15 +38,15 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_TEST_DEBUG: 0
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  BASE_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.repo.full_name || github.repository }}
-  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
-  BASE_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || inputs.base_ref }}
-  HEAD_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || inputs.head_ref }}
-  RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+  BASE_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || github.repository }}
+  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+  BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
+  HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref }}
+  RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://rustok_migration:rustok_migration@localhost:5432/postgres
 
 jobs:
-  infrastructure-approval:
-    name: Migration harness approval
+  infrastructure-preflight:
+    name: Migration harness preflight
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -53,7 +59,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Checkout head policy source
+      - name: Checkout head policy as untrusted data
         uses: actions/checkout@v7
         with:
           repository: ${{ env.HEAD_REPOSITORY }}
@@ -73,7 +79,7 @@ jobs:
 
       - name: Require approval for migration harness changes
         env:
-          PR_LABELS_JSON: ${{ github.event_name == 'pull_request_target' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
+          PR_LABELS_JSON: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
           EXPLICIT_APPROVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_infrastructure_changes || false }}
         run: >-
           node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-infrastructure-approval.mjs"
@@ -84,7 +90,7 @@ jobs:
 
   migration-plan:
     name: Append-only migration plan
-    needs: infrastructure-approval
+    needs: infrastructure-preflight
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -146,6 +152,17 @@ jobs:
           --base "$GITHUB_WORKSPACE/migration-plans/base.json"
           --head "$GITHUB_WORKSPACE/migration-plans/head.json"
 
+      - name: Select appended migration backfill fixtures
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-backfill-contracts.mjs"
+          --base-plan "$GITHUB_WORKSPACE/migration-plans/base.json"
+          --head-plan "$GITHUB_WORKSPACE/migration-plans/head.json"
+          --contracts "$GITHUB_WORKSPACE/head/docs/migrations/backfill-contracts.json"
+          --output "$GITHUB_WORKSPACE/migration-plans/backfill-fixtures.json"
+
+      - name: Verify selected backfill fixture artifact
+        run: test -s "$GITHUB_WORKSPACE/migration-plans/backfill-fixtures.json"
+
       - name: Upload migration plans
         if: always()
         uses: actions/upload-artifact@v7
@@ -201,6 +218,14 @@ jobs:
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Create bounded migration test role
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host localhost --port 5432 --username postgres --dbname postgres \
+            --set ON_ERROR_STOP=1 \
+            --command "CREATE ROLE rustok_migration LOGIN PASSWORD 'rustok_migration' CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8"
 
       - name: Run fresh migration smoke
         env:
@@ -261,6 +286,23 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Create bounded migration test role
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host localhost --port 5432 --username postgres --dbname postgres \
+            --set ON_ERROR_STOP=1 \
+            --command "CREATE ROLE rustok_migration LOGIN PASSWORD 'rustok_migration' CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8"
+
+      - name: Download selected backfill fixtures
+        uses: actions/download-artifact@v5
+        with:
+          name: migration-plans-${{ github.run_id }}
+          path: migration-backfill
+
+      - name: Verify selected backfill fixtures
+        run: test -s "$GITHUB_WORKSPACE/migration-backfill/backfill-fixtures.json"
+
       - name: Apply base migrations and preserve database
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-base
@@ -288,6 +330,7 @@ jobs:
           RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"
           RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
           RUSTOK_MIGRATION_SMOKE_REUSE_DB: "1"
+          RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES: ${{ github.workspace }}/migration-backfill/backfill-fixtures.json
         run: >-
           cargo test
           --locked

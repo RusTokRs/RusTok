@@ -75,8 +75,11 @@ function verifyNoncePolicy(policy, file, label) {
   if (!policy.includes("script-src-attr 'none'")) {
     failures.push(`${file}: ${label} policy does not block inline script attributes`);
   }
-  if (!policy.includes("style-src-attr 'unsafe-inline'")) {
-    failures.push(`${file}: ${label} policy must isolate temporary inline style attributes`);
+  if (!policy.includes("style-src-attr 'none'")) {
+    failures.push(`${file}: ${label} policy must block inline style attributes`);
+  }
+  if (policy.includes("style-src-attr 'unsafe-inline'")) {
+    failures.push(`${file}: ${label} policy restores inline style attributes`);
   }
   for (const forbidden of ["'unsafe-eval'", " http:"]) {
     if (policy.includes(forbidden)) {
@@ -135,7 +138,7 @@ for (const marker of [
   "CspNonce::generate",
   "request.extensions_mut().insert(nonce.clone())",
   "script-src-attr 'none'",
-  "style-src-attr 'unsafe-inline'",
+  "style-src-attr 'none'",
   "plaintext_websocket_allowed()",
 ]) {
   requireMarker(headers, marker, headersFile);
@@ -271,7 +274,9 @@ for (const marker of [
 }
 
 for (const forbidden of [
-  "script_sample",
+  "script_sample:",
+  "script_sample =",
+  '.get("script-sample")',
   "script-sample:",
   "original_policy:",
   "query_pairs",
@@ -285,9 +290,9 @@ for (const marker of [
   "## Collection Contract",
   "## Telemetry Contract",
   "## Target Policy Inventory",
-  "## Trusted Script Nonce Boundary",
+  "## Trusted Script and Style Element Nonce Boundary",
   "## Connection Profile Boundary",
-  "## Current Migration Debt",
+  "## Current Migration State",
   "## Enforcement Exit Criteria",
   "64 KiB",
   "20 per request",

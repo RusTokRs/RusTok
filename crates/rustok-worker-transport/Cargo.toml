@@ -4,7 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Shared mutually authenticated listener configuration for RusToK workers"
+description = "Shared mutually authenticated listener and runtime policy for RusToK workers"
 
 [dependencies]
+tokio.workspace = true
 tonic = { workspace = true, features = ["tls-ring"] }

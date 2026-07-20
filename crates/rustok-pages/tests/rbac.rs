@@ -104,6 +104,7 @@ async fn manager_cannot_publish_via_create_or_update() {
             manager,
             draft.id,
             UpdatePageInput {
+                expected_version: None,
                 status: Some(rustok_content::entities::node::ContentStatus::Published),
                 ..Default::default()
             },

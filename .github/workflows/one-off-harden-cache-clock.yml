@@ -1,0 +1,142 @@
+name: One-off Harden Cache Clock
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: one-off-harden-cache-clock
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  harden:
+    if: >-
+      github.event.issue.title == '[automation] harden cache system clock' &&
+      github.event.issue.user.login == 'loid345' &&
+      github.event.comment.user.login == 'loid345' &&
+      github.event.comment.body == '/harden-cache-system-clock'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Rebase onto current main
+        run: git pull --rebase origin main
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+      - name: Apply fail-closed cache clock contract
+        run: python3 scripts/maintenance/apply-cache-clock-hardening.py
+      - name: Verify structural cache clock contract
+        run: node scripts/verify/verify-cache-clock-contract.mjs
+      - name: Format bounded Rust sources
+        run: >-
+          rustfmt --edition 2021
+          crates/rustok-cache/src/clock.rs
+          crates/rustok-cache/src/negative.rs
+          crates/rustok-cache/src/typed.rs
+          crates/rustok-cache/src/refresh.rs
+      - name: Reverify structural cache clock contract after formatting
+        run: node scripts/verify/verify-cache-clock-contract.mjs
+      - name: Verify bounded change scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git diff --name-only | sort)
+          printf 'Observed cache clock files:\n%s\n' "${changed[*]}"
+          expected=(
+            .github/workflows/hardening-gates.yml
+            crates/rustok-cache/src/clock.rs
+            crates/rustok-cache/src/lib.rs
+            crates/rustok-cache/src/negative.rs
+            crates/rustok-cache/src/refresh.rs
+            crates/rustok-cache/src/typed.rs
+            scripts/verify/README.md
+            scripts/verify/verify-all.sh
+            scripts/verify/verify-cache-clock-contract.mjs
+          )
+          test "${#changed[@]}" = "${#expected[@]}"
+          for index in "${!expected[@]}"; do
+            test "${changed[$index]}" = "${expected[$index]}"
+          done
+      - name: Check cache crate without Redis
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/cache-clock-hardening
+        run: cargo check --locked -p rustok-cache --no-default-features
+      - name: Test cache crate without Redis
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/cache-clock-hardening
+        run: cargo test --locked -p rustok-cache --no-default-features --lib
+      - name: Remove one-off implementation files
+        run: |
+          rm .github/workflows/one-off-harden-cache-clock.yml
+          rm scripts/maintenance/apply-cache-clock-hardening.py
+      - name: Verify final commit scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            .github/workflows/hardening-gates.yml
+            .github/workflows/one-off-harden-cache-clock.yml
+            crates/rustok-cache/src/clock.rs
+            crates/rustok-cache/src/lib.rs
+            crates/rustok-cache/src/negative.rs
+            crates/rustok-cache/src/refresh.rs
+            crates/rustok-cache/src/typed.rs
+            scripts/maintenance/apply-cache-clock-hardening.py
+            scripts/verify/README.md
+            scripts/verify/verify-all.sh
+            scripts/verify/verify-cache-clock-contract.mjs
+          )
+          test "${#changed[@]}" = "${#expected[@]}"
+          for index in "${!expected[@]}"; do
+            test "${changed[$index]}" = "${expected[$index]}"
+          done
+      - name: Commit, revalidate after rebase, and publish
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/cache-clock-hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(cache): fail closed on invalid system clock"
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              git rebase origin/main
+              node scripts/verify/verify-cache-clock-contract.mjs
+              cargo check --locked -p rustok-cache --no-default-features
+              cargo test --locked -p rustok-cache --no-default-features --lib
+            fi
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+          done
+          exit 1
+      - name: Close cache clock issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh issue close "${{ github.event.issue.number }}"
+          --comment "Cache freshness now uses one fallible Unix clock; pre-epoch time fails closed, negative/typed/SWR paths propagate the error, and locked no-Redis cache tests plus structural gates passed."

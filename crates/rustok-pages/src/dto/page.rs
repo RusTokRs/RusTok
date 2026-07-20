@@ -37,6 +37,8 @@ pub struct PageBodyInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 pub struct UpdatePageInput {
+    #[serde(default)]
+    pub expected_version: Option<i32>,
     pub translations: Option<Vec<PageTranslationInput>>,
     pub template: Option<String>,
     pub body: Option<PageBodyInput>,
@@ -66,6 +68,7 @@ fn default_per_page() -> u64 {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PageResponse {
     pub id: Uuid,
+    pub version: i32,
     pub status: ContentStatus,
     pub requested_locale: Option<String>,
     pub effective_locale: Option<String>,

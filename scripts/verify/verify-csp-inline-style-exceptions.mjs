@@ -123,6 +123,9 @@ if (register.schema_version !== 1) {
   failures.push(`${registerPath}: schema_version must be 1`);
 }
 requireNonEmpty(register.policy?.directive, `${registerPath}: policy.directive`);
+if (register.policy?.directive !== "style-src-attr 'none'") {
+  failures.push(`${registerPath}: policy.directive must enforce style-src-attr 'none'`);
+}
 requireNonEmpty(register.policy?.owner, `${registerPath}: policy.owner`);
 requireNonEmpty(register.policy?.approved_on, `${registerPath}: policy.approved_on`);
 requireNonEmpty(register.policy?.review_by, `${registerPath}: policy.review_by`);
@@ -341,23 +344,21 @@ forbidMarkers("apps/admin/src/features/modules/components/modules_list.rs", [
   "style=progress_width",
 ]);
 
-for (const [file, required] of [
-  [
-    "apps/server/src/middleware/security_headers.rs",
-    ["style-src 'self' {nonce}", "style-src-attr 'unsafe-inline'", "style-src-attr 'none'", "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES", "strict_style_attributes_enabled"],
-  ],
-  [
-    "apps/admin/src/app/security.rs",
-    ["style-src 'self' {nonce}", "style-src-attr 'unsafe-inline'", "style-src-attr 'none'", "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES", "strict_style_attributes_enabled"],
-  ],
+for (const file of [
+  "apps/server/src/middleware/security_headers.rs",
+  "apps/admin/src/app/security.rs",
 ]) {
-  const source = read(file);
-  for (const marker of required) {
-    if (!source.includes(marker)) failures.push(`${file}: missing CSP marker ${marker}`);
-  }
-  if (source.includes("style-src 'self' 'unsafe-inline'")) {
-    failures.push(`${file}: blanket inline style elements must remain forbidden`);
-  }
+  requireMarkers(file, [
+    "style-src 'self' {nonce}",
+    "style-src-attr 'none'",
+  ]);
+  forbidMarkers(file, [
+    "style-src 'self' 'unsafe-inline'",
+    "style-src-attr 'unsafe-inline'",
+    "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES",
+    "strict_style_attributes_enabled",
+    "STRICT_STYLE_TEMPLATE",
+  ]);
 }
 
 if (failures.length > 0) {

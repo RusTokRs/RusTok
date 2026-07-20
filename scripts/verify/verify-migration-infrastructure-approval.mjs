@@ -2,12 +2,22 @@
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
 const APPROVAL_LABEL = "migration-infra-approved";
 const PROTECTED_PATHS = [
   ".github/workflows/migration-compatibility.yml",
+  ".github/workflows/migration-infrastructure-approval.yml",
+  ".github/workflows/repository-ruleset-audit.yml",
+  ".github/workflows/hardening-gates.yml",
+  "docs/ci/repository-ruleset-contract.json",
+  "docs/ci/repository-ruleset-contract.md",
+  "docs/ci/repository-ruleset-admin-payload.json",
+  "docs/ci/main-protection-rollout.md",
+  "docs/ci/ruleset-activation-request.md",
+  "docs/ci/ruleset-activation-state.json",
   "crates/rustok-migrations/src/bin/export_migration_plan.rs",
   "crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs",
   "crates/rustok-migrations/tests/support/mod.rs",
@@ -20,6 +30,13 @@ const PROTECTED_PATHS = [
   "scripts/verify/verify-migration-compatibility-contract.mjs",
   "scripts/verify/verify-migration-infrastructure-approval.mjs",
   "scripts/verify/verify-migration-infra-self-test.mjs",
+  "scripts/verify/verify-repository-ruleset-contract.mjs",
+  "scripts/verify/verify-repository-ruleset-admin-payload.mjs",
+  "scripts/verify/verify-repository-ruleset-self-test.mjs",
+  "scripts/verify/verify-repository-ruleset-structure.mjs",
+  "scripts/verify/verify-main-protection-rollout.mjs",
+  "scripts/verify/verify-ruleset-activation-request.mjs",
+  "scripts/verify/verify-all.sh",
 ];
 
 function parseArguments(argv) {
@@ -61,13 +78,33 @@ function parseLabels(value) {
 
 function fileState(root, relativePath) {
   const file = path.join(root, relativePath);
-  if (!fs.existsSync(file)) return null;
-  return fs.readFileSync(file, "utf8").replaceAll("\r\n", "\n");
+  const stats = fs.lstatSync(file, { throwIfNoEntry: false });
+  if (!stats) return { kind: "missing" };
+  if (stats.isSymbolicLink()) {
+    return { kind: "symlink", target: fs.readlinkSync(file) };
+  }
+  if (!stats.isFile()) {
+    return { kind: "non-regular" };
+  }
+  return {
+    kind: "file",
+    content: fs.readFileSync(file, "utf8").replaceAll("\r\n", "\n"),
+  };
+}
+
+function isUnsafeFileState(state) {
+  return state.kind === "symlink" || state.kind === "non-regular";
+}
+
+function unsafeProtectedPaths(root) {
+  return PROTECTED_PATHS.filter((relativePath) => isUnsafeFileState(fileState(root, relativePath)));
 }
 
 function changedProtectedPaths(baseRoot, headRoot) {
   return PROTECTED_PATHS.filter(
-    (relativePath) => fileState(baseRoot, relativePath) !== fileState(headRoot, relativePath),
+    (relativePath) =>
+      JSON.stringify(fileState(baseRoot, relativePath)) !==
+      JSON.stringify(fileState(headRoot, relativePath)),
   );
 }
 
@@ -96,6 +133,27 @@ function runSelfTest() {
     approvalDecision([PROTECTED_PATHS[2]], new Set(), true),
     { required: true, approved: true },
   );
+  assert.equal(isUnsafeFileState({ kind: "file", content: "policy" }), false);
+  assert.equal(isUnsafeFileState({ kind: "missing" }), false);
+  assert.equal(isUnsafeFileState({ kind: "symlink", target: "../base/policy" }), true);
+  assert.equal(isUnsafeFileState({ kind: "non-regular" }), true);
+
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rustok-migration-approval-"));
+  try {
+    fs.writeFileSync(path.join(fixtureRoot, "target.txt"), "policy");
+    fs.symlinkSync("target.txt", path.join(fixtureRoot, "link.txt"));
+    fs.symlinkSync("missing.txt", path.join(fixtureRoot, "dangling.txt"));
+    assert.deepEqual(fileState(fixtureRoot, "link.txt"), {
+      kind: "symlink",
+      target: "target.txt",
+    });
+    assert.deepEqual(fileState(fixtureRoot, "dangling.txt"), {
+      kind: "symlink",
+      target: "missing.txt",
+    });
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
   console.log("✔ migration infrastructure approval self-test passed");
 }
 
@@ -111,10 +169,21 @@ function main() {
     );
   }
 
-  const changedPaths = changedProtectedPaths(
-    path.resolve(options.baseDir),
-    path.resolve(options.headDir),
-  );
+  const baseRoot = path.resolve(options.baseDir);
+  const headRoot = path.resolve(options.headDir);
+  const unsafeBasePaths = unsafeProtectedPaths(baseRoot);
+  const unsafeHeadPaths = unsafeProtectedPaths(headRoot);
+  if (unsafeBasePaths.length > 0 || unsafeHeadPaths.length > 0) {
+    const details = [
+      ...unsafeBasePaths.map((relativePath) => `base:${relativePath}`),
+      ...unsafeHeadPaths.map((relativePath) => `head:${relativePath}`),
+    ];
+    throw new Error(
+      `protected migration infrastructure must be regular files, refusing symlink or non-regular path(s): ${details.join(", ")}`,
+    );
+  }
+
+  const changedPaths = changedProtectedPaths(baseRoot, headRoot);
   const decision = approvalDecision(
     changedPaths,
     parseLabels(options.labelsJson),

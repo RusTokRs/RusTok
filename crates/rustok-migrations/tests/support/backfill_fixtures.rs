@@ -2,6 +2,7 @@ use sea_orm_migration::sea_orm::{
     ConnectionTrait, DatabaseConnection, DbBackend, Statement,
 };
 use serde_json::Value;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fs;
 
@@ -49,8 +50,8 @@ pub async fn assert_results(
     fixtures: &[BackfillFixture],
 ) -> Result<(), Box<dyn Error>> {
     for fixture in fixtures {
-        let row = db
-            .query_one(Statement::from_string(
+        let rows = db
+            .query_all(Statement::from_string(
                 DbBackend::Postgres,
                 fixture.assertion_sql.clone(),
             ))
@@ -60,14 +61,16 @@ pub async fn assert_results(
                     "backfill fixture {} assertion for migration {} failed: {error}",
                     fixture.id, fixture.migration
                 )
-            })?
-            .ok_or_else(|| {
-                format!(
-                    "backfill fixture {} assertion returned no row",
-                    fixture.id
-                )
             })?;
-        let passed: bool = row.try_get("", "passed").map_err(|error| {
+        if rows.len() != 1 {
+            return Err(format!(
+                "backfill fixture {} assertion must return exactly one row, got {}",
+                fixture.id,
+                rows.len()
+            )
+            .into());
+        }
+        let passed: bool = rows[0].try_get("", "passed").map_err(|error| {
             format!(
                 "backfill fixture {} assertion must return boolean column `passed`: {error}",
                 fixture.id
@@ -95,14 +98,29 @@ fn parse_fixture_document(content: &str) -> Result<Vec<BackfillFixture>, String>
         .and_then(Value::as_array)
         .ok_or_else(|| "fixtures must be an array".to_string())?;
 
+    let mut ids = HashSet::new();
+    let mut migrations = HashSet::new();
     let mut parsed = Vec::with_capacity(fixtures.len());
     for (index, fixture) in fixtures.iter().enumerate() {
-        parsed.push(BackfillFixture {
+        let parsed_fixture = BackfillFixture {
             id: required_string(fixture, index, "id")?,
             migration: required_string(fixture, index, "migration")?,
             setup_sql: required_string(fixture, index, "setup_sql")?,
             assertion_sql: required_string(fixture, index, "assertion_sql")?,
-        });
+        };
+        if !ids.insert(parsed_fixture.id.clone()) {
+            return Err(format!(
+                "fixtures[{index}].id duplicates {}",
+                parsed_fixture.id
+            ));
+        }
+        if !migrations.insert(parsed_fixture.migration.clone()) {
+            return Err(format!(
+                "fixtures[{index}].migration duplicates {}",
+                parsed_fixture.migration
+            ));
+        }
+        parsed.push(parsed_fixture);
     }
     Ok(parsed)
 }
@@ -144,5 +162,30 @@ mod tests {
         )
         .expect_err("missing assertion_sql must fail");
         assert!(error.contains("assertion_sql"));
+    }
+
+    #[test]
+    fn fixture_document_rejects_duplicate_migrations() {
+        let error = parse_fixture_document(
+            r#"{
+                "schema_version": 1,
+                "fixtures": [
+                    {
+                        "id": "first",
+                        "migration": "m1",
+                        "setup_sql": "SELECT 1",
+                        "assertion_sql": "SELECT true AS passed"
+                    },
+                    {
+                        "id": "second",
+                        "migration": "m1",
+                        "setup_sql": "SELECT 1",
+                        "assertion_sql": "SELECT true AS passed"
+                    }
+                ]
+            }"#,
+        )
+        .expect_err("duplicate migrations must fail");
+        assert!(error.contains("migration duplicates m1"));
     }
 }

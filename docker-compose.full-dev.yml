@@ -1,17 +1,36 @@
-# Docker Compose configuration for full development stack
+# Docker Compose configuration for the full development stack.
 # Usage: docker compose -f docker-compose.yml -f docker-compose.full-dev.yml --profile full-dev up -d --build
 #
-# This configuration extends docker-compose.yml and adds:
-# - RusToK server (Axum backend)
-# - Next.js admin panel
-# - Leptos admin panel
-# - Next.js storefront
-# - Leptos storefront
-# - Nginx reverse proxy (optional)
+# The Leptos storefront is an SSR library embedded in `rustok-server` and is
+# available on port 5150. It is intentionally not represented as a separate
+# container or a nonexistent apps/storefront/Dockerfile.
 
 services:
   # ============================================================================
-  # Backend Server (Axum + Rust)
+  # One-shot schema migration. The CLI intentionally supports only up/status.
+  # ============================================================================
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+      target: migration
+    container_name: rustok_migrate
+    environment:
+      DATABASE_URL: postgres://rustok:rustok@db:5432/rustok_dev
+    depends_on:
+      db-bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - cargo_cache:/usr/local/cargo/registry
+    restart: "no"
+    profiles:
+      - full-dev
+      - server
+      - admin
+      - storefront
+
+  # ============================================================================
+  # Backend Server (Axum + embedded Leptos admin/storefront)
   # ============================================================================
   server:
     build:
@@ -21,28 +40,33 @@ services:
     container_name: rustok_server
     environment:
       DATABASE_URL: postgres://rustok:rustok@db:5432/rustok_dev
+      RUSTOK_ENV: development
       RUST_LOG: debug
-      SERVER_HOST: 0.0.0.0
-      SERVER_PORT: 5150
-      JWT_SECRET: dev_secret_change_in_production
-      # Add more env vars as needed
+      SUPERADMIN_EMAIL: admin@localhost.invalid
+      SUPERADMIN_PASSWORD: DevelopmentOnly-2026!ChangeMe
+      SUPERADMIN_TENANT_SLUG: default
+      SUPERADMIN_TENANT_NAME: Default
     ports:
       - "5150:5150"
     volumes:
-      - ./apps/server:/app/apps/server
-      - ./crates:/app/crates
+      - ./apps/server:/workspace/apps/server
+      - ./crates:/workspace/crates
+      - ./modules.toml:/workspace/modules.toml:ro
       - cargo_cache:/usr/local/cargo/registry
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5150/api/health || exit 1"]
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:5150/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 30s
     profiles:
       - full-dev
       - server
+      - admin
+      - storefront
 
   # ============================================================================
   # Next.js Admin Panel
@@ -58,7 +82,6 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:5150
       NEXT_PUBLIC_GRAPHQL_ENDPOINT: /api/graphql
       NEXT_PUBLIC_AUTH_BASE_URL: /api/auth
-      # Proxy API requests to server
       API_PROXY_TARGET: http://server:5150
     ports:
       - "3000:3000"
@@ -70,7 +93,7 @@ services:
       server:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:3000/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -79,7 +102,7 @@ services:
       - admin
 
   # ============================================================================
-  # Leptos Admin Panel (CSR / WASM)
+  # Standalone Leptos Admin (development CSR host only)
   # ============================================================================
   admin-leptos:
     build:
@@ -94,23 +117,27 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - ./apps/admin:/app/apps/admin
-      - ./crates:/app/crates
+      - ./apps/admin:/workspace/apps/admin
+      - ./crates:/workspace/crates
+      - ./Cargo.toml:/workspace/Cargo.toml:ro
+      - ./Cargo.lock:/workspace/Cargo.lock:ro
+      - admin_node_modules:/workspace/apps/admin/node_modules
       - cargo_cache:/usr/local/cargo/registry
     depends_on:
       server:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3001/ || exit 1"]
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:3001/ || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 6
+      start_period: 30s
     profiles:
       - full-dev
       - admin
 
   # ============================================================================
-  # Next.js Storefront
+  # Next.js Storefront. The Rust/Leptos storefront is served by `server`.
   # ============================================================================
   storefront-next:
     build:
@@ -133,7 +160,7 @@ services:
       server:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3100/ || exit 1"]
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:3100/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -141,57 +168,12 @@ services:
       - full-dev
       - storefront
 
-  # ============================================================================
-  # Leptos Storefront (SSR)
-  # ============================================================================
-  storefront-leptos:
-    build:
-      context: .
-      dockerfile: apps/storefront/Dockerfile
-      target: development
-    container_name: rustok_storefront_leptos
-    environment:
-      RUSTOK_API_URL: http://localhost:5150
-      RUSTOK_GRAPHQL_ENDPOINT: /api/graphql
-    ports:
-      - "3101:3101"
-    volumes:
-      - ./apps/storefront:/app/apps/storefront
-      - ./crates:/app/crates
-      - cargo_cache:/usr/local/cargo/registry
-    depends_on:
-      server:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3101/ || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    profiles:
-      - full-dev
-      - storefront
-
-  # ============================================================================
-  # Nginx Reverse Proxy (Optional)
-  # Uncomment to use unified gateway on port 80
-  # ============================================================================
-  # nginx:
-  #   image: nginx:alpine
-  #   container_name: rustok_gateway
-  #   ports:
-  #     - "80:80"
-  #   volumes:
-  #     - ./config/nginx/dev.conf:/etc/nginx/nginx.conf:ro
-  #   depends_on:
-  #     - server
-  #     - admin-next
-  #     - admin-leptos
-  #     - storefront-next
-  #     - storefront-leptos
-  #   profiles:
-  #     - full-dev
-  #     - gateway
+  # Optional reverse proxy can depend on server, admin-next, admin-leptos and
+  # storefront-next. Do not add a standalone Leptos storefront service: the
+  # supported Rust storefront host is the server process.
 
 volumes:
   cargo_cache:
+    driver: local
+  admin_node_modules:
     driver: local

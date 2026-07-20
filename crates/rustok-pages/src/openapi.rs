@@ -4,6 +4,7 @@ use utoipa::OpenApi;
 #[openapi(
     paths(
         crate::controllers::get_page,
+        crate::controllers::get_page_artifact,
         crate::controllers::create_page,
         crate::controllers::update_page,
         crate::controllers::delete_page,
@@ -21,6 +22,7 @@ use utoipa::OpenApi;
             crate::BlockResponse,
             crate::PageResponse,
             crate::controllers::GetPageParams,
+            crate::controllers::GetPageArtifactParams,
             crate::controllers::ReorderBlocksInput,
         )
     ),

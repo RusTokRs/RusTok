@@ -127,13 +127,21 @@ pub struct RenderedPage {
 
 impl RenderedPage {
     pub fn document_html(&self) -> String {
-        format!(
-            "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<style>{}</style></head><body>{}</body></html>",
-            self.head.render_html(),
-            self.css,
-            self.html,
-        )
+        compose_document_html(&self.head, &self.css, &self.html)
     }
+}
+
+/// Compose one complete, standalone HTML document from a typed page head, stylesheet and body.
+///
+/// Keeping this function in the renderer core gives all adapters the same deterministic document
+/// envelope instead of rebuilding it in Leptos, Dioxus or transport code.
+pub fn compose_document_html(head: &PageHead, css: &str, body_html: &str) -> String {
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<style>{}</style></head><body>{}</body></html>",
+        head.render_html(),
+        css,
+        body_html,
+    )
 }
 
 pub fn render_page(
@@ -220,7 +228,7 @@ fn render_component(
 ) {
     let component_id = component.id.as_deref();
     let tag = safe_tag(component);
-    let void_tag = matches!(tag, "img" | "input" | "hr" | "br");
+    let void_tag = matches!(tag, "img" | "input" | "hr" | "br" | "source");
 
     output.push('<');
     output.push_str(tag);
@@ -240,37 +248,43 @@ fn render_component(
     }
 
     for (name, value) in &component.attributes {
-        if !safe_attribute_name(name) || matches!(name.as_str(), "style" | "srcdoc") {
+        let name = name.to_ascii_lowercase();
+        if !safe_attribute_name(&name)
+            || matches!(
+                name.as_str(),
+                "style" | "srcdoc" | "srcset" | "xlink:href" | "ping" | "background"
+            )
+        {
             continue;
         }
         if let Value::Bool(enabled) = value {
             if *enabled {
                 output.push(' ');
-                output.push_str(name);
+                output.push_str(&name);
             }
             continue;
         }
         let Some(value) = scalar_string(value) else {
             continue;
         };
-        if matches!(
-            name.as_str(),
-            "href" | "src" | "poster" | "action" | "formaction"
-        ) && !url_allowed(&value, policy)
-        {
-            continue;
+        if let Some(kind) = UrlAttributeKind::for_attribute(&name) {
+            if !url_allowed(&value, kind, policy) {
+                continue;
+            }
         }
-        write_attribute(output, name, &value);
+        write_attribute(output, &name, &value);
     }
 
-    if let Some(style) = component.style.as_ref().and_then(Value::as_object) {
-        let declarations = style
-            .iter()
-            .filter_map(|(name, value)| safe_style(name, value))
-            .collect::<Vec<_>>()
-            .join(";");
-        if !declarations.is_empty() {
-            write_attribute(output, "style", &declarations);
+    if !policy.emit_style_hooks {
+        if let Some(style) = component.style.as_ref().and_then(Value::as_object) {
+            let declarations = style
+                .iter()
+                .filter_map(|(name, value)| safe_style(name, value))
+                .collect::<Vec<_>>()
+                .join(";");
+            if !declarations.is_empty() {
+                write_attribute(output, "style", &declarations);
+            }
         }
     }
 
@@ -330,7 +344,36 @@ fn render_project_styles(document: &ProjectDocument, page: &ProjectPage) -> Stri
             StyleRuleScope::Media { .. } => {}
         }
     }
+    if let Some(root) = page.component.as_ref() {
+        append_component_style_rules(root, &mut css);
+    }
     css
+}
+
+fn append_component_style_rules(node: &ComponentNode, css: &mut String) {
+    let ComponentNode::Object(component) = node else {
+        return;
+    };
+    if let (Some(component_id), Some(style)) = (
+        component.id.as_deref(),
+        component.style.as_ref().and_then(Value::as_object),
+    ) {
+        let declarations = style
+            .iter()
+            .filter_map(|(name, value)| safe_style(name, value))
+            .collect::<Vec<_>>()
+            .join(";");
+        if !declarations.is_empty() {
+            let selector = format!(
+                "[data-fly-style-id=\"{}\"]",
+                escape_css_attribute(component_id)
+            );
+            push_rule(css, &selector, &declarations);
+        }
+    }
+    for child in component.children() {
+        append_component_style_rules(child, css);
+    }
 }
 
 fn push_rule(css: &mut String, selector: &str, declarations: &str) {
@@ -442,22 +485,85 @@ fn scalar_string(value: &Value) -> Option<String> {
     }
 }
 
-fn url_allowed(value: &str, policy: &RenderPolicy) -> bool {
-    let normalized = value.trim().to_ascii_lowercase();
-    (policy.allow_relative_urls
-        && (normalized.starts_with('/')
-            || normalized.starts_with("./")
-            || normalized.starts_with("../")))
-        || (policy.allow_hash_urls && normalized.starts_with('#'))
-        || (policy.allow_http && normalized.starts_with("http://"))
-        || (policy.allow_https && normalized.starts_with("https://"))
-        || (policy.allow_mailto && normalized.starts_with("mailto:"))
-        || (policy.allow_tel && normalized.starts_with("tel:"))
-        || (policy.allow_data_images && normalized.starts_with("data:image/"))
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UrlAttributeKind {
+    Navigation,
+    Resource,
+    FormAction,
+}
+
+impl UrlAttributeKind {
+    fn for_attribute(name: &str) -> Option<Self> {
+        match name {
+            "href" => Some(Self::Navigation),
+            "src" | "poster" => Some(Self::Resource),
+            "action" | "formaction" => Some(Self::FormAction),
+            _ => None,
+        }
+    }
+}
+
+fn url_allowed(value: &str, kind: UrlAttributeKind, policy: &RenderPolicy) -> bool {
+    let Some(value) = normalized_url_candidate(value) else {
+        return false;
+    };
+    let normalized = value.to_ascii_lowercase();
+
+    match kind {
+        UrlAttributeKind::Navigation => {
+            (policy.allow_hash_urls && normalized.starts_with('#'))
+                || (policy.allow_relative_urls && relative_url_allowed(value))
+                || (policy.allow_http && normalized.starts_with("http://"))
+                || (policy.allow_https && normalized.starts_with("https://"))
+                || (policy.allow_mailto && normalized.starts_with("mailto:"))
+                || (policy.allow_tel && normalized.starts_with("tel:"))
+        }
+        UrlAttributeKind::Resource => {
+            (policy.allow_relative_urls && relative_url_allowed(value))
+                || (policy.allow_http && normalized.starts_with("http://"))
+                || (policy.allow_https && normalized.starts_with("https://"))
+                || (policy.allow_data_images && safe_data_image(&normalized))
+        }
+        UrlAttributeKind::FormAction => policy.allow_relative_urls && relative_url_allowed(value),
+    }
+}
+
+fn normalized_url_candidate(value: &str) -> Option<&str> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > 2048
+        || value.starts_with("//")
+        || value.contains('\\')
+        || value.chars().any(char::is_control)
+    {
+        return None;
+    }
+    Some(value)
+}
+
+fn relative_url_allowed(value: &str) -> bool {
+    if value.starts_with('#') {
+        return false;
+    }
+    let scheme_boundary = value.find(['/', '?', '#']).unwrap_or(value.len());
+    !value[..scheme_boundary].contains(':')
+}
+
+fn safe_data_image(normalized: &str) -> bool {
+    [
+        "data:image/png;base64,",
+        "data:image/jpeg;base64,",
+        "data:image/gif;base64,",
+        "data:image/webp;base64,",
+        "data:image/avif;base64,",
+    ]
+    .iter()
+    .any(|prefix| normalized.starts_with(prefix))
 }
 
 fn safe_style(name: &str, value: &Value) -> Option<String> {
     if name.is_empty()
+        || name.starts_with("--")
         || !name
             .chars()
             .all(|character| character.is_ascii_alphabetic() || character == '-')
@@ -466,12 +572,26 @@ fn safe_style(name: &str, value: &Value) -> Option<String> {
     }
     let value = scalar_string(value)?;
     let normalized = value.to_ascii_lowercase();
-    if normalized.contains("expression(")
-        || normalized.contains("javascript:")
-        || normalized.contains("url(")
+    let compact = normalized
+        .chars()
+        .filter(|character| !character.is_ascii_whitespace())
+        .collect::<String>();
+    if compact.contains("expression(")
+        || compact.contains("javascript:")
+        || compact.contains("url(")
+        || compact.contains("@import")
+        || compact.contains("behavior:")
+        || compact.contains("-moz-binding")
+        || compact.contains("data:")
+        || value.contains('\\')
         || value.contains('<')
         || value.contains('>')
         || value.contains(';')
+        || value.contains('{')
+        || value.contains('}')
+        || value.contains("/*")
+        || value.contains("*/")
+        || value.chars().any(char::is_control)
     {
         return None;
     }
@@ -487,6 +607,8 @@ fn safe_media_query(query: &str) -> bool {
         && !normalized.contains(';')
         && !normalized.contains("url(")
         && !normalized.contains("expression(")
+        && !normalized.contains("@import")
+        && !normalized.contains('\\')
         && normalized
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || "() :.-_%/,".contains(character))
@@ -574,6 +696,7 @@ mod tests {
                     "components": [{
                         "id": "hero",
                         "type": "section",
+                        "style": { "margin-top": "12px" },
                         "attributes": {
                             "onclick": "alert(1)",
                             "data-safe": "yes"
@@ -636,6 +759,138 @@ mod tests {
         assert!(!rendered.html.contains("data-fly-component-id"));
         assert!(rendered.html.contains("data-fly-style-id=\"hero\""));
         assert!(rendered.css.contains("data-fly-style-id"));
+        assert!(rendered.css.contains("margin-top:12px"));
+        assert!(!rendered.html.contains(" style=\""));
+    }
+
+    #[test]
+    fn renderer_normalizes_attribute_names_before_policy_checks() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "link",
+                        "type": "link",
+                        "content": "Open",
+                        "attributes": {
+                            "HREF": "javascript:alert(1)",
+                            "STYLE": "color:red",
+                            "DATA-SAFE": "yes"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("render page");
+
+        assert!(
+            rendered.html.contains(r#"data-safe="yes""#),
+            "{}",
+            rendered.html
+        );
+        assert!(!rendered.html.contains("DATA-SAFE"), "{}", rendered.html);
+        assert!(!rendered.html.contains("javascript:"), "{}", rendered.html);
+        assert!(!rendered.html.contains("STYLE="), "{}", rendered.html);
+        assert!(!rendered.html.contains(" style="), "{}", rendered.html);
+    }
+
+    #[test]
+    fn renderer_emits_source_as_void_element() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "picture",
+                        "type": "media",
+                        "tagName": "picture",
+                        "components": [{
+                            "id": "source",
+                            "type": "source",
+                            "tagName": "source",
+                            "attributes": {
+                                "src": "https://cdn.example.com/hero.webp",
+                                "type": "image/webp"
+                            }
+                        }]
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("render page");
+
+        assert!(rendered.html.contains("<source"), "{}", rendered.html);
+        assert!(!rendered.html.contains("</source>"), "{}", rendered.html);
+    }
+
+    #[test]
+    fn url_policy_distinguishes_navigation_resources_and_forms() {
+        let policy = RenderPolicy::default();
+        assert!(url_allowed(
+            "pricing?ref=home",
+            UrlAttributeKind::Navigation,
+            &policy
+        ));
+        assert!(url_allowed(
+            "/images/hero.webp",
+            UrlAttributeKind::Resource,
+            &policy
+        ));
+        assert!(url_allowed(
+            "data:image/png;base64,AAAA",
+            UrlAttributeKind::Resource,
+            &policy
+        ));
+        assert!(!url_allowed(
+            "data:image/svg+xml,<svg/>",
+            UrlAttributeKind::Resource,
+            &policy
+        ));
+        assert!(!url_allowed(
+            "https://example.com/submit",
+            UrlAttributeKind::FormAction,
+            &policy
+        ));
+        assert!(url_allowed(
+            "/contact",
+            UrlAttributeKind::FormAction,
+            &policy
+        ));
+    }
+
+    #[test]
+    fn url_policy_rejects_scheme_relative_controls_and_backslashes() {
+        let policy = RenderPolicy::default();
+        for value in [
+            "//evil.example/x",
+            "javascript:alert(1)",
+            "\\evil.example",
+            "a\n/b",
+        ] {
+            assert!(!url_allowed(value, UrlAttributeKind::Navigation, &policy));
+        }
+    }
+
+    #[test]
+    fn style_policy_rejects_resource_loading_and_custom_properties() {
+        assert!(safe_style("color", &Value::String("red".to_string())).is_some());
+        for (name, value) in [
+            ("--payload", "red"),
+            ("background", "u r l(https://evil.example/x)"),
+            ("color", "\\75rl(https://evil.example/x)"),
+            ("behavior", "url(x.htc)"),
+        ] {
+            assert!(safe_style(name, &Value::String(value.to_string())).is_none());
+        }
     }
 
     #[test]

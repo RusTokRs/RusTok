@@ -15,7 +15,7 @@ async fn main() {
         extract::Path,
         http::{header::AUTHORIZATION, HeaderMap, StatusCode},
         middleware,
-        routing::post,
+        routing::{get, post},
         Json, Router,
     };
     use leptos::logging::log;
@@ -156,6 +156,7 @@ async fn main() {
     let options = configuration.leptos_options;
     let routes = generate_route_list(App);
     let application = Router::new()
+        .route("/health", get(|| async { StatusCode::OK }))
         .route(
             "/api/admin/pages/{page_id}/builder/intents",
             post(page_builder_intent),

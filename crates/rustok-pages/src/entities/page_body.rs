@@ -22,11 +22,19 @@ pub enum Relation {
         to = "super::page::Column::Id"
     )]
     Page,
+    #[sea_orm(has_one = "super::page_published_landing_artifact::Entity")]
+    PublishedLandingArtifact,
 }
 
 impl Related<super::page::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Page.def()
+    }
+}
+
+impl Related<super::page_published_landing_artifact::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PublishedLandingArtifact.def()
     }
 }
 

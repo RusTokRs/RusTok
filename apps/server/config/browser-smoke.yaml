@@ -1,69 +1,82 @@
 logger:
   enable: true
   pretty_backtrace: true
-  level: debug
+  level: info
   format: compact
 
 server:
-  binding: localhost
-  host: http://localhost
+  binding: 127.0.0.1
+  host: http://127.0.0.1
   port: 5150
 
 database:
-  uri: postgres://rustok:rustok@localhost:5432/rustok_dev
-  enable_logging: true
-  connect_timeout: 500
-  idle_timeout: 500
+  uri: postgres://rustok_browser:rustok_browser_password@127.0.0.1:5432/rustok_browser_smoke
+  enable_logging: false
+  connect_timeout: 5000
+  idle_timeout: 30000
   min_connections: 1
-  max_connections: 30
+  max_connections: 5
   auto_migrate: false
 
 auth:
   jwt:
-    secret: dev-secret-change-in-production-min-32-chars!!
-    expiration: 604800
+    secret: browser-smoke-only-jwt-secret-with-sufficient-length-and-symbols-9Qv!2Lm#7Rx
+    expiration: 3600
 
 settings:
   auth:
-    refresh_expiration: 1209600
-    issuer: rustok
-    audience: rustok-admin
+    refresh_expiration: 7200
+    issuer: rustok-browser-smoke
+    audience: rustok-browser-smoke-admin
   rustok:
     tenant:
+      profile: multi_tenant
       enabled: true
       resolution: header
-      header_name: X-Tenant-ID
-      default_id: 00000000-0000-0000-0000-000000000001
+      header_name: x-tenant-slug
+      fallback_mode: disabled
+    build:
+      enabled: false
     search:
-      enabled: true
-      driver: meilisearch
-      url: http://localhost:7700
-      api_key: masterKey
-      index_prefix: rustok_dev_
+      enabled: false
+      driver: memory
+      url: ""
+      index_prefix: browser_smoke
     features:
-      registration_enabled: true
+      registration_enabled: false
       email_verification: false
       multi_tenant: true
-      search_indexing: true
+      search_indexing: false
       oauth_enabled: false
     rate_limit:
-      enabled: true
+      enabled: false
       backend: memory
-      redis_key_prefix: rate-limit:v1
-      trusted_auth_dimensions: true
-      requests_per_minute: 60
-      burst: 10
-      auth_requests_per_minute: 20
-      auth_burst: 5
-      oauth_requests_per_minute: 30
-      oauth_burst: 5
+      trusted_auth_dimensions: false
     events:
       transport: memory
       relay_target: memory
-      allow_relay_target_fallback: true
-      relay_interval_ms: 1000
-      channel_capacity: 256
+      allow_relay_target_fallback: false
+      channel_capacity: 128
+      backpressure:
+        enabled: true
+        max_queue_depth: 128
+        warning_threshold: 0.75
+        critical_threshold: 0.9
+    email:
+      enabled: false
+      provider: none
+    registry:
+      remote_executor:
+        enabled: false
     runtime:
+      host_mode: full
       background_workers:
         workflow_cron_enabled: false
         seo_bulk_enabled: false
+      guardrails:
+        rollout: enforce
+      request_trust:
+        forwarded_headers_mode: ignore
+    readiness:
+      outbox_max_pending_lag_seconds: 300
+      search_max_lag_seconds: 300

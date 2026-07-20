@@ -16,9 +16,14 @@ pub mod runtime_scenario_snapshot;
 pub mod runtime_telemetry;
 #[cfg(feature = "server")]
 pub mod service;
+pub mod static_landing;
 pub mod transport;
 
-pub use fly::{RuntimeContextExamplePolicy, RuntimeContextScenario};
+pub use fly::{
+    ComponentRegistryManifest, LandingRenderer, LandingRendererManifest, LandingSectionSnapshot,
+    PageHead, RuntimeContextExamplePolicy, RuntimeContextScenario, StaticLandingArtifact,
+    StaticLandingBuildIdentity, StaticLandingPage,
+};
 
 #[cfg(feature = "server")]
 use async_trait::async_trait;

@@ -5,6 +5,7 @@ use uuid::Uuid;
 #[derive(Clone, Debug, SimpleObject)]
 pub struct GqlPage {
     pub id: Uuid,
+    pub version: i32,
     pub status: String,
     pub requested_locale: Option<String>,
     pub effective_locale: Option<String>,
@@ -68,6 +69,7 @@ pub struct CreateGqlPageInput {
 
 #[derive(InputObject)]
 pub struct UpdateGqlPageInput {
+    pub expected_version: Option<i32>,
     pub translations: Option<Vec<GqlPageTranslationInput>>,
     pub template: Option<String>,
     pub body: Option<GqlPageBodyInput>,
@@ -144,6 +146,7 @@ impl From<crate::PageResponse> for GqlPage {
     fn from(r: crate::PageResponse) -> Self {
         Self {
             id: r.id,
+            version: r.version,
             status: content_status_str(&r.status),
             requested_locale: r.requested_locale,
             effective_locale: r.effective_locale,

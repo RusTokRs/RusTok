@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rustok_api::{Action, Resource};
-use rustok_core::{SecurityContext, CONTENT_FORMAT_GRAPESJS_FORMAT};
+use rustok_core::{SecurityContext, CONTENT_FORMAT_GRAPESJS};
 use rustok_page_builder::runtime_scenario_release::{
     evaluate_page_builder_runtime_scenario_release, PageBuilderRuntimeScenarioReleaseRequest,
     RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleasePolicy,
@@ -331,7 +331,7 @@ impl PageBuilderScenarioBaselineService {
         };
         let body = page_body::Entity::find()
             .filter(page_body::Column::PageId.eq(page_id))
-            .filter(page_body::Column::Format.eq(CONTENT_FORMAT_GRAPESJS_FORMAT))
+            .filter(page_body::Column::Format.eq(CONTENT_FORMAT_GRAPESJS))
             .order_by_desc(page_body::Column::UpdatedAt)
             .one(&self.db)
             .await?
@@ -363,10 +363,63 @@ impl PageBuilderScenarioBaselineService {
     }
 
     pub async fn ensure_publish_allowed(&self, tenant_id: Uuid, page_id: Uuid) -> PagesResult<()> {
-        match self.evaluate_publish(tenant_id, page_id).await? {
+        let Some(record) = self.load_record_unchecked(tenant_id, page_id).await? else {
+            return Ok(());
+        };
+        let bodies = page_body::Entity::find()
+            .filter(page_body::Column::PageId.eq(page_id))
+            .filter(page_body::Column::Format.eq(CONTENT_FORMAT_GRAPESJS))
+            .all(&self.db)
+            .await?;
+        if bodies.is_empty() {
+            return Err(PagesError::validation(
+                "Page Builder scenario baseline exists but no grapesjs body is available",
+            ));
+        }
+        for body in bodies {
+            let project_data = serde_json::from_str(&body.content).map_err(|error| {
+                PagesError::validation(format!(
+                    "Stored Page Builder project for locale `{}` is not valid JSON: {error}",
+                    body.locale
+                ))
+            })?;
+            let evaluation =
+                self.evaluate_candidate_with_baseline(project_data, record.baseline.clone())?;
+            ensure_evaluation_allowed(evaluation)?;
+        }
+        Ok(())
+    }
+
+    pub async fn ensure_candidate_allowed(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+        project_data: Value,
+    ) -> PagesResult<()> {
+        match self
+            .evaluate_candidate(tenant_id, page_id, project_data)
+            .await?
+        {
             Some(evaluation) => ensure_evaluation_allowed(evaluation),
             None => Ok(()),
         }
+    }
+
+    pub async fn ensure_candidates_allowed(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+        project_data: Vec<Value>,
+    ) -> PagesResult<()> {
+        let Some(record) = self.load_record_unchecked(tenant_id, page_id).await? else {
+            return Ok(());
+        };
+        for candidate in project_data {
+            let evaluation =
+                self.evaluate_candidate_with_baseline(candidate, record.baseline.clone())?;
+            ensure_evaluation_allowed(evaluation)?;
+        }
+        Ok(())
     }
 
     pub async fn ensure_published_candidate_allowed(

@@ -1,0 +1,98 @@
+name: Repository Ruleset Contract
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: repository-ruleset-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  repository-ruleset-contract:
+    name: Repository ruleset contract evaluator
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout base-owned ruleset policy
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.sha }}
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+
+      - name: Verify full repository ruleset contract suite
+        run: node "$GITHUB_WORKSPACE/base/scripts/verify/verify-repository-ruleset-self-test.mjs"
+
+      - name: Audit active main branch rules
+        id: audit
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-repository-ruleset-contract.mjs" \
+            --contract "$GITHUB_WORKSPACE/base/docs/ci/repository-ruleset-contract.json" \
+            --repository "$GITHUB_REPOSITORY" \
+            --branch main
+          exit_code=$?
+          set -e
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+      - name: Publish repository ruleset check on PR head
+        if: github.event_name == 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EXIT_CODE" == "0" ]]; then
+            conclusion=success
+            title="Repository ruleset contract passed"
+            summary="Active main branch rules match the checked repository ruleset contract."
+          else
+            conclusion=failure
+            title="Repository ruleset contract drift detected"
+            summary="Active main branch rules are missing or differ from the checked contract."
+          fi
+          gh api --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "/repos/$GITHUB_REPOSITORY/check-runs" \
+            -f name="Repository ruleset contract" \
+            -f head_sha="$HEAD_SHA" \
+            -f status="completed" \
+            -f conclusion="$conclusion" \
+            -f details_url="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            -f "output[title]=$title" \
+            -f "output[summary]=$summary"
+
+      - name: Enforce repository ruleset contract
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1

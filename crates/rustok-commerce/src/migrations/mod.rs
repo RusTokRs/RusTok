@@ -140,7 +140,7 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             "m20260713_000016_block_provider_execution_during_checkout_compensation",
             vec![
                 "m20260713_000015_bind_checkout_payment_collections",
-                "m20260325_000111_create_provider_operation_journal",
+                "m20260713_000110_create_provider_operation_journal",
             ],
         ),
         MigrationDependencyDescriptor::new(

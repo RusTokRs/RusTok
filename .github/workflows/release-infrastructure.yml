@@ -1,0 +1,121 @@
+name: Release Infrastructure
+
+on:
+  pull_request_target:
+    branches:
+      - "**"
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Base git ref or commit
+        required: true
+        default: main
+      head_ref:
+        description: Head git ref or commit
+        required: true
+        default: main
+      allow_infrastructure_changes:
+        description: Explicitly approve release supply-chain infrastructure changes
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  BASE_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.repo.full_name || github.repository }}
+  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+  BASE_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || inputs.base_ref }}
+  HEAD_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || inputs.head_ref }}
+
+jobs:
+  release-infrastructure:
+    name: Release supply-chain policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout base policy source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          repository: ${{ env.BASE_REPOSITORY }}
+          ref: ${{ env.BASE_REF }}
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout proposed release source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          repository: ${{ env.HEAD_REPOSITORY }}
+          ref: ${{ env.HEAD_REF }}
+          path: head
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+
+      - name: Verify base approval policy fixtures
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-release-infrastructure-approval.mjs"
+          --self-test
+
+      - name: Require release-infra-approved for release infrastructure changes
+        id: policy
+        env:
+          PR_LABELS_JSON: ${{ github.event_name == 'pull_request_target' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
+          EXPLICIT_APPROVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_infrastructure_changes || false }}
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-release-infrastructure-approval.mjs"
+          --base-dir "$GITHUB_WORKSPACE/base"
+          --head-dir "$GITHUB_WORKSPACE/head"
+          --labels-json "$PR_LABELS_JSON"
+          --explicitly-approved "$EXPLICIT_APPROVAL"
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Verify unchanged head with base-owned release policy
+        if: steps.policy.outputs.changed == 'false'
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-release-supply-chain-contract.mjs"
+          --root "$GITHUB_WORKSPACE/head"
+
+      - name: Verify pinned runtime image with base-owned policy
+        if: steps.policy.outputs.changed == 'false'
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-release-runtime-image-contract.mjs"
+          --root "$GITHUB_WORKSPACE/head"
+
+      - name: Verify release readiness with base-owned policy
+        if: steps.policy.outputs.changed == 'false'
+        run: >-
+          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-release-readiness-contract.mjs"
+          --root "$GITHUB_WORKSPACE/head"
+
+      - name: Verify explicitly approved tooling fixtures
+        if: steps.policy.outputs.changed == 'true'
+        run: node "$GITHUB_WORKSPACE/head/scripts/verify/verify-release-tooling-self-test.mjs"
+
+      - name: Verify explicitly approved head policy
+        if: steps.policy.outputs.changed == 'true'
+        run: >-
+          node "$GITHUB_WORKSPACE/head/scripts/verify/verify-release-supply-chain-contract.mjs"
+          --root "$GITHUB_WORKSPACE/head"
+
+      - name: Verify explicitly approved runtime image policy
+        if: steps.policy.outputs.changed == 'true'
+        run: >-
+          node "$GITHUB_WORKSPACE/head/scripts/verify/verify-release-runtime-image-contract.mjs"
+          --root "$GITHUB_WORKSPACE/head"
+
+      - name: Verify explicitly approved release readiness policy
+        if: steps.policy.outputs.changed == 'true'
+        run: >-
+          node "$GITHUB_WORKSPACE/head/scripts/verify/verify-release-readiness-contract.mjs"
+          --root "$GITHUB_WORKSPACE/head"

@@ -9,7 +9,7 @@ description.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "rustok-admin-app"
+name = "rustok-admin"
 path = "src/main.rs"
 test = false
 bench = false
@@ -206,14 +206,16 @@ toml = { workspace = true }
 
 [package.metadata.leptos]
 output-name = "rustok-admin"
-site-root = "target/admin-site"
+site-root = "target/site"
 site-pkg-dir = "pkg"
 site-addr = "127.0.0.1:3001"
 reload-port = 3002
 bin-features = ["ssr"]
 bin-default-features = false
+bin-cargo-args = ["--locked"]
 lib-features = ["hydrate"]
 lib-default-features = false
+lib-cargo-args = ["--locked"]
 
 [package.metadata.cargo-udeps.ignore]
 normal = [
