@@ -1,0 +1,45 @@
+name: One-off Rust CSP Style Diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-off-csp-style-diagnostic.yml
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  DIAGNOSTIC_ISSUE: 1850
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.head_commit.message == 'test(ci): capture Rust CSP style failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+      - name: Capture exact verifier output
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          node scripts/verify/verify-csp-inline-style-exceptions.mjs \
+            > /tmp/csp-style-output.txt 2>&1
+          status=$?
+          set -e
+          {
+            printf 'Rust-hosted CSP style verifier exit code: `%s`.\n\n```text\n' "$status"
+            cat /tmp/csp-style-output.txt
+            printf '\n```\n'
+          } > /tmp/csp-style-comment.md
+          gh issue comment "$DIAGNOSTIC_ISSUE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/csp-style-comment.md
