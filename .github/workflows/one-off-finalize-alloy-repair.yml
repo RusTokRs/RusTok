@@ -1,0 +1,60 @@
+name: One-off Finalize Alloy Repair
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-off-finalize-alloy-repair
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  finalize:
+    if: github.repository == 'RusTokRs/RusTok' && github.head_ref == 'agent/fix-alloy-current-main-compile'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: agent/fix-alloy-current-main-compile
+          fetch-depth: 0
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+
+      - name: Apply bounded final repair
+        run: |
+          python3 scripts/one_off_finalize_alloy_repair.py
+          cargo fmt -p alloy -p rustok-modules
+          git diff --check
+
+      - name: Verify all Alloy tests
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/alloy-repair-final
+        run: cargo test --locked -p alloy
+
+      - name: Publish Alloy-only commit
+        run: |
+          git restore -- crates/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f --ignore-unmatch \
+            .github/workflows/one-off-fix-alloy-current-main-compile.yml \
+            .github/workflows/one-off-publish-alloy-repair.yml \
+            .github/workflows/one-off-finalize-alloy-repair.yml \
+            scripts/one_off_finalize_alloy_repair.py
+          git add crates/alloy
+          git diff --cached --check
+          git commit -m "fix(alloy): restore current main compilation"
+          git push origin HEAD:agent/fix-alloy-current-main-compile
