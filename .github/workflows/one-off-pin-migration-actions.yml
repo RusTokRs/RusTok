@@ -1,0 +1,211 @@
+name: One-off Pin Migration Actions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-off-pin-migration-actions.yml
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  pin-actions:
+    if: github.event.head_commit.message == 'security(ci): pin migration workflow actions'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply exact immutable action policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --rebase origin main
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: Path, old: str, new: str, expected: int = 1) -> None:
+              source = path.read_text()
+              actual = source.count(old)
+              if actual != expected:
+                  raise SystemExit(f"{path}: expected {expected} occurrence(s) of {old!r}, found {actual}")
+              path.write_text(source.replace(old, new))
+
+          workflow = Path('.github/workflows/migration-compatibility.yml')
+          replace_exact(
+              workflow,
+              'actions/checkout@v7',
+              'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0',
+              7,
+          )
+          replace_exact(
+              workflow,
+              'actions/setup-node@v6',
+              'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38',
+              2,
+          )
+          replace_exact(
+              workflow,
+              'actions/upload-artifact@v7',
+              'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+          )
+          replace_exact(
+              workflow,
+              'actions/download-artifact@v5',
+              'actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0',
+          )
+          replace_exact(
+              workflow,
+              '      - uses: dtolnay/rust-toolchain@stable\n',
+              '      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c\n'
+              '        with:\n'
+              '          toolchain: 1.96.0\n',
+              3,
+          )
+
+          verifier = Path('scripts/verify/verify-migration-compatibility-contract.mjs')
+          replace_exact(
+              verifier,
+              'const failures = [];\n',
+              '''const failures = [];
+const ACTIONS = Object.freeze({
+  checkout: "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+  setupNode: "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38",
+  rustToolchain: "dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c",
+  uploadArtifact: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+  downloadArtifact: "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0",
+});
+''',
+          )
+          replace_exact(
+              verifier,
+              '''function forbidMarkers(relativePath, markers) {
+  if (!requireFile(relativePath)) return;
+  const source = read(relativePath);
+  for (const marker of markers) {
+    if (source.includes(marker)) failures.push(`${relativePath}: forbidden marker ${marker}`);
+  }
+}
+''',
+              '''function forbidMarkers(relativePath, markers) {
+  if (!requireFile(relativePath)) return;
+  const source = read(relativePath);
+  for (const marker of markers) {
+    if (source.includes(marker)) failures.push(`${relativePath}: forbidden marker ${marker}`);
+  }
+}
+
+function actionReferences(relativePath) {
+  if (!requireFile(relativePath)) return [];
+  return [...read(relativePath).matchAll(/^\\s*uses:\\s*([^\\s#]+)(?:\\s+#.*)?\\s*$/gm)].map(
+    (match) => match[1],
+  );
+}
+
+function requirePinnedActions(relativePath, expectedCounts) {
+  const references = actionReferences(relativePath);
+  const approved = new Set(Object.values(ACTIONS));
+  for (const reference of references) {
+    if (!/^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+@[0-9a-f]{40}$/.test(reference)) {
+      failures.push(`${relativePath}: action must be pinned to a full lowercase commit SHA: ${reference}`);
+    }
+    if (!approved.has(reference)) {
+      failures.push(`${relativePath}: unapproved action reference ${reference}`);
+    }
+  }
+  for (const [reference, expected] of expectedCounts) {
+    const actual = references.filter((candidate) => candidate === reference).length;
+    if (actual !== expected) {
+      failures.push(`${relativePath}: expected ${expected} use(s) of ${reference}, found ${actual}`);
+    }
+  }
+}
+''',
+          )
+          replace_exact(verifier, '  "actions/upload-artifact@v7",\n', '  ACTIONS.uploadArtifact,\n')
+          replace_exact(verifier, '  "actions/download-artifact@v5",\n', '  ACTIONS.downloadArtifact,\n')
+          replace_exact(
+              verifier,
+              '''requireOccurrenceCount(
+  workflow,
+  "CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8",
+  2,
+);
+''',
+              '''requireOccurrenceCount(
+  workflow,
+  "CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8",
+  2,
+);
+requirePinnedActions(
+  workflow,
+  new Map([
+    [ACTIONS.checkout, 7],
+    [ACTIONS.setupNode, 2],
+    [ACTIONS.rustToolchain, 3],
+    [ACTIONS.uploadArtifact, 1],
+    [ACTIONS.downloadArtifact, 1],
+  ]),
+);
+''',
+          )
+          replace_exact(
+              verifier,
+              '  \'bash "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-smoke.sh"\',\n',
+              '''  'bash "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-smoke.sh"',
+  "actions/checkout@v",
+  "actions/setup-node@v",
+  "actions/upload-artifact@v",
+  "actions/download-artifact@v",
+  "dtolnay/rust-toolchain@stable",
+''',
+          )
+          replace_exact(
+              verifier,
+              ''']);
+
+forbidFile(".github/workflows/one-off-wire-migration-backfill-workflow.yml");
+''',
+              ''']);
+requirePinnedActions(
+  approvalWorkflow,
+  new Map([
+    [ACTIONS.checkout, 2],
+    [ACTIONS.setupNode, 1],
+  ]),
+);
+
+forbidFile(".github/workflows/one-off-wire-migration-backfill-workflow.yml");
+''',
+          )
+          replace_exact(
+              verifier,
+              'forbidFile(".github/workflows/one-off-wire-migration-backfill-fixtures.yml");\n',
+              '''forbidFile(".github/workflows/one-off-wire-migration-backfill-fixtures.yml");
+forbidFile(".github/workflows/one-off-pin-migration-actions.yml");
+''',
+          )
+
+          Path('.github/workflows/one-off-pin-migration-actions.yml').unlink()
+          PY
+
+          node --check scripts/verify/verify-migration-compatibility-contract.mjs
+          node scripts/verify/verify-migration-compatibility-contract.mjs
+          git diff --check
+
+      - name: Commit immutable migration actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'security(ci): pin migration compatibility actions'
+          git push origin HEAD:main
