@@ -12,7 +12,7 @@
 - Expose the canonical Alloy runtime API used by MCP, workflow integrations, and server wiring.
 - Expose host-neutral runtime construction so server bootstrap can register Alloy without depending on host-wide context.
 - Keep GraphQL runtime access on `SharedAlloyRuntime` schema data instead of host framework context.
-- Keep REST script/execution handlers on narrow `AlloyHttpRuntime` state; the manifest-declared Axum router builds it from host-provided `SharedAlloyRuntime`.
+- Keep REST script/execution/release handlers on narrow `AlloyHttpRuntime` state; the manifest-declared Axum router builds it from host-provided `SharedAlloyRuntime` and `AlloyReleaseGovernanceHandle`.
 
 ## Interactions
 

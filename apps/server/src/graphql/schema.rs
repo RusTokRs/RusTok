@@ -110,6 +110,8 @@ pub struct GraphqlSchemaDependencies {
     pub search_rate_limiter: Option<SearchGraphqlRateLimiterHandle>,
     #[cfg(feature = "mod-alloy")]
     pub alloy_runtime: alloy::SharedAlloyRuntime,
+    #[cfg(feature = "mod-alloy")]
+    pub alloy_release_governance: alloy::AlloyReleaseGovernanceHandle,
     #[cfg(all(
         feature = "mod-content",
         feature = "mod-blog",
@@ -134,6 +136,8 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         search_rate_limiter,
         #[cfg(feature = "mod-alloy")]
         alloy_runtime,
+        #[cfg(feature = "mod-alloy")]
+        alloy_release_governance,
         #[cfg(all(
             feature = "mod-content",
             feature = "mod-blog",
@@ -213,7 +217,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
     };
 
     #[cfg(feature = "mod-alloy")]
-    let builder = builder.data(alloy_runtime);
+    let builder = builder.data(alloy_runtime).data(alloy_release_governance);
 
     #[cfg(all(
         feature = "mod-content",

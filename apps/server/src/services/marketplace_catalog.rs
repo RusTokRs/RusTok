@@ -769,13 +769,14 @@ pub struct RegistryPublishRequest {
 }
 
 /// Immutable artifact provenance selected at publish-request creation. There
-/// is intentionally no default: callers must choose the platform-build or
-/// external-prebuilt review path explicitly.
+/// is intentionally no default: callers must choose the platform-build,
+/// external-prebuilt, or Alloy-authored review path explicitly.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RegistryPublishArtifactOrigin {
     PlatformBuilt,
     ExternalPrebuilt,
+    AlloyAuthored,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

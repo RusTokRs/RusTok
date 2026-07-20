@@ -52,8 +52,9 @@ pub use artifact::{
     ModuleHttpStreamingPolicy, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
     ModuleScheduleBinding, ModuleScheduleDeduplication, ModuleScheduleMisfirePolicy,
     ModuleScheduleOverlapPolicy, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
-    MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE, MODULE_ARTIFACT_SIDECAR_MEDIA_TYPE,
-    MODULE_ARTIFACT_STATIC_PROMOTION_MEDIA_TYPE, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
+    MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE, MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE,
+    MODULE_ARTIFACT_SIDECAR_MEDIA_TYPE, MODULE_ARTIFACT_STATIC_PROMOTION_MEDIA_TYPE,
+    MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
 };
 pub use artifact_capability_router::{
     resolve_granted_artifact_capability, ArtifactCapabilityBrokerResolver,
@@ -211,7 +212,8 @@ pub use policy::{
     ModuleToggleValidationError, TenantModuleOverride,
 };
 pub use publish_validation::{
-    validate_module_publish_bundle, ModulePublishBundleValidation,
+    validate_module_publish_artifact, validate_module_publish_bundle,
+    ModulePublishBundleValidation, MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES,
     MODULE_PUBLISH_ARTIFACT_MANIFEST_MAX_BYTES, MODULE_PUBLISH_ARTIFACT_MAX_BYTES,
     MODULE_PUBLISH_BUNDLE_TYPE,
 };

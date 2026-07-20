@@ -1859,7 +1859,18 @@ evolution while sharing the production sandbox and module release contracts.
   to `rustok-modules`. The owner records source/review evidence together with
   the Alloy tenant/script identity and remains the only marketplace writer.
   Final promotion also requires matching platform admission for the attached
-  artifact; artifact upload and final promotion are still pending.
+  artifact. Origin-aware owner upload and the isolated validation worker now
+  accept only a bounded canonical Alloy workspace, and release staging requires
+  its checksum to equal the reviewed source digest. Authenticated HTTP and
+  GraphQL release-stage adapters now derive the actor from auth, require the
+  current revision and module authority, verify that the authenticated tenant
+  matches the resolved request tenant on both transports, and delegate
+  idempotent staging to the owner service with typed conflict/not-found
+  transport outcomes; final marketplace promotion remains an owner governance
+  operation. The canonical Rhai workspace
+  payload media type is retained by admission and runtime resolution, so a
+  multi-file release cannot be reinterpreted as a single-source artifact after
+  publication.
 - [ ] Reject execution/publish commands for stale revisions.
 - [ ] Execute validation, tests, manual runs, hooks, schedules, and preview
   scenarios through `SandboxRuntime`.
@@ -1876,11 +1887,15 @@ evolution while sharing the production sandbox and module release contracts.
 
 ### 6.2 Release Creation
 
-- [x] Stage and package immutable Rhai descriptors with source digest/lineage.
+- [x] Stage and package immutable Rhai descriptors with source digest/lineage
+  and preserve the exact admitted workspace media type through runtime
+  resolution.
 - [ ] Validate declared capabilities from observed/declared tool use.
-- [ ] Complete release source/descriptor publication through `rustok-modules`;
+- [x] Complete release source/descriptor publication through `rustok-modules`;
   Alloy does not write marketplace tables. The revision-pinned reviewed-source
-  staging gate is complete; owner artifact upload and final promotion remain.
+  staging gate, origin-aware owner artifact upload, and authenticated HTTP /
+  GraphQL staging adapters are complete; final marketplace promotion remains
+  an owner governance operation.
 - [ ] Preserve author, prompt/tool provenance, tests, and review evidence under
   explicit retention/redaction rules.
 

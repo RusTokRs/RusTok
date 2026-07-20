@@ -114,9 +114,12 @@
         "release_stage_requires_the_current_source_revision",
         "release_stage_requires_the_latest_approved_review",
         "release_stage_binds_source_revision_and_review_evidence",
+        "release_stage_requires_artifact_digest_to_equal_reviewed_source_digest",
         "release_stage_uses_owner_idempotency_without_marketplace_writes",
         "alloy_authored_origin_has_a_distinct_owner_stage",
-        "alloy_authored_final_promotion_requires_platform_admission"
+        "alloy_authored_final_promotion_requires_platform_admission",
+        "alloy_workspace_media_is_preserved_through_admission_and_runtime",
+        "release_stage_transports_require_scripts_and_modules_manage_actor"
       ]
     }
   ]

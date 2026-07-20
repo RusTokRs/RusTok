@@ -30,7 +30,6 @@ use crate::{
     TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
 };
 
-const RHAI_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
 const WASM_COMPONENT_MEDIA_TYPE: &str = "application/wasm";
 const SIDECAR_MEDIA_TYPE: &str = "application/vnd.rustok.sidecar.v1";
 const STATIC_PROMOTION_MEDIA_TYPE: &str = "application/vnd.rustok.static-promotion.v1";
@@ -161,10 +160,9 @@ impl ModuleArtifactPackage {
                 actual: actual_digest,
             });
         }
-        let expected_media_type = media_type_for(self.descriptor.payload_kind);
-        if self.media_type != expected_media_type {
+        if !valid_media_type_for(self.descriptor.payload_kind, &self.media_type) {
             return Err(ModuleInstallationError::UnexpectedMediaType {
-                expected: expected_media_type.to_string(),
+                expected: expected_media_types_for(self.descriptor.payload_kind).to_string(),
                 actual: self.media_type.clone(),
             });
         }
@@ -208,6 +206,9 @@ pub struct InstalledModuleArtifact {
     pub reference: OciArtifactReference,
     pub release: ArtifactReleaseRef,
     pub descriptor: ModuleArtifactDescriptor,
+    /// Exact admitted payload representation. Runtime must use this durable
+    /// admission fact rather than infer a representation from payload kind.
+    pub payload_media_type: String,
     /// Exact resolved dependencies admitted with this installation. Runtime
     /// execution receives only this immutable graph, never a live registry
     /// lookup or a floating version constraint.
@@ -330,6 +331,12 @@ impl InstalledModuleArtifact {
         policy: SandboxPolicy,
     ) -> Result<SandboxRequest, ModuleInstallationError> {
         self.validate_dependency_lock()?;
+        if !valid_media_type_for(self.descriptor.payload_kind, &self.payload_media_type) {
+            return Err(ModuleInstallationError::UnexpectedMediaType {
+                expected: expected_media_types_for(self.descriptor.payload_kind).to_string(),
+                actual: self.payload_media_type.clone(),
+            });
+        }
         let executor = self
             .descriptor
             .payload_kind
@@ -367,7 +374,7 @@ impl InstalledModuleArtifact {
             context,
             payload: SandboxPayload {
                 executor,
-                media_type: media_type_for(self.descriptor.payload_kind).to_string(),
+                media_type: self.payload_media_type.clone(),
                 digest: self.release.digest.clone(),
                 runtime_abi: self.descriptor.runtime_abi.clone(),
                 entrypoint: self.descriptor.entrypoint.clone(),
@@ -2261,6 +2268,7 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
                     "SELECT installation.installation_id, installation.scope_kind, installation.tenant_id, \
                      installation.registry, installation.repository, installation.manifest_digest, \
                      installation.slug, installation.version, installation.payload_digest, \
+                     admission.media_type AS payload_media_type, \
                      CAST(installation.descriptor AS TEXT) AS descriptor, \
                      installation.dependency_graph_revision, installation.dependency_graph_digest, \
                      CAST(installation.dependency_lock AS TEXT) AS dependency_lock, \
@@ -2339,6 +2347,12 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
         descriptor
             .validate()
             .map_err(|_| "artifact installation descriptor is invalid".to_string())?;
+        let payload_media_type: String = row
+            .try_get("", "payload_media_type")
+            .map_err(|error| error.to_string())?;
+        if !valid_media_type_for(descriptor.payload_kind, &payload_media_type) {
+            return Err("artifact installation payload media type is invalid".into());
+        }
         let dependency_lock: ModuleDependencyLockGraph = serde_json::from_str(
             &row.try_get::<String>("", "dependency_lock")
                 .map_err(|error| error.to_string())?,
@@ -2399,6 +2413,7 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
             reference,
             release: release.clone(),
             descriptor,
+            payload_media_type,
             dependency_lock,
             capability_grant_revision,
             installed_at,
@@ -3373,6 +3388,7 @@ where
             reference: package.reference,
             release,
             descriptor: package.descriptor,
+            payload_media_type: package.media_type.clone(),
             dependency_lock: command.dependency_lock.clone(),
             capability_grant_revision: self.trust_policy.capability_grant_revision,
             installed_at,
@@ -3507,12 +3523,25 @@ pub enum ModuleInstallationError {
     PermissionRegistration(String),
 }
 
-fn media_type_for(kind: ArtifactPayloadKind) -> &'static str {
+fn expected_media_types_for(kind: ArtifactPayloadKind) -> &'static str {
     match kind {
-        ArtifactPayloadKind::Rhai => RHAI_MEDIA_TYPE,
+        ArtifactPayloadKind::Rhai => {
+            "application/vnd.rustok.rhai.source.v1 or application/vnd.rustok.rhai.workspace.v1"
+        }
         ArtifactPayloadKind::WasmComponent => WASM_COMPONENT_MEDIA_TYPE,
         ArtifactPayloadKind::Sidecar => SIDECAR_MEDIA_TYPE,
         ArtifactPayloadKind::StaticPromoted => STATIC_PROMOTION_MEDIA_TYPE,
+    }
+}
+
+fn valid_media_type_for(kind: ArtifactPayloadKind, media_type: &str) -> bool {
+    match kind {
+        ArtifactPayloadKind::Rhai => matches!(
+            media_type,
+            crate::MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE
+                | crate::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE
+        ),
+        _ => media_type == expected_media_types_for(kind),
     }
 }
 
@@ -3866,7 +3895,7 @@ mod tests {
                 ui_contributions: Vec::new(),
                 persistence_contract: None,
             },
-            media_type: media_type_for(kind).to_string(),
+            media_type: kind.oci_layer_media_type().to_string(),
             payload: ArtifactPayloadSource::Bytes(payload),
         }
     }
@@ -4222,6 +4251,7 @@ mod tests {
             reference: expected_reference,
             release: expected_descriptor.release_ref(),
             descriptor: expected_descriptor,
+            payload_media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
             dependency_lock: expected_lock,
             capability_grant_revision: 1,
             installed_at: Utc::now(),

@@ -124,7 +124,7 @@ pub async fn package_rhai_module_release(
     let package = ModuleArtifactPackage {
         reference,
         descriptor: draft.descriptor.clone(),
-        media_type: crate::ALLOY_DRAFT_RHAI_MEDIA_TYPE.to_string(),
+        media_type: rustok_modules::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE.to_string(),
         payload: rustok_modules::ArtifactPayloadSource::Bytes(
             script
                 .workspace
@@ -224,6 +224,10 @@ mod tests {
         .expect("package release");
 
         assert_ne!(package.reference.digest, draft.descriptor.artifact_digest);
+        assert_eq!(
+            package.media_type,
+            rustok_modules::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE
+        );
         assert!(matches!(
             package.payload,
             rustok_modules::ArtifactPayloadSource::Bytes(payload)

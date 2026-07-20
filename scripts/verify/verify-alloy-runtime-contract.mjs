@@ -69,7 +69,11 @@ if (contract.release_stage_contract?.persistence !== 'owner_owned_alloy_authored
 if (contract.release_stage_contract?.precondition !== 'expected_current_revision_and_latest_approved_review') fail('release stage precondition contract drift');
 if (contract.release_stage_contract?.idempotency !== 'publish_request_idempotency_key_bound_to_source_revision_and_review') fail('release stage idempotency contract drift');
 if (contract.release_stage_contract?.ownership !== 'rustok_modules_is_sole_marketplace_writer') fail('release stage ownership contract drift');
-sameArray(contract.release_stage_contract?.evidence_fields, ['source_digest', 'source_revision', 'alloy_tenant_id', 'alloy_script_id', 'review_reference', 'review_digest', 'review_policy_revision', 'platform_admission'], 'release stage evidence fields');
+if (contract.release_stage_contract?.artifact_payload_media_type !== 'application/vnd.rustok.rhai.workspace.v1') fail('release stage artifact payload media type drift');
+if (contract.release_stage_contract?.artifact_digest_relation !== 'equals_reviewed_source_digest') fail('release stage artifact/source digest relation drift');
+if (contract.release_stage_contract?.transports !== 'graphql_and_host_http_require_scripts_and_modules_manage_and_verified_actor') fail('release stage transport authorization drift');
+if (contract.release_stage_contract?.transport_route !== '/api/alloy/scripts/{id}/releases/stage') fail('release stage host route drift');
+sameArray(contract.release_stage_contract?.evidence_fields, ['artifact_digest', 'source_digest', 'source_revision', 'alloy_tenant_id', 'alloy_script_id', 'review_reference', 'review_digest', 'review_policy_revision', 'platform_admission'], 'release stage evidence fields');
 if (contract.workspace_contract?.persistence !== 'bounded_revisioned_json_workspace') fail('workspace persistence contract drift');
 if (contract.workspace_contract?.payload_media_type !== 'application/vnd.rustok.rhai.workspace.v1') fail('workspace payload media type drift');
 if (contract.workspace_contract?.sandbox_source_resolution !== 'alloy_extension_static_in_memory_resolver_from_canonical_workspace_bytes') fail('workspace source resolution contract drift');
@@ -225,6 +229,8 @@ hasAll(releaseRunner, [
   'pub trait AlloyReleaseGovernance',
   'pub struct RevisionedReleaseStager',
   'script.version != command.expected_revision',
+  'command.artifact_digest != source.source_digest',
+  'ArtifactSourceDigestMismatch',
   '.list_reviews(command.script_id, command.expected_revision)',
   'is_release_approved(review)',
   'alloy_tenant_id: source.tenant_id',
@@ -232,6 +238,14 @@ hasAll(releaseRunner, [
   'ModuleAlloyAuthoredStageCommand',
   '.stage_alloy_authored('
 ], 'Alloy revision-pinned release stager');
+const releaseGraphql = read('crates/alloy/src/graphql/mutation.rs');
+hasAll(releaseGraphql, [
+  'async fn stage_release',
+  'require_release_admin(ctx).await?',
+  'RevisionedReleaseStager::new',
+  'AlloyReleaseStageCommand',
+  'idempotency_key: input.idempotency_key'
+], 'Alloy GraphQL release transport');
 const governance = read('crates/rustok-modules/src/governance.rs');
 hasAll(governance, [
   'AlloyAuthored',
@@ -241,6 +255,18 @@ hasAll(governance, [
   'PublishRequestMissingAlloyAuthoredStage',
   'PublishRequestMissingAlloyPlatformAdmission'
 ], 'owner Alloy publication stage');
+const alloyArtifact = read('crates/alloy/src/artifact.rs');
+hasAll(alloyArtifact, [
+  'MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE',
+  'canonical_bytes()'
+], 'Alloy workspace artifact package');
+const installation = read('crates/rustok-modules/src/installation.rs');
+hasAll(installation, [
+  'pub payload_media_type: String',
+  'admission.media_type AS payload_media_type',
+  'media_type: self.payload_media_type.clone()',
+  'MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE'
+], 'durable artifact payload media type');
 const reviewGraphql = read('crates/alloy/src/graphql/mutation.rs');
 hasAll(reviewGraphql, [
   'async fn review_script',
@@ -268,6 +294,13 @@ hasAll(reviewHttp, [
   'async fn run_workspace_test',
   '/api/alloy/scripts/{id}/tests/run'
 ], 'Alloy host HTTP test transport');
+hasAll(reviewHttp, [
+  'fn release_actor',
+  'scripts.manage or modules.manage permission',
+  'async fn stage_release',
+  '/api/alloy/scripts/{id}/releases/stage',
+  'AlloyReleaseStageCommand'
+], 'Alloy host HTTP release transport');
 hasAll(reviewGraphql, [
   'async fn run_workspace_test',
   'RevisionedTestRunner::new',

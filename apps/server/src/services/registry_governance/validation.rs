@@ -1,9 +1,9 @@
 use super::*;
 use rustok_modules::{
-    ModulePublishValidationContract, ModuleRemoteValidationClaimCommand,
-    ModuleRemoteValidationHeartbeatCommand, ModuleRemoteValidationTerminalCommand,
-    ModuleRemoteValidationTerminalOutcome, ModuleValidationJobEnqueueCommand,
-    ModuleValidationStageReportCommand,
+    ModulePublicationArtifactOrigin, ModulePublishValidationContract,
+    ModuleRemoteValidationClaimCommand, ModuleRemoteValidationHeartbeatCommand,
+    ModuleRemoteValidationTerminalCommand, ModuleRemoteValidationTerminalOutcome,
+    ModuleValidationJobEnqueueCommand, ModuleValidationStageReportCommand,
 };
 
 impl RegistryGovernanceService {
@@ -767,7 +767,7 @@ pub(crate) fn compare_semver_desc(left: &str, right: &str) -> std::cmp::Ordering
     }
 }
 
-pub(crate) async fn validate_registry_artifact_bundle(
+pub(crate) async fn validate_registry_artifact(
     db: &DatabaseConnection,
     request: &registry_publish_request::Model,
     artifact: &RegistryArtifactUpload,
@@ -799,7 +799,14 @@ pub(crate) async fn validate_registry_artifact_bundle(
         storefront_ui_crate_name: ui_packages.storefront.map(|ui| ui.crate_name),
     };
 
-    Ok(rustok_modules::validate_module_publish_bundle(
+    let artifact_origin = match request.artifact_origin.as_str() {
+        "platform_built" => ModulePublicationArtifactOrigin::PlatformBuilt,
+        "external_prebuilt" => ModulePublicationArtifactOrigin::ExternalPrebuilt,
+        "alloy_authored" => ModulePublicationArtifactOrigin::AlloyAuthored,
+        _ => anyhow::bail!("registry publish request artifact origin is unclassified"),
+    };
+    Ok(rustok_modules::validate_module_publish_artifact(
+        artifact_origin,
         &contract,
         &artifact.content_type,
         &artifact.bytes,

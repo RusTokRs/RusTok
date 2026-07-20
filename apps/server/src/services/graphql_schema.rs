@@ -38,7 +38,10 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     };
     #[cfg(feature = "mod-alloy")]
     let host_runtime = if let Some(alloy_runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
-        host_runtime.with_shared_value(alloy_runtime)
+        let host_runtime = host_runtime.with_shared_value(alloy_runtime);
+        host_runtime.with_shared_value(
+            crate::services::registry_governance::alloy_release_governance_handle(ctx.db_clone()),
+        )
     } else {
         host_runtime
     };
@@ -55,6 +58,8 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         search_rate_limiter: search_graphql_rate_limiter_from_context(ctx),
         #[cfg(feature = "mod-alloy")]
         alloy_runtime: alloy_runtime_from_ctx(ctx),
+        #[cfg(feature = "mod-alloy")]
+        alloy_release_governance: alloy_release_governance_from_ctx(ctx),
         #[cfg(all(
             feature = "mod-content",
             feature = "mod-blog",
@@ -75,6 +80,13 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
 fn alloy_runtime_from_ctx(ctx: &ServerRuntimeContext) -> alloy::SharedAlloyRuntime {
     ctx.shared_get::<alloy::SharedAlloyRuntime>()
         .expect("Alloy runtime not initialized; bootstrap_app_runtime must run first")
+}
+
+#[cfg(feature = "mod-alloy")]
+fn alloy_release_governance_from_ctx(
+    ctx: &ServerRuntimeContext,
+) -> alloy::AlloyReleaseGovernanceHandle {
+    crate::services::registry_governance::alloy_release_governance_handle(ctx.db_clone())
 }
 
 #[cfg(all(

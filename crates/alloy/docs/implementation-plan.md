@@ -69,6 +69,11 @@ Remaining:
   Rhai imports resolve only through a request-private static in-memory resolver
   assembled in dependency order: exact `src/*.rhai` paths, no host filesystem,
   bounded depth, and cycle rejection;
+- release staging is host-composed on REST and GraphQL: both transports require
+  `scripts:manage` and `modules:manage`, verify authenticated-tenant/request-
+  tenant equality, pin the expected script revision, and delegate marketplace
+  writes to `rustok-modules`. Typed owner not-found and idempotency-conflict
+  outcomes remain distinct transport errors;
 - untrusted marketplace/source/log/MCP content needs explicit prompt-injection
   and tool-policy isolation.
 
@@ -135,8 +140,17 @@ Remaining:
   idempotency remains pending. Release staging now requires the current Alloy
   revision and its latest approved review, then uses an owner-owned
   `rustok-modules` Alloy-authored stage with an idempotency key bound to the
-  immutable source and review evidence. Final publication transport, artifact
-  upload, and release promotion remain pending.
+  immutable source and review evidence. The uploaded workspace checksum must
+  equal the reviewed source digest. Owner artifact upload now accepts only the
+  bounded workspace representation for `alloy_authored` requests. Authenticated
+  HTTP and GraphQL release-stage adapters derive the actor from host auth,
+  require the current revision and module authority, and delegate idempotent
+  staging to the owner service; final marketplace promotion remains an owner
+  governance operation.
+- Published Rhai packages retain canonical workspace bytes and use the
+  workspace OCI media type. Admission persists that exact media type and the
+  artifact runtime reuses it from durable admission state, so multi-file
+  imports cannot be reinterpreted as single-source Rhai at execution time.
 - Workspace test execution now selects only a declared immutable `tests/*.rhai`
   entrypoint from the revision-pinned canonical workspace. It uses the same
   digest and in-memory `src/*.rhai` resolver as production source, receives no
@@ -158,8 +172,12 @@ review decision references immutable evidence.
 - Stage approved source through `rustok-modules`; do not write marketplace
   state. The owner records a distinct `alloy_authored` origin with the source
   digest/revision, Alloy tenant/script identity, and review evidence under
-  durable idempotency. Artifact upload, matching platform admission, and final
-  release promotion remain owner workflows.
+  durable idempotency. Origin-aware artifact upload and validation now accept
+  only the bounded canonical workspace with a checksum equal to the reviewed
+  source digest. Authenticated HTTP and GraphQL staging adapters delegate to
+  the owner service; matching platform admission and final release promotion
+  remain owner workflows. The package's workspace media type is an immutable admission
+  fact and survives runtime resolution.
 - Import an eligible marketplace Rhai release into a new workspace.
 - Preserve parent release/source digest and require a newer semantic version.
 - Publish a fork as a new immutable release without changing installed parents.

@@ -611,6 +611,7 @@ mod tests {
                 digest: package.descriptor.artifact_digest.clone(),
             },
             descriptor: package.descriptor.clone(),
+            payload_media_type: package.media_type.clone(),
             dependency_lock: ModuleDependencyLockGraph::create(0, Vec::new())
                 .expect("empty dependency lock"),
             capability_grant_revision: 1,

@@ -51,8 +51,8 @@ pub use model::{
     WorkspaceFile, WorkspaceFileKind,
 };
 pub use runner::{
-    AlloyReleaseGovernance, ExecutionOutcome, ExecutionResult, HookOutcome,
-    RevisionedReleaseStager, RevisionedTestRunner, ScriptExecutor, ScriptOrchestrator,
+    AlloyReleaseGovernance, AlloyReleaseGovernanceHandle, ExecutionOutcome, ExecutionResult,
+    HookOutcome, RevisionedReleaseStager, RevisionedTestRunner, ScriptExecutor, ScriptOrchestrator,
 };
 pub use runtime::{build_alloy_runtime, AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime};
 pub use sandbox_request::{

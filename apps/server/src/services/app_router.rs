@@ -254,7 +254,12 @@ pub fn compose_application_router(
     let server_fn_runtime_ctx = if let Some(alloy_runtime) =
         middleware_runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>()
     {
-        server_fn_runtime_ctx.with_shared_value(alloy_runtime)
+        let server_fn_runtime_ctx = server_fn_runtime_ctx.with_shared_value(alloy_runtime);
+        server_fn_runtime_ctx.with_shared_value(
+            crate::services::registry_governance::alloy_release_governance_handle(
+                middleware_runtime_ctx.db_clone(),
+            ),
+        )
     } else {
         server_fn_runtime_ctx
     };

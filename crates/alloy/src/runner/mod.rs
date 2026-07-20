@@ -6,6 +6,6 @@ mod test;
 
 pub use executor::ScriptExecutor;
 pub use orchestrator::ScriptOrchestrator;
-pub use release::{AlloyReleaseGovernance, RevisionedReleaseStager};
+pub use release::{AlloyReleaseGovernance, AlloyReleaseGovernanceHandle, RevisionedReleaseStager};
 pub use result::{ExecutionOutcome, ExecutionResult, HookOutcome, PhaseResult};
 pub use test::RevisionedTestRunner;

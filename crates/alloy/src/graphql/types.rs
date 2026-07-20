@@ -491,6 +491,20 @@ pub struct RunWorkspaceTestInput {
     pub idempotency_key: Uuid,
 }
 
+#[derive(InputObject)]
+pub struct StageReleaseInput {
+    pub expected_version: u32,
+    pub publish_request_id: String,
+    pub artifact_digest: String,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlStageRelease {
+    pub staging_id: String,
+    pub created: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

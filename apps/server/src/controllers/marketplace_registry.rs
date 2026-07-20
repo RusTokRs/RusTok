@@ -223,11 +223,12 @@ async fn publish(
         if matches!(
             request.module.artifact_origin,
             crate::services::marketplace_catalog::RegistryPublishArtifactOrigin::ExternalPrebuilt
+                | crate::services::marketplace_catalog::RegistryPublishArtifactOrigin::AlloyAuthored
         ) && !authority.can_manage_modules
         {
             return Err(http_error(HttpError::forbidden(
                 "forbidden",
-                "External prebuilt publish requests require modules.manage authority",
+                "External prebuilt and Alloy-authored publish requests require modules.manage authority",
             )));
         }
         let created = RegistryGovernanceService::new(ctx.db_clone())
@@ -2779,6 +2780,16 @@ fn publish_request_status_next_step(
         ));
     }
 
+    if request.status
+        == crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
+        && request.artifact_origin == "alloy_authored"
+    {
+        return Some(
+            "Stage the reviewed Alloy source through POST /api/alloy/scripts/{id}/releases/stage before final publication."
+                .to_string(),
+        );
+    }
+
     publish_request_next_step(&request.status, request_id)
 }
 
@@ -2914,6 +2925,7 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         | ModuleGovernanceError::InvalidPlatformAdmissionCommand
         | ModuleGovernanceError::InvalidPlatformBuildStageCommand
         | ModuleGovernanceError::InvalidExternalPrebuiltStageCommand
+        | ModuleGovernanceError::InvalidAlloyAuthoredStageCommand
         | ModuleGovernanceError::InvalidRemoteValidationClaimStage(_)
         | ModuleGovernanceError::InvalidOwnerTransferReasonCode(_)
         | ModuleGovernanceError::InvalidPublishRequestRejectReasonCode(_)
@@ -2958,10 +2970,12 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         | ModuleGovernanceError::PublishRequestMissingArtifactSize
         | ModuleGovernanceError::PublishRequestMissingPlatformBuildStage
         | ModuleGovernanceError::PublishRequestMissingExternalPrebuiltStage
+        | ModuleGovernanceError::PublishRequestMissingAlloyAuthoredStage
         | ModuleGovernanceError::PublishRequestArtifactOriginUnclassified
         | ModuleGovernanceError::PublishRequestMissingAuthorSignature
         | ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission
         | ModuleGovernanceError::PublishRequestMissingExternalPlatformAdmission
+        | ModuleGovernanceError::PublishRequestMissingAlloyPlatformAdmission
         | ModuleGovernanceError::PublishRequestMissingTranslations
         | ModuleGovernanceError::RemoteValidationLeaseRunnerMismatch
         | ModuleGovernanceError::RemoteValidationLeaseNotRunning(_)
@@ -2970,6 +2984,7 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         | ModuleGovernanceError::PublishRequestInvalidHeldFromStatus
         | ModuleGovernanceError::PlatformBuildStageIdempotencyConflict
         | ModuleGovernanceError::ExternalPrebuiltStageIdempotencyConflict
+        | ModuleGovernanceError::AlloyAuthoredStageIdempotencyConflict
         | ModuleGovernanceError::PublicationIdempotencyConflict
         | ModuleGovernanceError::PublishedRequestMissingIdempotencyRecord => http_error(
             HttpError::new(StatusCode::CONFLICT, "conflict", error.to_string()),

@@ -66,6 +66,13 @@ pub use rustok_modules::REGISTRY_RESUME_REASON_CODES;
 pub use rustok_modules::REGISTRY_VALIDATION_STAGE_REASON_CODES;
 pub use rustok_modules::REGISTRY_YANK_REASON_CODES;
 
+#[cfg(feature = "mod-alloy")]
+pub(crate) fn alloy_release_governance_handle(
+    db: DatabaseConnection,
+) -> alloy::AlloyReleaseGovernanceHandle {
+    alloy::AlloyReleaseGovernanceHandle(std::sync::Arc::new(SeaOrmModuleGovernanceService::new(db)))
+}
+
 #[derive(Debug, Error)]
 pub enum RegistryGovernanceError {
     #[error("{0}")]

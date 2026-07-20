@@ -8,13 +8,15 @@ use crate::{
     model::{ReviewCommand, Script, ScriptStatus},
     runner::ExecutionOutcome,
     utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
-    RevisionedTestRunner, ScriptRegistry, TestCommand,
+    AlloyReleaseStageCommand, RevisionedReleaseStager, RevisionedTestRunner, ScriptRegistry,
+    TestCommand,
 };
 
 use super::{
-    require_admin, runtime_from_graphql_ctx, CreateScriptInput, GqlExecutionResult,
-    GqlReviewDecision, GqlScript, GqlTestRun, ReviewScriptInput, RunScriptInput,
-    RunWorkspaceTestInput, ScriptTriggerInput, UpdateScriptInput,
+    release_governance_from_graphql_ctx, require_admin, require_release_admin,
+    runtime_from_graphql_ctx, CreateScriptInput, GqlExecutionResult, GqlReviewDecision, GqlScript,
+    GqlStageRelease, GqlTestRun, ReviewScriptInput, RunScriptInput, RunWorkspaceTestInput,
+    ScriptTriggerInput, StageReleaseInput, UpdateScriptInput,
 };
 
 fn validate_cron_trigger(trigger: &ScriptTriggerInput) -> Result<()> {
@@ -278,6 +280,32 @@ impl AlloyMutation {
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         Ok(run.into())
+    }
+
+    async fn stage_release(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: StageReleaseInput,
+    ) -> Result<GqlStageRelease> {
+        let auth = require_release_admin(ctx).await?;
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        let governance = release_governance_from_graphql_ctx(ctx)?;
+        let result = RevisionedReleaseStager::new(runtime.storage.clone(), governance.0)
+            .stage(AlloyReleaseStageCommand {
+                script_id: id,
+                expected_revision: input.expected_version,
+                publish_request_id: input.publish_request_id,
+                artifact_digest: input.artifact_digest,
+                actor_id: auth.user_id.to_string(),
+                idempotency_key: input.idempotency_key,
+            })
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        Ok(GqlStageRelease {
+            staging_id: result.staging_id,
+            created: result.created,
+        })
     }
 
     async fn activate_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {

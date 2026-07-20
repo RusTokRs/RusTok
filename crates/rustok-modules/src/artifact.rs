@@ -24,6 +24,10 @@ const ARTIFACT_UI_CONTRIBUTION_SURFACES: &[&str] = &["admin_settings", "admin_ac
 
 /// Stable OCI layer media type for immutable Rhai source artifacts.
 pub const MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
+/// Stable OCI layer media type for immutable Rhai source workspaces. This
+/// retains the bounded import graph selected during admission.
+pub const MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE: &str =
+    "application/vnd.rustok.rhai.workspace.v1";
 /// Stable OCI layer media type for immutable WebAssembly Component artifacts.
 pub const MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE: &str =
     "application/vnd.rustok.wasm.component.v1+wasm";
@@ -59,7 +63,8 @@ impl ArtifactPayloadKind {
         }
     }
 
-    /// OCI layer media type fixed by this immutable payload kind.
+    /// Default OCI layer media type for this immutable payload kind. Rhai also
+    /// permits the workspace representation when admission records it exactly.
     pub const fn oci_layer_media_type(self) -> &'static str {
         match self {
             Self::Rhai => MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE,

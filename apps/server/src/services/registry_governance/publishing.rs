@@ -440,6 +440,9 @@ fn module_publish_request_create_command(
             RegistryPublishArtifactOrigin::ExternalPrebuilt => {
                 ModulePublicationArtifactOrigin::ExternalPrebuilt
             }
+            RegistryPublishArtifactOrigin::AlloyAuthored => {
+                ModulePublicationArtifactOrigin::AlloyAuthored
+            }
         },
         marketplace: serde_json::to_value(&request.module.marketplace)
             .context("failed to serialize registry publish marketplace metadata")?,

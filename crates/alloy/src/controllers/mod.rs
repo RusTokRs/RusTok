@@ -19,13 +19,15 @@ use crate::{
         CreateScriptRequest, EntityInput, ExecutionLogResponse, ListExecutionLogQuery,
         ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, ReviewDecisionResponse,
         ReviewScriptRequest, RunScriptRequest, RunScriptResponse, RunWorkspaceTestRequest,
-        ScriptResponse, TestRunResponse, UpdateScriptRequest,
+        ScriptResponse, StageReleaseRequest, StageReleaseResponse, TestRunResponse,
+        UpdateScriptRequest,
     },
     model::{EntityProxy, ReviewCommand, Script, ScriptStatus, ScriptTrigger},
     runner::ExecutionOutcome,
     storage::ScriptRegistry,
     utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
-    RevisionedTestRunner, ScopedAlloyRuntime, ScriptError, SharedAlloyRuntime, TestCommand,
+    AlloyReleaseGovernanceHandle, RevisionedReleaseStager, RevisionedTestRunner,
+    ScopedAlloyRuntime, ScriptError, SharedAlloyRuntime, TestCommand,
 };
 
 pub use crate::api::AXUM_EXECUTION_HISTORY_ROUTES as EXECUTION_HISTORY_ROUTES;
@@ -33,6 +35,7 @@ pub use crate::api::AXUM_EXECUTION_HISTORY_ROUTES as EXECUTION_HISTORY_ROUTES;
 #[derive(Clone)]
 pub struct AlloyHttpRuntime {
     runtime: SharedAlloyRuntime,
+    release_governance: AlloyReleaseGovernanceHandle,
 }
 
 impl AlloyHttpRuntime {
@@ -43,10 +46,20 @@ impl AlloyHttpRuntime {
 
 impl AlloyHttpRuntime {
     fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
-        let runtime = runtime.shared_get::<SharedAlloyRuntime>().ok_or_else(|| {
+        let shared_runtime = runtime.shared_get::<SharedAlloyRuntime>().ok_or_else(|| {
             anyhow::anyhow!("Alloy HTTP routes require SharedAlloyRuntime in HostRuntimeContext")
         })?;
-        Ok(Self { runtime })
+        let release_governance = runtime
+            .shared_get::<AlloyReleaseGovernanceHandle>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Alloy HTTP routes require AlloyReleaseGovernanceHandle in HostRuntimeContext"
+                )
+            })?;
+        Ok(Self {
+            runtime: shared_runtime,
+            release_governance,
+        })
     }
 }
 
@@ -91,6 +104,35 @@ fn script_error(error: ScriptError) -> HttpError {
     }
 }
 
+fn release_error(error: crate::AlloyReleaseError) -> HttpError {
+    match error {
+        crate::AlloyReleaseError::StaleRevision { expected } => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_release_revision_conflict",
+            format!("Alloy release revision conflict: expected version {expected}"),
+        ),
+        crate::AlloyReleaseError::ReviewNotApproved => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_release_review_conflict",
+            "The current Alloy revision does not have an approved review",
+        ),
+        crate::AlloyReleaseError::ArtifactSourceDigestMismatch => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_release_artifact_conflict",
+            "The artifact digest does not match the reviewed source workspace",
+        ),
+        crate::AlloyReleaseError::GovernanceConflict(message) => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_release_governance_conflict",
+            message,
+        ),
+        crate::AlloyReleaseError::GovernanceNotFound(message) => {
+            HttpError::new(StatusCode::NOT_FOUND, "alloy_release_not_found", message)
+        }
+        other => HttpError::bad_request("invalid_alloy_release", other.to_string()),
+    }
+}
+
 fn review_actor(
     auth: Option<Extension<AuthContextExtension>>,
     tenant: &TenantContext,
@@ -132,6 +174,32 @@ fn test_actor(
         return Err(HttpError::forbidden(
             "forbidden",
             "Script test requires scripts.manage permission",
+        ));
+    }
+    Ok(auth.0.user_id.to_string())
+}
+
+fn release_actor(
+    auth: Option<Extension<AuthContextExtension>>,
+    tenant: &TenantContext,
+) -> HttpResult<String> {
+    let auth = auth
+        .map(|Extension(auth)| auth)
+        .ok_or_else(|| HttpError::unauthorized("unauthenticated", "Authentication is required"))?;
+    if auth.0.tenant_id != tenant.id {
+        return Err(HttpError::forbidden(
+            "forbidden",
+            "Release tenant context does not match the authenticated principal",
+        ));
+    }
+    let scripts_manage = Permission::new(Resource::Scripts, Action::Manage);
+    let modules_manage = Permission::new(Resource::Modules, Action::Manage);
+    if !has_any_effective_permission(&auth.0.permissions, &[scripts_manage])
+        || !has_any_effective_permission(&auth.0.permissions, &[modules_manage])
+    {
+        return Err(HttpError::forbidden(
+            "forbidden",
+            "Alloy release staging requires scripts.manage and modules.manage permissions",
         ));
     }
     Ok(auth.0.user_id.to_string())
@@ -527,6 +595,34 @@ pub async fn run_workspace_test(
     Ok(Json(run.into()))
 }
 
+pub async fn stage_release(
+    State(runtime): State<AlloyHttpRuntime>,
+    tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
+    Path(id): Path<Uuid>,
+    Json(request): Json<StageReleaseRequest>,
+) -> HttpResult<Json<StageReleaseResponse>> {
+    let actor_id = release_actor(auth, &tenant)?;
+    let governance = runtime.release_governance.0.clone();
+    let runtime = runtime.scoped(tenant.id)?;
+    let stager = RevisionedReleaseStager::new(runtime.storage.clone(), governance);
+    let result = stager
+        .stage(crate::AlloyReleaseStageCommand {
+            script_id: id,
+            expected_revision: request.expected_version,
+            publish_request_id: request.publish_request_id,
+            artifact_digest: request.artifact_digest,
+            actor_id,
+            idempotency_key: request.idempotency_key,
+        })
+        .await
+        .map_err(release_error)?;
+    Ok(Json(StageReleaseResponse {
+        staging_id: result.staging_id,
+        created: result.created,
+    }))
+}
+
 fn run_response(result: crate::ExecutionResult) -> RunScriptResponse {
     let duration_ms = result.duration_ms();
     let (success, error, changes, return_value) = match result.outcome {
@@ -606,6 +702,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .route(
             "/api/alloy/scripts/{id}/tests/run",
             post(run_workspace_test),
+        )
+        .route(
+            "/api/alloy/scripts/{id}/releases/stage",
+            post(stage_release),
         )
         .route("/api/alloy/scripts/{id}/reviews", post(review_script))
         .route(

@@ -185,7 +185,12 @@
     "precondition": "expected_current_revision_and_latest_approved_review",
     "idempotency": "publish_request_idempotency_key_bound_to_source_revision_and_review",
     "ownership": "rustok_modules_is_sole_marketplace_writer",
+    "transports": "graphql_and_host_http_require_scripts_and_modules_manage_and_verified_actor",
+    "transport_route": "/api/alloy/scripts/{id}/releases/stage",
+    "artifact_payload_media_type": "application/vnd.rustok.rhai.workspace.v1",
+    "artifact_digest_relation": "equals_reviewed_source_digest",
     "evidence_fields": [
+      "artifact_digest",
       "source_digest",
       "source_revision",
       "alloy_tenant_id",

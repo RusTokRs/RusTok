@@ -101,6 +101,7 @@ pub const REGISTRY_EXTERNAL_SOURCE_ABSENCE_REASON_CODES: &[&str] = &[
 const REMOTE_VALIDATION_FOLLOW_UP_STAGES: &[&str] =
     &["compile_smoke", "targeted_tests", "security_policy_review"];
 const MAX_REMOTE_VALIDATION_CLAIM_CANDIDATES: u64 = 128;
+const MAX_PUBLICATION_REQUEST_ID_BYTES: usize = 128;
 const MAX_PUBLICATION_EVIDENCE_REFERENCE_BYTES: usize = 512;
 const MAX_PUBLICATION_EVIDENCE_IDENTITY_BYTES: usize = 256;
 const MAX_PUBLICATION_EVIDENCE_POLICY_REVISION_BYTES: usize = 128;
@@ -310,6 +311,7 @@ pub struct ModuleValidationJobWorkItem {
     pub slug: String,
     pub version: String,
     pub crate_name: String,
+    pub artifact_origin: ModulePublicationArtifactOrigin,
     pub artifact_storage_key: String,
     pub artifact_checksum_sha256: String,
     pub artifact_size: u64,
@@ -624,6 +626,8 @@ impl ModuleOwnerBindCommand {
 impl ModulePublishRequestRejectCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
+            || self.request_id.len() > MAX_PUBLICATION_REQUEST_ID_BYTES
+            || self.request_id.chars().any(char::is_control)
             || self.reason.trim().is_empty()
             || self.actor_principal.is_null()
         {
@@ -3385,7 +3389,7 @@ impl SeaOrmModuleGovernanceService {
         };
         let Some(job) = tx.query_one(Statement::from_sql_and_values(
             backend,
-            format!("SELECT j.status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.crate_name, r.ownership, r.trust_level, r.license, r.entry_type, r.marketplace, r.ui_packages, r.validation_warnings, r.status AS request_status, r.artifact_storage_key, r.artifact_checksum_sha256, r.artifact_size, r.artifact_content_type, t.name AS module_name, t.description AS module_description FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id LEFT JOIN registry_publish_request_translations t ON t.request_id = r.id AND t.locale = r.default_locale WHERE j.id = {}", mark(1)),
+            format!("SELECT j.status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.crate_name, r.ownership, r.trust_level, r.license, r.entry_type, r.artifact_origin, r.marketplace, r.ui_packages, r.validation_warnings, r.status AS request_status, r.artifact_storage_key, r.artifact_checksum_sha256, r.artifact_size, r.artifact_content_type, t.name AS module_name, t.description AS module_description FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id LEFT JOIN registry_publish_request_translations t ON t.request_id = r.id AND t.locale = r.default_locale WHERE j.id = {}", mark(1)),
             vec![command.validation_job_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))? else {
             return Ok(None);
@@ -3449,12 +3453,18 @@ impl SeaOrmModuleGovernanceService {
                 let crate_name: String = job
                     .try_get("", "crate_name")
                     .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+                let artifact_origin = ModulePublicationArtifactOrigin::parse(
+                    &job.try_get::<String>("", "artifact_origin")
+                        .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?,
+                )
+                .ok_or(ModuleGovernanceError::PublishRequestArtifactOriginUnclassified)?;
                 Ok(ModuleValidationJobWorkItem {
                     validation_job_id: command.validation_job_id.clone(),
                     request_id: request_id.clone(),
                     slug: slug.clone(),
                     version: version.clone(),
                     crate_name,
+                    artifact_origin,
                     artifact_storage_key,
                     artifact_checksum_sha256,
                     artifact_size: artifact_size as u64,

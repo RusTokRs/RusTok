@@ -114,15 +114,15 @@ Still outside the owner boundary:
   those immutable delivery facts cannot be assembled, the owner atomically
   rejects the request and fails the job with content-free audit evidence rather
   than leaving it queued. The independent worker verifies claimed bytes before
-  parsing. Bundle contract
-  validation itself now runs through the pure owner
-  `validate_module_publish_bundle` function against an immutable metadata
-  snapshot carried by that work item; it no longer needs a server request model
-  in the production claimed-job path. `rustok-registry-validation-worker` now
+  parsing. Artifact contract validation now runs through the pure owner
+  `validate_module_publish_artifact` function against the immutable origin and
+  metadata snapshot carried by that work item; it no longer needs a server
+  request model in the production claimed-job path.
+  `rustok-registry-validation-worker` now
   independently polls and conditionally claims that durable owner queue,
   verifies the claimed object bytes, and records the typed result. The server
   endpoint only queues work and has no background-spawn execution path.
-  The server worker executes bundle checks only, then submits immutable evidence
+  The worker executes origin-specific artifact checks only, then submits immutable evidence
   to one owner transaction that finalizes the request and job, creates follow-up
   stages, and persists their audit facts;
 - draft publish-request creation now uses an owner transaction for the request,
@@ -639,12 +639,14 @@ absence of a tenant identifier.
   for release evidence, and the final owner publication transaction enforces
   the required authority facts. Both platform-build and external-prebuilt
   staging are owner-owned, durable, and exposed through authenticated server
-  adapters. The independent registry validation worker treats artifact metadata
-  and embedded manifest text as untrusted: it verifies the claimed storage
-  facts, bounds every parsed manifest, caps the complete publish bundle at 2
-  MiB before JSON parsing, and emits content-free validation diagnostics, so
-  raw artifact/request strings do not enter governance events through this
-  validation path. Rendering and AI prompt boundaries remain separate unfinished
+  adapters. Alloy-authored staging is also owner-owned and binds the exact
+  uploaded workspace checksum to the reviewed Alloy source digest. The
+  independent registry validation worker treats artifact contents as untrusted:
+  it verifies the claimed storage facts, selects validation by immutable origin,
+  bounds normal publish bundles at 2 MiB and Alloy workspaces at 1 MiB before
+  parsing, and emits content-free diagnostics, so raw artifact/request strings
+  do not enter governance events through this validation path. Rendering and AI
+  prompt boundaries remain separate unfinished
   work alongside OCI policy enforcement.
 - Move remaining effective-policy composition.
 - Own static module-settings schema validation and normalization behind the

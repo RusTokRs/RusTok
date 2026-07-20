@@ -6,6 +6,7 @@ use uuid::Uuid;
 use super::{ReviewDecision, ReviewStatus, ScriptId};
 
 pub const MAX_RELEASE_ACTOR_ID_LENGTH: usize = 255;
+pub const MAX_RELEASE_REQUEST_ID_LENGTH: usize = 128;
 
 /// Authenticated request to stage one reviewed immutable Alloy source revision
 /// at the owner-owned module publication boundary.
@@ -24,6 +25,8 @@ impl AlloyReleaseStageCommand {
         if self.script_id.is_nil()
             || self.expected_revision == 0
             || self.publish_request_id.trim().is_empty()
+            || self.publish_request_id.len() > MAX_RELEASE_REQUEST_ID_LENGTH
+            || self.publish_request_id.chars().any(char::is_control)
             || !is_prefixed_sha256_digest(&self.artifact_digest)
             || !is_bounded_actor_id(&self.actor_id)
             || self.idempotency_key.is_nil()
@@ -75,8 +78,14 @@ pub enum AlloyReleaseError {
     StaleRevision { expected: u32 },
     #[error("Alloy source revision has no current approved review")]
     ReviewNotApproved,
+    #[error("Alloy artifact digest does not match the reviewed source workspace")]
+    ArtifactSourceDigestMismatch,
     #[error("Alloy release evidence serialization failed: {0}")]
     Serialize(String),
+    #[error("module publication staging conflict: {0}")]
+    GovernanceConflict(String),
+    #[error("module publication request was not found: {0}")]
+    GovernanceNotFound(String),
     #[error("module publication staging failed: {0}")]
     Governance(String),
 }
@@ -101,5 +110,21 @@ mod tests {
         let mut invalid = command;
         invalid.expected_revision = 0;
         assert_eq!(invalid.validate(), Err(AlloyReleaseError::InvalidCommand));
+    }
+
+    #[test]
+    fn release_stage_rejects_unbounded_or_control_request_ids() {
+        let mut command = AlloyReleaseStageCommand {
+            script_id: Uuid::new_v4(),
+            expected_revision: 1,
+            publish_request_id: "rpr_example".to_string(),
+            artifact_digest: format!("sha256:{}", "a".repeat(64)),
+            actor_id: "operator".to_string(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        command.publish_request_id = "x".repeat(super::MAX_RELEASE_REQUEST_ID_LENGTH + 1);
+        assert_eq!(command.validate(), Err(AlloyReleaseError::InvalidCommand));
+        command.publish_request_id = "rpr_\nexample".to_string();
+        assert_eq!(command.validate(), Err(AlloyReleaseError::InvalidCommand));
     }
 }

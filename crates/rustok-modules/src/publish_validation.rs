@@ -2,13 +2,17 @@
 
 use serde::Deserialize;
 
-use crate::ModulePublishValidationContract;
+use crate::{ModulePublicationArtifactOrigin, ModulePublishValidationContract};
 
 /// Maximum accepted serialized publish bundle size. The bundle carries only
 /// registry metadata and bounded manifest text, never an executable payload.
 pub const MODULE_PUBLISH_ARTIFACT_MAX_BYTES: usize = 2 * 1024 * 1024;
 /// Maximum text size for any embedded TOML manifest in a publish bundle.
 pub const MODULE_PUBLISH_ARTIFACT_MANIFEST_MAX_BYTES: usize = 256 * 1024;
+/// Maximum serialized canonical workspace accepted for an Alloy-authored
+/// artifact. The exact bytes still have to match the reviewed source digest at
+/// the owner staging boundary.
+pub const MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES: usize = 1024 * 1024;
 
 /// Required `artifact_type` for an uploaded registry publish bundle.
 pub const MODULE_PUBLISH_BUNDLE_TYPE: &str = "rustok-module-publish-bundle";
@@ -18,6 +22,84 @@ pub const MODULE_PUBLISH_BUNDLE_TYPE: &str = "rustok-module-publish-bundle";
 pub struct ModulePublishBundleValidation {
     pub warnings: Vec<String>,
     pub errors: Vec<String>,
+}
+
+/// Validates the delivery representation selected by immutable artifact
+/// origin. Platform-built and external artifacts retain the registry metadata
+/// bundle contract; Alloy-authored releases carry the executable canonical
+/// workspace whose exact digest is later bound to reviewed source evidence.
+pub fn validate_module_publish_artifact(
+    artifact_origin: ModulePublicationArtifactOrigin,
+    contract: &ModulePublishValidationContract,
+    content_type: &str,
+    bytes: &[u8],
+) -> ModulePublishBundleValidation {
+    match artifact_origin {
+        ModulePublicationArtifactOrigin::AlloyAuthored => {
+            validate_alloy_workspace_delivery(content_type, bytes)
+        }
+        ModulePublicationArtifactOrigin::PlatformBuilt
+        | ModulePublicationArtifactOrigin::ExternalPrebuilt => {
+            validate_module_publish_bundle(contract, content_type, bytes)
+        }
+    }
+}
+
+fn validate_alloy_workspace_delivery(
+    content_type: &str,
+    bytes: &[u8],
+) -> ModulePublishBundleValidation {
+    let mut validation = ModulePublishBundleValidation::default();
+    if bytes.len() > MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES {
+        validation.errors.push(format!(
+            "Alloy workspace artifact exceeds the {} byte validation limit.",
+            MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES
+        ));
+        return validation;
+    }
+    if content_type != crate::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE {
+        validation
+            .errors
+            .push("Alloy workspace artifact content type is unsupported.".to_string());
+        return validation;
+    }
+    let workspace = match serde_json::from_slice::<serde_json::Value>(bytes) {
+        Ok(serde_json::Value::Object(workspace)) => workspace,
+        _ => {
+            validation
+                .errors
+                .push("Alloy workspace artifact is not a valid JSON object.".to_string());
+            return validation;
+        }
+    };
+    if workspace
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        != Some(1)
+    {
+        validation
+            .errors
+            .push("Alloy workspace artifact schema_version is unsupported.".to_string());
+    }
+    if workspace
+        .get("entrypoint")
+        .and_then(serde_json::Value::as_str)
+        .is_none_or(|entrypoint| entrypoint.trim().is_empty())
+    {
+        validation
+            .errors
+            .push("Alloy workspace artifact entrypoint is missing.".to_string());
+    }
+    if workspace
+        .get("files")
+        .and_then(serde_json::Value::as_array)
+        .is_none_or(Vec::is_empty)
+    {
+        validation
+            .errors
+            .push("Alloy workspace artifact files are missing.".to_string());
+    }
+    validation
 }
 
 #[derive(Debug, Deserialize)]
@@ -637,6 +719,52 @@ fn dedupe(values: &mut Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn contract() -> ModulePublishValidationContract {
+        ModulePublishValidationContract {
+            slug: "sample-module".to_string(),
+            version: "1.0.0".to_string(),
+            crate_name: "sample_module".to_string(),
+            module_name: "Sample module".to_string(),
+            module_description: "Sample module description".to_string(),
+            ownership: "first_party".to_string(),
+            trust_level: "sandboxed".to_string(),
+            license: "MIT".to_string(),
+            entry_type: None,
+            marketplace_category: None,
+            marketplace_tags: Vec::new(),
+            admin_ui_crate_name: None,
+            storefront_ui_crate_name: None,
+        }
+    }
+
+    #[test]
+    fn alloy_delivery_accepts_only_the_bounded_workspace_envelope() {
+        let workspace = br#"{"schema_version":1,"entrypoint":"src/main.rhai","files":[{"path":"src/main.rhai","kind":"source","contents":"40 + 2"}]}"#;
+        let accepted = validate_module_publish_artifact(
+            ModulePublicationArtifactOrigin::AlloyAuthored,
+            &contract(),
+            crate::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE,
+            workspace,
+        );
+        assert!(accepted.errors.is_empty());
+
+        let wrong_type = validate_module_publish_artifact(
+            ModulePublicationArtifactOrigin::AlloyAuthored,
+            &contract(),
+            "application/json",
+            workspace,
+        );
+        assert_eq!(wrong_type.errors.len(), 1);
+
+        let oversized = validate_module_publish_artifact(
+            ModulePublicationArtifactOrigin::AlloyAuthored,
+            &contract(),
+            crate::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE,
+            &vec![b'x'; MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES + 1],
+        );
+        assert_eq!(oversized.errors.len(), 1);
+    }
 
     #[test]
     fn oversized_untrusted_artifact_text_never_enters_validation_diagnostics() {

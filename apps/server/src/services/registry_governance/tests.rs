@@ -100,7 +100,34 @@ mod tests {
             bytes: bytes::Bytes::from(sample_publish_artifact_json("blog", true).into_bytes()),
         };
 
-        let validation = validate_registry_artifact_bundle(&db, &request, &artifact)
+        let validation = validate_registry_artifact(&db, &request, &artifact)
+            .await
+            .unwrap();
+
+        assert!(validation.errors.is_empty(), "{:?}", validation.errors);
+    }
+
+    #[tokio::test]
+    async fn alloy_artifact_validation_accepts_only_workspace_delivery() {
+        let db = setup_registry_metadata_db().await;
+        let mut request = sample_publish_request_model();
+        request.artifact_origin = "alloy_authored".to_string();
+        insert_publish_request_translation(
+            &db,
+            &request.id,
+            SAMPLE_DEFAULT_LOCALE,
+            SAMPLE_MODULE_NAME,
+            SAMPLE_MODULE_DESCRIPTION,
+        )
+        .await;
+        let artifact = RegistryArtifactUpload {
+            content_type: rustok_modules::MODULE_ARTIFACT_RHAI_WORKSPACE_MEDIA_TYPE.to_string(),
+            bytes: bytes::Bytes::from_static(
+                br#"{"schema_version":1,"entrypoint":"src/main.rhai","files":[{"path":"src/main.rhai","kind":"source","contents":"40 + 2"}]}"#,
+            ),
+        };
+
+        let validation = validate_registry_artifact(&db, &request, &artifact)
             .await
             .unwrap();
 
@@ -124,7 +151,7 @@ mod tests {
             bytes: bytes::Bytes::from(sample_publish_artifact_json("forum", true).into_bytes()),
         };
 
-        let validation = validate_registry_artifact_bundle(&db, &request, &artifact)
+        let validation = validate_registry_artifact(&db, &request, &artifact)
             .await
             .unwrap();
 
@@ -155,7 +182,7 @@ mod tests {
             bytes: bytes::Bytes::from(sample_publish_artifact_json("blog", false).into_bytes()),
         };
 
-        let validation = validate_registry_artifact_bundle(&db, &request, &artifact)
+        let validation = validate_registry_artifact(&db, &request, &artifact)
             .await
             .unwrap();
 
@@ -178,7 +205,7 @@ mod tests {
             bytes: bytes::Bytes::from(vec![b'x'; MODULE_PUBLISH_ARTIFACT_MAX_BYTES + 1]),
         };
 
-        let validation = validate_registry_artifact_bundle(&db, &request, &artifact)
+        let validation = validate_registry_artifact(&db, &request, &artifact)
             .await
             .unwrap();
 
@@ -211,7 +238,7 @@ mod tests {
             )),
         };
 
-        let validation = validate_registry_artifact_bundle(&db, &request, &artifact)
+        let validation = validate_registry_artifact(&db, &request, &artifact)
             .await
             .unwrap();
 

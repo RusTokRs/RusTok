@@ -62,6 +62,14 @@ pub struct RunWorkspaceTestRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct StageReleaseRequest {
+    pub expected_version: u32,
+    pub publish_request_id: String,
+    pub artifact_digest: String,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct EntityInput {
     pub id: String,
     pub entity_type: String,
@@ -241,6 +249,12 @@ impl From<TestRun> for TestRunResponse {
             completed_at: run.completed_at.map(|time| time.to_rfc3339()),
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+pub struct StageReleaseResponse {
+    pub staging_id: String,
+    pub created: bool,
 }
 
 #[cfg(test)]

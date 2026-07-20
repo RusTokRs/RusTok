@@ -1,9 +1,9 @@
-//! Independent durable worker for registry publish-bundle validation.
+//! Independent durable worker for origin-aware registry artifact validation.
 
 use sha2::{Digest, Sha256};
 
 use rustok_modules::{
-    validate_module_publish_bundle, ModuleValidationJobClaimResult,
+    validate_module_publish_artifact, ModuleValidationJobClaimResult,
     ModuleValidationJobResultCommand, ModuleValidationJobResultOutcome,
     ModuleValidationJobRetryCommand, SeaOrmModuleGovernanceService,
 };
@@ -66,7 +66,8 @@ impl RegistryValidationWorker {
             ArtifactLoadOutcome::Loaded(artifact) => artifact,
             ArtifactLoadOutcome::Terminalized => return Ok(Some(validation_job_id)),
         };
-        let validation = validate_module_publish_bundle(
+        let validation = validate_module_publish_artifact(
+            work_item.artifact_origin,
             &work_item.contract,
             &work_item.artifact_content_type,
             &artifact,
@@ -75,12 +76,12 @@ impl RegistryValidationWorker {
         warnings.extend(validation.warnings);
         dedupe(&mut warnings);
         let (outcome, errors, automated_checks) = if validation.errors.is_empty() {
-            warnings.push("Automated bundle validation passed; follow-up validation stages are still required before publication.".to_string());
+            warnings.push("Automated artifact validation passed; follow-up validation stages are still required before publication.".to_string());
             dedupe(&mut warnings);
             (
                 ModuleValidationJobResultOutcome::Passed,
                 Vec::new(),
-                serde_json::json!([{"check":"bundle_contract","status":"passed"}]),
+                serde_json::json!([{"check":"artifact_contract","status":"passed"}]),
             )
         } else {
             let mut errors = validation.errors;
@@ -88,7 +89,7 @@ impl RegistryValidationWorker {
             (
                 ModuleValidationJobResultOutcome::Failed,
                 errors,
-                serde_json::json!([{"check":"bundle_contract","status":"failed"}]),
+                serde_json::json!([{"check":"artifact_contract","status":"failed"}]),
             )
         };
         self.service
@@ -140,7 +141,7 @@ impl RegistryValidationWorker {
                                 actor_principal: self.actor_principal.clone(),
                                 outcome: ModuleValidationJobResultOutcome::Failed,
                                 warnings: work_item.existing_warnings.clone(),
-                                errors: vec!["Validation job exhausted artifact-load retries before bundle checks.".to_string()],
+                                errors: vec!["Validation job exhausted artifact-load retries before artifact checks.".to_string()],
                                 automated_checks: serde_json::json!([{"check":"artifact_load","status":"failed"}]),
                             })
                             .await

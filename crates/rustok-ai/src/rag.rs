@@ -36,6 +36,59 @@ pub struct RagSourceRef {
     pub locator: Option<String>,
 }
 
+/// A source document submitted to the RAG ingestion boundary.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RagDocument {
+    pub source: RagSourceRef,
+    pub title: Option<String>,
+    pub text: String,
+    pub metadata: serde_json::Value,
+}
+
+/// Bounded, deterministic text segmentation policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RagChunkingPolicy {
+    /// Maximum number of Unicode scalar values in one chunk.
+    pub max_chars: usize,
+    /// Number of trailing scalar values repeated at the start of the next chunk.
+    pub overlap_chars: usize,
+}
+
+impl Default for RagChunkingPolicy {
+    fn default() -> Self {
+        Self {
+            max_chars: 1_200,
+            overlap_chars: 120,
+        }
+    }
+}
+
+/// One deterministic chunk ready for embedding and persistence by an adapter.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RagChunk {
+    pub chunk_id: String,
+    pub source: RagSourceRef,
+    pub ordinal: usize,
+    pub text: String,
+    /// UTF-8 byte offsets into the original document text.
+    pub start_byte: usize,
+    pub end_byte: usize,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RagIngestRequest {
+    pub tenant_id: Uuid,
+    pub document: RagDocument,
+    pub chunking: RagChunkingPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RagIngestResult {
+    pub source: RagSourceRef,
+    pub chunks: Vec<RagChunk>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RagSearchRequest {
     pub tenant_id: Uuid,
@@ -128,8 +181,12 @@ impl RagContext {
 pub enum RagError {
     #[error("RAG query must not be empty")]
     EmptyQuery,
+    #[error("RAG document must not be empty")]
+    EmptyDocument,
     #[error("RAG result limit must be between 1 and {max}")]
     InvalidLimit { max: usize },
+    #[error("RAG chunking policy requires max_chars > 0 and overlap_chars < max_chars")]
+    InvalidChunkingPolicy,
     #[error("Athanor RAG provider failed: {0}")]
     Provider(String),
     #[error("Athanor returned no atom for candidate `{0}`")]
@@ -137,6 +194,74 @@ pub enum RagError {
 }
 
 pub type RagResult<T> = Result<T, RagError>;
+
+/// Split a document into bounded, source-addressable chunks.
+///
+/// Chunk ids are stable for the same source identity and ordinal. Boundaries prefer
+/// whitespace, while a single oversized token is hard-split at a valid UTF-8 boundary.
+pub fn chunk_document(
+    document: &RagDocument,
+    policy: RagChunkingPolicy,
+) -> RagResult<Vec<RagChunk>> {
+    if policy.max_chars == 0 || policy.overlap_chars >= policy.max_chars {
+        return Err(RagError::InvalidChunkingPolicy);
+    }
+    if document.text.trim().is_empty() {
+        return Err(RagError::EmptyDocument);
+    }
+
+    let chars: Vec<char> = document.text.chars().collect();
+    let byte_offsets: Vec<usize> = document.text.char_indices().map(|(offset, _)| offset).collect();
+    let mut chunks = Vec::new();
+    let mut start = 0usize;
+
+    while start < chars.len() {
+        let hard_end = (start + policy.max_chars).min(chars.len());
+        let mut end = hard_end;
+        if hard_end < chars.len() {
+            end = (start + 1..=hard_end)
+                .rev()
+                .find(|candidate| chars[*candidate - 1].is_whitespace())
+                .unwrap_or(hard_end);
+        }
+        while end > start && chars[end - 1].is_whitespace() {
+            end -= 1;
+        }
+        if end == start {
+            end = hard_end;
+        }
+
+        let start_byte = byte_offsets.get(start).copied().unwrap_or(document.text.len());
+        let end_byte = byte_offsets.get(end).copied().unwrap_or(document.text.len());
+        let text = chars[start..end].iter().collect::<String>().trim().to_string();
+        if !text.is_empty() {
+            let ordinal = chunks.len();
+            chunks.push(RagChunk {
+                chunk_id: format!(
+                    "{}:{}:{}:{}",
+                    document.source.source_id,
+                    document.source.external_id,
+                    document.source.revision,
+                    ordinal
+                ),
+                source: document.source.clone(),
+                ordinal,
+                text,
+                start_byte,
+                end_byte,
+                metadata: document.metadata.clone(),
+            });
+        }
+
+        if end == chars.len() {
+            break;
+        }
+        let next_start = end.saturating_sub(policy.overlap_chars);
+        start = next_start.max(start + 1);
+    }
+
+    Ok(chunks)
+}
 
 /// Provider-neutral seam implemented by the embedded Athanor module.
 ///
@@ -277,6 +402,75 @@ mod tests {
             related_atom_ids: Vec::new(),
             metadata: serde_json::json!({"kind": "paragraph"}),
         }
+    }
+
+    fn document(text: &str) -> RagDocument {
+        RagDocument {
+            source: source(),
+            title: Some("Example".to_string()),
+            text: text.to_string(),
+            metadata: serde_json::json!({"kind": "knowledge"}),
+        }
+    }
+
+    #[test]
+    fn chunking_is_bounded_deterministic_and_keeps_source_offsets() {
+        let input = document("alpha beta gamma delta epsilon zeta eta theta");
+        let policy = RagChunkingPolicy {
+            max_chars: 18,
+            overlap_chars: 4,
+        };
+
+        let first = chunk_document(&input, policy).expect("chunking succeeds");
+        let second = chunk_document(&input, policy).expect("chunking is repeatable");
+
+        assert_eq!(first, second);
+        assert!(first.len() > 1);
+        assert!(first.iter().all(|chunk| chunk.text.chars().count() <= 18));
+        assert_eq!(first[0].chunk_id, "athanor:doc-1:rev-1:0");
+        assert!(first
+            .iter()
+            .all(|chunk| input.text[chunk.start_byte..chunk.end_byte].contains(&chunk.text)));
+        assert!(first.windows(2).any(|chunks| {
+            chunks[0]
+                .text
+                .chars()
+                .rev()
+                .take(4)
+                .eq(chunks[1].text.chars().take(4))
+        }));
+    }
+
+    #[test]
+    fn chunking_handles_unicode_and_rejects_invalid_input() {
+        let input = document("Привет мир. Данные для поиска.");
+        let chunks = chunk_document(
+            &input,
+            RagChunkingPolicy {
+                max_chars: 10,
+                overlap_chars: 2,
+            },
+        )
+        .expect("unicode chunking succeeds");
+        assert!(chunks.iter().all(|chunk| chunk.text.chars().count() <= 10));
+        assert!(chunks
+            .iter()
+            .all(|chunk| input.text.is_char_boundary(chunk.start_byte)));
+
+        assert!(matches!(
+            chunk_document(
+                &document("text"),
+                RagChunkingPolicy {
+                    max_chars: 4,
+                    overlap_chars: 4,
+                }
+            ),
+            Err(RagError::InvalidChunkingPolicy)
+        ));
+        assert!(matches!(
+            chunk_document(&document("  "), RagChunkingPolicy::default()),
+            Err(RagError::EmptyDocument)
+        ));
     }
 
     #[tokio::test]

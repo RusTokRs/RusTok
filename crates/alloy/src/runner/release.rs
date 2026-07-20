@@ -20,6 +20,25 @@ pub trait AlloyReleaseGovernance: Send + Sync {
     ) -> Result<ModuleAlloyAuthoredStageResult, ModuleGovernanceError>;
 }
 
+/// Host-provided owner boundary used by Alloy HTTP and GraphQL transports.
+/// Alloy never owns marketplace persistence; the host injects this handle when
+/// composing the module routes and schema.
+#[derive(Clone)]
+pub struct AlloyReleaseGovernanceHandle(pub Arc<dyn AlloyReleaseGovernance>);
+
+#[async_trait]
+impl<T> AlloyReleaseGovernance for Arc<T>
+where
+    T: AlloyReleaseGovernance + ?Sized,
+{
+    async fn stage_alloy_authored(
+        &self,
+        command: ModuleAlloyAuthoredStageCommand,
+    ) -> Result<ModuleAlloyAuthoredStageResult, ModuleGovernanceError> {
+        self.as_ref().stage_alloy_authored(command).await
+    }
+}
+
 #[async_trait]
 impl AlloyReleaseGovernance for SeaOrmModuleGovernanceService {
     async fn stage_alloy_authored(
@@ -74,6 +93,9 @@ where
             .get_source_revision(command.script_id, command.expected_revision)
             .await
             .map_err(script_error_to_release)?;
+        if command.artifact_digest != source.source_digest {
+            return Err(AlloyReleaseError::ArtifactSourceDigestMismatch);
+        }
         let reviews = self
             .registry
             .list_reviews(command.script_id, command.expected_revision)
@@ -110,7 +132,15 @@ where
                 }),
             })
             .await
-            .map_err(|error| AlloyReleaseError::Governance(error.to_string()))
+            .map_err(|error| match error {
+                conflict @ ModuleGovernanceError::AlloyAuthoredStageIdempotencyConflict => {
+                    AlloyReleaseError::GovernanceConflict(conflict.to_string())
+                }
+                not_found @ ModuleGovernanceError::PublishRequestNotFound => {
+                    AlloyReleaseError::GovernanceNotFound(not_found.to_string())
+                }
+                error => AlloyReleaseError::Governance(error.to_string()),
+            })
     }
 }
 

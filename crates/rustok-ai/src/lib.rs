@@ -75,7 +75,8 @@ pub use model::{
 };
 pub use policy::ToolExecutionPolicy;
 pub use rag::{
-    RagAtom, RagCandidate, RagCitation, RagContext, RagCoordinator, RagError, RagExpandRequest,
+    chunk_document, RagAtom, RagCandidate, RagChunk, RagChunkingPolicy, RagCitation, RagContext,
+    RagCoordinator, RagDocument, RagError, RagExpandRequest, RagIngestRequest, RagIngestResult,
     RagResult, RagRetrievalPort, RagRetrievalStrategy, RagSearchRequest, RagSourceRef,
 };
 pub use router::{AiRouter, ResolvedExecutionPlan, RouterProviderProfile};
