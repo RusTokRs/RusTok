@@ -29,6 +29,16 @@ jobs:
         run: |
           set -euo pipefail
           git pull --rebase origin main
+          python3 - <<'PY'
+          from pathlib import Path
+          patch = Path('scripts/maintenance/pin-migration-actions.py')
+          source = patch.read_text()
+          old = 'matchAll(/^\\\\s*uses:\\\\s*'
+          new = 'matchAll(/^\\\\s*(?:-\\\\s*)?uses:\\\\s*'
+          if source.count(old) != 1:
+              raise SystemExit('temporary pin parser marker drifted')
+          patch.write_text(source.replace(old, new))
+          PY
           python3 scripts/maintenance/pin-migration-actions.py
           node --check scripts/verify/verify-migration-compatibility-contract.mjs
           node scripts/verify/verify-migration-compatibility-contract.mjs
