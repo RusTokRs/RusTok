@@ -33,7 +33,7 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
 
-      - name: Apply bounded Alloy repair
+      - name: Apply bounded Alloy repair and temporary prerequisite
         shell: bash
         run: |
           set -euo pipefail
@@ -73,43 +73,44 @@ jobs:
                           f"{path}: expected {expected} occurrence(s) of {old!r}, found {found}"
                       )
               path.write_text(source)
+
+          migration = Path(
+              "crates/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs"
+          )
+          source = migration.read_text()
+          old = '''        manager
+            .get_connection()
+            .execute_unprepared("DROP TABLE module_artifact_data_exports")
+            .await
+'''
+          new = '''        manager
+            .get_connection()
+            .execute_unprepared("DROP TABLE module_artifact_data_exports")
+            .await?;
+        Ok(())
+'''
+          if source.count(old) != 1:
+              raise SystemExit("artifact export down prerequisite marker not found exactly once")
+          migration.write_text(source.replace(old, new, 1))
           PY
-          cargo fmt -p alloy
+          cargo fmt -p alloy -p rustok-modules
           git diff --check
 
-      - name: Diagnose Alloy tests
-        shell: bash
+      - name: Verify Alloy with known stacked prerequisite
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/alloy-current-main-compile
-        run: |
-          set +e
-          cargo test --locked -p alloy > alloy-test.log 2>&1
-          exit_code=$?
-          set -e
-          echo "$exit_code" > alloy-test.exit
-          tail -n 420 alloy-test.log
+        run: cargo test --locked -p alloy
 
-      - name: Upload Alloy test diagnostic
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: alloy-test-${{ github.run_id }}
-          path: |
-            alloy-test.log
-            alloy-test.exit
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Enforce Alloy tests
-        run: test "$(cat alloy-test.exit)" = "0"
-
-      - name: Commit and publish verified repair
+      - name: Commit and publish verified Alloy repair
         shell: bash
         run: |
           set -euo pipefail
+          git restore -- \
+            crates/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -f -- .github/workflows/one-off-fix-alloy-current-main-compile.yml
           git add crates/alloy
+          git diff --cached --check
           git commit -m "fix(alloy): restore current main compilation"
           git push origin HEAD:agent/fix-alloy-current-main-compile
