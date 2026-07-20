@@ -100,13 +100,15 @@ async fn sqlite_database_enforces_rbac_relation_tenant_integrity() {
     )
     .await
     .expect("same-tenant user role must be accepted");
-    assert!(execute(
-        &db,
-        "INSERT INTO user_roles (id, user_id, role_id) VALUES (?1, ?2, ?3)",
-        vec![Uuid::new_v4().into(), user_a.into(), role_b.into()],
-    )
-    .await
-    .is_err());
+    assert!(
+        execute(
+            &db,
+            "INSERT INTO user_roles (id, user_id, role_id) VALUES (?1, ?2, ?3)",
+            vec![Uuid::new_v4().into(), user_a.into(), role_b.into()],
+        )
+        .await
+        .is_err()
+    );
 
     execute(
         &db,
@@ -115,35 +117,43 @@ async fn sqlite_database_enforces_rbac_relation_tenant_integrity() {
     )
     .await
     .expect("same-tenant role permission must be accepted");
-    assert!(execute(
-        &db,
-        "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?1, ?2, ?3)",
-        vec![Uuid::new_v4().into(), role_a.into(), permission_b.into()],
-    )
-    .await
-    .is_err());
+    assert!(
+        execute(
+            &db,
+            "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?1, ?2, ?3)",
+            vec![Uuid::new_v4().into(), role_a.into(), permission_b.into()],
+        )
+        .await
+        .is_err()
+    );
 
-    assert!(execute(
-        &db,
-        "UPDATE users SET tenant_id = ?1 WHERE id = ?2",
-        vec![tenant_b.into(), user_a.into()],
-    )
-    .await
-    .is_err());
-    assert!(execute(
-        &db,
-        "UPDATE roles SET tenant_id = ?1 WHERE id = ?2",
-        vec![tenant_b.into(), role_a.into()],
-    )
-    .await
-    .is_err());
-    assert!(execute(
-        &db,
-        "UPDATE permissions SET tenant_id = ?1 WHERE id = ?2",
-        vec![tenant_b.into(), permission_a.into()],
-    )
-    .await
-    .is_err());
+    assert!(
+        execute(
+            &db,
+            "UPDATE users SET tenant_id = ?1 WHERE id = ?2",
+            vec![tenant_b.into(), user_a.into()],
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        execute(
+            &db,
+            "UPDATE roles SET tenant_id = ?1 WHERE id = ?2",
+            vec![tenant_b.into(), role_a.into()],
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        execute(
+            &db,
+            "UPDATE permissions SET tenant_id = ?1 WHERE id = ?2",
+            vec![tenant_b.into(), permission_a.into()],
+        )
+        .await
+        .is_err()
+    );
 }
 
 #[tokio::test]
@@ -206,18 +216,22 @@ async fn migration_removes_historical_cross_tenant_links_before_enforcing_trigge
         count(&db, "SELECT COUNT(*) AS total FROM role_permissions").await,
         0
     );
-    assert!(execute(
-        &db,
-        "INSERT INTO user_roles (id, user_id, role_id) VALUES (?1, ?2, ?3)",
-        vec![Uuid::new_v4().into(), user_a.into(), role_b.into()],
-    )
-    .await
-    .is_err());
-    assert!(execute(
-        &db,
-        "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?1, ?2, ?3)",
-        vec![Uuid::new_v4().into(), role_b.into(), permission_a.into()],
-    )
-    .await
-    .is_err());
+    assert!(
+        execute(
+            &db,
+            "INSERT INTO user_roles (id, user_id, role_id) VALUES (?1, ?2, ?3)",
+            vec![Uuid::new_v4().into(), user_a.into(), role_b.into()],
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        execute(
+            &db,
+            "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?1, ?2, ?3)",
+            vec![Uuid::new_v4().into(), role_b.into(), permission_a.into()],
+        )
+        .await
+        .is_err()
+    );
 }

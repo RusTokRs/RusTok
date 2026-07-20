@@ -10,8 +10,8 @@ use sea_orm::{
     QueryFilter, Statement,
 };
 use sea_orm_migration::MigrationTrait;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct TestModule {
     slug: &'static str,
@@ -388,11 +388,13 @@ async fn pre_enable_failure_keeps_state_uncommitted() {
         .expect("operation exists");
 
     assert_eq!(operation.status, ModuleOperationStatus::Failed.as_str());
-    assert!(operation
-        .error_message
-        .as_deref()
-        .unwrap_or_default()
-        .contains("enable failed"));
+    assert!(
+        operation
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("enable failed")
+    );
     assert!(
         operation.correlation_id.is_some(),
         "failed lifecycle operation must keep correlation id for retry/audit tracing",
@@ -911,11 +913,13 @@ async fn post_enable_failure_keeps_committed_state_and_marks_failed_operation() 
         failed_operation.status,
         ModuleOperationStatus::Failed.as_str()
     );
-    assert!(failed_operation
-        .error_message
-        .as_deref()
-        .unwrap_or_default()
-        .contains("post-hook"));
+    assert!(
+        failed_operation
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("post-hook")
+    );
     assert_eq!(
         failed_operation.requested_by.as_deref(),
         Some("admin:user-post-enable"),
@@ -1017,11 +1021,13 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
         failed_operation.status,
         ModuleOperationStatus::Failed.as_str()
     );
-    assert!(failed_operation
-        .error_message
-        .as_deref()
-        .unwrap_or_default()
-        .contains("post-hook"));
+    assert!(
+        failed_operation
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("post-hook")
+    );
     assert_eq!(
         failed_operation.requested_by.as_deref(),
         Some("admin:user-post-disable"),

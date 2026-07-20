@@ -10,7 +10,7 @@ use rustok_server::common::settings::RustokSettings;
 use rustok_server::models::_entities::{permissions, role_permissions, roles, user_roles};
 use rustok_server::models::{tenants, users};
 use rustok_server::services::rbac_cache_invalidation::{
-    start_rbac_cache_invalidation_listener, RBAC_PERMISSION_INVALIDATION_CHANNEL,
+    RBAC_PERMISSION_INVALIDATION_CHANNEL, start_rbac_cache_invalidation_listener,
 };
 use rustok_server::services::rbac_service::RbacService;
 use rustok_server::services::server_runtime_context::ServerRuntimeContext;
@@ -115,14 +115,11 @@ async fn local_generation_delivery_invalidates_target_and_gap_clears_all_snapsho
             .assign_role_permissions(tenant_id, user_id, UserRole::Admin)
             .await
             .expect("assign admin role");
-        assert!(RbacService::has_permission(
-            &db,
-            &tenant_id,
-            &user_id,
-            &Permission::SETTINGS_MANAGE,
-        )
-        .await
-        .expect("prime admin permission snapshot"));
+        assert!(
+            RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE,)
+                .await
+                .expect("prime admin permission snapshot")
+        );
     }
 
     let admin_role = roles::Entity::find()
@@ -141,14 +138,11 @@ async fn local_generation_delivery_invalidates_target_and_gap_clears_all_snapsho
 
     publish_generation(&cache, tenant_id, first_user, 1).await;
     wait_for_permission(&db, tenant_id, first_user, false).await;
-    assert!(RbacService::has_permission(
-        &db,
-        &tenant_id,
-        &second_user,
-        &Permission::SETTINGS_MANAGE,
-    )
-    .await
-    .expect("unrelated cached permission remains valid after targeted invalidation"));
+    assert!(
+        RbacService::has_permission(&db, &tenant_id, &second_user, &Permission::SETTINGS_MANAGE,)
+            .await
+            .expect("unrelated cached permission remains valid after targeted invalidation")
+    );
 
     let settings_manage = permissions::Entity::find()
         .filter(permissions::Column::TenantId.eq(tenant_id))

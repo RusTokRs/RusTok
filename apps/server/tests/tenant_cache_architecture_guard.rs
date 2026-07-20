@@ -86,8 +86,10 @@ fn tenant_generation_matches_and_aliases_both_physical_backend_prefixes() {
     assert!(
         generation.contains("TENANT_CACHE_DATA_BACKEND_PREFIX: &str = \"tenant-cache:v2:data\"")
     );
-    assert!(generation
-        .contains("TENANT_CACHE_NEGATIVE_BACKEND_PREFIX: &str = \"tenant-cache:v2:negative\""));
+    assert!(
+        generation
+            .contains("TENANT_CACHE_NEGATIVE_BACKEND_PREFIX: &str = \"tenant-cache:v2:negative\"")
+    );
     assert!(generation.contains("bind_cache_backend_generation_aliases("));
     assert!(generation.contains("bind_tenant_backend_generations()?"));
     assert!(backend_generation.contains("pub fn bind_cache_backend_generation_aliases"));

@@ -639,7 +639,9 @@ fn flex_standalone_validation_contract_is_owned_by_flex_crate() {
         );
     }
     assert!(server_adapter.contains("flex::serialize_standalone_fields_config("));
-    assert!(server_adapter.contains("flex::standalone_localized_field_keys(&custom_fields_schema)"));
+    assert!(
+        server_adapter.contains("flex::standalone_localized_field_keys(&custom_fields_schema)")
+    );
     for forbidden in [
         "fn localized_field_keys(",
         "serde_json::to_value(input.fields_config).unwrap_or_default()",
@@ -953,8 +955,10 @@ fn auth_graphql_surface_is_owned_by_auth_crate() {
 
     let schema = std::fs::read_to_string(repo.join("apps/server/src/graphql/schema.rs"))
         .expect("server GraphQL schema should read");
-    assert!(schema
-        .contains("rustok_auth::graphql::{AuthMutation, AuthQuery, OAuthMutation, OAuthQuery}"));
+    assert!(
+        schema
+            .contains("rustok_auth::graphql::{AuthMutation, AuthQuery, OAuthMutation, OAuthQuery}")
+    );
 
     let forbidden = [
         "crate::context",

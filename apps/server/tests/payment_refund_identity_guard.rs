@@ -1,8 +1,7 @@
 #[test]
 fn graphql_runtime_parity_refunds_require_creation_identity() {
-    let source = include_str!(
-        "../../../crates/rustok-commerce/tests/graphql_runtime_parity_test/main.rs"
-    );
+    let source =
+        include_str!("../../../crates/rustok-commerce/tests/graphql_runtime_parity_test/main.rs");
     let start = source
         .find("fn admin_create_refund_mutation(")
         .expect("GraphQL runtime parity refund helper must exist");

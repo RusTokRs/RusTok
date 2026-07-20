@@ -121,7 +121,9 @@ fn public_role_repair_surface_splits_read_only_plan_from_transactional_apply() {
     assert!(exports.contains("db: &sea_orm::DatabaseTransaction"));
     assert!(!exports.contains("pub use repair::{\n    repair_system_roles"));
     assert!(server.contains("rustok_rbac::plan_system_role_repair(db, tenant_id)"));
-    assert!(server.contains("rustok_rbac::apply_system_role_repair_in_transaction(&tx, tenant_id)"));
+    assert!(
+        server.contains("rustok_rbac::apply_system_role_repair_in_transaction(&tx, tenant_id)")
+    );
 }
 
 #[test]

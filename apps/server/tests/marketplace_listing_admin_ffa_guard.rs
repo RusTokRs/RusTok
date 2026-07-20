@@ -4,27 +4,18 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
     let admin_host = include_str!("../../admin/Cargo.toml");
     let permissions = include_str!("../../../crates/rustok-api/src/permissions.rs");
     let owner = include_str!("../../../crates/rustok-marketplace-listing/src/lib.rs");
-    let manifest = include_str!(
-        "../../../crates/rustok-marketplace-listing/rustok-module.toml"
-    );
-    let cargo = include_str!(
-        "../../../crates/rustok-marketplace-listing/admin/Cargo.toml"
-    );
-    let model = include_str!(
-        "../../../crates/rustok-marketplace-listing/admin/src/model.rs"
-    );
-    let transport = include_str!(
-        "../../../crates/rustok-marketplace-listing/admin/src/transport.rs"
-    );
+    let manifest = include_str!("../../../crates/rustok-marketplace-listing/rustok-module.toml");
+    let cargo = include_str!("../../../crates/rustok-marketplace-listing/admin/Cargo.toml");
+    let model = include_str!("../../../crates/rustok-marketplace-listing/admin/src/model.rs");
+    let transport =
+        include_str!("../../../crates/rustok-marketplace-listing/admin/src/transport.rs");
     let native = include_str!(
         "../../../crates/rustok-marketplace-listing/admin/src/transport/native_server_adapter.rs"
     );
     let graphql = include_str!(
         "../../../crates/rustok-marketplace-listing/admin/src/transport/graphql_adapter.rs"
     );
-    let ui = include_str!(
-        "../../../crates/rustok-marketplace-listing/admin/src/ui/leptos.rs"
-    );
+    let ui = include_str!("../../../crates/rustok-marketplace-listing/admin/src/ui/leptos.rs");
 
     for marker in [
         "ui_classification = \"admin_only\"",
@@ -32,17 +23,25 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
         "route_segment = \"marketplace-listings\"",
         "supported_locales = [\"en\", \"ru\"]",
     ] {
-        assert!(manifest.contains(marker), "listing manifest is missing {marker}");
+        assert!(
+            manifest.contains(marker),
+            "listing manifest is missing {marker}"
+        );
     }
     assert!(cargo.contains("rustok-marketplace-listing = { path = \"..\", optional = true }"));
     assert!(workspace.contains("\"crates/rustok-marketplace-listing/admin\""));
-    assert!(workspace.contains("rustok-marketplace-listing-admin = { path = \"crates/rustok-marketplace-listing/admin\" }"));
+    assert!(workspace.contains(
+        "rustok-marketplace-listing-admin = { path = \"crates/rustok-marketplace-listing/admin\" }"
+    ));
     for marker in [
         "rustok-marketplace-listing-admin/hydrate",
         "rustok-marketplace-listing-admin/ssr",
         "rustok-marketplace-listing-admin = { path = \"../../crates/rustok-marketplace-listing/admin\"",
     ] {
-        assert!(admin_host.contains(marker), "admin host is missing {marker}");
+        assert!(
+            admin_host.contains(marker),
+            "admin host is missing {marker}"
+        );
     }
 
     for marker in [
@@ -56,9 +55,14 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
         "MARKETPLACE_LISTINGS_PUBLISH",
         "MARKETPLACE_LISTINGS_MODERATE",
     ] {
-        assert!(permissions.contains(marker), "platform RBAC is missing {marker}");
         assert!(
-            owner.contains(marker) || marker == "MarketplaceListings" || marker == "marketplace_listings",
+            permissions.contains(marker),
+            "platform RBAC is missing {marker}"
+        );
+        assert!(
+            owner.contains(marker)
+                || marker == "MarketplaceListings"
+                || marker == "marketplace_listings",
             "listing owner permission declaration is missing {marker}"
         );
     }
@@ -72,7 +76,10 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
         "legacy_snapshot",
         "has_unknown_attribution",
     ] {
-        assert!(model.contains(marker), "listing admin model is missing {marker}");
+        assert!(
+            model.contains(marker),
+            "listing admin model is missing {marker}"
+        );
     }
 
     assert!(transport.contains("execute_selected_transport"));
@@ -92,7 +99,10 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
         "port_context",
         "authorize",
     ] {
-        assert!(native.contains(marker), "listing native adapter is missing {marker}");
+        assert!(
+            native.contains(marker),
+            "listing native adapter is missing {marker}"
+        );
     }
     assert!(!native.contains("expect_context::<MarketplaceListingAdminNativeRuntime>"));
     assert!(!native.contains("entities::"));

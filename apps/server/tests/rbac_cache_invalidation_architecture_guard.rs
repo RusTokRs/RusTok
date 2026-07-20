@@ -63,8 +63,10 @@ fn rbac_invalidation_startup_is_serialized_supervised_and_publishable_after_reco
     assert!(early_subscription < recovery);
     assert!(recovery < runtime_commit);
     assert!(runtime_commit < publisher_commit);
-    assert!(event_runtime
-        .contains("start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;"));
+    assert!(
+        event_runtime
+            .contains("start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;")
+    );
     assert!(event_runtime.contains("CacheService must be initialized before the event runtime"));
 }
 
@@ -154,8 +156,10 @@ fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
         );
     }
 
-    assert!(committed
-        .contains("publish_user_rbac_invalidation(tenant_id, user_id, durable_generation)"));
+    assert!(
+        committed
+            .contains("publish_user_rbac_invalidation(tenant_id, user_id, durable_generation)")
+    );
     assert!(
         admin.contains("publish_user_rbac_invalidation(&tenant_id, &user_id, durable_generation)")
     );

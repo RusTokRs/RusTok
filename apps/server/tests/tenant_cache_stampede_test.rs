@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -130,7 +130,10 @@ async fn test_singleflight_pattern_handles_racy_arrival() {
 
     // With singleflight pattern, only 1 request should hit the DB
     println!("Total DB queries with singleflight: {}", queries);
-    assert!(queries <= 5, "With singleflight, only a few requests should hit the DB (ideally 1, but allowing for race conditions in test)");
+    assert!(
+        queries <= 5,
+        "With singleflight, only a few requests should hit the DB (ideally 1, but allowing for race conditions in test)"
+    );
 }
 
 #[test]

@@ -23,8 +23,11 @@ fn rbac_integrity_migration_is_registered_once_through_auth_module() {
     );
 
     assert!(registry.contains("mod m20260714_900001_enforce_rbac_relation_tenant_integrity;"));
-    assert!(registry
-        .contains("Box::new(m20260714_900001_enforce_rbac_relation_tenant_integrity::Migration)"));
+    assert!(
+        registry.contains(
+            "Box::new(m20260714_900001_enforce_rbac_relation_tenant_integrity::Migration)"
+        )
+    );
     assert!(!root
         .join(
             "crates/rustok-migrations/src/m20260714_900001_enforce_rbac_relation_tenant_integrity.rs"
@@ -57,9 +60,11 @@ fn durable_rbac_generation_migration_is_registered_once_through_auth_module() {
     assert!(
         registry.contains("Box::new(m20260714_900002_create_rbac_invalidation_state::Migration)")
     );
-    assert!(!root
-        .join("crates/rustok-migrations/src/m20260714_900002_create_rbac_invalidation_state.rs")
-        .exists());
+    assert!(
+        !root
+            .join("crates/rustok-migrations/src/m20260714_900002_create_rbac_invalidation_state.rs")
+            .exists()
+    );
     for required in [
         "rbac_invalidation_state",
         "RBAC_PERMISSION_SCOPE",

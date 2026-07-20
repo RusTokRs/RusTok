@@ -1,9 +1,9 @@
 use axum::{
-    body::{to_bytes, Body},
+    Json, Router,
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
     middleware,
     routing::get,
-    Json, Router,
 };
 use rustok_cache::CacheService;
 use rustok_migrations::Migrator;

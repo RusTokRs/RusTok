@@ -1,5 +1,5 @@
-use rustok_build::build::Entity as BuildEntity;
 use rustok_build::NoopBuildEventPublisher;
+use rustok_build::build::Entity as BuildEntity;
 use rustok_core::ModuleRegistry;
 use rustok_modules::ModuleCompositionError;
 use rustok_server::modules::{ManifestDiff, ManifestModuleSpec, ModulesManifest};
