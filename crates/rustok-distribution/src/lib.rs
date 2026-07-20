@@ -123,6 +123,10 @@ pub fn build_registry() -> ModuleRegistry {
     {
         registry = registry.register(rustok_marketplace_ledger::MarketplaceLedgerModule);
     }
+    #[cfg(feature = "mod-marketplace_payout")]
+    {
+        registry = registry.register(rustok_marketplace_payout::MarketplacePayoutModule);
+    }
     #[cfg(feature = "mod-marketplace")]
     {
         registry = registry.register(rustok_marketplace::MarketplaceModule);

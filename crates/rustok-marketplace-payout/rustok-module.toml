@@ -1,0 +1,27 @@
+[module]
+slug = "marketplace_payout"
+name = "Marketplace Payout"
+version = "0.1.0"
+description = "Marketplace Family seller payout scheduling owner"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "api_only"
+
+[marketplace]
+category = "commerce"
+tags = ["marketplace", "payout", "seller", "ledger", "settlement"]
+
+[crate]
+entry_type = "MarketplacePayoutModule"
+
+[fba.provider]
+status = "in_progress"
+role = "provider"
+contract_version = "marketplace.payout.v1"
+registry = "contracts/marketplace-payout-fba-registry.json"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+
+[fba.provider.rollout]
+fallback_profiles = ["embedded_native", "remote_adapter_placeholder"]
+degraded_modes = ["payout_storage_unavailable", "ledger_provider_unavailable", "payout_receipt_requires_review"]

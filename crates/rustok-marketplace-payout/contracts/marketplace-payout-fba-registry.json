@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "module": "marketplace_payout",
+  "family": "marketplace",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "marketplace.payout.v1",
+  "ownership": {
+    "payout_table": "marketplace_payouts",
+    "item_table": "marketplace_payout_items",
+    "receipt_table": "marketplace_payout_receipts",
+    "cross_module_foreign_keys": false,
+    "one_payout_per_ledger_entry": true,
+    "amount_representation": "signed_64_bit_minor_units"
+  },
+  "dependency": {
+    "module": "marketplace_ledger",
+    "port": "MarketplaceLedgerReadPort",
+    "operation": "list_seller_entries",
+    "completed_receipt_replay_before_provider_read": true,
+    "required_account": "seller_payable",
+    "required_direction": "credit"
+  },
+  "ports": {
+    "read": ["read_payout", "list_seller_payouts"],
+    "command": ["schedule_payout"],
+    "deadline_required": true,
+    "write_idempotency_required": true
+  },
+  "scheduling": {
+    "result_status": "scheduled",
+    "max_items": 500,
+    "ledger_entry_ids_semantics": "normalized_set",
+    "atomic_batch": true,
+    "partial_assignment_allowed": false,
+    "single_seller_required": true,
+    "single_currency_required": true,
+    "positive_amount_required": true,
+    "receipt_identity_scope": ["tenant_id", "idempotency_key"],
+    "request_identity": "canonical_sha256_v1",
+    "lost_response_replay_returns_saved_result": true,
+    "conflicting_payload": "marketplace_payout.idempotency_conflict",
+    "entry_reuse": "marketplace_payout.ledger_entry_already_assigned"
+  },
+  "execution": {
+    "included_in_this_slice": false,
+    "external_reference_initially_null": true,
+    "paid_at_initially_null": true
+  },
+  "composition": {
+    "modules_manifest": true,
+    "distribution_feature": "mod-marketplace_payout",
+    "marketplace_root_read_projection": true
+  },
+  "known_gaps": [
+    "execution lifecycle",
+    "status transitions",
+    "ledger settlement posting",
+    "external events",
+    "postgres contention evidence",
+    "admin and seller surfaces"
+  ]
+}

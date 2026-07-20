@@ -14,6 +14,7 @@ rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation" }
 rustok-marketplace-commission = { path = "../rustok-marketplace-commission" }
 rustok-marketplace-ledger = { path = "../rustok-marketplace-ledger" }
 rustok-marketplace-listing = { path = "../rustok-marketplace-listing" }
+rustok-marketplace-payout = { path = "../rustok-marketplace-payout" }
 rustok-marketplace-seller.workspace = true
 serde.workspace = true
 thiserror.workspace = true

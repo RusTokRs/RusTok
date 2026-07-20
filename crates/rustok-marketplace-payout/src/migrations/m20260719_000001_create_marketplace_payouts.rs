@@ -1,0 +1,247 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(Payouts::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(Payouts::Id).uuid().not_null().primary_key())
+                    .col(ColumnDef::new(Payouts::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(Payouts::SellerId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(Payouts::CurrencyCode)
+                            .string_len(3)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(Payouts::TotalAmount).big_integer().not_null())
+                    .col(ColumnDef::new(Payouts::Status).string_len(32).not_null())
+                    .col(
+                        ColumnDef::new(Payouts::ScheduledFor)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Payouts::DestinationReference)
+                            .string_len(191),
+                    )
+                    .col(ColumnDef::new(Payouts::ExternalReference).string_len(191))
+                    .col(ColumnDef::new(Payouts::FailureCode).string_len(120))
+                    .col(
+                        ColumnDef::new(Payouts::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(Payouts::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(Payouts::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(ColumnDef::new(Payouts::PaidAt).timestamp_with_time_zone())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_marketplace_payouts_seller")
+                    .table(Payouts::Table)
+                    .col(Payouts::TenantId)
+                    .col(Payouts::SellerId)
+                    .col(Payouts::CurrencyCode)
+                    .col(Payouts::Status)
+                    .col(Payouts::ScheduledFor)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(PayoutItems::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(PayoutItems::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(PayoutItems::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(PayoutItems::PayoutId).uuid().not_null())
+                    .col(ColumnDef::new(PayoutItems::LedgerEntryId).uuid().not_null())
+                    .col(ColumnDef::new(PayoutItems::Amount).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(PayoutItems::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        for index in [
+            Index::create()
+                .name("uq_marketplace_payout_item_ledger_entry")
+                .table(PayoutItems::Table)
+                .col(PayoutItems::TenantId)
+                .col(PayoutItems::LedgerEntryId)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("idx_marketplace_payout_items_payout")
+                .table(PayoutItems::Table)
+                .col(PayoutItems::TenantId)
+                .col(PayoutItems::PayoutId)
+                .col(PayoutItems::Id)
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(PayoutReceipts::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(PayoutReceipts::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(PayoutReceipts::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(PayoutReceipts::ActorId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(PayoutReceipts::IdempotencyKey)
+                            .string_len(191)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PayoutReceipts::CommandKind)
+                            .string_len(80)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PayoutReceipts::RequestHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PayoutReceipts::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(PayoutReceipts::ResponseJson).json_binary())
+                    .col(
+                        ColumnDef::new(PayoutReceipts::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(PayoutReceipts::CompletedAt)
+                            .timestamp_with_time_zone(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("uq_marketplace_payout_receipt_key")
+                    .table(PayoutReceipts::Table)
+                    .col(PayoutReceipts::TenantId)
+                    .col(PayoutReceipts::IdempotencyKey)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(PayoutReceipts::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(PayoutItems::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(Payouts::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(Iden)]
+enum Payouts {
+    Table,
+    Id,
+    TenantId,
+    SellerId,
+    CurrencyCode,
+    TotalAmount,
+    Status,
+    ScheduledFor,
+    DestinationReference,
+    ExternalReference,
+    FailureCode,
+    Metadata,
+    CreatedAt,
+    UpdatedAt,
+    PaidAt,
+}
+
+#[derive(Iden)]
+enum PayoutItems {
+    Table,
+    Id,
+    TenantId,
+    PayoutId,
+    LedgerEntryId,
+    Amount,
+    CreatedAt,
+}
+
+#[derive(Iden)]
+enum PayoutReceipts {
+    Table,
+    Id,
+    TenantId,
+    ActorId,
+    IdempotencyKey,
+    CommandKind,
+    RequestHash,
+    Status,
+    ResponseJson,
+    CreatedAt,
+    CompletedAt,
+}
