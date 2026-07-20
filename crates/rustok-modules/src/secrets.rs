@@ -866,7 +866,7 @@ mod tests {
     use super::{
         capability_reference, validate_handle_request, validate_request, ArtifactSecretAuthorizer,
         ArtifactSecretBindingRequest, ArtifactSecretError, ArtifactSecretHandleRequest,
-        ArtifactSecretPolicy, RegistryArtifactSecretAuthorizer,
+        ArtifactSecretPolicy, ArtifactSecretUseRequest, RegistryArtifactSecretAuthorizer,
     };
     use crate::ArtifactDataScope;
 
