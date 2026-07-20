@@ -85,10 +85,31 @@ jobs:
       - name: Test cache crate without Redis
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/cache-clock-hardening
-        run: cargo test --locked -p rustok-cache --no-default-features --lib
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set +e
+          cargo test --locked -p rustok-cache --no-default-features --lib -- --nocapture \
+            2>&1 | tee /tmp/cache-clock-tests.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            tail -n 180 /tmp/cache-clock-tests.log > /tmp/cache-clock-test-tail.txt
+            {
+              printf 'Cache clock library tests failed in run `%s`.\n\n```text\n' "$GITHUB_RUN_ID"
+              cat /tmp/cache-clock-test-tail.txt
+              printf '\n```\n'
+            } > /tmp/cache-clock-test-comment.md
+            gh issue comment "$ISSUE_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body-file /tmp/cache-clock-test-comment.md
+            exit "$status"
+          fi
       - name: Remove one-off implementation files
         run: |
           rm .github/workflows/one-off-harden-cache-clock.yml
+          rm .github/workflows/one-off-cache-clock-status.yml
           rm scripts/maintenance/apply-cache-clock-hardening.py
       - name: Verify final commit scope
         shell: bash
@@ -100,6 +121,7 @@ jobs:
           )
           expected=(
             .github/workflows/hardening-gates.yml
+            .github/workflows/one-off-cache-clock-status.yml
             .github/workflows/one-off-harden-cache-clock.yml
             crates/rustok-cache/src/clock.rs
             crates/rustok-cache/src/lib.rs
