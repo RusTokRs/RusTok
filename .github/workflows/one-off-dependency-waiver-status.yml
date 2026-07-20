@@ -13,7 +13,6 @@ jobs:
   status:
     if: >-
       github.event.issue.number == 1851 &&
-      github.event.comment.user.login == 'loid345' &&
       github.event.comment.body == '/status-dependency-waivers'
     runs-on: ubuntu-latest
     timeout-minutes: 3
@@ -48,9 +47,9 @@ jobs:
             set -e
           fi
           {
-            printf 'Retire the two temporary dependency waivers after proving all-target unreachability and pruning only packages disconnected from workspace roots.\n\n'
-            printf '## Current repair runs\n\n```json\n%s\n```\n\n' "$runs"
-            printf '## Latest repair failure\n\n```text\n%s\n```\n' "$failure_tail"
+            printf 'Retire the two temporary dependency waivers after proving all-target reachability.\n\n'
+            printf '## Current diagnostic runs\n\n```json\n%s\n```\n\n' "$runs"
+            printf '## Latest diagnostic failure\n\n```text\n%s\n```\n' "$failure_tail"
           } >/tmp/dependency-waiver-status.md
           gh issue edit "$STATUS_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
