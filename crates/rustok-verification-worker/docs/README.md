@@ -3,8 +3,11 @@
 The verification worker is an isolated operational process. It receives a
 typed request from the module control plane, verifies Cosign/Sigstore evidence,
 SLSA provenance, and CycloneDX SBOM policy through injected adapters, then
-returns a redacted decision. It never publishes CAS blobs, writes admission
-rows, executes module payloads, or exposes trust credentials to the server.
+returns a redacted decision. The decision reports signature, provenance, SBOM,
+license-policy, and vulnerability-policy outcomes independently; the owner
+requires every outcome and binds them into the immutable admission fingerprint.
+It never publishes CAS blobs, writes admission rows, executes module payloads,
+or exposes trust credentials to the server.
 
 ## Deployment contract
 
@@ -51,8 +54,12 @@ health port.
    Both roots use their own keyless-Sigstore identity/OIDC allow-lists or KMS
    key reference and signer identity; a retiring root is ignored at and after
    its deadline. There is no unbounded or implicit fallback between root modes.
-6. Complete: fixture-backed tests cover accepted SLSA/CycloneDX statements and
-   denied digest, license, vulnerability, keyless policy, and KMS policy cases.
+6. Complete: fixture-backed tests cover accepted SLSA/CycloneDX statements;
+   exact subject, builder, build type, source, and ref binding; required SBOM
+   schema, component-license, and vulnerability-rating fields; denied license
+   and severity policy; malformed or empty Cosign envelopes; and keyless/KMS
+   policy cases. Owner fixtures separately prove that omitted license or
+   vulnerability outcomes reject admission and change its evidence fingerprint.
 7. Complete: the worker exposes a mTLS-protected gRPC readiness RPC on the
    verification listener. It becomes available only after fail-closed startup
    validation; no unauthenticated operational endpoint is bound.

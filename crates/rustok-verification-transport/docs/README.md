@@ -11,3 +11,7 @@ verification credentials. Those belong respectively to `rustok-modules` and
 Production callers use `GrpcTrustVerifier::connect_with_tls` with a mounted
 client identity, trust root, and expected worker domain. A TLS connection or
 certificate failure reaches the owner as a verifier error and rejects admission.
+The serialized decision carries independent signature, provenance, SBOM,
+license-policy, and vulnerability-policy outcomes. Missing outcome fields are
+not defaulted by the transport and therefore fail decoding rather than weakening
+owner admission.

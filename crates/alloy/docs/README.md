@@ -64,6 +64,19 @@ without depending on Rhai internals. `PhaseCapabilities` fixes the helper famili
 allowed for each execution phase, so integrations do not infer bridge
 availability from side effects of registration.
 
+Alloy release staging requires the fixed
+`tests/publication_smoke.rhai` entrypoint. `RevisionedReleaseStager` executes
+that entrypoint against the exact reviewed source revision through the same
+production `rustok-sandbox` runtime, with all capability grants removed. The
+same request also compiles the declared production entrypoint and its reachable
+imports before executing the smoke test. The test must return `true` and may
+not produce entity mutations. Only redacted
+execution identity, executor, runtime ABI, and effective policy digest cross
+into the module-governance staging record together with an explicit zero-grant
+count; source, input, and output remain
+outside marketplace persistence. The release idempotency key is the stable
+logical sandbox execution identity for retry-safe staging.
+
 `HttpCapabilityBridge` is installed only on the request-scoped Rhai sandbox
 executor. It has no network client: its `http_*` helpers create
 `platform.http` calls for `SandboxHost`. The host validates admitted HTTP

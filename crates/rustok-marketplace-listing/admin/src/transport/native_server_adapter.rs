@@ -1,11 +1,14 @@
 use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
+#[cfg(feature = "ssr")]
 use crate::model::{
-    MarketplaceListingAdminAction, MarketplaceListingAdminCommand,
-    MarketplaceListingAdminCommandResult, MarketplaceListingAdminDetail,
-    MarketplaceListingAdminDirectory, MarketplaceListingAdminFilters,
-    MarketplaceListingAdminListItem, MarketplaceListingAdminRecord,
+    MarketplaceListingAdminAction, MarketplaceListingAdminListItem, MarketplaceListingAdminRecord,
+};
+use crate::model::{
+    MarketplaceListingAdminCommand, MarketplaceListingAdminCommandResult,
+    MarketplaceListingAdminDetail, MarketplaceListingAdminDirectory,
+    MarketplaceListingAdminFilters,
 };
 
 #[derive(Debug, Clone)]
@@ -366,6 +369,7 @@ async fn marketplace_listing_command_native(
     }
 }
 
+#[cfg(feature = "ssr")]
 fn command_action(command: &MarketplaceListingAdminCommand) -> MarketplaceListingAdminAction {
     match command {
         MarketplaceListingAdminCommand::Create { .. } => MarketplaceListingAdminAction::Create,
@@ -470,11 +474,13 @@ fn parse_approval_status(
         .transpose()
 }
 
+#[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
     uuid::Uuid::parse_str(value.trim())
         .map_err(|_| ServerFnError::new(format!("{field} must be a UUID")))
 }
 
+#[cfg(feature = "ssr")]
 fn parse_optional_uuid(
     value: Option<String>,
     field: &str,
@@ -488,6 +494,7 @@ fn parse_optional_uuid(
         .transpose()
 }
 
+#[cfg(feature = "ssr")]
 fn required_text<'a>(value: &'a str, field: &str) -> Result<&'a str, ServerFnError> {
     let value = value.trim();
     if value.is_empty() {
@@ -496,6 +503,7 @@ fn required_text<'a>(value: &'a str, field: &str) -> Result<&'a str, ServerFnErr
     Ok(value)
 }
 
+#[cfg(feature = "ssr")]
 fn normalize_optional_text(value: Option<String>) -> Option<String> {
     value.and_then(|value| {
         let value = value.trim().to_string();
@@ -503,6 +511,7 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
     })
 }
 
+#[cfg(feature = "ssr")]
 fn object_or_empty(
     value: serde_json::Value,
     field: &str,

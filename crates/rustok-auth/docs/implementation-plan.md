@@ -76,6 +76,15 @@ does not create a package-local locale fallback.
    from an explicit database handle for installer and future standalone seed
    composition. RBAC role assignment remains a separate owner boundary.
 
+8. **Provide a lightweight owner-owned OAuth transaction regression target.**
+   The current server-lib test target compiles embedded UI, storage, cloud, and
+   unrelated domain composition before it can exercise OAuth code/refresh CAS.
+   Move the persistence algorithm behind an auth-owned or narrowly shared adapter
+   contract whose SQLite concurrency tests do not require the full server graph.
+   **Done when:** authorization-code and refresh-token exactly-once tests run
+   without compiling `apps/admin`, storefront hosts, cloud SDKs, or unrelated
+   domain modules, while the server provider consumes the same tested boundary.
+
 ## Verification
 
 - `npm run verify:auth:admin-boundary`
@@ -101,9 +110,9 @@ does not create a package-local locale fallback.
 - Status: `in_progress`
 - Last verified at (UTC): `2026-07-20`
 - Scope inspected: `auth ownership; HS256/RS256 JWT configuration and issuer/audience validation; credential-bound password reset; sessions; OAuth apps, code exchange, refresh rotation, consent, scopes and revocation; tenant-composite migrations and queries; RBAC durable-generation invalidation; multilingual database contract; REST/GraphQL/native/server composition`
-- Findings: `P0=0, P1=4, P2=1, P3=1`
+- Findings: `P0=0, P1=4, P2=1, P3=2`
 - Fixed in this pass: `added fail-closed tenant-composite OAuth and invite database integrity plus tenant-qualified consent queries; deleted the unbound replayable password-reset path; made RS256 configuration parse and prove its key pair at startup; replaced middleware-shadowed legacy OAuth token handlers with one direct transactional service and deleted superseded issuance methods; made app/consent token revocation atomic`
-- Remaining risks or blockers: `P2 OAuth app name/description still require the planned translation-table cutover; PostgreSQL forward/down migration smoke remains part of the closing migration gate; browser/runtime mutation parity evidence remains an existing promotion requirement`
-- Evidence: `auth boundary, AI FBA, and runtime-context guards pass; module validate auth passes; rustok-auth unit/migration/JWT suite 34/34 passes; targeted server refresh-rotation build/test is running`
-- Next action: `finish the targeted server test, run the canonical auth module test, then hand off to core/cache`
-- Resume command: `$env:CARGO_TARGET_DIR='D:\RusTok\target\codex-auth-cycle'; cargo test -p rustok-server refresh_rotation_consumes_a_token_exactly_once --lib`
+- Remaining risks or blockers: `P2 OAuth app name/description still require the planned translation-table cutover; PostgreSQL forward/down migration smoke remains part of the closing migration gate; browser/runtime mutation parity evidence remains an existing promotion requirement; default-feature targeted server test hit environmental LLVM OOM while linking rustok-admin, and the lightweight owner-owned OAuth test target is now explicit P3 verification debt`
+- Evidence: `auth boundary, AI FBA, and runtime-context guards pass; module validate auth passes; rustok-auth unit/migration/JWT suite 34/34 passes; default-feature server attempt reached rustok-admin then failed with rustc-LLVM out of memory; one-job no-default-features retry is active in target/codex-auth-cycle/server-min.*.log`
+- Next action: `finish the one-job minimal server test, run the canonical auth module test, then hand off to core/cache`
+- Resume command: `Get-Content target/codex-auth-cycle/server-min.err.log -Tail 80; Get-Content target/codex-auth-cycle/server-min.out.log -Tail 40`

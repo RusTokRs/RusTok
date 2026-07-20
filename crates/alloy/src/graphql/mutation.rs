@@ -311,17 +311,21 @@ impl AlloyMutation {
         let auth = require_release_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let governance = release_governance_from_graphql_ctx(ctx)?;
-        let result = RevisionedReleaseStager::new(runtime.storage.clone(), governance.0)
-            .stage(AlloyReleaseStageCommand {
-                script_id: id,
-                expected_revision: input.expected_version,
-                publish_request_id: input.publish_request_id,
-                artifact_digest: input.artifact_digest,
-                actor_id: auth.user_id.to_string(),
-                idempotency_key: input.idempotency_key,
-            })
-            .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        let result = RevisionedReleaseStager::new(
+            runtime.sandbox.clone(),
+            runtime.storage.clone(),
+            governance.0,
+        )
+        .stage(AlloyReleaseStageCommand {
+            script_id: id,
+            expected_revision: input.expected_version,
+            publish_request_id: input.publish_request_id,
+            artifact_digest: input.artifact_digest,
+            actor_id: auth.user_id.to_string(),
+            idempotency_key: input.idempotency_key,
+        })
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         Ok(GqlStageRelease {
             staging_id: result.staging_id,
             created: result.created,

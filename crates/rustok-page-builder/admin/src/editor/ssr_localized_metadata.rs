@@ -1,12 +1,16 @@
 use crate::AdminCanvasController;
 use crate::editor::AdminEditorRuntime;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
+#[cfg(not(target_arch = "wasm32"))]
+use fly::ProjectPage;
 use fly::{
     EditorCommand, FLY_PAGE_METADATA_FIELD, LOCALIZED_FALLBACK_FIELD, LOCALIZED_VALUES_FIELD,
-    PageCommand, PageLocator, PagePatch, ProjectPage, normalize_locale_tag, normalize_slug,
+    PageCommand, PageLocator, PagePatch, normalize_locale_tag, normalize_slug,
 };
 use fly_ui::UiIntent;
 use leptos::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use rustok_ui_core::UiRouteContext;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -263,6 +267,7 @@ fn normalize_localized_metadata_values(
     Ok(normalized)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn localized_metadata_json(page: &ProjectPage) -> String {
     let mut localized = Map::new();
     let metadata = page
@@ -285,6 +290,7 @@ fn localized_metadata_json(page: &ProjectPage) -> String {
     serde_json::to_string_pretty(&Value::Object(localized)).unwrap_or_else(|_| "{}".to_string())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn localized_metadata_fallback(page: &ProjectPage) -> String {
     let Some(metadata) = page
         .extensions
@@ -306,6 +312,7 @@ fn localized_metadata_fallback(page: &ProjectPage) -> String {
     String::new()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn page_label(page: &ProjectPage, index: usize, fallback: &str) -> String {
     page.extensions
         .get("name")

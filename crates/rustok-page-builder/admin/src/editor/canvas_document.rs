@@ -1,4 +1,4 @@
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(test)]
 use fly::render_page;
 use fly::{
     PageSelection, ProjectDocument, RenderPolicy, RenderedPage, render_page_with_runtime_context,
@@ -9,7 +9,7 @@ use serde_json::Value;
 const CANVAS_SCRIPT: &str = include_str!("canvas_runtime.js");
 const CANVAS_MAX_GEOMETRY_COMPONENTS: usize = 4096;
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(test)]
 pub fn render_canvas_srcdoc(document: &ProjectDocument, instance_id: &str) -> String {
     let rendered = render_page(document, &PageSelection::First, &canvas_render_policy());
     render_srcdoc(rendered, instance_id, 0, 0)

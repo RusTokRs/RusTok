@@ -1,6 +1,6 @@
 use super::*;
 use rustok_modules::{
-    ModuleOwnerBindCommand, ModuleOwnerTransferCommand, ModuleReleaseYankCommand,
+    ModuleMarketplaceContentProjection, ModuleOwnerTransferCommand, ModuleReleaseYankCommand,
 };
 
 impl RegistryGovernanceService {
@@ -160,8 +160,13 @@ impl RegistryGovernanceService {
                 )
                 .await?;
                 module.version = Some(latest_active.version.clone());
-                module.name = Some(metadata.name);
-                module.description = Some(metadata.description);
+                if let Ok(content) = ModuleMarketplaceContentProjection::try_new(
+                    &metadata.name,
+                    &metadata.description,
+                ) {
+                    module.name = Some(content.name);
+                    module.description = Some(content.description);
+                }
                 module.publisher = Some(principal_display_label(&latest_active.publisher));
                 module.checksum_sha256 = latest_active.checksum_sha256.clone();
             }
@@ -453,47 +458,6 @@ impl RegistryGovernanceService {
         Ok(authority.principal.label().to_string())
     }
 
-    pub(crate) async fn bind_registry_slug_owner(
-        &self,
-        slug: &str,
-        owner_principal: &RegistryPrincipalRef,
-        bound_by: &RegistryAuthority,
-    ) -> anyhow::Result<registry_module_owner::Model> {
-        let existing = RegistryModuleOwnerEntity::find_by_id(slug)
-            .one(&self.db)
-            .await?;
-        let allow_rebind = if let Some(existing) = &existing {
-            if principal_matches_ref(&existing.owner_principal, owner_principal) {
-                false
-            } else {
-                if !bound_by.can_manage_modules {
-                    return Err(forbidden_error(format!(
-                        "Principal '{}' is not allowed to rebind registry owner for slug '{}'",
-                        authority_actor(bound_by),
-                        slug
-                    )));
-                }
-                true
-            }
-        } else {
-            false
-        };
-
-        self.release_service()
-            .bind_owner(ModuleOwnerBindCommand {
-                slug: slug.to_string(),
-                owner_principal: owner_principal.to_json_value(),
-                actor_principal: bound_by.principal.to_json_value(),
-                allow_rebind,
-            })
-            .await
-            .map_err(anyhow::Error::new)?;
-        RegistryModuleOwnerEntity::find_by_id(slug)
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| anyhow!("bound registry owner disappeared"))
-    }
-
     async fn registry_slug_owner(
         &self,
         slug: &str,
@@ -509,10 +473,4 @@ pub fn release_status_label(status: RegistryModuleReleaseStatus) -> &'static str
         RegistryModuleReleaseStatus::Active => "active",
         RegistryModuleReleaseStatus::Yanked => "yanked",
     }
-}
-
-pub fn request_ui_packages(
-    request: &registry_publish_request::Model,
-) -> RegistryPublishUiPackagesRequest {
-    serde_json::from_value(request.ui_packages.clone()).unwrap_or_default()
 }

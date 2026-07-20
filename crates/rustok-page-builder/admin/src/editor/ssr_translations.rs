@@ -1,8 +1,14 @@
 use crate::editor::AdminEditorRuntime;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
-use fly::{TranslationCatalog, TranslationEntry};
+#[cfg(not(target_arch = "wasm32"))]
+use fly::TranslationCatalog;
+#[cfg(not(target_arch = "wasm32"))]
+use fly::TranslationEntry;
 use leptos::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use rustok_ui_core::UiRouteContext;
+#[cfg(not(target_arch = "wasm32"))]
 use serde_json::Value;
 
 #[component]
@@ -238,6 +244,7 @@ pub fn SsrTranslationsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(not(target_arch = "wasm32"))]
 fn translation_entry_view(
     entry: TranslationEntry,
     id_label: String,

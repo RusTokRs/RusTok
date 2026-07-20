@@ -103,7 +103,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [ADR: Repository connector module with GitHub as the first provider](../DECISIONS/2026-07-18-repository-connector-module-github-first.md)
 - [ADR: Storage physical ownership and Media facade](../DECISIONS/2026-07-18-storage-physical-owner-media-facade.md)
 
-- [`rustok-installer` contract and implementation plan](../crates/rustok-installer/docs/README.md) — installer ownership, monolith/distributed topology contract and CLI/HTTP adapter boundaries
+- [`rustok-installer` contract and implementation plan](../crates/rustok-installer/docs/README.md) — installer ownership, browser-safe contract surface, native seed-runtime boundary, monolith/distributed topology contract and CLI/HTTP adapter boundaries
 
 - [Platform Diagram](./architecture/diagram.md)
 - [Backend Module Guides](./backend/README.md) - target backend module architecture, implementation and verification for `rustok-runtime`, `rustok-web`, `rustok-fba` and `rustok-cli-core`

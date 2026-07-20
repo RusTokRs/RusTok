@@ -44,6 +44,7 @@ This block is the first place an agent reads after `docs/index.md`.
 - Last handoff at (UTC): `2026-07-20`
 - Carried release blockers: `none recorded`
 - Release readiness: `not_assessed`
+- Environment notes: `cycle-001 core/auth default-feature rustok-server test reached rustok-admin linking and failed with rustc-LLVM out of memory; one-job no-default-features retry is recorded in the auth handoff and is not classified as a product defect`
 
 Allowed cycle statuses are `ready`, `active`, and `closing`. An item uses `pending`,
 `in_progress`, `completed`, or `blocked` in its local handoff block. Only one item may

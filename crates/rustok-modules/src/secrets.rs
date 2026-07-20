@@ -1,11 +1,10 @@
 use async_trait::async_trait;
 use rustok_events::{DomainEvent, EventEnvelope};
-use rustok_outbox::OutboxTransport;
 use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityName, CapabilityResponse,
     ExecutionPhase, SandboxError, SandboxResult, SandboxSubject,
 };
-use rustok_secrets::{SecretRef, SecretResolverRegistry};
+use rustok_secrets::{SecretRef, SecretResolverRegistry, SecretString};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -20,13 +19,14 @@ use crate::data::{
 };
 use crate::{
     resolve_granted_artifact_capability, ArtifactCapabilityBrokerResolver,
-    ArtifactCapabilityExecution,
+    ArtifactCapabilityExecution, ControlPlaneInfrastructure,
 };
 
 const MAX_REFERENCE_NAME_BYTES: usize = 96;
 const MAX_RESOLVER_ALIAS_BYTES: usize = 96;
 const MAX_RESOLVER_KEY_BYTES: usize = 512;
 const MAX_REASON_BYTES: usize = 2_000;
+const MAX_SECRET_USE_PURPOSE_BYTES: usize = 96;
 
 /// Owner command that binds one admitted logical reference to a deployment
 /// secret reference. The reference is validated by a host authorizer before it
@@ -64,6 +64,66 @@ pub struct ArtifactSecretHandleRequest {
     pub trace_id: Option<String>,
 }
 
+/// Host-only request to consume one exact logical handle revision. It carries
+/// execution identity but never a resolver alias, resolver key, or secret
+/// value. The selected consumer is fixed by host composition, not guest input.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactSecretUseRequest {
+    pub scope: ArtifactDataScope,
+    pub reference: String,
+    pub expected_revision: u64,
+    pub execution_id: Uuid,
+    pub subject: SandboxSubject,
+    pub phase: ExecutionPhase,
+    pub actor_id: Option<String>,
+    pub trace_id: Option<String>,
+}
+
+/// Non-secret context supplied to a trusted value consumer alongside the
+/// short-lived `SecretString` borrow.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArtifactSecretUseContext {
+    pub scope: ArtifactDataScope,
+    pub reference: String,
+    pub revision: u64,
+    pub execution_id: Uuid,
+    pub subject: SandboxSubject,
+    pub phase: ExecutionPhase,
+    pub actor_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub purpose: &'static str,
+}
+
+/// Redacted host receipt. It is the only output of secret use and cannot carry
+/// consumer output or resolved material back into a sandbox payload.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactSecretUseReceipt {
+    pub reference: String,
+    pub revision: u64,
+    pub purpose: String,
+}
+
+/// Content-free consumer failure. Resolver and secret values must never become
+/// part of an error propagated across the owner boundary.
+#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
+#[error("artifact secret consumer failed")]
+pub struct ArtifactSecretConsumerError;
+
+/// Trusted host adapter that consumes resolved secret material without
+/// returning arbitrary output. Implementations are composed for one fixed
+/// purpose and must keep the borrowed value out of logs, errors, persistence,
+/// and responses.
+#[async_trait]
+pub trait ArtifactSecretValueConsumer: Send + Sync {
+    fn purpose(&self) -> &'static str;
+
+    async fn consume_secret(
+        &self,
+        context: &ArtifactSecretUseContext,
+        secret: &SecretString,
+    ) -> Result<(), ArtifactSecretConsumerError>;
+}
+
 /// Host-owned authorization and reference-policy check. A production adapter
 /// validates the `SecretRef` against its deployment `SecretResolverRegistry`,
 /// actor RBAC, installation lifecycle, and admitted policy revision.
@@ -87,6 +147,16 @@ pub trait ArtifactSecretHandleAuthorizer: Send + Sync {
     ) -> Result<(), ArtifactSecretError>;
 }
 
+/// Stronger host policy for resolving and consuming a bound value. Handle
+/// acquisition authority does not imply value-use authority.
+#[async_trait]
+pub trait ArtifactSecretUseAuthorizer: Send + Sync {
+    async fn authorize_secret_use(
+        &self,
+        request: &ArtifactSecretUseRequest,
+    ) -> Result<(), ArtifactSecretError>;
+}
+
 /// Deployment-owned lifecycle, actor, and admitted-policy checks for both
 /// management-time binding and execution-time handle acquisition.
 #[async_trait]
@@ -99,6 +169,11 @@ pub trait ArtifactSecretPolicy: Send + Sync {
     async fn authorize_secret_handle(
         &self,
         request: &ArtifactSecretHandleRequest,
+    ) -> Result<(), ArtifactSecretError>;
+
+    async fn authorize_secret_use(
+        &self,
+        request: &ArtifactSecretUseRequest,
     ) -> Result<(), ArtifactSecretError>;
 }
 
@@ -149,6 +224,19 @@ where
     }
 }
 
+#[async_trait]
+impl<P> ArtifactSecretUseAuthorizer for RegistryArtifactSecretAuthorizer<P>
+where
+    P: ArtifactSecretPolicy,
+{
+    async fn authorize_secret_use(
+        &self,
+        request: &ArtifactSecretUseRequest,
+    ) -> Result<(), ArtifactSecretError> {
+        self.policy.authorize_secret_use(request).await
+    }
+}
+
 /// SeaORM owner service for logical artifact secret bindings. Its storage is a
 /// reference catalog only; it has no secret resolver and never resolves a
 /// secret value.
@@ -156,6 +244,7 @@ where
 pub struct SeaOrmArtifactSecretService<A> {
     db: DatabaseConnection,
     authorizer: A,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 impl<A> SeaOrmArtifactSecretService<A>
@@ -163,7 +252,20 @@ where
     A: ArtifactSecretAuthorizer,
 {
     pub fn new(db: DatabaseConnection, authorizer: A) -> Self {
-        Self { db, authorizer }
+        let infrastructure = ControlPlaneInfrastructure::for_database(db.clone());
+        Self::with_infrastructure(db, authorizer, infrastructure)
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        authorizer: A,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
+        Self {
+            db,
+            authorizer,
+            infrastructure,
+        }
     }
 
     pub async fn bind(
@@ -380,11 +482,11 @@ where
             ))
             .await
             .map_err(storage_error)?;
-        OutboxTransport::new(self.db.clone())
-            .write_to_outbox(
+        self.infrastructure
+            .write_event(
                 &transaction,
                 EventEnvelope::new(
-                    Uuid::new_v4(),
+                    self.infrastructure.new_id(),
                     Some(request.scope.tenant_id),
                     DomainEvent::ModuleArtifactSecretBound {
                         tenant_id: request.scope.tenant_id,

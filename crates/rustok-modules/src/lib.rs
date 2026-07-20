@@ -3,6 +3,7 @@
 mod artifact;
 mod artifact_capability_router;
 mod artifact_cas;
+mod artifact_schema;
 mod binding_idempotency;
 mod build;
 mod build_surface;
@@ -17,9 +18,11 @@ mod event_delivery;
 mod execution_audit;
 mod executor;
 mod governance;
+mod infrastructure;
 mod installation;
 mod lifecycle;
 mod lifecycle_writer;
+mod marketplace_content;
 mod mcp;
 mod migrations;
 #[cfg(feature = "oci-distribution")]
@@ -162,11 +165,13 @@ pub use governance::{
     ModuleValidationJobEnqueueResult, ModuleValidationJobResultCommand,
     ModuleValidationJobResultOutcome, ModuleValidationJobRetryCommand, ModuleValidationJobWorkItem,
     ModuleValidationStageReportCommand, SeaOrmModuleGovernanceService,
-    REGISTRY_APPROVE_OVERRIDE_REASON_CODES, REGISTRY_EXTERNAL_SOURCE_ABSENCE_REASON_CODES,
-    REGISTRY_HOLD_REASON_CODES, REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
+    ALLOY_PUBLICATION_SMOKE_TEST_PATH, REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
+    REGISTRY_EXTERNAL_SOURCE_ABSENCE_REASON_CODES, REGISTRY_HOLD_REASON_CODES,
+    REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
     REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
     REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES,
 };
+pub use infrastructure::{ControlPlaneClock, ControlPlaneIdGenerator, ControlPlaneInfrastructure};
 pub use installation::{
     ArtifactAdmissionCommand, ArtifactAdmissionLimits, ArtifactAdmissionReconciler,
     ArtifactAdmissionRecoveryRecord, ArtifactAdmissionResult, ArtifactAdmissionReverification,
@@ -184,8 +189,11 @@ pub use installation::{
     SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob,
 };
 pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
-pub use lifecycle_writer::{
-    persist_module_settings, ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError,
+pub use lifecycle_writer::{ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError};
+pub use marketplace_content::{
+    ModuleMarketplaceContentError, ModuleMarketplaceContentProjection,
+    MODULE_MARKETPLACE_CONTENT_FORMAT, MODULE_MARKETPLACE_CONTENT_TRUST,
+    MODULE_MARKETPLACE_DESCRIPTION_MAX_CHARS, MODULE_MARKETPLACE_NAME_MAX_CHARS,
 };
 pub use mcp::{
     ArtifactMcpCallRequest, ArtifactMcpCapabilityBroker, ArtifactMcpCapabilityBrokerResolver,
@@ -194,11 +202,10 @@ pub use mcp::{
 #[cfg(feature = "oci-distribution")]
 pub use oci::{
     strict_oci_distribution_client, strict_oci_distribution_client_with_policy,
-    OciArtifactEvidence, OciArtifactEvidenceKind,
-    OciArtifactPublicationBundle, OciArtifactPublicationError, OciArtifactPublicationReceipt,
-    OciArtifactPublicationTarget, OciArtifactPublisher, OciDistributionArtifactPublisher,
-    OciDistributionArtifactRegistry, OciRegistryProxyMode, OciRegistryTransportPolicy,
-    MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE,
+    OciArtifactEvidence, OciArtifactEvidenceKind, OciArtifactPublicationBundle,
+    OciArtifactPublicationError, OciArtifactPublicationReceipt, OciArtifactPublicationTarget,
+    OciArtifactPublisher, OciDistributionArtifactPublisher, OciDistributionArtifactRegistry,
+    OciRegistryProxyMode, OciRegistryTransportPolicy, MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE,
     MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE, MODULE_ARTIFACT_RELEASE_LINEAGE_MEDIA_TYPE,
     MODULE_ARTIFACT_SBOM_MEDIA_TYPE, MODULE_ARTIFACT_TEST_EVIDENCE_MEDIA_TYPE,
     OCI_EMPTY_CONFIG_MEDIA_TYPE,
@@ -206,8 +213,10 @@ pub use oci::{
 pub use operation_store::{
     ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecordOutcome,
     ModuleOperationRequest, ModuleOperationSnapshot, ModuleOperationStoreError,
-    TenantModuleSettingsRecord, TenantModuleSettingsRequest, TenantModuleStateRecord,
-    TenantModuleStateRequest, TenantModuleStateStore,
+    TenantModuleSettingsRecord, TenantModuleStateRecord,
+};
+pub(crate) use operation_store::{
+    TenantModuleSettingsRequest, TenantModuleStateRequest, TenantModuleStateStore,
 };
 pub use policy::{
     validate_module_toggle, ModuleEffectivePolicy, ModuleEffectivePolicyQuery,

@@ -7,25 +7,9 @@ pub(crate) fn run_publish_follow_up_stages_if_needed(
     auth_token: &str,
     confirm_manual_review: bool,
 ) -> Result<RegistryPublishStatusHttpResponse> {
-    let executable_stages = ["compile_smoke", "targeted_tests"];
-    for stage in executable_stages {
-        if publish_status_stage_requires_action(&status, stage) {
-            let plan = build_module_validation_stage_run_preview(
-                preview,
-                &status.request_id,
-                stage,
-                None,
-            )?;
-            run_validation_stage_plan_via_registry(registry_url, &plan, auth_token)?;
-            status = fetch_registry_publish_status_with_actor(
-                registry_url,
-                &status.request_id,
-                Some(auth_token),
-            )?;
-            ensure_publish_status_not_rejected(&status)?;
-        }
-    }
-
+    // Compile and test stages are owner-evidence gates. Only the immutable
+    // platform build result may complete them; this operator command must not
+    // translate an arbitrary local Cargo run into publication evidence.
     if publish_status_stage_requires_action(&status, "security_policy_review")
         && confirm_manual_review
     {

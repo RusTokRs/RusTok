@@ -1,8 +1,12 @@
 use crate::editor::AdminEditorRuntime;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
+#[cfg(not(target_arch = "wasm32"))]
 use fly::{RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD};
 use leptos::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use rustok_ui_core::UiRouteContext;
+#[cfg(not(target_arch = "wasm32"))]
 use serde_json::Value;
 
 #[component]
@@ -110,6 +114,7 @@ pub fn SsrLocalePanel(runtime: AdminEditorRuntime) -> impl IntoView {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn locale_list_text(value: &Value) -> String {
     match value {
         Value::String(value) => value.clone(),

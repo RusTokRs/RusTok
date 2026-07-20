@@ -8,7 +8,8 @@ Runs artifact trust verification outside the server and module runtime.
 
 - enforce mounted signer and policy-revision constraints;
 - host Cosign, SLSA, and CycloneDX verification adapters;
-- return only typed redacted decisions to `rustok-modules`.
+- return only typed redacted decisions with independent signature, provenance,
+  SBOM, license-policy, and vulnerability-policy outcomes to `rustok-modules`.
 
 ## Interactions
 

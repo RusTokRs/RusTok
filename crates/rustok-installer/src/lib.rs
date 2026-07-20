@@ -10,20 +10,21 @@ mod plan;
 mod preflight;
 mod receipt;
 mod secrets;
+#[cfg(feature = "seed-runtime")]
 mod seed;
 mod state;
 
 pub use deployment::{
-    distributed_deployment_requests, execute_distributed_role_deployments,
     DistributedDeploymentOutput, InstallDeploymentPort, InstallRoleDeployment,
-    InstallRoleDeploymentReceipt, InstallRoleDeploymentRequest,
+    InstallRoleDeploymentReceipt, InstallRoleDeploymentRequest, distributed_deployment_requests,
+    execute_distributed_role_deployments,
 };
 pub use execution::{
-    execute_install_apply, InstallAdminOutcome, InstallAdminPort, InstallApplyOptions,
-    InstallApplyOutput, InstallDatabasePort, InstallDatabaseReady, InstallExecutionError,
-    InstallExecutor, InstallPersistencePort, InstallReceiptRecord, InstallSchemaPort,
-    InstallSeedOutcome, InstallSeedPort, InstallSessionRecord, InstallVerificationOutcome,
-    InstallVerificationPort,
+    InstallAdminOutcome, InstallAdminPort, InstallApplyOptions, InstallApplyOutput,
+    InstallDatabasePort, InstallDatabaseReady, InstallExecutionError, InstallExecutor,
+    InstallPersistencePort, InstallReceiptRecord, InstallSchemaPort, InstallSeedOutcome,
+    InstallSeedPort, InstallSessionRecord, InstallVerificationOutcome, InstallVerificationPort,
+    execute_install_apply,
 };
 pub use plan::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallComposition, InstallEnvironment,
@@ -31,17 +32,18 @@ pub use plan::{
     InstallTopology, InstallTopologyMode, ModuleSelection, SeedProfile, TenantBootstrap,
 };
 pub use preflight::{
-    evaluate_preflight, evaluate_preflight_with_deployment, PreflightIssue, PreflightReport,
-    PreflightSeverity,
+    PreflightIssue, PreflightReport, PreflightSeverity, evaluate_preflight,
+    evaluate_preflight_with_deployment,
 };
-pub use receipt::{checksum_json, InstallReceipt, ReceiptError, ReceiptOutcome};
+pub use receipt::{InstallReceipt, ReceiptError, ReceiptOutcome, checksum_json};
 pub use secrets::{
-    redact_install_plan, redact_secret, resolve_local_secret_value, SecretMode, SecretRef,
-    SecretResolutionError, SecretValue,
+    SecretMode, SecretRef, SecretResolutionError, SecretValue, redact_install_plan, redact_secret,
+    resolve_local_secret_value,
 };
+#[cfg(feature = "seed-runtime")]
 pub use seed::{
-    execute_seed_profile, SeedExecutionError, SeedExecutionOutcome, SeedExecutionRequest,
-    SeedIdentityPort, SeedModulePort, SeedPrincipalPort, SeedRolePort, SeedTenant, SeedTenantPort,
-    SeedTenantRequest, SeedUser, SeedUserRequest,
+    SeedExecutionError, SeedExecutionOutcome, SeedExecutionRequest, SeedIdentityPort,
+    SeedModulePort, SeedPrincipalPort, SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest,
+    SeedUser, SeedUserRequest, execute_seed_profile,
 };
 pub use state::{InstallState, InstallStep, StateTransitionError};

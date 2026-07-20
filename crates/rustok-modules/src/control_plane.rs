@@ -4,15 +4,19 @@ use std::collections::HashSet;
 use rustok_core::ModuleRegistry;
 
 use crate::{
-    ArtifactDataExportAuthorizer, ArtifactEventDeliveryConfig, ArtifactEventDeliveryError,
-    ArtifactSecretAuthorizer, ArtifactSecretHandleAuthorizer, ModuleDefinitionCatalog,
-    ModuleDefinitionError, ModuleLifecycleDbWriter, SeaOrmArtifactBindingIdempotencyStore,
+    ArtifactDataExportAuthorizer, ArtifactDataPurgeAuthorizer, ArtifactEventDeliveryConfig,
+    ArtifactEventDeliveryError, ArtifactLifecycleExecutor, ArtifactScheduleDeliveryConfig,
+    ArtifactScheduleDeliveryError, ArtifactSecretAuthorizer, ArtifactSecretHandleAuthorizer,
+    ControlPlaneInfrastructure, ModuleDefinitionCatalog, ModuleDefinitionError,
+    ModuleLifecycleDbWriter, SeaOrmArtifactBindingIdempotencyStore,
     SeaOrmArtifactDataCapabilityBrokerResolver, SeaOrmArtifactDataExportService,
-    SeaOrmArtifactDataObjectCapabilityBrokerResolver, SeaOrmArtifactEventSubscriptionProjector,
+    SeaOrmArtifactDataObjectCapabilityBrokerResolver, SeaOrmArtifactDataObjectGcService,
+    SeaOrmArtifactDataPurgeService, SeaOrmArtifactEventSubscriptionProjector,
     SeaOrmArtifactExecutionObserver, SeaOrmArtifactInstallationStore,
-    SeaOrmArtifactSandboxPolicyResolver, SeaOrmArtifactSecretCapabilityBrokerResolver,
-    SeaOrmArtifactSecretService, SeaOrmModuleBuildService, SeaOrmModuleCompositionService,
-    SeaOrmModuleGovernanceService,
+    SeaOrmArtifactSandboxPolicyResolver, SeaOrmArtifactScheduleDeliveryQueue,
+    SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretService,
+    SeaOrmModuleBuildService, SeaOrmModuleCompositionService, SeaOrmModuleGovernanceService,
+    StorageArtifactBlobStore,
 };
 use rustok_storage::StorageService;
 
@@ -22,6 +26,7 @@ use rustok_storage::StorageService;
 #[derive(Clone)]
 pub struct ModuleControlPlane {
     db: DatabaseConnection,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 /// Owner query service for effective module availability in one host
@@ -41,7 +46,19 @@ impl<'a> EffectivePolicyService<'a> {
 
 impl ModuleControlPlane {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        let infrastructure = ControlPlaneInfrastructure::for_database(db.clone());
+        Self { db, infrastructure }
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
+        Self { db, infrastructure }
+    }
+
+    pub fn infrastructure(&self) -> ControlPlaneInfrastructure {
+        self.infrastructure.clone()
     }
 
     pub fn catalog(
@@ -56,27 +73,42 @@ impl ModuleControlPlane {
     }
 
     pub fn build(&self) -> SeaOrmModuleBuildService {
-        SeaOrmModuleBuildService::new(self.db.clone())
+        SeaOrmModuleBuildService::with_infrastructure(self.db.clone(), self.infrastructure.clone())
     }
 
     /// Release and publication operations share the one transactional
     /// governance aggregate service.
     pub fn release(&self) -> SeaOrmModuleGovernanceService {
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        SeaOrmModuleGovernanceService::with_infrastructure(
+            self.db.clone(),
+            self.infrastructure.clone(),
+        )
     }
 
     /// Release and publication operations share the one transactional
     /// governance aggregate service.
     pub fn publication(&self) -> SeaOrmModuleGovernanceService {
-        SeaOrmModuleGovernanceService::new(self.db.clone())
+        SeaOrmModuleGovernanceService::with_infrastructure(
+            self.db.clone(),
+            self.infrastructure.clone(),
+        )
     }
 
     pub fn installation(&self) -> SeaOrmArtifactInstallationStore {
-        SeaOrmArtifactInstallationStore::new(self.db.clone())
+        SeaOrmArtifactInstallationStore::with_infrastructure(
+            self.db.clone(),
+            self.infrastructure.clone(),
+        )
     }
 
     pub fn artifact_sandbox_policy(&self) -> SeaOrmArtifactSandboxPolicyResolver {
         SeaOrmArtifactSandboxPolicyResolver::new(self.db.clone())
+    }
+
+    /// Returns the platform-storage-backed admitted artifact CAS using this
+    /// facade's identity source for private staging objects.
+    pub fn artifact_blob_store(&self, storage: StorageService) -> StorageArtifactBlobStore {
+        StorageArtifactBlobStore::with_infrastructure(storage, self.infrastructure.clone())
     }
 
     /// Returns the owner-scoped structured-data capability resolver for exact
@@ -92,7 +124,11 @@ impl ModuleControlPlane {
         &self,
         storage: StorageService,
     ) -> SeaOrmArtifactDataObjectCapabilityBrokerResolver {
-        SeaOrmArtifactDataObjectCapabilityBrokerResolver::new(self.db.clone(), storage)
+        SeaOrmArtifactDataObjectCapabilityBrokerResolver::with_infrastructure(
+            self.db.clone(),
+            storage,
+            self.infrastructure.clone(),
+        )
     }
 
     /// Returns the owner persistence adapter for redacted artifact execution
@@ -107,13 +143,32 @@ impl ModuleControlPlane {
         &self,
         config: ArtifactEventDeliveryConfig,
     ) -> Result<SeaOrmArtifactEventSubscriptionProjector, ArtifactEventDeliveryError> {
-        SeaOrmArtifactEventSubscriptionProjector::new(self.db.clone(), config)
+        SeaOrmArtifactEventSubscriptionProjector::with_infrastructure(
+            self.db.clone(),
+            config,
+            self.infrastructure.clone(),
+        )
     }
 
     /// Returns the owner store for HTTP/command binding idempotency leases and
     /// replay responses.
     pub fn artifact_binding_idempotency(&self) -> SeaOrmArtifactBindingIdempotencyStore {
-        SeaOrmArtifactBindingIdempotencyStore::new(self.db.clone())
+        SeaOrmArtifactBindingIdempotencyStore::with_infrastructure(
+            self.db.clone(),
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the owner queue for immutable artifact Schedule delivery slots.
+    pub fn artifact_schedule_delivery(
+        &self,
+        config: ArtifactScheduleDeliveryConfig,
+    ) -> Result<SeaOrmArtifactScheduleDeliveryQueue, ArtifactScheduleDeliveryError> {
+        SeaOrmArtifactScheduleDeliveryQueue::with_infrastructure(
+            self.db.clone(),
+            config,
+            self.infrastructure.clone(),
+        )
     }
 
     /// Returns the owner-only, audited structured-data export service. Its
@@ -123,7 +178,32 @@ impl ModuleControlPlane {
     where
         A: ArtifactDataExportAuthorizer,
     {
-        SeaOrmArtifactDataExportService::new(self.db.clone(), authorizer)
+        SeaOrmArtifactDataExportService::with_infrastructure(
+            self.db.clone(),
+            authorizer,
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the retention-aware owner service for unreachable private data
+    /// object bytes. The retention decision remains an explicit operation input.
+    pub fn artifact_data_object_gc(
+        &self,
+        storage: StorageService,
+    ) -> SeaOrmArtifactDataObjectGcService {
+        SeaOrmArtifactDataObjectGcService::new(self.db.clone(), storage)
+    }
+
+    /// Returns the owner-only irreversible namespace purge service.
+    pub fn artifact_data_purge<A>(&self, authorizer: A) -> SeaOrmArtifactDataPurgeService<A>
+    where
+        A: ArtifactDataPurgeAuthorizer,
+    {
+        SeaOrmArtifactDataPurgeService::with_infrastructure(
+            self.db.clone(),
+            authorizer,
+            self.infrastructure.clone(),
+        )
     }
 
     /// Returns the owner-only logical secret-binding service. The supplied
@@ -133,7 +213,11 @@ impl ModuleControlPlane {
     where
         A: ArtifactSecretAuthorizer,
     {
-        SeaOrmArtifactSecretService::new(self.db.clone(), authorizer)
+        SeaOrmArtifactSecretService::with_infrastructure(
+            self.db.clone(),
+            authorizer,
+            self.infrastructure.clone(),
+        )
     }
 
     /// Returns the dynamic `platform.secrets` resolver for exact admitted
@@ -154,7 +238,30 @@ impl ModuleControlPlane {
         registry: &'a ModuleRegistry,
         default_enabled_modules: Vec<String>,
     ) -> ModuleLifecycleDbWriter<'a> {
-        ModuleLifecycleDbWriter::new(self.db.clone(), registry, default_enabled_modules)
+        ModuleLifecycleDbWriter::with_infrastructure(
+            self.db.clone(),
+            registry,
+            default_enabled_modules,
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the artifact-only lifecycle/settings owner for a resolved
+    /// immutable definition catalog. Dynamic settings therefore use the same
+    /// facade infrastructure as lifecycle binding dispatch.
+    pub fn artifact_lifecycle<'a>(
+        &self,
+        catalog: ModuleDefinitionCatalog,
+        artifact_executor: &'a dyn ArtifactLifecycleExecutor,
+        default_enabled_modules: Vec<String>,
+    ) -> ModuleLifecycleDbWriter<'a> {
+        ModuleLifecycleDbWriter::artifact_only_with_infrastructure(
+            self.db.clone(),
+            catalog,
+            artifact_executor,
+            default_enabled_modules,
+            self.infrastructure.clone(),
+        )
     }
 
     pub fn effective_policy<'a>(

@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Installer foundation contracts for RusToK"
 
+[features]
+default = ["seed-runtime"]
+seed-runtime = ["dep:rustok-core"]
+
 [dependencies]
 chrono.workspace = true
 async-trait.workspace = true
@@ -14,7 +18,7 @@ serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
-rustok-core.workspace = true
+rustok-core = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true

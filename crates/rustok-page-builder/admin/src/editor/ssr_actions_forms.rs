@@ -1,5 +1,6 @@
 use crate::AdminCanvasController;
 use crate::editor::AdminEditorRuntime;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
 use fly::{
     ComponentAction, ComponentForm, ComponentPatch, EditorCommand, FLY_ACTION_FIELD,
@@ -8,6 +9,7 @@ use fly::{
 };
 use fly_ui::UiIntent;
 use leptos::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use rustok_ui_core::UiRouteContext;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -474,6 +476,7 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
 }
 
 #[derive(Default)]
+#[cfg(not(target_arch = "wasm32"))]
 struct ActionValues {
     kind: String,
     page_id: String,
@@ -490,6 +493,7 @@ struct ActionValues {
     payload_json: String,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl ActionValues {
     fn new(action: Option<&ComponentAction>) -> Self {
         let mut values = Self {
@@ -542,6 +546,7 @@ impl ActionValues {
 }
 
 #[derive(Default)]
+#[cfg(not(target_arch = "wasm32"))]
 struct FormValues {
     id: String,
     method: String,
@@ -553,6 +558,7 @@ struct FormValues {
     novalidate: bool,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl FormValues {
     fn new(form: Option<&ComponentForm>) -> Self {
         match form {
@@ -968,10 +974,12 @@ fn optional(value: String) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn pretty_json(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn attribute(attributes: &Map<String, Value>, name: &str) -> String {
     attributes
         .get(name)
@@ -980,6 +988,7 @@ fn attribute(attributes: &Map<String, Value>, name: &str) -> String {
         .to_string()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn boolean_attribute(attributes: &Map<String, Value>, name: &str) -> bool {
     attributes.get(name).is_some_and(|value| match value {
         Value::Bool(value) => *value,
@@ -990,6 +999,7 @@ fn boolean_attribute(attributes: &Map<String, Value>, name: &str) -> bool {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn option(value: &'static str, label: &'static str, selected_value: &str) -> impl IntoView {
     let selected = value == selected_value;
     view! { <option value=value selected=selected>{label}</option> }

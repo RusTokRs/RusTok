@@ -25,7 +25,7 @@ use std::cell::RefCell;
 #[cfg(target_arch = "wasm32")]
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::{closure::Closure, JsCast};
+use wasm_bindgen::{JsCast, closure::Closure};
 #[cfg(target_arch = "wasm32")]
 use web_sys::{CloseEvent, ErrorEvent, Event, MessageEvent, WebSocket};
 
@@ -40,11 +40,11 @@ use super::components::provider_panel::AiProviderPanel;
 use super::components::task_panel::AiTaskPanel;
 use super::components::tool_panel::AiToolPanel;
 use crate::core::{
+    BlogTaskPayloadInput, ImageTaskPayloadInput, OrderAnalyticsTaskPayloadInput,
+    OrderOpsAssistantTaskPayloadInput, ProductAttributesTaskPayloadInput, ProductTaskPayloadInput,
     alloy_task_payload, blog_task_payload, image_task_payload, optional_text,
     order_analytics_task_payload, order_ops_assistant_task_payload, parse_csv,
     product_attributes_task_payload, product_task_payload, summarize_recent_runs,
-    BlogTaskPayloadInput, ImageTaskPayloadInput, OrderAnalyticsTaskPayloadInput,
-    OrderOpsAssistantTaskPayloadInput, ProductAttributesTaskPayloadInput, ProductTaskPayloadInput,
 };
 use crate::i18n::t;
 #[cfg(target_arch = "wasm32")]

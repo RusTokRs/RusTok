@@ -17,9 +17,9 @@ use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use crate::{
-    ArtifactAdmissionLimits, ArtifactPayloadSource, ArtifactRegistry, ModuleArtifactDescriptor,
-    ModuleArtifactPackage, ModuleBuildOutcome, ModuleBuildRequest, ModuleBuildResult,
-    ModuleInstallationError, OciArtifactReference,
+    ArtifactAdmissionLimits, ArtifactPayloadSource, ArtifactRegistry, ControlPlaneInfrastructure,
+    ModuleArtifactDescriptor, ModuleArtifactPackage, ModuleBuildOutcome, ModuleBuildRequest,
+    ModuleBuildResult, ModuleInstallationError, OciArtifactReference,
 };
 
 /// Stable OCI config media type for a serialized immutable module descriptor.
@@ -112,11 +112,9 @@ struct ArtifactStagingFile {
 }
 
 impl ArtifactStagingFile {
-    fn new() -> Self {
+    fn new(stage_id: Uuid) -> Self {
         Self {
-            path: Some(
-                std::env::temp_dir().join(format!("rustok-artifact-stage-{}", Uuid::new_v4())),
-            ),
+            path: Some(std::env::temp_dir().join(format!("rustok-artifact-stage-{stage_id}"))),
         }
     }
 
@@ -648,20 +646,37 @@ fn cosign_signature_tag(digest: &str) -> Result<String, OciArtifactPublicationEr
 pub struct OciDistributionArtifactRegistry {
     client: Client,
     auth: RegistryAuth,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 impl OciDistributionArtifactRegistry {
-    fn with_client(client: Client, auth: RegistryAuth) -> Self {
-        Self { client, auth }
+    fn with_client(
+        client: Client,
+        auth: RegistryAuth,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
+        Self {
+            client,
+            auth,
+            infrastructure,
+        }
     }
 
     /// Creates an authenticated registry adapter with the mandatory strict
     /// transport subset. Callers cannot supply a client with weaker TLS
     /// settings.
     pub fn strict(auth: RegistryAuth) -> Result<Self, ModuleInstallationError> {
+        Self::strict_with_infrastructure(auth, ControlPlaneInfrastructure::default())
+    }
+
+    pub fn strict_with_infrastructure(
+        auth: RegistryAuth,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Result<Self, ModuleInstallationError> {
         Ok(Self::with_client(
             strict_oci_distribution_client().map_err(ModuleInstallationError::Registry)?,
             auth,
+            infrastructure,
         ))
     }
 
@@ -669,6 +684,12 @@ impl OciDistributionArtifactRegistry {
     /// used by production artifact distribution.
     pub fn strict_anonymous() -> Result<Self, ModuleInstallationError> {
         Self::strict(RegistryAuth::Anonymous)
+    }
+
+    pub fn strict_anonymous_with_infrastructure(
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Result<Self, ModuleInstallationError> {
+        Self::strict_with_infrastructure(RegistryAuth::Anonymous, infrastructure)
     }
 
     fn image_reference(
@@ -845,7 +866,7 @@ impl OciDistributionArtifactRegistry {
             ModuleInstallationError::Registry("OCI layer declares a negative size".to_string())
         })?;
         limits.validate_payload_size(declared_size)?;
-        let staging_file = ArtifactStagingFile::new();
+        let staging_file = ArtifactStagingFile::new(self.infrastructure.new_id());
         let mut file = tokio::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -914,7 +935,7 @@ mod tests {
 
     #[test]
     fn staging_file_is_deleted_when_a_download_is_cancelled_or_fails() {
-        let staging_file = ArtifactStagingFile::new();
+        let staging_file = ArtifactStagingFile::new(Uuid::new_v4());
         let path = staging_file.path().to_path_buf();
         std::fs::write(&path, b"partial artifact").expect("stage partial artifact");
 
@@ -925,7 +946,7 @@ mod tests {
 
     #[test]
     fn persisted_staging_file_is_retained_for_admission_consumption() {
-        let staging_file = ArtifactStagingFile::new();
+        let staging_file = ArtifactStagingFile::new(Uuid::new_v4());
         let path = staging_file.path().to_path_buf();
         std::fs::write(&path, b"verified artifact").expect("stage verified artifact");
         let persisted = staging_file.persist();

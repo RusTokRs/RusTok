@@ -20,6 +20,27 @@ verified payload-layer digest. Alloy drafts carry source lineage and create
 immutable module releases/packages. The server supplies infrastructure adapters
 and mounts owner transports.
 
+`ControlPlaneInfrastructure` is the owner context for clock and UUID ports.
+`ModuleControlPlane` creates one production context and can accept an injected
+context for deterministic owner fixtures. Admission, installation lifecycle,
+build, release, publication, binding-idempotency, event/schedule delivery, and
+identity-allocating object-data operations use it for installation, operation,
+outbox, verification, commit-evidence, governance aggregate, validation-stage,
+claim, event, delivery, work-lease, upload-session, private-storage,
+GC-candidate, export, secret-event, lifecycle-correlation, CAS-stage,
+OCI-temporary-stage, and lease-time identities. Schedule materialization also
+uses the injected owner time. Direct system clock and random UUID access is
+confined to the default infrastructure adapters outside test fixtures.
+Database-expression timestamps remain owned by the transactional storage
+adapter so one commit uses the database clock.
+
+The caller-supplied SeaORM connection and owner-opened transaction form the
+transactional storage boundary. `ControlPlaneInfrastructure` carries the
+object-safe `rustok-outbox::TransactionalEventWriter`; owner commands append
+their envelope through that port in the same transaction as state and audit
+facts. Redacted runtime audit remains behind `ExecutionObserver`, and domain
+audit facts remain owner rows/outbox events rather than a second audit journal.
+
 `OciDistributionArtifactRegistry` resolves only digest-pinned references. It
 requires the returned manifest digest to match the requested reference, reads
 the descriptor from the manifest config, and downloads exactly one payload
@@ -34,6 +55,11 @@ uses Cosign with a deployment-owned KMS provider reference to sign the returned
 artifact digest, then resolves Cosign's compatible OCI signature manifest to a
 digest-pinned publication receipt. The standard Cosign tag is used only while
 resolving the signature manifest and never becomes installation identity.
+The component/payload digest and the registry-returned OCI manifest digest are
+separate immutable identities and are never compared for equality. Platform
+build staging rehashes and matches the submitted payload against the completed
+build component while preserving the receipt manifest digest for signature,
+admission, and final-publication joins.
 That receipt records build-service signature evidence only; author signatures
 and marketplace approvals remain separate owner-governance facts.
 Successful build results must carry the complete component, SBOM, provenance,
@@ -58,6 +84,9 @@ those boundary controls remains tracked in the central plan.
 
 During admission, `ModuleInstaller` verifies the OCI package and places its
 payload in an `ArtifactBlobStore` under the descriptor payload digest.
+The verifier decision and durable admission evidence expose signature,
+provenance, SBOM, license-policy, and vulnerability-policy results separately;
+all five must be true and all five participate in governance evidence identity.
 `ArtifactRuntime` reads only that admitted digest-pinned blob for execution;
 the external OCI registry is a distribution source and is not consulted at
 runtime. Missing or corrupted blobs fail closed before a sandbox request is
@@ -69,7 +98,14 @@ Every dynamic execution is selected by an admitted `ModuleRuntimeBinding`.
 cannot select its binding or phase. It validates the enclosed owner payload
 against the binding's exact descriptor-bundled Draft 2020-12 schema; after
 execution it validates the decoded owner output against the corresponding output
-schema.
+schema. The same bounded compiled-validator implementation is shared by the
+artifact settings and installation-scoped structured-data owner paths.
+`ModuleLifecycleDbWriter` keeps static
+host-manifest normalization and artifact settings writes as separate
+entrypoints: the artifact path resolves only the immutable settings-schema
+digest retained by the active definition and rejects a caller-supplied schema
+or pre-normalized bypass. `ModuleControlPlane::artifact_lifecycle` is the facade
+composition entrypoint; the lower-level tenant settings store is crate-private.
 Artifact persistence is limited to a revision plus a bundled schema digest for
 brokered namespaced values; descriptor decoding rejects unknown fields, so an
 artifact cannot attach SQL, DDL, native migrations, a bucket path, or a host
@@ -108,6 +144,17 @@ Every locale must already be canonical, names and descriptions must satisfy the
 bounded publication contract, and the release default locale must have an exact
 translation row. Invalid database state fails closed before release or marketplace
 approval facts are written.
+
+Publisher marketplace text is always `plain_text` with
+`untrusted_publisher_content` trust. The owner projection bounds names and
+descriptions and rejects control, invisible, and bidirectional override
+characters. Category and tags are bounded canonical identifiers with a
+duplicate-free tag set. UI adapters must use framework text nodes. AI adapters
+may use only
+the projection's tagged structured data as non-system data and must never turn
+README, metadata, source comments, test output, or artifact text into
+instructions. Validation-stage and delivery-retry audit records use stable
+owner-generated diagnostics rather than caller or runner output.
 
 `module_artifact_installations` is the host-managed persistence boundary. Its
 PostgreSQL migration enables RLS; tenant-scoped connections must set

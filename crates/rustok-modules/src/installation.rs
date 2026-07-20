@@ -18,7 +18,6 @@ use rustok_api::{
     ArtifactPermissionRegistrationRequest, ArtifactPermissionScope,
 };
 use rustok_events::{DomainEvent, EventEnvelope};
-use rustok_outbox::OutboxTransport;
 use rustok_sandbox::{
     RhaiBindingInput, SandboxContext, SandboxPayload, SandboxPolicy, SandboxRequest, SandboxSubject,
 };
@@ -26,8 +25,9 @@ use rustok_sandbox::{
 use crate::{
     ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactModuleKind,
     ArtifactPayloadKind, ArtifactReleaseRef, ArtifactSandboxPolicyResolver,
-    ModuleArtifactDescriptor, ModuleArtifactError, ModuleDependencyLockGraph, TrustPolicyRevision,
-    TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
+    ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleArtifactError,
+    ModuleDependencyLockGraph, TrustPolicyRevision, TrustVerificationDecision,
+    TrustVerificationRequest, TrustVerifier,
 };
 
 const WASM_COMPONENT_MEDIA_TYPE: &str = "application/wasm";
@@ -456,6 +456,8 @@ pub struct ArtifactVerificationEvidence {
     pub signature_verified: bool,
     pub provenance_verified: bool,
     pub sbom_verified: bool,
+    pub license_policy_verified: bool,
+    pub vulnerability_policy_verified: bool,
     pub evidence_references: Vec<String>,
     pub verified_at: DateTime<Utc>,
 }
@@ -477,13 +479,19 @@ impl ArtifactVerificationEvidence {
             signature_verified: decision.signature_verified,
             provenance_verified: decision.provenance_verified,
             sbom_verified: decision.sbom_verified,
+            license_policy_verified: decision.license_policy_verified,
+            vulnerability_policy_verified: decision.vulnerability_policy_verified,
             evidence_references: decision.evidence_references,
             verified_at,
         }
     }
 
     fn admitted(&self) -> bool {
-        self.signature_verified && self.provenance_verified && self.sbom_verified
+        self.signature_verified
+            && self.provenance_verified
+            && self.sbom_verified
+            && self.license_policy_verified
+            && self.vulnerability_policy_verified
     }
 }
 
@@ -858,6 +866,17 @@ where
 pub struct InMemoryArtifactBlobStore {
     blobs: Mutex<HashMap<String, Vec<u8>>>,
     staged: Mutex<HashMap<Uuid, InMemoryStagedArtifact>>,
+    infrastructure: ControlPlaneInfrastructure,
+}
+
+impl InMemoryArtifactBlobStore {
+    pub fn with_infrastructure(infrastructure: ControlPlaneInfrastructure) -> Self {
+        Self {
+            blobs: Mutex::default(),
+            staged: Mutex::default(),
+            infrastructure,
+        }
+    }
 }
 
 struct InMemoryStagedArtifact {
@@ -921,7 +940,7 @@ impl DurableArtifactBlobStore for InMemoryArtifactBlobStore {
             });
         }
         let staged = StagedArtifactBlob {
-            stage_id: Uuid::new_v4(),
+            stage_id: self.infrastructure.new_id(),
             digest: expected_digest.to_string(),
             media_type: expected_media_type.to_string(),
             size_bytes: bytes.len() as u64,
@@ -980,6 +999,7 @@ impl DurableArtifactBlobStore for InMemoryArtifactBlobStore {
 #[derive(Clone)]
 pub struct SeaOrmArtifactInstallationStore {
     db: DatabaseConnection,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 /// Resolves the host-owned durable sandbox policy for one exact admitted
@@ -999,7 +1019,15 @@ impl SeaOrmArtifactSandboxPolicyResolver {
 
 impl SeaOrmArtifactInstallationStore {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        let infrastructure = ControlPlaneInfrastructure::for_database(db.clone());
+        Self::with_infrastructure(db, infrastructure)
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
+        Self { db, infrastructure }
     }
 
     /// Resolves the exact active installation named by a platform-routed binding.
@@ -1167,11 +1195,11 @@ impl SeaOrmArtifactInstallationStore {
             ModuleInstallationScope::Platform => None,
             ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
         };
-        OutboxTransport::new(self.db.clone())
-            .write_to_outbox(
+        self.infrastructure
+            .write_event(
                 &transaction,
                 EventEnvelope::new(
-                    Uuid::new_v4(),
+                    self.infrastructure.new_id(),
                     tenant_id,
                     DomainEvent::ModuleArtifactMigrationCheckpointed {
                         installation_id: request.installation_id,
@@ -1338,7 +1366,7 @@ impl SeaOrmArtifactInstallationStore {
                 ));
             }
         }
-        let operation_id = Uuid::new_v4();
+        let operation_id = self.infrastructure.new_id();
         let placeholders = match backend {
             DbBackend::Postgres => "$1,$2,$3,$4,$5,$6,NOW()",
             _ => "?1,?2,?3,?4,?5,?6,datetime('now')",
@@ -1380,11 +1408,11 @@ impl SeaOrmArtifactInstallationStore {
                 "installation became stale during deactivation".into(),
             ));
         }
-        OutboxTransport::new(self.db.clone())
-            .write_to_outbox(
+        self.infrastructure
+            .write_event(
                 &transaction,
                 EventEnvelope::new(
-                    Uuid::new_v4(),
+                    self.infrastructure.new_id(),
                     tenant_id,
                     DomainEvent::ModuleArtifactDeactivated {
                         installation_id: request.installation_id,
@@ -1661,11 +1689,11 @@ impl SeaOrmArtifactInstallationStore {
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
             1
         };
-        OutboxTransport::new(self.db.clone())
-            .write_to_outbox(
+        self.infrastructure
+            .write_event(
                 &transaction,
                 EventEnvelope::new(
-                    Uuid::new_v4(),
+                    self.infrastructure.new_id(),
                     Some(request.tenant_id),
                     if request.enabled {
                         DomainEvent::ModuleArtifactTenantEnabled {
@@ -1816,7 +1844,7 @@ impl SeaOrmArtifactInstallationStore {
                 ));
             }
         }
-        let operation_id = Uuid::new_v4();
+        let operation_id = self.infrastructure.new_id();
         let p = if backend == DbBackend::Postgres {
             "$1,$2,$3,$4,$5,$6,NOW()"
         } else {
@@ -1829,11 +1857,11 @@ impl SeaOrmArtifactInstallationStore {
                 "installation became stale during uninstall".into(),
             ));
         }
-        OutboxTransport::new(self.db.clone())
-            .write_to_outbox(
+        self.infrastructure
+            .write_event(
                 &transaction,
                 EventEnvelope::new(
-                    Uuid::new_v4(),
+                    self.infrastructure.new_id(),
                     tenant_id,
                     DomainEvent::ModuleArtifactUninstalled {
                         installation_id: request.installation_id,
@@ -2063,7 +2091,7 @@ impl SeaOrmArtifactInstallationStore {
                 "rollback target revision exceeds database range".into(),
             )
         })?;
-        let operation_id = Uuid::new_v4();
+        let operation_id = self.infrastructure.new_id();
         transaction.execute(Statement::from_sql_and_values(
             backend,
             match backend {
@@ -2113,11 +2141,11 @@ impl SeaOrmArtifactInstallationStore {
             ModuleInstallationScope::Platform => None,
             ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
         };
-        OutboxTransport::new(self.db.clone())
-            .write_to_outbox(
+        self.infrastructure
+            .write_event(
                 &transaction,
                 EventEnvelope::new(
-                    Uuid::new_v4(),
+                    self.infrastructure.new_id(),
                     tenant_id,
                     DomainEvent::ModuleArtifactRolledBack {
                         installation_id: request.installation_id,
@@ -2214,11 +2242,11 @@ impl SeaOrmArtifactInstallationStore {
             ModuleInstallationScope::Platform => None,
             ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
         };
-        OutboxTransport::new(self.db.clone())
-            .write_to_outbox(
+        self.infrastructure
+            .write_event(
                 &transaction,
                 EventEnvelope::new(
-                    Uuid::new_v4(),
+                    self.infrastructure.new_id(),
                     tenant_id,
                     DomainEvent::ModuleArtifactReverified {
                         installation_id: request.installation_id,
@@ -2651,6 +2679,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &artifact.scope).await?;
         let backend = transaction.get_database_backend();
+        let committed_at = self.infrastructure.now();
         let (scope_kind, scope_tenant_key) = admission_command_scope(command);
         let reservation = transaction
             .execute(Statement::from_sql_and_values(
@@ -2662,7 +2691,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                     uuid_value(command.actor_id, backend),
                     uuid_value(command.idempotency_key, backend),
                     request_digest.into(),
-                    now_value(backend),
+                    datetime_value(backend, &committed_at),
                 ],
             ))
             .await
@@ -2715,7 +2744,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .execute(Statement::from_sql_and_values(
                 backend,
                 sandbox_policy_insert_sql(backend),
-                sandbox_policy_values(artifact, &command.sandbox_policy, backend)?,
+                sandbox_policy_values(artifact, &command.sandbox_policy, backend, &committed_at)?,
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
@@ -2744,7 +2773,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .execute(Statement::from_sql_and_values(
                 backend,
                 admission_insert_sql(backend),
-                admission_values(artifact, staged, evidence, backend)?,
+                admission_values(artifact, staged, evidence, backend, &committed_at)?,
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
@@ -2752,11 +2781,11 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             ModuleInstallationScope::Platform => None,
             ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
         };
-        OutboxTransport::new(self.db.clone())
-            .write_to_outbox(
+        self.infrastructure
+            .write_event(
                 &transaction,
                 EventEnvelope::new(
-                    Uuid::new_v4(),
+                    self.infrastructure.new_id(),
                     tenant_id,
                     DomainEvent::ModuleArtifactAdmitted {
                         installation_id: artifact.installation_id,
@@ -2813,11 +2842,10 @@ fn admission_command_scope(command: &ArtifactAdmissionCommand) -> (&'static str,
     }
 }
 
-fn now_value(backend: DbBackend) -> SqlValue {
-    let now = Utc::now();
+fn datetime_value(backend: DbBackend, value: &DateTime<Utc>) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(Box::new(now))),
-        _ => now.to_rfc3339().into(),
+        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(Box::new(value.to_owned()))),
+        _ => value.to_rfc3339().into(),
     }
 }
 
@@ -2985,6 +3013,7 @@ fn sandbox_policy_values(
     artifact: &InstalledModuleArtifact,
     policy: &SandboxPolicy,
     backend: DbBackend,
+    committed_at: &DateTime<Utc>,
 ) -> Result<Vec<SqlValue>, ModuleInstallationError> {
     let tenant_id = match &artifact.scope {
         ModuleInstallationScope::Platform => None,
@@ -3002,7 +3031,7 @@ fn sandbox_policy_values(
         optional_uuid_value(tenant_id, backend),
         revision.into(),
         SqlValue::Json(Some(Box::new(policy))),
-        now_value(backend),
+        datetime_value(backend, committed_at),
     ])
 }
 
@@ -3169,8 +3198,8 @@ fn admission_values(
     staged: &StagedArtifactBlob,
     evidence: &ArtifactVerificationEvidence,
     backend: DbBackend,
+    committed_at: &DateTime<Utc>,
 ) -> Result<Vec<SqlValue>, ModuleInstallationError> {
-    let committed_at = Utc::now();
     if evidence.manifest_digest != artifact.reference.digest
         || evidence.payload_digest != staged.digest
         || evidence.media_type != staged.media_type
@@ -3181,10 +3210,6 @@ fn admission_values(
     }
     let evidence = serde_json::to_value(evidence)
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-    let committed_at = match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(Box::new(committed_at))),
-        _ => committed_at.to_rfc3339().into(),
-    };
     let size_bytes = i64::try_from(staged.size_bytes).map_err(|_| {
         ModuleInstallationError::Blob("artifact payload exceeds database size range".into())
     })?;
@@ -3197,7 +3222,7 @@ fn admission_values(
         SqlValue::Json(Some(Box::new(evidence))),
         ArtifactAdmissionStatus::Admitted.as_str().into(),
         1_i64.into(),
-        committed_at,
+        datetime_value(backend, committed_at),
     ])
 }
 
@@ -3225,6 +3250,7 @@ pub struct ModuleInstaller<R, S, B, P> {
     permission_registrar: P,
     trust_policy: TrustPolicyRevision,
     limits: ArtifactAdmissionLimits,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 /// Owner-owned admission entrypoint. Infrastructure supplies the durable CAS
@@ -3320,7 +3346,13 @@ where
             permission_registrar,
             trust_policy,
             limits: ArtifactAdmissionLimits::default(),
+            infrastructure: ControlPlaneInfrastructure::default(),
         }
+    }
+
+    pub fn with_infrastructure(mut self, infrastructure: ControlPlaneInfrastructure) -> Self {
+        self.infrastructure = infrastructure;
+        self
     }
 
     pub fn with_admission_limits(mut self, limits: ArtifactAdmissionLimits) -> Self {
@@ -3381,9 +3413,9 @@ where
             ));
         }
         let release = package.release_ref();
-        let installed_at = Utc::now();
+        let installed_at = self.infrastructure.now();
         let artifact = InstalledModuleArtifact {
-            installation_id: Uuid::new_v4(),
+            installation_id: self.infrastructure.new_id(),
             scope: command.scope.clone(),
             reference: package.reference,
             release,
@@ -3613,7 +3645,7 @@ fn validate_lifecycle_command(
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use chrono::Utc;
+    use chrono::{DateTime, Utc};
     use rustok_core::MigrationSource;
     use rustok_sandbox::{CapabilityGrant, CapabilityName, ExecutionPhase, SandboxPolicy};
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TryGetable};
@@ -3621,7 +3653,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::ArtifactModuleKind;
+    use crate::{ArtifactModuleKind, ControlPlaneClock, ControlPlaneIdGenerator};
 
     #[test]
     fn migration_checkpoint_rejects_oversized_owner_metadata() {
@@ -3701,6 +3733,22 @@ mod tests {
 
     struct AllowTrustVerifier;
 
+    struct FixedClock(DateTime<Utc>);
+
+    impl ControlPlaneClock for FixedClock {
+        fn now(&self) -> DateTime<Utc> {
+            self.0.to_owned()
+        }
+    }
+
+    struct FixedId(Uuid);
+
+    impl ControlPlaneIdGenerator for FixedId {
+        fn new_id(&self) -> Uuid {
+            self.0
+        }
+    }
+
     #[async_trait]
     impl TrustVerifier for AllowTrustVerifier {
         async fn verify(
@@ -3714,6 +3762,8 @@ mod tests {
                 signature_verified: true,
                 provenance_verified: true,
                 sbom_verified: true,
+                license_policy_verified: true,
+                vulnerability_policy_verified: true,
                 evidence_references: vec!["test://verification/evidence".to_string()],
             })
         }
@@ -4008,6 +4058,11 @@ mod tests {
         let package = package(ArtifactPayloadKind::Rhai);
         let reference = package.reference.clone();
         let store = CapturingStore::default();
+        let installed_at = DateTime::parse_from_rfc3339("2026-07-20T12:00:00Z")
+            .expect("fixed time")
+            .with_timezone(&Utc);
+        let installation_id =
+            Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").expect("fixed UUID");
         let installer = ModuleInstaller::new(
             FixtureRegistry(package),
             store.clone(),
@@ -4015,7 +4070,11 @@ mod tests {
             trust_verifier(),
             trust_policy(),
             AllowArtifactPermissionRegistrar,
-        );
+        )
+        .with_infrastructure(ControlPlaneInfrastructure::new(
+            Arc::new(FixedClock(installed_at.to_owned())),
+            Arc::new(FixedId(installation_id)),
+        ));
 
         let admission = installer
             .admit(admission_command(
@@ -4027,6 +4086,8 @@ mod tests {
         assert!(admission.created);
         let installed = store.0.lock().expect("store lock")[0].clone();
 
+        assert_eq!(admission.installation_id, installation_id);
+        assert_eq!(installed.installed_at, installed_at);
         assert_eq!(installed.release.slug, "sample_module");
         assert_eq!(installed.descriptor.payload_kind, ArtifactPayloadKind::Rhai);
     }
@@ -4357,6 +4418,8 @@ mod tests {
             signature_verified: true,
             provenance_verified: true,
             sbom_verified: true,
+            license_policy_verified: true,
+            vulnerability_policy_verified: true,
             evidence_references: vec!["test://verification/reverified".to_string()],
             verified_at: Utc::now(),
         };

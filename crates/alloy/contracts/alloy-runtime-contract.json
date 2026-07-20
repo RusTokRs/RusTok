@@ -206,7 +206,7 @@
   },
   "release_stage_contract": {
     "persistence": "owner_owned_alloy_authored_staging",
-    "precondition": "expected_current_revision_and_latest_approved_review",
+    "precondition": "expected_current_revision_latest_approved_review_and_successful_fixed_publication_smoke",
     "idempotency": "publish_request_idempotency_key_bound_to_source_revision_and_review",
     "ownership": "rustok_modules_is_sole_marketplace_writer",
     "transports": "graphql_and_host_http_require_scripts_and_modules_manage_and_verified_actor",
@@ -222,6 +222,12 @@
       "review_reference",
       "review_digest",
       "review_policy_revision",
+      "sandbox_execution_id",
+      "sandbox_test_path",
+      "sandbox_executor",
+      "sandbox_runtime_abi",
+      "sandbox_policy_digest",
+      "sandbox_capability_grants",
       "platform_admission"
     ]
   },
@@ -236,6 +242,15 @@
       "imports": "exact_in_memory_src_rhai_only",
       "capabilities": "always_default_deny",
       "result": "boolean_without_entity_mutations"
+    },
+    "publication_smoke": {
+      "entrypoint": "tests/publication_smoke.rhai",
+      "runtime": "same_production_rustok_sandbox_runtime",
+      "production_entrypoint": "compiled_with_reachable_imports_before_smoke_execution",
+      "capabilities": "always_default_deny",
+      "identity": "release_idempotency_key_as_logical_execution_id",
+      "result": "true_without_entity_mutations",
+      "evidence": "redacted_execution_runtime_abi_and_effective_policy_digest"
     },
     "limits": {
       "max_files": 64,

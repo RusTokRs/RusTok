@@ -71,14 +71,13 @@ fn resolve_local_secret_ref(
     label: &str,
 ) -> Result<String, SecretResolutionError> {
     match normalize(&reference.backend).as_str() {
-        "env" => std::env::var(&reference.key).map_err(|_| SecretResolutionError::new(format!(
-            "{label} env secret `{}` is not set",
-            reference.key
-        ))),
+        "env" => std::env::var(&reference.key).map_err(|_| {
+            SecretResolutionError::new(format!("{label} env secret `{}` is not set", reference.key))
+        }),
         "file" | "mounted_file" | "mounted-file" => read_secret_file(&reference.key, label),
         "dotenv" | "dotenv_file" | "dotenv-file" => read_dotenv_secret(&reference.key, label),
-        "external_secret" | "external-secret" | "vault" | "kubernetes" | "k8s" | "aws"
-        | "gcp" | "azure" => Err(SecretResolutionError::new(format!(
+        "external_secret" | "external-secret" | "vault" | "kubernetes" | "k8s" | "aws" | "gcp"
+        | "azure" => Err(SecretResolutionError::new(format!(
             "{label} secret backend `{}` requires an external secret resolver, which is not implemented yet",
             reference.backend
         ))),

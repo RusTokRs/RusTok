@@ -233,22 +233,19 @@ pub fn spawn_outbox_relay_worker(
                         return;
                     }
                     OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL.fetch_add(1, Ordering::Relaxed);
-                    if let Err(panic) = result {
-                        tracing::error!(
-                            "Outbox relay worker panicked: {:?}. Restarting in 5s.",
-                            panic
-                        );
-                        tokio::select! {
-                            _ = tokio::time::sleep(Duration::from_secs(5)) => {}
-                            _ = stop_rx.changed() => {
-                                tracing::info!(
-                                    "Outbox relay supervisor received shutdown signal during restart delay, exiting"
-                                );
-                                return;
-                            }
+                    let Err(panic) = result;
+                    tracing::error!(
+                        "Outbox relay worker panicked: {:?}. Restarting in 5s.",
+                        panic
+                    );
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+                        _ = stop_rx.changed() => {
+                            tracing::info!(
+                                "Outbox relay supervisor received shutdown signal during restart delay, exiting"
+                            );
+                            return;
                         }
-                    } else {
-                        tracing::warn!("Outbox relay worker exited unexpectedly. Restarting.");
                     }
                 }
                 _ = stop_rx.changed() => {

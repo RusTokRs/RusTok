@@ -4,10 +4,11 @@ use sea_orm::{DatabaseConnection, TransactionTrait};
 use thiserror::Error;
 
 use crate::{
-    validate_module_toggle, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
-    ModuleOperationJournal, ModuleOperationRecordOutcome, ModuleOperationRequest,
-    ModuleOperationSnapshot, ModuleOperationStatus, ModuleToggleValidationError,
-    TenantModuleStateRecord, TenantModuleStateRequest, TenantModuleStateStore,
+    validate_module_toggle, ControlPlaneInfrastructure, ModuleExecutionDispatcher,
+    ModuleLifecycleHookPhase, ModuleOperationJournal, ModuleOperationRecordOutcome,
+    ModuleOperationRequest, ModuleOperationSnapshot, ModuleOperationStatus,
+    ModuleToggleValidationError, TenantModuleStateRecord, TenantModuleStateRequest,
+    TenantModuleStateStore,
 };
 
 #[derive(Clone, Debug)]
@@ -45,6 +46,7 @@ pub enum ModuleLifecycleExecutionError {
 }
 
 pub async fn execute_module_toggle(
+    infrastructure: &ControlPlaneInfrastructure,
     db: &DatabaseConnection,
     dispatcher: &ModuleExecutionDispatcher<'_>,
     request: ModuleLifecycleToggleRequest,
@@ -63,7 +65,7 @@ pub async fn execute_module_toggle(
         requested_by: request.requested_by.clone(),
         correlation_id: request
             .correlation_id
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+            .unwrap_or_else(|| infrastructure.new_id().to_string()),
         idempotency_key: request.idempotency_key,
     };
     if operation_request.idempotency_key.is_some() {
@@ -340,7 +342,9 @@ mod tests {
         let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).expect("catalog");
         let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
 
+        let infrastructure = ControlPlaneInfrastructure::default();
         let result = execute_module_toggle(
+            &infrastructure,
             &database,
             &dispatcher,
             ModuleLifecycleToggleRequest {

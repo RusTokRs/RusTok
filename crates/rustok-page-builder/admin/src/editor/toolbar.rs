@@ -284,10 +284,10 @@ fn install_keyboard_bindings(runtime: AdminEditorRuntime) {
             &target,
             "keydown",
             move |event| {
-                let Some(shortcut) = fly_leptos::shortcut_from_event(event) else {
+                let Some(shortcut) = fly_leptos::shortcut_from_event(&event) else {
                     return;
                 };
-                fly_leptos::prevent_editor_shortcut_default(event, shortcut);
+                fly_leptos::prevent_editor_shortcut_default(&event, shortcut);
                 dispatch_shortcut(&keyboard_runtime, shortcut);
             },
         ) {

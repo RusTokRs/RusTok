@@ -44,11 +44,11 @@ pub use graphql::{AlloyMutation, AlloyQuery};
 pub use integration::{BeforeHookResult, HookExecutor, ScriptableEntity};
 pub use migration::ScriptsMigration;
 pub use model::{
-    register_entity_proxy, AlloyReleaseError, AlloyReleaseStageCommand, AlloyWorkspace,
-    EntityProxy, EventType, HttpMethod, ReviewCommand, ReviewDecision, ReviewError, ReviewStatus,
-    Script, ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand, TestRun,
-    TestRunClaim, TestRunCompletion, TestRunError, TestRunLease, TestRunStatus, WorkspaceError,
-    WorkspaceFile, WorkspaceFileKind,
+    register_entity_proxy, AlloyPublicationSmokeEvidence, AlloyReleaseError,
+    AlloyReleaseStageCommand, AlloyWorkspace, EntityProxy, EventType, HttpMethod, ReviewCommand,
+    ReviewDecision, ReviewError, ReviewStatus, Script, ScriptId, ScriptSourceRevision,
+    ScriptStatus, ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion,
+    TestRunError, TestRunLease, TestRunStatus, WorkspaceError, WorkspaceFile, WorkspaceFileKind,
 };
 pub use runner::{
     AlloyReleaseGovernance, AlloyReleaseGovernanceHandle, ExecutionOutcome, ExecutionResult,

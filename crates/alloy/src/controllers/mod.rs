@@ -615,7 +615,8 @@ pub async fn stage_release(
     let actor_id = release_actor(auth, &tenant)?;
     let governance = runtime.release_governance.0.clone();
     let runtime = runtime.scoped(tenant.id)?;
-    let stager = RevisionedReleaseStager::new(runtime.storage.clone(), governance);
+    let stager =
+        RevisionedReleaseStager::new(runtime.sandbox.clone(), runtime.storage.clone(), governance);
     let result = stager
         .stage(crate::AlloyReleaseStageCommand {
             script_id: id,

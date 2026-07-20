@@ -27,8 +27,8 @@ use crate::{
     data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
     schedule_binding_digest, ArtifactBindingDispatch, ArtifactInstallationTarget,
     ArtifactReleaseRef, ArtifactScheduleMaterializationConfig, ArtifactScheduleMaterializer,
-    ModuleArtifactDescriptor, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
-    SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
+    ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleRuntimeBinding,
+    ModuleRuntimeBindingKind, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
 };
 
 const MAX_BINDING_ID_BYTES: usize = 128;
@@ -122,6 +122,7 @@ impl ArtifactScheduleDeliveryConfig {
 pub struct SeaOrmArtifactScheduleDeliveryQueue {
     db: DatabaseConnection,
     config: ArtifactScheduleDeliveryConfig,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 impl SeaOrmArtifactScheduleDeliveryQueue {
@@ -129,8 +130,20 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         db: DatabaseConnection,
         config: ArtifactScheduleDeliveryConfig,
     ) -> Result<Self, ArtifactScheduleDeliveryError> {
+        Self::with_infrastructure(db, config, ControlPlaneInfrastructure::default())
+    }
+
+    pub fn with_infrastructure(
+        db: DatabaseConnection,
+        config: ArtifactScheduleDeliveryConfig,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Result<Self, ArtifactScheduleDeliveryError> {
         config.validate()?;
-        Ok(Self { db, config })
+        Ok(Self {
+            db,
+            config,
+            infrastructure,
+        })
     }
 
     pub fn config(&self) -> &ArtifactScheduleDeliveryConfig {
@@ -157,7 +170,7 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         )
         .await?;
         let schedule_digest = schedule_digest_for_binding(&descriptor, &request.binding_id)?;
-        let delivery_id = Uuid::new_v4();
+        let delivery_id = self.infrastructure.new_id();
         let inserted = transaction
             .execute(Statement::from_sql_and_values(
                 backend,
@@ -592,7 +605,7 @@ impl ModuleWorkSource for ArtifactScheduleDeliveryWorkAdapter {
                 ));
             }
             self.materializer
-                .materialize_tenant(tenant_id, chrono::Utc::now())
+                .materialize_tenant(tenant_id, self.queue.infrastructure.now())
                 .await
                 .map_err(|error| ModuleWorkError::Source(error.to_string()))?;
             if let Some(item) = self
@@ -605,7 +618,7 @@ impl ModuleWorkSource for ArtifactScheduleDeliveryWorkAdapter {
                     id: item.delivery_id,
                     tenant_id: item.tenant_id,
                     worker_slug: ARTIFACT_SCHEDULE_DELIVERY_WORKER.to_string(),
-                    lease_token: Uuid::new_v4().to_string(),
+                    lease_token: self.queue.infrastructure.new_id().to_string(),
                     payload: serde_json::to_value(item).expect("schedule work item must serialize"),
                 }));
             }

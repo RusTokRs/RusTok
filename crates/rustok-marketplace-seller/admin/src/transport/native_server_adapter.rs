@@ -4,6 +4,9 @@ use std::fmt::{Display, Formatter};
 use crate::model::{
     MarketplaceSellerAdminCommand, MarketplaceSellerAdminCommandResult,
     MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory, MarketplaceSellerAdminFilters,
+};
+#[cfg(feature = "ssr")]
+use crate::model::{
     MarketplaceSellerAdminListItem, MarketplaceSellerAdminMember, MarketplaceSellerAdminRecord,
 };
 

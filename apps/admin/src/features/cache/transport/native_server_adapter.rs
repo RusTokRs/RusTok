@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 
-use crate::features::cache::model::{CacheHealthPayload, CacheHealthResponse};
+#[cfg(feature = "ssr")]
+use crate::features::cache::model::CacheHealthPayload;
+use crate::features::cache::model::CacheHealthResponse;
 
 #[server(prefix = "/api/fn", endpoint = "admin/cache-health")]
 pub(super) async fn cache_health_native() -> Result<CacheHealthResponse, ServerFnError> {

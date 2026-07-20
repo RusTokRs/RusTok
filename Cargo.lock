@@ -13702,6 +13702,8 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "uuid",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -19503,6 +19505,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "toml 1.1.2+spec-1.1.0",
  "url",
 ]

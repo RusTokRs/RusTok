@@ -2,7 +2,8 @@ use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
 /// Makes artifact origin an explicit durable release fact and records the
-/// stricter provenance/quarantine decision required for external prebuilts.
+/// stricter provenance/quarantine decision required for external prebuilts and
+/// production-sandbox evidence required for Alloy-authored artifacts.
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
@@ -54,6 +55,12 @@ impl MigrationTrait for Migration {
                     review_digest TEXT NOT NULL CHECK (length(review_digest) = 71),\
                     review_policy_revision TEXT NOT NULL,\
                     reviewed_by_principal JSONB NOT NULL,\
+                    sandbox_execution_id UUID NOT NULL,\
+                    sandbox_test_path TEXT NOT NULL CHECK (sandbox_test_path = 'tests/publication_smoke.rhai'),\
+                    sandbox_executor TEXT NOT NULL CHECK (sandbox_executor = 'rhai'),\
+                    sandbox_runtime_abi TEXT NOT NULL CHECK (sandbox_runtime_abi = 'rustok:module/runtime@1'),\
+                    sandbox_policy_digest TEXT NOT NULL CHECK (length(sandbox_policy_digest) = 71),\
+                    sandbox_capability_grants INTEGER NOT NULL CHECK (sandbox_capability_grants = 0),\
                     staged_by_principal JSONB NOT NULL,\
                     idempotency_key UUID NOT NULL,\
                     staged_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
@@ -106,6 +113,12 @@ impl MigrationTrait for Migration {
                     review_digest TEXT NOT NULL CHECK (length(review_digest) = 71),\
                     review_policy_revision TEXT NOT NULL,\
                     reviewed_by_principal JSON NOT NULL,\
+                    sandbox_execution_id TEXT NOT NULL,\
+                    sandbox_test_path TEXT NOT NULL CHECK (sandbox_test_path = 'tests/publication_smoke.rhai'),\
+                    sandbox_executor TEXT NOT NULL CHECK (sandbox_executor = 'rhai'),\
+                    sandbox_runtime_abi TEXT NOT NULL CHECK (sandbox_runtime_abi = 'rustok:module/runtime@1'),\
+                    sandbox_policy_digest TEXT NOT NULL CHECK (length(sandbox_policy_digest) = 71),\
+                    sandbox_capability_grants INTEGER NOT NULL CHECK (sandbox_capability_grants = 0),\
                     staged_by_principal JSON NOT NULL,\
                     idempotency_key TEXT NOT NULL,\
                     staged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\

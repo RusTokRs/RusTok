@@ -6,7 +6,8 @@ use uuid::Uuid;
 
 use crate::{
     installation::{sha256_digest, valid_digest},
-    ArtifactBlobStore, DurableArtifactBlobStore, ModuleInstallationError, StagedArtifactBlob,
+    ArtifactBlobStore, ControlPlaneInfrastructure, DurableArtifactBlobStore,
+    ModuleInstallationError, StagedArtifactBlob,
 };
 
 /// Durable artifact CAS backed by platform-controlled object storage. Final
@@ -16,17 +17,33 @@ use crate::{
 pub struct StorageArtifactBlobStore {
     storage: StorageService,
     prefix: String,
+    infrastructure: ControlPlaneInfrastructure,
 }
 
 impl StorageArtifactBlobStore {
     pub fn new(storage: StorageService) -> Self {
-        Self::with_prefix(storage, "module-cas/v1")
+        Self::with_infrastructure(storage, ControlPlaneInfrastructure::default())
+    }
+
+    pub fn with_infrastructure(
+        storage: StorageService,
+        infrastructure: ControlPlaneInfrastructure,
+    ) -> Self {
+        Self::with_prefix_and_infrastructure(storage, "module-cas/v1", infrastructure)
             .expect("the built-in artifact CAS prefix is valid")
     }
 
     pub fn with_prefix(
         storage: StorageService,
         prefix: impl Into<String>,
+    ) -> Result<Self, ModuleInstallationError> {
+        Self::with_prefix_and_infrastructure(storage, prefix, ControlPlaneInfrastructure::default())
+    }
+
+    pub fn with_prefix_and_infrastructure(
+        storage: StorageService,
+        prefix: impl Into<String>,
+        infrastructure: ControlPlaneInfrastructure,
     ) -> Result<Self, ModuleInstallationError> {
         let prefix = prefix.into().trim_matches('/').to_string();
         if prefix.is_empty()
@@ -37,7 +54,11 @@ impl StorageArtifactBlobStore {
                 "artifact CAS prefix must be a non-empty relative object prefix".into(),
             ));
         }
-        Ok(Self { storage, prefix })
+        Ok(Self {
+            storage,
+            prefix,
+            infrastructure,
+        })
     }
 
     fn stage_path(&self, stage_id: Uuid) -> String {
@@ -162,7 +183,7 @@ impl DurableArtifactBlobStore for StorageArtifactBlobStore {
         }
         Self::verify_bytes(expected_digest, bytes)?;
         let stage = StagedArtifactBlob {
-            stage_id: Uuid::new_v4(),
+            stage_id: self.infrastructure.new_id(),
             digest: expected_digest.to_string(),
             media_type: expected_media_type.to_string(),
             size_bytes: bytes.len() as u64,
@@ -191,7 +212,7 @@ impl DurableArtifactBlobStore for StorageArtifactBlobStore {
         }
         let size_bytes = Self::verify_file(expected_digest, source).await?;
         let stage = StagedArtifactBlob {
-            stage_id: Uuid::new_v4(),
+            stage_id: self.infrastructure.new_id(),
             digest: expected_digest.to_string(),
             media_type: expected_media_type.to_string(),
             size_bytes,

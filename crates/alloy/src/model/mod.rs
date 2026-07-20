@@ -8,8 +8,8 @@ mod workspace;
 
 pub use proxy::{register_entity_proxy, EntityProxy};
 pub use release::{
-    is_release_approved, review_evidence_digest, review_reference, AlloyReleaseError,
-    AlloyReleaseStageCommand, MAX_RELEASE_ACTOR_ID_LENGTH,
+    is_release_approved, review_evidence_digest, review_reference, AlloyPublicationSmokeEvidence,
+    AlloyReleaseError, AlloyReleaseStageCommand, MAX_RELEASE_ACTOR_ID_LENGTH,
 };
 pub use review::{
     validate_transition, ReviewCommand, ReviewDecision, ReviewError, ReviewStatus,

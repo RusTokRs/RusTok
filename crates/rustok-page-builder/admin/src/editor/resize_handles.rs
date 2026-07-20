@@ -174,7 +174,7 @@ fn install_resize_listeners(
         move |event| {
             if let Some(result) = move_session
                 .get_value()
-                .and_then(|session| session.update(event))
+                .and_then(|session| session.update(&event))
             {
                 preview.set(Some(result));
             }
@@ -189,10 +189,10 @@ fn install_resize_listeners(
             let Some(active) = up_session.get_value() else {
                 return;
             };
-            if !active.accepts(event) {
+            if !active.accepts(&event) {
                 return;
             }
-            let result = active.update(event).or_else(|| preview.get_untracked());
+            let result = active.update(&event).or_else(|| preview.get_untracked());
             if let Some(result) = result {
                 up_runtime.dispatch(UiIntent::execute(EditorCommand::Patch {
                     component_id: active.resize.component_id.clone(),

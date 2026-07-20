@@ -7,6 +7,7 @@ use rustok_core::{ModuleKind, ModuleRegistry};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::artifact::canonical_schema_digest;
 use crate::{
     ArtifactModuleKind, ArtifactPermissionDescriptor, ArtifactReleaseRef, ArtifactSchemaDocument,
     ArtifactUiContribution, ModuleArtifactDescriptor, ModuleDependencyConstraint,
@@ -53,7 +54,7 @@ pub struct ModuleDefinition {
     #[serde(default)]
     pub permissions: Vec<ArtifactPermissionDescriptor>,
     #[serde(default)]
-    pub settings_schema: Option<serde_json::Value>,
+    pub settings_schema_digest: Option<String>,
     #[serde(default)]
     pub schema_documents: Vec<ArtifactSchemaDocument>,
     #[serde(default)]
@@ -98,7 +99,7 @@ impl ModuleDefinition {
                     }
                 })
                 .collect(),
-            settings_schema: None,
+            settings_schema_digest: None,
             schema_documents: Vec::new(),
             bindings: Vec::new(),
             ui: Vec::new(),
@@ -120,7 +121,7 @@ impl ModuleDefinition {
             },
             dependencies: descriptor.dependencies.clone(),
             permissions: descriptor.permissions.clone(),
-            settings_schema: descriptor.settings_schema().cloned(),
+            settings_schema_digest: descriptor.settings_schema_digest.clone(),
             schema_documents: descriptor.schema_documents.clone(),
             bindings: descriptor.bindings.clone(),
             ui: descriptor.ui_contributions.clone(),
@@ -134,6 +135,17 @@ impl ModuleDefinition {
 
     pub fn binding(&self, id: &str) -> Option<&ModuleRuntimeBinding> {
         self.bindings.iter().find(|binding| binding.id == id)
+    }
+
+    /// Resolves only the settings schema named by the immutable artifact
+    /// selector. Static definitions intentionally have no artifact schema.
+    pub fn settings_schema(&self) -> Option<&serde_json::Value> {
+        self.settings_schema_digest.as_ref().and_then(|digest| {
+            self.schema_documents
+                .iter()
+                .find(|schema| schema.digest == *digest)
+                .map(|schema| &schema.document)
+        })
     }
 }
 
@@ -155,6 +167,27 @@ impl ModuleDefinitionCatalog {
     pub fn insert(&mut self, definition: ModuleDefinition) -> Result<(), ModuleDefinitionError> {
         if definition.slug.trim().is_empty() {
             return Err(ModuleDefinitionError::EmptySlug);
+        }
+        match (
+            &definition.source,
+            definition.settings_schema_digest.as_ref(),
+        ) {
+            (ModuleDefinitionSource::Static { .. }, Some(_)) => {
+                return Err(ModuleDefinitionError::StaticArtifactSettingsSchema {
+                    slug: definition.slug,
+                });
+            }
+            (ModuleDefinitionSource::Artifact { .. }, Some(digest)) => {
+                let schema_is_admitted = definition
+                    .settings_schema()
+                    .is_some_and(|schema| canonical_schema_digest(schema) == *digest);
+                if !schema_is_admitted {
+                    return Err(ModuleDefinitionError::ArtifactSettingsSchemaNotAdmitted {
+                        slug: definition.slug,
+                    });
+                }
+            }
+            (_, None) => {}
         }
         if let Some(existing) = self.definitions.get(&definition.slug) {
             return Err(ModuleDefinitionError::AmbiguousActiveDefinition {
@@ -186,12 +219,18 @@ pub enum ModuleDefinitionError {
         existing: Box<ModuleDefinitionSource>,
         incoming: Box<ModuleDefinitionSource>,
     },
+    #[error("artifact module `{slug}` selects a settings schema absent from its admitted bundle")]
+    ArtifactSettingsSchemaNotAdmitted { slug: String },
+    #[error("static module `{slug}` cannot select an artifact settings schema")]
+    StaticArtifactSettingsSchema { slug: String },
 }
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
-    use crate::ModulesModule;
+    use crate::{ArtifactReleaseRef, ModulesModule};
 
     #[test]
     fn static_adapter_preserves_compiled_module_topology() {
@@ -218,5 +257,36 @@ mod tests {
             catalog.insert(definition),
             Err(ModuleDefinitionError::AmbiguousActiveDefinition { .. })
         ));
+    }
+
+    #[test]
+    fn artifact_definition_requires_its_selected_settings_schema() {
+        let schema = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object"
+        });
+        let digest = canonical_schema_digest(&schema);
+        let mut definition = ModuleDefinition::from_static_registry_module(&ModulesModule);
+        definition.source = ModuleDefinitionSource::Artifact {
+            release: ArtifactReleaseRef {
+                slug: definition.slug.clone(),
+                version: definition.version.clone(),
+                digest: format!("sha256:{}", "a".repeat(64)),
+            },
+        };
+        definition.settings_schema_digest = Some(digest.clone());
+
+        assert!(matches!(
+            ModuleDefinitionCatalog::default().insert(definition.clone()),
+            Err(ModuleDefinitionError::ArtifactSettingsSchemaNotAdmitted { .. })
+        ));
+
+        definition.schema_documents.push(ArtifactSchemaDocument {
+            digest,
+            document: schema,
+        });
+        ModuleDefinitionCatalog::default()
+            .insert(definition)
+            .expect("admitted settings schema");
     }
 }

@@ -1,6 +1,6 @@
 use crate::i18n::t;
 use crate::model::AiToolProfilePayload;
-use crate::ui::leptos::{tool_profile_summary, Card, TextField};
+use crate::ui::leptos::{Card, TextField, tool_profile_summary};
 use leptos::ev::{MouseEvent, SubmitEvent};
 use leptos::prelude::*;
 use rustok_ui_core::AdminQueryKey;

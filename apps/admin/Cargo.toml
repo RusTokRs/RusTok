@@ -152,7 +152,7 @@ sha2 = { workspace = true }
 wasm-bindgen = { version = "0.2", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["Clipboard", "CloseEvent", "ErrorEvent", "Event", "MessageEvent", "Navigator", "Storage", "WebSocket", "Window"] }
 rustok-api = { path = "../../crates/rustok-api", default-features = false }
-rustok-installer = { path = "../../crates/rustok-installer" }
+rustok-installer = { path = "../../crates/rustok-installer", default-features = false }
 rustok-cache = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }

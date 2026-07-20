@@ -1,9 +1,15 @@
 use crate::editor::AdminEditorRuntime;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
-use fly::{PageMetadata, ProjectPage};
+#[cfg(not(target_arch = "wasm32"))]
+use fly::PageMetadata;
+#[cfg(not(target_arch = "wasm32"))]
+use fly::ProjectPage;
 use leptos::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use rustok_ui_core::UiRouteContext;
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone)]
 struct SsrComponentOption {
     id: String,
@@ -354,6 +360,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[component]
 fn PageSelect(pages: Vec<ProjectPage>, name: &'static str, page_fallback: String) -> impl IntoView {
     view! {
@@ -366,6 +373,7 @@ fn PageSelect(pages: Vec<ProjectPage>, name: &'static str, page_fallback: String
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn flatten_layer(layer: &crate::editor::LayerItemView) -> Vec<SsrComponentOption> {
     vec![SsrComponentOption {
         id: layer.id.clone(),
@@ -374,6 +382,7 @@ fn flatten_layer(layer: &crate::editor::LayerItemView) -> Vec<SsrComponentOption
     }]
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn page_label(page: &ProjectPage, index: usize, page_fallback: &str) -> String {
     page.extensions
         .get("name")

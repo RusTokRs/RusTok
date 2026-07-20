@@ -48,6 +48,8 @@ pub enum VerificationWorkerError {
     PolicyRevisionMismatch,
     #[error("verification signer identity is not allowed")]
     SignerDenied,
-    #[error("verification decision lacks required signature, provenance, or SBOM evidence")]
+    #[error(
+        "verification decision lacks required signature, provenance, SBOM, license, or vulnerability evidence"
+    )]
     RequiredEvidenceMissing,
 }

@@ -222,8 +222,8 @@ mod tests {
     };
 
     use super::{
-        distributed_deployment_requests, execute_distributed_role_deployments, validate_deployment,
         InstallDeploymentPort, InstallRoleDeployment, InstallRoleDeploymentRequest,
+        distributed_deployment_requests, execute_distributed_role_deployments, validate_deployment,
     };
 
     #[derive(Default)]
@@ -368,10 +368,12 @@ mod tests {
                 .unwrap();
 
         assert_eq!(output.receipts.len(), 4);
-        assert!(output
-            .receipts
-            .iter()
-            .all(|receipt| receipt.deployment.composition.hash == "a".repeat(64)));
+        assert!(
+            output
+                .receipts
+                .iter()
+                .all(|receipt| receipt.deployment.composition.hash == "a".repeat(64))
+        );
         assert_eq!(ports.receipts.lock().unwrap().len(), 4);
         assert_eq!(
             ports.states.lock().unwrap().as_slice(),

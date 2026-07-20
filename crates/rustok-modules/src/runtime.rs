@@ -1,10 +1,9 @@
 use std::{
     collections::{HashMap, VecDeque},
-    sync::{Arc, Mutex as StdMutex},
+    sync::Arc,
 };
 
 use async_trait::async_trait;
-use jsonschema::{Draft, PatternOptions, Validator};
 use serde_json::Value;
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -15,90 +14,11 @@ use rustok_sandbox::{
 };
 
 use crate::{
+    artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
     ArtifactBindingDispatch, ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
     ArtifactBindingExecutor, ArtifactBlobStore, ArtifactReleaseRef, InstalledModuleArtifact,
     ModuleArtifactError, ModuleInstallationError, ModuleRuntimeBinding,
 };
-
-const MAX_RUNTIME_SCHEMA_VALIDATORS: usize = 128;
-const MAX_SCHEMA_REGEX_BYTES: usize = 64 * 1024;
-
-/// Bounded node-local cache of validators compiled solely from descriptor-bundled
-/// Draft 2020-12 schemas. It cannot resolve schemas through the filesystem or
-/// network because `jsonschema` is built without either resolver feature.
-struct ArtifactSchemaValidatorCache {
-    state: StdMutex<ArtifactSchemaValidatorCacheState>,
-}
-
-#[derive(Default)]
-struct ArtifactSchemaValidatorCacheState {
-    validators: HashMap<String, Arc<Validator>>,
-    lru: VecDeque<String>,
-}
-
-impl Default for ArtifactSchemaValidatorCache {
-    fn default() -> Self {
-        Self {
-            state: StdMutex::new(ArtifactSchemaValidatorCacheState::default()),
-        }
-    }
-}
-
-impl ArtifactSchemaValidatorCache {
-    fn get_or_compile(
-        &self,
-        schema_digest: &str,
-        schema: &Value,
-    ) -> Result<Arc<Validator>, ArtifactRuntimeError> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| ArtifactRuntimeError::SchemaValidatorCachePoisoned)?;
-        if let Some(validator) = state.validators.get(schema_digest).cloned() {
-            state.lru.retain(|digest| digest != schema_digest);
-            state.lru.push_back(schema_digest.to_string());
-            return Ok(validator);
-        }
-        drop(state);
-
-        let validator = Arc::new(
-            jsonschema::options()
-                .with_draft(Draft::Draft202012)
-                .should_validate_formats(true)
-                .should_ignore_unknown_formats(false)
-                .with_pattern_options(
-                    PatternOptions::regex()
-                        .size_limit(MAX_SCHEMA_REGEX_BYTES)
-                        .dfa_size_limit(MAX_SCHEMA_REGEX_BYTES),
-                )
-                .build(schema)
-                .map_err(|_| ArtifactRuntimeError::SchemaCompilation {
-                    schema_digest: schema_digest.to_string(),
-                })?,
-        );
-
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| ArtifactRuntimeError::SchemaValidatorCachePoisoned)?;
-        if let Some(existing) = state.validators.get(schema_digest).cloned() {
-            state.lru.retain(|digest| digest != schema_digest);
-            state.lru.push_back(schema_digest.to_string());
-            return Ok(existing);
-        }
-        while state.validators.len() >= MAX_RUNTIME_SCHEMA_VALIDATORS {
-            let Some(oldest) = state.lru.pop_front() else {
-                break;
-            };
-            state.validators.remove(&oldest);
-        }
-        state
-            .validators
-            .insert(schema_digest.to_string(), Arc::clone(&validator));
-        state.lru.push_back(schema_digest.to_string());
-        Ok(validator)
-    }
-}
 
 /// Bounded node-local cache for already-admitted CAS blobs. It is not a source
 /// of truth: every hit is rehashed and any corrupt entry is discarded before a
@@ -252,15 +172,24 @@ where
                 binding: binding.id.clone(),
                 schema_digest: schema_digest.clone(),
             })?;
-        let validator = self
-            .schema_validators
-            .get_or_compile(schema_digest, schema)?;
-        validator
-            .validate(value)
-            .map_err(|_| ArtifactRuntimeError::BindingSchemaViolation {
-                binding: binding.id.clone(),
-                stage: stage.as_str(),
-                schema_digest: schema_digest.clone(),
+        self.schema_validators
+            .validate(schema_digest, schema, value)
+            .map_err(|error| match error {
+                ArtifactSchemaValidationError::Compilation => {
+                    ArtifactRuntimeError::SchemaCompilation {
+                        schema_digest: schema_digest.clone(),
+                    }
+                }
+                ArtifactSchemaValidationError::Violation => {
+                    ArtifactRuntimeError::BindingSchemaViolation {
+                        binding: binding.id.clone(),
+                        stage: stage.as_str(),
+                        schema_digest: schema_digest.clone(),
+                    }
+                }
+                ArtifactSchemaValidationError::CachePoisoned => {
+                    ArtifactRuntimeError::SchemaValidatorCachePoisoned
+                }
             })
     }
 

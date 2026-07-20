@@ -1,11 +1,14 @@
 use crate::editor::AdminEditorRuntime;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
 #[cfg(test)]
 use fly::LocaleCoverageReport;
-use fly::{
-    LocaleCoverageGap, LocaleCoverageKind, LocaleCoverageSummary, analyze_project_locale_coverage,
-};
+#[cfg(not(target_arch = "wasm32"))]
+use fly::analyze_project_locale_coverage;
+#[cfg(not(target_arch = "wasm32"))]
+use fly::{LocaleCoverageGap, LocaleCoverageKind, LocaleCoverageSummary};
 use leptos::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use rustok_ui_core::UiRouteContext;
 
 #[component]
@@ -176,6 +179,7 @@ pub fn SsrLocaleCoveragePanel(runtime: AdminEditorRuntime) -> impl IntoView {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn locale_summary_view(
     summary: LocaleCoverageSummary,
     required_badge: String,
@@ -224,6 +228,7 @@ fn locale_summary_view(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn locale_gap_view(
     gap: LocaleCoverageGap,
     translation_gap: String,

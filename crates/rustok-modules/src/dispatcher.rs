@@ -719,7 +719,7 @@ mod tests {
                 },
                 dependencies: Vec::new(),
                 permissions: Vec::new(),
-                settings_schema: None,
+                settings_schema_digest: None,
                 schema_documents: Vec::new(),
                 bindings: vec![ModuleRuntimeBinding {
                     id: "http_status".to_string(),
@@ -826,7 +826,7 @@ mod tests {
                 },
                 dependencies: Vec::new(),
                 permissions: Vec::new(),
-                settings_schema: None,
+                settings_schema_digest: None,
                 schema_documents: Vec::new(),
                 bindings: vec![ModuleRuntimeBinding {
                     id: "pre_disable".to_string(),

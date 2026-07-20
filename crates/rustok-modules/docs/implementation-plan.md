@@ -89,7 +89,10 @@ Still outside the owner boundary:
   immutable staging operation. `stage_platform_build` reloads a completed build
   pair under tenant RLS, verifies its request slug/version and payload digest
   against the submitted artifact, and appends its immutable source/component/
-  OCI receipt identities. Its idempotency replay compares tenant, build,
+  OCI receipt identities. The component/payload digest and OCI manifest digest
+  are intentionally distinct: staging validates both SHA-256 identities,
+  matches only the component digest to the uploaded bytes, and reserves the
+  manifest digest for signature/admission joins. Its idempotency replay compares tenant, build,
   source, component, and authenticated actor. Final publication now requires
   that current stage.
   Artifact origin is explicit and `unclassified` records fail closed. External
@@ -104,6 +107,16 @@ Still outside the owner boundary:
   platform build-stage adapter also requires `modules.manage`, derives its tenant only from the
   authenticated session, and forwards only the completed build ID plus an
   idempotency key to the tenant-RLS owner read;
+- publisher-controlled marketplace names and descriptions now pass through the
+  owner-owned bounded plain-text projection. It rejects control, invisible,
+  and bidirectional override characters; category and tags are bounded
+  canonical identifier tokens. The projection exposes AI context only as tagged
+  structured data without an instruction field, and gives the server canonical
+  `plain_text` / `untrusted_publisher_content` catalog labels. README, source,
+  comments, and artifact text have no catalog or prompt projection. Manual and
+  remote validation detail plus delivery retry errors are treated as untrusted
+  observations: the owner discards them and persists only stable content-free
+  stage and retry diagnostics;
 - manual validation-stage reports and requeues now use the owner transaction
   for request-state gating, stage transition rules, attempt creation, and stage
   plus follow-up audit facts. Remote lease claim, heartbeat, terminal
@@ -127,7 +140,42 @@ Still outside the owner boundary:
   endpoint only queues work and has no background-spawn execution path.
   The worker executes origin-specific artifact checks only, then submits immutable evidence
   to one owner transaction that finalizes the request and job, creates follow-up
-  stages, and persists their audit facts;
+  stages, and persists their audit facts. The thin local-workspace remote runner
+  now reconstructs the canonical publish bundle and requires its SHA-256 and
+  crate identity to match the owner-issued claim before any command runs. Its
+  client DTO now matches the server's canonical camelCase claim wire fields,
+  and it keeps claim artifact URLs out of durable stage detail. Executable
+  follow-up stages still require origin-aware exact source/build binding before
+  they can be treated as publication-grade automated evidence. The owner now
+  creates only origin-selected stages: platform-built requests get
+  `compile_smoke` and `targeted_tests` as non-manual `owner_evidence` gates,
+  external-prebuilt requests get an `owner_evidence` security/policy gate, and
+  Alloy-authored requests get an `owner_evidence` security/policy gate. A
+  platform build stage is accepted only when
+  its durable successful result includes passed `check`, `test`, dependency
+  policy, and vulnerability profiles; that same owner transaction passes the
+  compile/test stages, including idempotent replay reconciliation. Generic
+  remote claims are restricted to explicitly `remote` stages, and the CLI no
+  longer reports local Cargo commands as platform build evidence. The external
+  security stage now passes only from current owner facts that bind exact
+  external staging/provenance/quarantine, author signature, and admitted
+  signature/SBOM/SLSA/license/vulnerability evidence to the submitted artifact. Its
+  reconciliation is idempotent and independent of whether staging, evidence,
+  or validation arrives first. Alloy release staging now requires the fixed
+  capability-free `tests/publication_smoke.rhai` entrypoint to return `true`
+  through the production neutral sandbox without entity mutations after the
+  same request compiles the production entrypoint and reachable imports. Its
+  immutable staging evidence binds the logical execution ID, executor, shared
+  runtime ABI, and effective sandbox-policy digest to the reviewed source. The
+  Alloy security gate reconciles that evidence with the current author
+  signature and exact platform admission regardless of arrival order. Platform
+  admission independently requires and fingerprints signature, provenance,
+  SBOM, license-policy, and vulnerability-policy outcomes. Fixture coverage now
+  includes canonical bundle/manifest substitutions, lock-graph source policy,
+  SLSA/CycloneDX field substitution, malformed Cosign envelopes, independent
+  license/vulnerability admission outcomes, and the capability-free Alloy smoke
+  contract. On 2026-07-20 the permitted structural checks passed; compile and
+  test suites were intentionally not run;
 - draft publish-request creation now uses an owner transaction for the request,
   default-locale metadata translation, and audit fact. Host authorization and
   artifact object storage remain adapters; the owner transaction attaches a
@@ -242,7 +290,15 @@ admission. `ArtifactRuntime` validates every admitted binding input before
 sandbox execution and its decoded owner output afterward against those exact
 schemas. It uses a bounded compiled-validator cache with Draft 2020-12, strict
 formats, linear-time regex limits, and no HTTP/filesystem resolver features.
-Settings and data-contract validation remain owner-specific paths. Every
+Artifact settings reuse that cache through a separate owner write entrypoint:
+the definition catalog retains the selector digest and admitted schema bundle,
+and `persist_artifact_settings` resolves and validates that exact object before
+the tenant state write. Static host-manifest normalization has a distinct
+entrypoint which rejects artifact definitions, and the lower-level tenant
+settings store is no longer exported. Data-contract validation remains its
+separate installation-scoped owner path but now shares the same bounded
+compiled-validator implementation instead of maintaining a second JSON Schema
+configuration. Every
 artifact binding and UI contribution must reference an exact declared
 module-owned RBAC permission; capability grants remain separate guest-to-host
 authorization.
@@ -405,7 +461,8 @@ its deterministic write tags are never installation identity. The worker now
 collects only fixed inspected output files (including the descriptor), uses its
 deployment-owned scoped registry destination, and attaches the receipt to the
 terminal result. Owner persistence rejects a successful result without that
-receipt. Signing and admission trust policy remain unfinished.
+receipt. Signing and admission are enforced by the separate build-signature and
+verification-worker policies described below.
 
 The former server background `rustok-build` polling executor has been removed.
 `rustok-build` remains only for reviewed static platform-release composition in
@@ -427,8 +484,10 @@ accepts exactly one descriptor-selected executable layer. The scoped publication
 adapter uploads verified descriptor-configured payloads and OCI 1.1
 SBOM/provenance referrers. The isolated build worker then signs the returned
 digest-pinned artifact through fixed Cosign/KMS configuration and records the
-resolved compatible signature-manifest digest; admission and release governance
-remain unfinished.
+resolved compatible signature-manifest digest. Owner governance keeps the
+component/payload digest distinct from that OCI manifest identity and requires
+the matching author, build-service, platform-admission, and marketplace facts
+before final publication.
 
 The public OCI reader and publisher constructors now always create the strict
 distribution client: HTTPS only, invalid certificates rejected, no platform
@@ -630,6 +689,41 @@ absence of a tenant identifier.
 - Introduce the runtime binding registry/dispatcher for static and sandboxed
   implementations.
 
+Current infrastructure slice: the owner now exposes
+`ControlPlaneInfrastructure` with narrow clock and UUID ports.
+`ModuleControlPlane` carries that context into its installation, build, release,
+publication, binding-idempotency, event-projection, and schedule-delivery
+services, while `ModuleInstaller` accepts the same context for deterministic
+installation and verification identities. Admission persistence uses one
+injected time for its command reservation, sandbox policy, and admission
+evidence; installation lifecycle operations use injected operation/outbox
+identities; build submission/completion uses injected outbox identities; and
+governance uses the context for aggregate, evidence, stage, claim, event, and
+validation-lease identities. Durable binding claims now derive operation and
+lease identities from that context. Event and schedule queues derive delivery
+and scheduler work-lease identities from it, and schedule materialization uses
+the injected owner time. Object-data upload sessions, private object/chunk keys,
+GC candidates, export aggregates, and export/purge outbox events now use the
+same context; the facade exposes the object capability resolver, export, purge,
+and retention-GC owner services. Transactional database-expression timestamps
+intentionally remain storage-owned. Secret binding outbox events, generated
+lifecycle correlations, durable/in-memory CAS stages, and OCI temporary staging
+paths also use the context. The server obtains its runtime CAS from the same
+operation-scoped facade as capability, installation, and policy services. A
+crate-wide production-source audit now leaves direct system clock and random
+UUID access only in the default infrastructure adapters; tests may create their
+own fixtures. Registry, CAS, trust, OCI publication, composition-build enqueue,
+and isolated-build worker ports already exist. The caller-supplied SeaORM
+connection plus owner-opened transaction is the storage adapter;
+`rustok-outbox::TransactionalEventWriter` is injected through the infrastructure
+context; and redacted runtime `ExecutionObserver` plus transactional owner audit
+rows/outbox facts are the audit boundaries. Domain operations no longer
+construct `OutboxTransport`, publish outside their transaction, or write a
+second audit journal. The M2 infrastructure-port slice is complete.
+On 2026-07-20 the permitted `rustfmt --edition 2021`, `git diff --check`, and
+`cargo metadata --no-deps` structural checks passed; compile and test suites
+were intentionally not run.
+
 ### M3 - Complete Server Ownership Cutover
 
 - The owner now runs platform composition snapshot/bootstrap/revision-CAS and
@@ -643,7 +737,10 @@ absence of a tenant identifier.
   the required authority facts. Both platform-build and external-prebuilt
   staging are owner-owned, durable, and exposed through authenticated server
   adapters. Alloy-authored staging is also owner-owned and binds the exact
-  uploaded workspace checksum to the reviewed Alloy source digest. The
+  uploaded workspace checksum to the reviewed Alloy source digest, fixed
+  production-sandbox smoke execution, shared runtime ABI, and effective
+  capability-free policy digest. Its owner-evidence security stage also
+  requires the current author signature and exact platform admission. The
   independent registry validation worker treats artifact contents as untrusted:
   it verifies the claimed storage facts, selects validation by immutable origin,
   bounds normal publish bundles at 2 MiB and Alloy workspaces at 1 MiB before
@@ -655,7 +752,10 @@ absence of a tenant identifier.
 - Own static module-settings schema validation and normalization behind the
   neutral `ModuleSettingSpec` contract. The server resolves its typed manifest
   schema only, then passes that schema and the requested JSON object to the
-  owner before lifecycle persistence.
+  owner before lifecycle persistence. Static normalized persistence and dynamic
+  artifact settings persistence are now explicit separate entrypoints; the
+  latter resolves only its admitted descriptor selector and cannot accept a
+  host-supplied schema.
 - Own static `rustok-module.toml` metadata validation through the neutral
   `StaticModulePackageContract`; the host parses files and maps stable errors,
   while the owner validates package identity, SemVer dependencies/conflicts,

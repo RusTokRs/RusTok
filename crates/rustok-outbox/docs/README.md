@@ -12,6 +12,8 @@ infrastructure for the platform event runtime.
 ## Scope
 
 - `TransactionalEventBus` and atomic publish-with-transaction semantics;
+- object-safe `TransactionalEventWriter` injection for owner services that
+  already own a `DatabaseTransaction`;
 - persistence into `sys_events` through transactional transport;
 - relay, retry and DLQ semantics for the event runtime;
 - module-owned Leptos admin package `rustok-outbox-admin` with FFA split `core/transport/ui` for read-only relay visibility.
@@ -43,7 +45,9 @@ When backlog, retry or DLQ grows:
 
 - used by `apps/server` for migrations, runtime relay bootstrap and event transport wiring;
 - depends on `rustok-core` for module contracts and event transport abstractions, and on `rustok-api` for shared `PortContext`/`PortError` and write-policy primitives;
-- exposes host-neutral relay and transactional event contracts; the host supplies runtime composition without an outbox framework adapter;
+- exposes host-neutral relay and transactional event contracts; `OutboxTransport`
+  implements `TransactionalEventWriter`, and the host or owner facade supplies
+  that port without requiring domain services to construct the adapter;
 - can forward delivery to downstream transports like `rustok-iggy`, without owning provider-specific delivery semantics;
 - remains a `Core` module regardless of the fact that part of the bootstrap wiring lives in the host runtime.
 - module-level `health()` returns `Degraded` when host runtime evidence is unavailable; specific checks are at `/health/ready`.

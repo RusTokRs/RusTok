@@ -9,8 +9,6 @@ use rustok_sandbox::CapabilityName;
 
 use crate::Script;
 
-pub(crate) const RHAI_MODULE_ABI: &str = "rustok:module/runtime@1";
-
 #[derive(Debug, Error)]
 pub enum AlloyArtifactError {
     #[error(transparent)]
@@ -50,7 +48,7 @@ pub fn stage_rhai_module_release(
         version: version.into(),
         payload_kind: ArtifactPayloadKind::Rhai,
         module_kind: rustok_modules::ArtifactModuleKind::Optional,
-        runtime_abi: RHAI_MODULE_ABI.to_string(),
+        runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
         platform_compatibility: "^0.1".to_string(),
         required_features: Vec::new(),
         artifact_digest: source_digest.clone(),

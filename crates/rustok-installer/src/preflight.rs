@@ -205,10 +205,12 @@ mod tests {
         ));
 
         assert!(!report.passed());
-        assert!(report
-            .issues
-            .iter()
-            .any(|issue| issue.code == "production_database_engine"));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.code == "production_database_engine")
+        );
     }
 
     #[test]
@@ -221,10 +223,12 @@ mod tests {
         ));
 
         assert!(!report.passed());
-        assert!(report
-            .issues
-            .iter()
-            .any(|issue| issue.code == "plaintext_secret_production"));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.code == "plaintext_secret_production")
+        );
     }
 
     #[test]
@@ -243,11 +247,13 @@ mod tests {
         let report = evaluate_preflight(&plan);
 
         assert!(report.passed());
-        assert!(report
-            .issues
-            .iter()
-            .any(|issue| issue.code == "schema_disable_not_supported"
-                && issue.severity == PreflightSeverity::Warning));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.code == "schema_disable_not_supported"
+                    && issue.severity == PreflightSeverity::Warning)
+        );
     }
 
     #[test]
@@ -267,10 +273,12 @@ mod tests {
         let report = evaluate_preflight(&plan);
 
         assert!(!report.passed());
-        assert!(report
-            .issues
-            .iter()
-            .any(|issue| issue.code == "distributed_topology_unavailable"));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.code == "distributed_topology_unavailable")
+        );
 
         let adapter_report = evaluate_preflight_with_deployment(&plan, true);
         assert!(adapter_report.passed());
@@ -307,10 +315,12 @@ mod tests {
         let report = evaluate_preflight(&plan);
 
         assert!(report.passed());
-        assert!(report
-            .issues
-            .iter()
-            .any(|issue| issue.code == "sample_secret"
-                && issue.severity == PreflightSeverity::Warning));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.code == "sample_secret"
+                    && issue.severity == PreflightSeverity::Warning)
+        );
     }
 }

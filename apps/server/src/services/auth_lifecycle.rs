@@ -572,6 +572,7 @@ impl AuthLifecycleService {
         Self::revoke_user_sessions_db(ctx.db(), tenant_id, user_id, Some(current_session_id)).await
     }
 
+    #[cfg(test)]
     async fn reset_password_and_revoke_sessions(
         db: &DatabaseConnection,
         tenant_id: uuid::Uuid,
@@ -1344,7 +1345,7 @@ mod tests {
         let err = crate::auth::decode_password_reset_token(&config, "not-a-jwt")
             .expect_err("invalid token payload must be rejected");
 
-        assert!(matches!(err, crate::error::Error::Unauthorized));
+        assert!(matches!(err, crate::error::Error::Unauthorized(_)));
     }
 
     #[tokio::test]
