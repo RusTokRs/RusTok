@@ -1,0 +1,37 @@
+name: One-off Dependency Waiver Status
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-off-dependency-waiver-status.yml
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+env:
+  STATUS_ISSUE: 1851
+
+jobs:
+  status:
+    if: >-
+      github.event.head_commit.message == 'test(ci): report dependency waiver repair'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Report waiver repair runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          runs=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow one-off-dependency-waiver-diagnostic.yml \
+            --limit 8 \
+            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
+          gh issue comment "$STATUS_ISSUE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Dependency waiver repair runs:\n\n\`\`\`json\n$runs\n\`\`\`"
