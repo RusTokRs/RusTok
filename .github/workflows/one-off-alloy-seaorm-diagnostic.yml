@@ -1,0 +1,79 @@
+name: One-off Alloy SeaORM Diagnostic
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_TERM_COLOR: never
+  DIAGNOSTIC_ISSUE: 1853
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.issue.number == 1853 &&
+      github.event.comment.body == '/diagnose-alloy-seaorm'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: main
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+      - name: Capture alloy compiler diagnostics
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          cargo check --locked -p alloy --message-format=json \
+            > /tmp/alloy-check.jsonl 2> /tmp/alloy-cargo.stderr
+          status=$?
+          set -e
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          rendered = []
+          for raw in Path('/tmp/alloy-check.jsonl').read_text().splitlines():
+              try:
+                  item = json.loads(raw)
+              except json.JSONDecodeError:
+                  continue
+              if item.get('reason') != 'compiler-message':
+                  continue
+              message = item.get('message', {})
+              if message.get('level') != 'error':
+                  continue
+              text = message.get('rendered') or message.get('message') or 'unrendered compiler error'
+              rendered.append(text.rstrip())
+
+          body = [
+              'Capture the exact locked `alloy` compiler diagnostics before a bounded SeaORM compatibility repair.',
+              '',
+              f'## Compiler errors ({len(rendered)})',
+              '',
+              '```text',
+              '\n\n'.join(rendered) if rendered else 'No compiler errors were emitted.',
+              '```',
+              '',
+              '## Cargo stderr tail',
+              '',
+              '```text',
+              '\n'.join(Path('/tmp/alloy-cargo.stderr').read_text().splitlines()[-40:]),
+              '```',
+          ]
+          Path('/tmp/alloy-diagnostic.md').write_text('\n'.join(body) + '\n')
+          PY
+          gh issue edit "$DIAGNOSTIC_ISSUE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/alloy-diagnostic.md
+          exit "$status"
