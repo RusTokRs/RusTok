@@ -17,7 +17,7 @@ jobs:
     if: >-
       github.event.head_commit.message == 'security(ci): execute migration action pin patch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -33,8 +33,8 @@ jobs:
           from pathlib import Path
           patch = Path('scripts/maintenance/pin-migration-actions.py')
           source = patch.read_text()
-          old = 'matchAll(/^\\\\s*uses:\\\\s*'
-          new = 'matchAll(/^\\\\s*(?:-\\\\s*)?uses:\\\\s*'
+          old = 'matchAll(/^\\s*uses:\\s*'
+          new = 'matchAll(/^\\s*(?:-\\s*)?uses:\\s*'
           if source.count(old) != 1:
               raise SystemExit('temporary pin parser marker drifted')
           patch.write_text(source.replace(old, new))
@@ -52,4 +52,15 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m 'security(ci): pin migration compatibility actions'
-          git push origin HEAD:main
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              git rebase origin/main
+              node --check scripts/verify/verify-migration-compatibility-contract.mjs
+              node scripts/verify/verify-migration-compatibility-contract.mjs
+            fi
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+          done
+          exit 1
