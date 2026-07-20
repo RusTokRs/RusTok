@@ -8,43 +8,32 @@ use rustok_api::{
 use rustok_modules::{ModuleControlPlane, SeaOrmModuleGovernanceService};
 use rustok_storage::StorageService;
 use sea_orm::{
-    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use crate::models::registry_governance_event::{
-    self, ActiveModel as RegistryGovernanceEventActiveModel,
-    Entity as RegistryGovernanceEventEntity,
-};
+use crate::models::registry_governance_event::Entity as RegistryGovernanceEventEntity;
 use crate::models::registry_module_owner::{
-    self, ActiveModel as RegistryModuleOwnerActiveModel, Entity as RegistryModuleOwnerEntity,
+    self, Entity as RegistryModuleOwnerEntity,
 };
 use crate::models::registry_module_release::{
-    self, ActiveModel as RegistryModuleReleaseActiveModel, Entity as RegistryModuleReleaseEntity,
-    RegistryModuleReleaseStatus,
+    self, Entity as RegistryModuleReleaseEntity, RegistryModuleReleaseStatus,
 };
 use crate::models::registry_module_release_translation::{
     self as registry_module_release_translation,
-    ActiveModel as RegistryModuleReleaseTranslationActiveModel,
     Entity as RegistryModuleReleaseTranslationEntity,
 };
 use crate::models::registry_publish_request::{
-    self, ActiveModel as RegistryPublishRequestActiveModel, Entity as RegistryPublishRequestEntity,
-    RegistryPublishRequestStatus,
+    self, Entity as RegistryPublishRequestEntity, RegistryPublishRequestStatus,
 };
 use crate::models::registry_publish_request_translation::{
     self as registry_publish_request_translation, Entity as RegistryPublishRequestTranslationEntity,
 };
-use crate::models::registry_validation_job::{
-    self, ActiveModel as RegistryValidationJobActiveModel, Entity as RegistryValidationJobEntity,
-    RegistryValidationJobStatus,
-};
 use crate::models::registry_validation_stage::{
-    self, ActiveModel as RegistryValidationStageActiveModel,
-    Entity as RegistryValidationStageEntity, RegistryValidationStageStatus,
+    self, Entity as RegistryValidationStageEntity, RegistryValidationStageStatus,
 };
 use crate::modules::{CatalogManifestModule, CatalogModuleVersion};
 use crate::services::marketplace_catalog::{
@@ -331,9 +320,8 @@ pub(crate) use publishing::{
 };
 pub(crate) use releases::request_ui_packages;
 pub(crate) use validation::{
-    compare_semver_desc, dedupe_message_list, derive_follow_up_gate_snapshots,
-    derive_validation_stage_snapshots, deserialize_message_list, normalize_actor,
-    validation_stage_details_value,
+    compare_semver_desc, derive_follow_up_gate_snapshots, derive_validation_stage_snapshots,
+    deserialize_message_list, normalize_actor, validation_stage_details_value,
 };
 
 impl RegistryGovernanceService {
