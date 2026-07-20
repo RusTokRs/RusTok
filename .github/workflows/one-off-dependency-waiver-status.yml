@@ -1,10 +1,8 @@
 name: One-off Dependency Waiver Status
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/one-off-dependency-waiver-status.yml
+  issue_comment:
+    types: [created]
 
 permissions:
   actions: read
@@ -14,32 +12,33 @@ permissions:
 jobs:
   status:
     if: >-
-      github.event.head_commit.message == 'test(ci): capture dependency waiver failure'
+      github.event.issue.number == 1851 &&
+      github.event.comment.user.login == 'loid345' &&
+      github.event.comment.body == '/status-dependency-waivers'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
       STATUS_ISSUE: 1851
-      FAILED_RUN_ID: 29733400572
     steps:
-      - name: Persist waiver repair failure
+      - name: Persist waiver repair runs
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          set +e
-          failure_tail=$(gh run view "$FAILED_RUN_ID" \
+          runs=$(gh run list \
             --repo "$GITHUB_REPOSITORY" \
-            --log-failed 2>&1 | tail -n 140)
-          set -e
+            --workflow one-off-dependency-waiver-diagnostic.yml \
+            --limit 10 \
+            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
           current_body=$(gh issue view "$STATUS_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
             --json body --jq .body)
-          base_body=$(printf '%s\n' "$current_body" | sed '/^## Repair failure$/,$d')
+          base_body=$(printf '%s\n' "$current_body" | sed '/^## Current repair runs$/,$d')
           {
             printf '%s\n\n' "$base_body"
-            printf '## Repair failure\n\n```text\n%s\n```\n' "$failure_tail"
-          } >/tmp/dependency-waiver-failure.md
+            printf '## Current repair runs\n\n```json\n%s\n```\n' "$runs"
+          } >/tmp/dependency-waiver-status.md
           gh issue edit "$STATUS_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
-            --body-file /tmp/dependency-waiver-failure.md
+            --body-file /tmp/dependency-waiver-status.md
