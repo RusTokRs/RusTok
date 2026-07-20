@@ -1,0 +1,116 @@
+name: One-off Rebase Moderation Service
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-off-rebase-moderation-service
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  rebase-service:
+    if: github.repository == 'RusTokRs/RusTok' && github.head_ref == 'agent/moderation-owner-core'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: agent/moderation-owner-core
+          fetch-depth: 0
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+
+      - name: Remove one-off workflow from owner core
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/one-off-rebase-moderation-service.yml
+          git add .github/workflows/one-off-rebase-moderation-service.yml
+          git commit -m "chore(moderation): remove completed stack rebase installer"
+          git push origin HEAD:agent/moderation-owner-core
+
+      - name: Rebase service branch onto current owner core
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin agent/moderation-owner-core agent/moderation-report-case-service
+          git checkout -B agent/moderation-report-case-service origin/agent/moderation-report-case-service
+
+          set +e
+          git rebase origin/agent/moderation-owner-core
+          status=$?
+          set -e
+          while [ "$status" -ne 0 ]; do
+            test -d .git/rebase-merge -o -d .git/rebase-apply
+            mapfile -t unmerged < <(git diff --name-only --diff-filter=U)
+            if [ "${#unmerged[@]}" -eq 0 ]; then
+              echo "rebase failed without resolvable conflicts" >&2
+              exit "$status"
+            fi
+            for path in "${unmerged[@]}"; do
+              case "$path" in
+                crates/rustok-moderation/src/lib.rs|\
+                crates/rustok-moderation/src/migrations/mod.rs|\
+                docs/migrations/backfill-contracts.json)
+                  git checkout --theirs -- "$path"
+                  git add "$path"
+                  ;;
+                *)
+                  echo "unexpected rebase conflict: $path" >&2
+                  exit 1
+                  ;;
+              esac
+            done
+            set +e
+            GIT_EDITOR=true git rebase --continue
+            status=$?
+            set -e
+          done
+
+          rm -f .github/workflows/one-off-sync-moderation-stack.yml
+          git add -A .github/workflows
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(moderation): remove completed stack sync helper"
+          fi
+
+      - name: Reconcile lock and verify rebased service
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/moderation-service-rebase
+        run: |
+          set -euo pipefail
+          cargo metadata --format-version 1 > /tmp/cargo-metadata.json
+          cargo fmt -p rustok-moderation
+          cargo test --locked -p rustok-moderation
+          cargo check --locked -p rustok-migrations
+          cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
+            --output /tmp/moderation-service-migration-plan.json
+          test -s /tmp/moderation-service-migration-plan.json
+          git diff --check
+
+      - name: Commit verified generated changes and publish rebased stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add Cargo.lock crates/rustok-moderation
+          if ! git diff --cached --quiet; then
+            git commit -m "test(moderation): verify rebased report and case service"
+          fi
+          git push --force-with-lease origin HEAD:agent/moderation-report-case-service
