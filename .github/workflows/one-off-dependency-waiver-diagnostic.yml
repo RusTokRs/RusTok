@@ -1,4 +1,4 @@
-name: One-off Inspect RSA Trace Run
+name: One-off Validate Contained Dependency Waivers
 
 on:
   push:
@@ -7,36 +7,115 @@ on:
       - .github/workflows/one-off-dependency-waiver-diagnostic.yml
 
 permissions:
-  actions: read
-  contents: read
+  contents: write
   issues: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   SECURITY_ISSUE: 1851
+  CARGO_TERM_COLOR: never
 
 jobs:
-  inspect:
+  validate:
     if: >-
-      github.event.head_commit.message == 'test(ci): inspect RSA trace run'
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
+      github.event.head_commit.message == 'security(deps): validate contained waiver policy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - name: Persist diagnostic workflow runs
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+      - name: Apply bounded policy repair
+        run: python3 scripts/maintenance/retire-dependency-waivers.py
+      - name: Verify structural dependency policy
+        run: |
+          node --check scripts/verify/verify-dependency-feature-hygiene.mjs
+          node scripts/verify/verify-dependency-feature-hygiene.mjs
+          node scripts/verify/verify-advisory-exceptions.mjs
+      - name: Verify locked advisory reachability
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo tree --locked --workspace --all-features --target all -i rsa \
+            > /tmp/rsa.tree 2> /tmp/rsa.stderr
+          if [ -s /tmp/rsa.tree ]; then
+            cat /tmp/rsa.tree
+            echo 'rsa unexpectedly became reachable' >&2
+            exit 1
+          fi
+          cargo tree --locked --workspace --all-features --target all -i atomic-polyfill \
+            > /tmp/atomic-polyfill.tree 2> /tmp/atomic-polyfill.stderr
+          grep -q 'athanor-store-surrealdb' /tmp/atomic-polyfill.tree
+          grep -q 'surrealdb v2.6.5' /tmp/atomic-polyfill.tree
+          grep -q 'rstar v0.9.3' /tmp/atomic-polyfill.tree
+          grep -q 'heapless v0.7.17' /tmp/atomic-polyfill.tree
+          grep -q 'atomic-polyfill v1.0.3' /tmp/atomic-polyfill.tree
+          ! grep -q 'rustok-server' /tmp/atomic-polyfill.tree
+      - name: Compile minimal server profile
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/dependency-waiver-containment
+        run: cargo check --locked -p rustok-server --no-default-features
+      - name: Verify bounded diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            Cargo.toml
+            docs/security/advisory-exceptions.md
+            docs/security/rsa-rustsec-2023-0071.md
+            scripts/verify/verify-dependency-feature-hygiene.mjs
+          )
+          test "${#changed[@]}" = "${#expected[@]}"
+          for index in "${!expected[@]}"; do
+            test "${changed[$index]}" = "${expected[$index]}"
+          done
+          git diff --exit-code -- Cargo.lock .cargo/audit.toml deny.toml
+      - name: Commit and publish contained waiver policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Cargo.toml docs/security/advisory-exceptions.md \
+            docs/security/rsa-rustsec-2023-0071.md \
+            scripts/verify/verify-dependency-feature-hygiene.mjs
+          git commit -m 'security(deps): contain lock-only advisory paths'
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              git rebase origin/main
+              node scripts/verify/verify-dependency-feature-hygiene.mjs
+              node scripts/verify/verify-advisory-exceptions.mjs
+              test -z "$(cargo tree --locked --workspace --all-features --target all -i rsa 2>/dev/null)"
+            fi
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+          done
+          exit 1
+      - name: Record containment evidence
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          set -euo pipefail
-          runs=$(gh run list \
+          cat > /tmp/dependency-waiver-evidence.md <<'EOF'
+          Contained dependency-waiver policy published.
+
+          - Base SeaORM defaults are disabled with explicit parity for the previous data-type features.
+          - The locked all-workspace/all-features/all-target RSA inverse tree is empty; the waiver remains because `rsa` is still lockfile-only and visible to `cargo audit`.
+          - The `atomic-polyfill` waiver now records the actual Athanor embedded SurrealDB target path.
+          - `Cargo.lock` and audit ignore lists were not modified.
+          EOF
+          gh issue comment "$SECURITY_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
-            --workflow one-off-dependency-waiver-diagnostic.yml \
-            --limit 12 \
-            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
-          {
-            printf 'Inspect recent RSA dependency diagnostic runs.\n\n'
-            printf '## Diagnostic runs\n\n```json\n%s\n```\n' "$runs"
-          } >/tmp/rsa-trace-runs.md
-          gh issue edit "$SECURITY_ISSUE" \
-            --repo "$GITHUB_REPOSITORY" \
-            --body-file /tmp/rsa-trace-runs.md
+            --body-file /tmp/dependency-waiver-evidence.md
