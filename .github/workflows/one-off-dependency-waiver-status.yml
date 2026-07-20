@@ -20,7 +20,7 @@ jobs:
     env:
       STATUS_ISSUE: 1851
     steps:
-      - name: Persist waiver repair runs
+      - name: Persist waiver repair runs and failure tail
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -31,13 +31,30 @@ jobs:
             --workflow one-off-dependency-waiver-diagnostic.yml \
             --limit 10 \
             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
+          failed_run=$(printf '%s' "$runs" | node -e '
+            let input = "";
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => {
+              const run = JSON.parse(input).find(item => item.conclusion === "failure");
+              if (run) process.stdout.write(String(run.databaseId));
+            });
+          ')
+          failure_tail="No failed repair run found."
+          if [ -n "$failed_run" ]; then
+            set +e
+            failure_tail=$(gh run view "$failed_run" \
+              --repo "$GITHUB_REPOSITORY" \
+              --log-failed 2>&1 | tail -n 120)
+            set -e
+          fi
           current_body=$(gh issue view "$STATUS_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
             --json body --jq .body)
           base_body=$(printf '%s\n' "$current_body" | sed '/^## Current repair runs$/,$d')
           {
             printf '%s\n\n' "$base_body"
-            printf '## Current repair runs\n\n```json\n%s\n```\n' "$runs"
+            printf '## Current repair runs\n\n```json\n%s\n```\n\n' "$runs"
+            printf '## Latest repair failure\n\n```text\n%s\n```\n' "$failure_tail"
           } >/tmp/dependency-waiver-status.md
           gh issue edit "$STATUS_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
