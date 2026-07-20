@@ -1,8 +1,10 @@
 name: One-off Dependency Waiver Status
 
 on:
-  issue_comment:
-    types: [created]
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-off-dependency-waiver-status.yml
 
 permissions:
   actions: read
@@ -12,50 +14,25 @@ permissions:
 jobs:
   status:
     if: >-
-      github.event.issue.number == 1851 &&
-      github.event.comment.body == '/status-dependency-waivers'
+      github.event.head_commit.message == 'test(ci): capture exact containment compile failure'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
       STATUS_ISSUE: 1851
+      FAILED_RUN: 29744332828
     steps:
-      - name: Persist compact waiver and edition diagnostics
+      - name: Persist exact containment failure
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          waiver_runs=$(gh run list \
+          failure_tail=$(gh run view "$FAILED_RUN" \
             --repo "$GITHUB_REPOSITORY" \
-            --workflow one-off-dependency-waiver-diagnostic.yml \
-            --limit 10 \
-            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
-          edition_runs=$(gh run list \
-            --repo "$GITHUB_REPOSITORY" \
-            --workflow one-off-edition-2024-ulid.yml \
-            --limit 10 \
-            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
-          failed_run=$(printf '%s' "$edition_runs" | node -e '
-            let input = "";
-            process.stdin.on("data", chunk => input += chunk);
-            process.stdin.on("end", () => {
-              const run = JSON.parse(input).find(item => item.conclusion === "failure");
-              if (run) process.stdout.write(String(run.databaseId));
-            });
-          ')
-          failure_tail="No failed edition repair run found."
-          if [ -n "$failed_run" ]; then
-            set +e
-            failure_tail=$(gh run view "$failed_run" \
-              --repo "$GITHUB_REPOSITORY" \
-              --log-failed 2>&1 | tail -n 45)
-            set -e
-          fi
+            --log-failed 2>&1 | tail -n 80)
           {
-            printf 'Retire the two temporary dependency waivers after proving lock-only reachability.\n\n'
-            printf '## Waiver workflow runs\n\n```json\n%s\n```\n\n' "$waiver_runs"
-            printf '## Edition repair runs\n\n```json\n%s\n```\n\n' "$edition_runs"
-            printf '## Latest edition repair failure\n\n```text\n%s\n```\n' "$failure_tail"
+            printf 'Inspect the exact baseline compiler failure that follows successful dependency-policy checks.\n\n'
+            printf '## Run %s failure tail\n\n```text\n%s\n```\n' "$FAILED_RUN" "$failure_tail"
           } >/tmp/dependency-waiver-status.md
           gh issue edit "$STATUS_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
