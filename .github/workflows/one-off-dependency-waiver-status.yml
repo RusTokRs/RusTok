@@ -43,11 +43,11 @@ jobs:
             set +e
             failure_tail=$(gh run view "$failed_run" \
               --repo "$GITHUB_REPOSITORY" \
-              --log-failed 2>&1 | tail -n 120)
+              --log-failed 2>&1 | tail -n 35)
             set -e
           fi
           {
-            printf 'Retire the two temporary dependency waivers after proving all-target reachability.\n\n'
+            printf 'Retire the two temporary dependency waivers after proving lock-only reachability.\n\n'
             printf '## Current diagnostic runs\n\n```json\n%s\n```\n\n' "$runs"
             printf '## Latest diagnostic failure\n\n```text\n%s\n```\n' "$failure_tail"
           } >/tmp/dependency-waiver-status.md
