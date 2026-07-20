@@ -1,4 +1,5 @@
 name: One-off Fix Alloy Current Main Compile
+# Verifies the Alloy-only diff over the known stacked migration prerequisite from PR #1849.
 
 on:
   pull_request:
