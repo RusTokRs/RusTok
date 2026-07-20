@@ -3,7 +3,7 @@ use crate::i18n::t;
 #[cfg(test)]
 use fly::LocaleCoverageReport;
 use fly::{
-    analyze_project_locale_coverage, LocaleCoverageGap, LocaleCoverageKind, LocaleCoverageSummary,
+    LocaleCoverageGap, LocaleCoverageKind, LocaleCoverageSummary, analyze_project_locale_coverage,
 };
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;

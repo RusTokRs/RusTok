@@ -1,9 +1,10 @@
 use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
 use rustok_cart::{
+    CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
     bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_checkout_port,
-    in_process_cart_storefront_port, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
+    in_process_cart_storefront_port,
 };
-use rustok_customer::{in_process_customer_read_port, CustomerUserProjectionRequest};
+use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_payment::providers::PaymentProviderRegistry;
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;

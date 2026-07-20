@@ -3,11 +3,11 @@ use super::ssr_actions_forms::{
     SsrComponentFormRequest, SsrNativeFormFieldRequest,
 };
 use super::ssr_assets::{SsrAssetApplyRequest, SsrAssetRemoveRequest, SsrAssetUpsertRequest};
-use crate::{AdminCanvasController, AdminCanvasEffect};
+use crate::AdminCanvasController;
 use fly::{
-    blank_page, BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ComponentPatch,
-    EditorCommand, PageCommand, PageLocator, PageMetadata, PagePatch, RuntimeBinding,
-    TranslationCommand, TranslationEntry, FLY_PAGE_METADATA_FIELD,
+    BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ComponentPatch, EditorCommand,
+    FLY_PAGE_METADATA_FIELD, PageCommand, PageLocator, PageMetadata, PagePatch, RuntimeBinding,
+    TranslationCommand, TranslationEntry, blank_page,
 };
 use fly_ui::UiIntent;
 use serde::{Deserialize, Serialize};
@@ -496,23 +496,4 @@ fn normalize_css_property(value: &str) -> Result<String, String> {
         return Err("style property must contain only letters, digits, and hyphens".to_string());
     }
     Ok(value)
-}
-
-pub(crate) fn request_effects(
-    effects: Vec<AdminCanvasEffect>,
-) -> Vec<(
-    rustok_page_builder::dto::PageBuilderCapabilityRequest,
-    Option<fly::ProjectHash>,
-)> {
-    effects
-        .into_iter()
-        .filter_map(|effect| match effect {
-            AdminCanvasEffect::Request {
-                request,
-                expected_hash,
-                ..
-            } => Some((request, expected_hash)),
-            AdminCanvasEffect::Announce(_) => None,
-        })
-        .collect()
 }

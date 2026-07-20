@@ -445,7 +445,7 @@ async fn store_cart_line_item_transport_resolves_backend_title_and_price() {
     assert_eq!(
         updated_cart["line_items"][0]["metadata"],
         json!({
-            "seller": { "id": null, "scope": null },
+            "seller": { "id": null },
             "source": "transport-line-item-test"
         })
     );
@@ -551,7 +551,12 @@ async fn store_cart_transport_returns_typed_adjustments_and_totals() {
         .first()
         .expect("published product must include variant");
     let cart_service = CartService::new(db.clone());
-    let app = commerce_transport_router(test_app_context(db.clone()), tenant);
+    let (metadata, guest_cart_token) = rustok_cart::prepare_guest_cart_metadata(
+        None,
+        json!({ "source": "store-cart-adjustment-cart" }),
+    );
+    let app = commerce_transport_router(test_app_context(db.clone()), tenant)
+        .with_guest_cart_token(guest_cart_token.expect("guest cart token should be issued"));
     let cart = cart_service
         .create_cart(
             tenant_id,
@@ -561,7 +566,7 @@ async fn store_cart_transport_returns_typed_adjustments_and_totals() {
                 region_id: None,
                 country_code: None,
                 currency_code: "eur".to_string(),
-                metadata: json!({ "source": "store-cart-adjustment-cart" }),
+                metadata,
                 locale_code: Some("de".to_string()),
                 selected_shipping_option_id: None,
             },
@@ -692,7 +697,12 @@ async fn store_cart_transport_returns_shipping_total_and_shipping_scoped_promoti
         .await
         .expect("shipping option should be created");
     let cart_service = CartService::new(db.clone());
-    let app = commerce_transport_router(test_app_context(db.clone()), tenant);
+    let (metadata, guest_cart_token) = rustok_cart::prepare_guest_cart_metadata(
+        None,
+        json!({ "source": "store-cart-shipping-promotion" }),
+    );
+    let app = commerce_transport_router(test_app_context(db.clone()), tenant)
+        .with_guest_cart_token(guest_cart_token.expect("guest cart token should be issued"));
     let cart = cart_service
         .create_cart(
             tenant_id,
@@ -702,7 +712,7 @@ async fn store_cart_transport_returns_shipping_total_and_shipping_scoped_promoti
                 region_id: None,
                 country_code: None,
                 currency_code: "eur".to_string(),
-                metadata: json!({ "source": "store-cart-shipping-promotion" }),
+                metadata,
                 locale_code: Some("de".to_string()),
                 selected_shipping_option_id: Some(shipping_option.id),
             },

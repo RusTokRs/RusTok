@@ -64,7 +64,7 @@ impl AdminCanvasController {
                 location.index + 2
             }
             std::cmp::Ordering::Equal => {
-                return Err("reorder direction must not be zero".to_string())
+                return Err("reorder direction must not be zero".to_string());
             }
         };
 

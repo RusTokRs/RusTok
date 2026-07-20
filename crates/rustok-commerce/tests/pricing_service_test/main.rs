@@ -8,12 +8,12 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_pricing::entities;
 use rustok_pricing::{PriceAdjustmentKind, PricingService};
+use rustok_product::CatalogService;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
 };
-use rustok_product::CatalogService;
 use rustok_test_utils::{
-    db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus, MockEventTransport,
+    MockEventTransport, db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,

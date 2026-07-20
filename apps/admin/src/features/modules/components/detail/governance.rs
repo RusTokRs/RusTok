@@ -1,13 +1,13 @@
 use super::{humanize_token, short_checksum, tr};
+use crate::Locale;
+use crate::entities::module::MarketplaceModule;
 use crate::entities::module::model::{
     RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
     RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
     RegistryOwnerLifecycle, RegistryPublishRequestLifecycle, RegistryReleaseLifecycle,
     RegistryValidationStageLifecycle,
 };
-use crate::entities::module::MarketplaceModule;
 use crate::features::modules::transport::RegistryMutationResult;
-use crate::Locale;
 
 #[derive(Clone)]
 pub struct RegistryLiveApiActionHint {
@@ -484,7 +484,7 @@ pub fn destructive_governance_confirmation_message(
         _ => tr(
             locale,
             "Confirm the live governance action.",
-            "Подтвердите live governance-действие."
+            "Подтвердите live governance-действие.",
         )
         .to_string(),
     }
@@ -2674,12 +2674,16 @@ mod tests {
         let lines = moderation_history_context_lines(&event, Locale::en);
 
         assert!(lines.iter().any(|line| line == "Version: v1.2.3"));
-        assert!(lines
-            .iter()
-            .any(|line| line == "Reason: Ownership evidence is incomplete."));
-        assert!(lines
-            .iter()
-            .any(|line| line == "Reason code: Ownership Mismatch"));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line == "Reason: Ownership evidence is incomplete.")
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line == "Reason code: Ownership Mismatch")
+        );
     }
 
     #[test]
@@ -2691,9 +2695,11 @@ mod tests {
             lines.first().map(String::as_str),
             Some("Review authority: owner:module / operators with MODULES_MANAGE")
         );
-        assert!(!lines
-            .iter()
-            .any(|line| line.contains("operators with MODULES_MANAGE may override")));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.contains("operators with MODULES_MANAGE may override"))
+        );
     }
 
     #[test]
@@ -2774,11 +2780,13 @@ mod tests {
             .as_deref()
             .expect("owner transfer cli hint");
 
-        assert!(owner_transfer_api_hint
-            .body_hint
-            .as_deref()
-            .unwrap_or_default()
-            .contains("\"new_owner_user_id\""));
+        assert!(
+            owner_transfer_api_hint
+                .body_hint
+                .as_deref()
+                .unwrap_or_default()
+                .contains("\"new_owner_user_id\"")
+        );
         assert!(owner_transfer_cli_hint.contains("<new-owner-user-id>"));
         assert!(owner_transfer_cli_hint.contains("--auth-token <token>"));
         assert!(!owner_transfer_cli_hint.contains("<new-owner-actor>"));

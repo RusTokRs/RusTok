@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
@@ -10,17 +10,17 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
-    super::common::{ensure_permissions, PaginatedResponse},
     super::CommerceHttpRuntime,
+    super::common::{PaginatedResponse, ensure_permissions},
     ListShippingOptionsParams, ListShippingProfilesParams,
 };
 use crate::{
+    ShippingProfileService,
     dto::{
         CreateShippingOptionInput, CreateShippingProfileInput, ListShippingProfilesInput,
         ShippingOptionResponse, ShippingProfileResponse, UpdateShippingOptionInput,
         UpdateShippingProfileInput,
     },
-    ShippingProfileService,
 };
 
 /// List admin shipping profiles

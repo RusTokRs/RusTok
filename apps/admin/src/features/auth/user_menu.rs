@@ -138,7 +138,9 @@ fn dropdown_link(href: &'static str, icon: &'static str, children: Children) -> 
 fn menu_icon(icon: &'static str) -> impl IntoView {
     let path = match icon {
         "user" => "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
-        "lock" => "M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4",
+        "lock" => {
+            "M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4"
+        }
         "logout" => "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
         _ => "M12 12m-10 0a10 10 0 1 0 20 0a10 10 0 1 0-20 0",
     };

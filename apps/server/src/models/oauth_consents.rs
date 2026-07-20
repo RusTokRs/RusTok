@@ -1,4 +1,5 @@
 use sea_orm::prelude::*;
+use sea_orm::ConnectionTrait;
 
 use super::_entities::oauth_consents::{self};
 pub use super::_entities::oauth_consents::{ActiveModel, Column, Entity, Model};
@@ -21,16 +22,21 @@ impl Model {
 }
 
 impl Entity {
-    pub async fn find_active_consent(
-        db: &DatabaseConnection,
+    pub async fn find_active_consent<C>(
+        db: &C,
         app_id: Uuid,
         user_id: Uuid,
-    ) -> Result<Option<Model>, DbErr> {
+        tenant_id: Uuid,
+    ) -> Result<Option<Model>, DbErr>
+    where
+        C: ConnectionTrait,
+    {
         Self::find()
             .filter(
                 sea_orm::Condition::all()
                     .add(oauth_consents::Column::AppId.eq(app_id))
                     .add(oauth_consents::Column::UserId.eq(user_id))
+                    .add(oauth_consents::Column::TenantId.eq(tenant_id))
                     .add(oauth_consents::Column::RevokedAt.is_null()),
             )
             .one(db)

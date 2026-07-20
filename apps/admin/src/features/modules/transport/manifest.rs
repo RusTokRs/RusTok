@@ -1,14 +1,15 @@
 use leptos::prelude::ServerFnError;
 use serde::{Deserialize, Serialize};
 
+use crate::entities::module::MarketplaceModule;
 #[allow(unused_imports)]
 use crate::entities::module::model::{
-    registry_principal_label_from_value, MarketplaceModuleVersion, RegistryFollowUpGateLifecycle,
-    RegistryGovernanceActionLifecycle, RegistryGovernanceEventLifecycle,
-    RegistryGovernanceEventPayloadLifecycle, RegistryModuleLifecycle, RegistryOwnerLifecycle,
-    RegistryPublishRequestLifecycle, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
+    MarketplaceModuleVersion, RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
+    RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
+    RegistryModuleLifecycle, RegistryOwnerLifecycle, RegistryPublishRequestLifecycle,
+    RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
+    registry_principal_label_from_value,
 };
-use crate::entities::module::MarketplaceModule;
 
 #[cfg(feature = "ssr")]
 use super::native_server_adapter::*;
@@ -539,8 +540,8 @@ pub fn runtime_manifest_snapshot_hash(snapshot: &serde_json::Value) -> String {
 #[cfg(all(test, feature = "ssr"))]
 pub mod runtime_manifest_hash_tests {
     use super::{
-        runtime_manifest_hash, runtime_manifest_snapshot_hash, RuntimeBuildConfig,
-        RuntimeManifestModuleSpec, RuntimeModulesManifest, RuntimeSettingsManifest,
+        RuntimeBuildConfig, RuntimeManifestModuleSpec, RuntimeModulesManifest,
+        RuntimeSettingsManifest, runtime_manifest_hash, runtime_manifest_snapshot_hash,
     };
     use std::collections::HashMap;
 

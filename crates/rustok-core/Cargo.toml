@@ -42,7 +42,6 @@ redis-cache = []
 
 [dev-dependencies]
 tokio.workspace = true
-rustok-outbox.workspace = true
 sea-orm = { workspace = true, features = ["sqlx-sqlite"] }
 sea-orm-migration = { workspace = true, features = ["sqlx-sqlite"] }
 futures = "0.3"

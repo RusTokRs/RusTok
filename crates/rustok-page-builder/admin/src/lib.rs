@@ -20,12 +20,12 @@ pub mod ui;
 pub const BROWSER_CAPABILITY_DENIAL_CODE: &str = "FLY_CAPABILITY_DENIED";
 
 pub use browser_intent::{
-    dispatch_browser_intent, BrowserIntentDispatchError, BrowserIntentDispatchResult,
-    BrowserIntentEffect,
+    BrowserIntentDispatchError, BrowserIntentDispatchResult, BrowserIntentEffect,
+    dispatch_browser_intent,
 };
 pub use capability_access::{
-    browser_capability_denial, validate_browser_capability_access, BrowserCapabilityAccessError,
-    BrowserCapabilityDenial, CapabilityFailure,
+    BrowserCapabilityAccessError, BrowserCapabilityDenial, CapabilityFailure,
+    browser_capability_denial, validate_browser_capability_access,
 };
 pub use draft_session::{
     InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,

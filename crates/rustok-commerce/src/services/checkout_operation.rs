@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, Set, sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -571,7 +571,7 @@ impl CheckoutOperationJournal {
             other => {
                 return Err(CheckoutOperationError::Conflict(format!(
                     "checkout operation {id} cannot fail from status `{other}`"
-                )))
+                )));
             }
         };
         self.mark_terminal(

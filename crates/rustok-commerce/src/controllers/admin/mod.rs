@@ -18,16 +18,16 @@ pub use shipping::*;
 mod tests;
 
 use rust_decimal::Decimal;
-use rustok_payment::{PaymentError, PaymentService};
+use rustok_payment::PaymentError;
 use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
+    FulfillmentOrchestrationError, PostOrderOrchestrationError, ShippingProfileService,
     dto::{FulfillmentResponse, OrderResponse, PaymentCollectionResponse},
     storefront_shipping::normalize_shipping_profile_slug,
-    FulfillmentOrchestrationError, PostOrderOrchestrationError, ShippingProfileService,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -451,10 +451,9 @@ pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationEr
         PostOrderOrchestrationError::PaymentOrchestration(error) => {
             map_payment_orchestration_error(error)
         }
-        PostOrderOrchestrationError::Validation(_) => HttpError::bad_request(
-            "commerce_admin_invalid",
-            "Post-order request is invalid",
-        ),
+        PostOrderOrchestrationError::Validation(_) => {
+            HttpError::bad_request("commerce_admin_invalid", "Post-order request is invalid")
+        }
     }
 }
 
@@ -507,37 +506,4 @@ pub(crate) async fn validate_shipping_option_profile_inputs(
         .map_err(map_shipping_profile_error)?;
 
     Ok(())
-}
-
-pub(crate) async fn resolve_return_refund_collection_id(
-    payment_service: &PaymentService,
-    tenant_id: Uuid,
-    order_id: Uuid,
-    explicit_collection_id: Option<Uuid>,
-) -> HttpResult<Uuid> {
-    if let Some(collection_id) = explicit_collection_id {
-        let collection = payment_service
-            .get_collection(tenant_id, collection_id)
-            .await
-            .map_err(map_payment_error)?;
-        if collection.order_id != Some(order_id) {
-            return Err(HttpError::bad_request(
-                "commerce_admin_invalid",
-                "Payment collection is not attached to the requested order",
-            ));
-        }
-        return Ok(collection_id);
-    }
-
-    payment_service
-        .find_latest_collection_by_order(tenant_id, order_id)
-        .await
-        .map_err(map_payment_error)?
-        .map(|collection| collection.id)
-        .ok_or_else(|| {
-            HttpError::bad_request(
-                "commerce_admin_invalid",
-                "Order has no payment collection for return refund",
-            )
-        })
 }

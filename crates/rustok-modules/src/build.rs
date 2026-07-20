@@ -880,6 +880,10 @@ impl ModuleBuildResult {
             ModuleBuildOutcome::Failed(_) | ModuleBuildOutcome::Cancelled => {
                 if self.next_action == ModuleBuildNextAction::AdmitArtifact
                     || self.publication.is_some()
+                    || self.component_digest.is_some()
+                    || self.sbom_digest.is_some()
+                    || self.provenance_digest.is_some()
+                    || self.component_interface.is_some()
                 {
                     return Err(ModuleBuildProtocolError::InvalidResult);
                 }
@@ -1402,7 +1406,8 @@ mod tests {
             profile: ModuleBuildValidationProfile::Check,
             outcome: ModuleBuildValidationOutcome::Failed,
         }];
-        assert!(result.validate_against(&request).is_ok());
+        let validation = result.validate_against(&request);
+        assert!(validation.is_ok(), "{validation:?}");
 
         result.evidence.diagnostics[0].stage = ModuleBuildDiagnosticStage::Build;
         assert!(matches!(
@@ -1455,7 +1460,8 @@ mod tests {
             retryable: false,
             next_action: ModuleBuildNextAction::AdmitArtifact,
         };
-        assert!(result.validate_against(&request).is_ok());
+        let validation = result.validate_against(&request);
+        assert!(validation.is_ok(), "{validation:?}");
 
         result.wit_digest = digest('f');
         assert!(matches!(
@@ -1466,6 +1472,14 @@ mod tests {
         result.wit_digest = request.wit.protocol_digest();
         result.outcome = ModuleBuildOutcome::Failed(ModuleBuildFailureCode::WorkerUnavailable);
         result.evidence.validation_results.clear();
+        result.evidence.diagnostics = vec![ModuleBuildDiagnostic {
+            stage: ModuleBuildDiagnosticStage::Worker,
+            code: ModuleBuildFailureCode::WorkerUnavailable,
+        }];
+        result.component_digest = None;
+        result.sbom_digest = None;
+        result.provenance_digest = None;
+        result.component_interface = None;
         result.retryable = true;
         result.next_action = ModuleBuildNextAction::ReviseSource;
         assert!(matches!(

@@ -1,14 +1,14 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
-use rustok_api::locale_tags_match;
 use rustok_api::Permission;
+use rustok_api::locale_tags_match;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_product::{
-    entities::{product, product_translation},
     CatalogService,
+    entities::{product, product_translation},
 };
 use rustok_telemetry::metrics;
 use rustok_web::{HttpError, HttpResult};
@@ -24,7 +24,7 @@ use crate::{
     storefront_shipping::product_shipping_profile_slug,
 };
 
-use super::common::{ensure_permissions, PaginatedResponse, PaginationMeta, PaginationParams};
+use super::common::{PaginatedResponse, PaginationMeta, PaginationParams, ensure_permissions};
 
 /// Shared admin product list handler.
 pub async fn list_products(

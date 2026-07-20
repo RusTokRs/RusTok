@@ -14,9 +14,7 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::middleware::channel::{
-    invalidate_all_channel_cache_local, invalidate_tenant_channel_cache_local,
-};
+use crate::middleware::channel::invalidate_all_channel_cache_local;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 pub const CHANNEL_RESOLUTION_INVALIDATION_CHANNEL: &str = "channel.resolution.generation.v1";

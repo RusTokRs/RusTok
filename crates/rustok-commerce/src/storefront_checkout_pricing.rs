@@ -7,7 +7,7 @@ use rustok_cart::{
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_pricing::{
-    in_process_pricing_read_port, ResolveProductPriceRequest, ResolvedProductPriceSnapshot,
+    ResolveProductPriceRequest, ResolvedProductPriceSnapshot, in_process_pricing_read_port,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::Value;

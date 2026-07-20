@@ -621,7 +621,7 @@ async fn admin_refunds_transport_list_ignores_foreign_tenant_payment_collection_
     let payload: serde_json::Value =
         serde_json::from_slice(&body).expect("response should be JSON");
     assert_eq!(payload["data"], json!([]));
-    assert_eq!(payload["total"], json!(0));
+    assert_eq!(payload["meta"]["total"], json!(0));
 }
 
 #[tokio::test]
@@ -689,7 +689,7 @@ async fn admin_refunds_transport_create_rejects_foreign_tenant_payment_collectio
         user_id: actor_id,
         session_id: Uuid::new_v4(),
         tenant_id: tenant_b,
-        permissions: vec![Permission::PAYMENTS_CREATE],
+        permissions: vec![Permission::PAYMENTS_UPDATE],
         client_id: None,
         scopes: vec![],
         grant_type: "direct".to_string(),
@@ -1017,7 +1017,7 @@ async fn admin_refunds_transport_supports_order_id_filter() {
         .expect("response body should read");
     let payload: serde_json::Value =
         serde_json::from_slice(&body).expect("response should be JSON");
-    assert_eq!(payload["total"], json!(1));
+    assert_eq!(payload["meta"]["total"], json!(1));
     let items = payload["data"].as_array().expect("data should be array");
     assert_eq!(items.len(), 1);
     assert_eq!(

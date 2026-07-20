@@ -1,18 +1,18 @@
 use rust_decimal::Decimal;
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
+use rustok_product::CatalogService;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
 };
 use rustok_product::entities::{product, product_tag};
-use rustok_product::CatalogService;
 use rustok_taxonomy::{
-    entities::taxonomy_term, CreateTaxonomyTermInput, TaxonomyScopeType, TaxonomyService,
-    TaxonomyTermKind,
+    CreateTaxonomyTermInput, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+    entities::taxonomy_term,
 };
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
-use sea_orm_migration::prelude::SchemaManager;
 use sea_orm_migration::MigrationTrait;
+use sea_orm_migration::prelude::SchemaManager;
 use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -121,9 +121,11 @@ async fn product_tags_are_synced_into_product_tags_without_metadata_mirror() {
         .await
         .expect("taxonomy terms should load");
     assert_eq!(terms.len(), 2);
-    assert!(terms
-        .iter()
-        .all(|term| term.scope_type == TaxonomyScopeType::Module));
+    assert!(
+        terms
+            .iter()
+            .all(|term| term.scope_type == TaxonomyScopeType::Module)
+    );
     assert!(terms.iter().all(|term| term.scope_value == "product"));
 }
 

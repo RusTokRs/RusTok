@@ -5,7 +5,7 @@ use crate::editor::{
 use crate::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
 use fly::{GrapesJsCodec, ProjectHash};
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentError};
-use fly_ui::{resolve_editor_shortcut, EditorShortcut, KeyStroke, UiIntent};
+use fly_ui::{EditorShortcut, KeyStroke, UiIntent, resolve_editor_shortcut};
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -580,13 +580,15 @@ mod tests {
         assert_eq!(link["page_id"], "about");
         assert_eq!(link["base_path"], "/site");
         controller.dispatch(UiIntent::Undo).expect("undo link");
-        assert!(!controller
-            .editor()
-            .document()
-            .component("link")
-            .unwrap()
-            .extensions
-            .contains_key("flyPageLink"));
+        assert!(
+            !controller
+                .editor()
+                .document()
+                .component("link")
+                .unwrap()
+                .extensions
+                .contains_key("flyPageLink")
+        );
     }
 
     #[test]

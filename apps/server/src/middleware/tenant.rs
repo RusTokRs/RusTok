@@ -17,7 +17,6 @@ use rustok_tenant::{
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{fmt, sync::Arc};
-use uuid::Uuid;
 
 use super::{
     tenant_resolution::{
@@ -658,7 +657,7 @@ async fn load_resolved_tenant_context(
     resolution: &TenantResolution,
     transport: TenantResolutionTransport,
 ) -> Result<TenantContext, TenantContextLoadError> {
-    let result = async {
+    let result: Result<TenantContext, TenantContextLoadError> = async {
         let context = load_tenant_context(ctx, &resolution.identifier).await?;
         resolution
             .validate_resolved_slug(&context.slug)

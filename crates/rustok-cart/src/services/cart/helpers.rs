@@ -12,7 +12,7 @@ use std::{
 use uuid::Uuid;
 
 use rustok_api::{
-    normalize_locale_tag, PortActor, PortContext, PortError, PLATFORM_FALLBACK_LOCALE,
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, normalize_locale_tag,
 };
 use rustok_commerce_foundation::entities::{region, region_country_tax_policy};
 use rustok_core::generate_id;

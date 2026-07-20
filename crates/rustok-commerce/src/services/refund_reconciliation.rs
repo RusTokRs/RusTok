@@ -1,7 +1,7 @@
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
 use rustok_payment::{
-    PaymentError, PaymentProviderOperationJournal, PaymentService, PROVIDER_OPERATION_COMMITTED,
-    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
+    PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+    PROVIDER_OPERATION_SUCCEEDED, PaymentError, PaymentProviderOperationJournal, PaymentService,
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -79,19 +79,19 @@ impl RefundReconciliationService {
             "pending" => {}
             "refunded" if operation.status == PROVIDER_OPERATION_COMMITTED => return Ok(refund),
             "refunded" => {
-                return Err(PaymentError::provider_outcome_unknown(&provider_id, "refund").into())
+                return Err(PaymentError::provider_outcome_unknown(&provider_id, "refund").into());
             }
             "cancelled" => {
                 return Err(PaymentError::Validation(format!(
                     "refund {refund_id} is cancelled; provider retry is forbidden"
                 ))
-                .into())
+                .into());
             }
             status => {
                 return Err(PaymentError::Validation(format!(
                     "refund {refund_id} has unsupported reconciliation status `{status}`"
                 ))
-                .into())
+                .into());
             }
         }
 
@@ -102,12 +102,12 @@ impl RefundReconciliationService {
             self.provider_operation_journal
                 .mark_committed(operation.id)
                 .await
-                .map_err(|_| {
-                    PaymentOrchestrationError::ProviderAfterRefundReservation {
+                .map_err(
+                    |_| PaymentOrchestrationError::ProviderAfterRefundReservation {
                         refund_id,
                         source: PaymentError::provider_outcome_unknown(&provider_id, "refund"),
-                    }
-                })?;
+                    },
+                )?;
             return self
                 .payment_service
                 .get_refund(tenant_id, refund_id)

@@ -1,9 +1,9 @@
+use crate::AdminCanvasController;
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
-use crate::AdminCanvasController;
 use fly::{
-    normalize_locale_tag, normalize_slug, EditorCommand, PageCommand, PageLocator, PagePatch,
-    ProjectPage, FLY_PAGE_METADATA_FIELD, LOCALIZED_FALLBACK_FIELD, LOCALIZED_VALUES_FIELD,
+    EditorCommand, FLY_PAGE_METADATA_FIELD, LOCALIZED_FALLBACK_FIELD, LOCALIZED_VALUES_FIELD,
+    PageCommand, PageLocator, PagePatch, ProjectPage, normalize_locale_tag, normalize_slug,
 };
 use fly_ui::UiIntent;
 use leptos::prelude::*;
@@ -318,7 +318,7 @@ fn page_label(page: &ProjectPage, index: usize, fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::{materialize_localized_page_metadata, GrapesJsCodec, PageMetadata};
+    use fly::{GrapesJsCodec, PageMetadata, materialize_localized_page_metadata};
     use serde_json::json;
 
     fn controller() -> AdminCanvasController {
@@ -376,20 +376,24 @@ mod tests {
     #[test]
     fn unsupported_fields_and_missing_fallback_values_are_rejected() {
         let controller = controller();
-        assert!(controller
-            .ssr_localized_page_metadata_intent(SsrLocalizedPageMetadataRequest {
-                page_id: "home".to_string(),
-                metadata_json: json!({ "unknown": { "en": "value" } }).to_string(),
-                fallback_locale: String::new(),
-            })
-            .is_err());
-        assert!(controller
-            .ssr_localized_page_metadata_intent(SsrLocalizedPageMetadataRequest {
-                page_id: "home".to_string(),
-                metadata_json: json!({ "title": { "ru": "Главная" } }).to_string(),
-                fallback_locale: "en".to_string(),
-            })
-            .is_err());
+        assert!(
+            controller
+                .ssr_localized_page_metadata_intent(SsrLocalizedPageMetadataRequest {
+                    page_id: "home".to_string(),
+                    metadata_json: json!({ "unknown": { "en": "value" } }).to_string(),
+                    fallback_locale: String::new(),
+                })
+                .is_err()
+        );
+        assert!(
+            controller
+                .ssr_localized_page_metadata_intent(SsrLocalizedPageMetadataRequest {
+                    page_id: "home".to_string(),
+                    metadata_json: json!({ "title": { "ru": "Главная" } }).to_string(),
+                    fallback_locale: "en".to_string(),
+                })
+                .is_err()
+        );
     }
 
     #[test]

@@ -1,8 +1,8 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::Permission;
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError},
     AuthContext,
+    graphql::{GraphQLError, require_module_enabled},
 };
 use rustok_order::OrderService;
 use uuid::Uuid;
@@ -12,7 +12,7 @@ use crate::graphql_runtime::{
     return_completion_orchestration_from_context,
 };
 
-use super::super::{current_tenant_scope, require_commerce_permission, types::*, MODULE_SLUG};
+use super::super::{MODULE_SLUG, current_tenant_scope, require_commerce_permission, types::*};
 use super::helpers::*;
 
 #[derive(Default)]
@@ -392,14 +392,10 @@ impl CommerceFulfillmentMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let item = return_completion_orchestration_from_context(
-            ctx,
-            db.clone(),
-            event_bus.clone(),
-        )
-        .complete_return(tenant_id, auth.user_id, id, command)
-        .await
-        .map_err(|err| FieldError::new(err.to_string()))?;
+        let item = return_completion_orchestration_from_context(ctx, db.clone(), event_bus.clone())
+            .complete_return(tenant_id, auth.user_id, id, command)
+            .await
+            .map_err(|err| FieldError::new(err.to_string()))?;
 
         Ok(item.into())
     }

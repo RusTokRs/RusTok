@@ -1,14 +1,14 @@
 use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
 use rustok_cart::{
-    in_process_cart_checkout_port, in_process_cart_storefront_port, CartCheckoutSnapshotRequest,
-    CartStorefrontContextUpdateRequest, CartStorefrontPort, CartStorefrontReadRequest,
-    CartStorefrontRepriceRequest,
+    CartCheckoutSnapshotRequest, CartStorefrontContextUpdateRequest, CartStorefrontPort,
+    CartStorefrontReadRequest, CartStorefrontRepriceRequest, in_process_cart_checkout_port,
+    in_process_cart_storefront_port,
 };
-use rustok_customer::{in_process_customer_read_port, CustomerUserProjectionRequest};
+use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_outbox::TransactionalEventBus;
-use rustok_pricing::{in_process_pricing_read_port, ResolveProductPriceRequest};
+use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use thiserror::Error;
 use uuid::Uuid;
 

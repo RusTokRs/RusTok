@@ -57,10 +57,7 @@ fn storefront_graphql_transports_keep_owner_handoff_stable() {
             payment_source,
             "query StorefrontRefundsSummary($orderId: UUID!",
         ),
-        (
-            payment_source,
-            "storefrontRefunds(orderId: $orderId",
-        ),
+        (payment_source, "storefrontRefunds(orderId: $orderId"),
         (
             payment_source,
             "mutation CreateStorefrontPaymentCollection($input: CreateStorefrontPaymentCollectionInput!)",
@@ -73,10 +70,7 @@ fn storefront_graphql_transports_keep_owner_handoff_stable() {
             order_source,
             "mutation CompleteStorefrontCheckout($input: CompleteStorefrontCheckoutInput!)",
         ),
-        (
-            order_source,
-            "completeStorefrontCheckout(input: $input)",
-        ),
+        (order_source, "completeStorefrontCheckout(input: $input)"),
         (
             fulfillment_source,
             "mutation SelectStorefrontShippingOption($cartId: UUID!, $input: UpdateStorefrontCartContextInput!)",

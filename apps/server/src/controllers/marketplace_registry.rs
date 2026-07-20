@@ -17,7 +17,7 @@ use axum::{
 /// executable payloads belong to the immutable artifact/CAS pipeline. The
 /// Axum limit rejects oversized requests before they are read into memory.
 const REGISTRY_ARTIFACT_MAX_BYTES: usize =
-    crate::services::registry_governance::REGISTRY_PUBLISH_ARTIFACT_MAX_BYTES;
+    crate::services::registry_governance::MODULE_PUBLISH_ARTIFACT_MAX_BYTES;
 const LEGACY_REGISTRY_ACTOR_HEADER: &str = concat!("x-rustok-", "actor");
 const LEGACY_REGISTRY_PUBLISHER_HEADER: &str = concat!("x-rustok-", "publisher");
 use semver::Version;
@@ -2962,6 +2962,7 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         | ModuleGovernanceError::PublishRequestMissingExternalPlatformAdmission
         | ModuleGovernanceError::PublishRequestMissingAlloyPlatformAdmission
         | ModuleGovernanceError::PublishRequestMissingTranslations
+        | ModuleGovernanceError::PublishRequestInvalidTranslations
         | ModuleGovernanceError::RemoteValidationLeaseRunnerMismatch
         | ModuleGovernanceError::RemoteValidationLeaseNotRunning(_)
         | ModuleGovernanceError::RemoteValidationLeaseExpired

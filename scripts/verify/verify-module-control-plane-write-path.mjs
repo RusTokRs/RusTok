@@ -104,6 +104,28 @@ try {
     }
   }
 
+  const bindingStore = fs.readFileSync(
+    path.join(root, 'crates/rustok-modules/src/binding_idempotency.rs'),
+    'utf8',
+  );
+  const bindingRlsMigration = fs.readFileSync(
+    path.join(
+      root,
+      'crates/rustok-modules/src/migrations/m20260720_000032_artifact_binding_operation_rls.rs',
+    ),
+    'utf8',
+  );
+  const tenantScopeCalls = bindingStore.match(/configure_tenant_scope\s*\(/g)?.length ?? 0;
+  if (tenantScopeCalls < 3) {
+    fail('artifact binding claim, completion, and abandonment must set transaction-local tenant scope');
+  }
+  if (
+    !bindingRlsMigration.includes('module_artifact_binding_operations_scope') ||
+    !bindingRlsMigration.includes("current_setting('rustok.tenant_id', true)")
+  ) {
+    fail('artifact binding operation persistence must keep its PostgreSQL tenant RLS policy');
+  }
+
   console.log('[verify-module-control-plane-write-path] owner boundaries verified');
 } catch (error) {
   if (

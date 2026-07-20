@@ -20,11 +20,11 @@ use crate::features::modules::transport::{
     self, RegistryMutationResult, RegistryPublishStatusContract,
 };
 use crate::shared::ui::Button;
-use crate::{use_i18n, Locale};
+use crate::{Locale, use_i18n};
 
 use super::detail::{
     governance::{
-        automated_check_label, curl_snippet_for_live_api_action,
+        RegistryAutomatedCheckItem, automated_check_label, curl_snippet_for_live_api_action,
         destructive_governance_confirmation_message, follow_up_gate_label,
         follow_up_gate_status_summary, governance_action_reason_code_required,
         governance_action_reason_code_validation_message, governance_action_reason_required,
@@ -38,10 +38,9 @@ use super::detail::{
         registry_review_policy_lines, registry_validation_outcome_summary, status_eq,
         validation_feedback_badge_classes, validation_job_event_context_lines,
         validation_stage_recent_history, validation_stage_status_summary,
-        RegistryAutomatedCheckItem,
     },
     humanize_setting_key, humanize_token,
-    json_editor::{setting_option_draft_value, setting_option_label, ComplexSettingEditor},
+    json_editor::{ComplexSettingEditor, setting_option_draft_value, setting_option_label},
     metadata::marketplace_metadata_checklist,
 };
 
@@ -61,6 +60,7 @@ fn short_checksum(value: Option<&str>) -> Option<String> {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 fn copy_text_to_clipboard(text: &str) {
     if let Some(window) = web_sys::window() {
         let navigator = window.navigator();
@@ -68,6 +68,9 @@ fn copy_text_to_clipboard(text: &str) {
         let _ = clipboard.write_text(text);
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+fn copy_text_to_clipboard(_text: &str) {}
 
 fn latest_active_registry_version(module: &MarketplaceModule) -> Option<&MarketplaceModuleVersion> {
     module.versions.iter().find(|version| !version.yanked)

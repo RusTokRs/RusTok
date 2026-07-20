@@ -16,7 +16,6 @@
 ## Dependencies on Other RusToK Crates
 - `rustok-core`
 - `rustok-outbox`
-- (optional) `rustok-content`, `rustok-commerce`
 
 ## Common AI Mistakes
 - Adds the crate to production dependencies (should be dev-only).

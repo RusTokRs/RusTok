@@ -370,6 +370,34 @@ mandatory preliminary rule applies:
    - synchronize the corresponding row in the central board;
    - attach initial verification evidence (minimum validate/check + transport parity note).
 
+### 9. Periodic Release Verification Handoff
+
+When a module is visited by the cyclic pre-release sweep in
+[`docs/verification/PLATFORM_VERIFICATION_PLAN.md`](../verification/PLATFORM_VERIFICATION_PLAN.md),
+update one current handoff block in the module's existing
+`docs/implementation-plan.md`:
+
+```md
+## Periodic release verification handoff
+
+- Cycle: `cycle-NNN`
+- Status: `pending | in_progress | completed | blocked`
+- Last verified at (UTC):
+- Scope inspected:
+- Findings: `P0=0, P1=0, P2=0, P3=0`
+- Fixed in this pass:
+- Remaining risks or blockers:
+- Evidence:
+- Next action:
+- Resume command:
+```
+
+The master plan owns the current cursor and resettable queue. The local block owns the
+component-specific handoff and is replaced on the next visit rather than accumulated
+as a historical log. Completion counts only when the local cycle identifier matches
+the current master cycle. Unfixed work must also be reflected in the module plan's
+current priorities; a chat message or terminal transcript is not durable state.
+
 ## What is Forbidden
 
 When writing a module, you cannot:

@@ -1,13 +1,13 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
-use rustok_api::graphql::require_module_enabled;
 use rustok_api::Permission;
+use rustok_api::graphql::require_module_enabled;
 use uuid::Uuid;
 
 use rustok_product::{CatalogService, ProductCatalogSchemaService};
 
 use super::super::{
-    map_product_service_error, product_mutation_actor, require_commerce_permission, types::*,
-    PRODUCT_MODULE_SLUG as MODULE_SLUG,
+    PRODUCT_MODULE_SLUG as MODULE_SLUG, map_product_service_error, product_mutation_actor,
+    require_commerce_permission, types::*,
 };
 use super::helpers::*;
 

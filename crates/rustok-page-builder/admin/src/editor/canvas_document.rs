@@ -1,7 +1,7 @@
 #[cfg(any(target_arch = "wasm32", test))]
 use fly::render_page;
 use fly::{
-    render_page_with_runtime_context, PageSelection, ProjectDocument, RenderPolicy, RenderedPage,
+    PageSelection, ProjectDocument, RenderPolicy, RenderedPage, render_page_with_runtime_context,
 };
 use fly_leptos::FLY_IFRAME_PROTOCOL;
 use serde_json::Value;
@@ -71,7 +71,8 @@ fn render_srcdoc(
 
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https: http:; media-src data: https: http:; font-src data: https: http:;\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{head}<style>{}{}</style></head><body data-runtime-diagnostics=\"{runtime_diagnostics}\" data-repeated-nodes=\"{repeated_nodes}\"><main id=\"fly-canvas-root\">{canvas}</main><script>{script}</script></body></html>",
-        canvas_styles(), project_styles,
+        canvas_styles(),
+        project_styles,
     )
 }
 

@@ -1,6 +1,6 @@
+use rustok_cart::CartService;
 use rustok_cart::dto::CreateCartInput;
 use rustok_cart::migrations;
-use rustok_cart::CartService;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::SchemaManager;

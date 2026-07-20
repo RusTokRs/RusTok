@@ -23,7 +23,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use rustok_core::generate_id;
-use rustok_tax::{in_process_tax_calculation_port, TaxCalculationPort};
+use rustok_tax::{TaxCalculationPort, in_process_tax_calculation_port};
 
 use crate::dto::{
     AddCartLineItemInput, CartResponse, CreateCartInput, SetCartAdjustmentInput,

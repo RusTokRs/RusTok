@@ -1,6 +1,6 @@
 use axum::{
     extract::Request,
-    http::{request::Parts, HeaderValue},
+    http::{HeaderValue, request::Parts},
     middleware::Next,
     response::Response,
 };
@@ -67,8 +67,7 @@ pub fn request_csp_nonce() -> Option<CspNonce> {
 pub fn validate_admin_security_profile() -> Result<(), String> {
     if is_production_environment() && !hsts_enabled() {
         return Err(
-            "RUSTOK_HTTPS must be set to true for the standalone production admin host"
-                .to_string(),
+            "RUSTOK_HTTPS must be set to true for the standalone production admin host".to_string(),
         );
     }
     Ok(())
@@ -78,11 +77,7 @@ fn is_api_surface(path: &str) -> bool {
     path.starts_with("/api/")
 }
 
-fn select_csp(
-    path: &str,
-    csp_nonce: Option<&CspNonce>,
-    allow_plaintext_websocket: bool,
-) -> String {
+fn select_csp(path: &str, csp_nonce: Option<&CspNonce>, allow_plaintext_websocket: bool) -> String {
     if is_api_surface(path) {
         return API_CSP.to_string();
     }
@@ -137,13 +132,13 @@ fn is_production_environment() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{admin_security_headers, select_csp, API_CSP};
+    use super::{API_CSP, admin_security_headers, select_csp};
     use axum::{
-        body::{to_bytes, Body},
+        Extension, Router,
+        body::{Body, to_bytes},
         http::{Request, StatusCode},
         middleware,
         routing::get,
-        Extension, Router,
     };
     use rustok_web::CspNonce;
     use tower::ServiceExt;
@@ -196,14 +191,15 @@ mod tests {
 
     #[tokio::test]
     async fn standalone_admin_middleware_shares_nonce_with_render_context() {
-        let app = Router::new()
-            .route(
-                "/dashboard",
-                get(|Extension(nonce): Extension<CspNonce>| async move {
-                    nonce.as_str().to_string()
-                }),
-            )
-            .layer(middleware::from_fn(admin_security_headers));
+        let app =
+            Router::new()
+                .route(
+                    "/dashboard",
+                    get(|Extension(nonce): Extension<CspNonce>| async move {
+                        nonce.as_str().to_string()
+                    }),
+                )
+                .layer(middleware::from_fn(admin_security_headers));
         let response = app
             .oneshot(
                 Request::builder()

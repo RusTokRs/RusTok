@@ -1,10 +1,10 @@
 use rustok_api::RequestContext;
-use rustok_channel::{error::ChannelError, ChannelService};
+use rustok_channel::{ChannelService, error::ChannelError};
 use rustok_inventory::{
+    PublicChannelInventoryVariantProjectionInput,
     is_metadata_visible_for_public_channel as inventory_metadata_visible_for_public_channel,
     load_inventory_projection_by_variant_for_public_channel,
     normalize_public_channel_slug as inventory_normalize_public_channel_slug,
-    PublicChannelInventoryVariantProjectionInput,
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;

@@ -1,4 +1,4 @@
-use rustok_api::{normalize_locale_tag, PortActor, PortContext, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, normalize_locale_tag};
 use rustok_cart::{CartResponse, PreparedCartCheckoutSnapshot};
 use rustok_commerce_foundation::entities::product::ProductStatus;
 use rustok_fulfillment::FulfillmentService;
@@ -7,7 +7,7 @@ use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
 };
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use uuid::Uuid;
 use validator::Validate;

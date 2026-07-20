@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
@@ -11,19 +11,18 @@ use uuid::Uuid;
 
 use super::{
     super::{
-        common::{ensure_permissions, PaginatedResponse},
         CommerceHttpRuntime,
+        common::{PaginatedResponse, ensure_permissions},
     },
     AdminCompleteOrderReturnInput, ListOrderReturnsParams,
 };
 use crate::{
-    dto::{
-        CancelOrderReturnInput, CreateOrderReturnInput, ListOrderReturnsInput,
-        OrderReturnResponse,
-    },
     CompleteReturnClaimInput, CompleteReturnExchangeInput, CompleteReturnRefundInput,
     CompleteReturnResolutionInput, CreateReturnDecisionInput, PostOrderOrchestrationService,
     ReturnCompletionOrchestrationService, ReturnDecisionResponse,
+    dto::{
+        CancelOrderReturnInput, CreateOrderReturnInput, ListOrderReturnsInput, OrderReturnResponse,
+    },
 };
 
 #[utoipa::path(
@@ -224,14 +223,11 @@ pub async fn complete_order_return(
         }),
         metadata: input.metadata,
     };
-    let item = ReturnCompletionOrchestrationService::new(
-        runtime.db_clone(),
-        runtime.event_bus(),
-    )
-    .with_payment_provider_registry(runtime.payment_provider_registry())
-    .complete_return(tenant.id, auth.user_id, id, command)
-    .await
-    .map_err(super::map_post_order_orchestration_error)?;
+    let item = ReturnCompletionOrchestrationService::new(runtime.db_clone(), runtime.event_bus())
+        .with_payment_provider_registry(runtime.payment_provider_registry())
+        .complete_return(tenant.id, auth.user_id, id, command)
+        .await
+        .map_err(super::map_post_order_orchestration_error)?;
 
     Ok(Json(item))
 }

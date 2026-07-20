@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use rustok_api::{
-    normalize_locale_tag, PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind,
-    PLATFORM_FALLBACK_LOCALE,
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind,
+    normalize_locale_tag,
 };
 use sea_orm::DatabaseConnection;
 use std::{
@@ -12,10 +12,10 @@ use std::{
 use uuid::Uuid;
 
 use crate::{
-    in_process_cart_checkout_snapshot_port, CartCheckoutContextUpdateRequest,
-    CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotPort,
-    CartCheckoutSnapshotRequest, CartError, CartPricingAdjustmentUpdate, CartResponse, CartService,
-    CartStatus, PrepareCartCheckoutSnapshotRequest, PreparedCartCheckoutSnapshot,
+    CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
+    CartCheckoutSnapshotPort, CartCheckoutSnapshotRequest, CartError, CartPricingAdjustmentUpdate,
+    CartResponse, CartService, CartStatus, PrepareCartCheckoutSnapshotRequest,
+    PreparedCartCheckoutSnapshot, in_process_cart_checkout_snapshot_port,
 };
 
 const CHECKOUT_PRICING_CHANGED_PREFIX: &str = "checkout pricing snapshot changed:";

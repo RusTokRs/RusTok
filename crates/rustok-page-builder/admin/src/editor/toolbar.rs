@@ -1,7 +1,7 @@
-use crate::editor::{dispatch_shortcut, AdminEditorRuntime};
+use crate::editor::{AdminEditorRuntime, dispatch_shortcut};
 use crate::i18n::t;
 use fly_ui::{
-    builtin_viewport_presets, viewport_preset, CapabilityState, EditorShortcut, UiIntent,
+    CapabilityState, EditorShortcut, UiIntent, builtin_viewport_presets, viewport_preset,
 };
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;

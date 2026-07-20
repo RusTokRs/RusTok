@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
 use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -14,10 +14,8 @@ const PAGE_QUERY: &str = "query PageAdmin($id: UUID!) { page(id: $id) { id statu
 const PAGE_BUILDER_SCENARIO_BASELINE_QUERY: &str = "query PageBuilderScenarioBaseline($pageId: UUID!) { pageBuilderScenarioBaseline(pageId: $pageId) { baseline } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id status updatedAt translation { locale title slug } } }";
 const UPDATE_PAGE_MUTATION: &str = "mutation UpdatePage($id: UUID!, $input: UpdateGqlPageInput!) { updatePage(id: $id, input: $input) { id status updatedAt translation { locale title slug } } }";
-const PUBLISH_PAGE_MUTATION: &str =
-    "mutation PublishPage($id: UUID!) { publishPage(id: $id) { id status updatedAt translation { locale title slug } } }";
-const UNPUBLISH_PAGE_MUTATION: &str =
-    "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id status updatedAt translation { locale title slug } } }";
+const PUBLISH_PAGE_MUTATION: &str = "mutation PublishPage($id: UUID!) { publishPage(id: $id) { id status updatedAt translation { locale title slug } } }";
+const UNPUBLISH_PAGE_MUTATION: &str = "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id status updatedAt translation { locale title slug } } }";
 const DELETE_PAGE_MUTATION: &str = "mutation DeletePage($id: UUID!) { deletePage(id: $id) }";
 
 #[derive(Debug, Deserialize)]

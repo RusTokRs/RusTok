@@ -12,6 +12,10 @@ refresh-token helpers, invite-token helpers, auth config assembly/validation, an
 - Publish the typed `users:*` RBAC surface through `AUTH_USER_PERMISSIONS` and `RusToKModule::permissions()`.
 - Own typed `AuthLifecyclePort`, `UserAdminMutationPort`, and `OAuthAdminPort` boundaries used by GraphQL and native adapters.
 - Own the auth lifecycle and OAuth GraphQL query, mutation, input, and output surfaces behind the `graphql` feature.
+- Enforce tenant-composite integrity for OAuth apps, tokens, authorization codes,
+  consents, and their user subjects at both database and query boundaries.
+- Fail auth configuration fast for malformed or mismatched RS256 keys and keep
+  OAuth code exchange and refresh rotation on one transactional execution path.
 
 ## Interactions
 

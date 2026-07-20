@@ -1,6 +1,6 @@
-use crate::{dispatch_browser_intent, AdminCanvasController};
+use crate::{AdminCanvasController, dispatch_browser_intent};
 use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn controller() -> AdminCanvasController {
     AdminCanvasController::new(

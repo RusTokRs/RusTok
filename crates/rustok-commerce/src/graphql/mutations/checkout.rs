@@ -1,9 +1,9 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
-use rustok_api::{graphql::require_module_enabled, AuthContext, RequestContext};
+use rustok_api::{AuthContext, RequestContext, graphql::require_module_enabled};
 use rustok_cart::{
-    bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_storefront_port,
     CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
+    bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_storefront_port,
 };
 use rustok_payment::PaymentService;
 use uuid::Uuid;
@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{CheckoutService, ShippingProfileService};
 use rustok_fulfillment::FulfillmentService;
 
-use super::super::{current_tenant_scope, require_commerce_permission, types::*, MODULE_SLUG};
+use super::super::{MODULE_SLUG, current_tenant_scope, require_commerce_permission, types::*};
 use super::helpers::*;
 
 #[derive(Default)]

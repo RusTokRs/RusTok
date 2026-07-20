@@ -687,27 +687,6 @@ impl PaymentService {
             .ok_or(PaymentError::RefundNotFound(refund_id))
     }
 
-    async fn reserved_refund_amount_in_tx<C>(
-        &self,
-        conn: &C,
-        collection_id: Uuid,
-    ) -> PaymentResult<Decimal>
-    where
-        C: sea_orm::ConnectionTrait,
-    {
-        let refunds = entities::refund::Entity::find()
-            .filter(entities::refund::Column::PaymentCollectionId.eq(collection_id))
-            .filter(
-                entities::refund::Column::Status.is_in([STATUS_REFUND_PENDING, STATUS_REFUNDED]),
-            )
-            .all(conn)
-            .await?;
-
-        Ok(refunds
-            .into_iter()
-            .fold(Decimal::ZERO, |sum, refund| sum + refund.amount))
-    }
-
     async fn build_response(
         &self,
         collection: entities::payment_collection::Model,

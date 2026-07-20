@@ -51,6 +51,9 @@ mod m20260717_000003_add_registry_artifact_origin_and_external_staging;
 mod m20260718_000001_add_module_operation_idempotency_key;
 mod m20260718_000002_add_registry_publication_idempotency;
 
+#[cfg(test)]
+mod rbac_system_role_repair_tests;
+
 pub struct Migrator;
 
 struct ModuleMigrationSource {

@@ -1,17 +1,17 @@
 use async_graphql::{Context, Object, Result};
-use rustok_api::{graphql::require_module_enabled, AuthContext, RequestContext, TenantContext};
+use rustok_api::{AuthContext, RequestContext, TenantContext, graphql::require_module_enabled};
 use uuid::Uuid;
 
 use crate::StoreContextService;
 use rustok_cart::{
-    in_process_cart_storefront_port, CartStorefrontAddLineItemRequest,
-    CartStorefrontContextUpdateRequest, CartStorefrontCreateRequest,
-    CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
-    CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
+    CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
+    CartStorefrontCreateRequest, CartStorefrontLineItemPricingRequest,
+    CartStorefrontLineItemQuantityRequest, CartStorefrontReadRequest,
+    CartStorefrontRemoveLineItemRequest, in_process_cart_storefront_port,
 };
-use rustok_pricing::{in_process_pricing_read_port, ResolveProductPriceRequest};
+use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
 
-use super::super::{current_tenant_scope, types::*, MODULE_SLUG};
+use super::super::{MODULE_SLUG, current_tenant_scope, types::*};
 use super::helpers::*;
 
 #[derive(Default)]

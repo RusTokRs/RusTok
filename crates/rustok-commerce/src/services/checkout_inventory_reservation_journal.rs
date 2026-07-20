@@ -2,8 +2,8 @@ use chrono::Utc;
 use rustok_cart::entities::cart_line_item;
 use rustok_core::generate_id;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -153,6 +153,7 @@ impl CheckoutInventoryReservationJournal {
             tenant_id: Set(input.tenant_id),
             checkout_operation_id: Set(input.checkout_operation_id),
             cart_line_item_id: Set(input.cart_line_item_id),
+            order_line_item_id: Set(None),
             external_id: Set(external_id),
             variant_id: Set(input.variant_id),
             quantity: Set(input.quantity),

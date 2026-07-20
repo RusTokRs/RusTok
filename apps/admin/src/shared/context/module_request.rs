@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use leptos::prelude::*;
-use leptos_router::hooks::{use_location, use_navigate, use_query_map};
 use leptos_router::NavigateOptions;
+use leptos_router::hooks::{use_location, use_navigate, use_query_map};
 use leptos_ui_routing::RouteQueryPolicy;
-use rustok_ui_core::{sanitize_admin_route_query, UiRouteContext};
+use rustok_ui_core::{UiRouteContext, sanitize_admin_route_query};
 
-use crate::{use_i18n, Locale};
+use crate::{Locale, use_i18n};
 
 #[component]
 pub fn ModuleRequestProvider(

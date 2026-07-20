@@ -91,9 +91,7 @@ impl MarketplaceListingAdminNativeRuntime {
 #[cfg(feature = "ssr")]
 fn native_runtime() -> Result<MarketplaceListingAdminNativeRuntime, ServerFnError> {
     use_context::<MarketplaceListingAdminNativeRuntime>().ok_or_else(|| {
-        ServerFnError::new(
-            "marketplace listing native runtime is not mounted in this host",
-        )
+        ServerFnError::new("marketplace listing native runtime is not mounted in this host")
     })
 }
 
@@ -242,16 +240,13 @@ async fn marketplace_listing_command_native(
     {
         use rustok_marketplace_listing::{
             CreateMarketplaceListingInput, MarketplaceListingCommandPort,
-            MarketplaceListingIdRequest, ReviewMarketplaceListingInput,
-            SuspendMarketplaceListingInput, UpdateMarketplaceListingTermsInput,
+            ReviewMarketplaceListingInput, SuspendMarketplaceListingInput,
+            UpdateMarketplaceListingTermsInput,
         };
 
         let runtime = native_runtime()?;
         runtime.authorize(command_action(&command))?;
-        let context = runtime.context(Some(required_text(
-            &idempotency_key,
-            "idempotency_key",
-        )?))?;
+        let context = runtime.context(Some(required_text(&idempotency_key, "idempotency_key")?))?;
 
         let listing = match command {
             MarketplaceListingAdminCommand::Create { draft } => {
@@ -268,11 +263,8 @@ async fn marketplace_listing_command_native(
                             .to_string(),
                         market_slug: required_text(draft.market_slug.as_str(), "market_slug")?
                             .to_string(),
-                        channel_slug: required_text(
-                            draft.channel_slug.as_str(),
-                            "channel_slug",
-                        )?
-                        .to_string(),
+                        channel_slug: required_text(draft.channel_slug.as_str(), "channel_slug")?
+                            .to_string(),
                         pricing_reference: normalize_optional_text(draft.pricing_reference),
                         inventory_reference: normalize_optional_text(draft.inventory_reference),
                         fulfillment_profile_slug: normalize_optional_text(
@@ -382,9 +374,7 @@ fn command_action(command: &MarketplaceListingAdminCommand) -> MarketplaceListin
             MarketplaceListingAdminAction::Update
         }
         MarketplaceListingAdminCommand::Review { .. }
-        | MarketplaceListingAdminCommand::Suspend { .. } => {
-            MarketplaceListingAdminAction::Moderate
-        }
+        | MarketplaceListingAdminCommand::Suspend { .. } => MarketplaceListingAdminAction::Moderate,
         MarketplaceListingAdminCommand::Publish { .. }
         | MarketplaceListingAdminCommand::Reactivate { .. } => {
             MarketplaceListingAdminAction::Publish
@@ -531,9 +521,7 @@ fn map_port_error(error: rustok_api::PortError) -> ServerFnError {
         PortErrorKind::Validation | PortErrorKind::NotFound | PortErrorKind::Conflict => {
             error.message
         }
-        PortErrorKind::Forbidden => {
-            "Permission denied: marketplace listing operation".to_string()
-        }
+        PortErrorKind::Forbidden => "Permission denied: marketplace listing operation".to_string(),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => {
             "Marketplace listing service is temporarily unavailable".to_string()
         }

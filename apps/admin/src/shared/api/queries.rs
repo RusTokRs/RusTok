@@ -9,8 +9,7 @@ pub const USER_DETAILS_QUERY: &str =
 pub const USER_DETAILS_QUERY_HASH: &str =
     "85f7f7ba212ab47e951fcf7dbb30bb918e66b88710574a576b0088877653f3b7";
 
-pub const DASHBOARD_STATS_QUERY: &str =
-    "query DashboardStats { dashboardStats { totalUsers totalPosts totalOrders totalRevenue usersChange postsChange ordersChange revenueChange } }";
+pub const DASHBOARD_STATS_QUERY: &str = "query DashboardStats { dashboardStats { totalUsers totalPosts totalOrders totalRevenue usersChange postsChange ordersChange revenueChange } }";
 
 pub const RECENT_ACTIVITY_QUERY: &str = "query RecentActivity($limit: Int!) { recentActivity(limit: $limit) { id type description timestamp user { id name } } }";
 
@@ -29,8 +28,7 @@ mutation CreateUser($input: CreateUserInput!) {
 
 pub const ROLES_QUERY: &str = "query Roles { roles { slug displayName permissions } }";
 
-pub const PLATFORM_SETTINGS_QUERY: &str =
-    "query PlatformSettings($category: String!) { platformSettings(category: $category) { category settings } }";
+pub const PLATFORM_SETTINGS_QUERY: &str = "query PlatformSettings($category: String!) { platformSettings(category: $category) { category settings } }";
 
 pub const UPDATE_PLATFORM_SETTINGS_MUTATION: &str = r#"
 mutation UpdatePlatformSettings($input: UpdatePlatformSettingsInput!) {
@@ -43,5 +41,4 @@ mutation UpdatePlatformSettings($input: UpdatePlatformSettingsInput!) {
 pub const CACHE_HEALTH_QUERY: &str =
     "query CacheHealth { cacheHealth { redisConfigured redisHealthy redisError backend } }";
 
-pub const EVENTS_STATUS_QUERY: &str =
-    "query EventsStatus { eventsStatus { configuredTransport iggyMode relayIntervalMs dlqEnabled maxAttempts pendingEvents dlqEvents availableTransports } }";
+pub const EVENTS_STATUS_QUERY: &str = "query EventsStatus { eventsStatus { configuredTransport iggyMode relayIntervalMs dlqEnabled maxAttempts pendingEvents dlqEvents availableTransports } }";

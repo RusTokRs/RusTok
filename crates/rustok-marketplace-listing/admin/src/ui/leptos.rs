@@ -5,8 +5,8 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    build_marketplace_listing_admin_shell, selected_transport_profile,
-    MarketplaceListingAdminTransportProfile,
+    MarketplaceListingAdminTransportProfile, build_marketplace_listing_admin_shell,
+    selected_transport_profile,
 };
 use crate::i18n::normalize_admin_locale;
 use crate::model::{
@@ -15,8 +15,8 @@ use crate::model::{
     MarketplaceListingCreateDraft, MarketplaceListingTermsDraft,
 };
 use crate::transport::{
-    execute_marketplace_listing_command, load_marketplace_listing_detail,
-    load_marketplace_listing_directory, MarketplaceListingAdminTransportContext,
+    MarketplaceListingAdminTransportContext, execute_marketplace_listing_command,
+    load_marketplace_listing_detail, load_marketplace_listing_directory,
 };
 
 fn local_resource<S, Fut, T>(
@@ -48,8 +48,7 @@ pub fn MarketplaceListingAdmin() -> impl IntoView {
     let busy = RwSignal::new(false);
     let error = RwSignal::new(Option::<String>::None);
     let notice = RwSignal::new(Option::<String>::None);
-    let pending_command =
-        RwSignal::new(Option::<(String, MarketplaceListingAdminCommand)>::None);
+    let pending_command = RwSignal::new(Option::<(String, MarketplaceListingAdminCommand)>::None);
 
     let create_seller_id = RwSignal::new(String::new());
     let create_variant_id = RwSignal::new(String::new());

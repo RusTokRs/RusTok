@@ -3,9 +3,8 @@ use std::fmt::{Display, Formatter};
 
 use crate::model::{
     MarketplaceSellerAdminCommand, MarketplaceSellerAdminCommandResult,
-    MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory,
-    MarketplaceSellerAdminFilters, MarketplaceSellerAdminListItem,
-    MarketplaceSellerAdminMember, MarketplaceSellerAdminRecord,
+    MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory, MarketplaceSellerAdminFilters,
+    MarketplaceSellerAdminListItem, MarketplaceSellerAdminMember, MarketplaceSellerAdminRecord,
 };
 
 #[derive(Debug, Clone)]
@@ -58,11 +57,10 @@ async fn marketplace_seller_directory_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, Permission, TenantContext,
+            AuthContext, HostRuntimeContext, Permission, TenantContext, request::RequestContext,
         };
         use rustok_marketplace_seller::{
-            ListMarketplaceSellersInput, MarketplaceSellerOnboardingStatus,
-            MarketplaceSellerReadPort, MarketplaceSellerService, MarketplaceSellerStatus,
+            ListMarketplaceSellersInput, MarketplaceSellerReadPort, MarketplaceSellerService,
         };
 
         let runtime = expect_context::<HostRuntimeContext>();
@@ -94,9 +92,7 @@ async fn marketplace_seller_directory_native(
                 page,
                 per_page,
                 status: parse_seller_status(filters.status.as_deref())?,
-                onboarding_status: parse_onboarding_status(
-                    filters.onboarding_status.as_deref(),
-                )?,
+                onboarding_status: parse_onboarding_status(filters.onboarding_status.as_deref())?,
                 search: normalize_optional_text(filters.search),
             },
         )
@@ -138,7 +134,7 @@ async fn marketplace_seller_detail_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, Permission, TenantContext,
+            AuthContext, HostRuntimeContext, Permission, TenantContext, request::RequestContext,
         };
         use rustok_marketplace_seller::{
             ListMarketplaceSellerMembersRequest, MarketplaceSellerReadPort,
@@ -198,15 +194,13 @@ async fn marketplace_seller_command_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, Permission, TenantContext,
+            AuthContext, HostRuntimeContext, Permission, TenantContext, request::RequestContext,
         };
         use rustok_marketplace_seller::{
             AddMarketplaceSellerMemberInput, AddMarketplaceSellerMemberRequest,
-            CreateMarketplaceSellerInput, MarketplaceSellerCommandPort,
-            MarketplaceSellerService, ReactivateMarketplaceSellerRequest,
-            ReviewMarketplaceSellerOnboardingInput,
-            ReviewMarketplaceSellerOnboardingRequest,
-            SubmitMarketplaceSellerOnboardingInput,
+            CreateMarketplaceSellerInput, MarketplaceSellerCommandPort, MarketplaceSellerService,
+            ReactivateMarketplaceSellerRequest, ReviewMarketplaceSellerOnboardingInput,
+            ReviewMarketplaceSellerOnboardingRequest, SubmitMarketplaceSellerOnboardingInput,
             SubmitMarketplaceSellerOnboardingRequest, SuspendMarketplaceSellerInput,
             SuspendMarketplaceSellerRequest, UpdateMarketplaceSellerMemberInput,
             UpdateMarketplaceSellerMemberRequest, UpdateMarketplaceSellerProfileInput,
@@ -224,9 +218,7 @@ async fn marketplace_seller_command_native(
             .await
             .map_err(ServerFnError::new)?;
         let required = match &command {
-            MarketplaceSellerAdminCommand::Create { .. } => {
-                Permission::MARKETPLACE_SELLERS_CREATE
-            }
+            MarketplaceSellerAdminCommand::Create { .. } => Permission::MARKETPLACE_SELLERS_CREATE,
             MarketplaceSellerAdminCommand::ReviewOnboarding { .. }
             | MarketplaceSellerAdminCommand::Suspend { .. }
             | MarketplaceSellerAdminCommand::Reactivate { .. } => {
@@ -253,10 +245,7 @@ async fn marketplace_seller_command_native(
                         handle: draft.handle,
                         display_name: draft.display_name,
                         legal_name: draft.legal_name,
-                        owner_user_id: parse_uuid(
-                            draft.owner_user_id.as_str(),
-                            "owner_user_id",
-                        )?,
+                        owner_user_id: parse_uuid(draft.owner_user_id.as_str(), "owner_user_id")?,
                         metadata: object_or_empty(draft.metadata, "metadata")?,
                     },
                 )
@@ -373,11 +362,7 @@ async fn marketplace_seller_command_native(
                         seller_id: parse_uuid(seller_id.as_str(), "seller_id")?,
                         member_id: parse_uuid(member_id.as_str(), "member_id")?,
                         input: UpdateMarketplaceSellerMemberInput {
-                            role: draft
-                                .role
-                                .as_deref()
-                                .map(parse_member_role)
-                                .transpose()?,
+                            role: draft.role.as_deref().map(parse_member_role).transpose()?,
                             status: draft
                                 .status
                                 .as_deref()
@@ -474,8 +459,7 @@ fn map_port_error(error: rustok_api::PortError) -> ServerFnError {
 
 #[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value.trim())
-        .map_err(|_| ServerFnError::new(format!("Invalid {field}")))
+    uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new(format!("Invalid {field}")))
 }
 
 #[cfg(feature = "ssr")]

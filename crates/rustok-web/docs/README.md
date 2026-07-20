@@ -16,6 +16,8 @@ Current entry points:
 
 - `json_response(value)` for JSON response mapping in Axum handlers.
 - `HttpError`, `HttpResult` and `ErrorBody` for HTTP boundary errors.
+- `port_error_to_http_error(error)` for preserving typed module-port status semantics while
+  redacting infrastructure failure details.
 
 Use `json_response` in server or module HTTP adapters. Keep response formatting
 inside this shared boundary.

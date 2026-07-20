@@ -145,11 +145,7 @@ pub(crate) fn server_error(message: impl Into<String>) -> ServerFnError {
 #[cfg(feature = "ssr")]
 pub(crate) fn calculate_percent_change(current: i64, previous: i64) -> f64 {
     if previous == 0 {
-        if current == 0 {
-            0.0
-        } else {
-            100.0
-        }
+        if current == 0 { 0.0 } else { 100.0 }
     } else {
         ((current - previous) as f64 / previous as f64) * 100.0
     }

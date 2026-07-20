@@ -724,7 +724,6 @@ pub struct RegistryYankRequest {
     pub reason_code: Option<String>,
 }
 
-#[async_trait]
 #[derive(Clone)]
 pub struct SharedMarketplaceCatalogService(pub Arc<MarketplaceCatalogService>);
 

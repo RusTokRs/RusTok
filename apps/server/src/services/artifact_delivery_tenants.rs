@@ -10,7 +10,6 @@ use uuid::Uuid;
 
 const TENANT_PAGE_SIZE: u64 = 250;
 
-#[derive(Clone)]
 pub struct ServerArtifactDeliveryTenantSource {
     tenants: rustok_tenant::TenantService,
 }

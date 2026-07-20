@@ -84,9 +84,8 @@ fn payment_planning_redirects_to_the_main_ecommerce_plan() {
         "main ecommerce plan must own payment tasks and boundary status"
     );
     assert!(
-        payment_redirect.contains(
-            "crates/rustok-commerce/docs/implementation-plan.md#payment-workstream"
-        ),
+        payment_redirect
+            .contains("crates/rustok-commerce/docs/implementation-plan.md#payment-workstream"),
         "payment planning file must redirect to the main ecommerce plan"
     );
     assert!(

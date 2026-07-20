@@ -5,7 +5,7 @@ use rustok_cart::dto::{
     UpdateCartContextInput,
 };
 use rustok_cart::error::CartError;
-use rustok_cart::services::{cart::CartPricingAdjustmentUpdate, CartService};
+use rustok_cart::services::{CartService, cart::CartPricingAdjustmentUpdate};
 use rustok_commerce_foundation::entities::region;
 use rustok_fulfillment::entities::shipping_option;
 use rustok_test_utils::db::setup_test_db;
@@ -218,10 +218,12 @@ async fn reprice_line_items_snapshots_pricing_adjustment_without_double_discount
         updated.adjustments[0].source_id.as_deref(),
         Some("price-list-1")
     );
-    assert!(updated.adjustments[0]
-        .metadata
-        .get("display_label")
-        .is_none());
+    assert!(
+        updated.adjustments[0]
+            .metadata
+            .get("display_label")
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -272,10 +274,12 @@ async fn add_line_item_can_snapshot_pricing_adjustment_atomically() {
         updated.adjustments[0].source_id.as_deref(),
         Some("price-list-atomic")
     );
-    assert!(updated.adjustments[0]
-        .metadata
-        .get("display_label")
-        .is_none());
+    assert!(
+        updated.adjustments[0]
+            .metadata
+            .get("display_label")
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -1279,10 +1283,12 @@ async fn release_checkout_restores_mutation_paths() {
         .unwrap();
 
     assert_eq!(updated.status, "active");
-    assert!(updated
-        .adjustments
-        .iter()
-        .any(|item| item.source_id.as_deref() == Some("promo-after-release")));
+    assert!(
+        updated
+            .adjustments
+            .iter()
+            .any(|item| item.source_id.as_deref() == Some("promo-after-release"))
+    );
 }
 
 #[tokio::test]
@@ -1406,10 +1412,11 @@ async fn seller_aware_delivery_groups_split_same_shipping_profile() {
         .unwrap();
 
     assert_eq!(cart.delivery_groups.len(), 2);
-    assert!(cart
-        .delivery_groups
-        .iter()
-        .all(|group| group.shipping_profile_slug == "default"));
+    assert!(
+        cart.delivery_groups
+            .iter()
+            .all(|group| group.shipping_profile_slug == "default")
+    );
 
     let seller_ids = cart
         .line_items
@@ -1526,12 +1533,14 @@ async fn seller_scope_without_seller_id_does_not_split_delivery_groups() {
         .unwrap();
 
     assert_eq!(cart.delivery_groups.len(), 1);
-    assert!(cart
-        .delivery_groups
-        .iter()
-        .all(|group| group.seller_id.is_none()));
-    assert!(cart
-        .delivery_groups
-        .iter()
-        .all(|group| group.seller_scope.is_none()));
+    assert!(
+        cart.delivery_groups
+            .iter()
+            .all(|group| group.seller_id.is_none())
+    );
+    assert!(
+        cart.delivery_groups
+            .iter()
+            .all(|group| group.seller_scope.is_none())
+    );
 }

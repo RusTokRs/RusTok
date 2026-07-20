@@ -1,8 +1,8 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
-    Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, Set,
+    TransactionTrait, sea_query::Expr,
 };
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -14,11 +14,11 @@ use crate::dto::{CartResponse, CartStatus, UpdateCartContextInput};
 use crate::entities;
 use crate::error::{CartError, CartResult};
 
+use super::CartService;
 use super::helpers::{
     apply_shipping_selection_patch, load_cart_in_tx, normalize_country_code, normalize_locale_code,
     recalculate_totals, replace_pricing_adjustments,
 };
-use super::CartService;
 
 const CHECKOUT_PRICING_CHANGED_PREFIX: &str = "checkout pricing snapshot changed:";
 

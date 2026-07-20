@@ -16,12 +16,13 @@ adapters.
 - `HttpError`
 - `HttpResult`
 - `ErrorBody`
+- `port_error_to_http_error`
 - `json_response`
 
 ## Interactions
 
 - Used by `apps/server` and module HTTP controllers for shared response mapping.
-- May map neutral backend errors into HTTP responses.
+- Maps typed module port errors into matching HTTP status codes while hiding infrastructure details.
 - Does not own runtime composition, domain errors, FBA metadata, CLI contracts, or UI transport.
 
 See [docs](docs/README.md).

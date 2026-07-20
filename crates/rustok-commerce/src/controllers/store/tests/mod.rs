@@ -1,18 +1,18 @@
 use super::{
-    cart_context_metadata, checkout_actor_id, ensure_store_cart_access, merge_metadata,
-    requested_cart_context, resolve_store_line_item_input, RequestedCartContext,
-    StoreAddCartLineItemInput, StoreCartContextPatch, StoreLineItemResolution, MODULE_SLUG,
+    MODULE_SLUG, RequestedCartContext, StoreAddCartLineItemInput, StoreCartContextPatch,
+    StoreLineItemResolution, cart_context_metadata, checkout_actor_id, ensure_store_cart_access,
+    merge_metadata, requested_cart_context, resolve_store_line_item_input,
 };
-use axum::body::{to_bytes, Body};
+use axum::Router;
+use axum::body::{Body, to_bytes};
 use axum::extract::{Path, State};
 use axum::http::{Request, StatusCode};
-use axum::middleware::{from_fn_with_state, Next};
+use axum::middleware::{Next, from_fn_with_state};
 use axum::response::Response;
-use axum::Router;
 use rust_decimal::Decimal;
-use rustok_api::context::ChannelResolutionSource;
 use rustok_api::Permission;
 use rustok_api::RequestContext;
+use rustok_api::context::ChannelResolutionSource;
 use rustok_api::{AuthContext, ChannelContext, TenantContext};
 pub use rustok_api::{AuthContextExtension, ChannelContextExtension, TenantContextExtension};
 use rustok_cart::dto::SetCartAdjustmentInput;
@@ -28,14 +28,20 @@ pub use std::str::FromStr;
 pub use tower::util::ServiceExt;
 use uuid::Uuid;
 
+use std::convert::Infallible;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context as TaskContext, Poll};
+
 use crate::dto::{
     AddCartLineItemInput, CartResponse, CreateCartInput, CreateProductInput,
     CreateShippingOptionInput, CreateVariantInput, PriceInput, ProductTranslationInput,
     ShippingOptionTranslationInput, StoreContextResponse,
 };
 use rustok_cart::CartService;
-use rustok_customer::dto::CreateCustomerInput;
 use rustok_customer::CustomerService;
+use rustok_customer::dto::CreateCustomerInput;
 use rustok_fulfillment::FulfillmentService;
 use rustok_product::CatalogService;
 
@@ -326,6 +332,66 @@ pub(crate) struct TransportRequestContext {
     channel: Option<ChannelContext>,
 }
 
+#[derive(Clone)]
+pub(crate) struct StorefrontTestClient {
+    router: Router,
+    guest_cart_token: Arc<Mutex<Option<axum::http::HeaderValue>>>,
+}
+
+impl tower::Service<Request<Body>> for StorefrontTestClient {
+    type Response = Response;
+    type Error = Infallible;
+    type Future = Pin<Box<dyn Future<Output = Result<Response, Infallible>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut TaskContext<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, mut request: Request<Body>) -> Self::Future {
+        if !request
+            .headers()
+            .contains_key(rustok_cart::GUEST_CART_TOKEN_HEADER)
+        {
+            if let Some(token) = self
+                .guest_cart_token
+                .lock()
+                .expect("guest cart test token lock")
+                .clone()
+            {
+                request
+                    .headers_mut()
+                    .insert(rustok_cart::GUEST_CART_TOKEN_HEADER, token);
+            }
+        }
+
+        let router = self.router.clone();
+        let guest_cart_token = self.guest_cart_token.clone();
+        Box::pin(async move {
+            let response = tower::ServiceExt::oneshot(router, request).await?;
+            if let Some(token) = response
+                .headers()
+                .get(rustok_cart::GUEST_CART_TOKEN_HEADER)
+                .cloned()
+            {
+                *guest_cart_token.lock().expect("guest cart test token lock") = Some(token);
+            }
+            Ok(response)
+        })
+    }
+}
+
+impl StorefrontTestClient {
+    pub(crate) fn with_guest_cart_token(self, token: String) -> Self {
+        let token = axum::http::HeaderValue::from_str(&token)
+            .expect("guest cart test token must be a valid header value");
+        *self
+            .guest_cart_token
+            .lock()
+            .expect("guest cart test token lock") = Some(token);
+        self
+    }
+}
+
 pub(crate) async fn inject_transport_context(
     State(context): State<TransportRequestContext>,
     mut req: axum::extract::Request,
@@ -346,7 +412,7 @@ pub(crate) async fn inject_transport_context(
 pub(crate) fn commerce_transport_router(
     ctx: crate::controllers::CommerceHttpRuntime,
     tenant: TenantContext,
-) -> Router {
+) -> StorefrontTestClient {
     commerce_transport_router_with_auth(ctx, tenant, None)
 }
 
@@ -354,7 +420,7 @@ pub(crate) fn commerce_transport_router_with_auth(
     ctx: crate::controllers::CommerceHttpRuntime,
     tenant: TenantContext,
     auth: Option<AuthContext>,
-) -> Router {
+) -> StorefrontTestClient {
     commerce_transport_router_with_context(ctx, tenant, auth, None)
 }
 
@@ -363,17 +429,28 @@ pub(crate) fn commerce_transport_router_with_context(
     tenant: TenantContext,
     auth: Option<AuthContext>,
     channel: Option<ChannelContext>,
-) -> Router {
-    let router = crate::controllers::store::axum_router().with_state(ctx);
+) -> StorefrontTestClient {
+    let router = Router::new()
+        .nest("/store", crate::controllers::store::axum_router())
+        .with_state(ctx);
 
-    router.layer(from_fn_with_state(
-        TransportRequestContext {
-            tenant,
-            auth,
-            channel,
-        },
-        inject_transport_context,
-    ))
+    let router = router
+        .layer(axum::middleware::from_fn(
+            rustok_cart::guest_access_http::resolve,
+        ))
+        .layer(from_fn_with_state(
+            TransportRequestContext {
+                tenant,
+                auth,
+                channel,
+            },
+            inject_transport_context,
+        ));
+
+    StorefrontTestClient {
+        router,
+        guest_cart_token: Arc::new(Mutex::new(None)),
+    }
 }
 
 pub mod cart_patch;

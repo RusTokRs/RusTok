@@ -10,14 +10,6 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(ProductVariants::Table)
-                    .add_column_if_not_exists(ColumnDef::new(ProductVariants::TenantId).uuid())
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(ProductVariants::Table)
                     .add_column_if_not_exists(
                         ColumnDef::new(ProductVariants::InventoryPolicy)
                             .string_len(32)
@@ -121,14 +113,6 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(ProductVariants::Table)
-                    .drop_column(ProductVariants::TenantId)
-                    .to_owned(),
-            )
-            .await?;
         manager
             .alter_table(
                 Table::alter()

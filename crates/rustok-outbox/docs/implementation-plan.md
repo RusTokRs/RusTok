@@ -31,6 +31,9 @@ bootstrap remains the only package transport and no GraphQL fallback is added.
 - The server relay worker consumes `OutboxRelayPort::process_pending_once` with
   a service actor, deadline, and per-tick idempotency key; it does not invoke
   the relay service method directly.
+- Transactional outbox integration tests live in this owner crate; the
+  foundational `rustok-core` crate remains independent from outbox runtime
+  implementations, including in its development dependency graph.
 
 ## Open results
 

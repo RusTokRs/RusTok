@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_web::{HttpError, HttpResult};
@@ -13,14 +13,15 @@ use super::{
 };
 use crate::dto::CartResponse;
 use rustok_cart::{
-    in_process_cart_storefront_port, CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
+    CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
     CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
     CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
+    in_process_cart_storefront_port,
 };
-use rustok_pricing::{in_process_pricing_read_port, ResolveProductPriceRequest};
+use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
 
 fn map_cart_port_error(error: rustok_api::PortError) -> HttpError {
-    HttpError::bad_request("commerce_operation_failed", error.message)
+    rustok_web::port_error_to_http_error(error)
 }
 
 /// Create a storefront cart
@@ -93,7 +94,7 @@ pub async fn create_cart(
             },
         )
         .await
-        .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
+        .map_err(rustok_web::port_error_to_http_error)?;
     let cart = super::enrich_storefront_cart_for_db(
         runtime.db(),
         tenant.id,
@@ -145,7 +146,7 @@ pub async fn get_cart(
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
-        .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
+        .map_err(rustok_web::port_error_to_http_error)?;
     super::ensure_store_cart_access(&cart, customer_id)?;
     Ok(Json(
         super::enrich_storefront_cart_for_db(
@@ -407,7 +408,7 @@ pub async fn update_cart_line_item(
                 },
             )
             .await
-            .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?
+            .map_err(rustok_web::port_error_to_http_error)?
             .into();
 
         let pricing_update =

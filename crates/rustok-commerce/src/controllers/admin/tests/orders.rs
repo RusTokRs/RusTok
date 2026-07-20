@@ -26,6 +26,7 @@ async fn admin_order_transport_returns_order_with_payment_and_fulfillment() {
         scopes: vec![],
         grant_type: "direct".to_string(),
     };
+    let shipping_option_id = Uuid::new_v4();
     let order = OrderService::new(db.clone(), mock_transactional_event_bus())
         .create_order(
             tenant_id,
@@ -62,7 +63,7 @@ async fn admin_order_transport_returns_order_with_payment_and_fulfillment() {
                     },
                     CreateOrderTaxLineInput {
                         line_item_index: None,
-                        shipping_option_id: None,
+                        shipping_option_id: Some(shipping_option_id),
                         rate: Decimal::from_str("19.00").expect("valid decimal"),
                         amount: Decimal::from_str("1.00").expect("valid decimal"),
                         description: Some("VAT shipping".to_string()),
@@ -157,7 +158,10 @@ async fn admin_order_transport_returns_order_with_payment_and_fulfillment() {
         json!("region_default")
     );
     assert!(payload["order"]["tax_lines"][0]["line_item_id"].is_string());
-    assert!(payload["order"]["tax_lines"][1]["shipping_option_id"].is_string());
+    assert_eq!(
+        payload["order"]["tax_lines"][1]["shipping_option_id"],
+        json!(shipping_option_id)
+    );
     assert_eq!(
         payload["order"]["tax_lines"][2]["line_item_id"],
         json!(null)
@@ -460,7 +464,7 @@ async fn admin_orders_transport_lists_orders_with_pagination_and_status_filter()
                     rate: Decimal::from_str("10.00").expect("valid decimal"),
                     amount: Decimal::from_str("2.00").expect("valid decimal"),
                     description: Some("VAT".to_string()),
-                    currency_code: "usd".to_string(),
+                    currency_code: "eur".to_string(),
                     provider_id: "region_default".to_string(),
                     metadata: json!({ "tax_included": false }),
                 }],
@@ -538,13 +542,10 @@ async fn admin_orders_transport_lists_orders_with_pagination_and_status_filter()
     assert_eq!(data[0]["id"], json!(second_order.id));
     assert_eq!(data[0]["status"], json!("cancelled"));
     assert_eq!(data[0]["subtotal_amount"], json!("20"));
-    assert_eq!(data[0]["total_amount"], json!("22"));
-    assert_eq!(data[0]["tax_total"], json!("2"));
+    assert_eq!(data[0]["total_amount"], json!("20"));
+    assert_eq!(data[0]["tax_total"], json!("0"));
     assert_eq!(data[0]["tax_included"], json!(false));
-    assert_eq!(
-        data[0]["tax_lines"][0]["provider_id"],
-        json!("region_default")
-    );
+    assert_eq!(data[0]["tax_lines"], json!([]));
     assert_eq!(payload["meta"]["total"], json!(1));
     assert_eq!(payload["meta"]["page"], json!(1));
     assert_eq!(payload["meta"]["per_page"], json!(1));

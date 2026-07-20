@@ -6,8 +6,8 @@ use sea_orm::{
 };
 
 use crate::auth::{
-    decode_password_reset_token, encode_access_token, generate_refresh_token, hash_password,
-    hash_refresh_token, verify_password, AuthConfig,
+    encode_access_token, generate_refresh_token, hash_password, hash_refresh_token,
+    verify_password, AuthConfig,
 };
 use crate::context::infer_user_role_from_permissions;
 use crate::models::{sessions, users};
@@ -421,38 +421,6 @@ impl AuthLifecycleService {
                 effective_role,
             },
         ))
-    }
-
-    pub async fn confirm_password_reset_runtime(
-        ctx: &ServerRuntimeContext,
-        config: &AuthConfig,
-        tenant_id: uuid::Uuid,
-        token: &str,
-        password: &str,
-    ) -> std::result::Result<(), AuthLifecycleError> {
-        Self::confirm_password_reset_with_config(ctx.db(), config, tenant_id, token, password).await
-    }
-
-    async fn confirm_password_reset_with_config(
-        db: &DatabaseConnection,
-        config: &AuthConfig,
-        tenant_id: uuid::Uuid,
-        token: &str,
-        password: &str,
-    ) -> std::result::Result<(), AuthLifecycleError> {
-        let claims = decode_password_reset_token(config, token)
-            .map_err(|_| AuthLifecycleError::InvalidResetToken)?;
-
-        if claims.tenant_id != tenant_id {
-            return Err(AuthLifecycleError::InvalidResetToken);
-        }
-
-        let user = users::Entity::find_by_email(db, tenant_id, &claims.sub)
-            .await
-            .map_err(AuthLifecycleError::from)?
-            .ok_or(AuthLifecycleError::InvalidResetToken)?;
-
-        Self::reset_password_and_revoke_sessions(db, tenant_id, user, password, None).await
     }
 
     pub async fn change_password_runtime(
@@ -1369,33 +1337,14 @@ mod tests {
         assert!(matches!(result, Err(AuthLifecycleError::UserInactive)));
     }
 
-    #[tokio::test]
-    async fn confirm_password_reset_rejects_invalid_token_payload() {
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant = tenants::ActiveModel::new("Tenant A", "tenant-a")
-            .insert(&db)
-            .await
-            .expect("failed to create tenant A");
-
-        let password_hash = hash_password("OldPassword123!").expect("failed to hash password");
-        users::ActiveModel::new(tenant.id, "tenant-a-user@example.com", &password_hash)
-            .insert(&db)
-            .await
-            .expect("failed to create user");
-
+    #[test]
+    fn confirm_password_reset_rejects_invalid_token_payload() {
         let config = test_auth_config("reset-secret", 3600, 7200);
 
-        let err = AuthLifecycleService::confirm_password_reset_with_config(
-            &db,
-            &config,
-            tenant.id,
-            "not-a-jwt",
-            "NewPassword123!",
-        )
-        .await
-        .expect_err("invalid token payload must be rejected");
+        let err = crate::auth::decode_password_reset_token(&config, "not-a-jwt")
+            .expect_err("invalid token payload must be rejected");
 
-        assert!(matches!(err, AuthLifecycleError::InvalidResetToken));
+        assert!(matches!(err, crate::error::Error::Unauthorized));
     }
 
     #[tokio::test]

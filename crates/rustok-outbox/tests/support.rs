@@ -1,6 +1,8 @@
+//! Shared SQLite setup for outbox integration tests.
+
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
-use sea_orm_migration::prelude::SchemaManager;
 use sea_orm_migration::MigrationTrait;
+use sea_orm_migration::prelude::SchemaManager;
 use uuid::Uuid;
 
 use rustok_outbox::SysEventsMigration;

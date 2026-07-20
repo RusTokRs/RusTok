@@ -33,7 +33,6 @@ use crate::{
 const WASM_COMPONENT_MEDIA_TYPE: &str = "application/wasm";
 const SIDECAR_MEDIA_TYPE: &str = "application/vnd.rustok.sidecar.v1";
 const STATIC_PROMOTION_MEDIA_TYPE: &str = "application/vnd.rustok.static-promotion.v1";
-const RHAI_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
 const MAX_ARTIFACT_MIGRATION_CHECKPOINT_BYTES: usize = 16 * 1024;
 
 /// Hard bounds applied before an artifact enters the admission pipeline. The
@@ -3925,7 +3924,11 @@ mod tests {
         let payload = b"staged module payload";
         let digest = sha256_digest(payload);
         let staged = blobs
-            .stage(&digest, RHAI_MEDIA_TYPE, payload)
+            .stage(
+                &digest,
+                crate::MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE,
+                payload,
+            )
             .await
             .expect("stage blob");
         let reconciler = ArtifactAdmissionReconciler::new(
@@ -3951,7 +3954,11 @@ mod tests {
         let payload = b"orphaned admitted payload";
         let digest = sha256_digest(payload);
         let staged = blobs
-            .stage(&digest, RHAI_MEDIA_TYPE, payload)
+            .stage(
+                &digest,
+                crate::MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE,
+                payload,
+            )
             .await
             .expect("stage blob");
         blobs.publish(&staged).await.expect("publish blob");

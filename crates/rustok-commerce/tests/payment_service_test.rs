@@ -1,8 +1,8 @@
 use rust_decimal::Decimal;
-use rustok_cart::dto::CreateCartInput;
 use rustok_cart::CartService;
-use rustok_payment::dto::{AuthorizePaymentInput, CancelPaymentInput};
+use rustok_cart::dto::CreateCartInput;
 use rustok_payment::PaymentService;
+use rustok_payment::dto::{AuthorizePaymentInput, CancelPaymentInput};
 use rustok_test_utils::db::setup_test_db;
 use std::str::FromStr;
 use uuid::Uuid;

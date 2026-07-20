@@ -7,6 +7,7 @@ description = "Axum HTTP boundary helpers for RusToK backend adapters"
 
 [dependencies]
 axum.workspace = true
+rustok-api.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

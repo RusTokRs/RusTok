@@ -1,16 +1,17 @@
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
-use serde::de::DeserializeOwned;
-#[cfg(feature = "ssr")]
 use serde::Serialize;
+#[cfg(feature = "ssr")]
+use serde::de::DeserializeOwned;
 
 use super::types::*;
 #[allow(unused_imports)]
 use crate::entities::module::model::{
-    registry_principal_label_from_value, MarketplaceModuleVersion, RegistryFollowUpGateLifecycle,
-    RegistryGovernanceActionLifecycle, RegistryGovernanceEventLifecycle,
-    RegistryGovernanceEventPayloadLifecycle, RegistryModuleLifecycle, RegistryOwnerLifecycle,
-    RegistryPublishRequestLifecycle, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
+    MarketplaceModuleVersion, RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
+    RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
+    RegistryModuleLifecycle, RegistryOwnerLifecycle, RegistryPublishRequestLifecycle,
+    RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
+    registry_principal_label_from_value,
 };
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
@@ -186,7 +187,7 @@ async fn modules_server_context() -> Result<
     use leptos_axum::extract;
     use rustok_api::Permission;
     use rustok_api::{
-        has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+        AuthContext, HostRuntimeContext, TenantContext, has_any_effective_permission,
     };
 
     let runtime_ctx = expect_context::<HostRuntimeContext>();
@@ -1637,7 +1638,7 @@ pub async fn list_enabled_modules_native() -> Result<Vec<String>, ServerFnError>
         use leptos_axum::extract;
         use rustok_api::Permission;
         use rustok_api::{
-            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+            AuthContext, HostRuntimeContext, TenantContext, has_any_effective_permission,
         };
         use rustok_core::ModuleRegistry;
 
@@ -2201,8 +2202,8 @@ pub async fn update_module_settings_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::has_any_effective_permission;
         use rustok_api::Permission;
+        use rustok_api::has_any_effective_permission;
         use rustok_core::ModuleRegistry;
         use rustok_tenant::entities::tenant_module;
         use rustok_tenant::entities::tenant_module::Entity as TenantModuleEntity;
@@ -2292,8 +2293,8 @@ pub async fn update_module_settings_native(
 pub async fn rollback_build_native(build_id: String) -> Result<BuildJob, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::has_any_effective_permission;
         use rustok_api::Permission;
+        use rustok_api::has_any_effective_permission;
         use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
 
         let (app_ctx, auth, _tenant) = modules_server_context().await?;

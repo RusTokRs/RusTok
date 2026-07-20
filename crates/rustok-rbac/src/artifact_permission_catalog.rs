@@ -131,7 +131,7 @@ fn upsert_sql(backend: DbBackend) -> Result<&'static str, PortError> {
 mod tests {
     use super::*;
     use rustok_api::{ArtifactPermissionLocalization, ArtifactPermissionRegistration};
-    use sea_orm::{ConnectionTrait, Database, TryGetable};
+    use sea_orm::{ConnectionTrait, Database};
     use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
     use uuid::Uuid;
 

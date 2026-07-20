@@ -56,6 +56,8 @@
   service/test level.
 - cross-module contract changes must be synchronized with `rustok-commerce` and adjacent split modules;
 - storefront package uses native Leptos `#[server]` functions as the default data layer and keeps GraphQL storefront contract as a fallback.
+- the cart owner publishes `guest_access_http::resolve`; HTTP hosts compose this
+  adapter instead of owning or duplicating guest-cart token parsing and emission.
 
 ## Verification
 

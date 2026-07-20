@@ -401,10 +401,9 @@ async fn validate_active_subject_and_consent(
         })?;
 
     if app.requires_user_consent() {
-        let consent = OAuthConsents::find_active_consent(db, app.id, user.id)
+        let consent = OAuthConsents::find_active_consent(db, app.id, user.id, tenant_id)
             .await
             .map_err(|_| OAuthTokenProtocolError::server_error("Failed to validate OAuth consent"))?
-            .filter(|consent| consent.tenant_id == tenant_id)
             .ok_or_else(|| {
                 OAuthTokenProtocolError::invalid_grant("OAuth consent is missing or revoked")
             })?;
@@ -610,9 +609,15 @@ fn required<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{require_grant, validate_requested_scopes, REFRESH_TOKEN_GRANT};
-    use crate::models::oauth_apps;
-    use sea_orm::prelude::DateTimeWithTimeZone;
+    use super::{
+        commit_refresh_rotation, require_grant, validate_requested_scopes, PreparedUserTokens,
+        REFRESH_TOKEN_GRANT,
+    };
+    use crate::models::{oauth_apps, oauth_tokens};
+    use sea_orm::{
+        prelude::DateTimeWithTimeZone, ActiveModelTrait, ConnectionTrait, Database, EntityTrait,
+        PaginatorTrait, Set,
+    };
     use uuid::Uuid;
 
     fn app(scopes: serde_json::Value, grants: serde_json::Value) -> oauth_apps::Model {
@@ -663,5 +668,85 @@ mod tests {
             serde_json::json!(["authorization_code"]),
         );
         assert!(require_grant(&app, REFRESH_TOKEN_GRANT).is_err());
+    }
+
+    #[tokio::test]
+    async fn refresh_rotation_consumes_a_token_exactly_once() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
+        db.execute_unprepared(
+            r#"CREATE TABLE oauth_tokens (
+                id TEXT PRIMARY KEY NOT NULL,
+                app_id TEXT NOT NULL,
+                user_id TEXT NULL,
+                tenant_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL,
+                grant_type TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                revoked_at TEXT NULL,
+                last_used_at TEXT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )"#,
+        )
+        .await
+        .expect("OAuth token table");
+
+        let now = chrono::Utc::now();
+        let current = oauth_tokens::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            app_id: Set(Uuid::new_v4()),
+            user_id: Set(Some(Uuid::new_v4())),
+            tenant_id: Set(Uuid::new_v4()),
+            token_hash: Set("current-hash".to_string()),
+            grant_type: Set("refresh_token".to_string()),
+            scopes: Set(serde_json::json!(["profile"])),
+            expires_at: Set((now + chrono::Duration::hours(1)).into()),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("current refresh token");
+
+        let replacement = |hash: &str| PreparedUserTokens {
+            access_token: "access".to_string(),
+            refresh_token: Some("refresh".to_string()),
+            refresh_model: Some(oauth_tokens::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                app_id: Set(current.app_id),
+                user_id: Set(current.user_id),
+                tenant_id: Set(current.tenant_id),
+                token_hash: Set(hash.to_string()),
+                grant_type: Set("refresh_token".to_string()),
+                scopes: Set(serde_json::json!(["profile"])),
+                expires_at: Set((now + chrono::Duration::hours(1)).into()),
+                revoked_at: Set(None),
+                last_used_at: Set(None),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            }),
+            expires_in: 900,
+        };
+
+        commit_refresh_rotation(&db, &current, &replacement("replacement-1"))
+            .await
+            .expect("first rotation");
+        let replay = commit_refresh_rotation(&db, &current, &replacement("replacement-2"))
+            .await
+            .expect_err("refresh token replay must fail");
+
+        assert_eq!(replay.error, "invalid_grant");
+        assert_eq!(
+            oauth_tokens::Entity::find()
+                .count(&db)
+                .await
+                .expect("token count"),
+            2
+        );
     }
 }

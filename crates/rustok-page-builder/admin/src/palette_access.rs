@@ -1,8 +1,8 @@
+use crate::AdminCanvasController;
 use crate::browser_intent::{
-    dispatch_browser_intent, BrowserIntentDispatchError, BrowserIntentDispatchResult,
+    BrowserIntentDispatchError, BrowserIntentDispatchResult, dispatch_browser_intent,
 };
 use crate::editor::PaletteBlockView;
-use crate::AdminCanvasController;
 use fly_browser::BrowserIntentEnvelope;
 use fly_ui::{PaletteBlockAccess, UiIntent};
 use serde_json::Value;
@@ -114,7 +114,7 @@ fn require_palette_access(block_id: &str, access: &PaletteBlockAccess) -> Result
 mod tests {
     use super::*;
     use fly_ui::{ContributionAssemblyResult, ContributionDescriptor, ContributionRegistry};
-    use serde_json::{json, Map};
+    use serde_json::{Map, json};
     use std::collections::{BTreeMap, BTreeSet};
 
     fn controller() -> AdminCanvasController {
@@ -171,54 +171,70 @@ mod tests {
     fn namespaced_blocks_are_filtered_for_ui_and_controller_helpers() {
         let controller = controller();
         let access = access();
-        assert!(controller
-            .palette_block_with_access("text", &access)
-            .is_some());
-        assert!(controller
-            .palette_block_with_access("fly.hero", &access)
-            .is_some());
-        assert!(controller
-            .palette_block_with_access("fly.cta", &access)
-            .is_none());
-        assert!(controller
-            .insert_palette_block_intent_with_access("fly.cta", &access)
-            .is_err());
+        assert!(
+            controller
+                .palette_block_with_access("text", &access)
+                .is_some()
+        );
+        assert!(
+            controller
+                .palette_block_with_access("fly.hero", &access)
+                .is_some()
+        );
+        assert!(
+            controller
+                .palette_block_with_access("fly.cta", &access)
+                .is_none()
+        );
+        assert!(
+            controller
+                .insert_palette_block_intent_with_access("fly.cta", &access)
+                .is_err()
+        );
     }
 
     #[test]
     fn browser_insert_and_drop_cannot_bypass_contribution_filtering() {
         let access = access();
         let mut controller = controller();
-        assert!(dispatch_browser_intent_with_palette_access(
-            &mut controller,
-            envelope("insert_block", json!({ "block_id": "fly.cta" })),
-            &access,
-        )
-        .is_err());
-        assert!(dispatch_browser_intent_with_palette_access(
-            &mut controller,
-            envelope(
-                "drop",
-                json!({
-                    "source": { "kind": "block", "block_id": "fly.cta" },
-                    "target_component_id": "root",
-                    "position": "inside"
-                }),
-            ),
-            &access,
-        )
-        .is_err());
+        assert!(
+            dispatch_browser_intent_with_palette_access(
+                &mut controller,
+                envelope("insert_block", json!({ "block_id": "fly.cta" })),
+                &access,
+            )
+            .is_err()
+        );
+        assert!(
+            dispatch_browser_intent_with_palette_access(
+                &mut controller,
+                envelope(
+                    "drop",
+                    json!({
+                        "source": { "kind": "block", "block_id": "fly.cta" },
+                        "target_component_id": "root",
+                        "position": "inside"
+                    }),
+                ),
+                &access,
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn primitive_and_contributed_blocks_remain_available() {
         let access = access();
         let controller = controller();
-        assert!(controller
-            .begin_palette_drag_intent_with_access("text", &access)
-            .is_ok());
-        assert!(controller
-            .begin_palette_drag_intent_with_access("fly.hero", &access)
-            .is_ok());
+        assert!(
+            controller
+                .begin_palette_drag_intent_with_access("text", &access)
+                .is_ok()
+        );
+        assert!(
+            controller
+                .begin_palette_drag_intent_with_access("fly.hero", &access)
+                .is_ok()
+        );
     }
 }

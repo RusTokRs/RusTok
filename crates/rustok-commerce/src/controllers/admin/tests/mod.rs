@@ -1,9 +1,9 @@
-use axum::body::{to_bytes, Body};
+use axum::Router;
+use axum::body::{Body, to_bytes};
 use axum::extract::State;
 use axum::http::{HeaderValue, Method, Request, StatusCode};
-use axum::middleware::{from_fn_with_state, Next};
+use axum::middleware::{Next, from_fn_with_state};
 use axum::response::Response;
-use axum::Router;
 use rust_decimal::Decimal;
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
@@ -12,11 +12,12 @@ use rustok_test_utils::db::setup_test_db;
 use rustok_test_utils::mock_transactional_event_bus;
 pub use sea_orm::ConnectionTrait;
 use serde_json::json;
-pub use std::str::FromStr;
 use std::ops::Deref;
+pub use std::str::FromStr;
 pub use tower::util::ServiceExt;
 use uuid::Uuid;
 
+use crate::ShippingProfileService;
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
     CompleteRefundInput, CreateFulfillmentInput, CreateFulfillmentItemInput, CreateOrderInput,
@@ -24,12 +25,9 @@ use crate::dto::{
     CreateRefundInput, DeliverFulfillmentInput, FulfillmentItemQuantityInput, RefundResponse,
     ShipFulfillmentInput, UpdateShippingOptionInput,
 };
-use crate::ShippingProfileService;
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
-use rustok_payment::{
-    PaymentRefundCreationService, PaymentService as DomainPaymentService,
-};
+use rustok_payment::{PaymentRefundCreationService, PaymentService as DomainPaymentService};
 
 mod support {
     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support.rs"));
@@ -192,8 +190,9 @@ pub(crate) async fn inject_transport_context(
         && path.ends_with("/refunds")
         && !req.headers().contains_key("idempotency-key")
     {
-        let value = HeaderValue::from_str(format!("controller-http-fixture:{}", Uuid::new_v4()).as_str())
-            .expect("fixture idempotency key must be a valid header");
+        let value =
+            HeaderValue::from_str(format!("controller-http-fixture:{}", Uuid::new_v4()).as_str())
+                .expect("fixture idempotency key must be a valid header");
         req.headers_mut().insert("idempotency-key", value);
     }
 
@@ -205,7 +204,9 @@ pub(crate) fn admin_transport_router(
     tenant: TenantContext,
     auth: AuthContext,
 ) -> Router {
-    let router = crate::controllers::admin::axum_router().with_state(ctx);
+    let router = Router::new()
+        .nest("/admin", crate::controllers::admin::axum_router())
+        .with_state(ctx);
 
     router.layer(from_fn_with_state(
         TransportRequestContext { tenant, auth },

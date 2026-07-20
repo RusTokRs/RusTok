@@ -25,6 +25,12 @@ function assertExists(relativePath) {
   }
 }
 
+function assertNotExists(relativePath) {
+  if (existsSync(repoPath(relativePath))) {
+    failures.push(`${relativePath}: superseded auth execution path must be deleted`);
+  }
+}
+
 function assertContains(text, marker, description) {
   if (!text.includes(marker)) failures.push(description);
 }
@@ -36,6 +42,14 @@ function assertNotContains(text, marker, description) {
 const corePath = "crates/rustok-auth/admin/src/core.rs";
 const mutationPortPath = "crates/rustok-auth/src/admin_mutations.rs";
 const restContractPath = "crates/rustok-auth/src/rest.rs";
+const authConfigPath = "crates/rustok-auth/src/config.rs";
+const oauthTenantIntegrityMigrationPath =
+  "crates/rustok-auth/src/migrations/m20260720_000002_enforce_oauth_tenant_integrity.rs";
+const oauthConsentModelPath = "apps/server/src/models/oauth_consents.rs";
+const oauthAppServicePath = "apps/server/src/services/oauth_app.rs";
+const oauthTokenServicePath = "apps/server/src/services/oauth_token_service.rs";
+const legacyOauthTokenMiddlewarePath =
+  "apps/server/src/middleware/oauth_token_guard.rs";
 const serverAuthControllerPath = "apps/server/src/controllers/auth.rs";
 const serverOauthControllerPath = "apps/server/src/controllers/oauth.rs";
 const serverUsersControllerPath = "apps/server/src/controllers/users.rs";
@@ -43,6 +57,8 @@ const authProviderPath = "apps/server/src/services/auth_admin_mutation_provider.
 const userAdminProviderPath =
   "apps/server/src/services/auth_admin_mutation_provider/user_admin.rs";
 const lifecycleProviderPath = "apps/server/src/services/auth_lifecycle_provider.rs";
+const authLifecycleServicePath = "apps/server/src/services/auth_lifecycle.rs";
+const boundPasswordResetPath = "apps/server/src/services/auth_password_reset.rs";
 const runtimeExtensionsPath = "apps/server/src/services/module_event_dispatcher.rs";
 const authGraphqlPath = "crates/rustok-auth/src/graphql/auth_mutation.rs";
 const oauthGraphqlPath = "crates/rustok-auth/src/graphql/mutation.rs";
@@ -65,13 +81,19 @@ const planPath = "crates/rustok-auth/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [corePath, mutationPortPath, restContractPath, serverAuthControllerPath, serverOauthControllerPath, serverUsersControllerPath, authProviderPath, userAdminProviderPath, lifecycleProviderPath, runtimeExtensionsPath, authGraphqlPath, oauthGraphqlPath, authGraphqlModPath, userGraphqlPath, transportPath, nativeTransportPath, uiPath, detailUiPath, oauthUiPath, loginUiPath, registerUiPath, resetUiPath, profileUiPath, securityUiPath, authAdminUiPath, modelPath, i18nPath, planPath, registryPath, packagePath]) {
+for (const filePath of [corePath, mutationPortPath, restContractPath, authConfigPath, oauthTenantIntegrityMigrationPath, oauthConsentModelPath, oauthAppServicePath, oauthTokenServicePath, serverAuthControllerPath, serverOauthControllerPath, serverUsersControllerPath, authProviderPath, userAdminProviderPath, lifecycleProviderPath, authLifecycleServicePath, boundPasswordResetPath, runtimeExtensionsPath, authGraphqlPath, oauthGraphqlPath, authGraphqlModPath, userGraphqlPath, transportPath, nativeTransportPath, uiPath, detailUiPath, oauthUiPath, loginUiPath, registerUiPath, resetUiPath, profileUiPath, securityUiPath, authAdminUiPath, modelPath, i18nPath, planPath, registryPath, packagePath]) {
   assertExists(filePath);
 }
+assertNotExists(legacyOauthTokenMiddlewarePath);
 
 const core = readRepo(corePath);
 const mutationPort = readRepo(mutationPortPath);
 const restContract = readRepo(restContractPath);
+const authConfig = readRepo(authConfigPath);
+const oauthTenantIntegrityMigration = readRepo(oauthTenantIntegrityMigrationPath);
+const oauthConsentModel = readRepo(oauthConsentModelPath);
+const oauthAppService = readRepo(oauthAppServicePath);
+const oauthTokenService = readRepo(oauthTokenServicePath);
 const serverAuthController = readRepo(serverAuthControllerPath);
 const serverOauthController = readRepo(serverOauthControllerPath);
 const serverUsersController = readRepo(serverUsersControllerPath);
@@ -83,6 +105,8 @@ const userAdminProvider = readRepo(userAdminProviderPath);
 // behavioral boundary.
 const authMutationProvider = `${authProvider}\n${userAdminProvider}`;
 const lifecycleProvider = readRepo(lifecycleProviderPath);
+const authLifecycleService = readRepo(authLifecycleServicePath);
+const boundPasswordReset = readRepo(boundPasswordResetPath);
 const runtimeExtensions = readRepo(runtimeExtensionsPath);
 const authGraphql = readRepo(authGraphqlPath);
 const oauthGraphql = readRepo(oauthGraphqlPath);
@@ -104,6 +128,109 @@ const i18n = readRepo(i18nPath);
 const plan = readRepo(planPath);
 const registry = readRepo(registryPath);
 const packageJson = readRepo(packagePath);
+
+assertContains(
+  serverOauthController,
+  "OAuthTokenService::exchange(&ctx, tenant_ctx.id, &req)",
+  `${serverOauthControllerPath}: token endpoint must call the hardened transactional service directly`,
+);
+for (const marker of [
+  "handle_client_credentials",
+  "handle_authorization_code",
+  "handle_refresh_token",
+]) {
+  assertNotContains(
+    serverOauthController,
+    marker,
+    `${serverOauthControllerPath}: superseded OAuth token handler remains: ${marker}`,
+  );
+}
+for (const marker of [
+  "commit_authorization_code_exchange",
+  "consume_authorization_code(&tx, code)",
+  "commit_refresh_rotation",
+  "OAuthTokens::update_many()",
+  "rows_affected != 1",
+  "refresh_rotation_consumes_a_token_exactly_once",
+]) {
+  assertContains(
+    oauthTokenService,
+    marker,
+    `${oauthTokenServicePath}: missing one-shot OAuth transaction marker ${marker}`,
+  );
+}
+for (const marker of [
+  "issue_client_credentials_token",
+  "exchange_authorization_code",
+  "issue_authorization_token_pair",
+  "refresh_access_token",
+]) {
+  assertNotContains(
+    oauthAppService,
+    marker,
+    `${oauthAppServicePath}: superseded OAuth token service remains: ${marker}`,
+  );
+}
+
+for (const marker of [
+  "validate_rs256_key_pair",
+  "EncodingKey::from_rsa_pem",
+  "DecodingKey::from_rsa_pem",
+  "RS256 private/public keys do not form a pair",
+]) {
+  assertContains(
+    authConfig,
+    marker,
+    `${authConfigPath}: missing fail-fast RS256 key validation marker ${marker}`,
+  );
+}
+
+for (const marker of [
+  "fk_oauth_tokens_tenant_app",
+  "fk_oauth_tokens_tenant_user",
+  "fk_oauth_codes_tenant_app",
+  "fk_oauth_codes_tenant_user",
+  "fk_oauth_consents_tenant_app",
+  "fk_oauth_consents_tenant_user",
+  "trg_auth_invite_consumptions_tenant",
+  "trg_auth_oauth_apps_tenant_update",
+  "trg_auth_users_oauth_tenant_update",
+  "OAuth tenant-integrity migration found cross-tenant relations",
+]) {
+  assertContains(
+    oauthTenantIntegrityMigration,
+    marker,
+    `${oauthTenantIntegrityMigrationPath}: missing fail-closed tenant-integrity marker ${marker}`,
+  );
+}
+assertNotContains(
+  authLifecycleService,
+  "confirm_password_reset_runtime",
+  `${authLifecycleServicePath}: unbound password-reset execution path must not return`,
+);
+for (const marker of [
+  "confirm_bound_password_reset_runtime",
+  "password_reset_credential_matches",
+  "PasswordHash.eq(previous_hash)",
+  "sessions::Entity::update_many()",
+  "tx.commit()",
+]) {
+  assertContains(
+    boundPasswordReset,
+    marker,
+    `${boundPasswordResetPath}: missing single-use credential-bound reset marker ${marker}`,
+  );
+}
+for (const marker of [
+  "tenant_id: Uuid",
+  "oauth_consents::Column::TenantId.eq(tenant_id)",
+]) {
+  assertContains(
+    oauthConsentModel,
+    marker,
+    `${oauthConsentModelPath}: OAuth consent reads must retain tenant predicate ${marker}`,
+  );
+}
 
 for (const marker of ["user_list_page", "user_list_query_params", "user_list_pagination", "user_list_previous_page", "UserListPagination", "prepare_create_user_input", "prepare_update_user_input", "CreateUserInputError", "graphql_user_view", "GraphqlUserViewModel", "UserEditFormValues", "oauth_app_type_defaults", "prepare_create_oauth_app_input", "prepare_update_oauth_app_input", "format_oauth_app_timestamp", "oauth_app_list_item_view", "OAuthAppListItemViewModel", "prepare_login_request", "prepare_register_request", "prepare_password_reset_request", "prepare_change_password_request", "ChangePasswordInputError", "prepare_profile_name", "initial_profile_preferred_locale", "classify_auth_transport_error", "AuthTransportErrorKind"]) {
   assertContains(core, marker, `${corePath}: missing core-owned helper ${marker}`);

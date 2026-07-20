@@ -1,6 +1,6 @@
 use fly_ui::{
-    build_admin_contribution_registry_from_manifests, ContributionAssemblyPolicy,
-    ContributionAssemblyResult, ContributionDescriptor, ModuleContributionManifest,
+    ContributionAssemblyPolicy, ContributionAssemblyResult, ContributionDescriptor,
+    ModuleContributionManifest, build_admin_contribution_registry_from_manifests,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -125,9 +125,11 @@ mod tests {
         assert_eq!(contribution.blocks.len(), PAGES_LANDING_BLOCK_IDS.len());
         assert!(contribution.renderers.is_empty());
         assert!(contribution.property_editors.is_empty());
-        assert!(contribution
-            .required_capabilities
-            .is_subset(&pages_admin_contribution_policy().capabilities));
+        assert!(
+            contribution
+                .required_capabilities
+                .is_subset(&pages_admin_contribution_policy().capabilities)
+        );
     }
 
     #[test]

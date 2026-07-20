@@ -187,10 +187,25 @@ Support/capability crates may participate in general documentation unification, 
 
 ## How to Use the Plan Set
 
-1. Start with the [summary verification plan](./PLATFORM_VERIFICATION_PLAN.md) if a broad run is needed.
+1. Start with the [summary verification plan](./PLATFORM_VERIFICATION_PLAN.md) if a broad run is needed. Its current-cycle cursor is the source of truth for resume order: Core modules first, then `apps/server`, non-module foundation crates, optional/domain modules, public surfaces, and closing gates.
 2. Switch to the profile plan if a specific circuit is changing: foundation, API, frontend, RBAC, UI libraries.
 3. For targeted module work, first run `cargo xtask module validate <slug>`, not a full workspace-wide run.
 4. Record unresolved blockers in the profile plan or in the local docs of the corresponding component, rather than turning `docs/verification/README.md` into a backlog.
+
+## Cyclic Pre-Release Runs
+
+The summary plan is also the durable controller for repeated agent sweeps. During a
+cycle, each visited component records the current cycle identifier, status, findings,
+fixes, evidence, next action, and resume command under
+`## Periodic release verification handoff` in its existing
+`docs/implementation-plan.md`.
+
+Only the summary plan owns resettable queue marks and the active cursor. The local
+handoff owns component-specific resume evidence. A local completion from an older
+cycle never completes the component in a new cycle. After the closing gate, the agent
+increments the cycle identifier, resets the summary queue, and starts again from the
+Core modules. `rustok-core` remains a separate foundation crate and must not be
+described as a Core module.
 
 ### Principle for Operational Script Tests
 

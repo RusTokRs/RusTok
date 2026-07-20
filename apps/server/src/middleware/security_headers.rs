@@ -56,11 +56,7 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
 
     // Content-Security-Policy. Missing nonce state on a UI path falls back to the API deny policy
     // rather than restoring an inline-script or inline-style-element allowance.
-    let enforced_policy = select_csp(
-        &path,
-        csp_nonce.as_ref(),
-        plaintext_websocket_allowed(),
-    );
+    let enforced_policy = select_csp(&path, csp_nonce.as_ref(), plaintext_websocket_allowed());
     headers.insert(
         "content-security-policy",
         policy_header(enforced_policy.as_str()),
@@ -138,18 +134,16 @@ fn parse_env_flag(value: &str) -> bool {
 }
 
 fn plaintext_websocket_allowed() -> bool {
-    !["RUSTOK_ENV", "RUST_ENV", "APP_ENV"]
-        .iter()
-        .any(|key| {
-            std::env::var(key)
-                .map(|value| {
-                    matches!(
-                        value.trim().to_ascii_lowercase().as_str(),
-                        "prod" | "production"
-                    )
-                })
-                .unwrap_or(false)
-        })
+    !["RUSTOK_ENV", "RUST_ENV", "APP_ENV"].iter().any(|key| {
+        std::env::var(key)
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "prod" | "production"
+                )
+            })
+            .unwrap_or(false)
+    })
 }
 
 fn is_api_surface(path: &str) -> bool {
@@ -160,11 +154,7 @@ fn is_api_surface(path: &str) -> bool {
         || path.starts_with("/api/openapi")
 }
 
-fn select_csp(
-    path: &str,
-    csp_nonce: Option<&CspNonce>,
-    allow_plaintext_websocket: bool,
-) -> String {
+fn select_csp(path: &str, csp_nonce: Option<&CspNonce>, allow_plaintext_websocket: bool) -> String {
     if is_api_surface(path) {
         API_CSP.to_string()
     } else if let Some(csp_nonce) = csp_nonce {
@@ -302,14 +292,15 @@ mod tests {
 
     #[tokio::test]
     async fn outer_security_layer_shares_one_nonce_with_ui_handler_and_header() {
-        let app = Router::new()
-            .route(
-                "/ui",
-                get(|Extension(nonce): Extension<CspNonce>| async move {
-                    nonce.as_str().to_string()
-                }),
-            )
-            .layer(middleware::from_fn(security_headers));
+        let app =
+            Router::new()
+                .route(
+                    "/ui",
+                    get(|Extension(nonce): Extension<CspNonce>| async move {
+                        nonce.as_str().to_string()
+                    }),
+                )
+                .layer(middleware::from_fn(security_headers));
         let response = app
             .oneshot(Request::builder().uri("/ui").body(Body::empty()).unwrap())
             .await

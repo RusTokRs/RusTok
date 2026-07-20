@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use rustok_api::{AuthContext, Permission, TenantContext};
 use rustok_web::{HttpError, HttpResult};
@@ -10,13 +10,11 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::{
-    common::{ensure_permissions, PaginatedResponse, PaginationMeta, PaginationParams},
     CommerceHttpRuntime,
+    common::{PaginatedResponse, PaginationMeta, PaginationParams, ensure_permissions},
 };
 use crate::dto::OrderReturnResponse;
-use crate::services::{
-    ListReturnCompletionOperationsInput, ReturnCompletionOperationResponse,
-};
+use crate::services::{ListReturnCompletionOperationsInput, ReturnCompletionOperationResponse};
 use crate::{PostOrderOrchestrationError, ReturnCompletionOrchestrationService};
 
 #[derive(Clone, Debug, Default, Deserialize, ToSchema, IntoParams)]
@@ -29,7 +27,10 @@ pub struct AdminListReturnCompletionOperationsParams {
 pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
     axum::Router::new()
         .route("/", axum::routing::get(list_return_completion_operations))
-        .route("/{id}", axum::routing::get(show_return_completion_operation))
+        .route(
+            "/{id}",
+            axum::routing::get(show_return_completion_operation),
+        )
         .route(
             "/{id}/retry",
             axum::routing::post(retry_return_completion_operation),
@@ -58,21 +59,19 @@ pub async fn list_return_completion_operations(
         "Permission denied: orders:read required",
     )?;
     let pagination = params.pagination.unwrap_or_default();
-    let (items, total) = ReturnCompletionOrchestrationService::new(
-        runtime.db_clone(),
-        runtime.event_bus(),
-    )
-    .with_payment_provider_registry(runtime.payment_provider_registry())
-    .list_operations(
-        tenant.id,
-        ListReturnCompletionOperationsInput {
-            page: pagination.page,
-            per_page: pagination.limit(),
-            status: params.status,
-        },
-    )
-    .await
-    .map_err(map_operator_error)?;
+    let (items, total) =
+        ReturnCompletionOrchestrationService::new(runtime.db_clone(), runtime.event_bus())
+            .with_payment_provider_registry(runtime.payment_provider_registry())
+            .list_operations(
+                tenant.id,
+                ListReturnCompletionOperationsInput {
+                    page: pagination.page,
+                    per_page: pagination.limit(),
+                    status: params.status,
+                },
+            )
+            .await
+            .map_err(map_operator_error)?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -102,14 +101,12 @@ pub async fn show_return_completion_operation(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
-    let operation = ReturnCompletionOrchestrationService::new(
-        runtime.db_clone(),
-        runtime.event_bus(),
-    )
-    .with_payment_provider_registry(runtime.payment_provider_registry())
-    .get_operation(tenant.id, id)
-    .await
-    .map_err(map_operator_error)?;
+    let operation =
+        ReturnCompletionOrchestrationService::new(runtime.db_clone(), runtime.event_bus())
+            .with_payment_provider_registry(runtime.payment_provider_registry())
+            .get_operation(tenant.id, id)
+            .await
+            .map_err(map_operator_error)?;
     Ok(Json(operation))
 }
 
@@ -137,22 +134,18 @@ pub async fn retry_return_completion_operation(
         &[Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE],
         "Permission denied: orders:manage and payments:manage required",
     )?;
-    let order_return = ReturnCompletionOrchestrationService::new(
-        runtime.db_clone(),
-        runtime.event_bus(),
-    )
-    .with_payment_provider_registry(runtime.payment_provider_registry())
-    .retry_operation(tenant.id, auth.user_id, id)
-    .await
-    .map_err(map_operator_error)?;
+    let order_return =
+        ReturnCompletionOrchestrationService::new(runtime.db_clone(), runtime.event_bus())
+            .with_payment_provider_registry(runtime.payment_provider_registry())
+            .retry_operation(tenant.id, auth.user_id, id)
+            .await
+            .map_err(map_operator_error)?;
     Ok(Json(order_return))
 }
 
 fn map_operator_error(error: PostOrderOrchestrationError) -> HttpError {
     match error {
-        PostOrderOrchestrationError::Validation(message)
-            if message.contains("was not found") =>
-        {
+        PostOrderOrchestrationError::Validation(message) if message.contains("was not found") => {
             HttpError::not_found(
                 "return_completion_operation_not_found",
                 "Return completion operation not found",
@@ -174,8 +167,7 @@ fn map_operator_error(error: PostOrderOrchestrationError) -> HttpError {
             )
         }
         PostOrderOrchestrationError::Order(
-            rustok_order::error::OrderError::Database(_)
-            | rustok_order::error::OrderError::Core(_),
+            rustok_order::error::OrderError::Database(_) | rustok_order::error::OrderError::Core(_),
         ) => HttpError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "return_completion_storage_unavailable",

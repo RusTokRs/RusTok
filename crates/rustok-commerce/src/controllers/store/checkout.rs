@@ -1,12 +1,13 @@
 use axum::{
+    Json,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    Json,
 };
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_cart::{
+    CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
     bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_checkout_port,
-    in_process_cart_storefront_port, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
+    in_process_cart_storefront_port,
 };
 use rustok_payment::PaymentService;
 use rustok_web::{HttpError, HttpResult};
@@ -62,7 +63,7 @@ pub async fn create_payment_collection(
             },
         )
         .await
-        .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
+        .map_err(rustok_web::port_error_to_http_error)?;
     super::ensure_store_cart_access(&cart, customer_id)?;
     super::ensure_cart_allows_payment_collection(&cart)?;
     let cart = super::reprice_storefront_cart_line_items_for_db(
@@ -151,7 +152,7 @@ pub async fn complete_cart_checkout(
             CartStorefrontReadRequest { cart_id },
         )
         .await
-        .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
+        .map_err(rustok_web::port_error_to_http_error)?;
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
     super::ensure_store_cart_access(&cart, customer_id)?;

@@ -1773,18 +1773,26 @@ async fn admin_graphql_order_query_exposes_tax_breakdown_with_provider_ids() {
         .as_array()
         .expect("tax lines array");
     assert_eq!(tax_lines.len(), 3);
-    assert!(tax_lines
-        .iter()
-        .all(|line| line["providerId"] == "region_default"));
-    assert!(tax_lines
-        .iter()
-        .any(|line| line["lineItemId"].as_str().is_some()));
-    assert!(tax_lines
-        .iter()
-        .any(|line| line["shippingOptionId"].as_str().is_some()));
-    assert!(tax_lines
-        .iter()
-        .any(|line| line["lineItemId"].is_null() && line["shippingOptionId"].is_null()));
+    assert!(
+        tax_lines
+            .iter()
+            .all(|line| line["providerId"] == "region_default")
+    );
+    assert!(
+        tax_lines
+            .iter()
+            .any(|line| line["lineItemId"].as_str().is_some())
+    );
+    assert!(
+        tax_lines
+            .iter()
+            .any(|line| line["shippingOptionId"].as_str().is_some())
+    );
+    assert!(
+        tax_lines
+            .iter()
+            .any(|line| line["lineItemId"].is_null() && line["shippingOptionId"].is_null())
+    );
 }
 
 #[tokio::test]
@@ -2241,12 +2249,16 @@ async fn admin_graphql_create_fulfillment_supports_typed_manual_post_order_items
         fulfillment_metadata["delivery_group"]["seller_id"],
         Value::from("merchant-alpha-id")
     );
-    assert!(fulfillment_metadata["delivery_group"]
-        .get("seller_scope")
-        .is_none());
-    assert!(fulfillment_metadata["delivery_group"]
-        .get("seller_label")
-        .is_none());
+    assert!(
+        fulfillment_metadata["delivery_group"]
+            .get("seller_scope")
+            .is_none()
+    );
+    assert!(
+        fulfillment_metadata["delivery_group"]
+            .get("seller_label")
+            .is_none()
+    );
     assert_eq!(
         fulfillment_metadata["post_order"]["manual"],
         Value::from(true)
@@ -2743,18 +2755,22 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
         .as_array()
         .expect("tax lines array");
     assert_eq!(tax_lines.len(), 3);
-    assert!(tax_lines
-        .iter()
-        .all(|line| line["providerId"] == "region_default"));
+    assert!(
+        tax_lines
+            .iter()
+            .all(|line| line["providerId"] == "region_default")
+    );
     assert!(tax_lines
         .iter()
         .any(|line| line["lineItemId"].as_str().is_some() && line["shippingOptionId"].is_null()));
     assert!(tax_lines
         .iter()
         .any(|line| line["lineItemId"].is_null() && line["shippingOptionId"].as_str().is_some()));
-    assert!(tax_lines
-        .iter()
-        .any(|line| line["lineItemId"].is_null() && line["shippingOptionId"].is_null()));
+    assert!(
+        tax_lines
+            .iter()
+            .any(|line| line["lineItemId"].is_null() && line["shippingOptionId"].is_null())
+    );
     assert_eq!(json["storefrontOrder"]["totalAmount"], Value::from("37.45"));
     assert_eq!(
         json["storefrontOrder"]["lineItems"][0]["title"],

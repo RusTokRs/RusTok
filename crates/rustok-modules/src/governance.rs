@@ -4746,7 +4746,7 @@ impl SeaOrmModuleGovernanceService {
             .filter(|value| *value >= 0)
             .ok_or(ModuleGovernanceError::PublishRequestMissingArtifactSize)?;
 
-        match artifact_origin {
+        let platform_build_manifest = match artifact_origin {
             ModulePublicationArtifactOrigin::PlatformBuilt => {
                 let platform_build_manifest = tx
                     .query_one(Statement::from_sql_and_values(
@@ -4778,46 +4778,7 @@ impl SeaOrmModuleGovernanceService {
                 };
                 let platform_build_manifest = receipt_digest_sha256(&platform_build_manifest)
                     .map_err(|_| ModuleGovernanceError::PublishRequestMissingPlatformBuildStage)?;
-
-                let matched_build_and_platform_evidence = tx
-                    .query_one(Statement::from_sql_and_values(
-                        backend,
-                        format!(
-                            "SELECT 1 FROM registry_publication_evidence AS build \
-                             WHERE build.request_id = {} \
-                               AND build.authority = 'build_service_attestation' \
-                               AND build.subject_digest_sha256 = {} \
-                               AND build.created_at >= ( \
-                                   SELECT request.submitted_at FROM registry_publish_requests AS request \
-                                   WHERE request.id = build.request_id \
-                               ) \
-                               AND EXISTS ( \
-                                   SELECT 1 FROM registry_publication_evidence AS platform \
-                                   WHERE platform.request_id = build.request_id \
-                                     AND platform.authority = 'platform_admission' \
-                                     AND platform.subject_digest_sha256 = build.subject_digest_sha256 \
-                                     AND platform.created_at >= ( \
-                                         SELECT request.submitted_at FROM registry_publish_requests AS request \
-                                         WHERE request.id = platform.request_id \
-                                     ) \
-                               ) \
-                             LIMIT 1",
-                            mark(1),
-                            mark(2),
-                        ),
-                        vec![
-                            command.request_id.clone().into(),
-                            platform_build_manifest.to_string().into(),
-                        ],
-                    ))
-                    .await
-                    .map_err(store_error)?
-                    .is_some();
-                if !matched_build_and_platform_evidence {
-                    return Err(
-                        ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission,
-                    );
-                }
+                Some(platform_build_manifest.to_string())
             }
             ModulePublicationArtifactOrigin::ExternalPrebuilt => {
                 let external_prebuilt_staged = tx
@@ -4846,6 +4807,7 @@ impl SeaOrmModuleGovernanceService {
                 if !external_prebuilt_staged {
                     return Err(ModuleGovernanceError::PublishRequestMissingExternalPrebuiltStage);
                 }
+                None
             }
             ModulePublicationArtifactOrigin::AlloyAuthored => {
                 let alloy_authored_staged = tx
@@ -4874,8 +4836,9 @@ impl SeaOrmModuleGovernanceService {
                 if !alloy_authored_staged {
                     return Err(ModuleGovernanceError::PublishRequestMissingAlloyAuthoredStage);
                 }
+                None
             }
-        }
+        };
 
         let author_signature_recorded = tx
             .query_one(Statement::from_sql_and_values(
@@ -4904,7 +4867,49 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::PublishRequestMissingAuthorSignature);
         }
         match artifact_origin {
-            ModulePublicationArtifactOrigin::PlatformBuilt => {}
+            ModulePublicationArtifactOrigin::PlatformBuilt => {
+                let platform_build_manifest = platform_build_manifest
+                    .expect("platform-built staging must provide an OCI manifest digest");
+                let matched_build_and_platform_evidence = tx
+                    .query_one(Statement::from_sql_and_values(
+                        backend,
+                        format!(
+                            "SELECT 1 FROM registry_publication_evidence AS build \
+                             WHERE build.request_id = {} \
+                               AND build.authority = 'build_service_attestation' \
+                               AND build.subject_digest_sha256 = {} \
+                               AND build.created_at >= ( \
+                                   SELECT request.submitted_at FROM registry_publish_requests AS request \
+                                   WHERE request.id = build.request_id \
+                               ) \
+                               AND EXISTS ( \
+                                   SELECT 1 FROM registry_publication_evidence AS platform \
+                                   WHERE platform.request_id = build.request_id \
+                                     AND platform.authority = 'platform_admission' \
+                                     AND platform.subject_digest_sha256 = build.subject_digest_sha256 \
+                                     AND platform.created_at >= ( \
+                                         SELECT request.submitted_at FROM registry_publish_requests AS request \
+                                         WHERE request.id = platform.request_id \
+                                     ) \
+                               ) \
+                             LIMIT 1",
+                            mark(1),
+                            mark(2),
+                        ),
+                        vec![
+                            command.request_id.clone().into(),
+                            platform_build_manifest.into(),
+                        ],
+                    ))
+                    .await
+                    .map_err(store_error)?
+                    .is_some();
+                if !matched_build_and_platform_evidence {
+                    return Err(
+                        ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission,
+                    );
+                }
+            }
             ModulePublicationArtifactOrigin::ExternalPrebuilt
             | ModulePublicationArtifactOrigin::AlloyAuthored => {
                 let platform_admission_recorded = tx
@@ -4958,6 +4963,25 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if translations.is_empty() {
             return Err(ModuleGovernanceError::PublishRequestMissingTranslations);
+        }
+        let translations = translations
+            .into_iter()
+            .map(|translation| {
+                Ok((
+                    translation
+                        .try_get::<String>("", "locale")
+                        .map_err(store_error)?,
+                    translation
+                        .try_get::<String>("", "name")
+                        .map_err(store_error)?,
+                    translation
+                        .try_get::<String>("", "description")
+                        .map_err(store_error)?,
+                ))
+            })
+            .collect::<Result<Vec<_>, ModuleGovernanceError>>()?;
+        if !valid_publication_translations(&default_locale, &translations) {
+            return Err(ModuleGovernanceError::PublishRequestInvalidTranslations);
         }
 
         let marketplace_approval = ModulePublicationEvidenceCommand {
@@ -5177,16 +5201,7 @@ impl SeaOrmModuleGovernanceService {
         ))
         .await
         .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        for translation in translations {
-            let locale: String = translation
-                .try_get("", "locale")
-                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            let name: String = translation
-                .try_get("", "name")
-                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            let description: String = translation
-                .try_get("", "description")
-                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        for (locale, name, description) in translations {
             tx.execute(Statement::from_sql_and_values(
                 backend,
                 format!(
@@ -5711,6 +5726,32 @@ fn is_sha256_hex(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+fn valid_publication_translations(
+    default_locale: &str,
+    translations: &[(String, String, String)],
+) -> bool {
+    let Some(normalized_default_locale) = rustok_api::normalize_locale_tag(default_locale) else {
+        return false;
+    };
+    if normalized_default_locale != default_locale {
+        return false;
+    }
+
+    let mut has_default_translation = false;
+    for (locale, name, description) in translations {
+        if rustok_api::normalize_locale_tag(locale).as_deref() != Some(locale.as_str())
+            || name.trim() != name
+            || name.is_empty()
+            || description.trim() != description
+            || description.len() < 20
+        {
+            return false;
+        }
+        has_default_translation |= locale == default_locale;
+    }
+    has_default_translation
+}
+
 fn receipt_subject_digest_sha256(
     receipt: &ModuleBuildPublicationReceipt,
 ) -> Result<&str, ModuleGovernanceError> {
@@ -6024,6 +6065,8 @@ pub enum ModuleGovernanceError {
     PublishRequestMissingAlloyPlatformAdmission,
     #[error("registry publish request has no localized metadata")]
     PublishRequestMissingTranslations,
+    #[error("registry publish request localized metadata violates the locale contract")]
+    PublishRequestInvalidTranslations,
     #[error("registry validation stage was not found")]
     ValidationStageNotFound,
     #[error("remote validation claim was not found")]
@@ -6087,6 +6130,21 @@ mod tests {
                     .to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn publication_translations_require_canonical_locales_and_the_default_row() {
+        let translations = vec![(
+            "en-US".to_string(),
+            "Sample module".to_string(),
+            "A localized description long enough for publication.".to_string(),
+        )];
+        assert!(valid_publication_translations("en-US", &translations));
+        assert!(!valid_publication_translations("fr-FR", &translations));
+
+        let mut invalid = translations;
+        invalid[0].0 = "en-us".to_string();
+        assert!(!valid_publication_translations("en-US", &invalid));
     }
 
     #[test]
@@ -6682,10 +6740,13 @@ mod tests {
             .publish_request(command.clone())
             .await
             .expect_err("publication without author evidence must fail");
-        assert!(matches!(
-            blocked,
-            ModuleGovernanceError::PublishRequestMissingAuthorSignature
-        ));
+        assert!(
+            matches!(
+                blocked,
+                ModuleGovernanceError::PublishRequestMissingAuthorSignature
+            ),
+            "{blocked:?}"
+        );
 
         let staged_subject = "a".repeat(64);
         let oci_subject = staged_subject.clone();
@@ -6981,7 +7042,8 @@ mod tests {
         let evidence = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,
-                "SELECT authority, subject_digest_sha256 FROM registry_publication_evidence"
+                "SELECT authority, subject_digest_sha256 FROM registry_publication_evidence \
+                 WHERE authority = 'marketplace_approval'"
                     .to_string(),
             ))
             .await
@@ -7008,7 +7070,7 @@ mod tests {
             .expect("database");
         for statement in [
             "CREATE TABLE registry_publish_requests (\
-                id TEXT PRIMARY KEY, slug TEXT NOT NULL, status TEXT NOT NULL\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, artifact_origin TEXT NOT NULL, status TEXT NOT NULL\
              )",
             "CREATE TABLE registry_publication_evidence (\
                 id TEXT PRIMARY KEY, request_id TEXT NOT NULL, authority TEXT NOT NULL,\
@@ -7022,8 +7084,8 @@ mod tests {
                 event_type TEXT NOT NULL, actor_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
                 details TEXT NOT NULL, created_at TEXT NOT NULL\
              )",
-            "INSERT INTO registry_publish_requests (id, slug, status) \
-             VALUES ('request-1', 'sample_module', 'approved')",
+            "INSERT INTO registry_publish_requests (id, slug, artifact_origin, status) \
+             VALUES ('request-1', 'sample_module', 'platform_built', 'approved')",
         ] {
             database
                 .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))

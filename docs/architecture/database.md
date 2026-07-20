@@ -99,6 +99,38 @@ RBAC source of truth lives in relation tables:
 They support the permission/runtime contract and must not be duplicated in
 alternative ownership tables without a clear architectural reason.
 
+`rustok-rbac::RbacModule` owns the migrations that enforce tenant integrity
+across these relations and persist the durable permission-invalidation
+generation. The platform migrator composes those module-owned migrations.
+
+## Auth and OAuth Storage
+
+`rustok-auth` owns OAuth applications, authorization codes, refresh tokens,
+consents, and invite-consumption audit links. Relations from codes, tokens, and
+consents to applications and users are tenant-composite database constraints;
+invite-consumption user links enforce the same tenant equality while preserving
+their delete-to-null audit behavior.
+
+OAuth protocol tables are an explicit RLS exception because an unauthenticated
+request must resolve a globally unique `client_id` before a tenant context exists.
+After resolution, database relations and server queries remain tenant-composite,
+and app state, grant, scope, consent, user, RBAC, and session checks fail closed.
+
+The current inline `oauth_apps.name` and `oauth_apps.description` columns remain
+an open multilingual-contract gap. The auth implementation plan owns their atomic
+cutover to a translation table across storage and all transports; no JSON or
+transport-local translation fallback is allowed.
+
+## Module Artifact Control-Plane Storage
+
+`rustok-modules` owns tenant-scoped artifact installation, lifecycle, data,
+secret, scheduling, delivery, and binding-operation persistence. Tenant-bound
+tables use explicit tenant predicates plus PostgreSQL RLS. In particular,
+`module_artifact_binding_operations` contains durable idempotency request and
+response data, so claim, completion, abandonment, replay, and recovery must run
+inside a transaction with `rustok.tenant_id` configured. A caller-supplied
+`tenant_id` predicate alone is not considered a sufficient isolation boundary.
+
 ## Content-family Storage
 
 The current content baseline is built around:

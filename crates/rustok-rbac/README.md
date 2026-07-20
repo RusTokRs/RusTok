@@ -12,6 +12,7 @@
 - Publish the typed `settings:*` and `logs:*` platform-admin surface used by server adapters.
 - Own explicit tenant-role grants for immutable artifact permission keys without
   extending the static `Permission` enum or writing `role_permissions`.
+- Own the RBAC relation-integrity and durable invalidation-generation migrations.
 
 ## Interactions
 

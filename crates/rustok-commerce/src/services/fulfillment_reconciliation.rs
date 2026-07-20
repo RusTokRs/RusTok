@@ -156,7 +156,7 @@ impl FulfillmentReconciliationService {
                 other => {
                     return Err(FulfillmentOrchestrationError::Validation(format!(
                         "unsupported fulfillment reconciliation operation `{other}`"
-                    )))
+                    )));
                 }
             };
 

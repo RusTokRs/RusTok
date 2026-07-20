@@ -15,7 +15,7 @@ use axum::{
 use reqwest::Url;
 use rustok_auth::{
     AuthorizeRequest, BrowserAuthorizeRequest, ConsentRequest, RevokeRequest, TokenErrorResponse,
-    TokenRequest, TokenResponse,
+    TokenRequest,
 };
 use std::net::SocketAddr;
 use uuid::Uuid;
@@ -24,6 +24,7 @@ use crate::common::{extract_effective_proto, RustokSettings};
 use crate::context::TenantContext;
 use crate::extractors::auth::{resolve_current_user_from_access_token, CurrentUser};
 use crate::services::oauth_app::OAuthAppService;
+use crate::services::oauth_token_service::OAuthTokenService;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 
 const OAUTH_BROWSER_SESSION_COOKIE: &str = "rustok_oauth_browser_session";
@@ -53,326 +54,17 @@ async fn token_handler(
     tenant_ctx: TenantContext,
     Json(req): Json<TokenRequest>,
 ) -> axum::response::Response {
-    match req.grant_type.as_str() {
-        "client_credentials" => {
-            match handle_client_credentials(&ctx, &tenant_ctx, &req).await {
-                Ok(response) => response.into_response(),
-                Err(error) => oauth_error_response(error),
-            }
-        }
-        "authorization_code" => {
-            match handle_authorization_code(&ctx, &tenant_ctx, &req).await {
-                Ok(response) => response.into_response(),
-                Err(error) => oauth_error_response(error),
-            }
-        }
-        "refresh_token" => {
-            match handle_refresh_token(&ctx, &tenant_ctx, &req).await {
-                Ok(response) => response.into_response(),
-                Err(error) => oauth_error_response(error),
-            }
-        }
-        _ => oauth_error_response(TokenErrorResponse {
-            error: "unsupported_grant_type".to_string(),
-            error_description: format!(
-                "Grant type '{}' is not supported. Supported: client_credentials, authorization_code, refresh_token",
-                req.grant_type
-            ),
-        }),
-    }
-}
-
-async fn handle_client_credentials(
-    ctx: &ServerAuthRuntime,
-    tenant_ctx: &TenantContext,
-    req: &TokenRequest,
-) -> Result<Json<TokenResponse>, TokenErrorResponse> {
-    let runtime_ctx = ctx.runtime_ctx();
-    // 1. Parse client_id
-    let client_id_str = req.client_id.as_deref().ok_or_else(|| TokenErrorResponse {
-        error: "invalid_client".to_string(),
-        error_description: "client_id is required".to_string(),
-    })?;
-
-    let client_id = Uuid::parse_str(client_id_str).map_err(|_| TokenErrorResponse {
-        error: "invalid_client".to_string(),
-        error_description: "Invalid client_id format".to_string(),
-    })?;
-
-    // 2. Find the app
-    let app = OAuthAppService::find_by_client_id(runtime_ctx.db(), client_id)
-        .await
-        .map_err(|_| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Internal error".to_string(),
-        })?
-        .ok_or_else(|| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Unknown client_id".to_string(),
-        })?;
-
-    // 3. Verify tenant
-    if app.tenant_id != tenant_ctx.id {
-        return Err(TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Client not registered for this tenant".to_string(),
-        });
-    }
-
-    // 4. Verify the app supports client_credentials
-    if !app.supports_grant_type("client_credentials") {
-        return Err(TokenErrorResponse {
-            error: "invalid_grant".to_string(),
-            error_description: "This app does not support client_credentials grant".to_string(),
-        });
-    }
-
-    // 5. Verify client_secret
-    let client_secret = req
-        .client_secret
-        .as_deref()
-        .ok_or_else(|| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "client_secret is required for client_credentials".to_string(),
-        })?;
-
-    let secret_hash = app
-        .client_secret_hash
-        .as_deref()
-        .ok_or_else(|| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Client has no secret configured".to_string(),
-        })?;
-
-    let valid =
-        OAuthAppService::verify_client_secret(client_secret, secret_hash).map_err(|_| {
-            TokenErrorResponse {
-                error: "invalid_client".to_string(),
-                error_description: "Invalid client credentials".to_string(),
-            }
-        })?;
-
-    if !valid {
-        return Err(TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Invalid client credentials".to_string(),
-        });
-    }
-
-    // 6. Parse requested scopes
-    let requested_scopes: Vec<String> = req
-        .scope
-        .as_deref()
-        .map(|s| s.split_whitespace().map(String::from).collect())
-        .unwrap_or_default();
-
-    // 7. Issue token
-    let auth_config = ctx.auth_config().ok_or_else(|| TokenErrorResponse {
-        error: "invalid_client".to_string(),
-        error_description: "Server configuration error".to_string(),
-    })?;
-
-    let (access_token, expires_in) =
-        OAuthAppService::issue_client_credentials_token(&app, auth_config, &requested_scopes)
-            .map_err(|_| TokenErrorResponse {
-                error: "invalid_client".to_string(),
-                error_description: "Failed to issue token".to_string(),
-            })?;
-
-    // 8. Touch last_used_at (fire and forget)
-    let db = runtime_ctx.db_clone();
-    let app_id = app.id;
-    tokio::spawn(async move {
-        let _ = OAuthAppService::touch_last_used(&db, app_id).await;
-    });
-
-    // 9. Determine granted scopes
-    let granted_scopes = if requested_scopes.is_empty() {
-        app.scopes_list().join(" ")
-    } else {
-        requested_scopes.join(" ")
-    };
-
-    Ok(Json(TokenResponse {
-        access_token,
-        token_type: "Bearer".to_string(),
-        expires_in,
-        refresh_token: None, // No refresh token for client_credentials
-        scope: granted_scopes,
-    }))
-}
-
-async fn handle_authorization_code(
-    ctx: &ServerAuthRuntime,
-    tenant_ctx: &TenantContext,
-    req: &TokenRequest,
-) -> Result<Json<TokenResponse>, TokenErrorResponse> {
-    let runtime_ctx = ctx.runtime_ctx();
-    // 1. Verify required fields
-    let client_id_str = req.client_id.as_deref().ok_or_else(|| TokenErrorResponse {
-        error: "invalid_client".to_string(),
-        error_description: "client_id is required".to_string(),
-    })?;
-    let client_id = Uuid::parse_str(client_id_str).map_err(|_| TokenErrorResponse {
-        error: "invalid_client".to_string(),
-        error_description: "Invalid client_id format".to_string(),
-    })?;
-    let code_verifier = req
-        .code_verifier
-        .as_deref()
-        .ok_or_else(|| TokenErrorResponse {
-            error: "invalid_request".to_string(),
-            error_description: "code_verifier is required for PKCE".to_string(),
-        })?;
-    let redirect_uri = req
-        .redirect_uri
-        .as_deref()
-        .ok_or_else(|| TokenErrorResponse {
-            error: "invalid_request".to_string(),
-            error_description: "redirect_uri is required".to_string(),
-        })?;
-    let code = req.code.as_deref().ok_or_else(|| TokenErrorResponse {
-        error: "invalid_request".to_string(),
-        error_description: "code is required".to_string(),
-    })?;
-
-    // 2. Find and check app
-    let app = OAuthAppService::find_by_client_id(runtime_ctx.db(), client_id)
-        .await
-        .map_err(|_| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Internal error".to_string(),
-        })?
-        .ok_or_else(|| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Unknown client_id".to_string(),
-        })?;
-
-    if app.tenant_id != tenant_ctx.id {
-        return Err(TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Client not registered for this tenant".to_string(),
-        });
-    }
-
-    if !app.supports_grant_type("authorization_code") {
-        return Err(TokenErrorResponse {
-            error: "invalid_grant".to_string(),
-            error_description: "This app does not support authorization_code grant".to_string(),
-        });
-    }
-
-    // 3. Exchange code for tokens
-    let auth_config = ctx.auth_config().ok_or_else(|| TokenErrorResponse {
-        error: "server_error".to_string(),
-        error_description: "Server configuration error".to_string(),
-    })?;
-
-    let (access_token, refresh_token_plain, expires_in) =
-        OAuthAppService::exchange_authorization_code(
-            runtime_ctx.db(),
-            &app,
-            auth_config,
-            code,
-            redirect_uri,
-            code_verifier,
+    match OAuthTokenService::exchange(&ctx, tenant_ctx.id, &req).await {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err(error) => (
+            error.status,
+            Json(TokenErrorResponse {
+                error: error.error.to_string(),
+                error_description: error.description,
+            }),
         )
-        .await
-        .map_err(|e| TokenErrorResponse {
-            error: "invalid_grant".to_string(),
-            error_description: e.to_string(),
-        })?;
-
-    // Touch app last_used_at in background
-    let db = runtime_ctx.db_clone();
-    let app_id = app.id;
-    tokio::spawn(async move {
-        let _ = OAuthAppService::touch_last_used(&db, app_id).await;
-    });
-
-    // TODO: Determine exact granted scopes from the code execution
-    // For now we assume the app's base scopes or explicitly requested ones
-    Ok(Json(TokenResponse {
-        access_token,
-        token_type: "Bearer".to_string(),
-        expires_in,
-        refresh_token: Some(refresh_token_plain),
-        scope: "".to_string(), // Scope usually not echoed back unless different from requested
-    }))
-}
-
-async fn handle_refresh_token(
-    ctx: &ServerAuthRuntime,
-    tenant_ctx: &TenantContext,
-    req: &TokenRequest,
-) -> Result<Json<TokenResponse>, TokenErrorResponse> {
-    let runtime_ctx = ctx.runtime_ctx();
-    // 1. Verify fields
-    let refresh_token = req
-        .refresh_token
-        .as_deref()
-        .ok_or_else(|| TokenErrorResponse {
-            error: "invalid_request".to_string(),
-            error_description: "refresh_token is required".to_string(),
-        })?;
-
-    let client_id_str = req.client_id.as_deref().ok_or_else(|| TokenErrorResponse {
-        error: "invalid_client".to_string(),
-        error_description: "client_id is required".to_string(),
-    })?;
-
-    let client_id = Uuid::parse_str(client_id_str).map_err(|_| TokenErrorResponse {
-        error: "invalid_client".to_string(),
-        error_description: "Invalid client_id format".to_string(),
-    })?;
-
-    // 2. Find app
-    let app = OAuthAppService::find_by_client_id(runtime_ctx.db(), client_id)
-        .await
-        .map_err(|_| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Internal error".to_string(),
-        })?
-        .ok_or_else(|| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Unknown client_id".to_string(),
-        })?;
-
-    if app.tenant_id != tenant_ctx.id {
-        return Err(TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Client not registered for this tenant".to_string(),
-        });
+            .into_response(),
     }
-
-    // 3. Process refresh logic
-    let auth_config = ctx.auth_config().ok_or_else(|| TokenErrorResponse {
-        error: "server_error".to_string(),
-        error_description: "Server configuration error".to_string(),
-    })?;
-
-    let (access_token, refresh_token_plain, expires_in) =
-        OAuthAppService::refresh_access_token(runtime_ctx.db(), &app, auth_config, refresh_token)
-            .await
-            .map_err(|e| TokenErrorResponse {
-                error: "invalid_grant".to_string(),
-                error_description: e.to_string(),
-            })?;
-
-    // Touch app last_used_at in background
-    let db = runtime_ctx.db_clone();
-    let app_id = app.id;
-    tokio::spawn(async move {
-        let _ = OAuthAppService::touch_last_used(&db, app_id).await;
-    });
-
-    Ok(Json(TokenResponse {
-        access_token,
-        token_type: "Bearer".to_string(),
-        expires_in,
-        refresh_token: Some(refresh_token_plain),
-        scope: "".to_string(), // Scope usually not echoed back for refresh
-    }))
 }
 
 async fn authorize_handler(
@@ -411,6 +103,7 @@ async fn authorize_handler_inner(
             ctx.db(),
             validated.app.id,
             current_user.user.id,
+            tenant_ctx.id,
             &validated.requested_scopes,
         )
         .await
@@ -508,6 +201,7 @@ async fn authorize_browser_handler(
         runtime_ctx.db(),
         validated.app.id,
         current_user.user.id,
+        tenant_ctx.id,
         &validated.requested_scopes,
     )
     .await

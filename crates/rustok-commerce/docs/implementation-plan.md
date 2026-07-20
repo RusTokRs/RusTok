@@ -74,6 +74,8 @@ the explicit `rustok-marketplace-*` family and must never be folded into
   through owner boundaries.
 - [x] Persist immutable plans, operation identity, hashes, lease, stages, errors, and
   owner ids.
+- [x] Keep the checkout inventory reservation entity aligned with the adopted order-line
+  column introduced by the checkout lifecycle migration.
 - [x] Resume persisted stages and adopt already committed owner outcomes.
 - [x] Prevent a second active checkout for the same cart.
 - [x] Provide safe compensation and block provider execution during reconciliation.
@@ -89,6 +91,8 @@ the explicit `rustok-marketplace-*` family and must never be folded into
   replay payloads.
 - [x] Classify uncertain external outcomes as `reconciliation_required`.
 - [x] Publish tenant-scoped operator list/show/retry without exposing command payloads.
+- [x] Remove superseded REST/GraphQL return-completion helper paths after both
+  transports moved to `ReturnCompletionOrchestrationService`.
 - [ ] Apply return-completion migrations on clean/upgraded SQLite/PostgreSQL.
 - [ ] Execute replay, conflict, admission/claim contention, lease expiry, process-exit,
   restart, and reconciliation-resolution evidence.
@@ -244,6 +248,8 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - [x] Guard provider operations through the provider registry with CAS journals and
   explicit reconciliation outcomes.
 - [x] Route uncertain external outcomes to reconciliation and forbid auto-reclaim.
+- [x] Keep refund reservation validation in the idempotent
+  `PaymentRefundCreationService` and remove the superseded `PaymentService` duplicate.
 - [x] Add tenant-scoped Stripe source and deployment-owned secret resolution.
 - [x] Mount verified webhook ingress and persist only normalized immutable facts.
 - [x] Recover received/failed/expired events; isolate dead letters and require

@@ -227,7 +227,11 @@ fn svg_rect_geometry(rect: CanvasRect, viewport: ViewportState) -> SvgRectGeomet
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn svg_handle_position(rect: CanvasRect, viewport: ViewportState, handle: ResizeHandle) -> SvgPoint {
+fn svg_handle_position(
+    rect: CanvasRect,
+    viewport: ViewportState,
+    handle: ResizeHandle,
+) -> SvgPoint {
     let geometry = svg_rect_geometry(rect, viewport);
     let right = geometry.x + geometry.width;
     let bottom = geometry.y + geometry.height;

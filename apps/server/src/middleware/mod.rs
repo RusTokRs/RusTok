@@ -3,12 +3,10 @@ pub mod block_rest_auth;
 #[path = "channel_native_wrapper.rs"]
 pub mod channel;
 pub mod csp_reports;
-pub mod guest_cart_access;
 pub mod invite_accept;
 pub mod locale;
 pub mod mcp_scaffold_workspace;
 pub mod metrics_auth;
-pub mod oauth_token_guard;
 pub mod rate_limit;
 pub mod registry_artifact_access;
 pub mod registry_publish_policy;
@@ -23,9 +21,7 @@ mod tenant_runtime;
 /// Public tenant middleware surface backed by durable cache generations.
 pub mod tenant {
     pub use super::tenant_runtime::{resolve, TenantCacheInfrastructure, TenantCacheStats};
-    pub(crate) use super::tenant_runtime::{
-        resolve_tenant_context_by_slug, TenantContextLoadError,
-    };
+    pub(crate) use super::tenant_runtime::resolve_tenant_context_by_slug;
     pub use crate::services::tenant_cache_generation_status::{
         TenantCacheGenerationListenerSnapshot as TenantInvalidationListenerSnapshot,
         TenantCacheGenerationListenerStatus as TenantInvalidationListenerStatus,

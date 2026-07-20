@@ -1,3 +1,5 @@
+//! Enforces tenant integrity for RBAC-owned role and permission relations.
+
 use sea_orm_migration::prelude::*;
 use sea_orm_migration::sea_orm::{ConnectionTrait, DatabaseBackend};
 

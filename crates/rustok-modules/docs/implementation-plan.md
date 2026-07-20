@@ -40,6 +40,9 @@ Implemented:
   capability-call count alongside executor duration, instruction/fuel,
   memory-when-observed, and output size;
 - rejection of static promotion as a runtime installation path.
+- tenant-scoped durable artifact binding idempotency with exact request replay,
+  PostgreSQL RLS, transaction-local tenant scope, and tenant predicates on
+  claim, completion, abandonment, and expired-lease recovery.
 
 Still outside the owner boundary:
 
@@ -922,12 +925,19 @@ and installation lifecycle preconditions before that command may delete data.
 
 ## Verification
 
+- Restore a crate-wide `cargo fmt -p rustok-modules -- --check` baseline; the
+  current formatter reports pre-existing drift across owner source and migration
+  files, so cycle fixes format only their touched Rust files until that mechanical
+  cleanup is isolated.
 - Artifact descriptor, executor selection, lineage, and immutable-release tests.
 - OCI identity, media type, digest, signature, SBOM, and provenance tests.
 - Tenant RLS, lifecycle, Core/Optional, dependency, revision, idempotency,
   recovery, and rollback tests.
 - Composition CAS plus build enqueue atomicity tests.
 - Governance state-machine/property tests.
+- Add forward database constraints for registry translation ownership and
+  default-locale integrity during the foundation migration wave; the owner
+  publication boundary already fails closed on invalid or missing default rows.
 - GraphQL/native parity integration evidence through host adapters.
 - Repository guardrail proving that this crate owns production writes.
 - Artifact-only definition/lifecycle/binding tests with no compile-time registry
@@ -945,3 +955,16 @@ and admission are verifiable, and no replaced server/admin backend path remains.
 Update this plan, the central plan, module registry, and affected consumer plans
 in the same change whenever identity, lifecycle, marketplace, build, trust,
 installation, sandbox admission, or promotion semantics change.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `completed`
+- Last verified at (UTC): `2026-07-20`
+- Scope inspected: `rustok-modules` Core ownership, manifests, control-plane contracts, migrations, RBAC, cache/index/event/outbox boundaries, and server composition consumers.
+- Findings: `P0=0, P1=2, P2=5, P3=4` (all P1/P2 product defects found in this visit were fixed; formatter and test-fixture debt was recorded or repaired)
+- Fixed in this pass: `added PostgreSQL RLS and transaction-local tenant scope for binding idempotency; rejected list continuations outside admitted data/object prefixes; made failed build results reject successful artifact identities; enforced canonical/default registry translations at final publication; made publication prerequisite ordering consistent; routed the Alloy governance handle through ModuleControlPlane; restored marketplace registry rows; repaired stale guards and deterministic fixtures`
+- Remaining risks or blockers: `no open P0/P1; PostgreSQL execution of the forward RLS migration and registry translation FK/default-locale constraints remain closing/foundation migration evidence; crate-wide rustfmt still reports pre-existing drift in untouched source`
+- Evidence: `target/debug/xtask.exe validate-manifest; target/debug/xtask.exe module test modules; rustok-modules test binary (121 passed); node scripts/verify/verify-runtime-context-invariants.mjs; node scripts/verify/verify-module-control-plane-write-path.mjs; node scripts/verify/verify-oci-registry-transport-policy.mjs; node scripts/verify/verify-module-build-worker-isolation.mjs; scripts/verify/verify-architecture.ps1`
+- Next action: `resume the master queue at core/auth; revisit PostgreSQL migration execution and registry translation constraints in the foundation/closing waves`
+- Resume command: `target\debug\xtask.exe module test auth`

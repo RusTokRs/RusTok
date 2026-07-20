@@ -6,8 +6,8 @@ use rustok_payment::dto::{
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
 use rustok_payment::{
-    PaymentProviderOperationJournal, PaymentRefundCreationService, PaymentService,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
+    PaymentProviderOperationJournal, PaymentRefundCreationService, PaymentService,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
@@ -101,7 +101,7 @@ impl PaymentOrchestrationService {
                     from: status.to_string(),
                     to: "authorized".to_string(),
                 }
-                .into())
+                .into());
             }
         }
 
@@ -209,7 +209,7 @@ impl PaymentOrchestrationService {
                     from: status.to_string(),
                     to: "captured".to_string(),
                 }
-                .into())
+                .into());
             }
         }
 
@@ -308,7 +308,7 @@ impl PaymentOrchestrationService {
                     from: collection.status,
                     to: "cancelled".to_string(),
                 }
-                .into())
+                .into());
             }
             "pending" | "authorized" => {}
             status => {
@@ -316,7 +316,7 @@ impl PaymentOrchestrationService {
                     from: status.to_string(),
                     to: "cancelled".to_string(),
                 }
-                .into())
+                .into());
             }
         }
 
@@ -503,12 +503,8 @@ impl PaymentOrchestrationService {
                 existing.status.as_str(),
                 PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             ) {
-                mark_journal_committed(
-                    &self.provider_operation_journal,
-                    existing.id,
-                    operation,
-                )
-                .await?;
+                mark_journal_committed(&self.provider_operation_journal, existing.id, operation)
+                    .await?;
             }
         }
         Ok(())

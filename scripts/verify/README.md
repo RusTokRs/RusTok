@@ -54,6 +54,7 @@ node scripts/verify/verify-ecommerce-fba-registries.mjs
 | Anti-bypass drift check | `./scripts/verify/verify-all.sh anti-bypass` |
 | Added a migration | `./scripts/verify/verify-all.sh tenant-isolation` + `./scripts/verify/verify-migration-smoke.sh`; in CI the same smoke is pinned as a separate job `migration-smoke` |
 | Suspected RBAC gap | `./scripts/verify/verify-all.sh rbac-coverage` |
+| Auth/OAuth ownership, RS256, tenant integrity, or one-shot token change | `node scripts/verify/verify-auth-admin-boundary.mjs` + `cargo test -p rustok-auth --lib` + targeted `cargo test -p rustok-server refresh_rotation_consumes_a_token_exactly_once --lib` |
 | Security audit | `./scripts/verify/verify-security.sh` |
 | Deployment profile matrix check | `./scripts/verify/verify-all.sh deployment-profiles` |
 | Flex multilingual contract drift check | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
@@ -694,7 +695,10 @@ writes to composition, lifecycle, artifact installation/data, build, and
 registry governance tables must remain in `rustok-modules` owner services. It
 also rejects direct construction of extracted owner SeaORM services outside
 `rustok-modules`; production composition roots must obtain them through
-`ModuleControlPlane`.
+`ModuleControlPlane`. The guard also locks the durable artifact-binding
+idempotency boundary: claim, completion, and abandonment must establish
+transaction-local tenant scope, and PostgreSQL persistence must retain its RLS
+policy over `module_artifact_binding_operations`.
 
 ---
 ### `verify-oci-registry-transport-policy.mjs`

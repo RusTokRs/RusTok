@@ -1,3 +1,5 @@
+//! Transactional persistence tests owned by the outbox runtime.
+
 mod support;
 
 use rustok_core::events::{DomainEvent, MemoryTransport};
@@ -247,9 +249,11 @@ async fn test_transactional_publish_rejects_non_outbox_transport() {
         .await;
 
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("requires OutboxTransport"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("requires OutboxTransport")
+    );
     txn.rollback().await.unwrap();
 }

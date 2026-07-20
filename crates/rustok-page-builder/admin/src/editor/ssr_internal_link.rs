@@ -1,12 +1,12 @@
+use crate::AdminCanvasController;
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
-use crate::AdminCanvasController;
-use fly::{ComponentPatch, EditorCommand, InternalPageLink, FLY_PAGE_LINK_FIELD};
+use fly::{ComponentPatch, EditorCommand, FLY_PAGE_LINK_FIELD, InternalPageLink};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::Map;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SsrInternalPageLinkRequest {
@@ -362,15 +362,17 @@ mod tests {
     fn internal_link_form_uses_patch_history_and_preserves_extensions() {
         let mut controller = controller();
         controller
-            .editor_mut_for_tests()
-            .document_mut_for_tests()
-            .component_mut("link")
-            .unwrap()
-            .extensions
-            .insert(
-                FLY_PAGE_LINK_FIELD.to_string(),
-                json!({ "page_id": "about", "providerFuture": true }),
-            );
+            .dispatch(UiIntent::execute(EditorCommand::Patch {
+                component_id: "link".to_string(),
+                patch: ComponentPatch {
+                    fields: Map::from_iter([(
+                        FLY_PAGE_LINK_FIELD.to_string(),
+                        json!({ "page_id": "about", "providerFuture": true }),
+                    )]),
+                    ..ComponentPatch::default()
+                },
+            }))
+            .expect("seed link extension through the controller");
         let intent = controller
             .ssr_internal_page_link_intent(SsrInternalPageLinkRequest {
                 component_id: "link".to_string(),
@@ -394,27 +396,31 @@ mod tests {
         controller
             .dispatch(UiIntent::Undo)
             .expect("undo link patch");
-        assert!(controller
-            .editor()
-            .document()
-            .component("link")
-            .unwrap()
-            .extensions
-            .contains_key(FLY_PAGE_LINK_FIELD));
+        assert!(
+            controller
+                .editor()
+                .document()
+                .component("link")
+                .unwrap()
+                .extensions
+                .contains_key(FLY_PAGE_LINK_FIELD)
+        );
     }
 
     #[test]
     fn missing_target_is_rejected_before_dispatch() {
         let controller = controller();
-        assert!(controller
-            .ssr_internal_page_link_intent(SsrInternalPageLinkRequest {
-                component_id: "link".to_string(),
-                page_id: "missing".to_string(),
-                base_path: String::new(),
-                query: String::new(),
-                fragment: String::new(),
-                fallback_href: String::new(),
-            })
-            .is_err());
+        assert!(
+            controller
+                .ssr_internal_page_link_intent(SsrInternalPageLinkRequest {
+                    component_id: "link".to_string(),
+                    page_id: "missing".to_string(),
+                    base_path: String::new(),
+                    query: String::new(),
+                    fragment: String::new(),
+                    fallback_href: String::new(),
+                })
+                .is_err()
+        );
     }
 }

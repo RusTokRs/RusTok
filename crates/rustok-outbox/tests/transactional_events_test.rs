@@ -1,3 +1,5 @@
+//! Transactional event bus tests owned by the outbox runtime.
+
 mod support;
 
 use rustok_core::events::DomainEvent;

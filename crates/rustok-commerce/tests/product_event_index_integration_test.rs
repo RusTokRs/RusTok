@@ -3,15 +3,15 @@
 
 use rust_decimal::Decimal;
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
+use rustok_product::CatalogService;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
 };
 use rustok_product::entities::product::ProductStatus;
-use rustok_product::CatalogService;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
-use sea_orm_migration::prelude::SchemaManager;
 use sea_orm_migration::MigrationTrait;
+use sea_orm_migration::prelude::SchemaManager;
 use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;

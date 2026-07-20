@@ -16,6 +16,8 @@ runtime or domain behavior.
 - `rustok-core`, `rustok-events`, and `rustok-api` contracts remain canonical;
   test utilities provide fixtures and doubles rather than replacement runtime
   semantics.
+- The crate depends only on shared foundation/event test contracts. Domain
+  modules must not be pulled into its dependency graph.
 
 ## Next results
 

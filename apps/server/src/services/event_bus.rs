@@ -101,7 +101,7 @@ fn ensure_event_forwarder(ctx: &ServerRuntimeContext, bus: Arc<EventBus>) {
         existing.abort();
     }
 
-    let transport = (*shared_transport).clone();
+    let transport = shared_transport;
     let task = tokio::spawn(supervise_event_forwarder(bus, transport));
     ctx.shared_insert(EventForwarderHandle::new(task));
 }

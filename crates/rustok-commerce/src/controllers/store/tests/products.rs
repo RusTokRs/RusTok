@@ -182,7 +182,7 @@ async fn storefront_line_item_resolution_uses_backend_variant_title_and_price() 
     assert_eq!(
         resolved.add_line_item.metadata,
         json!({
-            "seller": { "id": null, "scope": null },
+            "seller": { "id": null },
             "source": "store-line-item-test"
         })
     );
@@ -230,18 +230,17 @@ async fn storefront_line_item_resolution_rejects_missing_price_for_cart_currency
     .await
     .expect_err("store line item must reject missing price in cart currency");
 
+    assert_eq!(error.status, StatusCode::NOT_FOUND);
+    assert_eq!(error.code, "pricing.price_not_found");
     assert_eq!(
-        error.to_string(),
-        format!(
-            "No storefront price for variant {} in currency USD",
-            variant.id
-        )
+        error.message,
+        format!("price for variant {} was not found", variant.id)
     );
 }
 
 #[tokio::test]
-async fn storefront_line_item_resolution_falls_back_to_first_product_translation_when_locale_missing(
-) {
+async fn storefront_line_item_resolution_falls_back_to_first_product_translation_when_locale_missing()
+ {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
     let service = CatalogService::new(db.clone(), mock_transactional_event_bus());
@@ -324,7 +323,9 @@ async fn storefront_line_item_resolution_returns_not_found_for_unknown_variant()
     .await
     .expect_err("unknown variant must not resolve");
 
-    assert_eq!(error.to_string(), "not found");
+    assert_eq!(error.status, StatusCode::NOT_FOUND);
+    assert_eq!(error.code, "commerce_store_not_found");
+    assert_eq!(error.message, "Commerce resource not found");
 }
 
 #[tokio::test]
@@ -372,8 +373,10 @@ async fn storefront_line_item_resolution_rejects_quantity_above_channel_visible_
     .await
     .expect_err("hidden inventory should reject storefront line item resolution");
 
+    assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    assert_eq!(error.code, "commerce_store_invalid");
     assert_eq!(
-        error.to_string(),
+        error.message,
         format!(
             "Variant {} does not have enough available inventory for the current channel",
             variant.id

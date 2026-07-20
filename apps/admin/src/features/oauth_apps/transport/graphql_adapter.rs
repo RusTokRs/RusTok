@@ -2,7 +2,7 @@ use crate::entities::oauth_app::model::OAuthApp;
 use crate::features::oauth_apps::model::{
     CreateOAuthAppInput, CreateOAuthAppResult, UpdateOAuthAppInput,
 };
-use crate::shared::api::{request, ApiError};
+use crate::shared::api::{ApiError, request};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

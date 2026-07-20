@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
 use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

@@ -15,7 +15,7 @@ use rustok_graphql::GraphqlHttpError;
     feature = "ssr"
 ))]
 use rustok_graphql::{
-    execute as execute_graphql, persisted_query_extension, GraphqlHttpError, GraphqlRequest,
+    GraphqlHttpError, GraphqlRequest, execute as execute_graphql, persisted_query_extension,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

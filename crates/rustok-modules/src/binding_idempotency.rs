@@ -1,9 +1,9 @@
 //! Durable idempotency coordination for platform-routed artifact bindings.
 
+use crate::data::configure_tenant_scope;
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-    Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value as SqlValue,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -76,6 +76,9 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         let transaction = self.db.begin().await.map_err(storage_error)?;
         let backend = transaction.get_database_backend();
         ensure_supported_backend(backend)?;
+        configure_tenant_scope(&transaction, request.tenant_id)
+            .await
+            .map_err(storage_error)?;
         let existing = transaction
             .query_one(Statement::from_sql_and_values(
                 backend,
@@ -164,10 +167,13 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         if operation_id.is_nil() {
             return Err(ArtifactBindingIdempotencyError::InvalidRequest);
         }
-        let backend = self.db.get_database_backend();
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        let backend = transaction.get_database_backend();
         ensure_supported_backend(backend)?;
-        let completed = self
-            .db
+        configure_tenant_scope(&transaction, request.tenant_id)
+            .await
+            .map_err(storage_error)?;
+        let completed = transaction
             .execute(Statement::from_sql_and_values(
                 backend,
                 complete_operation_sql(backend),
@@ -189,6 +195,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                 "artifact binding operation is no longer leased by this request".to_string(),
             ));
         }
+        transaction.commit().await.map_err(storage_error)?;
         Ok(())
     }
 
@@ -201,9 +208,13 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         if operation_id.is_nil() {
             return Err(ArtifactBindingIdempotencyError::InvalidRequest);
         }
-        let backend = self.db.get_database_backend();
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        let backend = transaction.get_database_backend();
         ensure_supported_backend(backend)?;
-        self.db
+        configure_tenant_scope(&transaction, request.tenant_id)
+            .await
+            .map_err(storage_error)?;
+        transaction
             .execute(Statement::from_sql_and_values(
                 backend,
                 abandon_operation_sql(backend),
@@ -219,6 +230,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
             ))
             .await
             .map_err(storage_error)?;
+        transaction.commit().await.map_err(storage_error)?;
         Ok(())
     }
 }
@@ -329,4 +341,79 @@ fn placeholder_prefix(backend: DbBackend) -> &'static str {
 
 fn storage_error(error: impl std::fmt::Display) -> ArtifactBindingIdempotencyError {
     ArtifactBindingIdempotencyError::Storage(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::Database;
+
+    async fn store() -> SeaOrmArtifactBindingIdempotencyStore {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database");
+        db.execute_unprepared(
+            "CREATE TABLE module_artifact_binding_operations (\
+             operation_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, actor_id TEXT NOT NULL, \
+             installation_id TEXT NOT NULL, binding_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, \
+             request_digest TEXT NOT NULL, status TEXT NOT NULL, response TEXT NULL, \
+             lease_expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+             completed_at TEXT NULL, \
+             UNIQUE (tenant_id, actor_id, installation_id, binding_id, idempotency_key))",
+        )
+        .await
+        .expect("binding operation table");
+        SeaOrmArtifactBindingIdempotencyStore::new(db)
+    }
+
+    fn request(tenant_id: Uuid, digest_payload: &str) -> ArtifactBindingIdempotencyRequest {
+        ArtifactBindingIdempotencyRequest {
+            tenant_id,
+            actor_id: Uuid::new_v4(),
+            installation_id: Uuid::new_v4(),
+            binding_id: "admin_action".to_string(),
+            idempotency_key: "stable-request-key".to_string(),
+            request_digest: artifact_binding_request_digest(&serde_json::json!({
+                "payload": digest_payload,
+            }))
+            .expect("request digest"),
+        }
+    }
+
+    #[tokio::test]
+    async fn completed_response_replays_for_the_exact_tenant_request() {
+        let store = store().await;
+        let request = request(Uuid::new_v4(), "first");
+        let operation_id = match store.claim(&request).await.expect("claim") {
+            ArtifactBindingIdempotencyClaim::Execute { operation_id } => operation_id,
+            other => panic!("expected execution claim, got {other:?}"),
+        };
+        let response = serde_json::json!({ "status": "accepted" });
+        store
+            .complete(&request, operation_id, &response)
+            .await
+            .expect("complete");
+
+        assert_eq!(
+            store.claim(&request).await.expect("replay"),
+            ArtifactBindingIdempotencyClaim::Replay { response }
+        );
+    }
+
+    #[tokio::test]
+    async fn identical_idempotency_keys_remain_tenant_scoped() {
+        let store = store().await;
+        let first = request(Uuid::new_v4(), "same");
+        let mut second = first.clone();
+        second.tenant_id = Uuid::new_v4();
+
+        assert!(matches!(
+            store.claim(&first).await.expect("first tenant claim"),
+            ArtifactBindingIdempotencyClaim::Execute { .. }
+        ));
+        assert!(matches!(
+            store.claim(&second).await.expect("second tenant claim"),
+            ArtifactBindingIdempotencyClaim::Execute { .. }
+        ));
+    }
 }

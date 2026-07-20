@@ -1,5 +1,5 @@
-use rustok_order::dto::ApplyOrderChangeInput;
 use rustok_order::OrderService;
+use rustok_order::dto::ApplyOrderChangeInput;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::providers::PaymentProviderRegistry;
 use sea_orm::DatabaseConnection;
@@ -47,15 +47,11 @@ impl OrderChangeOrchestrationService {
         metadata: Value,
     ) -> PostOrderOrchestrationResult<ApplyOrderChangeResult> {
         let order_service = OrderService::new(self.db.clone(), self.event_bus.clone());
-        let order_change = order_service
-            .get_order_change(tenant_id, change_id)
-            .await?;
+        let order_change = order_service.get_order_change(tenant_id, change_id).await?;
 
-        let post_order = PostOrderOrchestrationService::new(
-            self.db.clone(),
-            self.event_bus.clone(),
-        )
-        .with_payment_provider_registry(self.payment_provider_registry.clone());
+        let post_order =
+            PostOrderOrchestrationService::new(self.db.clone(), self.event_bus.clone())
+                .with_payment_provider_registry(self.payment_provider_registry.clone());
 
         match order_change.change_type.as_str() {
             "exchange" => {
@@ -76,11 +72,7 @@ impl OrderChangeOrchestrationService {
             }
             _ => {
                 let order_change = order_service
-                    .apply_order_change(
-                        tenant_id,
-                        change_id,
-                        ApplyOrderChangeInput { metadata },
-                    )
+                    .apply_order_change(tenant_id, change_id, ApplyOrderChangeInput { metadata })
                     .await?;
                 Ok(ApplyOrderChangeResult {
                     order_change,

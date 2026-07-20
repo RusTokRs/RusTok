@@ -1,4 +1,6 @@
-use crate::core::{self, PageDraftFormInput, GRAPESJS_FORMAT};
+#[cfg(test)]
+use crate::core::GRAPESJS_FORMAT;
+use crate::core::{self, PageDraftFormInput};
 use crate::model::{PageDetail, PageMutationResult};
 use crate::transport;
 use rustok_page_builder::dto::{
@@ -8,7 +10,7 @@ use rustok_page_builder_admin::{
     AdminCanvasController, PageBuilderAdminFacade, PageBuilderAdminFacadeError,
     PageBuilderAdminFacadeFuture,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

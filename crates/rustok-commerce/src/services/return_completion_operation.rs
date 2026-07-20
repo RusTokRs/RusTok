@@ -1,7 +1,7 @@
 use chrono::{Duration, Utc};
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, Set,
+    sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -132,7 +132,9 @@ impl ReturnCompletionOperationJournal {
             tenant_id: Set(input.tenant_id),
             return_id: Set(input.return_id),
             request_hash: Set(request_hash.clone()),
-            status: Set(ReturnCompletionOperationStatus::Pending.as_str().to_string()),
+            status: Set(ReturnCompletionOperationStatus::Pending
+                .as_str()
+                .to_string()),
             stage: Set(ReturnCompletionOperationStage::Created.as_str().to_string()),
             refund_id: Set(None),
             order_change_id: Set(None),
@@ -300,7 +302,9 @@ impl ReturnCompletionOperationJournal {
 
         let result = update.exec(&self.db).await?;
         if result.rows_affected == 0 {
-            return Err(self.cas_conflict(input.tenant_id, input.operation_id, "checkpoint").await?);
+            return Err(self
+                .cas_conflict(input.tenant_id, input.operation_id, "checkpoint")
+                .await?);
         }
         self.get(input.tenant_id, input.operation_id).await
     }
@@ -409,7 +413,9 @@ impl ReturnCompletionOperationJournal {
             .exec(&self.db)
             .await?;
         if result.rows_affected == 0 {
-            return Err(self.cas_conflict(tenant_id, operation_id, "complete").await?);
+            return Err(self
+                .cas_conflict(tenant_id, operation_id, "complete")
+                .await?);
         }
         self.get(tenant_id, operation_id).await
     }

@@ -32,5 +32,3 @@ pub async fn execute_command(
 ) -> Result<MarketplaceListingAdminCommandResult, GraphqlMarketplaceListingAdminError> {
     Err(UNMOUNTED.to_string())
 }
-
-pub const MARKETPLACE_LISTING_GRAPHQL_PROFILE_STATUS: &str = "declared_unmounted";

@@ -5,12 +5,12 @@
 use rust_decimal::Decimal;
 use rustok_commerce::CommerceError;
 use rustok_core::field_schema::FieldType;
+use rustok_product::CatalogService;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
 };
 use rustok_product::entities;
 use rustok_product::entities::product::ProductStatus;
-use rustok_product::CatalogService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::DatabaseConnection;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
@@ -613,25 +613,37 @@ async fn test_create_product_populates_option_and_variant_translation_groups() {
 
     assert_eq!(product.options.len(), 1);
     assert_eq!(product.options[0].translations.len(), 2);
-    assert!(product.options[0]
-        .translations
-        .iter()
-        .any(|item| item.locale == "en" && item.name == "Size" && item.values == vec!["S", "M"]));
-    assert!(product.options[0]
-        .translations
-        .iter()
-        .any(|item| item.locale == "ru" && item.name == "Size" && item.values == vec!["S", "M"]));
+    assert!(
+        product.options[0]
+            .translations
+            .iter()
+            .any(|item| item.locale == "en"
+                && item.name == "Size"
+                && item.values == vec!["S", "M"])
+    );
+    assert!(
+        product.options[0]
+            .translations
+            .iter()
+            .any(|item| item.locale == "ru"
+                && item.name == "Size"
+                && item.values == vec!["S", "M"])
+    );
 
     assert_eq!(product.variants.len(), 1);
     assert_eq!(product.variants[0].translations.len(), 2);
-    assert!(product.variants[0]
-        .translations
-        .iter()
-        .any(|item| item.locale == "en" && item.title.as_deref() == Some("Default")));
-    assert!(product.variants[0]
-        .translations
-        .iter()
-        .any(|item| item.locale == "ru" && item.title.as_deref() == Some("Default")));
+    assert!(
+        product.variants[0]
+            .translations
+            .iter()
+            .any(|item| item.locale == "en" && item.title.as_deref() == Some("Default"))
+    );
+    assert!(
+        product.variants[0]
+            .translations
+            .iter()
+            .any(|item| item.locale == "ru" && item.title.as_deref() == Some("Default"))
+    );
 }
 
 #[tokio::test]
@@ -688,10 +700,12 @@ async fn test_get_product_reads_image_translation_groups() {
 
     assert_eq!(fetched.images.len(), 1);
     assert_eq!(fetched.images[0].translations.len(), 2);
-    assert!(fetched.images[0]
-        .translations
-        .iter()
-        .any(|item| item.locale == "en" && item.alt_text.as_deref() == Some("Front image")));
+    assert!(
+        fetched.images[0]
+            .translations
+            .iter()
+            .any(|item| item.locale == "en" && item.alt_text.as_deref() == Some("Front image"))
+    );
     assert!(fetched.images[0]
         .translations
         .iter()

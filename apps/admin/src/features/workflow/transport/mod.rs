@@ -4,7 +4,7 @@ mod native_server_adapter;
 use rustok_ui_transport::UiTransportPath;
 
 use crate::entities::workflow::{WorkflowDetail, WorkflowExecution, WorkflowSummary};
-use crate::shared::api::{map_server_fn_error, ApiError};
+use crate::shared::api::{ApiError, map_server_fn_error};
 
 pub use crate::features::workflow::model::{
     CreateStepInput, CreateWorkflowInput, WorkflowTemplateDto, WorkflowVersionSummaryDto,

@@ -13,7 +13,7 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use leptos_ui_routing::use_route_query_value;
 use rustok_page_builder::runtime_context::{
-    generate_page_builder_runtime_example, PageBuilderRuntimeExampleRequest,
+    PageBuilderRuntimeExampleRequest, generate_page_builder_runtime_example,
 };
 use rustok_page_builder::runtime_scenario_release::{
     PageBuilderScenarioBaselineChange, RuntimeScenarioReleaseBaseline,
@@ -23,7 +23,7 @@ use rustok_page_builder_admin::{
     PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext, SsrDraftSessionStore,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 const FLY_DRAFT_QUERY_KEY: &str = "fly_draft";

@@ -1,9 +1,10 @@
 #[allow(unused_imports)]
 use crate::entities::module::model::{
-    registry_principal_label_from_value, MarketplaceModuleVersion, RegistryFollowUpGateLifecycle,
-    RegistryGovernanceActionLifecycle, RegistryGovernanceEventLifecycle,
-    RegistryGovernanceEventPayloadLifecycle, RegistryModuleLifecycle, RegistryOwnerLifecycle,
-    RegistryPublishRequestLifecycle, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
+    MarketplaceModuleVersion, RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
+    RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
+    RegistryModuleLifecycle, RegistryOwnerLifecycle, RegistryPublishRequestLifecycle,
+    RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
+    registry_principal_label_from_value,
 };
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,

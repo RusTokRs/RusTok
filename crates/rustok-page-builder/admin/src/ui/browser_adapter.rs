@@ -1,6 +1,10 @@
-use fly_browser::{BrowserAdapterConfig, FLY_BROWSER_ADAPTER_JS};
+#[cfg(feature = "browser-js")]
+use fly_browser::BrowserAdapterConfig;
+#[cfg(any(feature = "browser-js", test))]
+use fly_browser::FLY_BROWSER_ADAPTER_JS;
 use leptos::prelude::*;
 
+#[cfg(any(feature = "browser-js", test))]
 const SSR_CONTROL_BOOTSTRAP_JS: &str = r#"
 const __flyDraftQueryKey = "fly_draft";
 const __flyObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -136,6 +140,7 @@ pub fn PageBuilderBrowserAdapter(
     }
 }
 
+#[cfg(any(feature = "browser-js", test))]
 fn escape_json_for_script(json: &str) -> String {
     json.replace('&', "\\u0026")
         .replace('<', "\\u003c")

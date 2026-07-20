@@ -1,14 +1,34 @@
+//! Verifies RBAC repair against its minimal platform and module-owned schema.
+
 use rustok_api::Permission;
-use rustok_core::UserRole;
-use rustok_migrations::Migrator;
+use rustok_core::{MigrationSource, UserRole};
 use rustok_rbac::{
-    apply_system_role_repair_in_transaction, plan_system_role_repair,
-    read_permission_invalidation_generation, reserve_permission_invalidation_generation,
-    RbacRoleAssignmentDbWriter, RbacSystemRoleRepairError,
+    RbacRoleAssignmentDbWriter, RbacSystemRoleRepairError, apply_system_role_repair_in_transaction,
+    plan_system_role_repair, read_permission_invalidation_generation,
+    reserve_permission_invalidation_generation,
 };
 use rustok_test_utils::db::setup_test_db_with_migrations;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
+use sea_orm_migration::sea_orm::{
+    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
+};
+use sea_orm_migration::{MigrationTrait, MigratorTrait};
 use uuid::Uuid;
+
+struct RbacSystemRoleTestMigrator;
+
+#[async_trait::async_trait]
+impl MigratorTrait for RbacSystemRoleTestMigrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        let mut migrations: Vec<Box<dyn MigrationTrait>> = vec![
+            Box::new(super::m20250101_000001_create_tenants::Migration),
+            Box::new(super::m20250101_000002_create_users::Migration),
+            Box::new(super::m20250101_000005_create_roles_and_permissions::Migration),
+        ];
+        migrations.extend(MigrationSource::migrations(&rustok_rbac::RbacModule));
+        migrations.sort_by_key(|migration| migration.name().to_string());
+        migrations
+    }
+}
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
     db.execute(Statement::from_sql_and_values(
@@ -127,7 +147,7 @@ async fn role_count(db: &DatabaseConnection, tenant_id: Uuid) -> i64 {
 
 #[tokio::test]
 async fn dry_run_is_read_only_and_apply_repairs_permission_drift() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<RbacSystemRoleTestMigrator>().await;
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
     insert_tenant(&db, tenant_id, "repair-dry-run").await;
@@ -146,10 +166,11 @@ async fn dry_run_is_read_only_and_apply_repairs_permission_drift() {
 
     assert!(!plan.applied);
     assert!(plan.role_permission_links_removed >= 1);
-    assert!(plan
-        .affected_users
-        .iter()
-        .any(|affected| affected.tenant_id == tenant_id && affected.user_id == user_id));
+    assert!(
+        plan.affected_users
+            .iter()
+            .any(|affected| affected.tenant_id == tenant_id && affected.user_id == user_id)
+    );
     assert!(role_permission_exists(&db, manager_role_id, stale_permission_id).await);
     assert_eq!(
         read_permission_invalidation_generation(&db).await.unwrap(),
@@ -179,7 +200,7 @@ async fn dry_run_is_read_only_and_apply_repairs_permission_drift() {
 
 #[tokio::test]
 async fn global_apply_rolls_back_when_any_tenant_has_reserved_slug_collision() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<RbacSystemRoleTestMigrator>().await;
     let clean_tenant_id = Uuid::from_u128(1);
     let collision_tenant_id = Uuid::from_u128(2);
     insert_tenant(&db, clean_tenant_id, "repair-clean").await;

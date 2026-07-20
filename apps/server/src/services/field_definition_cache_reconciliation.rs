@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use flex::cache_generation::FIELD_DEFINITION_CACHE_GENERATION_TABLE;
 use futures_util::FutureExt;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, Statement, TryGetable};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, Statement};
 use tokio::task::JoinHandle;
 
 use crate::services::field_definition_cache::FieldDefinitionCache;

@@ -72,7 +72,7 @@ pub(super) async fn list_oauth_apps_native(limit: i64) -> Result<Vec<OAuthApp>, 
     {
         use leptos::prelude::expect_context;
         use rustok_api::Permission;
-        use rustok_api::{has_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{AuthContext, TenantContext, has_effective_permission};
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await

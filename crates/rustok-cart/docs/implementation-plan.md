@@ -15,6 +15,10 @@ mapping the storefront read model. Delivery grouping uses canonical
 `shipping_profile_slug + seller_id`; legacy `seller_scope` is not a fallback
 identity.
 
+The Axum guest-cart capability adapter is owner-owned in
+`rustok_cart::guest_access_http`; hosts compose it around REST/GraphQL requests
+without reimplementing token parsing, cookie emission, or task-local scope.
+
 ## FFA/FBA boundary
 
 - FFA status: `phase_b_ready`

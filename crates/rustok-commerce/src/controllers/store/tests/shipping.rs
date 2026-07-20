@@ -170,6 +170,10 @@ async fn store_shipping_options_transport_filters_incompatible_shipping_profiles
         .expect("bulky shipping option should be created");
 
     let cart_service = CartService::new(db.clone());
+    let (metadata, guest_cart_token) = rustok_cart::prepare_guest_cart_metadata(
+        None,
+        json!({ "source": "store-shipping-profile-filter" }),
+    );
     let cart = cart_service
         .create_cart_with_channel(
             tenant_id,
@@ -181,7 +185,7 @@ async fn store_shipping_options_transport_filters_incompatible_shipping_profiles
                 locale_code: Some("de".to_string()),
                 selected_shipping_option_id: None,
                 currency_code: "eur".to_string(),
-                metadata: json!({ "source": "store-shipping-profile-filter" }),
+                metadata,
             },
             Some(channel_id),
             Some("web-store".to_string()),
@@ -211,7 +215,8 @@ async fn store_shipping_options_transport_filters_incompatible_shipping_profiles
     channel.tenant_id = tenant_id;
     seed_channel_binding(&db, &channel, MODULE_SLUG, true).await;
     let app =
-        commerce_transport_router_with_context(test_app_context(db), tenant, None, Some(channel));
+        commerce_transport_router_with_context(test_app_context(db), tenant, None, Some(channel))
+            .with_guest_cart_token(guest_cart_token.expect("guest cart token should be issued"));
 
     let response = app
         .clone()
@@ -307,6 +312,10 @@ async fn store_update_cart_context_rejects_incompatible_shipping_profile_option(
         .expect("shipping option should be created");
 
     let cart_service = CartService::new(db.clone());
+    let (metadata, guest_cart_token) = rustok_cart::prepare_guest_cart_metadata(
+        None,
+        json!({ "source": "store-shipping-profile-update" }),
+    );
     let cart = cart_service
         .create_cart_with_channel(
             tenant_id,
@@ -318,7 +327,7 @@ async fn store_update_cart_context_rejects_incompatible_shipping_profile_option(
                 locale_code: Some("de".to_string()),
                 selected_shipping_option_id: None,
                 currency_code: "eur".to_string(),
-                metadata: json!({ "source": "store-shipping-profile-update" }),
+                metadata,
             },
             Some(channel_id),
             Some("web-store".to_string()),
@@ -348,7 +357,8 @@ async fn store_update_cart_context_rejects_incompatible_shipping_profile_option(
     channel.tenant_id = tenant_id;
     seed_channel_binding(&db, &channel, MODULE_SLUG, true).await;
     let app =
-        commerce_transport_router_with_context(test_app_context(db), tenant, None, Some(channel));
+        commerce_transport_router_with_context(test_app_context(db), tenant, None, Some(channel))
+            .with_guest_cart_token(guest_cart_token.expect("guest cart token should be issued"));
 
     let response = app
         .clone()

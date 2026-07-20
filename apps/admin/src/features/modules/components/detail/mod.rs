@@ -5,9 +5,9 @@ pub mod metadata;
 pub mod metadata_checklist_view;
 pub mod version_trail;
 
-use crate::entities::module::model::MarketplaceModuleVersion;
-use crate::entities::module::MarketplaceModule;
 use crate::Locale;
+use crate::entities::module::MarketplaceModule;
+use crate::entities::module::model::MarketplaceModuleVersion;
 
 pub fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
     match locale {

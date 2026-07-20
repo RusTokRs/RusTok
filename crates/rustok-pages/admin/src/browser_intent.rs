@@ -1,23 +1,23 @@
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::core;
 use crate::transport;
-use fly::{normalize_locale_tag, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD};
+use fly::{RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD, normalize_locale_tag};
 use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL};
+use rustok_page_builder::RuntimeContextExamplePolicy;
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PublishPageBuilderResult,
 };
 use rustok_page_builder::runtime_context::{
-    generate_page_builder_runtime_example, PageBuilderRuntimeExampleRequest,
+    PageBuilderRuntimeExampleRequest, generate_page_builder_runtime_example,
 };
-use rustok_page_builder::RuntimeContextExamplePolicy;
 use rustok_page_builder_admin::{
-    dispatch_browser_intent, AdminCanvasController, BrowserIntentDispatchError,
-    BrowserIntentDispatchResult, BrowserIntentEffect, InMemorySsrDraftSessionStore,
-    PageBuilderAdminFacade, PageBuilderAdminFacadeError, SsrDraftSessionError,
-    SsrDraftSessionStore,
+    AdminCanvasController, BrowserIntentDispatchError, BrowserIntentDispatchResult,
+    BrowserIntentEffect, InMemorySsrDraftSessionStore, PageBuilderAdminFacade,
+    PageBuilderAdminFacadeError, SsrDraftSessionError, SsrDraftSessionStore,
+    dispatch_browser_intent,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::sync::OnceLock;
 
 const MAX_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024;
@@ -443,10 +443,12 @@ mod tests {
             runtime_locale_from_payload(&json!({}), &json!({ "locale": "invalid locale" }),)
                 .is_err()
         );
-        assert!(runtime_locale_from_payload(
-            &json!({}),
-            &json!({ "locale": "ru", "fallback_locales": "en, bad locale" }),
-        )
-        .is_err());
+        assert!(
+            runtime_locale_from_payload(
+                &json!({}),
+                &json!({ "locale": "ru", "fallback_locales": "en, bad locale" }),
+            )
+            .is_err()
+        );
     }
 }

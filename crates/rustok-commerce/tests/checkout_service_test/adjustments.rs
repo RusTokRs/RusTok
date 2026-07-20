@@ -161,10 +161,12 @@ async fn complete_checkout_snapshots_cart_adjustments_into_order_and_payment_tot
         completed.order.adjustments[0].line_item_id,
         Some(completed.order.line_items[0].id)
     );
-    assert!(completed.order.adjustments[0]
-        .metadata
-        .get("localized_label")
-        .is_none());
+    assert!(
+        completed.order.adjustments[0]
+            .metadata
+            .get("localized_label")
+            .is_none()
+    );
     assert_eq!(
         completed.payment_collection.amount,
         Decimal::from_str("59.99").unwrap()
@@ -305,10 +307,12 @@ async fn complete_checkout_snapshots_typed_percentage_promotion_into_order() {
         completed.order.adjustments[0].metadata["scope"],
         serde_json::json!("cart")
     );
-    assert!(completed.order.adjustments[0]
-        .metadata
-        .get("display_label")
-        .is_none());
+    assert!(
+        completed.order.adjustments[0]
+            .metadata
+            .get("display_label")
+            .is_none()
+    );
     assert_eq!(
         completed.payment_collection.amount,
         Decimal::from_str("54.99").unwrap()
@@ -462,10 +466,12 @@ async fn complete_checkout_snapshots_pricing_reprice_adjustments_into_order() {
         completed.order.adjustments[0].source_id.as_deref(),
         Some("price-list-checkout")
     );
-    assert!(completed.order.adjustments[0]
-        .metadata
-        .get("display_label")
-        .is_none());
+    assert!(
+        completed.order.adjustments[0]
+            .metadata
+            .get("display_label")
+            .is_none()
+    );
     assert_eq!(
         completed.payment_collection.amount,
         Decimal::from_str("59.99").unwrap()
@@ -600,10 +606,12 @@ async fn complete_checkout_snapshots_shipping_promotion_into_order_and_payment_t
         completed.order.adjustments[0].metadata["scope"],
         serde_json::json!("shipping")
     );
-    assert!(completed.order.adjustments[0]
-        .metadata
-        .get("display_label")
-        .is_none());
+    assert!(
+        completed.order.adjustments[0]
+            .metadata
+            .get("display_label")
+            .is_none()
+    );
     assert_eq!(
         completed.order.total_amount,
         Decimal::from_str("55.00").unwrap()

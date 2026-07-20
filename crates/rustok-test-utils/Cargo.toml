@@ -11,8 +11,6 @@ async-trait.workspace = true
 chrono.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
-rustok-content = { workspace = true, optional = true }
-rustok-commerce = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, features = ["test-transport-fallback"] }
 sea-orm = { workspace = true, features = ["sqlx-sqlite"] }
 sea-orm-migration = { workspace = true, features = ["sqlx-sqlite"] }
@@ -25,11 +23,5 @@ uuid.workspace = true
 [dev-dependencies]
 tokio-test = "0.4"
 
-[features]
-default = ["content", "commerce"]
-content = ["dep:rustok-content"]
-commerce = ["dep:rustok-commerce"]
-
 [package.metadata.cargo-udeps.ignore]
-normal = ["rustok-commerce", "rustok-content"]
 development = ["tokio-test"]

@@ -1,8 +1,8 @@
 use axum::{
     body::Body,
     http::{
-        header::{CACHE_CONTROL, COOKIE, SET_COOKIE},
         HeaderMap, HeaderValue, Request, StatusCode,
+        header::{CACHE_CONTROL, COOKIE, SET_COOKIE},
     },
     middleware::Next,
     response::{IntoResponse, Response},
@@ -14,56 +14,47 @@ use axum::{
 /// accepted from a dedicated header or HttpOnly cookie, carried through a
 /// task-local request scope, and emitted only when a new guest cart is created.
 pub async fn resolve(request: Request<Body>, next: Next) -> Response {
-    #[cfg(feature = "mod-cart")]
-    {
-        let presented_token = match extract_presented_token(request.headers()) {
-            Ok(token) => token,
-            Err(message) => return (StatusCode::UNAUTHORIZED, message).into_response(),
-        };
+    let presented_token = match extract_presented_token(request.headers()) {
+        Ok(token) => token,
+        Err(message) => return (StatusCode::UNAUTHORIZED, message).into_response(),
+    };
 
-        let (mut response, issued_token) =
-            rustok_cart::with_guest_cart_request_scope(presented_token, async move {
-                let response = next.run(request).await;
-                let issued_token = rustok_cart::issued_guest_cart_token();
-                (response, issued_token)
-            })
-            .await;
+    let (mut response, issued_token) =
+        crate::with_guest_cart_request_scope(presented_token, async move {
+            let response = next.run(request).await;
+            let issued_token = crate::issued_guest_cart_token();
+            (response, issued_token)
+        })
+        .await;
 
-        if let Some(token) = issued_token {
-            if let Ok(header_value) = HeaderValue::from_str(&token) {
-                response
-                    .headers_mut()
-                    .insert(rustok_cart::GUEST_CART_TOKEN_HEADER, header_value);
-            }
-
-            let cookie = format!(
-                "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
-                rustok_cart::GUEST_CART_TOKEN_COOKIE,
-                token
-            );
-            if let Ok(cookie_value) = HeaderValue::from_str(&cookie) {
-                response.headers_mut().append(SET_COOKIE, cookie_value);
-            }
+    if let Some(token) = issued_token {
+        if let Ok(header_value) = HeaderValue::from_str(&token) {
             response
                 .headers_mut()
-                .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+                .insert(crate::GUEST_CART_TOKEN_HEADER, header_value);
         }
 
+        let cookie = format!(
+            "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
+            crate::GUEST_CART_TOKEN_COOKIE,
+            token
+        );
+        if let Ok(cookie_value) = HeaderValue::from_str(&cookie) {
+            response.headers_mut().append(SET_COOKIE, cookie_value);
+        }
         response
+            .headers_mut()
+            .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }
 
-    #[cfg(not(feature = "mod-cart"))]
-    {
-        next.run(request).await
-    }
+    response
 }
 
-#[cfg(feature = "mod-cart")]
 fn extract_presented_token(headers: &HeaderMap) -> Result<Option<String>, &'static str> {
     let header_token = headers
-        .get(rustok_cart::GUEST_CART_TOKEN_HEADER)
+        .get(crate::GUEST_CART_TOKEN_HEADER)
         .and_then(|value| value.to_str().ok())
-        .and_then(rustok_cart::normalize_presented_guest_cart_token);
+        .and_then(crate::normalize_presented_guest_cart_token);
     let cookie_token = extract_cookie_token(headers);
 
     match (header_token, cookie_token) {
@@ -76,19 +67,18 @@ fn extract_presented_token(headers: &HeaderMap) -> Result<Option<String>, &'stat
     }
 }
 
-#[cfg(feature = "mod-cart")]
 fn extract_cookie_token(headers: &HeaderMap) -> Option<String> {
     let raw = headers.get(COOKIE)?.to_str().ok()?;
     raw.split(';').find_map(|entry| {
         let (name, value) = entry.trim().split_once('=')?;
-        if name != rustok_cart::GUEST_CART_TOKEN_COOKIE {
+        if name != crate::GUEST_CART_TOKEN_COOKIE {
             return None;
         }
-        rustok_cart::normalize_presented_guest_cart_token(value)
+        crate::normalize_presented_guest_cart_token(value)
     })
 }
 
-#[cfg(all(test, feature = "mod-cart"))]
+#[cfg(test)]
 mod tests {
     use super::extract_presented_token;
     use axum::http::HeaderMap;
@@ -102,12 +92,12 @@ mod tests {
         let token = token('a');
         let mut headers = HeaderMap::new();
         headers.insert(
-            rustok_cart::GUEST_CART_TOKEN_HEADER,
+            crate::GUEST_CART_TOKEN_HEADER,
             token.parse().expect("header token"),
         );
         headers.insert(
             axum::http::header::COOKIE,
-            format!("{}={token}", rustok_cart::GUEST_CART_TOKEN_COOKIE)
+            format!("{}={token}", crate::GUEST_CART_TOKEN_COOKIE)
                 .parse()
                 .expect("cookie"),
         );
@@ -119,12 +109,12 @@ mod tests {
     fn conflicting_capabilities_fail_closed() {
         let mut headers = HeaderMap::new();
         headers.insert(
-            rustok_cart::GUEST_CART_TOKEN_HEADER,
+            crate::GUEST_CART_TOKEN_HEADER,
             token('a').parse().expect("header token"),
         );
         headers.insert(
             axum::http::header::COOKIE,
-            format!("{}={}", rustok_cart::GUEST_CART_TOKEN_COOKIE, token('b'))
+            format!("{}={}", crate::GUEST_CART_TOKEN_COOKIE, token('b'))
                 .parse()
                 .expect("cookie"),
         );

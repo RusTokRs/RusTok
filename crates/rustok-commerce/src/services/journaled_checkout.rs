@@ -1,4 +1,4 @@
-use rustok_cart::{in_process_cart_checkout_port, AtomicCartCheckoutHandle};
+use rustok_cart::{AtomicCartCheckoutHandle, in_process_cart_checkout_port};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_payment::providers::PaymentProviderRegistry;
 use std::sync::Arc;
@@ -9,8 +9,8 @@ use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse};
 
 use super::{
     CheckoutOperationError, CheckoutPlanBuilder, CheckoutService, CheckoutStagePipeline,
-    RecoveringStagedCheckoutError, RecoveringStagedCheckoutService, StagedCheckoutService,
-    DEFAULT_CHECKOUT_LEASE_SECONDS,
+    DEFAULT_CHECKOUT_LEASE_SECONDS, RecoveringStagedCheckoutError, RecoveringStagedCheckoutService,
+    StagedCheckoutService,
 };
 
 #[derive(Debug, Error)]

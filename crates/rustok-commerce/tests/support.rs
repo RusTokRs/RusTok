@@ -3,10 +3,14 @@ use rustok_cart::entities::{
     cart_tax_line,
 };
 use rustok_channel::entities::{channel, channel_module_binding};
-use rustok_commerce::entities::{shipping_profile, shipping_profile_translation};
+use rustok_commerce::entities::{
+    checkout_inventory_reservation, checkout_operation, checkout_order_plan, shipping_profile,
+    shipping_profile_translation,
+};
 use rustok_customer::entities::customer;
 use rustok_fulfillment::entities::{
-    fulfillment, fulfillment_item, shipping_option, shipping_option_translation,
+    fulfillment, fulfillment_item, provider_operation as fulfillment_provider_operation,
+    shipping_option, shipping_option_translation,
 };
 use rustok_inventory::entities::{
     inventory_item, inventory_level, reservation_item, stock_location, stock_location_translation,
@@ -15,7 +19,9 @@ use rustok_order::entities::{
     order, order_adjustment, order_change, order_line_item, order_line_item_translation,
     order_return, order_return_item, order_tax_line,
 };
-use rustok_payment::entities::{payment, payment_collection, refund};
+use rustok_payment::entities::{
+    payment, payment_collection, provider_operation as payment_provider_operation, refund_creation,
+};
 use rustok_pricing::entities::{price, price_list, price_list_translation};
 use rustok_product::entities::{
     product, product_image, product_image_translation, product_option, product_option_translation,
@@ -214,7 +220,31 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     create_entity_table(
         db,
         &builder,
-        schema.create_table_from_entity(refund::Entity),
+        schema.create_table_from_entity(refund_creation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(payment_provider_operation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(checkout_operation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(checkout_order_plan::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(checkout_inventory_reservation::Entity),
     )
     .await;
     create_entity_table(db, &builder, schema.create_table_from_entity(order::Entity)).await;
@@ -282,6 +312,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(fulfillment_item::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(fulfillment_provider_operation::Entity),
     )
     .await;
     create_entity_table(

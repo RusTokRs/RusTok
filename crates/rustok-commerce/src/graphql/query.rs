@@ -1,20 +1,20 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_api::locale_tags_match;
 use rustok_api::Permission;
+use rustok_api::locale_tags_match;
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError},
     AuthContext, RequestContext, TenantContext,
+    graphql::{GraphQLError, require_module_enabled},
 };
-use rustok_cart::{in_process_cart_storefront_port, CartStorefrontReadRequest};
-use rustok_customer::{in_process_customer_read_port, CustomerUserProjectionRequest};
+use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
+use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentService;
 use rustok_pricing::{
-    in_process_pricing_read_port, ActivePriceListProjectionRequest,
-    AdminProductPricingProjectionRequest, PricingReadPort, ResolveProductPriceRequest,
-    StorefrontProductPricingProjectionRequest,
+    ActivePriceListProjectionRequest, AdminProductPricingProjectionRequest, PricingReadPort,
+    ResolveProductPriceRequest, StorefrontProductPricingProjectionRequest,
+    in_process_pricing_read_port,
 };
 use rustok_product::services::catalog::helpers::product_channel_visibility_condition;
 use rustok_product::{CatalogService, ProductCatalogSchemaService};
@@ -28,6 +28,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::{
+    CommerceError, ShippingProfileService, StoreContextService,
     search::product_translation_title_search_condition,
     storefront_channel::{
         apply_public_channel_inventory_to_product, is_metadata_visible_for_public_channel,
@@ -37,13 +38,12 @@ use crate::{
         enrich_cart_delivery_groups, is_shipping_option_compatible_with_profiles,
         load_cart_shipping_profile_slugs, product_shipping_profile_slug,
     },
-    CommerceError, ShippingProfileService, StoreContextService,
 };
 use rustok_product::entities::{product, product_translation};
 
 use super::{
-    map_product_service_error, product_query_tenant, require_commerce_permission, types::*,
-    MODULE_SLUG, PRODUCT_MODULE_SLUG,
+    MODULE_SLUG, PRODUCT_MODULE_SLUG, map_product_service_error, product_query_tenant,
+    require_commerce_permission, types::*,
 };
 
 #[derive(Default)]

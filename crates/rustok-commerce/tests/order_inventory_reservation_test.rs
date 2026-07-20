@@ -4,15 +4,15 @@ use rustok_fulfillment::dto::{
     CreateFulfillmentInput, CreateFulfillmentItemInput, DeliverFulfillmentInput,
     FulfillmentItemQuantityInput, ShipFulfillmentInput,
 };
-use rustok_fulfillment::{migrations as fulfillment_migrations, FulfillmentService};
-use rustok_inventory::entities::{inventory_item, inventory_level, reservation_item};
+use rustok_fulfillment::{FulfillmentService, migrations as fulfillment_migrations};
 use rustok_inventory::InventoryService;
-use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
+use rustok_inventory::entities::{inventory_item, inventory_level, reservation_item};
 use rustok_order::OrderService;
+use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
+use rustok_product::CatalogService;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
 };
-use rustok_product::CatalogService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,

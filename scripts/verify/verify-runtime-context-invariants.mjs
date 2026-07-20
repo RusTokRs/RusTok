@@ -95,7 +95,7 @@ function assertChannelRequestFacts() {
   );
   assertContains(
     keyBody,
-    /locale:\s*facts\.locale\.clone\(\)/,
+    /locale:\s*facts\.locale\.as_deref\(\)\.map\(bounded_cache_component\)/,
     `${relativePath}: channel cache key must include RequestFacts.locale`,
   );
 }
@@ -104,27 +104,22 @@ function assertRouterMiddlewareOrdering() {
   const relativePath = "apps/server/src/services/app_router.rs";
   const source = readRepo(relativePath);
   const routerBody = functionBody(source, "compose_application_router");
-  const tenantChainMarker = "Axum executes layers from the bottom of this chain outward";
-  const tenantChainStart = routerBody.indexOf(tenantChainMarker);
-  if (tenantChainStart === -1) {
-    fail(`${relativePath}: missing documented tenant-bound middleware chain marker`);
-    return;
-  }
-  const tenantBoundChain = routerBody.slice(tenantChainStart);
-  const channelIndex = tenantBoundChain.indexOf("middleware::channel::resolve");
-  const authIndex = tenantBoundChain.indexOf("middleware::auth_context::resolve_optional");
-  const localeIndex = tenantBoundChain.indexOf("middleware::locale::resolve_locale");
+  const channelIndex = routerBody.lastIndexOf("middleware::channel::resolve");
+  const authIndex = routerBody.lastIndexOf("middleware::auth_context::resolve_optional");
+  const localeIndex = routerBody.lastIndexOf("middleware::locale::resolve_locale");
+  const tenantIndex = routerBody.lastIndexOf("middleware::tenant::resolve");
 
-  if (localeIndex === -1 || authIndex === -1 || channelIndex === -1) {
+  if (localeIndex === -1 || authIndex === -1 || channelIndex === -1 || tenantIndex === -1) {
     fail(`${relativePath}: expected tenant-bound locale/auth/channel middleware layers`);
     return;
   }
 
   // Axum executes layers from the bottom of the chain outward. In source order,
-  // channel must therefore remain above auth_context and auth_context above locale.
-  if (!(channelIndex < authIndex && authIndex < localeIndex)) {
+  // channel must therefore remain above auth_context, auth_context above locale,
+  // and locale above the tenant resolver that establishes the tenant-bound chain.
+  if (!(channelIndex < authIndex && authIndex < localeIndex && localeIndex < tenantIndex)) {
     fail(
-      `${relativePath}: source order must keep channel above auth_context above locale so execution order is locale -> auth_context -> channel`,
+      `${relativePath}: source order must keep channel above auth_context above locale above tenant so execution order is tenant -> locale -> auth_context -> channel`,
     );
   }
 }

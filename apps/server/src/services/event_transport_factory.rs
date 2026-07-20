@@ -214,7 +214,13 @@ pub fn spawn_outbox_relay_worker(
                     )
                     .await
                     {
-                        tracing::error!("Relay processing error: {error}");
+                        tracing::error!(
+                            kind = ?error.kind,
+                            code = %error.code,
+                            retryable = error.retryable,
+                            message = %error.message,
+                            "Relay processing error"
+                        );
                     }
                     tokio::time::sleep(interval).await;
                 }

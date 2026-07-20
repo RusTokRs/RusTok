@@ -290,5 +290,4 @@ enum ReturnCompletionCommands {
 enum OrderReturns {
     Table,
     Id,
-    TenantId,
 }

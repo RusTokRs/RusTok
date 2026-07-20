@@ -3,10 +3,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use rustok_core::EventBus;
 use rustok_core::events::{
     DomainEvent, EventDispatcher, EventEnvelope, EventHandler, HandlerResult,
 };
-use rustok_core::EventBus;
 use uuid::Uuid;
 
 #[derive(Clone, Default)]

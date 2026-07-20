@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::features::cache::model::CacheHealthResponse;
 use crate::shared::api::queries::CACHE_HEALTH_QUERY;
-use crate::shared::api::{request, ApiError};
+use crate::shared::api::{ApiError, request};
 
 #[derive(Clone, Debug, Serialize)]
 struct EmptyVariables {}

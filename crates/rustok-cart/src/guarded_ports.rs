@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
 use sea_orm::DatabaseConnection;
 
+use crate::CartResponse;
 use crate::guest_access::{
     attach_transient_guest_token, guest_cart_token_from_context, prepare_guest_cart_metadata,
     record_issued_guest_cart_token, sanitize_guest_cart_metadata, verify_guest_cart_token,
@@ -16,7 +17,6 @@ use crate::ports::{
     CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
     CartStorefrontRepriceRequest,
 };
-use crate::CartResponse;
 
 pub fn guarded_cart_storefront_port(db: DatabaseConnection) -> Arc<dyn CartStorefrontPort> {
     Arc::new(GuardedCartPort::new(
@@ -258,8 +258,8 @@ impl CartCheckoutPort for GuardedCartPort {
 #[cfg(test)]
 mod tests {
     use super::authorize_guest_cart;
-    use crate::guest_access::{guest_cart_claim, prepare_guest_cart_metadata};
     use crate::CartResponse;
+    use crate::guest_access::{guest_cart_claim, prepare_guest_cart_metadata};
     use rust_decimal::Decimal;
     use rustok_api::{PortActor, PortContext};
     use serde_json::json;
@@ -308,10 +308,12 @@ mod tests {
         );
 
         assert!(authorize_guest_cart(&base, &cart(metadata.clone())).is_err());
-        assert!(authorize_guest_cart(
-            &base.with_claim(guest_cart_claim(&token).expect("claim")),
-            &cart(metadata),
-        )
-        .is_ok());
+        assert!(
+            authorize_guest_cart(
+                &base.with_claim(guest_cart_claim(&token).expect("claim")),
+                &cart(metadata),
+            )
+            .is_ok()
+        );
     }
 }

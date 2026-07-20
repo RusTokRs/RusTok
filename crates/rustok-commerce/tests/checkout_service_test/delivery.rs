@@ -785,11 +785,12 @@ async fn complete_checkout_keeps_seller_aware_delivery_groups_for_same_shipping_
         Some(seller_b_option.id),
         1,
     )));
-    assert!(completed.fulfillments.iter().all(|item| item
-        .metadata
-        .get("delivery_group")
-        .and_then(|delivery_group| delivery_group.get("seller_scope"))
-        .is_none()));
+    assert!(completed.fulfillments.iter().all(|item| {
+        item.metadata
+            .get("delivery_group")
+            .and_then(|delivery_group| delivery_group.get("seller_scope"))
+            .is_none()
+    }));
     assert!(completed.fulfillments.iter().all(|item| {
         item.metadata
             .get("delivery_group")

@@ -1,10 +1,10 @@
 use async_graphql::{Context, Object, Result};
-use rustok_api::{graphql::require_module_enabled, Permission};
+use rustok_api::{Permission, graphql::require_module_enabled};
 use uuid::Uuid;
 
 use crate::graphql_runtime::refund_reconciliation_from_context;
 
-use super::super::{require_commerce_permission, types::GqlRefund, MODULE_SLUG};
+use super::super::{MODULE_SLUG, require_commerce_permission, types::GqlRefund};
 
 #[derive(Default)]
 pub struct CommerceReconciliationMutation;

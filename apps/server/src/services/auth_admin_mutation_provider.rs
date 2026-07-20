@@ -367,7 +367,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
     ) -> Result<(), AuthAdminMutationError> {
-        OAuthAppService::revoke_user_consent(&self.db, app_id, context.actor_id)
+        OAuthAppService::revoke_user_consent(&self.db, app_id, context.actor_id, context.tenant_id)
             .await
             .map_err(map_service_error)
     }

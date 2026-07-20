@@ -3620,15 +3620,16 @@ fn decode_object_data_capability_call(
                 .ok_or_else(|| {
                     data_capability_constraint(call, "object list limit must be between 1 and 100")
                 })?;
-            Ok(ObjectDataCapabilityCall::List {
-                page: ArtifactDataPageRequest {
-                    prefix: required_data_capability_string(call, input, "prefix")?.to_string(),
-                    after_key,
-                    limit: u32::try_from(limit).map_err(|_| {
-                        data_capability_constraint(call, "object list limit must fit u32")
-                    })?,
-                },
-            })
+            let page = ArtifactDataPageRequest {
+                prefix: required_data_capability_string(call, input, "prefix")?.to_string(),
+                after_key,
+                limit: u32::try_from(limit).map_err(|_| {
+                    data_capability_constraint(call, "object list limit must fit u32")
+                })?,
+            };
+            validate_page_request(&page)
+                .map_err(|_| data_capability_constraint(call, "object list page is invalid"))?;
+            Ok(ObjectDataCapabilityCall::List { page })
         }
         _ => Err(data_capability_constraint(
             call,
@@ -3699,15 +3700,16 @@ fn decode_data_capability_call(call: &CapabilityCall) -> SandboxResult<DataCapab
                 .ok_or_else(|| {
                     data_capability_constraint(call, "data list limit must be between 1 and 100")
                 })?;
-            Ok(DataCapabilityCall::List {
-                page: ArtifactDataPageRequest {
-                    prefix,
-                    after_key,
-                    limit: u32::try_from(limit).map_err(|_| {
-                        data_capability_constraint(call, "data list limit must fit u32")
-                    })?,
-                },
-            })
+            let page = ArtifactDataPageRequest {
+                prefix,
+                after_key,
+                limit: u32::try_from(limit).map_err(|_| {
+                    data_capability_constraint(call, "data list limit must fit u32")
+                })?,
+            };
+            validate_page_request(&page)
+                .map_err(|_| data_capability_constraint(call, "data list page is invalid"))?;
+            Ok(DataCapabilityCall::List { page })
         }
         "query_index" => {
             reject_data_capability_fields(
@@ -5157,6 +5159,43 @@ mod tests {
         assert!(decode_object_data_capability_call(&call).is_err());
     }
 
+    #[test]
+    fn sandbox_object_data_adapter_keeps_list_continuations_inside_the_prefix() {
+        let mut call = CapabilityCall {
+            execution_id: Uuid::new_v4(),
+            subject: SandboxSubject::ModuleArtifact {
+                installation_id: Uuid::new_v4(),
+                slug: "sample_module".to_string(),
+                version: "1.0.0".to_string(),
+                digest: "sha256:sample".to_string(),
+            },
+            context: CapabilityCallContext {
+                phase: ExecutionPhase::Manual,
+                tenant_id: Some(Uuid::new_v4()),
+                actor_id: None,
+                trace_id: None,
+            },
+            capability: CapabilityName::new("platform.data.objects").expect("capability name"),
+            operation: "list".to_string(),
+            input: json!({
+                "prefix": "exports/",
+                "after_name": "exports/report.json",
+                "limit": 10
+            }),
+        };
+        assert!(matches!(
+            decode_object_data_capability_call(&call),
+            Ok(ObjectDataCapabilityCall::List { .. })
+        ));
+
+        call.input = json!({
+            "prefix": "exports/",
+            "after_name": "private/report.json",
+            "limit": 10
+        });
+        assert!(decode_object_data_capability_call(&call).is_err());
+    }
+
     #[tokio::test]
     async fn upgrade_planning_reads_before_transforming_and_never_writes() {
         let completed = Arc::new(AtomicBool::new(false));
@@ -5374,7 +5413,7 @@ mod tests {
         assert_eq!(object.size_bytes, 2);
         assert_eq!(
             object.digest_sha256,
-            "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21e4d8f3f2a2fdb7fbe7a1b4d"
+            "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
         );
         assert!(object.name.contains("report"));
 

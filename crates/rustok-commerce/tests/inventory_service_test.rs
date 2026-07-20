@@ -7,15 +7,15 @@ use rustok_api::{PortActor, PortContext};
 use rustok_commerce::CommerceError;
 use rustok_inventory::entities;
 use rustok_inventory::{
-    in_process_inventory_reservation_identity_port, InventoryAvailabilityRequest,
-    InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationRequest,
-    InventoryReservationPort, InventoryService,
+    InventoryAvailabilityRequest, InventoryIdentityReservationReleaseRequest,
+    InventoryIdentityReservationRequest, InventoryReservationPort, InventoryService,
+    in_process_inventory_reservation_identity_port,
 };
+use rustok_product::CatalogService;
 use rustok_product::dto::{
     AdjustInventoryInput, CreateProductInput, CreateVariantInput, PriceInput,
     ProductTranslationInput,
 };
-use rustok_product::CatalogService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use std::str::FromStr;
@@ -657,10 +657,12 @@ async fn test_inventory_workflow() {
         .await
         .unwrap();
     assert!(!available2);
-    assert!(service
-        .check_availability(tenant_id, variant_id, 80)
-        .await
-        .unwrap());
+    assert!(
+        service
+            .check_availability(tenant_id, variant_id, 80)
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test]
@@ -851,12 +853,16 @@ async fn test_reserve_creates_reservation_and_syncs_available_shadow() {
     assert_eq!(level.stocked_quantity, 20);
     assert_eq!(level.reserved_quantity, 7);
     assert_eq!(reservation.quantity, 7);
-    assert!(service
-        .check_availability(tenant_id, variant_id, 13)
-        .await
-        .unwrap());
-    assert!(!service
-        .check_availability(tenant_id, variant_id, 14)
-        .await
-        .unwrap());
+    assert!(
+        service
+            .check_availability(tenant_id, variant_id, 13)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !service
+            .check_availability(tenant_id, variant_id, 14)
+            .await
+            .unwrap()
+    );
 }

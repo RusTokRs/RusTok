@@ -14,7 +14,7 @@ pub(super) async fn events_status_native() -> Result<EventsStatusResponse, Serve
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{has_effective_permission, AuthContext, HostSettingsSnapshot, Permission};
+        use rustok_api::{AuthContext, HostSettingsSnapshot, Permission, has_effective_permission};
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
         let auth = leptos_axum::extract::<AuthContext>()
@@ -112,7 +112,7 @@ pub(super) async fn event_settings_native() -> Result<PlatformSettingsResponse, 
     {
         use leptos::prelude::expect_context;
         use rustok_api::HostSettingsSnapshot;
-        use rustok_api::{has_effective_permission, AuthContext, Permission, TenantContext};
+        use rustok_api::{AuthContext, Permission, TenantContext, has_effective_permission};
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
         use serde_json::Value;
         let auth = leptos_axum::extract::<AuthContext>()

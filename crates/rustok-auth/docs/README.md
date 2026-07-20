@@ -31,6 +31,34 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 - typed application boundaries `UserAdminMutationPort` and `OAuthAdminPort` for admin commands, OAuth reads and consent lifecycle without module crate dependency on host transport;
 - owner-owned OAuth GraphQL query/mutation/types behind `graphql` feature; `apps/server` only implements the runtime port over the DB and connects roots into the common schema.
 
+OAuth persistence is tenant-composite rather than a set of independent foreign
+keys. PostgreSQL requires each token, authorization code, and consent to reference
+an app and optional/required user in the same tenant; invite-consumption user
+links enforce the same rule while retaining their delete-to-null audit semantics.
+SQLite uses equivalent
+insert/update and parent-tenant-move triggers for local and test profiles. The
+forward migration rejects pre-existing cross-tenant relations instead of deleting
+security evidence. Server consent reads and revocations include `tenant_id` in the
+database predicate as an independent application-layer boundary.
+
+OAuth credential tables deliberately do not use PostgreSQL tenant RLS because the
+unauthenticated OAuth protocol must resolve an application from globally unique
+`client_id` before a tenant context exists. That exception is limited to OAuth
+protocol persistence: tenant-composite database constraints, tenant-qualified
+application reads after resolution, active-app checks, grants, scopes, consent,
+user state, and session state remain fail-closed boundaries.
+
+The HTTP token endpoint calls the hardened `OAuthTokenService` directly. Authorization
+codes and refresh tokens are consumed with compare-and-set updates in the same
+transaction that persists a replacement refresh token. The former controller-local
+and `OAuthAppService` token issuance paths have been deleted, so router middleware
+ordering cannot re-enable a non-transactional replay path.
+
+The current inline `oauth_apps.name` and `oauth_apps.description` fields do not yet
+satisfy the platform multilingual storage contract. Their translation-table cutover
+is an explicit release-plan priority in this module's implementation plan; transports
+must not introduce a competing JSON or request-local fallback in the meantime.
+
 ## Responsibility Zone
 
 `rustok-auth` owns authentication, OAuth, credential, token, and user-lifecycle
@@ -55,6 +83,10 @@ The canonical `AuthConfig` assembly is performed via `build_auth_config` /
 resolution and validation. `apps/server` must not duplicate these rules, but
 only map `AuthError` to a transport-specific error type.
 
+For RS256, validation parses both PEM values and signs and verifies a probe at
+startup. Malformed or mismatched key pairs therefore fail configuration assembly
+before the server accepts traffic.
+
 ## Token Lifecycle Surface
 
 The canonical set of auth-owned token helpers:
@@ -64,6 +96,12 @@ The canonical set of auth-owned token helpers:
 - password reset tokens: `encode_password_reset_token`, `decode_password_reset_token`;
 - email verification tokens: `encode_email_verification_token`, `decode_email_verification_token`;
 - invite tokens: `encode_invite_token`, `decode_invite_token`.
+
+The server password-reset consumer accepts only the credential-bound path. The
+token subject includes a keyed fingerprint of the password hash present at
+issuance, confirmation compare-and-swaps that exact hash, and all sessions are
+revoked in the same transaction. There is no unbound reset execution fallback;
+replay after the first successful password change fails closed.
 
 Special-purpose tokens contain a strict `purpose` claim, use common JWT validation
 `issuer`/`audience` and normalize email-subject to lowercase before issuance.

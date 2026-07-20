@@ -268,7 +268,7 @@ pub fn json_payload<T: serde::Serialize>(data: T) -> serde_json::Value {
 ///
 /// ```rust
 /// use rustok_test_utils::assert_permission_scope;
-/// use rustok_api::PermissionScope;
+/// use rustok_core::PermissionScope;
 ///
 /// let scope = PermissionScope::All;
 /// assert_permission_scope!(scope, All);
@@ -363,8 +363,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_wait_for() {
-        use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
         use std::time::Duration;
 
         let flag = Arc::new(AtomicBool::new(false));

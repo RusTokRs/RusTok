@@ -4,7 +4,7 @@ pub use leptos_ui::*;
 pub mod page_header;
 pub use page_header::PageHeader;
 
-use crate::{t_string, use_i18n, Locale};
+use crate::{Locale, t_string, use_i18n};
 
 #[cfg(target_arch = "wasm32")]
 const THEME_STORAGE_KEY: &str = "rustok-admin-theme";
@@ -38,7 +38,7 @@ impl ThemeMode {
 
 #[component]
 pub fn Button(
-    #[prop(into)] on_click: Callback<web_sys::MouseEvent>,
+    #[prop(into)] on_click: Callback<()>,
     #[prop(optional)] children: Option<Children>,
     #[prop(optional, into)] class: String,
     #[prop(default = Signal::derive(|| false))] disabled: Signal<bool>,
@@ -55,7 +55,7 @@ pub fn Button(
     view! {
         <button
             class=merged_class
-            on:click=move |ev| on_click.run(ev)
+            on:click=move |_| on_click.run(())
             disabled=move || disabled.get()
         >
             {children.map(|c| c())}

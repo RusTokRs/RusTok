@@ -1,7 +1,7 @@
+use crate::AdminCanvasController;
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
-use crate::AdminCanvasController;
-use fly::{normalize_locale_tag, EditorCommand, ProjectLocalePolicy, TranslationCommand};
+use fly::{EditorCommand, ProjectLocalePolicy, TranslationCommand, normalize_locale_tag};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
@@ -312,12 +312,14 @@ mod tests {
         controller
             .dispatch(UiIntent::Undo)
             .expect("undo locale policy");
-        assert!(!controller
-            .editor()
-            .document()
-            .project
-            .extensions
-            .contains_key(FLY_LOCALES_FIELD));
+        assert!(
+            !controller
+                .editor()
+                .document()
+                .project
+                .extensions
+                .contains_key(FLY_LOCALES_FIELD)
+        );
     }
 
     #[test]
@@ -345,11 +347,13 @@ mod tests {
             .expect_err("missing required locale must block the transaction");
         assert_eq!(controller.editor().document().hash(), before);
         assert_eq!(controller.editor().history().undo_len(), 0);
-        assert!(!controller
-            .editor()
-            .document()
-            .project
-            .extensions
-            .contains_key(FLY_LOCALES_FIELD));
+        assert!(
+            !controller
+                .editor()
+                .document()
+                .project
+                .extensions
+                .contains_key(FLY_LOCALES_FIELD)
+        );
     }
 }

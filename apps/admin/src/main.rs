@@ -12,32 +12,26 @@
 #[tokio::main]
 async fn main() {
     use axum::{
+        Json, Router,
         extract::Path,
-        http::{header::AUTHORIZATION, HeaderMap, StatusCode},
+        http::{HeaderMap, StatusCode, header::AUTHORIZATION},
         middleware,
         routing::{get, post},
-        Json, Router,
     };
     use leptos::logging::log;
     use leptos::prelude::*;
-    use leptos_auth::{provide_server_auth_snapshot, AuthError};
-    use leptos_axum::{generate_route_list, LeptosRoutes};
+    use leptos_auth::{AuthError, provide_server_auth_snapshot};
+    use leptos_axum::{LeptosRoutes, generate_route_list};
     use rustok_admin::app::{
-        admin_security_headers,
-        auth_ssr::auth_snapshot_from_headers,
-        request_auth_snapshot,
-        request_csp_nonce,
-        shell,
-        validate_admin_security_profile,
-        App,
+        App, admin_security_headers, auth_ssr::auth_snapshot_from_headers, request_auth_snapshot,
+        request_csp_nonce, shell, validate_admin_security_profile,
     };
     use rustok_pages_admin::{
-        dispatch_pages_browser_intent_with_capabilities,
-        pages_editor_capability_policy_for_role, BrowserIntentEnvelope,
-        PagesBrowserIntentAccessError, PagesBrowserIntentProblem, PagesBrowserIntentResponse,
-        PagesBuilderSaveSnapshot,
+        BrowserIntentEnvelope, PagesBrowserIntentAccessError, PagesBrowserIntentProblem,
+        PagesBrowserIntentResponse, PagesBuilderSaveSnapshot,
+        dispatch_pages_browser_intent_with_capabilities, pages_editor_capability_policy_for_role,
     };
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     async fn page_builder_intent(
         Path(page_id): Path<String>,
@@ -56,12 +50,7 @@ async fn main() {
             })?;
         let tenant_slug = header_value(&headers, "x-tenant-slug")
             .or_else(|| auth.session.as_ref().map(|session| session.tenant.clone()))
-            .ok_or_else(|| {
-                auth_error(
-                    StatusCode::BAD_REQUEST,
-                    "Page Builder tenant is missing",
-                )
-            })?;
+            .ok_or_else(|| auth_error(StatusCode::BAD_REQUEST, "Page Builder tenant is missing"))?;
         let verified_user =
             leptos_auth::api::fetch_current_user(token.clone(), tenant_slug.clone())
                 .await
@@ -80,14 +69,10 @@ async fn main() {
             page_id,
             default_locale,
         };
-        dispatch_pages_browser_intent_with_capabilities(
-            snapshot,
-            envelope,
-            editor_capabilities,
-        )
-        .await
-        .map(Json)
-        .map_err(page_builder_error)
+        dispatch_pages_browser_intent_with_capabilities(snapshot, envelope, editor_capabilities)
+            .await
+            .map(Json)
+            .map_err(page_builder_error)
     }
 
     fn bearer_token(headers: &HeaderMap) -> Option<String> {
@@ -124,10 +109,7 @@ async fn main() {
         auth_error(status, error.to_string())
     }
 
-    fn auth_error(
-        status: StatusCode,
-        message: impl Into<String>,
-    ) -> (StatusCode, Json<Value>) {
+    fn auth_error(status: StatusCode, message: impl Into<String>) -> (StatusCode, Json<Value>) {
         (
             status,
             Json(json!({
@@ -139,8 +121,8 @@ async fn main() {
 
     fn page_builder_error(error: PagesBrowserIntentAccessError) -> (StatusCode, Json<Value>) {
         let problem = PagesBrowserIntentProblem::from(&error);
-        let status = StatusCode::from_u16(problem.status)
-            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let status =
+            StatusCode::from_u16(problem.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         match serde_json::to_value(problem) {
             Ok(payload) => (status, Json(payload)),
             Err(serialization_error) => auth_error(

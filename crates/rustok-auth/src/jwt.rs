@@ -323,10 +323,7 @@ fn strict_jwt_validation(config: &AuthConfig) -> Validation {
 // ─── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const TEST_RSA_PRIVATE_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
+pub(crate) const TEST_RSA_PRIVATE_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDdua49SRdQT5tH
 privGhGOztfH1Tor39Zq1fm+oM2v9DksP3GLsllHP8UklUPWQbZTMtsJyoPlPqjH
 UDcBMTyGkiAHvIDEgRz741z6uOrJkZNH2wyV7EFjWhdaDcNausVTof5nOyOXOZLQ
@@ -355,7 +352,8 @@ BR1yuIKlL4tKQxmoOx3+TfCbRAOwSfdvsxzIfFBrm1aavh/7Y5TNOzDnYlfD38S6
 t18YRhvA80STyqQJWI3Tg7sg
 -----END PRIVATE KEY-----"#;
 
-    const TEST_RSA_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
+#[cfg(test)]
+pub(crate) const TEST_RSA_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3bmuPUkXUE+bR6a4rxoR
 js7Xx9U6K9/WatX5vqDNr/Q5LD9xi7JZRz/FJJVD1kG2UzLbCcqD5T6ox1A3ATE8
 hpIgB7yAxIEc++Nc+rjqyZGTR9sMlexBY1oXWg3DWrrFU6H+ZzsjlzmS0OmeVgYO
@@ -364,6 +362,10 @@ Gge+WLP3w/bSfF7udScp9xLXMpwy21x3MwTU7xWpF6NZjEJxqM5HpTcCiJiU9PB6
 DeAkc1s1IXf+9scJki1G2paZmWNWQVegZdoG7ckHkDjn7Knjx6Vm1HDUstQxquxo
 xwIDAQAB
 -----END PUBLIC KEY-----"#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 
     fn test_config() -> AuthConfig {
         AuthConfig {

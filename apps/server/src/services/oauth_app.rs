@@ -1,12 +1,9 @@
 //! OAuth App Service — CRUD operations and credential management
 
-use crate::auth::{self, AuthConfig};
-use crate::context::infer_user_role_from_permissions;
+use crate::auth;
 use crate::error::{Error, Result};
 use crate::models::oauth_apps::{self, ActiveModel as OAuthAppActiveModel, Entity as OAuthApps};
-use crate::models::oauth_authorization_codes::{
-    ActiveModel as OAuthCodeActiveModel, Entity as OAuthCodes,
-};
+use crate::models::oauth_authorization_codes::ActiveModel as OAuthCodeActiveModel;
 use crate::models::oauth_consents::{
     ActiveModel as OAuthConsentActiveModel, Entity as OAuthConsents,
 };
@@ -17,7 +14,10 @@ use reqwest::Url;
 use rustok_api::context::scope_matches;
 use rustok_api::Permission;
 use rustok_core::{Rbac, UserRole};
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
+    TransactionTrait,
+};
 use std::str::FromStr;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
@@ -232,8 +232,9 @@ impl OAuthAppService {
 
     /// Revoke an app — deactivate and revoke all its tokens
     pub async fn revoke_app(db: &DatabaseConnection, app_id: Uuid) -> Result<oauth_apps::Model> {
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
         let app = OAuthApps::find_by_id(app_id)
-            .one(db)
+            .one(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?
             .ok_or_else(|| Error::NotFound)?;
@@ -254,7 +255,7 @@ impl OAuthAppService {
         active.updated_at = Set(now.into());
 
         let updated = active
-            .update(db)
+            .update(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
 
@@ -270,9 +271,11 @@ impl OAuthAppService {
                     .add(oauth_tokens::Column::AppId.eq(app_id))
                     .add(oauth_tokens::Column::RevokedAt.is_null()),
             )
-            .exec(db)
+            .exec(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
+
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
 
         Ok(updated)
     }
@@ -280,45 +283,6 @@ impl OAuthAppService {
     /// Verify a client_secret against the stored hash
     pub fn verify_client_secret(secret: &str, hash: &str) -> Result<bool> {
         auth::verify_password(secret, hash)
-    }
-
-    /// Issue a client_credentials access token for an app
-    pub fn issue_client_credentials_token(
-        app: &oauth_apps::Model,
-        auth_config: &AuthConfig,
-        requested_scopes: &[String],
-    ) -> Result<(String, u64)> {
-        // Validate requested scopes are within allowed scopes
-        let allowed_scopes = app.scopes_list();
-        let granted_scopes = if requested_scopes.is_empty() {
-            allowed_scopes.clone()
-        } else {
-            requested_scopes
-                .iter()
-                .filter(|s| scope_matches(&allowed_scopes, s))
-                .cloned()
-                .collect()
-        };
-
-        // Service tokens get 1 hour TTL
-        let expires_in = 3600u64;
-        let granted_permissions = app
-            .parsed_granted_permissions()
-            .map_err(Error::BadRequest)?;
-        let inferred_role = infer_user_role_from_permissions(&granted_permissions);
-
-        let token = auth::encode_oauth_access_token(
-            auth_config,
-            app.id,
-            app.tenant_id,
-            inferred_role,
-            app.client_id,
-            &granted_scopes,
-            "client_credentials",
-            expires_in,
-        )?;
-
-        Ok((token, expires_in))
     }
 
     /// Update last_used_at for an app
@@ -383,60 +347,6 @@ impl OAuthAppService {
         Ok(code)
     }
 
-    /// Exchange an authorization code for access/refresh tokens
-    pub async fn exchange_authorization_code(
-        db: &DatabaseConnection,
-        app: &oauth_apps::Model,
-        auth_config: &AuthConfig,
-        code: &str,
-        redirect_uri: &str,
-        code_verifier: &str,
-    ) -> Result<(String, String, u64)> {
-        // Hash the input code
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(code.as_bytes());
-        let code_hash = hex::encode(hasher.finalize());
-
-        // Find code in DB
-        let auth_code = OAuthCodes::find_by_hash(db, &code_hash)
-            .await
-            .map_err(|_| Error::InternalServerError)?
-            .ok_or_else(|| Error::Unauthorized("Invalid or expired code".into()))?;
-
-        // Validations
-        if !auth_code.is_active() {
-            return Err(Error::Unauthorized(
-                "Code is expired or already used".into(),
-            ));
-        }
-        if auth_code.app_id != app.id {
-            return Err(Error::Unauthorized(
-                "Code belongs to a different app".into(),
-            ));
-        }
-        if auth_code.redirect_uri != redirect_uri {
-            return Err(Error::Unauthorized("Redirect URI mismatch".into()));
-        }
-
-        // Validate PKCE
-        if !Self::verify_pkce(&auth_code.code_challenge, code_verifier) {
-            return Err(Error::Unauthorized("PKCE code verifier is invalid".into()));
-        }
-
-        // Mark code as used
-        let mut active: OAuthCodeActiveModel = auth_code.clone().into();
-        active.used_at = Set(Some(Utc::now().into()));
-        active
-            .update(db)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
-
-        // Issue tokens
-        let scopes = auth_code.scopes_list();
-        Self::issue_authorization_token_pair(db, app, auth_config, auth_code.user_id, &scopes).await
-    }
-
     /// Verify a PKCE code_verifier against the stored code_challenge
     /// code_challenge = BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))
     pub fn verify_pkce(code_challenge: &str, code_verifier: &str) -> bool {
@@ -454,108 +364,6 @@ impl OAuthAppService {
             .as_bytes()
             .ct_eq(code_challenge.as_bytes())
             .into()
-    }
-
-    /// Issue an access token and a refresh token for authorization_code flow
-    pub async fn issue_authorization_token_pair(
-        db: &DatabaseConnection,
-        app: &oauth_apps::Model,
-        auth_config: &AuthConfig,
-        user_id: Uuid,
-        granted_scopes: &[String],
-    ) -> Result<(String, String, u64)> {
-        // User tokens get 15 min TTL (standard in our system)
-        let expires_in = 900u64;
-
-        // Note: For user context via OAuth, we need to embed the real user_id.
-        // The token needs to look like a normal user token but with `client_id` set.
-        let access_token = crate::auth::encode_oauth_access_token(
-            auth_config,
-            user_id,
-            app.tenant_id,
-            crate::context::infer_user_role_from_permissions(
-                &crate::services::rbac_service::RbacService::get_user_permissions(
-                    db,
-                    &app.tenant_id,
-                    &user_id,
-                )
-                .await
-                .map_err(|_| Error::InternalServerError)?,
-            ),
-            app.client_id,
-            granted_scopes,
-            "authorization_code",
-            expires_in,
-        )?;
-
-        // Generate refresh token
-        let refresh_token_plain = auth::generate_refresh_token();
-
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(refresh_token_plain.as_bytes());
-        let token_hash = hex::encode(hasher.finalize());
-
-        crate::models::oauth_tokens::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            app_id: Set(app.id),
-            user_id: Set(Some(user_id)),
-            tenant_id: Set(app.tenant_id),
-            token_hash: Set(token_hash),
-            grant_type: Set("authorization_code".to_string()),
-            scopes: Set(
-                serde_json::to_value(granted_scopes).map_err(|_| Error::InternalServerError)?
-            ),
-            // 30 days validity for refresh token
-            expires_at: Set((chrono::Utc::now() + chrono::Duration::days(30)).into()),
-            revoked_at: Set(None),
-            last_used_at: Set(None),
-            created_at: Set(chrono::Utc::now().into()),
-            updated_at: Set(chrono::Utc::now().into()),
-        }
-        .insert(db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-
-        Ok((access_token, refresh_token_plain, expires_in))
-    }
-
-    /// Refresh an access token using a refresh token
-    pub async fn refresh_access_token(
-        db: &DatabaseConnection,
-        app: &oauth_apps::Model,
-        auth_config: &AuthConfig,
-        refresh_token: &str,
-    ) -> Result<(String, String, u64)> {
-        // Hash the input token
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(refresh_token.as_bytes());
-        let token_hash = hex::encode(hasher.finalize());
-
-        // Find token in DB
-        let token_model = OAuthTokens::find_active_by_hash(db, &token_hash, app.id)
-            .await
-            .map_err(|_| Error::InternalServerError)?
-            .ok_or_else(|| Error::Unauthorized("Invalid or expired refresh token".into()))?;
-
-        // Extract required fields before doing anything
-        let user_id = token_model
-            .user_id
-            .ok_or_else(|| Error::Unauthorized("Refresh token has no associated user".into()))?;
-        let scopes = token_model.scopes_list();
-
-        // Rotate the token (revoke the old one)
-        let mut active: crate::models::oauth_tokens::ActiveModel = token_model.into();
-        active.revoked_at = Set(Some(Utc::now().into()));
-        active.updated_at = Set(Utc::now().into());
-        active
-            .update(db)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
-
-        // Issue new token pair
-        Self::issue_authorization_token_pair(db, app, auth_config, user_id, &scopes).await
     }
 
     /// Revoke a token by its hash (RFC 7009).
@@ -588,9 +396,10 @@ impl OAuthAppService {
         db: &DatabaseConnection,
         app_id: Uuid,
         user_id: Uuid,
+        tenant_id: Uuid,
         requested_scopes: &[String],
     ) -> Result<bool> {
-        let consent = OAuthConsents::find_active_consent(db, app_id, user_id)
+        let consent = OAuthConsents::find_active_consent(db, app_id, user_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?;
 
@@ -616,7 +425,7 @@ impl OAuthAppService {
         tenant_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<()> {
-        let existing = OAuthConsents::find_active_consent(db, app_id, user_id)
+        let existing = OAuthConsents::find_active_consent(db, app_id, user_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?;
 
@@ -663,8 +472,10 @@ impl OAuthAppService {
         db: &DatabaseConnection,
         app_id: Uuid,
         user_id: Uuid,
+        tenant_id: Uuid,
     ) -> Result<()> {
-        let consent = OAuthConsents::find_active_consent(db, app_id, user_id)
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        let consent = OAuthConsents::find_active_consent(&tx, app_id, user_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?;
 
@@ -674,7 +485,7 @@ impl OAuthAppService {
             let mut active: OAuthConsentActiveModel = c.into();
             active.revoked_at = Set(Some(now.into()));
             active
-                .update(db)
+                .update(&tx)
                 .await
                 .map_err(|_| Error::InternalServerError)?;
         }
@@ -690,11 +501,14 @@ impl OAuthAppService {
                 sea_orm::Condition::all()
                     .add(oauth_tokens::Column::AppId.eq(app_id))
                     .add(oauth_tokens::Column::UserId.eq(user_id))
+                    .add(oauth_tokens::Column::TenantId.eq(tenant_id))
                     .add(oauth_tokens::Column::RevokedAt.is_null()),
             )
-            .exec(db)
+            .exec(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
+
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
 
         Ok(())
     }
@@ -1845,46 +1659,6 @@ mod tests {
         // Our implementation issues 1-hour tokens for client_credentials
         let expires_in = 3600u64;
         assert_eq!(expires_in, 3600, "client_credentials TTL should be 1 hour");
-    }
-
-    #[test]
-    fn client_credentials_token_claim_uses_role_inferred_from_granted_permissions() {
-        let auth_config = AuthConfig::new("oauth-app-test-secret-with-sufficient-length".into())
-            .with_expiration(3600, 3600)
-            .with_issuer("rustok")
-            .with_audience("rustok-admin");
-        let app = oauth_apps::Model {
-            id: Uuid::new_v4(),
-            tenant_id: Uuid::new_v4(),
-            name: "Admin bot".to_string(),
-            slug: "admin-bot".to_string(),
-            description: None,
-            app_type: "service".to_string(),
-            icon_url: None,
-            client_id: Uuid::new_v4(),
-            client_secret_hash: Some("hash".to_string()),
-            redirect_uris: serde_json::json!([]),
-            scopes: serde_json::json!(["admin:*"]),
-            grant_types: serde_json::json!(["client_credentials"]),
-            granted_permissions: serde_json::to_value(role_permissions(UserRole::Admin))
-                .expect("serialize admin permissions"),
-            manifest_ref: None,
-            auto_created: false,
-            is_active: true,
-            revoked_at: None,
-            last_used_at: None,
-            metadata: serde_json::json!({}),
-            created_at: Utc::now().into(),
-            updated_at: Utc::now().into(),
-        };
-
-        let (token, expires_in) =
-            OAuthAppService::issue_client_credentials_token(&app, &auth_config, &[])
-                .expect("issue token");
-        let claims = crate::auth::decode_access_token(&auth_config, &token).expect("decode token");
-
-        assert_eq!(expires_in, 3600);
-        assert_eq!(claims.role, UserRole::Admin);
     }
 
     #[test]

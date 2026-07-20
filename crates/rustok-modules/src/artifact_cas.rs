@@ -304,9 +304,11 @@ mod tests {
             store.published_digests().await.expect("list published"),
             vec![digest]
         );
-        tokio::fs::remove_dir_all(directory)
-            .await
-            .expect("remove test storage");
+        if directory.exists() {
+            tokio::fs::remove_dir_all(directory)
+                .await
+                .expect("remove test storage");
+        }
     }
 
     #[tokio::test]
@@ -325,8 +327,10 @@ mod tests {
             error,
             ModuleInstallationError::PayloadDigestMismatch { .. }
         ));
-        tokio::fs::remove_dir_all(directory)
-            .await
-            .expect("remove test storage");
+        if directory.exists() {
+            tokio::fs::remove_dir_all(directory)
+                .await
+                .expect("remove test storage");
+        }
     }
 }

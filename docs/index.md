@@ -61,6 +61,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [MCP and Owner-owned Management GraphQL Documentation](../crates/rustok-mcp/docs/README.md)
 - [AI Capability and Owner-owned GraphQL Documentation](../crates/rustok-ai/docs/README.md) - includes provider-neutral RAG ingestion and the Athanor-owned data-plane boundary.
 - [Content and Owner-owned Dashboard Analytics Documentation](../crates/rustok-content/docs/README.md)
+- [Cart Ownership and Guest Capability Adapter Documentation](../crates/rustok-cart/docs/README.md)
 - [Media and Owner-owned GraphQL Documentation](../crates/rustok-media/docs/README.md)
 - [Order and Owner-owned Dashboard Analytics Documentation](../crates/rustok-order/docs/README.md)
 - [Flex and Manifest-composed Owner-owned GraphQL Documentation](../crates/flex/docs/README.md)
@@ -153,7 +154,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [OpenAPI/GraphQL Reference Artifacts Verification](../scripts/verify/verify-reference-artifacts.mjs)
 - [Flex Multilingual Contract Verification](../scripts/verify/verify-flex-multilingual-contract.mjs)
 - [Flex Standalone Contract Guardrails Verification](../scripts/verify/verify-flex-standalone-contract.mjs)
-- [Consolidated Verification Plan](./verification/PLATFORM_VERIFICATION_PLAN.md)
+- [Consolidated Cyclic Verification Plan](./verification/PLATFORM_VERIFICATION_PLAN.md) - resumable Core-modules-first pre-release sweep with a resettable cycle cursor and local implementation-plan handoffs; `rustok-core` is tracked separately as a foundation crate.
 - [Foundation Layer Verification](./verification/platform-foundation-verification-plan.md)
 - [API Surfaces Verification](./verification/platform-api-surfaces-verification-plan.md)
 - [Frontend Surfaces Verification](./verification/platform-frontend-surfaces-verification-plan.md)

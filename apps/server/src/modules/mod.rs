@@ -1,6 +1,6 @@
 mod manifest;
 
-pub(crate) use manifest::module_setting_shape_value;
+pub(crate) use manifest::{map_module_settings_validation_error, module_setting_shape_value};
 pub use manifest::{
     validate_registry_vs_manifest, CatalogManifestModule, CatalogModuleVersion,
     DeploymentSurfaceContract, InstalledManifestModule, ManifestDiff, ManifestError,

@@ -60,7 +60,8 @@ implementation plan.
 - Persist requested/resolved locale metadata on AI sessions and runs.
 - Treat admin locale fields as optional overrides; when omitted, AI runtime falls back to the
   effective request locale first, then tenant default locale, then platform fallback.
-- Support direct Alloy Script Assist jobs (`list_scripts`, `get_script`, `validate_script`, `run_script`).
+- Support direct Alloy Script Assist jobs (`list_scripts`, `get_script`, `validate_script`, `run_script`)
+  against the canonical multi-file Alloy workspace contract.
 - Support direct media image generation jobs that persist assets through `rustok-media`.
 - Support direct localized product-copy jobs that persist translations through `rustok-commerce` /
   `CatalogService`.

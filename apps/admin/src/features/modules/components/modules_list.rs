@@ -19,7 +19,7 @@ use leptos_router::hooks::{use_navigate, use_query_map};
 use leptos_use::use_interval_fn;
 use std::collections::{HashMap, HashSet};
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::{closure::Closure, JsCast};
+use wasm_bindgen::{JsCast, closure::Closure};
 #[cfg(target_arch = "wasm32")]
 use web_sys::{CloseEvent, ErrorEvent, Event, MessageEvent, WebSocket};
 

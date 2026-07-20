@@ -5,11 +5,11 @@ use thiserror::Error;
 use uuid::Uuid;
 use validator::Validate;
 
+use rustok_fulfillment::FulfillmentService;
 use rustok_fulfillment::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderRegistry,
     MANUAL_FULFILLMENT_PROVIDER_ID,
 };
-use rustok_fulfillment::FulfillmentService;
 
 use crate::{
     dto::{CreateFulfillmentInput, FulfillmentResponse, ShippingOptionResponse},

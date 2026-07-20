@@ -4,16 +4,14 @@ use crate::entities::workflow::{WorkflowDetail, WorkflowExecution, WorkflowSumma
 use crate::features::workflow::model::{
     CreateStepInput, CreateWorkflowInput, WorkflowTemplateDto, WorkflowVersionSummaryDto,
 };
-use crate::shared::api::{request, ApiError};
+use crate::shared::api::{ApiError, request};
 
 const WORKFLOWS_QUERY: &str =
     "query Workflows { workflows { id tenantId name status failureCount createdAt updatedAt } }";
 
-const WORKFLOW_QUERY: &str =
-    "query Workflow($id: UUID!) { workflow(id: $id) { id tenantId name description status triggerConfig createdBy createdAt updatedAt failureCount autoDisabledAt steps { id workflowId position stepType config onError timeoutMs } } }";
+const WORKFLOW_QUERY: &str = "query Workflow($id: UUID!) { workflow(id: $id) { id tenantId name description status triggerConfig createdBy createdAt updatedAt failureCount autoDisabledAt steps { id workflowId position stepType config onError timeoutMs } } }";
 
-const WORKFLOW_EXECUTIONS_QUERY: &str =
-    "query WorkflowExecutions($workflowId: UUID!) { workflowExecutions(workflowId: $workflowId) { id workflowId status error startedAt completedAt stepExecutions { id stepId status error startedAt completedAt } } }";
+const WORKFLOW_EXECUTIONS_QUERY: &str = "query WorkflowExecutions($workflowId: UUID!) { workflowExecutions(workflowId: $workflowId) { id workflowId status error startedAt completedAt stepExecutions { id stepId status error startedAt completedAt } } }";
 
 const CREATE_WORKFLOW_MUTATION: &str =
     "mutation CreateWorkflow($input: GqlCreateWorkflowInput!) { createWorkflow(input: $input) }";
@@ -27,11 +25,9 @@ const ACTIVATE_WORKFLOW_MUTATION: &str =
 const PAUSE_WORKFLOW_MUTATION: &str =
     "mutation PauseWorkflow($id: UUID!) { pauseWorkflow(id: $id) }";
 
-const ADD_STEP_MUTATION: &str =
-    "mutation AddWorkflowStep($workflowId: UUID!, $input: GqlCreateStepInput!) { addWorkflowStep(workflowId: $workflowId, input: $input) }";
+const ADD_STEP_MUTATION: &str = "mutation AddWorkflowStep($workflowId: UUID!, $input: GqlCreateStepInput!) { addWorkflowStep(workflowId: $workflowId, input: $input) }";
 
-const DELETE_STEP_MUTATION: &str =
-    "mutation DeleteWorkflowStep($workflowId: UUID!, $stepId: UUID!) { deleteWorkflowStep(workflowId: $workflowId, stepId: $stepId) }";
+const DELETE_STEP_MUTATION: &str = "mutation DeleteWorkflowStep($workflowId: UUID!, $stepId: UUID!) { deleteWorkflowStep(workflowId: $workflowId, stepId: $stepId) }";
 
 const WORKFLOW_TEMPLATES_QUERY: &str =
     "query WorkflowTemplates { workflowTemplates { id name description category triggerConfig } }";

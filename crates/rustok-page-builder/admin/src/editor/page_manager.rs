@@ -1,6 +1,6 @@
 use crate::editor::{AdminEditorRuntime, CapabilityFieldset};
 use crate::i18n::t;
-use fly::{blank_page, normalize_slug, EditorCommand, PageCommand, PageMetadata, PagePatch};
+use fly::{EditorCommand, PageCommand, PageMetadata, PagePatch, blank_page, normalize_slug};
 use fly_ui::{EditorCapability, UiIntent};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;

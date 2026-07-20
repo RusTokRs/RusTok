@@ -1,6 +1,6 @@
-use axum::http::{request::Parts, HeaderMap};
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use axum::http::{HeaderMap, request::Parts};
 use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use leptos::prelude::*;
 use leptos_auth::{AuthSession, AuthUser, ServerAuthSnapshot};
 use rustok_web::CspNonce;
@@ -176,6 +176,9 @@ mod tests {
             axum::http::header::COOKIE,
             format!("{ADMIN_SESSION_COOKIE}=invalid").parse().unwrap(),
         );
-        assert_eq!(auth_snapshot_from_headers(&headers), ServerAuthSnapshot::default());
+        assert_eq!(
+            auth_snapshot_from_headers(&headers),
+            ServerAuthSnapshot::default()
+        );
     }
 }

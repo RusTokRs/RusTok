@@ -35,7 +35,6 @@ pub type PostOrderOrchestrationResult<T> = Result<T, PostOrderOrchestrationError
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateReturnDecisionInput {
-    #[serde(flatten)]
     pub return_request: CreateOrderReturnInput,
     pub decision: ReturnDecisionInput,
 }
@@ -583,7 +582,7 @@ fn decimal_from_json_value(value: &Value, field: &str) -> PostOrderOrchestration
         _ => {
             return Err(PostOrderOrchestrationError::Validation(format!(
                 "{field} must be a decimal string or JSON number"
-            )))
+            )));
         }
     };
     text.parse::<Decimal>().map_err(|error| {

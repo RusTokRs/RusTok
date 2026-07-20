@@ -5,7 +5,7 @@ mod types;
 use async_graphql::{Context, ErrorExtensions, FieldError, Result};
 use rustok_api::Permission;
 use rustok_api::{
-    graphql::GraphQLError, has_any_effective_permission, AuthContext, RequestContext, TenantContext,
+    AuthContext, RequestContext, TenantContext, graphql::GraphQLError, has_any_effective_permission,
 };
 use sea_orm::DatabaseConnection;
 

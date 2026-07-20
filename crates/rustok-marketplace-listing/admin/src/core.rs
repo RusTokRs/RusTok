@@ -17,9 +17,7 @@ impl MarketplaceListingAdminTransportProfile {
     }
 }
 
-pub fn selected_transport_profile(
-    value: Option<&str>,
-) -> MarketplaceListingAdminTransportProfile {
+pub fn selected_transport_profile(value: Option<&str>) -> MarketplaceListingAdminTransportProfile {
     match normalize_ui_text(value.unwrap_or_default())
         .unwrap_or_default()
         .to_ascii_lowercase()
@@ -52,8 +50,8 @@ pub fn build_marketplace_listing_admin_shell(
             title: "Marketplace listings".to_string(),
             subtitle: "Manage publication, commercial references, and listing history".to_string(),
             empty_state: "Listing transport is not mounted in this host yet".to_string(),
-            legacy_attribution_label:
-                "Imported record: original operator and locale are unknown".to_string(),
+            legacy_attribution_label: "Imported record: original operator and locale are unknown"
+                .to_string(),
             transport_profile: profile.as_str().to_string(),
         }
     }

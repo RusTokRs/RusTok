@@ -1,6 +1,6 @@
 use chrono::Utc;
-use sea_orm::sea_query::Expr;
 use sea_orm::Condition;
+use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Value,
@@ -15,6 +15,7 @@ use rustok_core::generate_id;
 use rustok_api::normalize_locale_tag;
 
 use crate::{
+    CommerceError, CommerceResult,
     dto::{
         CreateShippingProfileInput, ListShippingProfilesInput, ShippingProfileResponse,
         ShippingProfileTranslationInput, ShippingProfileTranslationResponse,
@@ -22,7 +23,6 @@ use crate::{
     },
     entities::{shipping_profile, shipping_profile_translation},
     storefront_shipping::normalize_shipping_profile_slug,
-    CommerceError, CommerceResult,
 };
 
 pub struct ShippingProfileService {

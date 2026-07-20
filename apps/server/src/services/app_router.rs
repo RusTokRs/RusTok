@@ -303,7 +303,7 @@ pub fn compose_application_router(
     .layer(Extension(runtime.registry))
     .layer(Extension(runtime.graphql_schema))
     .layer(axum_middleware::from_fn(
-        middleware::guest_cart_access::resolve,
+        rustok_cart::guest_access_http::resolve,
     ))
     .layer(axum_middleware::from_fn_with_state(
         middleware_runtime_ctx.clone(),
@@ -316,10 +316,6 @@ pub fn compose_application_router(
     .layer(axum_middleware::from_fn_with_state(
         middleware_runtime_ctx.clone(),
         middleware::channel::resolve,
-    ))
-    .layer(axum_middleware::from_fn_with_state(
-        auth_runtime.clone(),
-        middleware::oauth_token_guard::validate,
     ))
     .layer(axum_middleware::from_fn_with_state(
         auth_runtime.clone(),

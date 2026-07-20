@@ -1537,9 +1537,11 @@ async fn admin_graphql_preview_cart_promotion_rejects_missing_line_item_target()
         .await;
 
     assert_eq!(response.errors.len(), 1);
-    assert!(response.errors[0]
-        .message
-        .contains("line_item_id is required for line_item scope"));
+    assert!(
+        response.errors[0]
+            .message
+            .contains("line_item_id is required for line_item scope")
+    );
 }
 
 #[tokio::test]
@@ -1640,9 +1642,11 @@ async fn admin_graphql_update_price_list_rule_rejects_future_price_list() {
         .await;
 
     assert_eq!(response.errors.len(), 1);
-    assert!(response.errors[0]
-        .message
-        .contains("price_list_id is not active yet"));
+    assert!(
+        response.errors[0]
+            .message
+            .contains("price_list_id is not active yet")
+    );
 }
 
 #[tokio::test]

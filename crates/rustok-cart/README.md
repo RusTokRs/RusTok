@@ -27,6 +27,8 @@
 - Publish an owner-managed `CartPromotionPort` for cart and shipping promotion
   previews and writes without exposing promotion service methods to consumers.
 - Publish a module-owned storefront cart workspace for cart inspection.
+- Own the Axum guest-cart capability middleware used by HTTP hosts and owner
+  transport tests.
 
 ## Interactions
 

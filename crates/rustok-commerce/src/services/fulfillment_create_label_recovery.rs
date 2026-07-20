@@ -92,12 +92,14 @@ impl FulfillmentCreateLabelRecoveryService {
             )));
         }
 
-        let request: FulfillmentProviderOperationRequest =
-            serde_json::from_value(operation.request_payload.clone()).map_err(|error| {
-                FulfillmentOrchestrationError::Validation(format!(
+        let request: FulfillmentProviderOperationRequest = serde_json::from_value(
+            operation.request_payload.clone(),
+        )
+        .map_err(|error| {
+            FulfillmentOrchestrationError::Validation(format!(
                 "create_label operation {operation_id} contains invalid request_payload: {error}"
             ))
-            })?;
+        })?;
         if request.tenant_id != tenant_id || request.fulfillment_id != operation.fulfillment_id {
             return Err(FulfillmentOrchestrationError::Validation(format!(
                 "create_label operation {operation_id} request identity does not match the journal"

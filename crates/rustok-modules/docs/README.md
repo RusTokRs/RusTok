@@ -36,6 +36,10 @@ digest-pinned publication receipt. The standard Cosign tag is used only while
 resolving the signature manifest and never becomes installation identity.
 That receipt records build-service signature evidence only; author signatures
 and marketplace approvals remain separate owner-governance facts.
+Successful build results must carry the complete component, SBOM, provenance,
+interface, and validation evidence. Failed and cancelled results reject those
+success artifacts and require a structured diagnostic matching the terminal
+failure, so a stale successful payload cannot be admitted through a failed result.
 Before that publication window the worker obtains a repository-scoped,
 short-lived lease through its deployment-owned credential broker. Credentials
 never enter module contracts, descriptors, build requests, runner output, or
@@ -86,6 +90,24 @@ descriptions. Admission sends them through the shared
 the installation ID makes the owner operation idempotent and a retry repeats
 registration for an already admitted release. The port adds RBAC vocabulary
 only and cannot assign a permission to a role or actor.
+
+Durable artifact binding idempotency is tenant-scoped at both query and database
+policy layers. `module_artifact_binding_operations` uses PostgreSQL RLS, and
+claim, completion, abandonment, replay, and lease recovery set the transaction's
+`rustok.tenant_id` before touching request identity or stored responses. The
+tenant remains part of every unique key and mutation predicate; RLS is the
+independent fail-closed boundary rather than a substitute for those predicates.
+
+Structured-data and object-data list calls validate bounded keyset continuation
+inside the requested logical prefix before invoking any capability broker. A
+custom broker therefore cannot receive a continuation that escapes the admitted
+namespace even if it does not repeat owner validation internally.
+
+Final registry publication revalidates localized rows loaded from the database.
+Every locale must already be canonical, names and descriptions must satisfy the
+bounded publication contract, and the release default locale must have an exact
+translation row. Invalid database state fails closed before release or marketplace
+approval facts are written.
 
 `module_artifact_installations` is the host-managed persistence boundary. Its
 PostgreSQL migration enables RLS; tenant-scoped connections must set

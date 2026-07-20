@@ -56,10 +56,10 @@ impl RegistryGovernanceService {
         authority: &RegistryAuthority,
         artifact: RegistryArtifactUpload,
     ) -> anyhow::Result<registry_publish_request::Model> {
-        if artifact.bytes.len() > REGISTRY_PUBLISH_ARTIFACT_MAX_BYTES {
+        if artifact.bytes.len() > MODULE_PUBLISH_ARTIFACT_MAX_BYTES {
             return Err(malformed_error(format!(
                 "Registry publish artifact exceeds the {} byte maximum size",
-                REGISTRY_PUBLISH_ARTIFACT_MAX_BYTES
+                MODULE_PUBLISH_ARTIFACT_MAX_BYTES
             )));
         }
         let request = self.get_publish_request(request_id).await?.ok_or_else(|| {

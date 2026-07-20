@@ -29,8 +29,8 @@ authorization.
 The ownership boundary is:
 
 - `rustok-rbac` owns permission evaluation, relation persistence primitives,
-  transaction-typed repair APIs, durable invalidation generation storage and
-  integration contracts;
+  transaction-typed repair APIs, relation-integrity and durable invalidation
+  generation migrations, and integration contracts;
 - `apps/server` owns authenticated host adapters, transaction orchestration,
   request/process cache adapters, distributed invalidation delivery and runtime
   supervision;
@@ -237,7 +237,7 @@ cargo check -p rustok-rbac --all-features
 cargo check -p rustok-rbac-cli
 cargo check -p rustok-server --lib
 cargo test -p rustok-rbac --all-features
-cargo test -p rustok-rbac --test system_role_repair
+cargo test -p rustok-migrations --lib rbac_system_role_repair_tests
 cargo test -p rustok-rbac-cli
 cargo test -p rustok-server --lib rbac
 cargo test -p rustok-server \

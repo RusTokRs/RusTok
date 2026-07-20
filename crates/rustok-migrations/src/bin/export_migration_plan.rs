@@ -1,5 +1,5 @@
 use rustok_migrations::Migrator;
-use sea_orm_migration::prelude::{MigrationName, MigratorTrait};
+use sea_orm_migration::prelude::MigratorTrait;
 use std::env;
 use std::error::Error;
 use std::fs;

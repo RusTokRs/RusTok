@@ -70,7 +70,9 @@ pub use rustok_modules::REGISTRY_YANK_REASON_CODES;
 pub(crate) fn alloy_release_governance_handle(
     db: DatabaseConnection,
 ) -> alloy::AlloyReleaseGovernanceHandle {
-    alloy::AlloyReleaseGovernanceHandle(std::sync::Arc::new(SeaOrmModuleGovernanceService::new(db)))
+    alloy::AlloyReleaseGovernanceHandle(std::sync::Arc::new(
+        ModuleControlPlane::new(db).publication(),
+    ))
 }
 
 #[derive(Debug, Error)]

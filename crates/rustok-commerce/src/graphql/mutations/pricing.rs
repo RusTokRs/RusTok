@@ -1,19 +1,19 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
-use rustok_api::{graphql::require_module_enabled, PortActor, PortContext, TenantContext};
+use rustok_api::{PortActor, PortContext, TenantContext, graphql::require_module_enabled};
 use uuid::Uuid;
 
 use rustok_cart::{
-    in_process_cart_promotion_port, CartPromotionKindRequest, CartPromotionRequest,
-    CartPromotionScopeRequest,
+    CartPromotionKindRequest, CartPromotionRequest, CartPromotionScopeRequest,
+    in_process_cart_promotion_port,
 };
 use rustok_pricing::{
-    in_process_pricing_read_port, in_process_pricing_write_port, ApplyVariantDiscountRequest,
-    PreviewVariantDiscountRequest, SetPriceListPercentageRuleRequest, SetPriceListScopeRequest,
-    UpsertVariantPriceRequest,
+    ApplyVariantDiscountRequest, PreviewVariantDiscountRequest, SetPriceListPercentageRuleRequest,
+    SetPriceListScopeRequest, UpsertVariantPriceRequest, in_process_pricing_read_port,
+    in_process_pricing_write_port,
 };
 
-use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
+use super::super::{MODULE_SLUG, require_commerce_permission, types::*};
 use super::helpers::*;
 
 fn cart_promotion_port_context(

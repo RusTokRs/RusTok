@@ -209,7 +209,7 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
                             "description": script.description,
                             "status": script.status.as_str(),
                             "version": script.version,
-                            "code": script.code,
+                            "workspace": script.workspace,
                             "trigger": script.trigger,
                         }
                     }),

@@ -2,8 +2,8 @@ use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
 use fly::{EditorCommand, StyleRuleCatalog, StyleRuleCommand, StyleRuleScope};
 use fly_ui::{
-    builtin_responsive_breakpoints, builtin_style_properties, responsive_breakpoint, style_patch,
-    viewport_preset, StyleEntry, UiIntent,
+    StyleEntry, UiIntent, builtin_responsive_breakpoints, builtin_style_properties,
+    responsive_breakpoint, style_patch, viewport_preset,
 };
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;

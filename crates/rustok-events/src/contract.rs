@@ -107,7 +107,7 @@ impl ContractEventEnvelope {
         event.validate()?;
         let event_type = event.event_type().to_string();
         let schema_version = event.schema_version();
-        let id = Uuid::from_bytes(Ulid::gen().to_bytes());
+        let id = Uuid::from_bytes(Ulid::from_datetime(std::time::SystemTime::now()).to_bytes());
         let envelope = Self {
             id,
             event_type,

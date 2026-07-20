@@ -2,7 +2,7 @@
 
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
-    TransactionTrait, TryGetable,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

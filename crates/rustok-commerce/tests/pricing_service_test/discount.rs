@@ -784,8 +784,8 @@ async fn test_apply_price_list_percentage_discount_targets_channel_scoped_overri
 }
 
 #[tokio::test]
-async fn test_apply_price_list_percentage_discount_rejects_price_list_not_active_yet_without_writing(
-) {
+async fn test_apply_price_list_percentage_discount_rejects_price_list_not_active_yet_without_writing()
+ {
     let (db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -899,8 +899,8 @@ async fn test_apply_price_list_percentage_discount_rejects_expired_list_without_
 }
 
 #[tokio::test]
-async fn test_apply_price_list_percentage_discount_rejects_channel_mismatch_without_mutating_override(
-) {
+async fn test_apply_price_list_percentage_discount_rejects_channel_mismatch_without_mutating_override()
+ {
     let (db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();

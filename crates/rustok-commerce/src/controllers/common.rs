@@ -1,5 +1,5 @@
 use rustok_api::Permission;
-use rustok_api::{has_any_effective_permission, AuthContext};
+use rustok_api::{AuthContext, has_any_effective_permission};
 use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};

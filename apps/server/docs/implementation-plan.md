@@ -80,3 +80,16 @@ implement `RusToKModule` in process.
 - Increase integration test share for module scenarios with real DB/migrations.
 - Add contract tests for API response stability for frontends.
 - Include negative tests for RBAC/tenant isolation and failure-mode tests for event transport.
+
+## Periodic release verification handoff
+
+- Cycle: `cycle-001`
+- Status: `pending`
+- Last verified at (UTC): `2026-07-20`
+- Scope inspected: `partial preflight only: registry governance owner-service construction used by the Alloy release handle`
+- Findings: `P0=0, P1=0, P2=1, P3=0`
+- Fixed in this pass: `the Alloy governance handle now obtains the publication service through ModuleControlPlane instead of constructing SeaOrmModuleGovernanceService directly`
+- Remaining risks or blockers: `the complete apps/server Wave 2 inspection has not started`
+- Evidence: `node scripts/verify/verify-module-control-plane-write-path.mjs`
+- Next action: `resume the normal queue; perform the full server composition audit after all Core modules`
+- Resume command: `cargo test -p rustok-server --lib`

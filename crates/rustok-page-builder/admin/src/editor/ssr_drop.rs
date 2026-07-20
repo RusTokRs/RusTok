@@ -203,14 +203,16 @@ mod tests {
     #[test]
     fn page_root_rejects_before_and_after_drop() {
         let controller = controller();
-        assert!(controller
-            .ssr_drop_intent(SsrDropRequest {
-                source: SsrDropSource::Block {
-                    block_id: "text".to_string(),
-                },
-                target_component_id: "root".to_string(),
-                position: DropPosition::Before,
-            })
-            .is_err());
+        assert!(
+            controller
+                .ssr_drop_intent(SsrDropRequest {
+                    source: SsrDropSource::Block {
+                        block_id: "text".to_string(),
+                    },
+                    target_component_id: "root".to_string(),
+                    position: DropPosition::Before,
+                })
+                .is_err()
+        );
     }
 }

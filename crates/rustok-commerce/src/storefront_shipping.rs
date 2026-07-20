@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 use uuid::Uuid;
 
 use crate::{
-    dto::{CartResponse, CartShippingOptionSummary, ShippingOptionResponse},
     CommerceResult,
+    dto::{CartResponse, CartShippingOptionSummary, ShippingOptionResponse},
 };
 use rustok_fulfillment::FulfillmentService;
 

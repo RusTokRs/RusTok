@@ -17,7 +17,7 @@ pub(crate) async fn admin_global_search_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::Permission;
-        use rustok_api::{has_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{AuthContext, TenantContext, has_effective_permission};
         use std::time::Instant;
 
         let runtime = expect_context::<rustok_api::HostRuntimeContext>();

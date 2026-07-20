@@ -11,7 +11,6 @@ use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
     spawn_outbox_relay_worker, EventRuntime, RelayRuntimeConfig,
 };
-use crate::services::registry_governance::RegistryGovernanceService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_modules::ModuleControlPlane;
 #[cfg(feature = "mod-seo")]

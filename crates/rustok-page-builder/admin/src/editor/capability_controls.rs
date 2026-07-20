@@ -181,10 +181,12 @@ mod tests {
     #[test]
     fn capability_identifiers_are_safe_data_attributes() {
         for capability in EditorCapability::ALL {
-            assert!(capability
-                .as_str()
-                .chars()
-                .all(|character| character.is_ascii_lowercase() || character == '_'));
+            assert!(
+                capability
+                    .as_str()
+                    .chars()
+                    .all(|character| character.is_ascii_lowercase() || character == '_')
+            );
         }
     }
 }

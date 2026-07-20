@@ -750,7 +750,7 @@ mod tests {
                     ArtifactBindingDispatchEnvelope::new(
                         &binding,
                         ExecutionPhase::Event,
-                        Value::Null,
+                        json!({ "id": 1 }),
                     ),
                     SandboxPolicy::default(),
                 )

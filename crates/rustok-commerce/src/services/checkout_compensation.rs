@@ -1,4 +1,4 @@
-use rustok_api::{PortActor, PortContext, PortError, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
 use rustok_cart::{
     CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest, CartStatus,
 };
@@ -11,8 +11,8 @@ use rustok_payment::dto::CancelPaymentInput;
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::PaymentProviderRegistry;
 use rustok_payment::{
-    PaymentProviderOperationJournal, PaymentService, PROVIDER_OPERATION_EXECUTING,
-    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
+    PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+    PROVIDER_OPERATION_SUCCEEDED, PaymentProviderOperationJournal, PaymentService,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde_json::json;
@@ -25,8 +25,8 @@ use crate::entities::{checkout_inventory_reservation, checkout_operation};
 use super::{
     CheckoutInventoryReservationError, CheckoutInventoryReservationJournal,
     CheckoutInventoryReservationStatus, CheckoutOperationError, CheckoutOperationJournal,
-    CheckoutOperationStage, CheckoutOperationStatus, PaymentOrchestrationError,
-    PaymentOrchestrationService, DEFAULT_CHECKOUT_LEASE_SECONDS,
+    CheckoutOperationStage, CheckoutOperationStatus, DEFAULT_CHECKOUT_LEASE_SECONDS,
+    PaymentOrchestrationError, PaymentOrchestrationService,
 };
 
 const COMPENSATION_PORT_DEADLINE_SECONDS: u64 = 3;

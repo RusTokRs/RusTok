@@ -123,11 +123,11 @@ pub use recovering_staged_checkout::{
 };
 pub use refund_reconciliation::RefundReconciliationService;
 pub use return_completion_operation::{
-    BeginReturnCompletionOperation, ReturnCompletionOperationCheckpoint,
+    BeginReturnCompletionOperation, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
+    MAX_RETURN_COMPLETION_LEASE_SECONDS, ReturnCompletionOperationCheckpoint,
     ReturnCompletionOperationError, ReturnCompletionOperationJournal,
     ReturnCompletionOperationResult, ReturnCompletionOperationStage,
-    ReturnCompletionOperationStatus, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
-    MAX_RETURN_COMPLETION_LEASE_SECONDS,
+    ReturnCompletionOperationStatus,
 };
 pub use return_completion_orchestration::{
     CompleteReturnClaimInput, CompleteReturnExchangeInput, CompleteReturnRefundInput,

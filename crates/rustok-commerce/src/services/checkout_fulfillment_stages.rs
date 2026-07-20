@@ -6,7 +6,7 @@ use rustok_order::{OrderError, OrderLineItemResponse, OrderResponse, OrderServic
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentCollectionResponse;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use thiserror::Error;
 use uuid::Uuid;

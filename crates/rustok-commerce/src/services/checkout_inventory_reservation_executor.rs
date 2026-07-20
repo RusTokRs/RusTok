@@ -1,4 +1,4 @@
-use rustok_api::{PortActor, PortContext, PortError, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
 use rustok_cart::PreparedCartCheckoutSnapshot;
 use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationRequest,
@@ -15,7 +15,7 @@ use super::{
     CheckoutInventoryReservationError, CheckoutInventoryReservationJournal,
     CheckoutInventoryReservationStatus, CheckoutOperationCheckpoint, CheckoutOperationError,
     CheckoutOperationJournal, CheckoutOperationStage, CheckoutOperationStatus,
-    PlanCheckoutInventoryReservation, DEFAULT_CHECKOUT_LEASE_SECONDS,
+    DEFAULT_CHECKOUT_LEASE_SECONDS, PlanCheckoutInventoryReservation,
 };
 
 const DEFAULT_INVENTORY_PORT_DEADLINE_SECONDS: u64 = 2;

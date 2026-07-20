@@ -5,19 +5,19 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    build_marketplace_seller_admin_shell, selected_transport_profile,
-    MarketplaceSellerAdminTransportProfile,
+    MarketplaceSellerAdminTransportProfile, build_marketplace_seller_admin_shell,
+    selected_transport_profile,
 };
 use crate::i18n::normalize_admin_locale;
 use crate::model::{
-    MarketplaceSellerAdminCommand, MarketplaceSellerAdminDetail,
-    MarketplaceSellerAdminDirectory, MarketplaceSellerAdminFilters,
-    MarketplaceSellerCreateDraft, MarketplaceSellerMemberCreateDraft,
-    MarketplaceSellerMemberUpdateDraft, MarketplaceSellerProfileDraft,
+    MarketplaceSellerAdminCommand, MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory,
+    MarketplaceSellerAdminFilters, MarketplaceSellerCreateDraft,
+    MarketplaceSellerMemberCreateDraft, MarketplaceSellerMemberUpdateDraft,
+    MarketplaceSellerProfileDraft,
 };
 use crate::transport::{
-    execute_marketplace_seller_command, load_marketplace_seller_detail,
-    load_marketplace_seller_directory, MarketplaceSellerAdminTransportContext,
+    MarketplaceSellerAdminTransportContext, execute_marketplace_seller_command,
+    load_marketplace_seller_detail, load_marketplace_seller_directory,
 };
 
 fn local_resource<S, Fut, T>(
@@ -49,8 +49,7 @@ pub fn MarketplaceSellerAdmin() -> impl IntoView {
     let busy = RwSignal::new(false);
     let error = RwSignal::new(Option::<String>::None);
     let notice = RwSignal::new(Option::<String>::None);
-    let pending_command =
-        RwSignal::new(Option::<(String, MarketplaceSellerAdminCommand)>::None);
+    let pending_command = RwSignal::new(Option::<(String, MarketplaceSellerAdminCommand)>::None);
 
     let create_handle = RwSignal::new(String::new());
     let create_display_name = RwSignal::new(String::new());
@@ -599,9 +598,5 @@ fn localized(russian: bool, english: &'static str, russian_text: &'static str) -
 }
 
 fn label(russian: bool, english: &'static str, russian_text: &'static str) -> &'static str {
-    if russian {
-        russian_text
-    } else {
-        english
-    }
+    if russian { russian_text } else { english }
 }

@@ -3,13 +3,12 @@ mod graphql_adapter;
 #[path = "transport/native_server_adapter.rs"]
 mod native_server_adapter;
 
-use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTransportResult};
+use rustok_ui_transport::{UiTransportPath, UiTransportResult, execute_selected_transport};
 
 use crate::core::MarketplaceSellerAdminTransportProfile;
 use crate::model::{
     MarketplaceSellerAdminCommand, MarketplaceSellerAdminCommandResult,
-    MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory,
-    MarketplaceSellerAdminFilters,
+    MarketplaceSellerAdminDetail, MarketplaceSellerAdminDirectory, MarketplaceSellerAdminFilters,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -15,16 +15,16 @@ use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
 use rustok_api::{PortActor, PortContext, RequestContext};
 use rustok_cart::{
-    in_process_cart_storefront_port, CartStorefrontContextUpdateRequest, CartStorefrontPort,
-    CartStorefrontRepriceRequest,
+    CartStorefrontContextUpdateRequest, CartStorefrontPort, CartStorefrontRepriceRequest,
+    in_process_cart_storefront_port,
 };
-use rustok_customer::{in_process_customer_read_port, CustomerUserProjectionRequest};
+use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::check_variant_availability_for_public_channel;
 use rustok_order::OrderService;
 use rustok_pricing::{
-    in_process_pricing_read_port, PriceResolutionContext, PricingReadPort,
-    ResolveProductPriceRequest,
+    PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest,
+    in_process_pricing_read_port,
 };
 use rustok_product::entities::{
     product, product_translation, product_variant, variant_translation,
@@ -33,13 +33,14 @@ use rustok_web::{HttpError, HttpResult};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::common::PaginationParams;
 use crate::{
+    StoreContextService,
     dto::{
         AddCartLineItemInput, CartResponse, ResolveStoreContextInput, StoreContextResponse,
         UpdateCartContextInput,
@@ -52,7 +53,6 @@ use crate::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
-    StoreContextService,
 };
 
 pub const MODULE_SLUG: &str = "commerce";
@@ -368,7 +368,7 @@ pub(crate) async fn apply_cart_context_patch_for_db(
             },
         )
         .await
-        .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
+        .map_err(rustok_web::port_error_to_http_error)?;
     let updated_cart = reprice_storefront_cart_line_items_for_db(
         db,
         event_bus,
@@ -428,7 +428,7 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
                 },
             )
             .await
-            .map_err(|error| HttpError::bad_request("commerce_store_invalid", error.message))?
+            .map_err(rustok_web::port_error_to_http_error)?
             .into();
         updates.push(storefront_cart_pricing_update(
             line_item.id,
@@ -456,7 +456,7 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
                 },
             )
             .await
-            .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))
+            .map_err(rustok_web::port_error_to_http_error)
     }
 }
 
@@ -818,7 +818,7 @@ pub(crate) async fn resolve_store_line_item_input(
             },
         )
         .await
-        .map_err(|error| HttpError::bad_request("commerce_store_invalid", error.message))?
+        .map_err(rustok_web::port_error_to_http_error)?
         .into();
     let (base_unit_price, pricing_adjustment) =
         storefront_cart_pricing_snapshot(input.quantity, &resolved_price);

@@ -3,12 +3,11 @@ use std::collections::HashMap;
 use rhai::{Dynamic, Engine, Map};
 use rustok_sandbox::rhai::RhaiHostExtension;
 use rustok_sandbox::{
-    CapabilityCall, CapabilityCallContext, CapabilityName, RhaiBindingInput, RhaiBindingOutput,
-    SandboxError, SandboxHost, SandboxRequest, SandboxResult, SandboxSubject,
+    CapabilityCall, CapabilityCallContext, CapabilityName, SandboxError, SandboxHost,
+    SandboxRequest, SandboxResult, SandboxSubject,
 };
 use serde_json::{json, Value};
 
-use crate::artifact::RHAI_MODULE_ABI;
 use crate::utils::{dynamic_to_json, json_to_dynamic};
 
 const HTTP_CAPABILITY: &str = "platform.http";
@@ -194,11 +193,13 @@ mod tests {
     use chrono::Utc;
     use rustok_sandbox::{
         CapabilityBroker, CapabilityGrant, CapabilityResponse, ExecutionPhase, ExecutorRegistry,
-        SandboxContext, SandboxPayload, SandboxPolicy, SandboxRuntime,
+        RhaiBindingInput, RhaiBindingOutput, SandboxContext, SandboxPayload, SandboxPolicy,
+        SandboxRuntime,
     };
     use serde_json::json;
 
     use super::*;
+    use crate::artifact::RHAI_MODULE_ABI;
 
     #[derive(Default)]
     struct CapturingBroker(Mutex<Vec<CapabilityCall>>);

@@ -1,16 +1,16 @@
 use rust_decimal::Decimal;
 use rustok_core::generate_id;
+use rustok_order::OrderService;
 use rustok_order::dto::{
     CompleteOrderReturnInput, CreateOrderChangeInput, ListOrderChangesInput, OrderChangeResponse,
     OrderReturnResponse,
 };
 use rustok_order::error::OrderError;
-use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;
+use rustok_payment::PaymentService;
 use rustok_payment::dto::{CompleteRefundInput, CreateRefundInput, RefundResponse};
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::PaymentProviderRegistry;
-use rustok_payment::PaymentService;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -21,9 +21,9 @@ use uuid::Uuid;
 use super::payment_orchestration::{PaymentOrchestrationError, PaymentOrchestrationService};
 use super::post_order::{PostOrderOrchestrationError, PostOrderOrchestrationResult};
 use super::return_completion_operation::{
-    BeginReturnCompletionOperation, ReturnCompletionOperationCheckpoint,
-    ReturnCompletionOperationJournal, ReturnCompletionOperationStage,
-    DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
+    BeginReturnCompletionOperation, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
+    ReturnCompletionOperationCheckpoint, ReturnCompletionOperationJournal,
+    ReturnCompletionOperationStage,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -114,19 +114,19 @@ impl ReturnCompletionOrchestrationService {
                 return order_service
                     .get_return(tenant_id, return_id)
                     .await
-                    .map_err(Into::into)
+                    .map_err(Into::into);
             }
             "reconciliation_required" => {
                 return Err(PostOrderOrchestrationError::Validation(format!(
                     "return completion operation {} requires reconciliation",
                     operation.id
-                )))
+                )));
             }
             "failed" => {
                 return Err(PostOrderOrchestrationError::Validation(format!(
                     "return completion operation {} is terminally failed",
                     operation.id
-                )))
+                )));
             }
             _ => {}
         }
@@ -727,12 +727,7 @@ fn build_resolution_order_change(
     Ok(CreateOrderChangeInput {
         change_type: change_type.to_string(),
         description,
-        preview: attach_return_order_change_context(
-            preview,
-            return_id,
-            operation_id,
-            change_type,
-        )?,
+        preview: attach_return_order_change_context(preview, return_id, operation_id, change_type)?,
         metadata: attach_return_order_change_context(
             metadata,
             return_id,
@@ -825,10 +820,7 @@ fn canonical_json(value: &Value) -> Value {
     }
 }
 
-fn normalize_object_or_empty(
-    value: Value,
-    field: &str,
-) -> PostOrderOrchestrationResult<Value> {
+fn normalize_object_or_empty(value: Value, field: &str) -> PostOrderOrchestrationResult<Value> {
     match value {
         Value::Null => Ok(serde_json::json!({})),
         Value::Object(_) => Ok(value),

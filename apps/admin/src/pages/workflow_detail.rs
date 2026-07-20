@@ -6,7 +6,7 @@ use leptos_router::params::Params;
 
 use crate::entities::workflow::{WorkflowDetail, WorkflowExecution};
 use crate::features::workflow::{
-    transport, ExecutionHistory, StatusBadge, VersionHistory, WorkflowStepEditor,
+    ExecutionHistory, StatusBadge, VersionHistory, WorkflowStepEditor, transport,
 };
 use crate::{t_string, use_i18n};
 

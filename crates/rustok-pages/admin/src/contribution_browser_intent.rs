@@ -6,9 +6,9 @@ use crate::contributions::{
 use fly_browser::BrowserIntentEnvelope;
 use fly_ui::{CapabilityState, PaletteBlockAccess};
 use rustok_page_builder_admin::{
-    browser_capability_denial, validate_browser_capability_access, validate_browser_palette_access,
     BrowserCapabilityAccessError, BrowserCapabilityDenial, BrowserIntentDispatchError,
-    SsrDraftSessionStore,
+    SsrDraftSessionStore, browser_capability_denial, validate_browser_capability_access,
+    validate_browser_palette_access,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -96,7 +96,7 @@ mod tests {
     use super::*;
     use fly_browser::FLY_BROWSER_PROTOCOL;
     use fly_ui::EditorCapability;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     fn envelope(intent: &str, payload: Value) -> BrowserIntentEnvelope {
         BrowserIntentEnvelope {
@@ -115,16 +115,20 @@ mod tests {
 
     #[test]
     fn pages_preflight_allows_primitives_and_declared_templates() {
-        assert!(preflight_pages_intent(
-            envelope("insert_block", json!({ "block_id": "text" })),
-            CapabilityState::full(),
-        )
-        .is_ok());
-        assert!(preflight_pages_intent(
-            envelope("insert_block", json!({ "block_id": "fly.hero" })),
-            CapabilityState::full(),
-        )
-        .is_ok());
+        assert!(
+            preflight_pages_intent(
+                envelope("insert_block", json!({ "block_id": "text" })),
+                CapabilityState::full(),
+            )
+            .is_ok()
+        );
+        assert!(
+            preflight_pages_intent(
+                envelope("insert_block", json!({ "block_id": "fly.hero" })),
+                CapabilityState::full(),
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -144,18 +148,20 @@ mod tests {
 
     #[test]
     fn pages_preflight_rejects_block_drop_bypass() {
-        assert!(preflight_pages_intent(
-            envelope(
-                "drop",
-                json!({
-                    "source": { "kind": "block", "block_id": "fly.pricing" },
-                    "target_component_id": "root",
-                    "position": "inside"
-                }),
-            ),
-            CapabilityState::full(),
-        )
-        .is_err());
+        assert!(
+            preflight_pages_intent(
+                envelope(
+                    "drop",
+                    json!({
+                        "source": { "kind": "block", "block_id": "fly.pricing" },
+                        "target_component_id": "root",
+                        "position": "inside"
+                    }),
+                ),
+                CapabilityState::full(),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -174,11 +180,13 @@ mod tests {
             error,
             PagesBrowserIntentAccessError::Capability(BrowserCapabilityAccessError::Denied(_))
         ));
-        assert!(preflight_pages_intent(
-            envelope("select", json!({ "component_id": "hero" })),
-            capabilities,
-        )
-        .is_ok());
+        assert!(
+            preflight_pages_intent(
+                envelope("select", json!({ "component_id": "hero" })),
+                capabilities,
+            )
+            .is_ok()
+        );
     }
 
     #[test]

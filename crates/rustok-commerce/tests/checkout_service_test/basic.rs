@@ -136,21 +136,26 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
     );
     assert!(!completed.cart.tax_lines.is_empty());
     assert!(!completed.order.tax_lines.is_empty());
-    assert!(completed
-        .cart
-        .tax_lines
-        .iter()
-        .all(|line| line.provider_id == "region_default"));
-    assert!(completed
-        .order
-        .tax_lines
-        .iter()
-        .all(|line| line.provider_id == "region_default"));
-    assert!(completed.order.tax_lines.iter().all(|line| line
-        .metadata
-        .get("tax_included")
-        .and_then(|value| value.as_bool())
-        == Some(true)));
+    assert!(
+        completed
+            .cart
+            .tax_lines
+            .iter()
+            .all(|line| line.provider_id == "region_default")
+    );
+    assert!(
+        completed
+            .order
+            .tax_lines
+            .iter()
+            .all(|line| line.provider_id == "region_default")
+    );
+    assert!(completed.order.tax_lines.iter().all(|line| {
+        line.metadata
+            .get("tax_included")
+            .and_then(|value| value.as_bool())
+            == Some(true)
+    }));
     assert_eq!(
         completed.fulfillments[0].metadata["delivery_group"]["shipping_profile_slug"],
         serde_json::json!("default")

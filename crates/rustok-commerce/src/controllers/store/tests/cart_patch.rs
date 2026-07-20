@@ -17,7 +17,9 @@ fn customer_owned_cart_allows_matching_customer() {
 fn customer_owned_cart_rejects_missing_customer_context() {
     let cart = sample_cart(Some(Uuid::new_v4()));
     let error = ensure_store_cart_access(&cart, None).expect_err("customer auth required");
-    assert_eq!(error.to_string(), "Cart belongs to another customer");
+    assert_eq!(error.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(error.code, "commerce_store_denied");
+    assert_eq!(error.message, "Cart belongs to another customer");
 }
 
 #[test]
@@ -25,7 +27,9 @@ fn customer_owned_cart_rejects_different_customer() {
     let cart = sample_cart(Some(Uuid::new_v4()));
     let error = ensure_store_cart_access(&cart, Some(Uuid::new_v4()))
         .expect_err("foreign customer access must be rejected");
-    assert_eq!(error.to_string(), "Cart belongs to another customer");
+    assert_eq!(error.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(error.code, "commerce_store_denied");
+    assert_eq!(error.message, "Cart belongs to another customer");
 }
 
 #[test]
@@ -41,8 +45,10 @@ fn payment_collection_rejects_completed_cart() {
     cart.status = "completed".to_string();
     let error = super::super::ensure_cart_allows_payment_collection(&cart)
         .expect_err("completed carts must reject payment collection creation");
+    assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    assert_eq!(error.code, "commerce_store_invalid");
     assert_eq!(
-        error.to_string(),
+        error.message,
         "Cannot create payment collection for completed cart"
     );
 }

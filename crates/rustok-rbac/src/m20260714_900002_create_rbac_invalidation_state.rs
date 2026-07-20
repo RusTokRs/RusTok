@@ -1,3 +1,5 @@
+//! Creates the durable RBAC permission invalidation generation store.
+
 use sea_orm_migration::prelude::*;
 use sea_orm_migration::sea_orm::ConnectionTrait;
 
@@ -68,9 +70,9 @@ enum RbacInvalidationState {
 #[cfg(test)]
 mod tests {
     use super::Migration;
+    use sea_orm_migration::MigrationTrait;
     use sea_orm_migration::prelude::SchemaManager;
     use sea_orm_migration::sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
-    use sea_orm_migration::MigrationTrait;
 
     #[tokio::test]
     async fn replay_keeps_one_row_and_preserves_advanced_generation() {

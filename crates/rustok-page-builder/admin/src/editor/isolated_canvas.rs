@@ -1,13 +1,13 @@
 #[cfg(target_arch = "wasm32")]
 use crate::editor::decode_canvas_message;
+use crate::editor::{AdminEditorRuntime, ResizeHandles, render_canvas_srcdoc_with_context};
 #[cfg(target_arch = "wasm32")]
-use crate::editor::{dispatch_shortcut, CanvasBridgeMessage, CanvasComponentGeometry};
-use crate::editor::{render_canvas_srcdoc_with_context, AdminEditorRuntime, ResizeHandles};
+use crate::editor::{CanvasBridgeMessage, CanvasComponentGeometry, dispatch_shortcut};
 #[cfg(target_arch = "wasm32")]
 use fly_leptos::BrowserPoint;
-#[cfg(target_arch = "wasm32")]
-use fly_ui::{resolve_editor_shortcut, UiIntent};
 use fly_ui::{CanvasRect, ViewportState};
+#[cfg(target_arch = "wasm32")]
+use fly_ui::{UiIntent, resolve_editor_shortcut};
 use leptos::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use std::collections::BTreeMap;
@@ -404,8 +404,8 @@ mod tests {
 
         assert_eq!(geometry.source_width, 390);
         assert_eq!(geometry.source_height, 844);
-        assert_eq!(geometry.rendered_width, 312.0);
-        assert_eq!(geometry.rendered_height, 675.2);
+        assert!((geometry.rendered_width - 312.0).abs() < 0.000_1);
+        assert!((geometry.rendered_height - 675.2).abs() < 0.000_1);
         assert_eq!(geometry.view_box, "0 0 390 844");
     }
 

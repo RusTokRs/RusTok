@@ -116,10 +116,9 @@ async fn validate_active_user_consent(
         return Ok(());
     }
 
-    let consent = OAuthConsents::find_active_consent(db, app.id, user_id)
+    let consent = OAuthConsents::find_active_consent(db, app.id, user_id, tenant_id)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-        .filter(|consent| consent.tenant_id == tenant_id)
         .ok_or((StatusCode::UNAUTHORIZED, "OAuth consent revoked or missing"))?;
     let consent_scopes = consent.scopes_list();
     if token_scopes

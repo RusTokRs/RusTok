@@ -8,7 +8,7 @@ use rustok_tenant::entities::tenant;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend, Schema,
 };
-use uuid::{uuid, Uuid};
+use uuid::{Uuid, uuid};
 
 pub const TEST_TENANT_ID: Uuid = uuid!("11111111-1111-1111-1111-111111111111");
 

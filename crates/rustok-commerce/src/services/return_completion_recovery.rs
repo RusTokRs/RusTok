@@ -2,14 +2,14 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use rustok_core::generate_id;
+use rustok_order::OrderService;
 use rustok_order::dto::OrderReturnResponse;
 use rustok_order::error::OrderError;
-use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::providers::PaymentProviderRegistry;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -148,12 +148,14 @@ impl ReturnCompletionOrchestrationService {
             )));
         }
 
-        let input: core::CompleteReturnResolutionInput =
-            serde_json::from_value(command.request_payload.clone()).map_err(|error| {
-                PostOrderOrchestrationError::Validation(format!(
-                    "return completion operation {operation_id} command snapshot is invalid: {error}"
-                ))
-            })?;
+        let input: core::CompleteReturnResolutionInput = serde_json::from_value(
+            command.request_payload.clone(),
+        )
+        .map_err(|error| {
+            PostOrderOrchestrationError::Validation(format!(
+                "return completion operation {operation_id} command snapshot is invalid: {error}"
+            ))
+        })?;
         validate_completion_shape(&input)?;
         self.record_retry(tenant_id, command.id, retry_actor_id)
             .await?;
@@ -327,7 +329,9 @@ impl ReturnCompletionOrchestrationService {
                     tenant_id: Set(tenant_id),
                     return_id: Set(return_id),
                     request_hash: Set(request_hash.to_string()),
-                    status: Set(ReturnCompletionOperationStatus::Pending.as_str().to_string()),
+                    status: Set(ReturnCompletionOperationStatus::Pending
+                        .as_str()
+                        .to_string()),
                     stage: Set(ReturnCompletionOperationStage::Created.as_str().to_string()),
                     refund_id: Set(None),
                     order_change_id: Set(None),
@@ -494,7 +498,9 @@ fn map_operation(
         order_change_id: operation.order_change_id,
         attempt_count: operation.attempt_count,
         lease_owner: operation.lease_owner,
-        lease_expires_at: operation.lease_expires_at.map(|value| value.with_timezone(&Utc)),
+        lease_expires_at: operation
+            .lease_expires_at
+            .map(|value| value.with_timezone(&Utc)),
         last_error_code: operation.last_error_code,
         last_error_message: operation.last_error_message,
         requested_by_actor_id: command.map(|value| value.requested_by_actor_id),
@@ -507,7 +513,9 @@ fn map_operation(
         requires_reconciliation: operation.status == "reconciliation_required",
         created_at: operation.created_at.with_timezone(&Utc),
         updated_at: operation.updated_at.with_timezone(&Utc),
-        completed_at: operation.completed_at.map(|value| value.with_timezone(&Utc)),
+        completed_at: operation
+            .completed_at
+            .map(|value| value.with_timezone(&Utc)),
     }
 }
 

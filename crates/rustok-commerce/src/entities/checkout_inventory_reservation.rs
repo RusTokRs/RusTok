@@ -9,6 +9,7 @@ pub struct Model {
     pub tenant_id: Uuid,
     pub checkout_operation_id: Uuid,
     pub cart_line_item_id: Uuid,
+    pub order_line_item_id: Option<Uuid>,
     pub external_id: String,
     pub variant_id: Uuid,
     pub quantity: i32,

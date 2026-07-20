@@ -12400,6 +12400,7 @@ name = "rustok-cart"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
  "chrono",
  "rust_decimal",
  "rustok-api",
@@ -12781,7 +12782,6 @@ dependencies = [
  "reqwest 0.13.4",
  "rustok-api",
  "rustok-events",
- "rustok-outbox",
  "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
@@ -14054,7 +14054,6 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-events",
- "rustok-migrations",
  "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
@@ -14660,8 +14659,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "rustok-api",
- "rustok-commerce",
- "rustok-content",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
@@ -14740,6 +14737,7 @@ name = "rustok-web"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "rustok-api",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

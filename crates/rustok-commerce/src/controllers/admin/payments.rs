@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    Json,
 };
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
@@ -10,8 +10,8 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
-    super::common::{ensure_permissions, PaginatedResponse},
     super::CommerceHttpRuntime,
+    super::common::{PaginatedResponse, ensure_permissions},
     ListPaymentCollectionsParams, ListRefundsParams,
 };
 use crate::dto::{
@@ -35,7 +35,11 @@ pub async fn list_payment_collections(
     auth: AuthContext,
     Query(params): Query<ListPaymentCollectionsParams>,
 ) -> HttpResult<Json<PaginatedResponse<PaymentCollectionResponse>>> {
-    ensure_permissions(&auth, &[Permission::PAYMENTS_READ], "Permission denied: payments:read required")?;
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_READ],
+        "Permission denied: payments:read required",
+    )?;
     let pagination = params.pagination.unwrap_or_default();
     let (collections, total) = PaymentService::new(runtime.db_clone())
         .list_collections(
@@ -70,7 +74,11 @@ pub async fn show_payment_collection(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<PaymentCollectionResponse>> {
-    ensure_permissions(&auth, &[Permission::PAYMENTS_READ], "Permission denied: payments:read required")?;
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_READ],
+        "Permission denied: payments:read required",
+    )?;
     let collection = PaymentService::new(runtime.db_clone())
         .get_collection(tenant.id, id)
         .await
@@ -93,7 +101,11 @@ pub async fn authorize_payment_collection(
     Path(id): Path<Uuid>,
     Json(input): Json<AuthorizePaymentInput>,
 ) -> HttpResult<Json<PaymentCollectionResponse>> {
-    ensure_permissions(&auth, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_UPDATE],
+        "Permission denied: payments:update required",
+    )?;
     let collection = crate::PaymentOrchestrationService::new(runtime.db_clone())
         .with_provider_registry(runtime.payment_provider_registry())
         .authorize_collection(tenant.id, id, input)
@@ -117,7 +129,11 @@ pub async fn capture_payment_collection(
     Path(id): Path<Uuid>,
     Json(input): Json<CapturePaymentInput>,
 ) -> HttpResult<Json<PaymentCollectionResponse>> {
-    ensure_permissions(&auth, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_UPDATE],
+        "Permission denied: payments:update required",
+    )?;
     let collection = crate::PaymentOrchestrationService::new(runtime.db_clone())
         .with_provider_registry(runtime.payment_provider_registry())
         .capture_collection(tenant.id, id, input)
@@ -141,7 +157,11 @@ pub async fn cancel_payment_collection(
     Path(id): Path<Uuid>,
     Json(input): Json<CancelPaymentInput>,
 ) -> HttpResult<Json<PaymentCollectionResponse>> {
-    ensure_permissions(&auth, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_UPDATE],
+        "Permission denied: payments:update required",
+    )?;
     let collection = crate::PaymentOrchestrationService::new(runtime.db_clone())
         .with_provider_registry(runtime.payment_provider_registry())
         .cancel_collection(tenant.id, id, input)
@@ -174,7 +194,11 @@ pub async fn create_refund(
     headers: HeaderMap,
     Json(input): Json<CreateRefundInput>,
 ) -> HttpResult<(StatusCode, Json<RefundResponse>)> {
-    ensure_permissions(&auth, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_UPDATE],
+        "Permission denied: payments:update required",
+    )?;
     let creation_key = refund_creation_key(&headers)?;
     let refund = crate::PaymentOrchestrationService::new(runtime.db_clone())
         .with_provider_registry(runtime.payment_provider_registry())
@@ -197,7 +221,11 @@ pub async fn list_refunds(
     auth: AuthContext,
     Query(params): Query<ListRefundsParams>,
 ) -> HttpResult<Json<PaginatedResponse<RefundResponse>>> {
-    ensure_permissions(&auth, &[Permission::PAYMENTS_READ], "Permission denied: payments:read required")?;
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_READ],
+        "Permission denied: payments:read required",
+    )?;
     let pagination = params.pagination.unwrap_or_default();
     let (refunds, total) = PaymentService::new(runtime.db_clone())
         .list_refunds(
@@ -231,7 +259,11 @@ pub async fn show_refund(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<RefundResponse>> {
-    ensure_permissions(&auth, &[Permission::PAYMENTS_READ], "Permission denied: payments:read required")?;
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_READ],
+        "Permission denied: payments:read required",
+    )?;
     let refund = PaymentService::new(runtime.db_clone())
         .get_refund(tenant.id, id)
         .await
@@ -254,7 +286,11 @@ pub async fn complete_refund(
     Path(id): Path<Uuid>,
     Json(input): Json<CompleteRefundInput>,
 ) -> HttpResult<Json<RefundResponse>> {
-    ensure_permissions(&auth, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_UPDATE],
+        "Permission denied: payments:update required",
+    )?;
     let refund = crate::PaymentOrchestrationService::new(runtime.db_clone())
         .with_provider_registry(runtime.payment_provider_registry())
         .complete_refund(tenant.id, id, input)
@@ -278,7 +314,11 @@ pub async fn cancel_refund(
     Path(id): Path<Uuid>,
     Json(input): Json<CancelRefundInput>,
 ) -> HttpResult<Json<RefundResponse>> {
-    ensure_permissions(&auth, &[Permission::PAYMENTS_UPDATE], "Permission denied: payments:update required")?;
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_UPDATE],
+        "Permission denied: payments:update required",
+    )?;
     let refund = crate::PaymentOrchestrationService::new(runtime.db_clone())
         .with_provider_registry(runtime.payment_provider_registry())
         .cancel_refund(tenant.id, id, input)
@@ -293,7 +333,12 @@ fn refund_creation_key(headers: &HeaderMap) -> HttpResult<String> {
         .and_then(|value| value.to_str().ok())
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| HttpError::bad_request("refund_idempotency_key_required", "Idempotency-Key header is required"))?;
+        .ok_or_else(|| {
+            HttpError::bad_request(
+                "refund_idempotency_key_required",
+                "Idempotency-Key header is required",
+            )
+        })?;
     if value.len() > MAX_REFUND_CREATION_KEY_LENGTH {
         return Err(HttpError::bad_request(
             "refund_idempotency_key_invalid",

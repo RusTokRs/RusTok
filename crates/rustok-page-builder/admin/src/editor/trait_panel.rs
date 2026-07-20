@@ -1,6 +1,6 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
-use fly::{trait_snapshots, EditorCommand, TraitSchema, TraitSnapshot, TraitValueKind};
+use fly::{EditorCommand, TraitSchema, TraitSnapshot, TraitValueKind, trait_snapshots};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;

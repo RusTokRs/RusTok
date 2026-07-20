@@ -9,6 +9,7 @@ pub mod entities;
 pub mod error;
 mod guarded_ports;
 pub mod guest_access;
+pub mod guest_access_http;
 pub mod migrations;
 pub mod ports;
 pub mod services;
@@ -24,18 +25,18 @@ pub use guarded_ports::{
 };
 pub use guest_access::*;
 pub use ports::{
-    in_process_cart_promotion_port, CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest,
-    CartCheckoutPort, CartCheckoutSnapshotRequest, CartPromotionKindRequest, CartPromotionPort,
-    CartPromotionRequest, CartPromotionScopeRequest, CartStorefrontAddLineItemRequest,
+    CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
+    CartCheckoutSnapshotRequest, CartPromotionKindRequest, CartPromotionPort, CartPromotionRequest,
+    CartPromotionScopeRequest, CartStorefrontAddLineItemRequest,
     CartStorefrontContextUpdateRequest, CartStorefrontCreateRequest,
     CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
     CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
-    CartStorefrontRepriceRequest,
+    CartStorefrontRepriceRequest, in_process_cart_promotion_port,
 };
+pub use services::CartService;
 pub use services::cart::{
     CartLineItemPricingUpdate, CartPricingAdjustmentUpdate, CartPromotionPreview,
 };
-pub use services::CartService;
 
 pub struct CartModule;
 

@@ -1,3 +1,4 @@
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AuthError, Result};
@@ -9,6 +10,11 @@ const MIN_ACCESS_EXPIRATION_SECS: u64 = 60;
 const MAX_ACCESS_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30;
 const MIN_REFRESH_EXPIRATION_SECS: u64 = 60 * 5;
 const MAX_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 365;
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Rs256KeyPairProbe {
+    probe: String,
+}
 
 /// JWT signing algorithm selector.
 ///
@@ -260,9 +266,32 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
                         .to_string(),
                 ));
             }
+            validate_rs256_key_pair(private_key.unwrap(), public_key.unwrap())?;
         }
     }
 
+    Ok(())
+}
+
+fn validate_rs256_key_pair(private_key_pem: &str, public_key_pem: &str) -> Result<()> {
+    let encoding_key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes())
+        .map_err(|_| AuthError::Internal("Invalid RS256 private key PEM".to_string()))?;
+    let decoding_key = DecodingKey::from_rsa_pem(public_key_pem.as_bytes())
+        .map_err(|_| AuthError::Internal("Invalid RS256 public key PEM".to_string()))?;
+    let token = encode(
+        &Header::new(Algorithm::RS256),
+        &Rs256KeyPairProbe {
+            probe: "rustok-auth-config".to_string(),
+        },
+        &encoding_key,
+    )
+    .map_err(|_| AuthError::Internal("RS256 private key cannot sign tokens".to_string()))?;
+    let mut validation = Validation::new(Algorithm::RS256);
+    validation.required_spec_claims.clear();
+    validation.validate_exp = false;
+    decode::<Rs256KeyPairProbe>(&token, &decoding_key, &validation).map_err(|_| {
+        AuthError::Internal("RS256 private/public keys do not form a pair".to_string())
+    })?;
     Ok(())
 }
 
@@ -298,12 +327,22 @@ mod tests {
                 rsa_public_key_env: Some("PUBLIC".to_string()),
                 ..AuthSettingsOverrides::default()
             },
-            |name| Ok(format!("{name}-pem")),
+            |name| match name {
+                "PRIVATE" => Ok(crate::jwt::TEST_RSA_PRIVATE_KEY.to_string()),
+                "PUBLIC" => Ok(crate::jwt::TEST_RSA_PUBLIC_KEY.to_string()),
+                _ => panic!("unexpected env key"),
+            },
         )
         .expect("auth config");
 
-        assert_eq!(config.rsa_private_key_pem.as_deref(), Some("PRIVATE-pem"));
-        assert_eq!(config.rsa_public_key_pem.as_deref(), Some("PUBLIC-pem"));
+        assert_eq!(
+            config.rsa_private_key_pem.as_deref(),
+            Some(crate::jwt::TEST_RSA_PRIVATE_KEY)
+        );
+        assert_eq!(
+            config.rsa_public_key_pem.as_deref(),
+            Some(crate::jwt::TEST_RSA_PUBLIC_KEY)
+        );
     }
 
     #[test]
@@ -313,6 +352,41 @@ mod tests {
             900,
             AuthSettingsOverrides {
                 algorithm: Some(JwtAlgorithm::RS256),
+                ..AuthSettingsOverrides::default()
+            },
+            |_| panic!("env resolver should not be called"),
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_auth_config_rejects_malformed_rs256_keys() {
+        let result = build_auth_config_with_env(
+            secret(),
+            900,
+            AuthSettingsOverrides {
+                algorithm: Some(JwtAlgorithm::RS256),
+                rsa_private_key_pem: Some("not-a-private-key".to_string()),
+                rsa_public_key_pem: Some("not-a-public-key".to_string()),
+                ..AuthSettingsOverrides::default()
+            },
+            |_| panic!("env resolver should not be called"),
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_auth_config_rejects_mismatched_rs256_key_pair() {
+        let different_public_key = crate::jwt::TEST_RSA_PUBLIC_KEY.replacen("3bmu", "3cmu", 1);
+        let result = build_auth_config_with_env(
+            secret(),
+            900,
+            AuthSettingsOverrides {
+                algorithm: Some(JwtAlgorithm::RS256),
+                rsa_private_key_pem: Some(crate::jwt::TEST_RSA_PRIVATE_KEY.to_string()),
+                rsa_public_key_pem: Some(different_public_key),
                 ..AuthSettingsOverrides::default()
             },
             |_| panic!("env resolver should not be called"),

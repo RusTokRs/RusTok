@@ -82,9 +82,7 @@ pub struct MarketplaceListingAdminEvent {
 
 impl MarketplaceListingAdminEvent {
     pub fn has_unknown_attribution(&self) -> bool {
-        self.provenance == "legacy_snapshot"
-            && self.actor_id.is_none()
-            && self.locale.is_none()
+        self.provenance == "legacy_snapshot" && self.actor_id.is_none() && self.locale.is_none()
     }
 }
 
