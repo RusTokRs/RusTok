@@ -45,7 +45,10 @@ const __flyWriteDraftRoute = (token) => {
     // URL synchronization is progressive enhancement; the server endpoint still works without it.
   }
 };
-const __flyAdapters = globalThis.FlyBrowser?.mountAll(globalThis.__FLY_BROWSER_CONFIG__) || [];
+const __flyBrowserConfig = globalThis.__FLY_BROWSER_CONFIG__ || {};
+const __flyAdapters = __flyBrowserConfig.autoMount === false
+  ? []
+  : globalThis.FlyBrowser?.mountAll(__flyBrowserConfig) || [];
 for (const adapter of __flyAdapters) {
   const routeDraft = __flyDraftFromRoute();
   if (routeDraft && adapter.draftSession?.token !== routeDraft) {
@@ -213,5 +216,6 @@ mod tests {
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("fly_draft"));
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("history.replaceState"));
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("data-fly-component-picker"));
+        assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("autoMount === false"));
     }
 }
