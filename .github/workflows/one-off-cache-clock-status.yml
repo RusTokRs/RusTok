@@ -1,0 +1,36 @@
+name: One-off Cache Clock Status
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  status:
+    if: >-
+      github.event.issue.title == '[automation] harden cache system clock' &&
+      github.event.issue.user.login == 'loid345' &&
+      github.event.comment.user.login == 'loid345' &&
+      github.event.comment.body == '/status-cache-system-clock'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Report cache clock workflow status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          runs=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow one-off-harden-cache-clock.yml \
+            --limit 5 \
+            --json databaseId,event,status,conclusion,createdAt,updatedAt,headSha,url)
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Cache clock workflow status:\n\n\`\`\`json\n$runs\n\`\`\`"
