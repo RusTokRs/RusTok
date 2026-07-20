@@ -47,9 +47,9 @@ jobs:
           from pathlib import Path
 
           replacements = {
-              Path("crates/rustok-pages/src/graphql/mutation.rs"): 1,
-              Path("crates/rustok-pages/src/services/page.rs"): 2,
-              Path("crates/rustok-pages/src/services/scenario_baseline.rs"): 1,
+              Path("crates/rustok-pages/src/graphql/mutation.rs"): 2,
+              Path("crates/rustok-pages/src/services/page.rs"): 3,
+              Path("crates/rustok-pages/src/services/scenario_baseline.rs"): 2,
           }
           old = "CONTENT_FORMAT_GRAPESJS_FORMAT"
           new = "CONTENT_FORMAT_GRAPESJS_V1"
@@ -81,7 +81,7 @@ jobs:
           test "$(git grep -n 'CONTENT_FORMAT_GRAPESJS_V1' -- \
             crates/rustok-pages/src/graphql/mutation.rs \
             crates/rustok-pages/src/services/page.rs \
-            crates/rustok-pages/src/services/scenario_baseline.rs | wc -l)" = "4"
+            crates/rustok-pages/src/services/scenario_baseline.rs | wc -l)" = "7"
           grep -Fq '.execute_unprepared("DROP TABLE module_artifact_data_objects")' \
             crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs
           grep -Fq '.execute_unprepared("DROP TABLE module_artifact_data_object_operations")' \
