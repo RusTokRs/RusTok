@@ -1,10 +1,11 @@
-#[cfg(feature = "browser-js")]
-use fly_browser::BrowserAdapterConfig;
-#[cfg(any(feature = "browser-js", test))]
-use fly_browser::FLY_BROWSER_ADAPTER_JS;
+use fly_browser::{BrowserAdapterConfig, FLY_BROWSER_ADAPTER_JS};
 use leptos::prelude::*;
 
-#[cfg(any(feature = "browser-js", test))]
+const BROWSER_HARDENING_JS: &str = include_str!("browser_hardening.js");
+const DEFAULT_MAX_BROWSER_MESSAGE_BYTES: usize = 1024 * 1024;
+const DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS: usize = 4096;
+const DEFAULT_RESOURCE_LIMIT_MESSAGE: &str = "Editor canvas resource limit reached.";
+
 const SSR_CONTROL_BOOTSTRAP_JS: &str = r#"
 const __flyDraftQueryKey = "fly_draft";
 const __flyObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -95,9 +96,34 @@ for (const adapter of __flyAdapters) {
 }
 "#;
 
+fn browser_adapter_config_json(
+    intent_endpoint: Option<String>,
+    csrf_token: Option<String>,
+) -> Result<String, serde_json::Error> {
+    let config = BrowserAdapterConfig {
+        intent_endpoint,
+        csrf_token,
+        ..BrowserAdapterConfig::default()
+    }
+    .normalized();
+    serde_json::to_string(&serde_json::json!({
+        "rootSelector": config.root_selector,
+        "iframeSelector": config.iframe_selector,
+        "expectedOrigin": config.expected_origin,
+        "intentEndpoint": config.intent_endpoint,
+        "csrfToken": config.csrf_token,
+        "autoMount": config.auto_mount,
+        "drawOverlays": config.draw_overlays,
+        "postIntents": config.post_intents,
+        "maxMessageBytes": DEFAULT_MAX_BROWSER_MESSAGE_BYTES,
+        "maxGeometryComponents": DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS,
+        "resourceLimitMessage": DEFAULT_RESOURCE_LIMIT_MESSAGE,
+    }))
+}
+
 /// Emits the standalone Fly browser bridge into a server-rendered Page Builder surface.
 ///
-/// The script owns only DOM identity checks, geometry overlays, pointer/keyboard forwarding,
+/// The script owns only DOM identity checks, bounded geometry overlays, pointer/keyboard forwarding,
 /// progressive enhancement for ordinary SSR forms, and optional POST delivery to a
 /// consumer-owned intent endpoint. Fly project state, commands, validation, rendering,
 /// permissions, and persistence remain in Rust.
@@ -108,18 +134,13 @@ pub fn PageBuilderBrowserAdapter(
 ) -> impl IntoView {
     #[cfg(feature = "browser-js")]
     {
-        let config = BrowserAdapterConfig {
-            intent_endpoint,
-            csrf_token,
-            ..BrowserAdapterConfig::default()
-        };
-        let config = config
-            .to_json()
+        let config = browser_adapter_config_json(intent_endpoint, csrf_token)
             .map(|json| escape_json_for_script(&json))
             .unwrap_or_else(|_| "{}".to_string());
         let source = [
             format!("globalThis.__FLY_BROWSER_CONFIG__ = Object.freeze({config});"),
             FLY_BROWSER_ADAPTER_JS.to_string(),
+            BROWSER_HARDENING_JS.to_string(),
             SSR_CONTROL_BOOTSTRAP_JS.to_string(),
         ]
         .join("\n");
@@ -140,7 +161,6 @@ pub fn PageBuilderBrowserAdapter(
     }
 }
 
-#[cfg(any(feature = "browser-js", test))]
 fn escape_json_for_script(json: &str) -> String {
     json.replace('&', "\\u0026")
         .replace('<', "\\u003c")
@@ -158,6 +178,37 @@ mod tests {
         assert!(FLY_BROWSER_ADAPTER_JS.contains("class FlyBrowserAdapter"));
         assert!(FLY_BROWSER_ADAPTER_JS.contains("fly:browser-intent"));
         assert!(!FLY_BROWSER_ADAPTER_JS.contains("wasm_bindgen"));
+    }
+
+    #[test]
+    fn browser_config_matches_the_javascript_contract() {
+        let json = browser_adapter_config_json(
+            Some("/admin/fly/intents".to_string()),
+            Some("csrf-token".to_string()),
+        )
+        .expect("browser config");
+        let value: serde_json::Value = serde_json::from_str(&json).expect("JSON");
+        assert_eq!(value["intentEndpoint"], "/admin/fly/intents");
+        assert_eq!(value["csrfToken"], "csrf-token");
+        assert_eq!(
+            value["maxMessageBytes"],
+            DEFAULT_MAX_BROWSER_MESSAGE_BYTES
+        );
+        assert_eq!(
+            value["maxGeometryComponents"],
+            DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS
+        );
+        assert!(value.get("intent_endpoint").is_none());
+        assert!(value.get("csrf_token").is_none());
+    }
+
+    #[test]
+    fn hardening_asset_emits_typed_accessible_resource_limits() {
+        assert!(BROWSER_HARDENING_JS.contains("fly:browser-resource-limit"));
+        assert!(BROWSER_HARDENING_JS.contains("message_bytes"));
+        assert!(BROWSER_HARDENING_JS.contains("geometry_components"));
+        assert!(BROWSER_HARDENING_JS.contains("aria-live"));
+        assert!(BROWSER_HARDENING_JS.contains("role"));
     }
 
     #[test]
