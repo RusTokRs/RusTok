@@ -1,10 +1,10 @@
-use crate::error::{http_error, Error, Result};
+use crate::error::{Error, Result, http_error};
 use axum::response::Response;
 use axum::{
     extract::{Path, Query},
     routing::get,
 };
-use rustok_api::{has_effective_permission, Permission};
+use rustok_api::{Permission, has_effective_permission};
 use rustok_auth::{UserItem, UsersListParams, UsersResponse};
 use rustok_web::json_response;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};

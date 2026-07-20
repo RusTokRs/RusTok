@@ -7,7 +7,7 @@
 /// when they come from admin panel (detected via User-Agent or Referer).
 use axum::{
     body::Body,
-    http::{header, Request, Response, StatusCode},
+    http::{Request, Response, StatusCode, header},
     middleware::Next,
 };
 

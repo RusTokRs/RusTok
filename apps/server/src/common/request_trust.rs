@@ -4,8 +4,8 @@ use std::str::FromStr;
 use axum::extract::connect_info::ConnectInfo;
 use axum::http::Extensions;
 use axum::http::{
-    header::{FORWARDED, HOST},
     HeaderMap,
+    header::{FORWARDED, HOST},
 };
 use ipnet::IpNet;
 

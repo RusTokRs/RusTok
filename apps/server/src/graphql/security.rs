@@ -164,10 +164,12 @@ fn forbidden_sensitive_response(fields: &[SensitiveGraphqlField]) -> Response {
         .map(|field| format!("{} -> {}", field.field_name(), field.permission_hint()))
         .collect::<Vec<_>>()
         .join(", ");
-    Response::from_errors(vec![<FieldError as GraphQLError>::permission_denied(
-        &format!("Forbidden admin GraphQL operation. Required permissions: {required_permissions}"),
-    )
-    .into_server_error(Pos::default())])
+    Response::from_errors(vec![
+        <FieldError as GraphQLError>::permission_denied(&format!(
+            "Forbidden admin GraphQL operation. Required permissions: {required_permissions}"
+        ))
+        .into_server_error(Pos::default()),
+    ])
 }
 
 #[derive(Default)]
@@ -222,8 +224,8 @@ impl Extension for GraphqlSecurityPolicyExtension {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_sensitive_graphql_document, sensitive_graphql_fields, GraphqlSecurityPolicy,
-        SensitiveGraphqlDocumentPolicy, SensitiveGraphqlField,
+        GraphqlSecurityPolicy, SensitiveGraphqlDocumentPolicy, SensitiveGraphqlField,
+        classify_sensitive_graphql_document, sensitive_graphql_fields,
     };
     use crate::context::AuthContext;
     use async_graphql::{EmptySubscription, Object, Request, Schema, SimpleObject};

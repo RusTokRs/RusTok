@@ -1,12 +1,6 @@
 use std::sync::Arc;
 
-use axum::{
-    body::Body,
-    http::Request,
-    middleware as axum_middleware,
-    routing::get,
-    Router,
-};
+use axum::{Router, body::Body, http::Request, middleware as axum_middleware, routing::get};
 use rustok_cache::{CacheService, VersionedCacheInvalidation};
 use rustok_migrations::Migrator;
 use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
@@ -23,10 +17,7 @@ async fn locale_probe() -> &'static str {
     "ok"
 }
 
-async fn insert_tenant(
-    db: &sea_orm::DatabaseConnection,
-    name: &str,
-) -> tenants::Model {
+async fn insert_tenant(db: &sea_orm::DatabaseConnection, name: &str) -> tenants::Model {
     let now = chrono::Utc::now();
     tenants::ActiveModel {
         id: Set(Uuid::new_v4()),
@@ -65,11 +56,7 @@ async fn insert_locale(
     .expect("tenant locale should insert");
 }
 
-async fn replace_default_locale(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    locale: &str,
-) {
+async fn replace_default_locale(db: &sea_orm::DatabaseConnection, tenant_id: Uuid, locale: &str) {
     db.execute_unprepared(&format!(
         "UPDATE tenant_locales SET is_default = 0, is_enabled = 0 WHERE tenant_id = '{tenant_id}'"
     ))

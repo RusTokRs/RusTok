@@ -36,12 +36,12 @@ mod stripe {
 
     use async_trait::async_trait;
     use rustok_payment::{
+        PaymentError, PaymentResult, STRIPE_PAYMENT_PROVIDER_ID, StripeCredentialProvider,
+        StripeCredentials, StripePaymentProvider, StripePaymentProviderConfig,
         providers::{
             ExternalPaymentProviderRegistration, PaymentProvider, PaymentProviderHealth,
             PaymentProviderRegistry,
         },
-        PaymentError, PaymentResult, StripeCredentialProvider, StripeCredentials,
-        StripePaymentProvider, StripePaymentProviderConfig, STRIPE_PAYMENT_PROVIDER_ID,
     };
     use rustok_secrets::{
         EnvResolver, MountedFileResolver, SecretAccessPolicy, SecretRef, SecretResolverRegistry,
@@ -96,10 +96,14 @@ mod stripe {
 
     #[async_trait]
     impl StripeCredentialProvider for DeploymentStripeCredentialProvider {
-        async fn credentials_for_tenant(&self, tenant_id: Uuid) -> PaymentResult<StripeCredentials> {
-            let refs = self.refs_by_tenant.get(&tenant_id).ok_or_else(|| {
-                PaymentError::provider_configuration(STRIPE_PAYMENT_PROVIDER_ID)
-            })?;
+        async fn credentials_for_tenant(
+            &self,
+            tenant_id: Uuid,
+        ) -> PaymentResult<StripeCredentials> {
+            let refs = self
+                .refs_by_tenant
+                .get(&tenant_id)
+                .ok_or_else(|| PaymentError::provider_configuration(STRIPE_PAYMENT_PROVIDER_ID))?;
             let secret_key = self
                 .registry
                 .resolve_for_tenant(tenant_id, &refs.secret_key)
@@ -293,9 +297,7 @@ mod stripe {
     }
 
     fn configuration_error() -> Error {
-        Error::BadRequest(
-            "Stripe payment provider deployment configuration is invalid".to_string(),
-        )
+        Error::BadRequest("Stripe payment provider deployment configuration is invalid".to_string())
     }
 
     #[cfg(test)]
@@ -320,11 +322,9 @@ mod stripe {
         fn deployment_config_requires_unique_tenants_and_secret_references() {
             let tenant = Uuid::new_v4();
             assert!(validate_configs(&[refs(tenant, "TENANT_A")]).is_ok());
-            assert!(validate_configs(&[
-                refs(tenant, "TENANT_A"),
-                refs(tenant, "TENANT_B"),
-            ])
-            .is_err());
+            assert!(
+                validate_configs(&[refs(tenant, "TENANT_A"), refs(tenant, "TENANT_B"),]).is_err()
+            );
 
             let mut first = refs(Uuid::new_v4(), "SHARED");
             let mut second = refs(Uuid::new_v4(), "OTHER");

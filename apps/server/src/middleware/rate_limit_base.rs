@@ -5,7 +5,7 @@
 use axum::{
     body::Body,
     extract::{Request, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -24,7 +24,7 @@ use tracing::{debug, warn};
 
 use rustok_cache::CacheService;
 
-use crate::auth::{decode_access_token, AuthConfig};
+use crate::auth::{AuthConfig, decode_access_token};
 use crate::common::{
     extract_effective_client_ip, peer_ip_from_extensions,
     settings::{RateLimitBackendKind, RequestTrustSettings},

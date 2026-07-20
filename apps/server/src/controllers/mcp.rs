@@ -1,9 +1,9 @@
 use axum::{
+    Extension, Json,
     extract::{Path, Query, State},
     http::HeaderMap,
     response::sse::{Event, KeepAlive, Sse},
     routing::{get, post, put},
-    Extension, Json,
 };
 use std::str::FromStr;
 use uuid::Uuid;
@@ -21,7 +21,7 @@ use crate::services::mcp_runtime::{DbBackedMcpRuntimeBridge, McpRemoteBootstrapR
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_core::ModuleRegistry;
 use rustok_mcp::{
-    default_tool_requirement, ApplyMcpModuleScaffoldDraftRequest, ApplyModuleScaffoldRequest,
+    ApplyMcpModuleScaffoldDraftRequest, ApplyModuleScaffoldRequest,
     BootstrapMcpRemoteSessionRequest, CreateMcpClientRequest, CreateMcpClientResponse,
     McpActorType, McpAuditEventResponse, McpAuditQuery, McpAuditSink, McpClientDetailsResponse,
     McpClientSummaryResponse, McpModuleScaffoldDraftResponse, McpPolicyResponse,
@@ -30,9 +30,10 @@ use rustok_mcp::{
     McpToolCallAuditEvent, McpToolCallOutcome, McpToolResponse, ModuleDetailsResponse, ModuleInfo,
     ModuleListResponse, ModuleLookupRequest, ModuleLookupResponse, ReviewModuleScaffoldRequest,
     RotateMcpTokenRequest, RotateMcpTokenResponse, ScaffoldModuleRequest,
-    StageMcpModuleScaffoldDraftRequest, UpdateMcpPolicyRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
+    StageMcpModuleScaffoldDraftRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
     TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_LIST_MODULES,
     TOOL_MCP_HEALTH, TOOL_MCP_WHOAMI, TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS, TOOL_QUERY_MODULES,
+    UpdateMcpPolicyRequest, default_tool_requirement,
 };
 use tokio_stream::once;
 

@@ -9,8 +9,8 @@ use async_graphql::parser::types::{
 };
 use async_graphql::{FieldError, Name, Pos, Request, Response, ServerResult, Variables};
 use async_graphql_value::{ConstValue, Value};
-use rustok_api::graphql::GraphQLError;
 use rustok_api::TenantContext;
+use rustok_api::graphql::GraphQLError;
 use uuid::Uuid;
 
 const TENANT_ARGUMENT_NAMES: [&str; 2] = ["tenantId", "tenant_id"];
@@ -324,10 +324,9 @@ fn set_invalid_argument(policy: &mut GraphqlTenantArgumentPolicy, message: Strin
 }
 
 fn tenant_policy_error(message: &str) -> Response {
-    Response::from_errors(vec![<FieldError as GraphQLError>::permission_denied(
-        message,
-    )
-    .into_server_error(Pos::default())])
+    Response::from_errors(vec![
+        <FieldError as GraphQLError>::permission_denied(message).into_server_error(Pos::default()),
+    ])
 }
 
 #[async_trait::async_trait]

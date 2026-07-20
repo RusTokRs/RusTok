@@ -1,5 +1,5 @@
-use sea_orm::prelude::*;
 use sea_orm::Set;
+use sea_orm::prelude::*;
 
 use rustok_core::generate_id;
 

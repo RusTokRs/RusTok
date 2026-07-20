@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 use sha2::{Digest, Sha256};
 
-use crate::auth::{decode_invite_token, AuthConfig};
+use crate::auth::{AuthConfig, decode_invite_token};
 use crate::error::Error;
 use crate::models::{auth_invite_consumptions, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};

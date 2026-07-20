@@ -1,6 +1,6 @@
 use sea_orm::{
-    sea_query::Expr, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
-    PaginatorTrait, QueryFilter, QuerySelect, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait,
+    QueryFilter, QuerySelect, TransactionTrait, sea_query::Expr,
 };
 
 use crate::error::{Error, Result};
@@ -293,14 +293,11 @@ mod tests {
             .await
             .expect("admin role assignment should succeed");
 
-        assert!(RbacService::has_permission(
-            &db,
-            &tenant_id,
-            &user_id,
-            &Permission::SETTINGS_MANAGE,
-        )
-        .await
-        .expect("admin permission lookup should succeed"));
+        assert!(
+            RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE,)
+                .await
+                .expect("admin permission lookup should succeed")
+        );
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
         RbacService::replace_user_role_committed(&db, &user_id, &tenant_id, UserRole::Customer)
@@ -308,14 +305,11 @@ mod tests {
             .expect("committed demotion should succeed");
 
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
-        assert!(!RbacService::has_permission(
-            &db,
-            &tenant_id,
-            &user_id,
-            &Permission::SETTINGS_MANAGE,
-        )
-        .await
-        .expect("post-demotion permission lookup should succeed"));
+        assert!(
+            !RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE,)
+                .await
+                .expect("post-demotion permission lookup should succeed")
+        );
         assert!(
             RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::PRODUCTS_READ,)
                 .await
@@ -364,14 +358,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
-        assert!(!RbacService::has_permission(
-            &db,
-            &tenant_id,
-            &user_id,
-            &Permission::PRODUCTS_CREATE,
-        )
-        .await
-        .unwrap());
+        assert!(
+            !RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::PRODUCTS_CREATE,)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -387,14 +378,11 @@ mod tests {
         RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::SuperAdmin)
             .await
             .expect("super-admin role assignment should succeed");
-        assert!(RbacService::has_permission(
-            &db,
-            &tenant_id,
-            &user_id,
-            &Permission::SETTINGS_MANAGE,
-        )
-        .await
-        .expect("super-admin permission lookup should succeed"));
+        assert!(
+            RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE,)
+                .await
+                .expect("super-admin permission lookup should succeed")
+        );
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
         let error =
@@ -409,13 +397,10 @@ mod tests {
                 .await
                 .expect("authoritative permissions should remain readable");
         assert!(authoritative.contains(&Permission::SETTINGS_MANAGE));
-        assert!(RbacService::has_permission(
-            &db,
-            &tenant_id,
-            &user_id,
-            &Permission::SETTINGS_MANAGE,
-        )
-        .await
-        .expect("cached permission lookup should remain valid"));
+        assert!(
+            RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE,)
+                .await
+                .expect("cached permission lookup should remain valid")
+        );
     }
 }

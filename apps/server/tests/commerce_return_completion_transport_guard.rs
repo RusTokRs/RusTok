@@ -2,24 +2,17 @@ use std::path::Path;
 
 #[test]
 fn return_completion_uses_one_commerce_orchestration_boundary() {
-    let rest = include_str!(
-        "../../../crates/rustok-commerce/src/controllers/admin/returns.rs"
-    );
-    let graphql = include_str!(
-        "../../../crates/rustok-commerce/src/graphql/mutations/fulfillment.rs"
-    );
-    let graphql_runtime = include_str!(
-        "../../../crates/rustok-commerce/src/graphql_runtime.rs"
-    );
-    let recovery = include_str!(
-        "../../../crates/rustok-commerce/src/services/return_completion_recovery.rs"
-    );
+    let rest = include_str!("../../../crates/rustok-commerce/src/controllers/admin/returns.rs");
+    let graphql =
+        include_str!("../../../crates/rustok-commerce/src/graphql/mutations/fulfillment.rs");
+    let graphql_runtime = include_str!("../../../crates/rustok-commerce/src/graphql_runtime.rs");
+    let recovery =
+        include_str!("../../../crates/rustok-commerce/src/services/return_completion_recovery.rs");
     let orchestration = include_str!(
         "../../../crates/rustok-commerce/src/services/return_completion_orchestration.rs"
     );
-    let legacy_helper = Path::new(env!("CARGO_MANIFEST_DIR")).join(
-        "../../crates/rustok-commerce/src/graphql/mutations/provider_return_helpers.rs",
-    );
+    let legacy_helper = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/rustok-commerce/src/graphql/mutations/provider_return_helpers.rs");
 
     assert!(
         !legacy_helper.exists(),
@@ -102,18 +95,16 @@ fn return_completion_uses_one_commerce_orchestration_boundary() {
 
 #[test]
 fn return_completion_journal_preserves_replay_and_recovery_invariants() {
-    let entity = include_str!(
-        "../../../crates/rustok-commerce/src/entities/return_completion_operation.rs"
-    );
+    let entity =
+        include_str!("../../../crates/rustok-commerce/src/entities/return_completion_operation.rs");
     let migration = include_str!(
         "../../../crates/rustok-commerce/src/migrations/m20260716_000004_create_return_completion_operations.rs"
     );
     let resolution_identity_migration = include_str!(
         "../../../crates/rustok-commerce/src/migrations/m20260716_000005_enforce_return_completion_resolution_identity.rs"
     );
-    let journal = include_str!(
-        "../../../crates/rustok-commerce/src/services/return_completion_operation.rs"
-    );
+    let journal =
+        include_str!("../../../crates/rustok-commerce/src/services/return_completion_operation.rs");
     let orchestration = include_str!(
         "../../../crates/rustok-commerce/src/services/return_completion_orchestration.rs"
     );
@@ -192,27 +183,19 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
 
 #[test]
 fn return_completion_command_inbox_and_operator_surface_are_safe() {
-    let entity = include_str!(
-        "../../../crates/rustok-commerce/src/entities/return_completion_command.rs"
-    );
+    let entity =
+        include_str!("../../../crates/rustok-commerce/src/entities/return_completion_command.rs");
     let migration = include_str!(
         "../../../crates/rustok-commerce/src/migrations/m20260716_000006_create_return_completion_commands.rs"
     );
-    let recovery = include_str!(
-        "../../../crates/rustok-commerce/src/services/return_completion_recovery.rs"
-    );
-    let services = include_str!(
-        "../../../crates/rustok-commerce/src/services/mod.rs"
-    );
+    let recovery =
+        include_str!("../../../crates/rustok-commerce/src/services/return_completion_recovery.rs");
+    let services = include_str!("../../../crates/rustok-commerce/src/services/mod.rs");
     let controller = include_str!(
         "../../../crates/rustok-commerce/src/controllers/return_completion_operations.rs"
     );
-    let controllers = include_str!(
-        "../../../crates/rustok-commerce/src/controllers/mod.rs"
-    );
-    let openapi = include_str!(
-        "../../../crates/rustok-commerce/src/openapi.rs"
-    );
+    let controllers = include_str!("../../../crates/rustok-commerce/src/controllers/mod.rs");
+    let openapi = include_str!("../../../crates/rustok-commerce/src/openapi.rs");
 
     assert!(entity.contains("table_name = \"return_completion_commands\""));
     for marker in [

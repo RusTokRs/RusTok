@@ -1,4 +1,4 @@
-use eyre::{bail, eyre, Result};
+use eyre::{Result, bail, eyre};
 use rustok_installer::{
     InstallAdminOutcome, InstallAdminPort, InstallApplyOptions, InstallApplyOutput,
     InstallDatabasePort, InstallDatabaseReady, InstallExecutionError, InstallExecutor,

@@ -1,5 +1,5 @@
 use rustok_mcp::{McpAccessContext, McpAccessPolicy, McpIdentity};
-use sea_orm::{entity::prelude::*, QueryFilter};
+use sea_orm::{QueryFilter, entity::prelude::*};
 
 use crate::models::mcp_clients;
 

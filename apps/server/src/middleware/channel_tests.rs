@@ -1,20 +1,20 @@
 use super::{
-    bounded_cache_component, build_request_facts, channel_cache_entry_weight,
-    channel_cache_key_from_facts, channel_id_from_header, channel_slug_from_header,
-    channel_slug_from_query, resolved_detail_source_and_trace, CachedChannelResolution,
-    ChannelResolutionCache, ChannelResolutionOutcome, ChannelResolutionStage,
+    CachedChannelResolution, ChannelResolutionCache, ChannelResolutionOutcome,
+    ChannelResolutionStage, bounded_cache_component, build_request_facts,
+    channel_cache_entry_weight, channel_cache_key_from_facts, channel_id_from_header,
+    channel_slug_from_header, channel_slug_from_query, resolved_detail_source_and_trace,
 };
 use crate::common::RustokSettings;
 use crate::context::{ChannelContext, ChannelResolutionSource};
-use axum::http::{header::HOST, Extensions, HeaderMap};
+use axum::http::{Extensions, HeaderMap, header::HOST};
 use rustok_api::{
     context::{AuthContext, AuthContextExtension},
     request::ResolvedRequestLocale,
 };
 use rustok_channel::{
-    migrations, ChannelResolutionRuleDefinition, ChannelResolver, ChannelService,
-    CreateChannelInput, CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
-    CreateChannelTargetInput, ResolutionAction, ResolutionPredicate,
+    ChannelResolutionRuleDefinition, ChannelResolver, ChannelService, CreateChannelInput,
+    CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
+    CreateChannelTargetInput, ResolutionAction, ResolutionPredicate, migrations,
 };
 use rustok_test_utils::setup_test_db;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};

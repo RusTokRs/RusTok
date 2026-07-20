@@ -1,5 +1,5 @@
-use sea_orm::prelude::*;
 use sea_orm::ConnectionTrait;
+use sea_orm::prelude::*;
 
 use super::_entities::oauth_consents::{self};
 pub use super::_entities::oauth_consents::{ActiveModel, Column, Entity, Model};

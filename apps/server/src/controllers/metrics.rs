@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    http::{header::CONTENT_TYPE, StatusCode},
+    http::{StatusCode, header::CONTENT_TYPE},
     response::{IntoResponse, Response},
     routing::get,
 };
@@ -11,31 +11,31 @@ use crate::services::app_lifecycle::{
     OutboxRelayWorkerHandle, RemoteExecutorReaperHandle, RuntimeWorkerLifecycleState, StopHandle,
 };
 use crate::services::event_transport_factory::{
-    outbox_relay_supervisor_metrics_snapshot, EventRuntime, OutboxRelaySupervisorMetricsSnapshot,
+    EventRuntime, OutboxRelaySupervisorMetricsSnapshot, outbox_relay_supervisor_metrics_snapshot,
 };
 use chrono::Utc;
-use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
 use rustok_outbox::RelayMetricsSnapshot;
+use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
     Statement,
 };
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use crate::middleware::locale::{tenant_locale_cache_stats, TenantLocaleCacheStats};
+use crate::middleware::locale::{TenantLocaleCacheStats, tenant_locale_cache_stats};
 use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };
-use crate::middleware::tenant::{tenant_cache_stats, TenantCacheStats};
+use crate::middleware::tenant::{TenantCacheStats, tenant_cache_stats};
 use crate::models::_entities::tenants::{Column as TenantsColumn, Entity as TenantsEntity};
 use crate::services::auth_lifecycle::AuthLifecycleService;
-use crate::services::email::{email_delivery_metrics_snapshot, EmailDeliveryMetricsSnapshot};
-use crate::services::rbac_consistency::{load_rbac_consistency_stats, RbacConsistencyStats};
+use crate::services::email::{EmailDeliveryMetricsSnapshot, email_delivery_metrics_snapshot};
+use crate::services::rbac_consistency::{RbacConsistencyStats, load_rbac_consistency_stats};
 use crate::services::rbac_service::{RbacResolverMetricsSnapshot, RbacService};
 use crate::services::runtime_guardrails::{
-    collect_runtime_guardrail_snapshot, RuntimeGuardrailSnapshot,
+    RuntimeGuardrailSnapshot, collect_runtime_guardrail_snapshot,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_cache::CacheService;
@@ -270,7 +270,11 @@ rustok_runtime_guardrail_event_backpressure_critical_total {critical_count}\n",
         } else {
             0
         },
-        remote_executor_enabled = if snapshot.remote_executor.enabled { 1 } else { 0 },
+        remote_executor_enabled = if snapshot.remote_executor.enabled {
+            1
+        } else {
+            0
+        },
         remote_executor_token_configured = if snapshot.remote_executor.token_configured {
             1
         } else {
@@ -280,9 +284,8 @@ rustok_runtime_guardrail_event_backpressure_critical_total {critical_count}\n",
         remote_executor_active_claims = snapshot.remote_executor.active_claims,
         remote_executor_expired_claims = snapshot.remote_executor.expired_claims,
         remote_executor_lease_ttl_ms = snapshot.remote_executor.lease_ttl_ms,
-        remote_executor_requeue_scan_interval_ms = snapshot
-            .remote_executor
-            .requeue_scan_interval_ms,
+        remote_executor_requeue_scan_interval_ms =
+            snapshot.remote_executor.requeue_scan_interval_ms,
         backpressure_enabled = if snapshot.event_bus.backpressure_enabled {
             1
         } else {
@@ -914,7 +917,9 @@ mod tests {
             "rustok_runtime_worker_restarts_total",
             "{worker=\"outbox_relay\"}",
         );
-        assert!(payload.contains("rustok_runtime_worker_restarts_total{worker=\"outbox_relay\"} 4"));
+        assert!(
+            payload.contains("rustok_runtime_worker_restarts_total{worker=\"outbox_relay\"} 4")
+        );
     }
 
     #[test]

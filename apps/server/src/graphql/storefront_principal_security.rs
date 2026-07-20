@@ -5,7 +5,7 @@ use async_graphql::extensions::{
 };
 use async_graphql::parser::types::{ExecutableDocument, Selection, SelectionSet};
 use async_graphql::{FieldError, Pos, Request, Response, ServerResult};
-use rustok_api::{graphql::GraphQLError, AuthContext};
+use rustok_api::{AuthContext, graphql::GraphQLError};
 
 #[derive(Clone, Copy, Debug)]
 struct StorefrontOperationRequested;

@@ -3,13 +3,13 @@ use std::{env, fs, path::PathBuf, str::FromStr, time::Duration};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rustok_content::entities::{body, node};
-use rustok_core::{validate_and_sanitize_rt_json, RtJsonValidationConfig};
+use rustok_core::{RtJsonValidationConfig, validate_and_sanitize_rt_json};
 use sea_orm::{
-    sea_query::Expr, ColumnTrait, Condition, Database, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+    ColumnTrait, Condition, Database, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 const TARGET_KINDS: &[&str] = &["post", "comment", "forum_topic", "forum_reply"];

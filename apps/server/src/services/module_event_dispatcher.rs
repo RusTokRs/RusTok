@@ -290,9 +290,11 @@ mod tests {
             assert!(
                 extensions.contains::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
             );
-            assert!(runtime_ctx
-                .shared_get::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
-                .is_some());
+            assert!(
+                runtime_ctx
+                    .shared_get::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
+                    .is_some()
+            );
         }
     }
 }

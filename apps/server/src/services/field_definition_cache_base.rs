@@ -287,9 +287,9 @@ impl flex::FieldDefinitionCachePort for FieldDefinitionCache {
 #[cfg(test)]
 mod tests {
     use super::{
+        FieldDefinitionCache, FieldDefinitionCacheInvalidationHandle,
         field_definition_cache_from_context, field_definition_entry_weight,
-        supervise_field_definition_cache_invalidation, FieldDefinitionCache,
-        FieldDefinitionCacheInvalidationHandle,
+        supervise_field_definition_cache_invalidation,
     };
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -298,8 +298,8 @@ mod tests {
     use rustok_events::{DomainEvent, EventEnvelope};
     use sea_orm::Database;
     use serde_json::json;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
     use tokio::time::sleep;
     use uuid::Uuid;

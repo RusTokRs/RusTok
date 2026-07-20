@@ -2,7 +2,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{has_effective_permission, Permission};
+use rustok_api::{Permission, has_effective_permission};
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
     UserAdminMutationPort, UserMutationRecord,

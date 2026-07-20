@@ -13,9 +13,10 @@ use rustok_core::UserRole;
 
 use rustok_api::{Action, Permission, Resource};
 use rustok_rbac::{
+    AuthorizationDecision, DeniedReasonKind, PermissionCache, PermissionCacheLookup,
+    RelationPermissionStore, RoleAssignmentStore, RuntimePermissionResolver,
     authorize_all_permissions, authorize_any_permission, authorize_permission,
-    invalidate_cached_permissions, AuthorizationDecision, DeniedReasonKind, PermissionCache,
-    PermissionCacheLookup, RelationPermissionStore, RoleAssignmentStore, RuntimePermissionResolver,
+    invalidate_cached_permissions,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
@@ -731,14 +732,16 @@ mod tests {
             .expect("load foreign role")
             .expect("foreign role exists");
 
-        assert!(user_roles::Entity::insert(user_roles::ActiveModel {
-            id: Set(rustok_core::generate_id()),
-            user_id: Set(user_a),
-            role_id: Set(foreign_role.id),
-        })
-        .exec(&db)
-        .await
-        .is_err());
+        assert!(
+            user_roles::Entity::insert(user_roles::ActiveModel {
+                id: Set(rustok_core::generate_id()),
+                user_id: Set(user_a),
+                role_id: Set(foreign_role.id),
+            })
+            .exec(&db)
+            .await
+            .is_err()
+        );
 
         let store = SeaOrmRelationPermissionStore { db };
         let role_ids = store

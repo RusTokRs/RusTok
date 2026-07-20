@@ -1,5 +1,5 @@
 use crate::auth::decode_access_token;
-use crate::context::{infer_user_role_from_permissions, TenantContextExt};
+use crate::context::{TenantContextExt, infer_user_role_from_permissions};
 use crate::models::{
     oauth_apps::{self, Entity as OAuthApps},
     oauth_consents::Entity as OAuthConsents,
@@ -9,15 +9,15 @@ use crate::models::{
 use crate::services::rbac_service::RbacService;
 use axum::{
     extract::{FromRef, FromRequestParts},
-    http::{request::Parts, StatusCode},
+    http::{StatusCode, request::Parts},
 };
 use axum_extra::{
-    headers::{authorization::Bearer, Authorization},
     TypedHeader,
+    headers::{Authorization, authorization::Bearer},
 };
 use rustok_api::{
-    context::{restrict_permissions_to_scopes, scope_matches},
     Permission,
+    context::{restrict_permissions_to_scopes, scope_matches},
 };
 use rustok_core::{SecurityActorKind, UserRole};
 use sea_orm::{DatabaseConnection, EntityTrait};

@@ -77,8 +77,7 @@ fn bypass_toggle_api_is_not_public() {
     let entity_impl_anchor = "impl Entity {";
     let entity_method_signature =
         "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only(";
-    let wrapper_signature =
-        "\n#[allow(dead_code)]\npub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only(";
+    let wrapper_signature = "\n#[allow(dead_code)]\npub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only(";
     let public_signature = "pub async fn upsert_flag_without_lifecycle_for_migrations_only(";
 
     let entity_impl_pos = content
@@ -179,11 +178,13 @@ pub(crate) async fn other_helper() {}
 #[test]
 fn extract_function_block_returns_none_for_missing_signature() {
     let source = "pub(crate) async fn other_helper() {}";
-    assert!(extract_function_block(
-        source,
-        "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only("
-    )
-    .is_none());
+    assert!(
+        extract_function_block(
+            source,
+            "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only("
+        )
+        .is_none()
+    );
 }
 
 #[test]
@@ -195,21 +196,25 @@ pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only() {
 }
 "#;
 
-    assert!(extract_function_block(
-        source,
-        "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only()"
-    )
-    .is_none());
+    assert!(
+        extract_function_block(
+            source,
+            "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only()"
+        )
+        .is_none()
+    );
 }
 
 #[test]
 fn extract_function_block_returns_none_when_body_brace_missing() {
     let source = "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only()";
-    assert!(extract_function_block(
-        source,
-        "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only()"
-    )
-    .is_none());
+    assert!(
+        extract_function_block(
+            source,
+            "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only()"
+        )
+        .is_none()
+    );
 }
 
 #[test]

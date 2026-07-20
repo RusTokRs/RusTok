@@ -301,9 +301,10 @@ mod tests {
     #[test]
     fn rate_limit_validator_accepts_valid_settings() {
         let v = RateLimitSettingsValidator;
-        assert!(v
-            .validate(&json!({ "requests_per_second": 100.0, "burst_size": 200 }))
-            .is_ok());
+        assert!(
+            v.validate(&json!({ "requests_per_second": 100.0, "burst_size": 200 }))
+                .is_ok()
+        );
     }
 
     #[test]
@@ -337,9 +338,10 @@ mod tests {
         // rate_limit: valid
         assert!(reg.validate("rate_limit", &json!({})).is_ok());
         // email: invalid provider
-        assert!(reg
-            .validate("email", &json!({ "provider": "pigeon" }))
-            .is_err());
+        assert!(
+            reg.validate("email", &json!({ "provider": "pigeon" }))
+                .is_err()
+        );
     }
 
     #[test]

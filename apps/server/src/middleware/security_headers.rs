@@ -184,16 +184,16 @@ fn select_report_only_csp(path: &str, csp_nonce: Option<&CspNonce>) -> Option<St
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_env_flag, security_headers, select_csp, select_report_only_csp, API_CSP,
-        REPORTING_ENDPOINTS,
+        API_CSP, REPORTING_ENDPOINTS, parse_env_flag, security_headers, select_csp,
+        select_report_only_csp,
     };
     use crate::middleware::csp_reports::CSP_REPORT_PATH;
     use axum::{
-        body::{to_bytes, Body},
+        Extension, Router,
+        body::{Body, to_bytes},
         http::{Request, StatusCode},
         middleware,
         routing::get,
-        Extension, Router,
     };
     use rustok_web::CspNonce;
     use tower::ServiceExt;

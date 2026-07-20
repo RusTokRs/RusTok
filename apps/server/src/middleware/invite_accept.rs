@@ -1,10 +1,10 @@
 use axum::{
-    body::{to_bytes, Body},
+    Json,
+    body::{Body, to_bytes},
     extract::State,
     http::{Method, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
-    Json,
 };
 use rustok_auth::{AcceptInviteParams, InviteAcceptResponse};
 use rustok_web::json_response;
@@ -43,7 +43,7 @@ pub async fn consume_once(
                     "message": "Invite request body is invalid or too large"
                 })),
             )
-                .into_response()
+                .into_response();
         }
     };
     let params = match serde_json::from_slice::<AcceptInviteParams>(&bytes) {
@@ -56,7 +56,7 @@ pub async fn consume_once(
                     "message": "Invite request must be valid JSON"
                 })),
             )
-                .into_response()
+                .into_response();
         }
     };
     let config = match ctx.auth_config() {

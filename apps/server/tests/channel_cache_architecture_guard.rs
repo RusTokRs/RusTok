@@ -45,9 +45,7 @@ fn channel_cache_generations_are_bounded_and_fail_safe() {
     }
 
     assert!(!channel.contains("wrapping_add"));
-    assert!(!channel.contains(
-        "tenant_versions: Arc<RwLock<HashMap<Uuid, u64>>>"
-    ));
+    assert!(!channel.contains("tenant_versions: Arc<RwLock<HashMap<Uuid, u64>>>"));
     let exhaustion = channel
         .find("self.exhausted = true;")
         .expect("version exhaustion must be explicit");
@@ -71,14 +69,10 @@ fn channel_cache_is_registered_atomically() {
 fn native_and_rest_channel_mutations_publish_durable_invalidation() {
     let middleware_mod = source("apps/server/src/middleware/mod.rs");
     let wrapper = source("apps/server/src/middleware/channel_native_wrapper.rs");
-    let adapter = source(
-        "crates/rustok-channel/admin/src/transport/native_server_adapter.rs",
-    );
+    let adapter = source("crates/rustok-channel/admin/src/transport/native_server_adapter.rs");
     let controller = source("apps/server/src/controllers/channel.rs");
 
-    assert!(middleware_mod.contains(
-        "#[path = \"channel_native_wrapper.rs\"]\npub mod channel;"
-    ));
+    assert!(middleware_mod.contains("#[path = \"channel_native_wrapper.rs\"]\npub mod channel;"));
     assert!(wrapper.contains("response.status().is_success()"));
     assert!(wrapper.contains("invalidate_tenant_channel_cache_local(ctx, tenant_id).await;"));
     assert!(wrapper.contains("publish_channel_resolution_invalidation(ctx, tenant_id).await;"));
@@ -121,9 +115,10 @@ fn durable_channel_generation_is_database_owned_and_supervised() {
     let bootstrap = source("apps/server/src/services/server_bootstrap.rs");
     let guardrails = source("apps/server/src/services/runtime_guardrails.rs");
 
-    assert!(migration_registry.contains(
-        "m20260716_000009_create_channel_resolution_invalidation_state"
-    ));
+    assert!(
+        migration_registry
+            .contains("m20260716_000009_create_channel_resolution_invalidation_state")
+    );
     for table in [
         "channels",
         "channel_targets",

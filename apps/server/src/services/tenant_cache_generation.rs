@@ -4,11 +4,11 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use rustok_cache::{
-    bind_cache_backend_generation_aliases, cache_backend_generation_snapshot,
-    observe_cache_backend_generation, BoundedCacheEventDedupe, BoundedCacheInvalidationGapTracker,
-    BoundedInvalidationTrackerError, CacheBackendGenerationError, CacheInvalidationMessage,
-    CacheInvalidationObservation, CacheInvalidationPayloadError, CacheService,
-    DurableCacheInvalidationRecord, VersionedCacheInvalidation,
+    BoundedCacheEventDedupe, BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
+    CacheBackendGenerationError, CacheInvalidationMessage, CacheInvalidationObservation,
+    CacheInvalidationPayloadError, CacheService, DurableCacheInvalidationRecord,
+    VersionedCacheInvalidation, bind_cache_backend_generation_aliases,
+    cache_backend_generation_snapshot, observe_cache_backend_generation,
 };
 use rustok_core::events::{
     DomainEvent, EventConsumerRuntime, EventEnvelope, EventTransport, ReliabilityLevel,
@@ -623,10 +623,12 @@ mod tests {
         });
         envelope.timestamp = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(-1).unwrap();
 
-        assert!(transport
-            .publish_generation_if_needed(&envelope)
-            .await
-            .is_err());
+        assert!(
+            transport
+                .publish_generation_if_needed(&envelope)
+                .await
+                .is_err()
+        );
         assert_eq!(
             cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
                 .unwrap()

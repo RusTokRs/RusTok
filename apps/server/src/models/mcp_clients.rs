@@ -1,5 +1,5 @@
 use rustok_mcp::McpActorType;
-use sea_orm::{entity::prelude::*, Condition, QueryFilter, QueryOrder};
+use sea_orm::{Condition, QueryFilter, QueryOrder, entity::prelude::*};
 
 pub use super::_entities::mcp_clients::{ActiveModel, Column, Entity, Model, Relation};
 

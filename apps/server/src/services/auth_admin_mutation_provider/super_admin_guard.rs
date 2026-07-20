@@ -1,8 +1,8 @@
 use rustok_auth::AuthAdminMutationError;
 use rustok_core::{UserRole, UserStatus};
 use sea_orm::{
-    sea_query::Expr, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait,
-    QueryFilter, QuerySelect,
+    ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
+    sea_query::Expr,
 };
 use uuid::Uuid;
 

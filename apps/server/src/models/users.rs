@@ -1,7 +1,7 @@
 use sea_orm::prelude::*;
 
 use rustok_core::field_schema::HasCustomFields;
-use rustok_core::{generate_id, UserStatus};
+use rustok_core::{UserStatus, generate_id};
 
 use super::_entities::users::{self};
 pub use super::_entities::users::{ActiveModel, Column, Entity, Model};

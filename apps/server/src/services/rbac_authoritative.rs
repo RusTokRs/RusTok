@@ -174,14 +174,16 @@ mod tests {
             .expect("load foreign role")
             .expect("foreign role should exist");
 
-        assert!(user_roles::Entity::insert(user_roles::ActiveModel {
-            id: Set(rustok_core::generate_id()),
-            user_id: Set(user_a),
-            role_id: Set(foreign_role.id),
-        })
-        .exec(&db)
-        .await
-        .is_err());
+        assert!(
+            user_roles::Entity::insert(user_roles::ActiveModel {
+                id: Set(rustok_core::generate_id()),
+                user_id: Set(user_a),
+                role_id: Set(foreign_role.id),
+            })
+            .exec(&db)
+            .await
+            .is_err()
+        );
 
         let permissions = RbacService::get_user_permissions_authoritative(&db, &tenant_b, &user_a)
             .await

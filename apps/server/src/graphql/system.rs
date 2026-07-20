@@ -1,6 +1,6 @@
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
-use rustok_api::{graphql::GraphQLError, has_effective_permission, Permission};
+use rustok_api::{Permission, graphql::GraphQLError, has_effective_permission};
 use rustok_outbox::entity::{Column as EventCol, Entity as EventEntity};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use uuid::Uuid;
@@ -269,7 +269,7 @@ async fn probe_storage(
 
 #[cfg(test)]
 mod tests {
-    use rustok_api::{has_effective_permission, Action, Permission, Resource};
+    use rustok_api::{Action, Permission, Resource, has_effective_permission};
 
     #[test]
     fn manage_permissions_satisfy_diagnostic_read_requirements() {

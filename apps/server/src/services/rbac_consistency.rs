@@ -12,7 +12,7 @@ pub async fn load_rbac_consistency_stats(
 
 #[cfg(test)]
 mod tests {
-    use super::{load_rbac_consistency_stats, RbacConsistencyStats};
+    use super::{RbacConsistencyStats, load_rbac_consistency_stats};
     use crate::common::settings::RustokSettings;
     use crate::models::_entities::{permissions, role_permissions, roles, user_roles};
     use crate::models::{tenants, users};
@@ -91,14 +91,16 @@ mod tests {
         .exec(&db)
         .await
         .expect("insert foreign role");
-        assert!(user_roles::Entity::insert(user_roles::ActiveModel {
-            id: Set(rustok_core::generate_id()),
-            user_id: Set(user_id),
-            role_id: Set(foreign_role_id),
-        })
-        .exec(&db)
-        .await
-        .is_err());
+        assert!(
+            user_roles::Entity::insert(user_roles::ActiveModel {
+                id: Set(rustok_core::generate_id()),
+                user_id: Set(user_id),
+                role_id: Set(foreign_role_id),
+            })
+            .exec(&db)
+            .await
+            .is_err()
+        );
 
         let permission_id = rustok_core::generate_id();
         permissions::Entity::insert(permissions::ActiveModel {

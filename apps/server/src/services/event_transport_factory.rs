@@ -1,6 +1,6 @@
 use std::any::Any;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use crate::error::{Error, Result};
@@ -23,7 +23,7 @@ use crate::common::settings::{EventTransportKind, RelayTargetKind, RustokSetting
 use crate::services::rbac_cache_invalidation::start_rbac_cache_invalidation_listener;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::tenant_cache_generation::{
-    start_tenant_cache_generation_listener, TenantCacheGenerationTransport,
+    TenantCacheGenerationTransport, start_tenant_cache_generation_listener,
 };
 use crate::services::tenant_generation_delivery_gate::TenantGenerationDeliveryGate;
 

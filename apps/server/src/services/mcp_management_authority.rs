@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use rustok_api::{has_effective_permission, Permission};
+use rustok_api::{Permission, has_effective_permission};
 use rustok_mcp::McpActorType;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
@@ -172,7 +172,7 @@ fn validate_grants(
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_grants, McpManagementAuthorityError};
+    use super::{McpManagementAuthorityError, validate_grants};
     use rustok_api::Permission;
 
     #[test]

@@ -4,8 +4,7 @@ fn field_definition_cache_uses_one_transactional_generation_and_fail_closed_reco
     let wrapper = include_str!("../src/services/field_definition_cache.rs");
     let base = include_str!("../src/services/field_definition_cache_base.rs");
     let reconciler = include_str!("../src/services/field_definition_cache_reconciliation.rs");
-    let evidence =
-        include_str!("../src/services/field_definition_cache_reconciliation_tests.rs");
+    let evidence = include_str!("../src/services/field_definition_cache_reconciliation_tests.rs");
     let guardrails = include_str!("../src/services/runtime_guardrails.rs");
 
     for required in [
@@ -31,12 +30,11 @@ fn field_definition_cache_uses_one_transactional_generation_and_fail_closed_reco
     }
 
     assert!(wrapper.contains("#[path = \"field_definition_cache_base.rs\"]"));
-    assert!(wrapper.contains(
-        "let cache = base::field_definition_cache_from_context(ctx, bus);"
-    ));
-    assert!(wrapper.contains(
-        "start_field_definition_cache_generation_reconciliation(ctx, cache.clone())"
-    ));
+    assert!(wrapper.contains("let cache = base::field_definition_cache_from_context(ctx, bus);"));
+    assert!(
+        wrapper
+            .contains("start_field_definition_cache_generation_reconciliation(ctx, cache.clone())")
+    );
     assert!(base.contains("pub fn field_definition_cache_from_context"));
     assert!(base.contains("cache.invalidate_all();"));
 
@@ -129,12 +127,11 @@ fn field_definition_cache_uses_one_transactional_generation_and_fail_closed_reco
         );
     }
 
-    assert!(guardrails.contains(
-        "ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>()"
-    ));
-    assert!(guardrails.contains(
-        "Flex field-definition durable cache reconciliation"
-    ));
+    assert!(
+        guardrails
+            .contains("ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>()")
+    );
+    assert!(guardrails.contains("Flex field-definition durable cache reconciliation"));
     assert!(guardrails.contains(".map(|handle| handle.is_ready())"));
 }
 

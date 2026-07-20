@@ -1,16 +1,16 @@
 mod manifest;
 
-pub(crate) use manifest::{map_module_settings_validation_error, module_setting_shape_value};
 pub use manifest::{
-    validate_registry_vs_manifest, CatalogManifestModule, CatalogModuleVersion,
-    DeploymentSurfaceContract, InstalledManifestModule, ManifestDiff, ManifestError,
-    ManifestManager, ManifestModuleSpec, ModuleSettingSpec, ModulesManifest,
+    CatalogManifestModule, CatalogModuleVersion, DeploymentSurfaceContract,
+    InstalledManifestModule, ManifestDiff, ManifestError, ManifestManager, ManifestModuleSpec,
+    ModuleSettingSpec, ModulesManifest, validate_registry_vs_manifest,
 };
+pub(crate) use manifest::{map_module_settings_validation_error, module_setting_shape_value};
 pub use rustok_distribution::build_registry;
 
 #[cfg(test)]
 mod contract_tests {
-    use super::{build_registry, ManifestManager};
+    use super::{ManifestManager, build_registry};
     use rustok_api::Permission;
     use rustok_api::{Action, Resource};
     use rustok_auth::AUTH_USER_PERMISSIONS;
@@ -115,41 +115,57 @@ mod contract_tests {
         assert!(rbac.permissions().contains(&Permission::SETTINGS_MANAGE));
         assert!(rbac.permissions().contains(&Permission::LOGS_READ));
         assert!(blog.permissions().contains(&Permission::BLOG_POSTS_MANAGE));
-        assert!(forum
-            .permissions()
-            .contains(&Permission::FORUM_TOPICS_MANAGE));
+        assert!(
+            forum
+                .permissions()
+                .contains(&Permission::FORUM_TOPICS_MANAGE)
+        );
         assert!(cart.permissions().is_empty());
-        assert!(customer
-            .permissions()
-            .contains(&Permission::CUSTOMERS_MANAGE));
+        assert!(
+            customer
+                .permissions()
+                .contains(&Permission::CUSTOMERS_MANAGE)
+        );
         assert!(product.permissions().contains(&Permission::PRODUCTS_MANAGE));
-        assert!(profiles
-            .permissions()
-            .contains(&Permission::PROFILES_MANAGE));
+        assert!(
+            profiles
+                .permissions()
+                .contains(&Permission::PROFILES_MANAGE)
+        );
         assert!(region.permissions().contains(&Permission::REGIONS_MANAGE));
         assert!(order.permissions().contains(&Permission::ORDERS_MANAGE));
         assert!(payment.permissions().contains(&Permission::PAYMENTS_MANAGE));
-        assert!(fulfillment
-            .permissions()
-            .contains(&Permission::FULFILLMENTS_MANAGE));
-        assert!(media
-            .permissions()
-            .contains(&Permission::new(Resource::Media, Action::Manage)));
+        assert!(
+            fulfillment
+                .permissions()
+                .contains(&Permission::FULFILLMENTS_MANAGE)
+        );
+        assert!(
+            media
+                .permissions()
+                .contains(&Permission::new(Resource::Media, Action::Manage))
+        );
         assert!(pages.permissions().contains(&Permission::PAGES_MANAGE));
         assert!(seo.permissions().contains(&Permission::SEO_MANAGE));
-        assert!(taxonomy
-            .permissions()
-            .contains(&Permission::TAXONOMY_MANAGE));
-        assert!(workflow
-            .permissions()
-            .contains(&Permission::WORKFLOWS_MANAGE));
+        assert!(
+            taxonomy
+                .permissions()
+                .contains(&Permission::TAXONOMY_MANAGE)
+        );
+        assert!(
+            workflow
+                .permissions()
+                .contains(&Permission::WORKFLOWS_MANAGE)
+        );
         assert!(alloy.permissions().contains(&Permission::SCRIPTS_MANAGE));
-        assert!(flex
-            .permissions()
-            .contains(&Permission::FLEX_SCHEMAS_MANAGE));
-        assert!(flex
-            .permissions()
-            .contains(&Permission::FLEX_ENTRIES_MANAGE));
+        assert!(
+            flex.permissions()
+                .contains(&Permission::FLEX_SCHEMAS_MANAGE)
+        );
+        assert!(
+            flex.permissions()
+                .contains(&Permission::FLEX_ENTRIES_MANAGE)
+        );
     }
 
     #[test]

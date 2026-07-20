@@ -1,7 +1,7 @@
 //! Business logic wrapper for OAuth tokens
 
 use sea_orm::{
-    entity::prelude::*, sea_query::Expr, ColumnTrait, Condition, EntityTrait, QueryFilter,
+    ColumnTrait, Condition, EntityTrait, QueryFilter, entity::prelude::*, sea_query::Expr,
 };
 use uuid::Uuid;
 

@@ -351,13 +351,15 @@ mod tests {
             .await
             .expect("routine assignment should succeed");
 
-        assert!(role_permissions::Entity::find()
-            .filter(role_permissions::Column::RoleId.eq(manager_role.id))
-            .filter(role_permissions::Column::PermissionId.eq(stale_permission_id))
-            .one(&db)
-            .await
-            .expect("query role definition")
-            .is_some());
+        assert!(
+            role_permissions::Entity::find()
+                .filter(role_permissions::Column::RoleId.eq(manager_role.id))
+                .filter(role_permissions::Column::PermissionId.eq(stale_permission_id))
+                .one(&db)
+                .await
+                .expect("query role definition")
+                .is_some()
+        );
     }
 
     #[tokio::test]

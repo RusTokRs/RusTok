@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{has_any_effective_permission, has_effective_permission, Permission};
+use rustok_api::{Permission, has_any_effective_permission, has_effective_permission};
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,

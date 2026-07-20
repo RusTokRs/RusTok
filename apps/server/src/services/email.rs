@@ -1,8 +1,8 @@
 // Re-export from rustok-email for backward compatibility.
 pub use rustok_email::{EmailService, PasswordResetEmail, PasswordResetEmailSender};
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Cached SMTP transport stored in `shared_store` to reuse the connection pool.
 #[derive(Clone)]
@@ -128,11 +128,7 @@ fn localized_auth_templates(
     en: AuthTemplateTriple,
     ru: AuthTemplateTriple,
 ) -> AuthTemplateTriple {
-    if locale.starts_with("ru") {
-        ru
-    } else {
-        en
-    }
+    if locale.starts_with("ru") { ru } else { en }
 }
 
 /// Render the password-reset email for the given locale.
@@ -335,24 +331,32 @@ mod tests {
     #[test]
     fn render_password_reset_en_contains_url() {
         let rendered = render_password_reset("en", "https://example.com/reset?token=abc").unwrap();
-        assert!(rendered
-            .html
-            .contains("https://example.com/reset?token=abc"));
-        assert!(rendered
-            .text
-            .contains("https://example.com/reset?token=abc"));
+        assert!(
+            rendered
+                .html
+                .contains("https://example.com/reset?token=abc")
+        );
+        assert!(
+            rendered
+                .text
+                .contains("https://example.com/reset?token=abc")
+        );
         assert!(!rendered.subject.is_empty());
     }
 
     #[test]
     fn render_password_reset_ru_contains_url() {
         let rendered = render_password_reset("ru", "https://example.com/reset?token=xyz").unwrap();
-        assert!(rendered
-            .html
-            .contains("https://example.com/reset?token=xyz"));
-        assert!(rendered
-            .text
-            .contains("https://example.com/reset?token=xyz"));
+        assert!(
+            rendered
+                .html
+                .contains("https://example.com/reset?token=xyz")
+        );
+        assert!(
+            rendered
+                .text
+                .contains("https://example.com/reset?token=xyz")
+        );
         assert!(!rendered.subject.is_empty());
     }
 

@@ -17,8 +17,8 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::services::rbac_invalidation_generation::{
-    ensure_rbac_invalidation_generation_state, read_rbac_invalidation_generation,
-    RbacInvalidationGenerationState,
+    RbacInvalidationGenerationState, ensure_rbac_invalidation_generation_state,
+    read_rbac_invalidation_generation,
 };
 use crate::services::rbac_runtime::{
     invalidate_all_user_permissions_cache, invalidate_user_permissions_cache,
@@ -617,16 +617,16 @@ fn parse_rbac_invalidation_key(value: &str) -> Result<(Uuid, Uuid)> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     use super::{
+        RBAC_PERMISSION_INVALIDATE_ALL_KEY, RBAC_PERMISSION_INVALIDATION_CHANNEL,
+        RbacCacheInvalidationListener, RbacCacheInvalidationListenerHandle, RbacInvalidationTarget,
         acknowledge_rbac_applied_generation, acknowledge_rbac_recovery,
         parse_rbac_invalidation_key, parse_rbac_invalidation_target, rbac_invalidation_key,
-        supervise_rbac_invalidation_worker, RbacCacheInvalidationListener,
-        RbacCacheInvalidationListenerHandle, RbacInvalidationTarget,
-        RBAC_PERMISSION_INVALIDATE_ALL_KEY, RBAC_PERMISSION_INVALIDATION_CHANNEL,
+        supervise_rbac_invalidation_worker,
     };
     use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationState;
     use rustok_cache::{BoundedCacheInvalidationGapTracker, VersionedCacheInvalidation};

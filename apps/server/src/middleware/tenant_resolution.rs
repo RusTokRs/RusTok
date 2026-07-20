@@ -160,12 +160,17 @@ impl TenantResolutionError {
 impl fmt::Display for TenantResolutionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidPolicy(reason) => write!(formatter, "invalid tenant routing policy: {reason}"),
+            Self::InvalidPolicy(reason) => {
+                write!(formatter, "invalid tenant routing policy: {reason}")
+            }
             Self::MissingHeader { header_name } => {
                 write!(formatter, "missing required tenant header `{header_name}`")
             }
             Self::InvalidHeaderValue { header_name } => {
-                write!(formatter, "tenant header `{header_name}` is not valid UTF-8")
+                write!(
+                    formatter,
+                    "tenant header `{header_name}` is not valid UTF-8"
+                )
             }
             Self::MissingHost => formatter.write_str("request host is missing or untrusted"),
             Self::InvalidHost { value, reason } => {
@@ -183,7 +188,10 @@ impl fmt::Display for TenantResolutionError {
                 "tenant host `{host}` contains a nested subdomain before `{base_domain}`"
             ),
             Self::NoBaseDomainMatch { host } => {
-                write!(formatter, "tenant host `{host}` matches no configured base domain")
+                write!(
+                    formatter,
+                    "tenant host `{host}` matches no configured base domain"
+                )
             }
             Self::ConflictingTenantAssertions {
                 asserted_slug,

@@ -1,5 +1,5 @@
 use super::*;
-use crate::auth::{encode_access_token, encode_oauth_access_token, AuthConfig};
+use crate::auth::{AuthConfig, encode_access_token, encode_oauth_access_token};
 use crate::common::settings::ForwardedHeadersMode;
 use axum::body::Body;
 use rustok_core::UserRole;

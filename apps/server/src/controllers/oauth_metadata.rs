@@ -1,7 +1,7 @@
 //! OAuth 2.0 Authorization Server Metadata (RFC 8414)
 //! OpenID Connect Discovery 1.0
 
-use axum::{extract::State, routing::get, Json};
+use axum::{Json, extract::State, routing::get};
 
 use crate::error::Error;
 use crate::services::server_runtime_context::ServerAuthRuntime;

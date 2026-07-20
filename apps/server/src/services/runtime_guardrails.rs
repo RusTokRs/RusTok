@@ -2,16 +2,15 @@ use crate::services::cache_redis_status_monitor::CacheRedisStatusMonitorHandle;
 use crate::services::channel_cache_invalidation::ChannelCacheInvalidationListenerHandle;
 use crate::services::event_bus::EventForwarderHandle;
 use crate::services::field_definition_cache::{
-    FieldDefinitionCacheGenerationReconciliationHandle,
-    FieldDefinitionCacheInvalidationHandle,
+    FieldDefinitionCacheGenerationReconciliationHandle, FieldDefinitionCacheInvalidationHandle,
 };
 use crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle;
 use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle;
-use crate::services::server_runtime_context::ServerRuntimeContext;
 #[cfg(feature = "mod-seo")]
 use crate::services::seo_redirect_cache_reconciliation::{
-    seo_redirect_cache_reconciliation_required, SeoRedirectCacheReconciliationHandle,
+    SeoRedirectCacheReconciliationHandle, seo_redirect_cache_reconciliation_required,
 };
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::tenant_locale_generation::TenantLocaleGenerationListenerHandle;
 
 mod base {

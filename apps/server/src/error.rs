@@ -1,9 +1,9 @@
 //! Server-owned error boundary for Axum handlers and host services.
 
 use axum::{
-    http::{header::InvalidHeaderValue, StatusCode},
-    response::{IntoResponse, Response},
     Json,
+    http::{StatusCode, header::InvalidHeaderValue},
+    response::{IntoResponse, Response},
 };
 use thiserror::Error;
 

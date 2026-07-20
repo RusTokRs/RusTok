@@ -1,22 +1,22 @@
 use axum::{
-    body::{to_bytes, Body},
+    Json,
+    body::{Body, to_bytes},
     extract::State,
     http::{Method, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
-    Json,
 };
 use subtle::ConstantTimeEq;
 
 use crate::services::marketplace_catalog::{
-    RegistryRunnerClaimPayload, RegistryRunnerClaimRequest, RegistryRunnerClaimResponse,
-    RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest,
-    RegistryRunnerMutationResponse, REGISTRY_MUTATION_SCHEMA_VERSION,
+    REGISTRY_MUTATION_SCHEMA_VERSION, RegistryRunnerClaimPayload, RegistryRunnerClaimRequest,
+    RegistryRunnerClaimResponse, RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest,
+    RegistryRunnerMutationResponse,
 };
 use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
 use crate::services::registry_remote_transitions::{
-    finish_remote_validation_stage_atomic, heartbeat_remote_validation_stage_atomic,
-    RegistryRemoteTransitionError, RemoteTerminalOutcome,
+    RegistryRemoteTransitionError, RemoteTerminalOutcome, finish_remote_validation_stage_atomic,
+    heartbeat_remote_validation_stage_atomic,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -83,7 +83,7 @@ pub async fn claim_atomic(
                 StatusCode::BAD_REQUEST,
                 "invalid_request",
                 "Runner request body is invalid or too large",
-            )
+            );
         }
     };
 
@@ -109,7 +109,7 @@ async fn handle_claim(ctx: &ServerRuntimeContext, lease_ttl_ms: u64, bytes: &[u8
                 StatusCode::BAD_REQUEST,
                 "invalid_request",
                 "Runner claim body must be valid JSON",
-            )
+            );
         }
     };
     if let Err(response) = validate_schema_version(input.schema_version) {
@@ -148,7 +148,7 @@ async fn handle_claim(ctx: &ServerRuntimeContext, lease_ttl_ms: u64, bytes: &[u8
                 StatusCode::BAD_REQUEST,
                 "invalid_request",
                 &error.to_string(),
-            )
+            );
         }
         Err(error) => {
             tracing::error!(%error, runner_id = %input.runner_id, "Atomic registry runner claim failed");
@@ -196,7 +196,7 @@ async fn handle_heartbeat(
                 StatusCode::BAD_REQUEST,
                 "invalid_request",
                 "Runner heartbeat body must be valid JSON",
-            )
+            );
         }
     };
     if let Err(response) = validate_schema_version(input.schema_version) {
@@ -229,7 +229,7 @@ async fn handle_terminal(
                 StatusCode::BAD_REQUEST,
                 "invalid_request",
                 "Runner terminal body must be valid JSON",
-            )
+            );
         }
     };
     if let Err(response) = validate_schema_version(input.schema_version) {
@@ -347,7 +347,7 @@ fn response(status: StatusCode, code: &str, message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{runner_route, RunnerRoute, CLAIM_PATH, MAX_RUNNER_BODY_BYTES, PUBLISH_PATH};
+    use super::{CLAIM_PATH, MAX_RUNNER_BODY_BYTES, PUBLISH_PATH, RunnerRoute, runner_route};
 
     #[test]
     fn routes_all_atomic_runner_transitions() {

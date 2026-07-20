@@ -3,7 +3,7 @@ use async_graphql::{Context, FieldError, Object, Result};
 use crate::context::{AuthContext, TenantContext};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::settings_service::SettingsService;
-use rustok_api::{graphql::GraphQLError, has_effective_permission, Permission};
+use rustok_api::{Permission, graphql::GraphQLError, has_effective_permission};
 
 use super::types::PlatformSettingsPayload;
 

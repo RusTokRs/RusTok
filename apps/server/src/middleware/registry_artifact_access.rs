@@ -1,14 +1,14 @@
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     extract::State,
     http::{
-        header::{self, HeaderValue},
         Method, Request, StatusCode,
+        header::{self, HeaderValue},
     },
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use rustok_api::{has_effective_permission, AuthContextExtension, Permission};
+use rustok_api::{AuthContextExtension, Permission, has_effective_permission};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use subtle::ConstantTimeEq;
 
@@ -177,7 +177,7 @@ async fn validate_owner_transfer(
         Ok(None) => {
             return bad_request(
                 "Registry owner transfer target does not exist in the authenticated tenant",
-            )
+            );
         }
         Err(error) => {
             tracing::error!(%error, "Failed to validate registry owner transfer target");
@@ -267,7 +267,7 @@ async fn serve_artifact(
     let bytes = match storage.read(storage_key).await {
         Ok(bytes) => bytes,
         Err(rustok_storage::StorageError::NotFound(_)) => {
-            return not_found("Registry publish artifact was not found")
+            return not_found("Registry publish artifact was not found");
         }
         Err(error) => {
             tracing::error!(%error, request_id = %publish_request.id, "Failed to read registry artifact");
@@ -419,7 +419,7 @@ fn internal_error(message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_remote_runner_path, registry_route, RegistryOperation};
+    use super::{RegistryOperation, is_remote_runner_path, registry_route};
 
     #[test]
     fn classifies_sensitive_registry_publish_routes() {

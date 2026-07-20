@@ -118,10 +118,7 @@ async fn supervise_event_forwarder(bus: Arc<EventBus>, transport: Arc<dyn EventT
         } else {
             tracing::error!("Event forwarder exited unexpectedly; restarting");
         }
-        rustok_telemetry::metrics::record_event_error(
-            "server_event_forwarder",
-            "worker_restart",
-        );
+        rustok_telemetry::metrics::record_event_error("server_event_forwarder", "worker_restart");
         tokio::time::sleep(EVENT_FORWARDER_RESTART_DELAY).await;
     }
 }

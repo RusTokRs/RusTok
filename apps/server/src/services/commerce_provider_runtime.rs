@@ -135,9 +135,10 @@ mod order_status_port_tests {
 
         let host =
             attach_commerce_provider_registries(rustok_api::HostRuntimeContext::new(db), &server);
-        assert!(host
-            .shared_get::<rustok_ai::SharedAiOrderStatusPort>()
-            .is_some());
+        assert!(
+            host.shared_get::<rustok_ai::SharedAiOrderStatusPort>()
+                .is_some()
+        );
     }
 }
 
@@ -164,8 +165,9 @@ mod product_catalog_read_port_tests {
 
         let host =
             attach_commerce_provider_registries(rustok_api::HostRuntimeContext::new(db), &server);
-        assert!(host
-            .shared_get::<rustok_ai::SharedAiProductCatalogReadPort>()
-            .is_some());
+        assert!(
+            host.shared_get::<rustok_ai::SharedAiProductCatalogReadPort>()
+                .is_some()
+        );
     }
 }

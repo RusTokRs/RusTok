@@ -1,14 +1,14 @@
 use std::panic::AssertUnwindSafe;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures_util::FutureExt;
 use rustok_cache::{
-    cache_backend_generation_snapshot, BoundedCacheInvalidationGapTracker,
-    BoundedInvalidationTrackerError, CacheGenerationError, CacheInvalidationMessage,
-    CacheInvalidationObservation, CacheInvalidationPayloadError, CacheService,
-    LocalCacheInvalidationSubscription, VersionedCacheInvalidation,
+    BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError, CacheGenerationError,
+    CacheInvalidationMessage, CacheInvalidationObservation, CacheInvalidationPayloadError,
+    CacheService, LocalCacheInvalidationSubscription, VersionedCacheInvalidation,
+    cache_backend_generation_snapshot,
 };
 use rustok_core::{Error, Result};
 use tokio::task::JoinHandle;
@@ -179,11 +179,7 @@ impl TenantLocaleGenerationListener {
         result
     }
 
-    async fn handle_event(
-        &self,
-        event: VersionedCacheInvalidation,
-        durable: u64,
-    ) -> Result<()> {
+    async fn handle_event(&self, event: VersionedCacheInvalidation, durable: u64) -> Result<()> {
         match self.tracker.observe(&event) {
             CacheInvalidationObservation::InOrder { generation } => {
                 if durable > generation {
@@ -293,8 +289,7 @@ struct TenantLocaleGenerationRuntime {
 impl TenantLocaleGenerationRuntime {
     fn is_running(&self) -> bool {
         self.local.is_running()
-            && (!self.redis_required
-                || self.redis.as_ref().is_some_and(|task| task.is_running()))
+            && (!self.redis_required || self.redis.as_ref().is_some_and(|task| task.is_running()))
             && (!self.redis_required
                 || self
                     .reconcile
@@ -386,16 +381,13 @@ pub async fn start_tenant_locale_generation_listener(
         );
     }
 
-    let local_task = tokio::spawn(supervise_local_listener(
-        listener.clone(),
-        initial_local,
-    ));
+    let local_task = tokio::spawn(supervise_local_listener(listener.clone(), initial_local));
     let redis_required = cache.redis_configuration_present();
     let redis_task = cache
         .redis_client_initialized()
         .then(|| tokio::spawn(supervise_redis_listener(listener.clone())));
-    let reconcile_task = redis_required
-        .then(|| tokio::spawn(run_periodic_reconciliation(listener)));
+    let reconcile_task =
+        redis_required.then(|| tokio::spawn(run_periodic_reconciliation(listener)));
 
     ctx.shared_insert(TenantLocaleGenerationListenerHandle::new(
         local_task,
@@ -427,10 +419,7 @@ async fn supervise_local_listener(
         } else {
             tracing::warn!("Tenant locale generation local listener exited; restarting");
         }
-        rustok_telemetry::metrics::record_event_error(
-            "tenant.locale.generation",
-            "local_restart",
-        );
+        rustok_telemetry::metrics::record_event_error("tenant.locale.generation", "local_restart");
         tokio::time::sleep(TENANT_LOCALE_LISTENER_RESTART_DELAY).await;
     }
 }
@@ -486,10 +475,7 @@ async fn supervise_redis_listener(listener: TenantLocaleGenerationListener) {
                 tracing::error!("Tenant locale generation Redis listener panicked; reconnecting")
             }
         }
-        rustok_telemetry::metrics::record_event_error(
-            "tenant.locale.generation",
-            "redis_restart",
-        );
+        rustok_telemetry::metrics::record_event_error("tenant.locale.generation", "redis_restart");
         tokio::time::sleep(TENANT_LOCALE_LISTENER_RESTART_DELAY).await;
     }
 }

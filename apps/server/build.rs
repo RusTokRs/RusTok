@@ -310,7 +310,9 @@ fn infer_runtime_module_expr(lib_path: Option<&Path>, crate_name: &str) -> Optio
 }
 
 fn render_registry_codegen(entries: &[OptionalModuleEntry]) -> String {
-    let mut out = String::from("#[allow(unused_mut)]\npub fn register_optional_modules(mut registry: rustok_core::ModuleRegistry) -> rustok_core::ModuleRegistry {\n");
+    let mut out = String::from(
+        "#[allow(unused_mut)]\npub fn register_optional_modules(mut registry: rustok_core::ModuleRegistry) -> rustok_core::ModuleRegistry {\n",
+    );
     for entry in entries {
         if let Some(module_expr) = &entry.module_expr {
             out.push_str(&format!(

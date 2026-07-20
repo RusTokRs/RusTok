@@ -1,4 +1,4 @@
-use sea_orm::{entity::prelude::*, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{QueryFilter, QueryOrder, QuerySelect, entity::prelude::*};
 
 pub use super::_entities::mcp_audit_logs::{ActiveModel, Column, Entity, Model, Relation};
 

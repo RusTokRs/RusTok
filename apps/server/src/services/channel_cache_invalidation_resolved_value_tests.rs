@@ -1,14 +1,14 @@
 use std::time::Duration;
 
 use axum::{
-    body::{to_bytes, Body},
+    Json, Router,
+    body::{Body, to_bytes},
     http::Request,
     middleware as axum_middleware,
     routing::get,
-    Json, Router,
 };
 use rustok_cache::{CacheInvalidationMessage, VersionedCacheInvalidation};
-use rustok_channel::{entities::channel, ChannelService, CreateChannelInput};
+use rustok_channel::{ChannelService, CreateChannelInput, entities::channel};
 use rustok_migrations::Migrator;
 use sea_orm::{ActiveModelTrait, ConnectionTrait, EntityTrait, Set};
 use tower::ServiceExt;
@@ -16,8 +16,8 @@ use uuid::Uuid;
 
 use super::cache_runtime::ensure_cache_service;
 use super::channel_cache_invalidation::{
-    start_channel_cache_invalidation_listener, ChannelCacheInvalidationListenerHandle,
-    CHANNEL_RESOLUTION_INVALIDATION_CHANNEL,
+    CHANNEL_RESOLUTION_INVALIDATION_CHANNEL, ChannelCacheInvalidationListenerHandle,
+    start_channel_cache_invalidation_listener,
 };
 use super::server_runtime_context::ServerRuntimeContext;
 use crate::common::settings::RustokSettings;
@@ -121,10 +121,7 @@ fn invalidation_message(generation: u64) -> CacheInvalidationMessage {
     .expect("invalidation message should encode")
 }
 
-async fn wait_for_readiness(
-    handle: &ChannelCacheInvalidationListenerHandle,
-    expected: bool,
-) {
+async fn wait_for_readiness(handle: &ChannelCacheInvalidationListenerHandle, expected: bool) {
     tokio::time::timeout(Duration::from_secs(2), async {
         while handle.is_ready() != expected {
             tokio::task::yield_now().await;

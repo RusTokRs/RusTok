@@ -3,8 +3,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use flex::{
-    delete_attached_localized_values, persist_localized_values, prepare_attached_values_create,
-    prepare_attached_values_update, resolve_attached_payload, AttachedEntityRef,
+    AttachedEntityRef, delete_attached_localized_values, persist_localized_values,
+    prepare_attached_values_create, prepare_attached_values_update, resolve_attached_payload,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
 

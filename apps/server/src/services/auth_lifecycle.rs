@@ -1,13 +1,13 @@
 use crate::error::Error;
 use chrono::{Duration, Utc};
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 
 use crate::auth::{
-    encode_access_token, generate_refresh_token, hash_password, hash_refresh_token,
-    verify_password, AuthConfig,
+    AuthConfig, encode_access_token, generate_refresh_token, hash_password, hash_refresh_token,
+    verify_password,
 };
 use crate::context::infer_user_role_from_permissions;
 use crate::models::{sessions, users};
@@ -668,12 +668,12 @@ impl AuthLifecycleService {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthLifecycleError, AuthLifecycleMetricsSnapshot, AuthLifecycleService, Error,
         AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL, AUTH_FLOW_INCONSISTENCY_TOTAL,
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
+        AuthLifecycleError, AuthLifecycleMetricsSnapshot, AuthLifecycleService, Error,
     };
     use crate::auth::{
-        decode_access_token, hash_password, hash_refresh_token, verify_password, AuthConfig,
+        AuthConfig, decode_access_token, hash_password, hash_refresh_token, verify_password,
     };
     use crate::models::_entities::user_roles;
     use crate::models::{sessions, tenants, users};
@@ -1406,10 +1406,14 @@ mod tests {
             .await
             .expect("failed to query updated user")
             .expect("updated user should exist");
-        assert!(verify_password(new_password, &updated_user.password_hash)
-            .expect("new password should verify"));
-        assert!(!verify_password(old_password, &updated_user.password_hash)
-            .expect("old password must not verify"));
+        assert!(
+            verify_password(new_password, &updated_user.password_hash)
+                .expect("new password should verify")
+        );
+        assert!(
+            !verify_password(old_password, &updated_user.password_hash)
+                .expect("old password must not verify")
+        );
 
         let active_sessions = sessions::Entity::find()
             .filter(sessions::Column::TenantId.eq(tenant.id))

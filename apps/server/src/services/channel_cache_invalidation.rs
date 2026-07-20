@@ -160,10 +160,7 @@ struct ChannelCacheInvalidationListener {
 }
 
 impl ChannelCacheInvalidationListener {
-    fn new(
-        ctx: ServerRuntimeContext,
-        health: Arc<ChannelCacheInvalidationHealth>,
-    ) -> Self {
+    fn new(ctx: ServerRuntimeContext, health: Arc<ChannelCacheInvalidationHealth>) -> Self {
         Self {
             db: ctx.db_clone(),
             ctx,
@@ -250,10 +247,7 @@ impl ChannelCacheInvalidationListener {
     }
 }
 
-pub async fn publish_channel_resolution_invalidation(
-    ctx: &ServerRuntimeContext,
-    tenant_id: Uuid,
-) {
+pub async fn publish_channel_resolution_invalidation(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
     let generation = match rustok_channel::read_resolution_invalidation_generation(ctx.db()).await {
         Ok(generation) => generation,
         Err(error) => {
@@ -406,7 +400,10 @@ async fn run_redis_worker(cache: CacheService, listener: ChannelCacheInvalidatio
         )
         .await;
     listener.health.mark_failed();
-    tracing::warn!(?result, "Channel cache Redis invalidation subscription stopped");
+    tracing::warn!(
+        ?result,
+        "Channel cache Redis invalidation subscription stopped"
+    );
 }
 
 async fn run_reconcile_worker(listener: ChannelCacheInvalidationListener) {
@@ -450,9 +447,15 @@ async fn supervise_worker<F, Fut>(
     loop {
         let outcome = AssertUnwindSafe(worker_factory()).catch_unwind().await;
         if outcome.is_err() {
-            tracing::error!(worker, "Channel cache invalidation worker panicked; restarting");
+            tracing::error!(
+                worker,
+                "Channel cache invalidation worker panicked; restarting"
+            );
         } else {
-            tracing::error!(worker, "Channel cache invalidation worker exited; restarting");
+            tracing::error!(
+                worker,
+                "Channel cache invalidation worker exited; restarting"
+            );
         }
         rustok_telemetry::metrics::record_event_error(
             CHANNEL_RESOLUTION_INVALIDATION_CHANNEL,
@@ -471,11 +474,7 @@ where
     F: FnMut() -> Fut + Send + 'static,
     Fut: Future<Output = ()> + Send + 'static,
 {
-    tokio::spawn(supervise_worker(
-        worker,
-        restart_reason,
-        worker_factory,
-    ))
+    tokio::spawn(supervise_worker(worker, restart_reason, worker_factory))
 }
 
 pub async fn start_channel_cache_invalidation_listener(
@@ -485,7 +484,9 @@ pub async fn start_channel_cache_invalidation_listener(
     let _ = ctx.shared_insert_if_absent(ChannelCacheInvalidationListenerStartLock::default());
     let start_lock = ctx
         .shared_get::<ChannelCacheInvalidationListenerStartLock>()
-        .ok_or_else(|| Error::Cache("channel invalidation start lock is unavailable".to_string()))?;
+        .ok_or_else(|| {
+            Error::Cache("channel invalidation start lock is unavailable".to_string())
+        })?;
     let _start_guard = start_lock.0.lock().await;
 
     if let Some(existing) = ctx.shared_get::<ChannelCacheInvalidationListenerHandle>() {
@@ -536,11 +537,10 @@ pub async fn start_channel_cache_invalidation_listener(
     };
 
     let reconcile_listener = listener;
-    let reconcile_task = spawn_supervised_worker(
-        "reconcile",
-        "reconcile_worker_restart",
-        move || run_reconcile_worker(reconcile_listener.clone()),
-    );
+    let reconcile_task =
+        spawn_supervised_worker("reconcile", "reconcile_worker_restart", move || {
+            run_reconcile_worker(reconcile_listener.clone())
+        });
 
     ctx.shared_insert(ChannelCacheInvalidationListenerHandle::new(
         local_task,
@@ -564,8 +564,8 @@ mod tests {
     use std::sync::Arc;
 
     use super::{
-        is_missing_generation_state, AppliedChannelResolutionGeneration,
-        ChannelCacheInvalidationHealth,
+        AppliedChannelResolutionGeneration, ChannelCacheInvalidationHealth,
+        is_missing_generation_state,
     };
     use crate::error::Error;
 

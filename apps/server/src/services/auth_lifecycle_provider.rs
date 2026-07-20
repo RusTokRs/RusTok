@@ -7,12 +7,12 @@ use rustok_auth::{
     AuthUserBackfillReadRequest, AuthUserBackfillRecord, AuthUserRecord,
 };
 
-use crate::auth::{encode_password_reset_token, AuthConfig};
+use crate::auth::{AuthConfig, encode_password_reset_token};
 use crate::context::infer_user_role_from_permissions;
 use crate::models::users;
 use crate::services::auth_invite::InviteAcceptanceError;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
-use crate::services::email::{email_service_from_ctx, password_reset_url, PasswordResetEmail};
+use crate::services::email::{PasswordResetEmail, email_service_from_ctx, password_reset_url};
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 

@@ -40,7 +40,9 @@ fn legacy_health_report_is_derived_from_exact_redis_status() {
     assert!(service.contains("redis_healthy: status.connectivity_healthy"));
     assert!(service.contains("redis_error: status.last_error"));
     assert!(!service.contains("redis_configured: self.has_redis()"));
-    assert!(regression.contains("configured_invalid_redis_url_is_degraded_in_legacy_health_report"));
+    assert!(
+        regression.contains("configured_invalid_redis_url_is_degraded_in_legacy_health_report")
+    );
 }
 
 #[test]

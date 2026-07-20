@@ -27,8 +27,8 @@ use crate::models::users;
 use crate::modules::ManifestManager;
 use crate::services::dashboard_user_activity;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use crate::services::marketplace_catalog::marketplace_catalog_from_context;
 use crate::services::marketplace_catalog::MarketplaceCatalogQuery;
+use crate::services::marketplace_catalog::marketplace_catalog_from_context;
 use crate::services::module_lifecycle::{ModuleLifecycleService, ModuleOperationRecoveryError};
 use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::rbac_service::RbacService;
@@ -37,18 +37,14 @@ use crate::services::registry_governance::{
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::graphql::GraphQLError;
-use rustok_api::graphql::{encode_cursor, PageInfo, PaginationInput};
+use rustok_api::graphql::{PageInfo, PaginationInput, encode_cursor};
+use rustok_build::BuildService;
 use rustok_build::build::{Column as BuildColumn, Entity as BuildEntity};
 use rustok_build::release::{Column as ReleaseColumn, Entity as ReleaseEntity, ReleaseStatus};
-use rustok_build::BuildService;
 
 fn calculate_percent_change(current: i64, previous: i64) -> f64 {
     if previous == 0 {
-        if current == 0 {
-            0.0
-        } else {
-            100.0
-        }
+        if current == 0 { 0.0 } else { 100.0 }
     } else {
         ((current - previous) as f64 / previous as f64) * 100.0
     }

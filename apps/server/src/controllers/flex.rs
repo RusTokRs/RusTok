@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, State},
     routing::get,
-    Json,
 };
 use rustok_events::EventEnvelope;
 use uuid::Uuid;
@@ -385,8 +385,8 @@ mod tests {
     use crate::models::{flex_entries, flex_schemas, tenants, users};
     use rustok_api::Permission;
     use rustok_core::{
-        field_schema::{FieldDefinition, FieldType},
         UserRole, UserStatus,
+        field_schema::{FieldDefinition, FieldType},
     };
     use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
@@ -600,11 +600,13 @@ mod tests {
         .await
         .expect("entry should delete");
         assert!(delete_entry_response.success);
-        assert!(flex_entries::Entity::find_by_id(created_entry.id)
-            .one(&db)
-            .await
-            .expect("entry lookup should succeed")
-            .is_none());
+        assert!(
+            flex_entries::Entity::find_by_id(created_entry.id)
+                .one(&db)
+                .await
+                .expect("entry lookup should succeed")
+                .is_none()
+        );
 
         let Json(delete_schema_response) = delete_schema(
             State(ctx),
@@ -615,11 +617,13 @@ mod tests {
         .await
         .expect("schema should delete");
         assert!(delete_schema_response.success);
-        assert!(flex_schemas::Entity::find_by_id(created_schema.id)
-            .one(&db)
-            .await
-            .expect("schema lookup should succeed")
-            .is_none());
+        assert!(
+            flex_schemas::Entity::find_by_id(created_schema.id)
+                .one(&db)
+                .await
+                .expect("schema lookup should succeed")
+                .is_none()
+        );
     }
 
     #[tokio::test]

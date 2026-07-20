@@ -17,7 +17,7 @@ use uuid::Uuid;
 use rustok_core::field_schema::FlexError;
 
 use rustok_api::{
-    build_locale_candidates, locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE,
+    PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match, normalize_locale_tag,
 };
 
 use crate::models::{

@@ -3,14 +3,14 @@
 //! `POST /oauth/token` — Token endpoint (client_credentials flow)
 
 use axum::{
+    Json,
     extract::{ConnectInfo, Form, Query, State},
     http::{
-        header::{AUTHORIZATION, COOKIE, LOCATION, SET_COOKIE},
         HeaderMap, StatusCode,
+        header::{AUTHORIZATION, COOKIE, LOCATION, SET_COOKIE},
     },
     response::{Html, IntoResponse},
     routing::{get, post},
-    Json,
 };
 use reqwest::Url;
 use rustok_auth::{
@@ -20,9 +20,9 @@ use rustok_auth::{
 use std::net::SocketAddr;
 use uuid::Uuid;
 
-use crate::common::{extract_effective_proto, RustokSettings};
+use crate::common::{RustokSettings, extract_effective_proto};
 use crate::context::TenantContext;
-use crate::extractors::auth::{resolve_current_user_from_access_token, CurrentUser};
+use crate::extractors::auth::{CurrentUser, resolve_current_user_from_access_token};
 use crate::services::oauth_app::OAuthAppService;
 use crate::services::oauth_token_service::OAuthTokenService;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
@@ -816,7 +816,7 @@ pub fn router() -> crate::routes::ServerRouter {
 mod tests {
     use super::*;
     use crate::common::settings::{ForwardedHeadersMode, RequestTrustSettings};
-    use axum::http::{header::HeaderValue, HeaderName};
+    use axum::http::{HeaderName, header::HeaderValue};
     use chrono::Utc;
     use std::net::{IpAddr, Ipv4Addr};
 

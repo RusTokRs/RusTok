@@ -9,7 +9,7 @@ use crate::services::app_runtime::module_runtime_extensions_from_ctx;
 #[cfg(feature = "mod-seo")]
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
-    spawn_outbox_relay_worker, EventRuntime, RelayRuntimeConfig,
+    EventRuntime, RelayRuntimeConfig, spawn_outbox_relay_worker,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_modules::ModuleControlPlane;
@@ -412,8 +412,8 @@ fn should_use_local_sqlite_fallback(database_url_present: bool, current_uri: &st
 #[cfg(test)]
 mod tests {
     use super::{
-        connect_runtime_workers_with_runtime, resolve_boot_database_uri,
-        should_use_local_sqlite_fallback, OutboxRelayWorkerHandle,
+        OutboxRelayWorkerHandle, connect_runtime_workers_with_runtime, resolve_boot_database_uri,
+        should_use_local_sqlite_fallback,
     };
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;

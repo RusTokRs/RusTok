@@ -1,9 +1,9 @@
 use super::{
-    classify_access_token_claims, resolve_current_user_from_access_token,
-    resolve_service_token_permissions, AccessTokenSubjectKind, CurrentUser,
+    AccessTokenSubjectKind, CurrentUser, classify_access_token_claims,
+    resolve_current_user_from_access_token, resolve_service_token_permissions,
 };
 use crate::auth::{
-    encode_access_token, encode_oauth_access_token, AuthConfig, AuthSettingsOverrides, Claims,
+    AuthConfig, AuthSettingsOverrides, Claims, encode_access_token, encode_oauth_access_token,
 };
 use crate::common::settings::RustokSettings;
 use crate::models::{oauth_apps, sessions, tenants, users};

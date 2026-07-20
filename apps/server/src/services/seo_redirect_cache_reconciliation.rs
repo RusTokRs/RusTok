@@ -25,10 +25,7 @@ struct SeoRedirectCacheReconciliationState {
 }
 
 trait SeoRedirectCacheInvalidator: Send + Sync {
-    fn invalidate_tenant(
-        &self,
-        tenant_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+    fn invalidate_tenant(&self, tenant_id: Uuid) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 
     fn invalidate_all(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }
@@ -37,10 +34,7 @@ trait SeoRedirectCacheInvalidator: Send + Sync {
 struct GlobalSeoRedirectCacheInvalidator;
 
 impl SeoRedirectCacheInvalidator for GlobalSeoRedirectCacheInvalidator {
-    fn invalidate_tenant(
-        &self,
-        tenant_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+    fn invalidate_tenant(&self, tenant_id: Uuid) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
         Box::pin(async move {
             rustok_seo::services::invalidate_redirect_cache(tenant_id).await;
         })
@@ -239,14 +233,17 @@ async fn run_seo_redirect_cache_reconciliation(
     batch_limit: u64,
     max_pages_per_poll: usize,
 ) -> rustok_seo::SeoResult<()> {
-    let (mut cursor, mut observed_count) = match seed_redirect_cache_state(&db, invalidator.as_ref()).await {
-        Ok(seed) => seed,
-        Err(error) => {
-            invalidator.invalidate_all().await;
-            return Err(error);
-        }
-    };
-    state.observed_count.store(observed_count, Ordering::Release);
+    let (mut cursor, mut observed_count) =
+        match seed_redirect_cache_state(&db, invalidator.as_ref()).await {
+            Ok(seed) => seed,
+            Err(error) => {
+                invalidator.invalidate_all().await;
+                return Err(error);
+            }
+        };
+    state
+        .observed_count
+        .store(observed_count, Ordering::Release);
     state.healthy.store(true, Ordering::Release);
 
     loop {
@@ -282,12 +279,9 @@ async fn poll_redirect_cache_changes(
     let mut processed = 0_u64;
 
     for _ in 0..max_pages_per_poll {
-        let changes = rustok_seo::services::redirect_cache_changes_after(
-            db,
-            cursor.as_ref(),
-            batch_limit,
-        )
-        .await?;
+        let changes =
+            rustok_seo::services::redirect_cache_changes_after(db, cursor.as_ref(), batch_limit)
+                .await?;
         let page_len = changes.len() as u64;
 
         for change in changes {
@@ -310,13 +304,12 @@ async fn poll_redirect_cache_changes(
             processed,
             "SEO redirect cursor/count gap detected; clearing and reseeding cache"
         );
-        rustok_telemetry::metrics::record_event_error(
-            "seo.redirect.cache",
-            "cursor_gap_recovery",
-        );
+        rustok_telemetry::metrics::record_event_error("seo.redirect.cache", "cursor_gap_recovery");
         state.healthy.store(false, Ordering::Release);
         (*cursor, *observed_count) = seed_redirect_cache_state(db, invalidator).await?;
-        state.observed_count.store(*observed_count, Ordering::Release);
+        state
+            .observed_count
+            .store(*observed_count, Ordering::Release);
         state.healthy.store(true, Ordering::Release);
         return Ok(());
     }

@@ -11,8 +11,8 @@ use crate::models::oauth_tokens::{self, Entity as OAuthTokens};
 use crate::models::tenants;
 use chrono::Utc;
 use reqwest::Url;
-use rustok_api::context::scope_matches;
 use rustok_api::Permission;
+use rustok_api::context::scope_matches;
 use rustok_core::{Rbac, UserRole};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
@@ -315,7 +315,7 @@ impl OAuthAppService {
     ) -> Result<String> {
         // Generate random 43 character code
         let random_bytes: [u8; 32] = rand::random();
-        use base64::{engine::general_purpose, Engine as _};
+        use base64::{Engine as _, engine::general_purpose};
         let code = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
 
         // Hash it for DB storage
@@ -350,7 +350,7 @@ impl OAuthAppService {
     /// Verify a PKCE code_verifier against the stored code_challenge
     /// code_challenge = BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))
     pub fn verify_pkce(code_challenge: &str, code_verifier: &str) -> bool {
-        use base64::{engine::general_purpose, Engine as _};
+        use base64::{Engine as _, engine::general_purpose};
         use sha2::{Digest, Sha256};
 
         let mut hasher = Sha256::new();
@@ -1368,7 +1368,7 @@ mod tests {
     fn rfc7636_s256_transform() {
         // RFC 7636 §4.2: S256
         //   code_challenge = BASE64URL(SHA256(ASCII(code_verifier)))
-        use base64::{engine::general_purpose, Engine as _};
+        use base64::{Engine as _, engine::general_purpose};
         use sha2::{Digest, Sha256};
 
         let verifier = "a]b[c}d{e~f.g_h-i+j=k";
@@ -1384,7 +1384,7 @@ mod tests {
     #[test]
     fn rfc7636_verifier_length_43_to_128() {
         // RFC 7636 §4.1: code_verifier is 43-128 characters
-        use base64::{engine::general_purpose, Engine as _};
+        use base64::{Engine as _, engine::general_purpose};
         use sha2::{Digest, Sha256};
 
         // Minimum length (43 chars)
@@ -1406,7 +1406,7 @@ mod tests {
     fn rfc7636_constant_time_comparison() {
         // Verify that verify_pkce uses constant-time comparison (subtle::ConstantTimeEq)
         // by checking that wrong challenges of same length still fail
-        use base64::{engine::general_purpose, Engine as _};
+        use base64::{Engine as _, engine::general_purpose};
         use sha2::{Digest, Sha256};
 
         let verifier = "test_verifier_for_timing_check_padding_here";
@@ -1641,7 +1641,7 @@ mod tests {
     fn auth_code_base64url_no_padding() {
         // RFC 7636 §4.1: code_verifier uses unreserved characters
         // Our auth code uses URL-safe base64 without padding
-        use base64::{engine::general_purpose, Engine as _};
+        use base64::{Engine as _, engine::general_purpose};
         let random_bytes: Vec<u8> = (0..32).map(|i| i as u8).collect();
         let code = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
 

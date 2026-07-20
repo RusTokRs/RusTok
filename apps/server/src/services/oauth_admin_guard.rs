@@ -3,15 +3,15 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rustok_api::{has_effective_permission, Permission};
+use rustok_api::{Permission, has_effective_permission};
 use rustok_auth::{
-    generate_refresh_token, hash_password, AuthAdminMutationContext, AuthAdminMutationError,
-    AuthorizedOAuthAppRecord, CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord,
-    OAuthAppSecretResult, UpdateOAuthAppCommand,
+    AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
+    CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
+    UpdateOAuthAppCommand, generate_refresh_token, hash_password,
 };
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend,
-    EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
+    QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use uuid::Uuid;
 
@@ -296,11 +296,13 @@ mod tests {
     #[test]
     fn refresh_grant_requires_authorization_code() {
         assert!(validate_grant_dependencies(&["refresh_token".to_string()]).is_err());
-        assert!(validate_grant_dependencies(&[
-            "authorization_code".to_string(),
-            "refresh_token".to_string(),
-        ])
-        .is_ok());
+        assert!(
+            validate_grant_dependencies(&[
+                "authorization_code".to_string(),
+                "refresh_token".to_string(),
+            ])
+            .is_ok()
+        );
     }
 
     #[test]

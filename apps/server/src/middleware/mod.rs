@@ -20,8 +20,8 @@ mod tenant_runtime;
 
 /// Public tenant middleware surface backed by durable cache generations.
 pub mod tenant {
-    pub use super::tenant_runtime::{resolve, TenantCacheInfrastructure, TenantCacheStats};
     pub(crate) use super::tenant_runtime::resolve_tenant_context_by_slug;
+    pub use super::tenant_runtime::{TenantCacheInfrastructure, TenantCacheStats, resolve};
     pub use crate::services::tenant_cache_generation_status::{
         TenantCacheGenerationListenerSnapshot as TenantInvalidationListenerSnapshot,
         TenantCacheGenerationListenerStatus as TenantInvalidationListenerStatus,

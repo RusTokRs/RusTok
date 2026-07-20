@@ -1,11 +1,11 @@
 use axum::{
-    body::{to_bytes, Body},
+    Json,
+    body::{Body, to_bytes},
     http::{Method, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
-    Json,
 };
-use rustok_api::{has_effective_permission, AuthContextExtension, Permission};
+use rustok_api::{AuthContextExtension, Permission, has_effective_permission};
 
 use crate::services::marketplace_catalog::RegistryPublishRequest;
 
@@ -36,14 +36,16 @@ pub async fn enforce(mut request: Request<Body>, next: Next) -> Response {
     let ownership = match normalize_ownership(&publish.module.ownership) {
         Some(value) => value,
         None => {
-            return bad_request("Registry module ownership must be `first_party` or `third_party`")
+            return bad_request("Registry module ownership must be `first_party` or `third_party`");
         }
     };
     let trust_level = match normalize_trust_level(&publish.module.trust_level) {
         Some(value) => value,
-        None => return bad_request(
-            "Registry module trust_level must be `core`, `verified`, `unverified`, or `private`",
-        ),
+        None => {
+            return bad_request(
+                "Registry module trust_level must be `core`, `verified`, `unverified`, or `private`",
+            );
+        }
     };
     publish.module.ownership = ownership.to_string();
     publish.module.trust_level = trust_level.to_string();

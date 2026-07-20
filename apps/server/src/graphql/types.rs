@@ -1,5 +1,5 @@
 use async_graphql::{
-    dataloader::DataLoader, ComplexObject, Context, Enum, InputObject, Result, SimpleObject,
+    ComplexObject, Context, Enum, InputObject, Result, SimpleObject, dataloader::DataLoader,
 };
 use rustok_api::Permission;
 use rustok_core::{UserRole, UserStatus};
@@ -10,15 +10,15 @@ use uuid::Uuid;
 use crate::common::RequestContext;
 use crate::graphql::loaders::TenantNameLoader;
 use crate::models::users;
-use crate::modules::{module_setting_shape_value, InstalledManifestModule, ModuleSettingSpec};
+use crate::modules::{InstalledManifestModule, ModuleSettingSpec, module_setting_shape_value};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_service::RbacService;
 use crate::services::registry_principal::RegistryPrincipalRef;
 use rustok_api::graphql::PageInfo;
-use rustok_build::build::{BuildStage, BuildStatus, DeploymentProfile, Model as BuildModel};
-use rustok_build::release::{Model as ReleaseModel, ReleaseStatus};
 use rustok_build::BuildEvent;
 use rustok_build::BuildExecutionPlan;
+use rustok_build::build::{BuildStage, BuildStatus, DeploymentProfile, Model as BuildModel};
+use rustok_build::release::{Model as ReleaseModel, ReleaseStatus};
 use rustok_modules::ModuleOperationRecoveryPlan as ServiceModuleOperationRecoveryPlan;
 
 #[derive(SimpleObject, Clone)]

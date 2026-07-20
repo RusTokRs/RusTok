@@ -4,7 +4,7 @@ use tracing::{debug, warn};
 
 use rustok_core::UserRole;
 
-use rustok_api::{has_effective_permission, Permission};
+use rustok_api::{Permission, has_effective_permission};
 use rustok_rbac::PermissionResolver;
 use rustok_telemetry::metrics;
 
@@ -14,6 +14,7 @@ use super::rbac_request_scope::{
 };
 pub use super::rbac_runtime::RbacResolverMetricsSnapshot;
 use super::rbac_runtime::{
+    AuthorizationCheck, ServerRuntimePermissionResolver,
     authorize_request as authorize_rbac_request,
     invalidate_user_permissions_cache as invalidate_permission_runtime_cache,
     invalidate_user_rbac_caches as invalidate_rbac_runtime_caches,
@@ -21,7 +22,7 @@ use super::rbac_runtime::{
     observe_authorization_decision as observe_rbac_authorization_decision,
     record_claim_role_mismatch as record_rbac_claim_role_mismatch, record_permission_cache_result,
     record_permission_lookup_latency as record_rbac_permission_lookup_latency,
-    resolver as rbac_runtime_resolver, AuthorizationCheck, ServerRuntimePermissionResolver,
+    resolver as rbac_runtime_resolver,
 };
 
 pub struct RbacService;
@@ -365,7 +366,7 @@ impl RbacService {
 mod tests {
     use super::RbacService;
     use crate::models::{tenants, users};
-    use crate::services::rbac_request_scope::{with_rbac_request_scope, RbacRequestScope};
+    use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
     use crate::services::rbac_runtime::reset_metrics_for_tests as reset_rbac_metrics_for_tests;
     use chrono::Utc;
     use rustok_api::Permission;
@@ -435,26 +436,20 @@ mod tests {
         RbacService::invalidate_user_rbac_caches(&tenant_id, &user_id).await;
         reset_rbac_metrics_for_tests();
 
-        assert!(RbacService::has_permission(
-            &db,
-            &tenant_id,
-            &user_id,
-            &Permission::PRODUCTS_CREATE
-        )
-        .await
-        .expect("first permission check should succeed"));
+        assert!(
+            RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::PRODUCTS_CREATE)
+                .await
+                .expect("first permission check should succeed")
+        );
         let after_first = RbacService::metrics_snapshot();
         assert_eq!(after_first.permission_cache_misses, 1);
         assert_eq!(after_first.permission_cache_hits, 0);
 
-        assert!(RbacService::has_permission(
-            &db,
-            &tenant_id,
-            &user_id,
-            &Permission::PRODUCTS_CREATE
-        )
-        .await
-        .expect("second permission check should succeed"));
+        assert!(
+            RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::PRODUCTS_CREATE)
+                .await
+                .expect("second permission check should succeed")
+        );
         let after_second = RbacService::metrics_snapshot();
         assert_eq!(after_second.permission_cache_misses, 1);
         assert_eq!(after_second.permission_cache_hits, 1);
@@ -476,22 +471,21 @@ mod tests {
             UserRole::Admin,
         );
         with_rbac_request_scope(Some(scope), async {
-            assert!(RbacService::has_permission(
-                &db,
-                &tenant_id,
-                &user_id,
-                &Permission::USERS_READ
-            )
-            .await
-            .expect("scoped read check"));
-            assert!(!RbacService::has_permission(
-                &db,
-                &tenant_id,
-                &user_id,
-                &Permission::SETTINGS_MANAGE
-            )
-            .await
-            .expect("scoped manage check"));
+            assert!(
+                RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::USERS_READ)
+                    .await
+                    .expect("scoped read check")
+            );
+            assert!(
+                !RbacService::has_permission(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    &Permission::SETTINGS_MANAGE
+                )
+                .await
+                .expect("scoped manage check")
+            );
             assert_eq!(
                 RbacService::get_user_permissions(&db, &tenant_id, &user_id)
                     .await

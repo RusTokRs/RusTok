@@ -5,7 +5,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use moka::{future::Cache, Expiry};
+use moka::{Expiry, future::Cache};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
@@ -14,14 +14,14 @@ use std::{
 };
 use uuid::Uuid;
 
-use crate::common::{extract_effective_host, peer_ip_from_extensions, RustokSettings};
+use crate::common::{RustokSettings, extract_effective_host, peer_ip_from_extensions};
 use crate::context::{
     ChannelContext, ChannelContextExtension, ChannelResolutionSource, TenantContextExt,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::{
-    context::AuthContextExtension, request::ResolvedRequestLocale, ChannelResolutionOutcome,
-    ChannelResolutionStage, ChannelResolutionTraceStep,
+    ChannelResolutionOutcome, ChannelResolutionStage, ChannelResolutionTraceStep,
+    context::AuthContextExtension, request::ResolvedRequestLocale,
 };
 use rustok_channel::{
     ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionDecision, TargetSurface,

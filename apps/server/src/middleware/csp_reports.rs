@@ -1,7 +1,7 @@
 use axum::{
     body::to_bytes,
     extract::Request,
-    http::{header::CONTENT_TYPE, Method, StatusCode},
+    http::{Method, StatusCode, header::CONTENT_TYPE},
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;

@@ -1,5 +1,5 @@
-use rustok_api::context::{has_effective_permission, AuthContext, AuthContextExtension};
 use rustok_api::Permission;
+use rustok_api::context::{AuthContext, AuthContextExtension, has_effective_permission};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

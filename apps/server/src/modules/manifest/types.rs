@@ -503,7 +503,9 @@ pub enum ManifestError {
         slug: String,
         conflicts_with: String,
     },
-    #[error("Module '{slug}' is incompatible with RusToK {current_version} (min={minimum:?}, max={maximum:?})")]
+    #[error(
+        "Module '{slug}' is incompatible with RusToK {current_version} (min={minimum:?}, max={maximum:?})"
+    )]
     IncompatibleRustokVersion {
         slug: String,
         current_version: String,

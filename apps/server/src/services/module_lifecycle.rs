@@ -3,16 +3,16 @@ use thiserror::Error;
 
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    failed_module_operation_recovery_plans, module_operation_recovery_plan,
-    normalize_module_settings, ModuleControlPlane, ModuleLifecycleDbWriterError,
-    ModuleLifecycleExecutionError, ModuleOperationRecoveryError as ModulesRecoveryError,
-    ModuleOperationRecoveryPlan, ModuleOperationStoreError, ModuleToggleValidationError,
+    ModuleControlPlane, ModuleLifecycleDbWriterError, ModuleLifecycleExecutionError,
+    ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
+    ModuleOperationStoreError, ModuleToggleValidationError, failed_module_operation_recovery_plans,
+    module_operation_recovery_plan, normalize_module_settings,
 };
 
 use crate::models::_entities::module_operations::Entity as ModuleOperationsEntity;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
 use crate::models::_entities::{module_operations, tenant_modules};
-use crate::modules::{map_module_settings_validation_error, ManifestError, ManifestManager};
+use crate::modules::{ManifestError, ManifestManager, map_module_settings_validation_error};
 use crate::services::platform_composition::PlatformCompositionService;
 
 pub struct ModuleLifecycleService;
@@ -386,7 +386,7 @@ mod tests {
     use super::{ModuleLifecycleService, UpdateModuleSettingsError};
     use crate::models::_entities::tenant_modules;
     use crate::models::tenants;
-    use crate::modules::{build_registry, ManifestManager, ManifestModuleSpec, ModulesManifest};
+    use crate::modules::{ManifestManager, ManifestModuleSpec, ModulesManifest, build_registry};
     use rustok_core::ModuleRegistry;
     use rustok_index::IndexModule;
     use rustok_migrations::Migrator;

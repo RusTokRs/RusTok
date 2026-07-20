@@ -1,11 +1,11 @@
 use axum::http::StatusCode;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
 use rustok_api::context::scope_matches;
 use rustok_auth::{TokenRequest, TokenResponse};
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    EntityTrait, QueryFilter, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    Set, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
@@ -168,7 +168,7 @@ impl OAuthTokenService {
             other => {
                 return Err(OAuthTokenProtocolError::unsupported_grant(format!(
                     "Grant type `{other}` is not supported"
-                )))
+                )));
             }
         };
 
@@ -610,13 +610,13 @@ fn required<'a>(
 #[cfg(test)]
 mod tests {
     use super::{
-        commit_refresh_rotation, require_grant, validate_requested_scopes, PreparedUserTokens,
-        REFRESH_TOKEN_GRANT,
+        PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, require_grant,
+        validate_requested_scopes,
     };
     use crate::models::{oauth_apps, oauth_tokens};
     use sea_orm::{
-        prelude::DateTimeWithTimeZone, ActiveModelTrait, ConnectionTrait, Database, EntityTrait,
-        PaginatorTrait, Set,
+        ActiveModelTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, Set,
+        prelude::DateTimeWithTimeZone,
     };
     use uuid::Uuid;
 
@@ -654,11 +654,10 @@ mod tests {
             serde_json::json!(["client_credentials"]),
         );
         assert!(validate_requested_scopes(&app, &["catalog:read".to_string()]).is_ok());
-        assert!(validate_requested_scopes(
-            &app,
-            &["catalog:read".to_string(), "admin:*".to_string()]
-        )
-        .is_err());
+        assert!(
+            validate_requested_scopes(&app, &["catalog:read".to_string(), "admin:*".to_string()])
+                .is_err()
+        );
     }
 
     #[test]

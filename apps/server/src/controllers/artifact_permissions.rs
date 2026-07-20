@@ -1,13 +1,13 @@
 //! Host transport for RBAC-owned artifact permission grants.
 
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
     response::Response,
     routing::put,
-    Json,
 };
-use rustok_api::{has_effective_permission, Permission};
+use rustok_api::{Permission, has_effective_permission};
 use rustok_rbac::{
     ArtifactPermissionAssignmentError, ArtifactRolePermissionAssignmentCommand,
     RbacArtifactPermissionAssignmentService,
@@ -18,7 +18,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
-    error::{http_error, Error, Result},
+    error::{Error, Result, http_error},
     extractors::{auth::CurrentUser, tenant::CurrentTenant},
     services::server_runtime_context::ServerRuntimeContext,
 };

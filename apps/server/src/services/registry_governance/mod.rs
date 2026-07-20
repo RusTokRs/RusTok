@@ -1,9 +1,9 @@
 #![allow(clippy::too_many_arguments, clippy::unnecessary_lazy_evaluations)]
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use chrono::Duration;
 use rustok_api::{
-    build_locale_candidates, locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE,
+    PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match, normalize_locale_tag,
 };
 use rustok_modules::{ModuleControlPlane, SeaOrmModuleGovernanceService};
 use rustok_storage::StorageService;
@@ -16,15 +16,12 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::models::registry_governance_event::Entity as RegistryGovernanceEventEntity;
-use crate::models::registry_module_owner::{
-    self, Entity as RegistryModuleOwnerEntity,
-};
+use crate::models::registry_module_owner::{self, Entity as RegistryModuleOwnerEntity};
 use crate::models::registry_module_release::{
     self, Entity as RegistryModuleReleaseEntity, RegistryModuleReleaseStatus,
 };
 use crate::models::registry_module_release_translation::{
-    self as registry_module_release_translation,
-    Entity as RegistryModuleReleaseTranslationEntity,
+    self as registry_module_release_translation, Entity as RegistryModuleReleaseTranslationEntity,
 };
 use crate::models::registry_publish_request::{
     self, Entity as RegistryPublishRequestEntity, RegistryPublishRequestStatus,

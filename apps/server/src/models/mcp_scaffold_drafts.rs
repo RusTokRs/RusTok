@@ -1,7 +1,7 @@
 use rustok_mcp::{
     ModuleScaffoldDraftStatus, ScaffoldModulePreview, ScaffoldModuleRequest, StagedModuleScaffold,
 };
-use sea_orm::{entity::prelude::*, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{QueryFilter, QueryOrder, QuerySelect, entity::prelude::*};
 
 pub use super::_entities::mcp_scaffold_drafts::{ActiveModel, Column, Entity, Model, Relation};
 

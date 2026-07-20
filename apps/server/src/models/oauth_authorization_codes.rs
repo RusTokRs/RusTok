@@ -1,4 +1,4 @@
-use sea_orm::{prelude::*, sea_query::Expr, ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, prelude::*, sea_query::Expr};
 
 use super::_entities::oauth_authorization_codes::{self};
 pub use super::_entities::oauth_authorization_codes::{ActiveModel, Column, Entity, Model};

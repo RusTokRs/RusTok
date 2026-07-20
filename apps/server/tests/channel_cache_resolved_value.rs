@@ -1,13 +1,13 @@
 use std::{net::TcpListener, process::Stdio, time::Duration};
 
 use axum::{
-    body::{to_bytes, Body},
+    Json, Router,
+    body::{Body, to_bytes},
     http::Request,
     middleware as axum_middleware,
     routing::get,
-    Json, Router,
 };
-use rustok_channel::{entities::channel, ChannelService, CreateChannelInput};
+use rustok_channel::{ChannelService, CreateChannelInput, entities::channel};
 use rustok_migrations::Migrator;
 use rustok_server::{
     common::settings::RustokSettings,
@@ -17,8 +17,8 @@ use rustok_server::{
     services::{
         cache_runtime::ensure_cache_service,
         channel_cache_invalidation::{
+            CHANNEL_RESOLUTION_INVALIDATION_CHANNEL, ChannelCacheInvalidationListenerHandle,
             publish_channel_resolution_invalidation, start_channel_cache_invalidation_listener,
-            ChannelCacheInvalidationListenerHandle, CHANNEL_RESOLUTION_INVALIDATION_CHANNEL,
         },
         server_runtime_context::ServerRuntimeContext,
     },

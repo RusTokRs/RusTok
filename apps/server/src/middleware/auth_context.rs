@@ -1,15 +1,15 @@
 use axum::{
     extract::State,
-    http::{header::AUTHORIZATION, Method, Request, StatusCode},
+    http::{Method, Request, StatusCode, header::AUTHORIZATION},
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use rustok_api::context::{AuthContext, AuthContextExtension};
-use rustok_api::{has_effective_permission, Permission};
+use rustok_api::{Permission, has_effective_permission};
 use rustok_core::SecurityActorKind;
 
 use crate::extractors::auth::resolve_current_user;
-use crate::services::rbac_request_scope::{with_rbac_request_scope, RbacRequestScope};
+use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::ServerAuthRuntime;
 
 pub async fn resolve_optional(
@@ -141,7 +141,7 @@ fn service_forum_boundary_violation(
 #[cfg(test)]
 mod tests {
     use super::{is_human_user_self_service_path, service_forum_boundary_violation};
-    use axum::http::{header::AUTHORIZATION, HeaderMap, Method};
+    use axum::http::{HeaderMap, Method, header::AUTHORIZATION};
     use rustok_api::Permission;
     use uuid::Uuid;
 
@@ -175,47 +175,59 @@ mod tests {
     #[test]
     fn forum_personal_interactions_are_human_only() {
         let topic_id = Uuid::new_v4();
-        assert!(service_forum_boundary_violation(
-            &Method::POST,
-            "/api/forum/topics",
-            &[Permission::FORUM_TOPICS_CREATE],
-        )
-        .is_some());
-        assert!(service_forum_boundary_violation(
-            &Method::POST,
-            &format!("/api/forum/topics/{topic_id}/replies"),
-            &[Permission::FORUM_REPLIES_CREATE],
-        )
-        .is_some());
-        assert!(service_forum_boundary_violation(
-            &Method::POST,
-            &format!("/api/forum/topics/{topic_id}/vote/1"),
-            &[Permission::FORUM_TOPICS_UPDATE],
-        )
-        .is_some());
-        assert!(service_forum_boundary_violation(
-            &Method::GET,
-            &format!("/api/forum/topics/{topic_id}/subscription"),
-            &[Permission::FORUM_TOPICS_READ],
-        )
-        .is_some());
+        assert!(
+            service_forum_boundary_violation(
+                &Method::POST,
+                "/api/forum/topics",
+                &[Permission::FORUM_TOPICS_CREATE],
+            )
+            .is_some()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::POST,
+                &format!("/api/forum/topics/{topic_id}/replies"),
+                &[Permission::FORUM_REPLIES_CREATE],
+            )
+            .is_some()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::POST,
+                &format!("/api/forum/topics/{topic_id}/vote/1"),
+                &[Permission::FORUM_TOPICS_UPDATE],
+            )
+            .is_some()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::GET,
+                &format!("/api/forum/topics/{topic_id}/subscription"),
+                &[Permission::FORUM_TOPICS_READ],
+            )
+            .is_some()
+        );
     }
 
     #[test]
     fn forum_service_updates_require_moderation_authority() {
         let topic_id = Uuid::new_v4();
         let path = format!("/api/forum/topics/{topic_id}");
-        assert!(service_forum_boundary_violation(
-            &Method::PUT,
-            &path,
-            &[Permission::FORUM_TOPICS_UPDATE],
-        )
-        .is_some());
-        assert!(service_forum_boundary_violation(
-            &Method::PUT,
-            &path,
-            &[Permission::FORUM_TOPICS_MODERATE],
-        )
-        .is_none());
+        assert!(
+            service_forum_boundary_violation(
+                &Method::PUT,
+                &path,
+                &[Permission::FORUM_TOPICS_UPDATE],
+            )
+            .is_some()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::PUT,
+                &path,
+                &[Permission::FORUM_TOPICS_MODERATE],
+            )
+            .is_none()
+        );
     }
 }

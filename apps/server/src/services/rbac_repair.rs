@@ -159,14 +159,16 @@ mod tests {
             .await
             .expect("failed to load manager role")
             .expect("manager role should exist");
-        assert!(user_roles::Entity::insert(user_roles::ActiveModel {
-            id: Set(rustok_core::generate_id()),
-            user_id: Set(cross_tenant_user),
-            role_id: Set(manager_role.id),
-        })
-        .exec(&db)
-        .await
-        .is_err());
+        assert!(
+            user_roles::Entity::insert(user_roles::ActiveModel {
+                id: Set(rustok_core::generate_id()),
+                user_id: Set(cross_tenant_user),
+                role_id: Set(manager_role.id),
+            })
+            .exec(&db)
+            .await
+            .is_err()
+        );
 
         let stale_permission_id = rustok_core::generate_id();
         permissions::Entity::insert(permissions::ActiveModel {
@@ -191,14 +193,16 @@ mod tests {
 
         for user_id in [first_user, second_user] {
             RbacService::invalidate_user_rbac_caches(&tenant_id, &user_id).await;
-            assert!(RbacService::has_permission(
-                &db,
-                &tenant_id,
-                &user_id,
-                &Permission::SETTINGS_MANAGE,
-            )
-            .await
-            .expect("primed permission lookup should succeed"));
+            assert!(
+                RbacService::has_permission(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    &Permission::SETTINGS_MANAGE,
+                )
+                .await
+                .expect("primed permission lookup should succeed")
+            );
         }
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
@@ -211,24 +215,30 @@ mod tests {
         assert!(!report.runtime_restart_required);
         assert_eq!(report.affected_users.len(), 2);
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
-        assert!(report
-            .affected_users
-            .iter()
-            .all(|affected| affected.tenant_id == tenant_id));
-        assert!(!report
-            .affected_users
-            .iter()
-            .any(|affected| affected.user_id == cross_tenant_user));
+        assert!(
+            report
+                .affected_users
+                .iter()
+                .all(|affected| affected.tenant_id == tenant_id)
+        );
+        assert!(
+            !report
+                .affected_users
+                .iter()
+                .any(|affected| affected.user_id == cross_tenant_user)
+        );
 
         for user_id in [first_user, second_user] {
-            assert!(!RbacService::has_permission(
-                &db,
-                &tenant_id,
-                &user_id,
-                &Permission::SETTINGS_MANAGE,
-            )
-            .await
-            .expect("post-repair permission lookup should succeed"));
+            assert!(
+                !RbacService::has_permission(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    &Permission::SETTINGS_MANAGE,
+                )
+                .await
+                .expect("post-repair permission lookup should succeed")
+            );
         }
     }
 }

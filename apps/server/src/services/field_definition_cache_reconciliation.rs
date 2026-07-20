@@ -54,10 +54,7 @@ pub struct FieldDefinitionCacheGenerationReconciliationHandle {
 }
 
 impl FieldDefinitionCacheGenerationReconciliationHandle {
-    fn new(
-        state: Arc<FieldDefinitionCacheGenerationState>,
-        task: JoinHandle<()>,
-    ) -> Self {
+    fn new(state: Arc<FieldDefinitionCacheGenerationState>, task: JoinHandle<()>) -> Self {
         Self {
             state,
             task: Arc::new(AbortOnDropFieldDefinitionCacheGenerationTask::new(task)),
@@ -109,9 +106,7 @@ fn start_field_definition_cache_generation_reconciliation_with_timing(
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-    if let Some(existing) =
-        ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>()
-    {
+    if let Some(existing) = ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>() {
         if existing.is_running() {
             return;
         }
@@ -166,9 +161,9 @@ async fn supervise_field_definition_cache_generation(
                 %error,
                 "Field-definition cache generation reconciler failed; restarting"
             ),
-            Err(_) => tracing::error!(
-                "Field-definition cache generation reconciler panicked; restarting"
-            ),
+            Err(_) => {
+                tracing::error!("Field-definition cache generation reconciler panicked; restarting")
+            }
         }
         rustok_telemetry::metrics::record_event_error(
             "flex_field_definition_cache_generation",
@@ -232,14 +227,10 @@ async fn run_field_definition_cache_generation_once(
     }
 }
 
-async fn read_field_definition_cache_generation(
-    db: &DatabaseConnection,
-) -> Result<u64, DbErr> {
+async fn read_field_definition_cache_generation(db: &DatabaseConnection) -> Result<u64, DbErr> {
     let statement = Statement::from_string(
         db.get_database_backend(),
-        format!(
-            "SELECT generation FROM {FIELD_DEFINITION_CACHE_GENERATION_TABLE} WHERE id = 1"
-        ),
+        format!("SELECT generation FROM {FIELD_DEFINITION_CACHE_GENERATION_TABLE} WHERE id = 1"),
     );
     let row = db.query_one(statement).await?.ok_or_else(|| {
         DbErr::RecordNotFound(

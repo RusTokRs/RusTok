@@ -18,8 +18,8 @@ use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
 use rustok_events::EventEnvelope;
 
 use crate::models::order_field_definitions::{
-    ActiveModel, Column, CreateFieldDefinitionInput, Entity, Model, UpdateFieldDefinitionInput,
-    MAX_FIELDS_PER_TENANT,
+    ActiveModel, Column, CreateFieldDefinitionInput, Entity, MAX_FIELDS_PER_TENANT, Model,
+    UpdateFieldDefinitionInput,
 };
 
 /// Service for order custom field definitions.
@@ -271,7 +271,7 @@ impl OrderFieldService {
 #[cfg(test)]
 mod tests {
     use super::OrderFieldService;
-    use crate::models::order_field_definitions::{Model, MAX_FIELDS_PER_TENANT};
+    use crate::models::order_field_definitions::{MAX_FIELDS_PER_TENANT, Model};
     use chrono::Utc;
     use rustok_core::field_schema::{FieldType, FlexError};
     use rustok_events::DomainEvent;

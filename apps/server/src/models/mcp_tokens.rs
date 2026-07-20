@@ -1,9 +1,9 @@
 use std::str::FromStr;
 
 use chrono::Utc;
-use rustok_api::{has_effective_permission, Permission};
+use rustok_api::{Permission, has_effective_permission};
 use rustok_mcp::McpActorType;
-use sea_orm::{entity::prelude::*, Condition, QueryFilter, QueryOrder};
+use sea_orm::{Condition, QueryFilter, QueryOrder, entity::prelude::*};
 
 use crate::models::{mcp_clients, mcp_policies, users};
 use crate::services::rbac_service::RbacService;
@@ -112,7 +112,7 @@ impl Model {
 
 #[cfg(test)]
 mod tests {
-    use rustok_api::{has_effective_permission, Permission};
+    use rustok_api::{Permission, has_effective_permission};
 
     #[test]
     fn manage_permission_can_back_a_narrow_delegated_grant() {

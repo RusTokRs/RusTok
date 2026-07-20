@@ -236,14 +236,14 @@ fn is_missing_generation_state(error: &Error) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     use super::{
+        RbacInvalidationGenerationState, RbacInvalidationGenerationWatchdogHandle,
         is_missing_generation_state, read_rbac_invalidation_generation,
         reserve_rbac_invalidation_generation, supervise_rbac_invalidation_generation_watchdog,
-        RbacInvalidationGenerationState, RbacInvalidationGenerationWatchdogHandle,
     };
     use crate::error::Error;
     use rustok_migrations::Migrator;

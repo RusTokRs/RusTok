@@ -1,23 +1,23 @@
 use axum::{
+    Json,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     routing::{get, post},
-    Json,
 };
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use rustok_installer::{
-    evaluate_preflight_with_deployment, redact_install_plan, InstallApplyOptions,
-    InstallApplyOutput, InstallExecutor, InstallPlan,
+    InstallApplyOptions, InstallApplyOutput, InstallExecutor, InstallPlan,
+    evaluate_preflight_with_deployment, redact_install_plan,
 };
-use rustok_installer_persistence::{entities::install_step_receipt, InstallerPersistenceService};
+use rustok_installer_persistence::{InstallerPersistenceService, entities::install_step_receipt};
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::error::{http_error, Error, Result};
+use crate::error::{Error, Result, http_error};
 use crate::installer_execution::ServerInstallExecutor;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 

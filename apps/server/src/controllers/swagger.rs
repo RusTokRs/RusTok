@@ -1,11 +1,11 @@
 use axum::{
     extract::State,
-    http::{header::CONTENT_TYPE, StatusCode},
+    http::{StatusCode, header::CONTENT_TYPE},
     response::{IntoResponse, Response},
     routing::get,
 };
-use utoipa::openapi::OpenApi as OpenApiDoc;
 use utoipa::OpenApi;
+use utoipa::openapi::OpenApi as OpenApiDoc;
 
 use crate::common::settings::RustokSettings;
 use crate::error::{Error, Result};
@@ -245,7 +245,7 @@ impl utoipa::Modify for SecurityAddon {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_openapi_document, ApiDoc};
+    use super::{ApiDoc, build_openapi_document};
     use crate::common::settings::{RuntimeHostMode, RustokSettings};
     use utoipa::OpenApi;
 
@@ -344,34 +344,48 @@ mod tests {
         assert!(openapi.paths.paths.contains_key("/api/openapi.json"));
         assert!(openapi.paths.paths.contains_key("/api/openapi.yaml"));
         assert!(!openapi.paths.paths.contains_key("/v2/catalog/publish"));
-        assert!(!openapi
-            .paths
-            .paths
-            .contains_key("/v2/catalog/publish/{request_id}"));
-        assert!(!openapi
-            .paths
-            .paths
-            .contains_key("/v2/catalog/publish/{request_id}/artifact"));
-        assert!(!openapi
-            .paths
-            .paths
-            .contains_key("/v2/catalog/publish/{request_id}/validate"));
-        assert!(!openapi
-            .paths
-            .paths
-            .contains_key("/v2/catalog/publish/{request_id}/approve"));
-        assert!(!openapi
-            .paths
-            .paths
-            .contains_key("/v2/catalog/publish/{request_id}/reject"));
-        assert!(!openapi
-            .paths
-            .paths
-            .contains_key("/v2/catalog/publish/{request_id}/stages"));
-        assert!(!openapi
-            .paths
-            .paths
-            .contains_key("/v2/catalog/owner-transfer"));
+        assert!(
+            !openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/publish/{request_id}")
+        );
+        assert!(
+            !openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/publish/{request_id}/artifact")
+        );
+        assert!(
+            !openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/publish/{request_id}/validate")
+        );
+        assert!(
+            !openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/publish/{request_id}/approve")
+        );
+        assert!(
+            !openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/publish/{request_id}/reject")
+        );
+        assert!(
+            !openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/publish/{request_id}/stages")
+        );
+        assert!(
+            !openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/owner-transfer")
+        );
         assert!(!openapi.paths.paths.contains_key("/v2/catalog/yank"));
         assert!(!openapi.paths.paths.contains_key("/api/auth/login"));
         assert!(!openapi.paths.paths.contains_key("/api/admin/events/dlq"));

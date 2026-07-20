@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use moka::future::Cache;
 use moka::Expiry;
+use moka::future::Cache;
 use rustok_core::ModuleRegistry;
 use sha2::{Digest, Sha256};
 

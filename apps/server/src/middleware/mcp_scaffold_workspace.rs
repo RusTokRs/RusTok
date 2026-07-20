@@ -1,20 +1,20 @@
 use std::str::FromStr;
 
 use axum::{
-    body::{to_bytes, Body},
+    Json,
+    body::{Body, to_bytes},
     extract::State,
-    http::{request::Parts, Method, Request, StatusCode},
+    http::{Method, Request, StatusCode, request::Parts},
     middleware::Next,
     response::{IntoResponse, Response},
-    Json,
 };
 use rustok_api::{
-    has_effective_permission, AuthContextExtension, Permission, TenantContextExtension,
+    AuthContextExtension, Permission, TenantContextExtension, has_effective_permission,
 };
 use rustok_mcp::{
     ApplyMcpModuleScaffoldDraftRequest, ApplyModuleScaffoldRequest, CreateMcpClientRequest,
-    McpActorType, McpRemoteToolCallRequest, UpdateMcpPolicyRequest,
-    TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
+    McpActorType, McpRemoteToolCallRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
+    UpdateMcpPolicyRequest,
 };
 use uuid::Uuid;
 
@@ -321,7 +321,7 @@ fn internal_error(message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_remote_tool_path, is_scaffold_apply_path, request_mode, RequestMode};
+    use super::{RequestMode, is_remote_tool_path, is_scaffold_apply_path, request_mode};
     use axum::http::Method;
     use uuid::Uuid;
 

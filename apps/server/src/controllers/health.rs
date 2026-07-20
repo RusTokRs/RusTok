@@ -1,10 +1,10 @@
 //! Health check endpoints for K8s probes and module health aggregation
 
 use crate::error::Result;
+use axum::Extension;
 use axum::extract::State;
 use axum::response::Response;
 use axum::routing::get;
-use axum::Extension;
 use chrono::Utc;
 use once_cell::sync::Lazy;
 use rustok_core::{HealthStatus, ModuleRegistry};
@@ -26,14 +26,14 @@ use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };
 use crate::middleware::tenant::{
-    tenant_invalidation_listener_snapshot, TenantInvalidationListenerStatus,
+    TenantInvalidationListenerStatus, tenant_invalidation_listener_snapshot,
 };
 use crate::services::app_lifecycle::{
     OutboxRelayWorkerHandle, RemoteExecutorReaperHandle, RuntimeWorkerLifecycleState, StopHandle,
 };
 use crate::services::event_transport_factory;
 use crate::services::runtime_guardrails::{
-    collect_runtime_guardrail_snapshot, RuntimeGuardrailSnapshot, RuntimeGuardrailStatus,
+    RuntimeGuardrailSnapshot, RuntimeGuardrailStatus, collect_runtime_guardrail_snapshot,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -1042,10 +1042,12 @@ mod tests {
         .await;
 
         assert_eq!(result.status, ReadinessStatus::Degraded);
-        assert!(result
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("timed out")));
+        assert!(
+            result
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("timed out"))
+        );
     }
 
     #[test]
@@ -1135,10 +1137,12 @@ mod tests {
         assert_eq!(check.kind, "worker");
         assert_eq!(check.criticality, DependencyCriticality::Critical);
         assert_eq!(check.status, ReadinessStatus::Unhealthy);
-        assert!(check
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("missing")));
+        assert!(
+            check
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("missing"))
+        );
     }
 
     #[test]
@@ -1147,10 +1151,12 @@ mod tests {
 
         assert_eq!(check.criticality, DependencyCriticality::Critical);
         assert_eq!(check.status, ReadinessStatus::Unhealthy);
-        assert!(check
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("failed")));
+        assert!(
+            check
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("failed"))
+        );
     }
 
     #[test]
@@ -1168,10 +1174,12 @@ mod tests {
 
         assert_eq!(check.criticality, DependencyCriticality::Critical);
         assert_eq!(check.status, ReadinessStatus::Unhealthy);
-        assert!(check
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("stopping")));
+        assert!(
+            check
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("stopping"))
+        );
     }
 
     #[test]
@@ -1184,10 +1192,12 @@ mod tests {
         assert_eq!(check.name, "email_backend");
         assert_eq!(check.criticality, DependencyCriticality::NonCritical);
         assert_eq!(check.status, ReadinessStatus::Degraded);
-        assert!(check
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("disabled")));
+        assert!(
+            check
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("disabled"))
+        );
     }
 
     #[test]
@@ -1211,9 +1221,11 @@ mod tests {
         let check = email_backend_check(&settings);
 
         assert_eq!(check.status, ReadinessStatus::Degraded);
-        assert!(check
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("disabled")));
+        assert!(
+            check
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("disabled"))
+        );
     }
 }

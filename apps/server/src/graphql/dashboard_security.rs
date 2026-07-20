@@ -6,7 +6,7 @@ use async_graphql::extensions::{
 };
 use async_graphql::parser::types::{ExecutableDocument, OperationType, Selection, SelectionSet};
 use async_graphql::{FieldError, Pos, Request, Response, ServerResult};
-use rustok_api::{graphql::GraphQLError, has_effective_permission, Permission};
+use rustok_api::{Permission, graphql::GraphQLError, has_effective_permission};
 
 use crate::context::AuthContext;
 
@@ -153,7 +153,7 @@ impl Extension for GraphqlDashboardSecurityPolicyExtension {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_document, DashboardDocumentPolicy, DashboardField};
+    use super::{DashboardDocumentPolicy, DashboardField, classify_document};
     use async_graphql::Request;
 
     #[test]

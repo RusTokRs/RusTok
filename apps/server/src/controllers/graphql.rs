@@ -1,16 +1,16 @@
 use std::sync::{Arc, OnceLock};
 
-use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage};
 use async_graphql::Data;
+use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage};
 use axum::{
+    Extension, Json,
     extract::{
-        ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
         State,
+        ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
-    http::{header, HeaderMap},
+    http::{HeaderMap, header},
     response::IntoResponse,
     routing::get,
-    Extension, Json,
 };
 use futures_util::{SinkExt, StreamExt};
 use rustok_api::{Action, Permission};
@@ -19,11 +19,11 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
-use crate::extractors::auth::{resolve_current_user_from_access_token, OptionalCurrentUser};
-use crate::graphql::persisted::is_cataloged_admin_hash;
+use crate::extractors::auth::{OptionalCurrentUser, resolve_current_user_from_access_token};
 use crate::graphql::AppSchema;
+use crate::graphql::persisted::is_cataloged_admin_hash;
 use crate::middleware::tenant;
-use crate::services::rbac_request_scope::{with_rbac_request_scope, RbacRequestScope};
+use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 use rustok_core::ModuleRegistry;
 

@@ -51,9 +51,7 @@ fn parse_output_dir() -> Result<PathBuf, Box<dyn Error>> {
     while let Some(argument) = args.next() {
         match argument.as_str() {
             "--output-dir" => {
-                let value = args
-                    .next()
-                    .ok_or("--output-dir requires a path argument")?;
+                let value = args.next().ok_or("--output-dir requires a path argument")?;
                 output_dir = PathBuf::from(value);
             }
             "--help" | "-h" => {

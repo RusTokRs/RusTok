@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::{Context, anyhow, bail};
 use chrono::Utc;
 use reqwest::multipart;
 use serde::Serialize;
@@ -915,11 +915,10 @@ fn parse_remote_publish_state(status: Option<&str>) -> anyhow::Result<ReleasePub
 #[cfg(test)]
 mod tests {
     use super::{
-        binary_file_name, compiled_binary_path, container_image_reference,
-        container_runtime_binary_name, container_runtime_dockerfile, externalized_path,
-        parse_remote_publish_state, render_rollout_command, resolve_artifact_root,
-        sanitize_image_tag_component, server_deployment_workspace, ReleasePublishState,
-        RemoteReleasePublishRequest,
+        ReleasePublishState, RemoteReleasePublishRequest, binary_file_name, compiled_binary_path,
+        container_image_reference, container_runtime_binary_name, container_runtime_dockerfile,
+        externalized_path, parse_remote_publish_state, render_rollout_command,
+        resolve_artifact_root, sanitize_image_tag_component, server_deployment_workspace,
     };
     use crate::common::settings::BuildDeploymentSettings;
     use rustok_build::release::Model as Release;
@@ -1023,9 +1022,11 @@ mod tests {
         };
 
         let error = container_runtime_binary_name(&plan).unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("container deployment backend requires a linux server artifact"));
+        assert!(
+            error
+                .to_string()
+                .contains("container deployment backend requires a linux server artifact")
+        );
     }
 
     #[test]
@@ -1104,8 +1105,10 @@ mod tests {
     #[test]
     fn remote_publish_state_rejects_unknown_status() {
         let error = parse_remote_publish_state(Some("mystery")).unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("unsupported remote deployment_status 'mystery'"));
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported remote deployment_status 'mystery'")
+        );
     }
 }

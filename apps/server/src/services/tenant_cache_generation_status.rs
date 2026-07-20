@@ -1,7 +1,7 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use rustok_cache::{record_tenant_generation_listener_metrics, TenantGenerationListenerMetrics};
+use rustok_cache::{TenantGenerationListenerMetrics, record_tenant_generation_listener_metrics};
 use tokio::sync::RwLock;
 
 const MAX_TENANT_GENERATION_LISTENER_ERROR_BYTES: usize = 512;
@@ -366,10 +366,12 @@ mod tests {
             degraded.status,
             TenantCacheGenerationListenerStatus::Degraded
         );
-        assert!(degraded
-            .last_error
-            .as_deref()
-            .is_some_and(|error| error.len() <= MAX_TENANT_GENERATION_LISTENER_ERROR_BYTES + 3));
+        assert!(
+            degraded
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.len() <= MAX_TENANT_GENERATION_LISTENER_ERROR_BYTES + 3)
+        );
     }
 
     #[tokio::test]

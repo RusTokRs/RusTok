@@ -5,10 +5,10 @@ use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
     UserAdminMutationPort, UserMutationRecord,
 };
-use rustok_core::{infer_user_role_from_permissions, UserRole, UserStatus};
+use rustok_core::{UserRole, UserStatus, infer_user_role_from_permissions};
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait,
-    QueryFilter, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
+    QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use std::str::FromStr;
 use uuid::Uuid;
@@ -23,7 +23,7 @@ use crate::services::rbac_request_scope::role_for;
 use crate::services::rbac_service::RbacService;
 
 use super::{
-    super_admin_guard::ensure_active_super_admin_continuity, ServerAuthAdminMutationProvider,
+    ServerAuthAdminMutationProvider, super_admin_guard::ensure_active_super_admin_continuity,
 };
 
 fn parse_user_status(value: &str) -> Result<UserStatus, AuthAdminMutationError> {

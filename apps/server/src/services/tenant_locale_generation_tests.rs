@@ -3,13 +3,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::{
-    body::Body,
-    http::Request,
-    middleware as axum_middleware,
-    routing::get,
-    Router,
-};
+use axum::{Router, body::Body, http::Request, middleware as axum_middleware, routing::get};
 use rustok_cache::{CacheInvalidationMessage, CacheService, VersionedCacheInvalidation};
 use rustok_migrations::Migrator;
 use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
@@ -35,10 +29,7 @@ fn settings_with_redis(url: &str) -> RustokSettings {
     settings
 }
 
-async fn insert_tenant(
-    db: &sea_orm::DatabaseConnection,
-    name: &str,
-) -> tenants::Model {
+async fn insert_tenant(db: &sea_orm::DatabaseConnection, name: &str) -> tenants::Model {
     let now = chrono::Utc::now();
     tenants::ActiveModel {
         id: Set(Uuid::new_v4()),
@@ -89,11 +80,7 @@ async fn insert_locale(
     .expect("tenant locale should insert");
 }
 
-async fn replace_default_locale(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    locale: &str,
-) {
+async fn replace_default_locale(db: &sea_orm::DatabaseConnection, tenant_id: Uuid, locale: &str) {
     db.execute_unprepared(&format!(
         "UPDATE tenant_locales SET is_default = 0, is_enabled = 0 WHERE tenant_id = '{tenant_id}'"
     ))
@@ -136,12 +123,7 @@ async fn request_locale(app: &Router, tenant: &TenantContext) -> String {
         .to_string()
 }
 
-async fn wait_for_locale(
-    app: &Router,
-    tenant: &TenantContext,
-    expected: &str,
-    timeout: Duration,
-) {
+async fn wait_for_locale(app: &Router, tenant: &TenantContext, expected: &str, timeout: Duration) {
     tokio::time::timeout(timeout, async {
         loop {
             if request_locale(app, tenant).await == expected {
@@ -169,15 +151,10 @@ async fn wait_for_readiness(
 }
 
 fn invalidation_message(key: &str, generation: u64) -> CacheInvalidationMessage {
-    VersionedCacheInvalidation::new(
-        TENANT_CACHE_GENERATION_CHANNEL,
-        key,
-        generation,
-        generation,
-    )
-    .expect("tenant locale invalidation should be valid")
-    .to_message()
-    .expect("tenant locale invalidation should encode")
+    VersionedCacheInvalidation::new(TENANT_CACHE_GENERATION_CHANNEL, key, generation, generation)
+        .expect("tenant locale invalidation should be valid")
+        .to_message()
+        .expect("tenant locale invalidation should encode")
 }
 
 async fn bump_generation(cache: &CacheService) -> u64 {
@@ -470,8 +447,7 @@ async fn missed_redis_publication_recovers_remote_locale_via_periodic_generation
     let app_b = locale_router(ctx_b.clone());
 
     let health_b = Arc::new(TenantLocaleGenerationHealth::default());
-    let listener_b =
-        TenantLocaleGenerationListener::new(ctx_b, cache_b, Arc::clone(&health_b));
+    let listener_b = TenantLocaleGenerationListener::new(ctx_b, cache_b, Arc::clone(&health_b));
     listener_b.recover_if_advanced().await.unwrap();
     assert_eq!(request_locale(&app_b, &tenant_context).await, "en");
 

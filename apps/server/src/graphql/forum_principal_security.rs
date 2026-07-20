@@ -5,7 +5,7 @@ use async_graphql::extensions::{
 };
 use async_graphql::parser::types::{ExecutableDocument, Selection, SelectionSet};
 use async_graphql::{FieldError, Pos, Request, Response, ServerResult};
-use rustok_api::{graphql::GraphQLError, has_effective_permission, AuthContext, Permission};
+use rustok_api::{AuthContext, Permission, graphql::GraphQLError, has_effective_permission};
 
 #[derive(Clone, Copy, Debug, Default)]
 struct ForumOperationPolicy {
@@ -186,10 +186,10 @@ impl Extension for ForumPrincipalPolicyExtension {
                 operation_name = ?operation_name,
                 "Rejected GraphQL forum operation authenticated as an insufficient service principal"
             );
-            return Response::from_errors(vec![<FieldError as GraphQLError>::permission_denied(
-                message,
-            )
-            .into_server_error(Pos::default())]);
+            return Response::from_errors(vec![
+                <FieldError as GraphQLError>::permission_denied(message)
+                    .into_server_error(Pos::default()),
+            ]);
         }
 
         next.run(ctx, operation_name).await

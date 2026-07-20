@@ -1,8 +1,8 @@
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
-    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -10,8 +10,8 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::models::{mcp_audit_logs, mcp_clients, mcp_policies, mcp_scaffold_drafts, mcp_tokens};
 use rustok_mcp::{
-    apply_staged_scaffold, generate_module_scaffold, ApplyModuleScaffoldResponse, McpAccessContext,
-    McpActorType, McpIdentity, ScaffoldModuleRequest,
+    ApplyModuleScaffoldResponse, McpAccessContext, McpActorType, McpIdentity,
+    ScaffoldModuleRequest, apply_staged_scaffold, generate_module_scaffold,
 };
 
 #[derive(Debug, Clone)]

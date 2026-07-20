@@ -1,14 +1,14 @@
 use axum::{
+    Json,
     body::Body,
     body::Bytes,
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{
-        header::{CACHE_CONTROL, ETAG, IF_NONE_MATCH},
         HeaderMap, HeaderName, HeaderValue, Response, StatusCode,
+        header::{CACHE_CONTROL, ETAG, IF_NONE_MATCH},
     },
     response::IntoResponse,
     routing::{get, post, put},
-    Json,
 };
 
 /// Maximum allowed size for a registry publish-bundle upload (2 MiB).
@@ -26,9 +26,18 @@ use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::error::{http_error, Error};
+use crate::error::{Error, http_error};
 use crate::modules::{CatalogManifestModule, ManifestManager};
 use crate::services::marketplace_catalog::{
+    RegistryCatalogModule, RegistryCatalogResponse, RegistryExternalPrebuiltStageRequest,
+    RegistryExternalPrebuiltStageResponse, RegistryGovernanceAction, RegistryMutationResponse,
+    RegistryOwnerTransferRequest, RegistryPlatformBuildStageRequest,
+    RegistryPlatformBuildStageResponse, RegistryPublishDecisionRequest, RegistryPublishRequest,
+    RegistryPublishStatusFollowUpGate, RegistryPublishStatusResponse,
+    RegistryPublishStatusValidationStage, RegistryPublishValidationRequest,
+    RegistryRunnerClaimPayload, RegistryRunnerClaimRequest, RegistryRunnerClaimResponse,
+    RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest,
+    RegistryRunnerMutationResponse, RegistryValidationStageReportRequest, RegistryYankRequest,
     registry_catalog_from_modules, registry_catalog_module_path, registry_catalog_path,
     registry_owner_transfer_path, registry_publish_approve_path, registry_publish_artifact_path,
     registry_publish_external_stage_path, registry_publish_hold_path, registry_publish_path,
@@ -37,32 +46,24 @@ use crate::services::marketplace_catalog::{
     registry_publish_stage_report_path, registry_publish_status_path,
     registry_publish_validate_path, registry_runner_claim_path, registry_runner_complete_path,
     registry_runner_fail_path, registry_runner_heartbeat_path, registry_yank_path,
-    validate_registry_mutation_schema_version, RegistryCatalogModule, RegistryCatalogResponse,
-    RegistryExternalPrebuiltStageRequest, RegistryExternalPrebuiltStageResponse,
-    RegistryGovernanceAction, RegistryMutationResponse, RegistryOwnerTransferRequest,
-    RegistryPlatformBuildStageRequest, RegistryPlatformBuildStageResponse,
-    RegistryPublishDecisionRequest, RegistryPublishRequest, RegistryPublishStatusFollowUpGate,
-    RegistryPublishStatusResponse, RegistryPublishStatusValidationStage,
-    RegistryPublishValidationRequest, RegistryRunnerClaimPayload, RegistryRunnerClaimRequest,
-    RegistryRunnerClaimResponse, RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest,
-    RegistryRunnerMutationResponse, RegistryValidationStageReportRequest, RegistryYankRequest,
+    validate_registry_mutation_schema_version,
 };
 use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::registry_governance::{
-    release_status_label, request_status_label, validation_stage_status_label,
-    RegistryArtifactUpload, RegistryExternalPrebuiltStageInput, RegistryFollowUpGateSnapshot,
-    RegistryGovernanceActionSnapshot, RegistryGovernanceError, RegistryGovernanceService,
-    RegistryPlatformBuildStageInput, RegistryValidationStageSnapshot,
     REGISTRY_APPROVE_OVERRIDE_REASON_CODES, REGISTRY_HOLD_REASON_CODES,
     REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
     REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
-    REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES,
+    REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES, RegistryArtifactUpload,
+    RegistryExternalPrebuiltStageInput, RegistryFollowUpGateSnapshot,
+    RegistryGovernanceActionSnapshot, RegistryGovernanceError, RegistryGovernanceService,
+    RegistryPlatformBuildStageInput, RegistryValidationStageSnapshot, release_status_label,
+    request_status_label, validation_stage_status_label,
 };
 use crate::services::registry_principal::RegistryAuthority;
 use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
 use crate::services::registry_remote_transitions::{
-    finish_remote_validation_stage_atomic, heartbeat_remote_validation_stage_atomic,
-    RegistryRemoteTransitionError, RemoteTerminalOutcome,
+    RegistryRemoteTransitionError, RemoteTerminalOutcome, finish_remote_validation_stage_atomic,
+    heartbeat_remote_validation_stage_atomic,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::context::AuthContextExtension;

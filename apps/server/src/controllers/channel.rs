@@ -1,23 +1,23 @@
 use axum::{
+    Extension, Json,
     extract::{Path, State},
     response::Response,
     routing::{delete, get, patch, post},
-    Extension, Json,
 };
 use rustok_api::Permission;
 use rustok_channel::{
-    create_resolution_policy_set_input, create_resolution_rule_input, update_resolution_rule_input,
     AvailableChannelModuleItem, AvailableChannelOauthAppItem, BindChannelModuleInput,
     BindChannelOauthAppInput, ChannelBootstrapResponse, ChannelResponse, ChannelService,
     ChannelTargetResponse, CreateChannelInput, CreateChannelTargetInput,
     ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest, UpdateChannelTargetInput,
+    create_resolution_policy_set_input, create_resolution_rule_input, update_resolution_rule_input,
 };
 use rustok_core::ModuleRegistry;
 use rustok_web::json_response;
 use uuid::Uuid;
 
 use crate::context::OptionalChannel;
-use crate::error::{http_error, Error, Result};
+use crate::error::{Error, Result, http_error};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::middleware::channel::invalidate_tenant_channel_cache;
 use crate::models::oauth_apps;

@@ -31,10 +31,7 @@ impl RecordingInvalidator {
 }
 
 impl SeoRedirectCacheInvalidator for RecordingInvalidator {
-    fn invalidate_tenant(
-        &self,
-        tenant_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+    fn invalidate_tenant(&self, tenant_id: Uuid) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
         Box::pin(async move {
             self.tenant_invalidations
                 .lock()
@@ -75,11 +72,7 @@ async fn seo_delivery_db() -> DatabaseConnection {
     db
 }
 
-async fn insert_redirect_change(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    sequence: i64,
-) {
+async fn insert_redirect_change(db: &DatabaseConnection, tenant_id: Uuid, sequence: i64) {
     let timestamp = (chrono::Utc::now() + chrono::TimeDelta::milliseconds(sequence)).to_rfc3339();
     let delivery_id = Uuid::new_v4();
     db.execute_unprepared(&format!(
@@ -130,10 +123,7 @@ async fn wait_for_stopped(handle: &SeoRedirectCacheReconciliationHandle) {
     .expect("SEO reconciliation task did not stop after abort");
 }
 
-async fn wait_for_tenants(
-    invalidator: &RecordingInvalidator,
-    expected: &HashSet<Uuid>,
-) {
+async fn wait_for_tenants(invalidator: &RecordingInvalidator, expected: &HashSet<Uuid>) {
     tokio::time::timeout(Duration::from_secs(3), async {
         loop {
             let observed = invalidator.tenant_ids().into_iter().collect::<HashSet<_>>();
@@ -147,10 +137,7 @@ async fn wait_for_tenants(
     .expect("SEO replica did not invalidate every expected tenant");
 }
 
-async fn wait_for_full_clears(
-    invalidator: &RecordingInvalidator,
-    expected_minimum: u64,
-) {
+async fn wait_for_full_clears(invalidator: &RecordingInvalidator, expected_minimum: u64) {
     tokio::time::timeout(Duration::from_secs(3), async {
         while invalidator.full_clear_count() < expected_minimum {
             tokio::time::sleep(Duration::from_millis(10)).await;
