@@ -77,36 +77,31 @@ jobs:
           cargo fmt -p alloy
           git diff --check
 
-      - name: Verify Alloy tests
-        env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target/alloy-current-main-compile
-        run: cargo test --locked -p alloy
-
-      - name: Diagnose Alloy check target
+      - name: Diagnose Alloy tests
         shell: bash
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/alloy-current-main-compile
         run: |
           set +e
-          cargo check --locked -p alloy > alloy-check.log 2>&1
+          cargo test --locked -p alloy > alloy-test.log 2>&1
           exit_code=$?
           set -e
-          echo "$exit_code" > alloy-check.exit
-          tail -n 360 alloy-check.log
+          echo "$exit_code" > alloy-test.exit
+          tail -n 420 alloy-test.log
 
-      - name: Upload Alloy check diagnostic
+      - name: Upload Alloy test diagnostic
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: alloy-check-${{ github.run_id }}
+          name: alloy-test-${{ github.run_id }}
           path: |
-            alloy-check.log
-            alloy-check.exit
+            alloy-test.log
+            alloy-test.exit
           if-no-files-found: error
           retention-days: 1
 
-      - name: Enforce Alloy check
-        run: test "$(cat alloy-check.exit)" = "0"
+      - name: Enforce Alloy tests
+        run: test "$(cat alloy-test.exit)" = "0"
 
       - name: Commit and publish verified repair
         shell: bash
