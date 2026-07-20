@@ -46,19 +46,21 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          replacements = {
-              Path("crates/rustok-pages/src/graphql/mutation.rs"): 2,
-              Path("crates/rustok-pages/src/services/page.rs"): 3,
-              Path("crates/rustok-pages/src/services/scenario_baseline.rs"): 2,
-          }
+          pages = [
+              Path("crates/rustok-pages/src/graphql/mutation.rs"),
+              Path("crates/rustok-pages/src/services/page.rs"),
+              Path("crates/rustok-pages/src/services/scenario_baseline.rs"),
+          ]
           old = "CONTENT_FORMAT_GRAPESJS_FORMAT"
           new = "CONTENT_FORMAT_GRAPESJS_V1"
-          for path, expected in replacements.items():
+          for path in pages:
               source = path.read_text()
-              actual = source.count(old)
-              if actual != expected:
-                  raise SystemExit(f"{path}: expected {expected} obsolete format references, found {actual}")
-              path.write_text(source.replace(old, new))
+              if old not in source:
+                  raise SystemExit(f"{path}: obsolete format reference is absent; refusing an ambiguous repair")
+              updated = source.replace(old, new)
+              if old in updated or updated == source:
+                  raise SystemExit(f"{path}: obsolete format replacement was incomplete")
+              path.write_text(updated)
 
           migrations = {
               Path("crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs"):
@@ -70,7 +72,10 @@ jobs:
               source = path.read_text()
               if source.count(old_tail) != 1:
                   raise SystemExit(f"{path}: expected one incompatible down() return tail")
-              path.write_text(source.replace(old_tail, old_tail[:-1] + '?;\n        Ok(())\n', 1))
+              updated = source.replace(old_tail, old_tail[:-1] + '?;\n        Ok(())\n', 1)
+              if updated == source:
+                  raise SystemExit(f"{path}: down() return repair was not applied")
+              path.write_text(updated)
           PY
       - name: Verify source patch shape
         shell: bash
@@ -78,10 +83,13 @@ jobs:
           set -euo pipefail
           git diff --check
           test "$(git grep -n 'CONTENT_FORMAT_GRAPESJS_FORMAT' -- crates/rustok-pages || true)" = ""
-          test "$(git grep -n 'CONTENT_FORMAT_GRAPESJS_V1' -- \
+          for path in \
             crates/rustok-pages/src/graphql/mutation.rs \
             crates/rustok-pages/src/services/page.rs \
-            crates/rustok-pages/src/services/scenario_baseline.rs | wc -l)" = "7"
+            crates/rustok-pages/src/services/scenario_baseline.rs
+          do
+            grep -Fq 'CONTENT_FORMAT_GRAPESJS_V1' "$path"
+          done
           grep -Fq '.execute_unprepared("DROP TABLE module_artifact_data_objects")' \
             crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs
           grep -Fq '.execute_unprepared("DROP TABLE module_artifact_data_object_operations")' \
@@ -90,6 +98,18 @@ jobs:
             crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs)" = "1"
           test "$(grep -c '^            \.await?;$' \
             crates/rustok-modules/src/migrations/m20260718_000026_artifact_data_object_operations.rs)" = "1"
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs
+            crates/rustok-modules/src/migrations/m20260718_000026_artifact_data_object_operations.rs
+            crates/rustok-pages/src/graphql/mutation.rs
+            crates/rustok-pages/src/services/page.rs
+            crates/rustok-pages/src/services/scenario_baseline.rs
+          )
+          test "${#changed[@]}" = "${#expected[@]}"
+          for index in "${!expected[@]}"; do
+            test "${changed[$index]}" = "${expected[$index]}"
+          done
       - name: Apply temporary minimal lock repair
         shell: bash
         run: |
