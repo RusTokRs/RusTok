@@ -22,4 +22,4 @@ url.workspace = true
 tokio = { workspace = true, features = ["rt"] }
 rhai = { workspace = true, features = ["sync", "metadata"], optional = true }
 parking_lot = { version = "0.12", optional = true }
-wasmtime = { version = "46.0.1", default-features = false, features = ["runtime", "component-model", "cranelift"], optional = true }
+wasmtime = { version = "47.0.0", default-features = false, features = ["runtime", "component-model", "cranelift"], optional = true }
