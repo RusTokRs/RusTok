@@ -5,8 +5,6 @@ on:
     branches: [main]
     paths:
       - .github/workflows/one-off-harden-cache-clock.yml
-  issue_comment:
-    types: [created]
 
 permissions:
   contents: write
@@ -25,14 +23,7 @@ env:
 
 jobs:
   harden:
-    if: >-
-      (github.event_name == 'push' &&
-       github.event.head_commit.message == 'test(ci): persist cache test failure') ||
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.title == '[automation] harden cache system clock' &&
-       github.event.issue.user.login == 'loid345' &&
-       github.event.comment.user.login == 'loid345' &&
-       github.event.comment.body == '/harden-cache-system-clock')
+    if: github.event.head_commit.message == 'fix(ci): validate cache clock test call sites'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -42,13 +33,6 @@ jobs:
           fetch-depth: 0
       - name: Rebase onto current main
         run: git pull --rebase origin main
-      - name: Report guarded run id
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh issue comment "$CACHE_CLOCK_ISSUE"
-          --repo "$GITHUB_REPOSITORY"
-          --body "Cache clock guarded run started: \`$GITHUB_RUN_ID\` on \`$GITHUB_SHA\`."
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
@@ -58,8 +42,6 @@ jobs:
           rustup default 1.96.0
       - name: Apply fail-closed cache clock contract
         run: python3 scripts/maintenance/apply-cache-clock-hardening.py
-      - name: Verify structural cache clock contract
-        run: node scripts/verify/verify-cache-clock-contract.mjs
       - name: Format bounded Rust sources
         run: >-
           rustfmt --edition 2021
@@ -67,9 +49,9 @@ jobs:
           crates/rustok-cache/src/negative.rs
           crates/rustok-cache/src/typed.rs
           crates/rustok-cache/src/refresh.rs
-      - name: Reverify structural cache clock contract after formatting
+      - name: Verify structural cache clock contract
         run: node scripts/verify/verify-cache-clock-contract.mjs
-      - name: Verify bounded change scope
+      - name: Verify bounded implementation scope
         shell: bash
         run: |
           set -euo pipefail
@@ -77,7 +59,6 @@ jobs:
           mapfile -t changed < <(
             { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u
           )
-          printf 'Observed cache clock files:\n%s\n' "${changed[*]}"
           expected=(
             .github/workflows/hardening-gates.yml
             crates/rustok-cache/src/clock.rs
@@ -100,32 +81,7 @@ jobs:
       - name: Test cache crate without Redis
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/cache-clock-hardening
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set +e
-          cargo test --locked -p rustok-cache --no-default-features --lib -- --nocapture \
-            2>&1 | tee /tmp/cache-clock-tests.log
-          status=${PIPESTATUS[0]}
-          set -e
-          if [ "$status" -ne 0 ]; then
-            tail -n 180 /tmp/cache-clock-tests.log > /tmp/cache-clock-test-tail.txt
-            current_body=$(gh issue view "$CACHE_CLOCK_ISSUE" \
-              --repo "$GITHUB_REPOSITORY" \
-              --json body --jq .body)
-            base_body=$(printf '%s\n' "$current_body" | sed '/^## Latest cache clock diagnostic$/,$d')
-            {
-              printf '%s\n\n' "$base_body"
-              printf '## Latest cache clock diagnostic\n\n'
-              printf 'Cache clock library tests failed in run `%s`.\n\n```text\n' "$GITHUB_RUN_ID"
-              cat /tmp/cache-clock-test-tail.txt
-              printf '\n```\n'
-            } > /tmp/cache-clock-issue-body.md
-            gh issue edit "$CACHE_CLOCK_ISSUE" \
-              --repo "$GITHUB_REPOSITORY" \
-              --body-file /tmp/cache-clock-issue-body.md
-            exit "$status"
-          fi
+        run: cargo test --locked -p rustok-cache --no-default-features --lib
       - name: Remove one-off implementation files
         run: |
           rm .github/workflows/one-off-harden-cache-clock.yml
@@ -186,4 +142,4 @@ jobs:
         run: >-
           gh issue close "$CACHE_CLOCK_ISSUE"
           --repo "$GITHUB_REPOSITORY"
-          --comment "Cache freshness now uses one fallible Unix clock; pre-epoch time fails closed, negative/typed/SWR paths propagate the error, and locked no-Redis cache tests plus structural gates passed."
+          --comment "Cache freshness now uses one fallible Unix clock; all five existing refresh test call sites use it, pre-epoch time fails closed, and locked no-Redis cache checks and tests passed."
