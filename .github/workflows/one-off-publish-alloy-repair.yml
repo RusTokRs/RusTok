@@ -50,10 +50,31 @@ jobs:
           cargo fmt -p alloy -p rustok-modules
           git diff --check
 
-      - name: Verify Alloy over stacked prerequisite
+      - name: Diagnose Alloy over stacked prerequisite
+        shell: bash
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/alloy-repair-publish
-        run: cargo test --locked -p alloy
+        run: |
+          set +e
+          cargo test --locked -p alloy > alloy-stacked-test.log 2>&1
+          exit_code=$?
+          set -e
+          echo "$exit_code" > alloy-stacked-test.exit
+          tail -n 440 alloy-stacked-test.log
+
+      - name: Upload Alloy stacked diagnostic
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: alloy-stacked-test-${{ github.run_id }}
+          path: |
+            alloy-stacked-test.log
+            alloy-stacked-test.exit
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Enforce Alloy stacked tests
+        run: test "$(cat alloy-stacked-test.exit)" = "0"
 
       - name: Publish Alloy-only commit
         shell: bash
