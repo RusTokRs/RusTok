@@ -1,0 +1,19 @@
+[package]
+name = "rustok-moderation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cross-domain moderation owner for reports, cases, decisions, and auditable enforcement"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+rustok-api.workspace = true
+rustok-core.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

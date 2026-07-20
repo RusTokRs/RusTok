@@ -13466,6 +13466,7 @@ dependencies = [
  "rustok-fulfillment",
  "rustok-index",
  "rustok-inventory",
+ "rustok-moderation",
  "rustok-modules",
  "rustok-order",
  "rustok-pages",
@@ -13480,6 +13481,21 @@ dependencies = [
  "rustok-test-utils",
  "rustok-workflow",
  "sea-orm-migration",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-moderation"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "sea-orm-migration",
+ "serde",
  "serde_json",
  "tokio",
  "uuid",

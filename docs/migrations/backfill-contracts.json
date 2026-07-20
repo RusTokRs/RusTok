@@ -1,4 +1,12 @@
 {
   "schema_version": 1,
-  "contracts": []
+  "contracts": [
+    {
+      "id": "moderation-core-ddl",
+      "migration": "m20260720_000001_create_moderation_core",
+      "mode": "none",
+      "owner": "rustok-moderation",
+      "reason": "Creates new moderation-owned tables and indexes without transforming existing rows"
+    }
+  ]
 }
