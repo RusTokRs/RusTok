@@ -1,0 +1,94 @@
+name: Dependency Advisory Reachability
+
+on:
+  push:
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - .cargo/audit.toml
+      - deny.toml
+      - apps/**/Cargo.toml
+      - crates/**/Cargo.toml
+      - tests/**/Cargo.toml
+      - ops/**/Cargo.toml
+      - UI/**/Cargo.toml
+      - xtask/**/Cargo.toml
+      - docs/security/advisory-exceptions.md
+      - docs/security/rsa-rustsec-2023-0071.md
+      - scripts/verify/verify-advisory-exceptions.mjs
+      - scripts/verify/verify-dependency-feature-hygiene.mjs
+      - .github/workflows/dependency-advisory-reachability.yml
+  pull_request:
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - .cargo/audit.toml
+      - deny.toml
+      - apps/**/Cargo.toml
+      - crates/**/Cargo.toml
+      - tests/**/Cargo.toml
+      - ops/**/Cargo.toml
+      - UI/**/Cargo.toml
+      - xtask/**/Cargo.toml
+      - docs/security/advisory-exceptions.md
+      - docs/security/rsa-rustsec-2023-0071.md
+      - scripts/verify/verify-advisory-exceptions.mjs
+      - scripts/verify/verify-dependency-feature-hygiene.mjs
+      - .github/workflows/dependency-advisory-reachability.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_TERM_COLOR: never
+
+jobs:
+  reachability:
+    name: Dependency advisory reachability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+      - name: Verify dependency policy structure
+        run: |
+          node scripts/verify/verify-dependency-feature-hygiene.mjs
+          node scripts/verify/verify-advisory-exceptions.mjs
+      - name: Verify RSA remains lockfile-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo tree --locked --workspace --all-features --target all -i rsa \
+            > /tmp/rsa.tree 2> /tmp/rsa.stderr
+          if [ -s /tmp/rsa.tree ]; then
+            cat /tmp/rsa.tree
+            echo 'RUSTSEC-2023-0071 became build-reachable' >&2
+            exit 1
+          fi
+      - name: Verify atomic-polyfill remains target-bounded
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo tree --locked --workspace --all-features --target all -i atomic-polyfill \
+            > /tmp/atomic-polyfill.tree 2> /tmp/atomic-polyfill.stderr
+          grep -q 'athanor-store-surrealdb' /tmp/atomic-polyfill.tree
+          grep -q 'surrealdb v2.6.5' /tmp/atomic-polyfill.tree
+          grep -q 'geo v0.28.0' /tmp/atomic-polyfill.tree
+          grep -q 'rstar v0.9.3' /tmp/atomic-polyfill.tree
+          grep -q 'heapless v0.7.17' /tmp/atomic-polyfill.tree
+          grep -q 'atomic-polyfill v1.0.3' /tmp/atomic-polyfill.tree
+          ! grep -q 'rustok-server' /tmp/atomic-polyfill.tree
+      - name: Verify locked graph
+        run: cargo metadata --locked --all-features --format-version 1 >/dev/null
