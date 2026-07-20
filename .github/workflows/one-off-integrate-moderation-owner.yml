@@ -103,7 +103,7 @@ jobs:
           PY
 
       - name: Reconcile lockfile without broad dependency updates
-        run: cargo metadata --no-deps --format-version 1 > /tmp/cargo-metadata.json
+        run: cargo metadata --format-version 1 > /tmp/cargo-metadata.json
 
       - name: Format moderation owner
         run: |
@@ -121,21 +121,19 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/moderation-owner-integration
         run: |
           set +e
-          {
-            cargo check --locked -p rustok-moderation -p rustok-migrations
-            check_exit=$?
-            if [ "$check_exit" -eq 0 ]; then
-              cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
-                --output /tmp/moderation-migration-plan.json
-              check_exit=$?
-            fi
-            if [ "$check_exit" -eq 0 ]; then
-              test -s /tmp/moderation-migration-plan.json
-              check_exit=$?
-            fi
-            exit "$check_exit"
-          } > moderation-owner-verify.log 2>&1
+          cargo check --locked -p rustok-moderation -p rustok-migrations \
+            > moderation-owner-verify.log 2>&1
           exit_code=$?
+          if [ "$exit_code" -eq 0 ]; then
+            cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
+              --output /tmp/moderation-migration-plan.json \
+              >> moderation-owner-verify.log 2>&1
+            exit_code=$?
+          fi
+          if [ "$exit_code" -eq 0 ]; then
+            test -s /tmp/moderation-migration-plan.json
+            exit_code=$?
+          fi
           set -e
           tail -n 240 moderation-owner-verify.log
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
