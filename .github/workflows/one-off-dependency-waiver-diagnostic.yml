@@ -17,7 +17,7 @@ env:
 jobs:
   retire:
     if: >-
-      github.event.head_commit.message == 'test(security): capture waiver pruning exception'
+      github.event.head_commit.message == 'test(security): trace waiver dependency roots'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -32,14 +32,14 @@ jobs:
         run: |
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
-      - name: Verify feature policy and all-target unreachability
+      - name: Verify feature policy and all-target inverse trees
         shell: bash
         run: |
           set -euo pipefail
           node scripts/verify/verify-dependency-feature-hygiene.mjs
           test -z "$(cargo tree --locked -i atomic-polyfill --workspace --all-features --target all 2>/dev/null)"
           test -z "$(cargo tree --locked -i rsa --workspace --all-features --target all 2>/dev/null)"
-      - name: Prune disconnected lock packages and close waivers
+      - name: Trace workspace-root metadata paths
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -52,74 +52,13 @@ jobs:
             > /tmp/waiver-prune.log 2>&1
           status=$?
           set -e
-          if [ "$status" -ne 0 ]; then
-            {
-              printf 'Retire the two temporary dependency waivers after proving all-target unreachability.\n\n'
-              printf '## Exact workspace-root pruning failure\n\n```text\n'
-              cat /tmp/waiver-prune.log
-              printf '\n```\n'
-            } > /tmp/waiver-prune-failure.md
-            gh issue edit "$SECURITY_ISSUE" \
-              --repo "$GITHUB_REPOSITORY" \
-              --body-file /tmp/waiver-prune-failure.md
-            exit "$status"
-          fi
-      - name: Verify retired-waiver contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/verify/verify-dependency-feature-hygiene.mjs
-          node scripts/verify/verify-advisory-exceptions.mjs
-          ! grep -qE 'RUSTSEC-2023-0071|RUSTSEC-2023-0089' .cargo/audit.toml
-          ! grep -qE '^name = "(atomic-polyfill|rsa)"$' Cargo.lock
-          cargo metadata --locked --all-features --format-version 1 >/dev/null
-      - name: Verify bounded source diff
-        shell: bash
-        run: |
-          set -euo pipefail
-          git diff --check
-          mapfile -t changed < <(git diff --name-only | sort)
-          expected=(
-            .cargo/audit.toml
-            Cargo.lock
-            docs/security/advisory-exceptions.md
-            docs/security/rsa-rustsec-2023-0071.md
-          )
-          test "${#changed[@]}" = "${#expected[@]}"
-          for index in "${!expected[@]}"; do
-            test "${changed[$index]}" = "${expected[$index]}"
-          done
-      - name: Commit and publish retired waivers
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .cargo/audit.toml Cargo.lock docs/security/advisory-exceptions.md docs/security/rsa-rustsec-2023-0071.md
-          git commit -m "security: retire unreachable dependency waivers"
-          for attempt in 1 2 3; do
-            git fetch origin main
-            if ! git merge-base --is-ancestor origin/main HEAD; then
-              git rebase origin/main
-              node scripts/verify/verify-dependency-feature-hygiene.mjs
-              node scripts/verify/verify-advisory-exceptions.mjs
-              ! grep -qE '^name = "(atomic-polyfill|rsa)"$' Cargo.lock
-              cargo metadata --locked --all-features --format-version 1 >/dev/null
-            fi
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-          done
-          exit 1
-      - name: Record closure evidence
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
           {
-            printf 'Temporary waivers retired. Pruned unreachable lockfile packages:\n\n```text\n'
-            cat /tmp/removed-lock-packages.txt
-            printf '```\n'
-          } >/tmp/waiver-closure.md
-          gh issue comment "$SECURITY_ISSUE" \
+            printf 'Trace the metadata paths that keep the temporary-waiver packages reachable.\n\n'
+            printf '## Workspace-root dependency paths\n\n```text\n'
+            cat /tmp/waiver-prune.log
+            printf '\n```\n'
+          } > /tmp/waiver-prune-failure.md
+          gh issue edit "$SECURITY_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
-            --body-file /tmp/waiver-closure.md
+            --body-file /tmp/waiver-prune-failure.md
+          exit "$status"
