@@ -9,6 +9,16 @@ def replace_once(path: Path, old: str, new: str) -> None:
     path.write_text(source.replace(old, new, 1))
 
 
+def replace_exact_count(path: Path, old: str, new: str, expected: int) -> None:
+    source = path.read_text()
+    actual = source.count(old)
+    if actual != expected:
+        raise SystemExit(
+            f"{path}: expected {expected} occurrences of {old!r}, found {actual}"
+        )
+    path.write_text(source.replace(old, new))
+
+
 clock = Path("crates/rustok-cache/src/clock.rs")
 if clock.exists():
     raise SystemExit("cache clock module already exists")
@@ -130,6 +140,12 @@ replace_once(
     "fn current_unix_ms() -> u64 {\n    SystemTime::now()\n        .duration_since(UNIX_EPOCH)\n        .unwrap_or_default()\n        .as_millis()\n        .min(u128::from(u64::MAX)) as u64\n}\n\n",
     "",
 )
+replace_exact_count(
+    refresh,
+    "current_unix_ms()",
+    "unix_time_millis().unwrap()",
+    5,
+)
 
 verifier = Path("scripts/verify/verify-cache-clock-contract.mjs")
 if verifier.exists():
@@ -167,7 +183,7 @@ requireMatch("clock", /unix_time_millis_rejects_pre_epoch_clock/, "pre-epoch beh
 requireMatch("clock", /unix_time_millis_preserves_post_epoch_milliseconds/, "post-epoch conversion needs a regression test");
 for (const name of ["negative", "typed", "refresh"]) {
   requireMatch(name, /clock::unix_time_millis/, `${name} cache path must use the canonical fallible clock`);
-  forbidMatch(name, /fn current_unix_ms\(/, `${name} must not own a duplicate system clock helper`);
+  forbidMatch(name, /current_unix_ms\(/, `${name} must not reference the removed infallible clock helper`);
   forbidMatch(name, /duration_since\(UNIX_EPOCH\)/, `${name} must not read the system clock directly`);
   forbidMatch(name, /unwrap_or_default\(\)/, `${name} must not turn a clock failure into timestamp zero`);
 }
@@ -175,6 +191,10 @@ requireMatch("negative", /let now_unix_ms = unix_time_millis\(\)\?;/, "negative 
 requireMatch("typed", /now_unix_ms: unix_time_millis\(\)\?,/, "typed cache reads must propagate clock failure");
 requireMatch("refresh", /let completed_at_unix_ms = unix_time_millis\(\)\?;/, "refresh completion must recheck the fallible clock");
 requireMatch("refresh", /let now_unix_ms = unix_time_millis\(\)\?;/, "SWR request freshness must use the fallible clock");
+const refreshTestClockCalls = source.refresh.match(/unix_time_millis\(\)\.unwrap\(\)/g) ?? [];
+if (refreshTestClockCalls.length !== 5) {
+  failures.push(`refresh tests must use the canonical clock at exactly five existing call sites; found ${refreshTestClockCalls.length}`);
+}
 requireMatch("hardening", /Verify cache clock fail-closed contract[\s\S]*verify-cache-clock-contract\.mjs/, "Hardening Gates must run the cache clock verifier");
 requireMatch("master", /verify-cache-clock-contract\.mjs:Cache Clock Fail-closed Contract/, "master verification must include the cache clock verifier");
 requireMatch("readme", /verify-cache-clock-contract\.mjs/, "verification README must document the cache clock verifier");
