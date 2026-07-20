@@ -211,7 +211,7 @@ fn verify_archive_digest(
         }
         hasher.update(&buffer[..read]);
     }
-    let actual = format!("sha256:{:x}", hasher.finalize());
+    let actual = format!("sha256:{}", hex::encode(hasher.finalize()));
     if actual != expected_digest {
         return Err(ModuleBuildProtocolError::Transport(
             "materialized source archive digest does not match the immutable request".to_string(),

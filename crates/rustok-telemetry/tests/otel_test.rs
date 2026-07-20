@@ -48,11 +48,14 @@ fn test_config_from_env_defaults() {
     let _guard = env_lock();
 
     // Clear any existing env vars
-    std::env::remove_var("OTEL_SERVICE_NAME");
-    std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
-    std::env::remove_var("OTEL_SAMPLING_RATE");
-    std::env::remove_var("RUST_ENV");
-    std::env::remove_var("OTEL_ENABLED");
+    // SAFETY: Test-only env manipulation, serialized by env_lock.
+    unsafe {
+        std::env::remove_var("OTEL_SERVICE_NAME");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("OTEL_SAMPLING_RATE");
+        std::env::remove_var("RUST_ENV");
+        std::env::remove_var("OTEL_ENABLED");
+    }
 
     let config = OtelConfig::from_env();
 
@@ -67,12 +70,15 @@ fn test_config_from_env_defaults() {
 fn test_config_from_env_custom() {
     let _guard = env_lock();
 
-    std::env::set_var("OTEL_SERVICE_NAME", "custom-service");
-    std::env::set_var("OTEL_SERVICE_VERSION", "2.0.0");
-    std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://custom:4317");
-    std::env::set_var("RUST_ENV", "production");
-    std::env::set_var("OTEL_SAMPLING_RATE", "0.1");
-    std::env::set_var("OTEL_ENABLED", "true");
+    // SAFETY: Test-only env manipulation, serialized by env_lock.
+    unsafe {
+        std::env::set_var("OTEL_SERVICE_NAME", "custom-service");
+        std::env::set_var("OTEL_SERVICE_VERSION", "2.0.0");
+        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://custom:4317");
+        std::env::set_var("RUST_ENV", "production");
+        std::env::set_var("OTEL_SAMPLING_RATE", "0.1");
+        std::env::set_var("OTEL_ENABLED", "true");
+    }
 
     let config = OtelConfig::from_env();
 
@@ -84,27 +90,42 @@ fn test_config_from_env_custom() {
     assert!(config.enabled);
 
     // Cleanup
-    std::env::remove_var("OTEL_SERVICE_NAME");
-    std::env::remove_var("OTEL_SERVICE_VERSION");
-    std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
-    std::env::remove_var("RUST_ENV");
-    std::env::remove_var("OTEL_SAMPLING_RATE");
-    std::env::remove_var("OTEL_ENABLED");
+    // SAFETY: Test-only env manipulation, serialized by env_lock.
+    unsafe {
+        std::env::remove_var("OTEL_SERVICE_NAME");
+        std::env::remove_var("OTEL_SERVICE_VERSION");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("RUST_ENV");
+        std::env::remove_var("OTEL_SAMPLING_RATE");
+        std::env::remove_var("OTEL_ENABLED");
+    }
 }
 
 #[test]
 fn test_config_disabled_via_env() {
     let _guard = env_lock();
 
-    std::env::set_var("OTEL_ENABLED", "false");
+    // SAFETY: Test-only env manipulation, serialized by env_lock.
+    unsafe {
+        std::env::set_var("OTEL_ENABLED", "false");
+    }
     let config = OtelConfig::from_env();
     assert!(!config.enabled);
-    std::env::remove_var("OTEL_ENABLED");
+    // SAFETY: Test-only env manipulation, serialized by env_lock.
+    unsafe {
+        std::env::remove_var("OTEL_ENABLED");
+    }
 
-    std::env::set_var("OTEL_ENABLED", "0");
+    // SAFETY: Test-only env manipulation, serialized by env_lock.
+    unsafe {
+        std::env::set_var("OTEL_ENABLED", "0");
+    }
     let config = OtelConfig::from_env();
     assert!(!config.enabled);
-    std::env::remove_var("OTEL_ENABLED");
+    // SAFETY: Test-only env manipulation, serialized by env_lock.
+    unsafe {
+        std::env::remove_var("OTEL_ENABLED");
+    }
 }
 
 #[test]

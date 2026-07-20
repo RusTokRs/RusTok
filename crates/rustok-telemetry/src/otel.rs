@@ -250,10 +250,13 @@ mod tests {
 
     #[test]
     fn test_otel_config_from_env() {
-        std::env::set_var("OTEL_SERVICE_NAME", "test-service");
-        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://test:4317");
-        std::env::set_var("OTEL_SAMPLING_RATE", "0.5");
-        std::env::set_var("RUST_ENV", "test");
+        // SAFETY: Test-only env manipulation, serialized by test runner.
+        unsafe {
+            std::env::set_var("OTEL_SERVICE_NAME", "test-service");
+            std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://test:4317");
+            std::env::set_var("OTEL_SAMPLING_RATE", "0.5");
+            std::env::set_var("RUST_ENV", "test");
+        }
 
         let config = OtelConfig::from_env();
         assert_eq!(config.service_name, "test-service");
@@ -262,18 +265,27 @@ mod tests {
         assert_eq!(config.environment, "test");
 
         // Cleanup
-        std::env::remove_var("OTEL_SERVICE_NAME");
-        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
-        std::env::remove_var("OTEL_SAMPLING_RATE");
-        std::env::remove_var("RUST_ENV");
+        // SAFETY: Test-only env manipulation, serialized by test runner.
+        unsafe {
+            std::env::remove_var("OTEL_SERVICE_NAME");
+            std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+            std::env::remove_var("OTEL_SAMPLING_RATE");
+            std::env::remove_var("RUST_ENV");
+        }
     }
 
     #[test]
     fn test_otel_config_disabled() {
-        std::env::set_var("OTEL_ENABLED", "false");
+        // SAFETY: Test-only env manipulation, serialized by test runner.
+        unsafe {
+            std::env::set_var("OTEL_ENABLED", "false");
+        }
         let config = OtelConfig::from_env();
         assert!(!config.enabled);
-        std::env::remove_var("OTEL_ENABLED");
+        // SAFETY: Test-only env manipulation, serialized by test runner.
+        unsafe {
+            std::env::remove_var("OTEL_ENABLED");
+        }
     }
 
     #[tokio::test]

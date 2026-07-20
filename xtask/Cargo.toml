@@ -14,5 +14,6 @@ semver = "1.0"
 reqwest = { workspace = true, features = ["blocking", "json"] }
 regex = "1.12"
 postgres = "0.19"
+hex = "0.4"
 sha2.workspace = true
 url = "2.5"

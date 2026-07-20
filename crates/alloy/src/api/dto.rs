@@ -262,34 +262,7 @@ pub struct StageReleaseResponse {
     pub created: bool,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{RunScriptRequest, ScriptRevisionRequest, UpdateScriptRequest};
 
-    #[test]
-    fn update_request_requires_an_expected_version() {
-        assert!(serde_json::from_str::<UpdateScriptRequest>(r#"{}"#).is_err());
-        let request = serde_json::from_str::<UpdateScriptRequest>(r#"{"expected_version": 3}"#)
-            .expect("expected version should deserialize");
-        assert_eq!(request.expected_version, 3);
-    }
-
-    #[test]
-    fn run_request_requires_an_expected_version() {
-        assert!(serde_json::from_str::<RunScriptRequest>(r#"{}"#).is_err());
-        let request = serde_json::from_str::<RunScriptRequest>(r#"{"expected_version": 3}"#)
-            .expect("expected version should deserialize");
-        assert_eq!(request.expected_version, 3);
-    }
-
-    #[test]
-    fn lifecycle_request_requires_an_expected_version() {
-        assert!(serde_json::from_str::<ScriptRevisionRequest>(r#"{}"#).is_err());
-        let request = serde_json::from_str::<ScriptRevisionRequest>(r#"{"expected_version": 3}"#)
-            .expect("expected version should deserialize");
-        assert_eq!(request.expected_version, 3);
-    }
-}
 
 #[derive(Debug, Serialize)]
 pub struct RunScriptResponse {
@@ -560,5 +533,30 @@ mod tests {
         };
         assert_eq!(oversized.limit(), 100);
         assert_eq!(oversized.offset(), 100);
+    }
+
+    #[test]
+    fn update_request_requires_an_expected_version() {
+        assert!(serde_json::from_str::<UpdateScriptRequest>(r#"{}"#).is_err());
+        let request = serde_json::from_str::<UpdateScriptRequest>(r#"{"expected_version": 3}"#)
+            .expect("expected version should deserialize");
+        assert_eq!(request.expected_version, 3);
+    }
+
+    #[test]
+    fn run_request_requires_an_expected_version() {
+        assert!(serde_json::from_str::<RunScriptRequest>(r#"{}"#).is_err());
+        let request = serde_json::from_str::<RunScriptRequest>(r#"{"expected_version": 3}"#)
+            .expect("expected version should deserialize");
+        assert_eq!(request.expected_version, 3);
+    }
+
+    #[test]
+    fn lifecycle_request_requires_an_expected_version() {
+        assert!(serde_json::from_str::<ScriptRevisionRequest>(r#"{}"#).is_err());
+        let request =
+            serde_json::from_str::<ScriptRevisionRequest>(r#"{"expected_version": 3}"#)
+                .expect("expected version should deserialize");
+        assert_eq!(request.expected_version, 3);
     }
 }

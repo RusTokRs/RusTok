@@ -13252,6 +13252,7 @@ dependencies = [
  "rustok-core",
  "rustok-marketplace-listing",
  "rustok-marketplace-seller",
+ "sea-orm-migration",
  "serde",
  "uuid",
 ]
@@ -13453,6 +13454,7 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "async-trait",
+ "chrono",
  "rust_decimal",
  "rustok-api",
  "rustok-auth",
@@ -13481,6 +13483,7 @@ dependencies = [
  "rustok-taxonomy",
  "rustok-test-utils",
  "rustok-workflow",
+ "sea-orm",
  "sea-orm-migration",
  "serde_json",
  "tokio",
@@ -13525,10 +13528,12 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
+ "hex",
  "oci-distribution",
  "rustok-module-build-transport",
  "rustok-modules",
  "rustok-worker-transport",
+ "serde",
  "serde_json",
  "sha2 0.11.0",
  "tokio",
@@ -19499,6 +19504,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "hex",
  "postgres",
  "regex",
  "reqwest 0.13.4",

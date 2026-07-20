@@ -3,7 +3,7 @@
 use sha2::{Digest, Sha256};
 
 use rustok_modules::{
-    validate_module_publish_artifact, ModuleValidationJobClaimResult,
+    validate_module_publish_artifact,
     ModuleValidationJobResultCommand, ModuleValidationJobResultOutcome,
     ModuleValidationJobRetryCommand, SeaOrmModuleGovernanceService,
 };

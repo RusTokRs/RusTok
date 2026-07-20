@@ -507,7 +507,7 @@ fn inspect_component(
             component_path.display()
         ))
     })?;
-    let actual_digest = format!("sha256:{:x}", Sha256::digest(&bytes));
+    let actual_digest = format!("sha256:{}", hex::encode(Sha256::digest(&bytes)));
     if actual_digest != expected_digest {
         return Err(ComponentArtifactError::InspectionFailed);
     }
@@ -683,7 +683,7 @@ fn read_verified_json_output(
             path.display()
         ))
     })?;
-    if format!("sha256:{:x}", Sha256::digest(&bytes)) != expected_digest {
+    if format!("sha256:{}", hex::encode(Sha256::digest(&bytes))) != expected_digest {
         return Err(invalid);
     }
     serde_json::from_slice(&bytes).map_err(|_| invalid)

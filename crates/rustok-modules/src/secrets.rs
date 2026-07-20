@@ -26,6 +26,7 @@ const MAX_REFERENCE_NAME_BYTES: usize = 96;
 const MAX_RESOLVER_ALIAS_BYTES: usize = 96;
 const MAX_RESOLVER_KEY_BYTES: usize = 512;
 const MAX_REASON_BYTES: usize = 2_000;
+#[allow(dead_code)]
 const MAX_SECRET_USE_PURPOSE_BYTES: usize = 96;
 
 /// Owner command that binds one admitted logical reference to a deployment
@@ -82,6 +83,7 @@ pub struct ArtifactSecretUseRequest {
 /// Non-secret context supplied to a trusted value consumer alongside the
 /// short-lived `SecretString` borrow.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 pub struct ArtifactSecretUseContext {
     pub scope: ArtifactDataScope,
     pub reference: String,
@@ -97,6 +99,7 @@ pub struct ArtifactSecretUseContext {
 /// Redacted host receipt. It is the only output of secret use and cannot carry
 /// consumer output or resolved material back into a sandbox payload.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ArtifactSecretUseReceipt {
     pub reference: String,
     pub revision: u64,
@@ -107,6 +110,7 @@ pub struct ArtifactSecretUseReceipt {
 /// part of an error propagated across the owner boundary.
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
 #[error("artifact secret consumer failed")]
+#[allow(dead_code)]
 pub struct ArtifactSecretConsumerError;
 
 /// Trusted host adapter that consumes resolved secret material without
@@ -114,6 +118,7 @@ pub struct ArtifactSecretConsumerError;
 /// purpose and must keep the borrowed value out of logs, errors, persistence,
 /// and responses.
 #[async_trait]
+#[allow(dead_code)]
 pub trait ArtifactSecretValueConsumer: Send + Sync {
     fn purpose(&self) -> &'static str;
 
@@ -150,6 +155,7 @@ pub trait ArtifactSecretHandleAuthorizer: Send + Sync {
 /// Stronger host policy for resolving and consuming a bound value. Handle
 /// acquisition authority does not imply value-use authority.
 #[async_trait]
+#[allow(dead_code)]
 pub trait ArtifactSecretUseAuthorizer: Send + Sync {
     async fn authorize_secret_use(
         &self,

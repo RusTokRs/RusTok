@@ -457,7 +457,7 @@ fn inspect_source(
 ) -> Result<(), SourcePolicyError> {
     let lock_path = source_dir.join("Cargo.lock");
     let lock_bytes = read_bounded(&lock_path, disk_limit)?;
-    let actual_lock_digest = format!("sha256:{:x}", Sha256::digest(&lock_bytes));
+    let actual_lock_digest = format!("sha256:{}", hex::encode(Sha256::digest(&lock_bytes)));
     if actual_lock_digest != policy.lock_digest {
         return Err(SourcePolicyError::DependencyPolicyDenied);
     }

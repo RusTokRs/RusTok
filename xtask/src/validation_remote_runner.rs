@@ -160,7 +160,7 @@ fn execute_remote_validation_claim(
         anyhow::bail!("Remote runner claim has inconsistent manual confirmation policy");
     }
     let publish_artifact = build_publish_artifact_bytes(&preview)?;
-    let local_checksum = format!("{:x}", Sha256::digest(&publish_artifact));
+    let local_checksum = hex::encode(Sha256::digest(&publish_artifact));
     if local_checksum != claim.artifact_checksum_sha256 {
         anyhow::bail!(
             "Remote runner local publish bundle does not match the owner-issued artifact digest"

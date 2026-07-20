@@ -1007,7 +1007,7 @@ fn oci_job_request_digest(request_json: &[u8]) -> String {
     hasher.update([0]);
     hasher.update((request_json.len() as u64).to_be_bytes());
     hasher.update(request_json);
-    format!("sha256:{:x}", hasher.finalize())
+    format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 
 fn is_sha256_digest(value: &str) -> bool {

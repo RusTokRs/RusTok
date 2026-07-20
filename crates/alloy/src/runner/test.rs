@@ -81,7 +81,7 @@ fn bounded_error(error: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::bounded_error;
-    use crate::TEST_RUN_LEASE_SECONDS;
+    use crate::model::TEST_RUN_LEASE_SECONDS;
 
     #[test]
     fn terminal_test_errors_are_bounded_and_control_free() {

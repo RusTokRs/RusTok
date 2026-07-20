@@ -1318,7 +1318,7 @@ impl ScriptRegistry for SeaOrmStorage {
 mod tests {
     use super::*;
     use sea_orm::Database;
-    use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
+    use sea_orm_migration::prelude::SchemaManager;
 
     async fn storage_with_script() -> (SeaOrmStorage, Uuid, Uuid, Script) {
         let database = Database::connect("sqlite::memory:")
