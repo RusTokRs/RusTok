@@ -134,8 +134,9 @@ requireCount(
   2,
 );
 requireMarkers("crates/rustok-module-build-worker/src/runner.rs", [
-  "command.kill_on_drop(true);",
-  "timeout(timeout_window, command.output())",
+  "let mut child = Command::new(&self.job_launcher_path)",
+  ".kill_on_drop(true)",
+  "timeout(job_timeout, child.wait())",
 ]);
 
 for (const subprocessFile of [
