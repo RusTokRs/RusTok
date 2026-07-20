@@ -7,6 +7,7 @@ pub mod commission_directory;
 pub mod financial_orchestration;
 pub mod ledger_directory;
 pub mod listing_directory;
+pub mod payout_directory;
 pub mod seller_directory;
 
 #[cfg(test)]
@@ -17,6 +18,7 @@ pub use commission_directory::MarketplaceCommissionDirectoryService;
 pub use financial_orchestration::*;
 pub use ledger_directory::MarketplaceLedgerDirectoryService;
 pub use listing_directory::MarketplaceListingDirectoryService;
+pub use payout_directory::MarketplacePayoutDirectoryService;
 pub use seller_directory::MarketplaceSellerDirectoryService;
 
 pub const MARKETPLACE_FAMILY_MODULES: &[&str] = &[
