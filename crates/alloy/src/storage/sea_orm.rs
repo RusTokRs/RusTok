@@ -726,7 +726,7 @@ impl ScriptRegistry for SeaOrmStorage {
         // before reading review state. The no-op update serializes concurrent
         // review decisions and workspace saves without changing the revision.
         let mut assert_current = Entity::update_many()
-            .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt))
+            .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt).into())
             .filter(Column::Id.eq(command.script_id))
             .filter(Column::Version.eq(revision));
         if let Some(tenant_id) = self.tenant_id {
@@ -889,7 +889,7 @@ impl ScriptRegistry for SeaOrmStorage {
                 )
                 .col_expr(
                     draft_test_run::Column::LeaseExpiresAt,
-                    Expr::value(Some(crate::test_run_lease_expires_at(now))),
+                    Expr::value(Some(crate::model::test_run_lease_expires_at(now))),
                 )
                 .filter(draft_test_run::Column::Id.eq(existing.id))
                 .filter(draft_test_run::Column::Status.eq(TestRunStatus::Pending.as_str()))
@@ -952,7 +952,7 @@ impl ScriptRegistry for SeaOrmStorage {
         // Serialize a new test claim with source saves through the same current
         // revision predicate, then recheck idempotency before inserting.
         let mut assert_current = Entity::update_many()
-            .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt))
+            .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt).into())
             .filter(Column::Id.eq(command.script_id))
             .filter(Column::Version.eq(revision));
         if let Some(tenant_id) = self.tenant_id {
@@ -1012,7 +1012,7 @@ impl ScriptRegistry for SeaOrmStorage {
             passed: ActiveValue::Set(None),
             error: ActiveValue::Set(None),
             lease_token: ActiveValue::Set(Some(lease_token)),
-            lease_expires_at: ActiveValue::Set(Some(crate::test_run_lease_expires_at(now))),
+            lease_expires_at: ActiveValue::Set(Some(crate::model::test_run_lease_expires_at(now))),
             created_at: ActiveValue::Set(now),
             completed_at: ActiveValue::Set(None),
         }

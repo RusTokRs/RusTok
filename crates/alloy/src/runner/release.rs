@@ -55,7 +55,7 @@ impl AlloyReleaseGovernance for SeaOrmModuleGovernanceService {
 pub struct RevisionedReleaseStager<R, G>
 where
     R: ScriptRegistry,
-    G: AlloyReleaseGovernance,
+    G: AlloyReleaseGovernance + ?Sized,
 {
     registry: Arc<R>,
     governance: Arc<G>,
@@ -64,7 +64,7 @@ where
 impl<R, G> RevisionedReleaseStager<R, G>
 where
     R: ScriptRegistry,
-    G: AlloyReleaseGovernance,
+    G: AlloyReleaseGovernance + ?Sized,
 {
     pub fn new(registry: Arc<R>, governance: Arc<G>) -> Self {
         Self {
