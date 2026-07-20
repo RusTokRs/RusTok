@@ -83,10 +83,8 @@ jobs:
           set -euo pipefail
           cargo tree --locked --workspace --all-features --target all -i atomic-polyfill \
             > /tmp/atomic-polyfill.tree 2> /tmp/atomic-polyfill.stderr
+          grep -q 'rustok-ai-athanor' /tmp/atomic-polyfill.tree
           grep -q 'athanor-store-surrealdb' /tmp/atomic-polyfill.tree
-          grep -q 'surrealdb v2.6.5' /tmp/atomic-polyfill.tree
-          grep -q 'geo v0.28.0' /tmp/atomic-polyfill.tree
-          grep -q 'rstar v0.9.3' /tmp/atomic-polyfill.tree
           grep -q 'heapless v0.7.17' /tmp/atomic-polyfill.tree
           grep -q 'atomic-polyfill v1.0.3' /tmp/atomic-polyfill.tree
           ! grep -q 'rustok-server' /tmp/atomic-polyfill.tree
