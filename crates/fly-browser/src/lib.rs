@@ -9,7 +9,15 @@ use serde_json::Value;
 
 pub const FLY_BROWSER_PROTOCOL: &str = "fly_iframe";
 pub const FLY_BROWSER_ADAPTER: &str = "fly_browser";
-pub const FLY_BROWSER_ADAPTER_JS: &str = include_str!("../assets/fly-browser.js");
+pub const DEFAULT_MAX_BROWSER_MESSAGE_BYTES: usize = 1024 * 1024;
+pub const DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS: usize = 4096;
+pub const DEFAULT_BROWSER_RESOURCE_LIMIT_MESSAGE: &str =
+    "Editor canvas resource limit reached.";
+pub const FLY_BROWSER_ADAPTER_JS: &str = concat!(
+    include_str!("../assets/fly-browser.js"),
+    "\n",
+    include_str!("../assets/browser_hardening.js")
+);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
@@ -268,23 +276,47 @@ impl BrowserIntentKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct BrowserAdapterConfig {
-    #[serde(default = "default_root_selector")]
+    #[serde(default = "default_root_selector", alias = "root_selector")]
     pub root_selector: String,
-    #[serde(default = "default_iframe_selector")]
+    #[serde(default = "default_iframe_selector", alias = "iframe_selector")]
     pub iframe_selector: String,
-    #[serde(default = "default_expected_origin")]
+    #[serde(default = "default_expected_origin", alias = "expected_origin")]
     pub expected_origin: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "intent_endpoint"
+    )]
     pub intent_endpoint: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "csrf_token"
+    )]
     pub csrf_token: Option<String>,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", alias = "auto_mount")]
     pub auto_mount: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", alias = "draw_overlays")]
     pub draw_overlays: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", alias = "post_intents")]
     pub post_intents: bool,
+    #[serde(
+        default = "default_max_browser_message_bytes",
+        alias = "max_message_bytes"
+    )]
+    pub max_message_bytes: usize,
+    #[serde(
+        default = "default_max_browser_geometry_components",
+        alias = "max_geometry_components"
+    )]
+    pub max_geometry_components: usize,
+    #[serde(
+        default = "default_browser_resource_limit_message",
+        alias = "resource_limit_message"
+    )]
+    pub resource_limit_message: String,
 }
 
 impl Default for BrowserAdapterConfig {
@@ -298,6 +330,9 @@ impl Default for BrowserAdapterConfig {
             auto_mount: true,
             draw_overlays: true,
             post_intents: true,
+            max_message_bytes: DEFAULT_MAX_BROWSER_MESSAGE_BYTES,
+            max_geometry_components: DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS,
+            resource_limit_message: default_browser_resource_limit_message(),
         }
     }
 }
@@ -309,6 +344,16 @@ impl BrowserAdapterConfig {
         self.expected_origin = non_empty(self.expected_origin, default_expected_origin());
         self.intent_endpoint = normalize_optional(self.intent_endpoint);
         self.csrf_token = normalize_optional(self.csrf_token);
+        if self.max_message_bytes == 0 {
+            self.max_message_bytes = DEFAULT_MAX_BROWSER_MESSAGE_BYTES;
+        }
+        if self.max_geometry_components == 0 {
+            self.max_geometry_components = DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS;
+        }
+        self.resource_limit_message = non_empty(
+            self.resource_limit_message,
+            default_browser_resource_limit_message(),
+        );
         self
     }
 
@@ -431,6 +476,18 @@ fn default_true() -> bool {
     true
 }
 
+fn default_max_browser_message_bytes() -> usize {
+    DEFAULT_MAX_BROWSER_MESSAGE_BYTES
+}
+
+fn default_max_browser_geometry_components() -> usize {
+    DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS
+}
+
+fn default_browser_resource_limit_message() -> String {
+    DEFAULT_BROWSER_RESOURCE_LIMIT_MESSAGE.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,16 +501,27 @@ mod tests {
         assert!(config.root_selector.contains("data-fly-browser-root"));
         assert!(config.iframe_selector.contains("data-fly-iframe-canvas"));
         assert!(config.intent_endpoint.is_none());
+        assert_eq!(
+            config.max_message_bytes,
+            DEFAULT_MAX_BROWSER_MESSAGE_BYTES
+        );
+        assert_eq!(
+            config.max_geometry_components,
+            DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS
+        );
     }
 
     #[test]
-    fn normalization_removes_empty_optional_values() {
+    fn normalization_removes_empty_values_and_restores_safe_limits() {
         let config = BrowserAdapterConfig {
             root_selector: "  ".to_string(),
             iframe_selector: " iframe ".to_string(),
             expected_origin: " null ".to_string(),
             intent_endpoint: Some("  /admin/fly/intents  ".to_string()),
             csrf_token: Some("   ".to_string()),
+            max_message_bytes: 0,
+            max_geometry_components: 0,
+            resource_limit_message: "   ".to_string(),
             ..BrowserAdapterConfig::default()
         }
         .normalized();
@@ -464,6 +532,67 @@ mod tests {
             Some("/admin/fly/intents")
         );
         assert_eq!(config.csrf_token, None);
+        assert_eq!(
+            config.max_message_bytes,
+            DEFAULT_MAX_BROWSER_MESSAGE_BYTES
+        );
+        assert_eq!(
+            config.max_geometry_components,
+            DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS
+        );
+        assert_eq!(
+            config.resource_limit_message,
+            DEFAULT_BROWSER_RESOURCE_LIMIT_MESSAGE
+        );
+    }
+
+    #[test]
+    fn browser_config_serializes_for_javascript_and_accepts_legacy_names() {
+        let json = BrowserAdapterConfig {
+            intent_endpoint: Some("/admin/fly/intents".to_string()),
+            csrf_token: Some("csrf-token".to_string()),
+            max_message_bytes: 2048,
+            max_geometry_components: 32,
+            ..BrowserAdapterConfig::default()
+        }
+        .to_json()
+        .expect("browser config");
+        let value: Value = serde_json::from_str(&json).expect("JSON");
+        assert_eq!(value["intentEndpoint"], "/admin/fly/intents");
+        assert_eq!(value["csrfToken"], "csrf-token");
+        assert_eq!(value["maxMessageBytes"], 2048);
+        assert_eq!(value["maxGeometryComponents"], 32);
+        assert!(value.get("intent_endpoint").is_none());
+        assert!(value.get("max_message_bytes").is_none());
+
+        let legacy: BrowserAdapterConfig = serde_json::from_value(json!({
+            "root_selector": "#legacy-root",
+            "iframe_selector": "iframe.legacy",
+            "expected_origin": "https://example.test",
+            "intent_endpoint": "/legacy/intents",
+            "csrf_token": "legacy-token",
+            "auto_mount": false,
+            "draw_overlays": false,
+            "post_intents": false,
+            "max_message_bytes": 4096,
+            "max_geometry_components": 64,
+            "resource_limit_message": "Legacy limit"
+        }))
+        .expect("legacy config");
+        assert_eq!(legacy.root_selector, "#legacy-root");
+        assert_eq!(legacy.max_message_bytes, 4096);
+        assert_eq!(legacy.max_geometry_components, 64);
+        assert_eq!(legacy.resource_limit_message, "Legacy limit");
+    }
+
+    #[test]
+    fn public_adapter_bundle_contains_resource_hardening() {
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("class FlyBrowserAdapter"));
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("fly:browser-resource-limit"));
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("message_bytes"));
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("geometry_components"));
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("aria-live"));
+        assert!(!FLY_BROWSER_ADAPTER_JS.contains("wasm_bindgen"));
     }
 
     #[test]

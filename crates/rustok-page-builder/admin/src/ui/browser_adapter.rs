@@ -1,11 +1,6 @@
 use fly_browser::{BrowserAdapterConfig, FLY_BROWSER_ADAPTER_JS};
 use leptos::prelude::*;
 
-const BROWSER_HARDENING_JS: &str = include_str!("browser_hardening.js");
-const DEFAULT_MAX_BROWSER_MESSAGE_BYTES: usize = 1024 * 1024;
-const DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS: usize = 4096;
-const DEFAULT_RESOURCE_LIMIT_MESSAGE: &str = "Editor canvas resource limit reached.";
-
 const SSR_CONTROL_BOOTSTRAP_JS: &str = r#"
 const __flyDraftQueryKey = "fly_draft";
 const __flyObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -100,25 +95,12 @@ fn browser_adapter_config_json(
     intent_endpoint: Option<String>,
     csrf_token: Option<String>,
 ) -> Result<String, serde_json::Error> {
-    let config = BrowserAdapterConfig {
+    BrowserAdapterConfig {
         intent_endpoint,
         csrf_token,
         ..BrowserAdapterConfig::default()
     }
-    .normalized();
-    serde_json::to_string(&serde_json::json!({
-        "rootSelector": config.root_selector,
-        "iframeSelector": config.iframe_selector,
-        "expectedOrigin": config.expected_origin,
-        "intentEndpoint": config.intent_endpoint,
-        "csrfToken": config.csrf_token,
-        "autoMount": config.auto_mount,
-        "drawOverlays": config.draw_overlays,
-        "postIntents": config.post_intents,
-        "maxMessageBytes": DEFAULT_MAX_BROWSER_MESSAGE_BYTES,
-        "maxGeometryComponents": DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS,
-        "resourceLimitMessage": DEFAULT_RESOURCE_LIMIT_MESSAGE,
-    }))
+    .to_json()
 }
 
 /// Emits the standalone Fly browser bridge into a server-rendered Page Builder surface.
@@ -140,7 +122,6 @@ pub fn PageBuilderBrowserAdapter(
         let source = [
             format!("globalThis.__FLY_BROWSER_CONFIG__ = Object.freeze({config});"),
             FLY_BROWSER_ADAPTER_JS.to_string(),
-            BROWSER_HARDENING_JS.to_string(),
             SSR_CONTROL_BOOTSTRAP_JS.to_string(),
         ]
         .join("\n");
@@ -172,6 +153,9 @@ fn escape_json_for_script(json: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fly_browser::{
+        DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS, DEFAULT_MAX_BROWSER_MESSAGE_BYTES,
+    };
 
     #[test]
     fn adapter_asset_does_not_depend_on_wasm_runtime() {
@@ -181,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn browser_config_matches_the_javascript_contract() {
+    fn browser_config_uses_the_public_javascript_contract() {
         let json = browser_adapter_config_json(
             Some("/admin/fly/intents".to_string()),
             Some("csrf-token".to_string()),
@@ -203,12 +187,12 @@ mod tests {
     }
 
     #[test]
-    fn hardening_asset_emits_typed_accessible_resource_limits() {
-        assert!(BROWSER_HARDENING_JS.contains("fly:browser-resource-limit"));
-        assert!(BROWSER_HARDENING_JS.contains("message_bytes"));
-        assert!(BROWSER_HARDENING_JS.contains("geometry_components"));
-        assert!(BROWSER_HARDENING_JS.contains("aria-live"));
-        assert!(BROWSER_HARDENING_JS.contains("role"));
+    fn public_adapter_bundle_emits_typed_accessible_resource_limits() {
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("fly:browser-resource-limit"));
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("message_bytes"));
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("geometry_components"));
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("aria-live"));
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("role"));
     }
 
     #[test]

@@ -8,7 +8,7 @@ const adapterPath = resolve(
 );
 const hardeningPath = resolve(
   process.cwd(),
-  '../../crates/rustok-page-builder/admin/src/ui/browser_hardening.js'
+  '../../crates/fly-browser/assets/browser_hardening.js'
 );
 
 type ResourceLimitEvent = {
