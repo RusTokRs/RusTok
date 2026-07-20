@@ -1,4 +1,4 @@
-name: One-off Retire Dependency Waivers
+name: One-off Retire RSA Dependency Waiver
 
 on:
   push:
@@ -17,9 +17,9 @@ env:
 jobs:
   retire:
     if: >-
-      github.event.head_commit.message == 'test(security): trace waiver dependency roots'
+      github.event.head_commit.message == 'fix(security): retire RSA dependency waiver'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -32,33 +32,115 @@ jobs:
         run: |
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
-      - name: Verify feature policy and all-target inverse trees
+      - name: Apply bounded SeaORM and policy repair
+        run: python3 scripts/maintenance/retire-dependency-waivers.py
+      - name: Verify feature and advisory policy before lock refresh
+        run: |
+          node scripts/verify/verify-dependency-feature-hygiene.mjs
+          node scripts/verify/verify-advisory-exceptions.mjs
+      - name: Refresh SeaORM lock graph without package upgrades
         shell: bash
         run: |
           set -euo pipefail
+          cp Cargo.lock /tmp/Cargo.lock.before
+          cargo update -p sea-orm --precise 1.1.20
+          python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          def identities(path):
+              data = tomllib.loads(Path(path).read_text())
+              return {
+                  (package["name"], package["version"], package.get("source") or "")
+                  for package in data.get("package", [])
+              }
+
+          before = identities("/tmp/Cargo.lock.before")
+          after = identities("Cargo.lock")
+          added = sorted(after - before, key=lambda item: (item[0], item[1], item[2]))
+          removed = sorted(before - after, key=lambda item: (item[0], item[1], item[2]))
+          if added:
+              raise SystemExit(f"SeaORM lock refresh added or upgraded package identities: {added[:30]}")
+          removed_names = {name for name, _, _ in removed}
+          if "rsa" not in removed_names:
+              raise SystemExit("SeaORM lock refresh did not remove rsa")
+          after_names = {name for name, _, _ in after}
+          if "rsa" in after_names:
+              raise SystemExit("rsa remains in the refreshed lockfile")
+          if "atomic-polyfill" not in after_names:
+              raise SystemExit("independent atomic-polyfill waiver path disappeared unexpectedly")
+          Path("/tmp/seaorm-removed-packages.txt").write_text(
+              "\n".join(f"{name} {version}" for name, version, _ in removed) + "\n"
+          )
+          PY
+      - name: Verify resolved security graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -q '^name = "rsa"$' Cargo.lock
+          grep -q '^name = "atomic-polyfill"$' Cargo.lock
+          cargo metadata --locked --all-features --format-version 1 >/dev/null
+          cargo tree --locked -i atomic-polyfill --workspace --all-features --target all \
+            > /tmp/atomic-polyfill.tree
+          grep -q 'athanor-store-surrealdb' /tmp/atomic-polyfill.tree
+          grep -q 'heapless v0.7.17' /tmp/atomic-polyfill.tree
+          grep -q 'atomic-polyfill v1.0.3' /tmp/atomic-polyfill.tree
           node scripts/verify/verify-dependency-feature-hygiene.mjs
-          test -z "$(cargo tree --locked -i atomic-polyfill --workspace --all-features --target all 2>/dev/null)"
-          test -z "$(cargo tree --locked -i rsa --workspace --all-features --target all 2>/dev/null)"
-      - name: Trace workspace-root metadata paths
+          node scripts/verify/verify-advisory-exceptions.mjs
+      - name: Compile the minimal server profile
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/rsa-waiver-retirement
+        run: cargo check --locked -p rustok-server --no-default-features
+      - name: Verify bounded diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            .cargo/audit.toml
+            Cargo.lock
+            Cargo.toml
+            docs/security/advisory-exceptions.md
+            docs/security/rsa-rustsec-2023-0071.md
+            scripts/verify/verify-dependency-feature-hygiene.mjs
+          )
+          test "${#changed[@]}" = "${#expected[@]}"
+          for index in "${!expected[@]}"; do
+            test "${changed[$index]}" = "${expected[$index]}"
+          done
+      - name: Commit and publish RSA waiver retirement
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .cargo/audit.toml Cargo.lock Cargo.toml docs/security/advisory-exceptions.md docs/security/rsa-rustsec-2023-0071.md scripts/verify/verify-dependency-feature-hygiene.mjs
+          git commit -m "security: retire RSA dependency waiver"
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              git rebase origin/main
+              node scripts/verify/verify-dependency-feature-hygiene.mjs
+              node scripts/verify/verify-advisory-exceptions.mjs
+              ! grep -q '^name = "rsa"$' Cargo.lock
+              cargo metadata --locked --all-features --format-version 1 >/dev/null
+              cargo check --locked -p rustok-server --no-default-features
+            fi
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+          done
+          exit 1
+      - name: Record security evidence
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
-          set -euo pipefail
-          cargo metadata --locked --all-features --format-version 1 \
-            > /tmp/cargo-metadata-all-features.json
-          set +e
-          python3 scripts/maintenance/retire-dependency-waivers.py \
-            > /tmp/waiver-prune.log 2>&1
-          status=$?
-          set -e
           {
-            printf 'Trace the metadata paths that keep the temporary-waiver packages reachable.\n\n'
-            printf '## Workspace-root dependency paths\n\n```text\n'
-            cat /tmp/waiver-prune.log
-            printf '\n```\n'
-          } > /tmp/waiver-prune-failure.md
-          gh issue edit "$SECURITY_ISSUE" \
+            printf 'RSA waiver retired. SeaORM lock refresh removed:\n\n```text\n'
+            cat /tmp/seaorm-removed-packages.txt
+            printf '```\n\nThe atomic-polyfill waiver remains active with the corrected Athanor/SurrealDB all-target path.\n'
+          } >/tmp/rsa-waiver-evidence.md
+          gh issue comment "$SECURITY_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
-            --body-file /tmp/waiver-prune-failure.md
-          exit "$status"
+            --body-file /tmp/rsa-waiver-evidence.md
