@@ -17,7 +17,7 @@ jobs:
   status:
     if: >-
       (github.event_name == 'push' &&
-       github.event.head_commit.message == 'test(ci): extract cache clock test failure') ||
+       github.event.head_commit.message == 'test(ci): compact cache clock failure') ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.title == '[automation] harden cache system clock' &&
        github.event.issue.user.login == 'loid345' &&
@@ -28,20 +28,16 @@ jobs:
     env:
       ISSUE_NUMBER: 1841
     steps:
-      - name: Persist cache clock workflow status and exact test failure
+      - name: Persist compact cache clock test failure
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          runs=$(gh run list \
-            --repo "$GITHUB_REPOSITORY" \
-            --workflow one-off-harden-cache-clock.yml \
-            --limit 8 \
-            --json databaseId,event,status,conclusion,createdAt,updatedAt,headSha,url)
           failure_tail=$(gh api \
             "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/comments?per_page=100" \
-            --jq '[.[] | select(.body | startswith("Cache clock library tests failed"))] | last | .body // ""')
+            --jq '[.[] | select(.body | startswith("Cache clock library tests failed"))] | last | .body // ""' \
+            | tail -n 70)
           if [ -z "$failure_tail" ]; then
             failure_tail="No captured cache clock test failure comment found."
           fi
@@ -52,8 +48,7 @@ jobs:
           {
             printf '%s\n\n' "$base_body"
             printf '## Latest cache clock diagnostic\n\n'
-            printf 'Run status:\n\n```json\n%s\n```\n\n' "$runs"
-            printf 'Captured test failure:\n\n%s\n' "$failure_tail"
+            printf '%s\n' "$failure_tail"
           } > /tmp/cache-clock-issue-body.md
           gh issue edit "$ISSUE_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
