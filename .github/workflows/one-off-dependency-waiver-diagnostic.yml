@@ -1,4 +1,4 @@
-name: One-off Trace Remaining RSA Path
+name: One-off Trace RSA Feature Activation
 
 on:
   push:
@@ -17,16 +17,13 @@ env:
 jobs:
   trace:
     if: >-
-      github.event.head_commit.message == 'test(security): trace remaining RSA path'
+      github.event.head_commit.message == 'test(security): trace RSA feature activation'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: main
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with:
-          node-version: 22
       - name: Install exact Rust toolchain
         run: |
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
@@ -35,68 +32,20 @@ jobs:
         run: |
           python3 scripts/maintenance/retire-dependency-waivers.py
           node scripts/verify/verify-dependency-feature-hygiene.mjs
-      - name: Trace RSA path after root default-feature removal
+      - name: Persist feature-expanded RSA path
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          cargo metadata --all-features --format-version 1 > /tmp/rsa-metadata.json
-          python3 - <<'PY' > /tmp/rsa-path.txt
-          import json
-          from collections import deque
-          from pathlib import Path
-
-          metadata = json.loads(Path('/tmp/rsa-metadata.json').read_text())
-          packages = {package['id']: package for package in metadata['packages']}
-          nodes = {node['id']: node for node in metadata['resolve']['nodes']}
-          roots = list(metadata['workspace_members'])
-          parent = {root: None for root in roots}
-          queue = deque(roots)
-
-          while queue:
-              package_id = queue.popleft()
-              node = nodes[package_id]
-              for dependency in node.get('deps', []):
-                  dependency_id = dependency['pkg']
-                  if dependency_id in parent:
-                      continue
-                  parent[dependency_id] = (package_id, dependency)
-                  queue.append(dependency_id)
-
-          rsa_ids = [package_id for package_id in parent if packages[package_id]['name'] == 'rsa']
-          if not rsa_ids:
-              print('No RSA path remains after the proposed root feature policy.')
-              raise SystemExit(0)
-
-          for rsa_id in rsa_ids:
-              chain = []
-              cursor = rsa_id
-              while True:
-                  edge = parent[cursor]
-                  chain.append((cursor, edge[1] if edge else None))
-                  if edge is None:
-                      break
-                  cursor = edge[0]
-              chain.reverse()
-              root_id, _ = chain[0]
-              root = packages[root_id]
-              print(f"ROOT {root['name']} {root['version']}")
-              for package_id, dependency in chain[1:]:
-                  package = packages[package_id]
-                  kinds = dependency.get('dep_kinds') or []
-                  rendered = ', '.join(
-                      f"{item.get('kind') or 'normal'} @ {item.get('target') or 'all targets'}"
-                      for item in kinds
-                  )
-                  print(f"  -> {dependency['name']} [{rendered}] -> {package['name']} {package['version']}")
-          PY
+          cargo tree --all-features --target all -i rsa -e features \
+            > /tmp/rsa-feature-tree.txt 2>&1
           {
-            printf 'Trace the remaining RSA dependency after disabling base SeaORM defaults.\n\n'
-            printf '## Remaining RSA path\n\n```text\n'
-            cat /tmp/rsa-path.txt
+            printf 'Trace the exact feature that keeps RSA active after disabling base SeaORM defaults.\n\n'
+            printf '## Feature-expanded RSA path\n\n```text\n'
+            cat /tmp/rsa-feature-tree.txt
             printf '\n```\n'
-          } > /tmp/rsa-path-body.md
+          } > /tmp/rsa-feature-body.md
           gh issue edit "$SECURITY_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
-            --body-file /tmp/rsa-path-body.md
+            --body-file /tmp/rsa-feature-body.md
