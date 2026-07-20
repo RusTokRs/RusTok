@@ -78,16 +78,39 @@ jobs:
           git diff --check
 
       - name: Verify Alloy and composed migrator
+        id: verify
+        shell: bash
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/alloy-current-main-compile
         run: |
-          cargo test --locked -p alloy
-          cargo check --locked -p rustok-modules -p rustok-migrations
-          cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
-            --output /tmp/alloy-current-main-migration-plan.json
-          test -s /tmp/alloy-current-main-migration-plan.json
+          set +e
+          (
+            cargo test --locked -p alloy &&
+            cargo check --locked -p rustok-modules -p rustok-migrations &&
+            cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
+              --output /tmp/alloy-current-main-migration-plan.json &&
+            test -s /tmp/alloy-current-main-migration-plan.json
+          ) > alloy-current-main-compile.log 2>&1
+          exit_code=$?
+          set -e
+          tail -n 360 alloy-current-main-compile.log
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Alloy compile diagnostic
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: alloy-current-main-compile-${{ github.run_id }}
+          path: alloy-current-main-compile.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Enforce Alloy verification
+        if: steps.verify.outputs.exit_code != '0'
+        run: exit 1
 
       - name: Commit and publish verified repair
+        if: steps.verify.outputs.exit_code == '0'
         shell: bash
         run: |
           set -euo pipefail
