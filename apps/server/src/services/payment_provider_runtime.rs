@@ -1,4 +1,6 @@
-use crate::error::{Error, Result};
+#[cfg(feature = "payment-stripe")]
+use crate::error::Error;
+use crate::error::Result;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 /// Build the process-owned payment provider registry once for all transports.
@@ -9,15 +11,19 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 pub fn build_payment_provider_registry(
     server: &ServerRuntimeContext,
 ) -> Result<rustok_payment::providers::PaymentProviderRegistry> {
-    let mut registry = rustok_payment::providers::PaymentProviderRegistry::with_manual_provider();
-
     #[cfg(feature = "payment-stripe")]
-    register_deployment_stripe_provider(server, &mut registry)?;
+    {
+        let mut registry =
+            rustok_payment::providers::PaymentProviderRegistry::with_manual_provider();
+        register_deployment_stripe_provider(server, &mut registry)?;
+        Ok(registry)
+    }
 
     #[cfg(not(feature = "payment-stripe"))]
-    let _ = server;
-
-    Ok(registry)
+    {
+        let _ = server;
+        Ok(rustok_payment::providers::PaymentProviderRegistry::with_manual_provider())
+    }
 }
 
 #[cfg(feature = "payment-stripe")]
