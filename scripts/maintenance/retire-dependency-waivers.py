@@ -13,8 +13,29 @@ def replace_once(path: Path, old: str, new: str) -> None:
 cargo = Path("Cargo.toml")
 replace_once(
     cargo,
-    'sea-orm = { version = "1.1", features = [\n',
-    'sea-orm = { version = "1.1", default-features = false, features = [\n',
+    '''sea-orm = { version = "1.1", features = [
+    "sqlx-postgres",
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+    "with-uuid",
+    "with-chrono",
+    "with-json",
+] }
+''',
+    '''sea-orm = { version = "1.1", default-features = false, features = [
+    "sqlx-postgres",
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+    "with-uuid",
+    "with-chrono",
+    "with-json",
+    "with-rust_decimal",
+    "with-bigdecimal",
+    "with-time",
+] }
+''',
 )
 
 Path("scripts/verify/verify-dependency-feature-hygiene.mjs").write_text(
@@ -112,6 +133,9 @@ if (!orm) {
     '"with-uuid"',
     '"with-chrono"',
     '"with-json"',
+    '"with-rust_decimal"',
+    '"with-bigdecimal"',
+    '"with-time"',
   ]) {
     requireSpec(orm, feature, "sea-orm");
   }
@@ -203,7 +227,7 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ SeaORM MySQL/native-TLS and Postcard heapless defaults remain disabled across workspace manifests");
+console.log("✔ SeaORM feature parity is explicit while MySQL/native-TLS and Postcard heapless defaults remain disabled");
 '''
 )
 
@@ -227,13 +251,13 @@ replacement = '''## Active Exceptions
 | Patched version | No patched `rsa 0.9.x` release is currently available |
 | Repository policy location | `.cargo/audit.toml` |
 | Accountable owner | Platform security / dependency maintainers |
-| Dependency path | `Cargo.lock` retains the optional SQLx MySQL package path `sqlx-mysql 0.8.6` → `rsa 0.9.10`; the root `sea-orm` and `sea-orm-migration` specifications disable defaults and select only PostgreSQL, SQLite and Tokio/Rustls |
-| Reachability | `cargo tree --locked --workspace --all-features --target all -i rsa` has empty stdout after the SeaORM feature hardening, so no workspace package or supported target selects the RSA path; `cargo audit` still reports the package because it is present in the lockfile |
+| Dependency path | `Cargo.lock` retains the optional SQLx MySQL package path `sqlx-mysql 0.8.6` → `rsa 0.9.10`; the root `sea-orm` and `sea-orm-migration` specifications disable defaults and select only PostgreSQL, SQLite and Tokio/Rustls while explicitly preserving the prior data-type integrations |
+| Reachability | `cargo tree --locked --workspace --all-features --target all -i rsa` has empty stdout, so no workspace package or supported target selects the RSA path; `cargo audit` still reports the package because it is present in the lockfile |
 | Compensating controls | The permanent feature-hygiene verifier forbids SeaORM/SQLx MySQL, `sqlx-all`, migration CLI and native-TLS drift; supported database backends remain PostgreSQL and SQLite; application JWT verification uses `jsonwebtoken/aws_lc_rs` |
 | Remediation | Remove the waiver only when an upstream SeaORM/SQLx update, a bounded fork or lockfile/tooling behavior removes the lock-only optional MySQL/RSA package, or when a patched RSA release resolves the advisory; never delete lockfile package blocks manually |
 | Approved | 2026-07-17, temporary dependency stabilization exception |
 | Expires | 2026-07-24 |
-| Evidence required | Root SeaORM feature policy, empty locked all-feature/all-target inverse tree, permanent dependency reachability workflow, and `cargo audit` output |
+| Evidence required | Explicit-parity SeaORM feature policy, empty locked all-feature/all-target inverse tree, permanent dependency reachability workflow, and `cargo audit` output |
 | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2023-0071.html> |
 
 ### RUSTSEC-2023-0089 — `atomic-polyfill` is unmaintained
@@ -286,14 +310,15 @@ Contained; the temporary audit exception remains active through July 24, 2026.
 
 RusToK uses `jsonwebtoken/aws_lc_rs` for application JWT verification. The root `sea-orm`
 and `sea-orm-migration` workspace dependencies disable default features and explicitly select only
-PostgreSQL, SQLite, Tokio/Rustls and the data-type integrations used by the platform. The permanent
-feature-hygiene verifier rejects MySQL, `sqlx-all`, native-TLS and migration CLI drift.
+PostgreSQL, SQLite, Tokio/Rustls and the same data-type integrations that were previously supplied
+by SeaORM defaults. The permanent feature-hygiene verifier rejects MySQL, `sqlx-all`, native-TLS
+and migration CLI drift without reducing the supported ORM type surface.
 
-After this feature hardening, the locked all-workspace, all-feature, all-target inverse tree for
-`rsa` is empty. The package remains as a lockfile-only optional dependency of the SQLx MySQL path,
-so `cargo audit` still reports RUSTSEC-2023-0071 even though no RusToK build selects or compiles it.
-The waiver must remain until upstream dependency or lockfile behavior removes that package, or a
-patched RSA release resolves the advisory.
+The locked all-workspace, all-feature, all-target inverse tree for `rsa` is empty. The package
+remains as a lockfile-only optional dependency of the SQLx MySQL path, so `cargo audit` still reports
+RUSTSEC-2023-0071 even though no RusToK build selects or compiles it. The waiver must remain until
+upstream dependency or lockfile behavior removes that package, or a patched RSA release resolves
+the advisory.
 
 ## Verification
 
