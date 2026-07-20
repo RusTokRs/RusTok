@@ -39,6 +39,8 @@ jobs:
           set -euo pipefail
           sed -i 's/crate::MAX_TEST_ERROR_LENGTH/crate::model::MAX_TEST_ERROR_LENGTH/g' \
             crates/alloy/src/runner/test.rs
+          sed -i 's/use crate::TEST_RUN_LEASE_SECONDS;/use crate::model::TEST_RUN_LEASE_SECONDS;/' \
+            crates/alloy/src/runner/test.rs
           sed -i 's/crate::test_run_lease_expires_at/crate::model::test_run_lease_expires_at/g' \
             crates/alloy/src/storage/memory.rs \
             crates/alloy/src/storage/sea_orm.rs
@@ -46,6 +48,7 @@ jobs:
             crates/alloy/src/runner/release.rs
           sed -i 's/Expr::col(Column::UpdatedAt))/Expr::col(Column::UpdatedAt).into())/g' \
             crates/alloy/src/storage/sea_orm.rs
+          python3 -c 'from pathlib import Path; p=Path("crates/alloy/src/api/dto.rs"); s=p.read_text(); old="#[cfg(test)]\nmod tests {\n    use super::*;\n    use chrono::{TimeZone, Utc};"; new="#[cfg(test)]\nmod execution_log_tests {\n    use super::*;\n    use chrono::{TimeZone, Utc};"; assert s.count(old)==1; p.write_text(s.replace(old,new,1))'
           python3 -c 'from pathlib import Path; p=Path("crates/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs"); s=p.read_text(); old="        manager\n            .get_connection()\n            .execute_unprepared(\"DROP TABLE module_artifact_data_exports\")\n            .await\n"; new="        manager\n            .get_connection()\n            .execute_unprepared(\"DROP TABLE module_artifact_data_exports\")\n            .await?;\n        Ok(())\n"; assert s.count(old)==1; p.write_text(s.replace(old,new,1))'
           cargo fmt -p alloy -p rustok-modules
           git diff --check
