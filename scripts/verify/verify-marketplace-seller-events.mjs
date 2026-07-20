@@ -12,8 +12,10 @@ const files = {
   reader: "crates/rustok-marketplace-seller/src/seller_events.rs",
   service: "crates/rustok-marketplace-seller/src/service.rs",
   ports: "crates/rustok-marketplace-seller/src/ports.rs",
+  receipted: "crates/rustok-marketplace-seller/src/receipted_commands.rs",
   lifecycleTests: "crates/rustok-marketplace-seller/src/seller_events_tests.rs",
   sellerResponseTests: "crates/rustok-marketplace-seller/src/seller_response_events_tests.rs",
+  memberTests: "crates/rustok-marketplace-seller/src/seller_member_events_tests.rs",
   registry: "crates/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json",
   receipts: "crates/rustok-marketplace-seller/src/command_receipts.rs",
 };
@@ -73,12 +75,15 @@ for (const marker of [
   "MAX_EVENTS_PER_READ: u64 = 200",
   "list_seller_events",
   "append_receipted_seller_event",
+  "append_receipted_member_event",
   '"create_seller"',
   '"update_seller_profile"',
   '"submit_seller_onboarding"',
   '"review_seller_onboarding"',
   '"suspend_seller"',
   '"reactivate_seller"',
+  '"add_seller_member"',
+  '"update_seller_member"',
   "MarketplaceSellerEventKind::Created",
   "MarketplaceSellerEventKind::ProfileUpdated",
   "MarketplaceSellerEventKind::OnboardingSubmitted",
@@ -86,7 +91,10 @@ for (const marker of [
   "MarketplaceSellerEventKind::OnboardingRejected",
   "MarketplaceSellerEventKind::Suspended",
   "MarketplaceSellerEventKind::Reactivated",
+  "MarketplaceSellerEventKind::MemberAdded",
+  "MarketplaceSellerEventKind::MemberUpdated",
   "seller response has no immutable event mapping",
+  "member response has no immutable event mapping",
   "MarketplaceSellerEventProvenance::Command",
   "order_by_desc(seller_event::Column::CreatedAt)",
   "order_by_desc(seller_event::Column::Id)",
@@ -101,6 +109,9 @@ for (const marker of [
   "ListMarketplaceSellerEventsRequest",
   "MarketplaceSellerEventResponse",
   "PortCallPolicy::read()",
+  "self.add_member_with_receipt(",
+  "self.update_member_with_receipt(",
+  "context.locale.as_str()",
 ]) requireMarker(sources.ports, marker, files.ports);
 
 for (const marker of [
@@ -121,7 +132,28 @@ if (
   appendIndex > receiptCompletionIndex
 ) {
   failures.push(
-    `${files.receipts}: immutable event must be appended before receipt completion`,
+    `${files.receipts}: immutable seller event must be appended before receipt completion`,
+  );
+}
+
+for (const marker of [
+  '"locale": locale',
+  "append_receipted_member_event(",
+  "finish_member_command(receipt, locale.as_str(), result).await",
+  "rollback_command(receipt, error).await",
+  "complete_command(receipt, RESPONSE_KIND_MEMBER, &response).await",
+]) requireMarker(sources.receipted, marker, files.receipted);
+const memberAppendIndex = sources.receipted.indexOf("append_receipted_member_event(");
+const memberCompleteIndex = sources.receipted.indexOf(
+  "complete_command(receipt, RESPONSE_KIND_MEMBER, &response).await",
+);
+if (
+  memberAppendIndex < 0 ||
+  memberCompleteIndex < 0 ||
+  memberAppendIndex > memberCompleteIndex
+) {
+  failures.push(
+    `${files.receipted}: immutable member event must be appended before receipt completion`,
   );
 }
 
@@ -144,16 +176,25 @@ for (const marker of [
   marker,
   files.sellerResponseTests,
 );
+for (const marker of [
+  "member_commands_commit_one_event_per_receipt_and_bind_locale",
+  "replay must not duplicate member events",
+  "MarketplaceSellerEventKind::MemberAdded",
+  "MarketplaceSellerEventKind::MemberUpdated",
+  "IdempotencyConflict",
+]) requireMarker(sources.memberTests, marker, files.memberTests);
 
 for (const marker of [
   '"table": "marketplace_seller_events"',
-  '"status": "seller_commands_atomic"',
+  '"status": "all_live_commands_atomic"',
   '"create_seller"',
   '"update_seller_profile"',
   '"submit_seller_onboarding"',
   '"review_seller_onboarding"',
   '"suspend_seller"',
   '"reactivate_seller"',
+  '"add_seller_member"',
+  '"update_seller_member"',
   '"compatibility_columns_removed": false',
   '"list_seller_events"',
 ]) requireMarker(sources.registry, marker, files.registry);

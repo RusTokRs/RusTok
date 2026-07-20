@@ -16,7 +16,7 @@ tags = ["marketplace", "seller", "membership", "onboarding"]
 entry_type = "MarketplaceSellerModule"
 
 [provides.graphql]
-query = "graphql::MarketplaceSellerQuery"
+query = "graphql_root::MarketplaceSellerCombinedQuery"
 mutation = "graphql::MarketplaceSellerMutation"
 
 [provides.admin_ui]
