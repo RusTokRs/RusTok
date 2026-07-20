@@ -1,10 +1,8 @@
 name: One-off Dependency Waiver Status
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/one-off-dependency-waiver-status.yml
+  issue_comment:
+    types: [created]
 
 permissions:
   actions: read
@@ -14,26 +12,45 @@ permissions:
 jobs:
   status:
     if: >-
-      github.event.head_commit.message == 'test(ci): capture exact containment compile failure'
+      github.event.issue.number == 1851 &&
+      github.event.comment.body == '/status-dependency-publisher'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
       STATUS_ISSUE: 1851
-      FAILED_RUN: 29744332828
     steps:
-      - name: Persist exact containment failure
+      - name: Persist publisher runs and failure tail
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          failure_tail=$(gh run view "$FAILED_RUN" \
+          runs=$(gh run list \
             --repo "$GITHUB_REPOSITORY" \
-            --log-failed 2>&1 | tail -n 80)
+            --workflow one-off-edition-2024-ulid.yml \
+            --limit 10 \
+            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
+          failed_run=$(printf '%s' "$runs" | node -e '
+            let input = "";
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => {
+              const run = JSON.parse(input).find(item => item.conclusion === "failure");
+              if (run) process.stdout.write(String(run.databaseId));
+            });
+          ')
+          failure_tail="No failed publisher run found."
+          if [ -n "$failed_run" ]; then
+            set +e
+            failure_tail=$(gh run view "$failed_run" \
+              --repo "$GITHUB_REPOSITORY" \
+              --log-failed 2>&1 | tail -n 50)
+            set -e
+          fi
           {
-            printf 'Inspect the exact baseline compiler failure that follows successful dependency-policy checks.\n\n'
-            printf '## Run %s failure tail\n\n```text\n%s\n```\n' "$FAILED_RUN" "$failure_tail"
-          } >/tmp/dependency-waiver-status.md
+            printf 'Track the issue-triggered lock-only containment publisher.\n\n'
+            printf '## Publisher runs\n\n```json\n%s\n```\n\n' "$runs"
+            printf '## Latest publisher failure\n\n```text\n%s\n```\n' "$failure_tail"
+          } >/tmp/dependency-publisher-status.md
           gh issue edit "$STATUS_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
-            --body-file /tmp/dependency-waiver-status.md
+            --body-file /tmp/dependency-publisher-status.md
