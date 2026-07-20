@@ -27,7 +27,7 @@ jobs:
   harden:
     if: >-
       (github.event_name == 'push' &&
-       github.event.head_commit.message == 'test(ci): run cache clock diagnostics') ||
+       github.event.head_commit.message == 'test(ci): persist cache test failure') ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.title == '[automation] harden cache system clock' &&
        github.event.issue.user.login == 'loid345' &&
@@ -110,14 +110,20 @@ jobs:
           set -e
           if [ "$status" -ne 0 ]; then
             tail -n 180 /tmp/cache-clock-tests.log > /tmp/cache-clock-test-tail.txt
+            current_body=$(gh issue view "$CACHE_CLOCK_ISSUE" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json body --jq .body)
+            base_body=$(printf '%s\n' "$current_body" | sed '/^## Latest cache clock diagnostic$/,$d')
             {
+              printf '%s\n\n' "$base_body"
+              printf '## Latest cache clock diagnostic\n\n'
               printf 'Cache clock library tests failed in run `%s`.\n\n```text\n' "$GITHUB_RUN_ID"
               cat /tmp/cache-clock-test-tail.txt
               printf '\n```\n'
-            } > /tmp/cache-clock-test-comment.md
-            gh issue comment "$CACHE_CLOCK_ISSUE" \
+            } > /tmp/cache-clock-issue-body.md
+            gh issue edit "$CACHE_CLOCK_ISSUE" \
               --repo "$GITHUB_REPOSITORY" \
-              --body-file /tmp/cache-clock-test-comment.md
+              --body-file /tmp/cache-clock-issue-body.md
             exit "$status"
           fi
       - name: Remove one-off implementation files
