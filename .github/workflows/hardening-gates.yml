@@ -34,6 +34,8 @@ jobs:
         run: node scripts/verify/verify-advisory-exceptions.mjs
       - name: Verify dependency feature hygiene
         run: node scripts/verify/verify-dependency-feature-hygiene.mjs
+      - name: Verify cache clock fail-closed contract
+        run: node scripts/verify/verify-cache-clock-contract.mjs
       - name: Verify CSP reporting contract
         run: node scripts/verify/verify-csp-reporting-contract.mjs
       - name: Verify Rust-hosted CSP style boundary
