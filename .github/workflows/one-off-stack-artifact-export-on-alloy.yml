@@ -1,0 +1,68 @@
+name: One-off Stack Artifact Export On Alloy
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-off-stack-artifact-export-on-alloy
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  stack-and-verify:
+    if: github.repository == 'RusTokRs/RusTok' && github.head_ref == 'agent/fix-artifact-data-exports-down'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: agent/fix-artifact-data-exports-down
+          fetch-depth: 0
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+
+      - name: Rebase and clean temporary workflows
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin agent/fix-alloy-current-main-compile
+          git rebase origin/agent/fix-alloy-current-main-compile
+          git rm -f --ignore-unmatch \
+            .github/workflows/one-off-repair-artifact-export-prerequisite.yml \
+            .github/workflows/one-off-verify-prerequisite-and-rebase-moderation.yml \
+            .github/workflows/one-off-stack-artifact-export-on-alloy.yml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(migrations): remove completed prerequisite workflows"
+          fi
+
+      - name: Reconcile lock and verify composed graph
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/artifact-export-on-alloy
+        run: |
+          cargo metadata --format-version 1 > /tmp/artifact-export-metadata.json
+          rustfmt --edition 2021 --check \
+            crates/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs
+          cargo check --locked -p rustok-modules -p rustok-migrations
+          cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
+            --output /tmp/artifact-export-migration-plan.json
+          test -s /tmp/artifact-export-migration-plan.json
+          git diff --check
+
+      - name: Publish verified stacked prerequisite
+        run: |
+          git add Cargo.lock
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(migrations): reconcile stacked lock"
+          fi
+          git push --force-with-lease origin HEAD:agent/fix-artifact-data-exports-down
