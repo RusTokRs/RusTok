@@ -1,8 +1,10 @@
 name: One-off Alloy SeaORM Repair
 
 on:
-  issue_comment:
-    types: [created]
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-off-alloy-seaorm-diagnostic.yml
 
 permissions:
   contents: write
@@ -16,8 +18,7 @@ env:
 jobs:
   repair:
     if: >-
-      github.event.issue.number == 1853 &&
-      github.event.comment.body == '/repair-alloy-seaorm'
+      github.event.head_commit.message == 'fix(alloy): validate SeaORM compatibility repair'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
