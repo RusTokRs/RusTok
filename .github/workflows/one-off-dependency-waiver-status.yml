@@ -19,18 +19,23 @@ jobs:
     env:
       STATUS_ISSUE: 1851
     steps:
-      - name: Persist compact waiver repair diagnostics
+      - name: Persist compact waiver and edition diagnostics
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          runs=$(gh run list \
+          waiver_runs=$(gh run list \
             --repo "$GITHUB_REPOSITORY" \
             --workflow one-off-dependency-waiver-diagnostic.yml \
             --limit 10 \
             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
-          failed_run=$(printf '%s' "$runs" | node -e '
+          edition_runs=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow one-off-edition-2024-ulid.yml \
+            --limit 10 \
+            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
+          failed_run=$(printf '%s' "$edition_runs" | node -e '
             let input = "";
             process.stdin.on("data", chunk => input += chunk);
             process.stdin.on("end", () => {
@@ -38,18 +43,19 @@ jobs:
               if (run) process.stdout.write(String(run.databaseId));
             });
           ')
-          failure_tail="No failed repair run found."
+          failure_tail="No failed edition repair run found."
           if [ -n "$failed_run" ]; then
             set +e
             failure_tail=$(gh run view "$failed_run" \
               --repo "$GITHUB_REPOSITORY" \
-              --log-failed 2>&1 | tail -n 35)
+              --log-failed 2>&1 | tail -n 45)
             set -e
           fi
           {
             printf 'Retire the two temporary dependency waivers after proving lock-only reachability.\n\n'
-            printf '## Current diagnostic runs\n\n```json\n%s\n```\n\n' "$runs"
-            printf '## Latest diagnostic failure\n\n```text\n%s\n```\n' "$failure_tail"
+            printf '## Waiver workflow runs\n\n```json\n%s\n```\n\n' "$waiver_runs"
+            printf '## Edition repair runs\n\n```json\n%s\n```\n\n' "$edition_runs"
+            printf '## Latest edition repair failure\n\n```text\n%s\n```\n' "$failure_tail"
           } >/tmp/dependency-waiver-status.md
           gh issue edit "$STATUS_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
