@@ -1,0 +1,49 @@
+name: One-off Inspect Latest Migration Pin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-off-migration-pin-status-push.yml
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Persist latest migration pin run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: 76dc3f6ee47e8170f0a25840d6572290bdf1f014
+        shell: bash
+        run: |
+          set -euo pipefail
+          runs=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow one-off-pin-migration-actions.yml \
+            --limit 12 \
+            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
+          target_run=$(printf '%s' "$runs" | TARGET_SHA="$TARGET_SHA" node -e '
+            let input = "";
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => {
+              const run = JSON.parse(input).find(item => item.headSha === process.env.TARGET_SHA);
+              if (run) process.stdout.write(String(run.databaseId));
+            });
+          ')
+          target_log='Target run is not registered yet.'
+          if [[ -n "$target_run" ]]; then
+            set +e
+            target_log=$(gh run view "$target_run" --repo "$GITHUB_REPOSITORY" --log-failed 2>&1 | tail -n 140)
+            set -e
+          fi
+          {
+            printf 'Latest migration action pin diagnostics.\n\n## Runs\n\n```json\n%s\n```\n\n' "$runs"
+            printf '## Target run log\n\n```text\n%s\n```\n' "$target_log"
+          } >/tmp/migration-pin-latest.md
+          gh issue edit 1817 --repo "$GITHUB_REPOSITORY" --body-file /tmp/migration-pin-latest.md
