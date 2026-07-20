@@ -13,11 +13,12 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   SECURITY_ISSUE: 1851
+  CARGO_TERM_COLOR: never
 
 jobs:
   trace:
     if: >-
-      github.event.head_commit.message == 'test(security): trace RSA feature activation'
+      github.event.head_commit.message == 'test(security): capture clean RSA feature activation'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -32,14 +33,16 @@ jobs:
         run: |
           python3 scripts/maintenance/retire-dependency-waivers.py
           node scripts/verify/verify-dependency-feature-hygiene.mjs
-      - name: Persist feature-expanded RSA path
+      - name: Persist clean feature-expanded RSA path
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           cargo tree --all-features --target all -i rsa -e features \
-            > /tmp/rsa-feature-tree.txt 2>&1
+            > /tmp/rsa-feature-tree.txt \
+            2> /tmp/rsa-feature-tree.stderr
+          test -s /tmp/rsa-feature-tree.txt
           {
             printf 'Trace the exact feature that keeps RSA active after disabling base SeaORM defaults.\n\n'
             printf '## Feature-expanded RSA path\n\n```text\n'
