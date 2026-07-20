@@ -33,6 +33,7 @@ use crate::{
 const WASM_COMPONENT_MEDIA_TYPE: &str = "application/wasm";
 const SIDECAR_MEDIA_TYPE: &str = "application/vnd.rustok.sidecar.v1";
 const STATIC_PROMOTION_MEDIA_TYPE: &str = "application/vnd.rustok.static-promotion.v1";
+const RHAI_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
 const MAX_ARTIFACT_MIGRATION_CHECKPOINT_BYTES: usize = 16 * 1024;
 
 /// Hard bounds applied before an artifact enters the admission pipeline. The

@@ -27,3 +27,6 @@ rustok-core = { workspace = true, optional = true }
 rustok-forum = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

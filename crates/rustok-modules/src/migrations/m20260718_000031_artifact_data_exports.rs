@@ -70,6 +70,7 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared("DROP TABLE module_artifact_data_exports")
-            .await
+            .await?;
+        Ok(())
     }
 }

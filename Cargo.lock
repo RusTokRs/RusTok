@@ -13002,6 +13002,7 @@ dependencies = [
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
  "serde",
+ "serde_json",
  "uuid",
 ]
 
