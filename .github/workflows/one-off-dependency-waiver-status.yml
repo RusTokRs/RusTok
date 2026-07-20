@@ -20,7 +20,7 @@ jobs:
     env:
       STATUS_ISSUE: 1851
     steps:
-      - name: Persist waiver repair runs and failure tail
+      - name: Persist compact waiver repair diagnostics
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -47,12 +47,8 @@ jobs:
               --log-failed 2>&1 | tail -n 120)
             set -e
           fi
-          current_body=$(gh issue view "$STATUS_ISSUE" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json body --jq .body)
-          base_body=$(printf '%s\n' "$current_body" | sed '/^## Current repair runs$/,$d')
           {
-            printf '%s\n\n' "$base_body"
+            printf 'Retire the two temporary dependency waivers after proving all-target unreachability and pruning only packages disconnected from workspace roots.\n\n'
             printf '## Current repair runs\n\n```json\n%s\n```\n\n' "$runs"
             printf '## Latest repair failure\n\n```text\n%s\n```\n' "$failure_tail"
           } >/tmp/dependency-waiver-status.md
