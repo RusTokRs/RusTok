@@ -158,11 +158,29 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-compile-repair
         run: cargo check --locked -p rustok-pages -p rustok-modules
       - name: Export composed migration plan
+        id: exporter
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-compile-repair
-        run: >-
-          cargo run --locked -p rustok-migrations --bin export_migration_plan --
-          --output /tmp/migration-plan.json
+        shell: bash
+        run: |
+          set +e
+          cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
+            --output /tmp/migration-plan.json > migration-export-output.txt 2>&1
+          exit_code=$?
+          set -e
+          tail -n 240 migration-export-output.txt
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+      - name: Upload migration exporter output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: migration-export-output-${{ github.run_id }}
+          path: migration-export-output.txt
+          if-no-files-found: error
+          retention-days: 1
+      - name: Enforce migration exporter result
+        if: steps.exporter.outputs.exit_code != '0'
+        run: exit 1
       - name: Verify migration plan artifact
         run: test -s /tmp/migration-plan.json
       - name: Restore lockfile and remove one-off workflow
