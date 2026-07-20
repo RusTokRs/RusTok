@@ -6,6 +6,7 @@ mod checkout_fulfillment_stages;
 mod checkout_inventory_order_adoption;
 mod checkout_inventory_reservation_executor;
 mod checkout_inventory_reservation_journal;
+mod checkout_marketplace_allocation;
 mod checkout_operation;
 mod checkout_order_confirmation;
 mod checkout_order_creation;
@@ -67,6 +68,10 @@ pub use checkout_inventory_reservation_journal::{
     CheckoutInventoryReservationResult, CheckoutInventoryReservationStatus,
     PlanCheckoutInventoryReservation,
 };
+pub use checkout_marketplace_allocation::{
+    order_contains_marketplace_lines, CheckoutMarketplaceAllocationError,
+    CheckoutMarketplaceAllocationResult, CheckoutMarketplaceAllocationStage,
+};
 pub use checkout_operation::{
     BeginCheckoutOperation, CheckoutOperationCheckpoint, CheckoutOperationError,
     CheckoutOperationJournal, CheckoutOperationResult, CheckoutOperationStage,
@@ -123,11 +128,11 @@ pub use recovering_staged_checkout::{
 };
 pub use refund_reconciliation::RefundReconciliationService;
 pub use return_completion_operation::{
-    BeginReturnCompletionOperation, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
-    MAX_RETURN_COMPLETION_LEASE_SECONDS, ReturnCompletionOperationCheckpoint,
+    BeginReturnCompletionOperation, ReturnCompletionOperationCheckpoint,
     ReturnCompletionOperationError, ReturnCompletionOperationJournal,
     ReturnCompletionOperationResult, ReturnCompletionOperationStage,
-    ReturnCompletionOperationStatus,
+    ReturnCompletionOperationStatus, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
+    MAX_RETURN_COMPLETION_LEASE_SECONDS,
 };
 pub use return_completion_orchestration::{
     CompleteReturnClaimInput, CompleteReturnExchangeInput, CompleteReturnRefundInput,
