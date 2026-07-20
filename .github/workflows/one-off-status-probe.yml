@@ -15,25 +15,16 @@ permissions:
 
 jobs:
   probe:
-    name: Observe guarded repairs
+    name: Observe cache clock hardening
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: List migration compile repair runs
+      - name: List cache clock hardening runs
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh run list
-          --repo "$GITHUB_REPOSITORY"
-          --workflow one-off-fix-migration-compile.yml
-          --limit 10
-          --json databaseId,event,status,conclusion,createdAt,updatedAt,headSha,displayTitle,url
-      - name: List Cargo lock repair runs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh run list
-          --repo "$GITHUB_REPOSITORY"
-          --workflow one-off-repair-cargo-lock.yml
+          --repo $GITHUB_REPOSITORY
+          --workflow one-off-harden-cache-clock.yml
           --limit 10
           --json databaseId,event,status,conclusion,createdAt,updatedAt,headSha,displayTitle,url
