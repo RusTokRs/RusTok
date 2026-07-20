@@ -62,6 +62,14 @@ jobs:
                   raise SystemExit(f"{path}: obsolete format replacement was incomplete")
               path.write_text(updated)
 
+          commerce = Path("crates/rustok-commerce/src/migrations/mod.rs")
+          old_dependency = '"m20260325_000111_create_provider_operation_journal"'
+          new_dependency = '"m20260713_000110_create_provider_operation_journal"'
+          commerce_source = commerce.read_text()
+          if commerce_source.count(old_dependency) != 1:
+              raise SystemExit("commerce migration graph must contain exactly one obsolete provider journal dependency")
+          commerce.write_text(commerce_source.replace(old_dependency, new_dependency, 1))
+
           migrations = {
               Path("crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs"):
                   '            .execute_unprepared("DROP TABLE module_artifact_data_objects")\n            .await\n',
@@ -90,6 +98,8 @@ jobs:
           do
             grep -Fq 'CONTENT_FORMAT_GRAPESJS_V1' "$path"
           done
+          ! grep -Fq 'm20260325_000111_create_provider_operation_journal' crates/rustok-commerce/src/migrations/mod.rs
+          grep -Fq 'm20260713_000110_create_provider_operation_journal' crates/rustok-commerce/src/migrations/mod.rs
           grep -Fq '.execute_unprepared("DROP TABLE module_artifact_data_objects")' \
             crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs
           grep -Fq '.execute_unprepared("DROP TABLE module_artifact_data_object_operations")' \
@@ -100,6 +110,7 @@ jobs:
             crates/rustok-modules/src/migrations/m20260718_000026_artifact_data_object_operations.rs)" = "1"
           mapfile -t changed < <(git diff --name-only | sort)
           expected=(
+            crates/rustok-commerce/src/migrations/mod.rs
             crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs
             crates/rustok-modules/src/migrations/m20260718_000026_artifact_data_object_operations.rs
             crates/rustok-pages/src/graphql/mutation.rs
@@ -148,6 +159,7 @@ jobs:
       - name: Verify formatting of repaired sources
         run: >-
           rustfmt --edition 2021 --check
+          crates/rustok-commerce/src/migrations/mod.rs
           crates/rustok-pages/src/graphql/mutation.rs
           crates/rustok-pages/src/services/page.rs
           crates/rustok-pages/src/services/scenario_baseline.rs
@@ -156,7 +168,7 @@ jobs:
       - name: Check affected crates
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-compile-repair
-        run: cargo check --locked -p rustok-pages -p rustok-modules
+        run: cargo check --locked -p rustok-pages -p rustok-modules -p rustok-commerce
       - name: Export composed migration plan
         id: exporter
         env:
@@ -195,6 +207,7 @@ jobs:
           mapfile -t changed < <(git diff --name-only | sort)
           expected=(
             .github/workflows/one-off-fix-migration-compile.yml
+            crates/rustok-commerce/src/migrations/mod.rs
             crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs
             crates/rustok-modules/src/migrations/m20260718_000026_artifact_data_object_operations.rs
             crates/rustok-pages/src/graphql/mutation.rs
@@ -217,4 +230,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh issue close "${{ github.event.issue.number }}"
-          --comment "Migration graph compilation repaired; affected crates and composed migration-plan exporter passed with the minimal temporary lock correction; one-off workflow removed itself."
+          --comment "Migration graph compilation and dependency descriptors repaired; affected crates and composed migration-plan exporter passed with the minimal temporary lock correction; one-off workflow removed itself."
