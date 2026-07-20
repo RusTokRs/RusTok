@@ -33,7 +33,7 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
 
-      - name: Apply bounded repairs
+      - name: Apply bounded repairs and diagnostic assertion
         shell: bash
         run: |
           set -euo pipefail
@@ -50,6 +50,7 @@ jobs:
             crates/alloy/src/storage/sea_orm.rs
           python3 -c 'from pathlib import Path; p=Path("crates/alloy/src/api/dto.rs"); s=p.read_text(); old="#[cfg(test)]\nmod tests {\n    use super::*;\n    use chrono::{TimeZone, Utc};"; new="#[cfg(test)]\nmod execution_log_tests {\n    use super::*;\n    use chrono::{TimeZone, Utc};"; assert s.count(old)==1; p.write_text(s.replace(old,new,1))'
           python3 -c 'from pathlib import Path; p=Path("crates/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs"); s=p.read_text(); old="        manager\n            .get_connection()\n            .execute_unprepared(\"DROP TABLE module_artifact_data_exports\")\n            .await\n"; new="        manager\n            .get_connection()\n            .execute_unprepared(\"DROP TABLE module_artifact_data_exports\")\n            .await?;\n        Ok(())\n"; assert s.count(old)==1; p.write_text(s.replace(old,new,1))'
+          python3 -c 'from pathlib import Path; p=Path("crates/alloy/src/lib.rs"); s=p.read_text(); old="        assert!(results.iter().all(ExecutionResult::is_success));"; new="        assert!(\n            results.iter().all(ExecutionResult::is_success),\n            \"on-commit results: {results:#?}\"\n        );"; assert s.count(old)==1; p.write_text(s.replace(old,new,1))'
           cargo fmt -p alloy -p rustok-modules
           git diff --check
 
@@ -59,7 +60,7 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/alloy-repair-publish
         run: |
           set +e
-          cargo test --locked -p alloy > alloy-stacked-test.log 2>&1
+          cargo test --locked -p alloy tests::on_commit_persists_one_execution_log_per_script -- --nocapture > alloy-stacked-test.log 2>&1
           exit_code=$?
           set -e
           echo "$exit_code" > alloy-stacked-test.exit
@@ -76,20 +77,5 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Enforce Alloy stacked tests
-        run: test "$(cat alloy-stacked-test.exit)" = "0"
-
-      - name: Publish Alloy-only commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          git restore -- crates/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm -f -- \
-            .github/workflows/one-off-fix-alloy-current-main-compile.yml \
-            .github/workflows/one-off-publish-alloy-repair.yml
-          git add crates/alloy
-          git diff --cached --check
-          git commit -m "fix(alloy): restore current main compilation"
-          git push origin HEAD:agent/fix-alloy-current-main-compile
+      - name: Stop after diagnostic
+        run: exit 1
