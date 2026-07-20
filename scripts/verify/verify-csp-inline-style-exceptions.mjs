@@ -106,6 +106,34 @@ function forbidMarkers(file, markers) {
   return source;
 }
 
+function productionRustSource(source) {
+  const testBoundary = source.search(/^\s*#\[cfg\(test\)\]\s*$/m);
+  return testBoundary === -1 ? source : source.slice(0, testBoundary);
+}
+
+function forbidProductionMarkers(file, markers) {
+  const source = productionRustSource(read(file));
+  for (const marker of markers) {
+    if (source.includes(marker)) {
+      failures.push(`${file}: forbidden production legacy marker ${marker}`);
+    }
+  }
+  return source;
+}
+
+const testOnlyForbiddenFixture = `const POLICY: &str = "style-src-attr 'none'";
+#[cfg(test)]
+mod tests { const FORBIDDEN: &str = "style-src-attr 'unsafe-inline'"; }`;
+if (productionRustSource(testOnlyForbiddenFixture).includes("style-src-attr 'unsafe-inline'")) {
+  failures.push("production Rust source parser must exclude cfg(test) negative fixtures");
+}
+const productionForbiddenFixture = `const POLICY: &str = "style-src-attr 'unsafe-inline'";
+#[cfg(test)]
+mod tests {}`;
+if (!productionRustSource(productionForbiddenFixture).includes("style-src-attr 'unsafe-inline'")) {
+  failures.push("production Rust source parser must preserve forbidden production policy markers");
+}
+
 if (!exists(registerPath)) {
   console.error(`Inline-style exception register is missing: ${registerPath}`);
   process.exit(1);
@@ -352,7 +380,7 @@ for (const file of [
     "style-src 'self' {nonce}",
     "style-src-attr 'none'",
   ]);
-  forbidMarkers(file, [
+  forbidProductionMarkers(file, [
     "style-src 'self' 'unsafe-inline'",
     "style-src-attr 'unsafe-inline'",
     "RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES",
