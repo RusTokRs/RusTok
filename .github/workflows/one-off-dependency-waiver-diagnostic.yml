@@ -17,7 +17,7 @@ env:
 jobs:
   retire:
     if: >-
-      github.event.head_commit.message == 'fix(security): prune unreachable waiver packages'
+      github.event.head_commit.message == 'fix(security): validate workspace-root lock pruning'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -32,206 +32,27 @@ jobs:
         run: |
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
-      - name: Verify dependency feature policy before lock pruning
-        run: node scripts/verify/verify-dependency-feature-hygiene.mjs
-      - name: Prove packages are unreachable on every target
-        run: |
-          test -z "$(cargo tree --locked -i atomic-polyfill --workspace --all-features --target all 2>/dev/null)"
-          test -z "$(cargo tree --locked -i rsa --workspace --all-features --target all 2>/dev/null)"
-      - name: Prune only package blocks outside the locked resolve graph
+      - name: Verify feature policy and all-target unreachability
         shell: bash
         run: |
           set -euo pipefail
-          cp Cargo.lock /tmp/Cargo.lock.before
-          cargo metadata --locked --format-version 1 > /tmp/cargo-metadata.json
-          python3 - <<'PY'
-          import json
-          import re
-          import tomllib
-          from pathlib import Path
-
-          lock_path = Path("Cargo.lock")
-          original = lock_path.read_text()
-          metadata = json.loads(Path("/tmp/cargo-metadata.json").read_text())
-          packages_by_id = {package["id"]: package for package in metadata["packages"]}
-
-          def identity(package):
-              return (package["name"], package["version"], package.get("source"))
-
-          reachable = {
-              identity(packages_by_id[node["id"]])
-              for node in metadata["resolve"]["nodes"]
-          }
-          before_data = tomllib.loads(original)
-          before = {
-              identity(package)
-              for package in before_data.get("package", [])
-          }
-          missing_from_lock = sorted(reachable - before)
-          if missing_from_lock:
-              raise SystemExit(
-                  f"locked resolve identities missing from Cargo.lock: {missing_from_lock[:20]}"
-              )
-
-          headers = list(re.finditer(r"(?m)^\[\[([^\]]+)\]\]\s*$", original))
-          if not headers:
-              raise SystemExit("Cargo.lock contains no array-table sections")
-
-          output = [original[:headers[0].start()]]
-          removed = []
-          kept = []
-          for index, header in enumerate(headers):
-              end = headers[index + 1].start() if index + 1 < len(headers) else len(original)
-              block = original[header.start():end]
-              if header.group(1) != "package":
-                  output.append(block)
-                  continue
-              package = tomllib.loads(block)["package"][0]
-              package_identity = identity(package)
-              if package_identity in reachable:
-                  output.append(block)
-                  kept.append(package_identity)
-              else:
-                  removed.append(package_identity)
-
-          if set(kept) != reachable:
-              missing = sorted(reachable - set(kept))
-              unexpected = sorted(set(kept) - reachable)
-              raise SystemExit(
-                  f"pruned lock identity mismatch; missing={missing[:20]} unexpected={unexpected[:20]}"
-              )
-
-          required = {"atomic-polyfill", "rsa"}
-          removed_names = {name for name, _, _ in removed}
-          missing_required = sorted(required - removed_names)
-          if missing_required:
-              raise SystemExit(
-                  f"required unreachable packages were not pruned: {missing_required}"
-              )
-
-          lock_path.write_text("".join(output))
-          after = {
-              identity(package)
-              for package in tomllib.loads(lock_path.read_text()).get("package", [])
-          }
-          if after != reachable:
-              raise SystemExit("serialized Cargo.lock does not equal the locked resolve identity set")
-
-          Path("/tmp/removed-lock-packages.txt").write_text(
-              "\n".join(f"{name} {version}" for name, version, _ in sorted(removed)) + "\n"
-          )
-          PY
-          ! grep -qE '^name = "(atomic-polyfill|rsa)"$' Cargo.lock
-          cargo metadata --locked --format-version 1 >/dev/null
-      - name: Close the temporary advisory exceptions
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          audit = Path(".cargo/audit.toml")
-          expected = '''[advisories]
-          # TEMPORARY exceptions only. Every entry is registered in
-          # docs/security/advisory-exceptions.md and expires on 2026-07-24.
-          # Do not extend an ignore without fresh dependency-path and reachability evidence.
-          ignore = [
-            "RUSTSEC-2023-0071", # rsa timing side-channel; no patched release currently available; expires 2026-07-24
-            "RUSTSEC-2023-0089", # atomic-polyfill unmaintained; replace parent path with portable-atomic; expires 2026-07-24
-          ]
-          '''
-          if audit.read_text() != expected:
-              raise SystemExit(".cargo/audit.toml changed from the bounded waiver baseline")
-          audit.write_text('''[advisories]
-          # No active repository advisory exceptions. Additions require a complete,
-          # time-bounded entry in docs/security/advisory-exceptions.md.
-          ignore = []
-          ''')
-
-          register = Path("docs/security/advisory-exceptions.md")
-          source = register.read_text()
-          active = source.index("## Active Exceptions")
-          closed = source.index("## Closed Exceptions")
-          closed_tail = source[closed + len("## Closed Exceptions"):].lstrip("\n")
-          replacement = '''## Active Exceptions
-
-          None.
-
-          ## Closed Exceptions
-
-          ### RUSTSEC-2023-0071 — `rsa` timing side channel
-
-          | Field | Value |
-          |---|---|
-          | Original severity | MEDIUM, CVSS 5.9 |
-          | Original risk | Network-observable RSA private-key operations could leak timing information |
-          | Patched version | No patched `rsa 0.9.x` release; remediation removes the unused dependency path |
-          | Opened | 2026-07-17 |
-          | Closed | 2026-07-20 |
-          | Closure reason | SeaORM migration defaults are disabled, only PostgreSQL/SQLite features remain, and the pruned lockfile contains no `rsa` package on any target |
-          | Policy cleanup | Removed from `.cargo/audit.toml`; `deny.toml` already had no waiver |
-          | Verification | Both current-platform and `--target all` inverse trees were empty before pruning; full locked metadata succeeds after pruning |
-          | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2023-0071.html> |
-
-          ### RUSTSEC-2023-0089 — `atomic-polyfill` is unmaintained
-
-          | Field | Value |
-          |---|---|
-          | Original severity | INFO, unmaintained dependency |
-          | Original risk | Archived embedded-support dependency created avoidable supply-chain exposure |
-          | Patched version | No patched release; Postcard standard-library mode avoids the heapless dependency path |
-          | Opened | 2026-07-17 |
-          | Closed | 2026-07-20 |
-          | Closure reason | Postcard defaults are disabled with only `use-std` enabled, and the pruned lockfile contains no `atomic-polyfill` package on any target |
-          | Policy cleanup | Removed from `.cargo/audit.toml`; `deny.toml` already had no waiver |
-          | Verification | Both current-platform and `--target all` inverse trees were empty before pruning; full locked metadata and serialization feature hygiene succeed after pruning |
-          | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2023-0089.html> |
-
-          '''
-          register.write_text(source[:active] + replacement + closed_tail)
-
-          note = Path("docs/security/rsa-rustsec-2023-0071.md")
-          note.write_text('''---
-          id: doc://docs/security/rsa-rustsec-2023-0071.md
-          kind: project_overview
-          language: markdown
-          last_verified_snapshot: snap_jsonl_00000021
-          source_language: markdown
-          status: verified
-          ---
-
-          # RUSTSEC-2023-0071 remediation note
-
-          ## Status
-
-          Fully retired on July 20, 2026.
-
-          RusToK uses `jsonwebtoken/aws_lc_rs` rather than the RustCrypto backend. In addition,
-          `sea-orm-migration` disables default features and enables only PostgreSQL, SQLite and the
-          Tokio/Rustls runtime, so the unused SQLx MySQL path does not reach `rsa 0.9.10`.
-
-          Both the current-platform and all-target inverse dependency trees were empty. The
-          lockfile was pruned to the exact full locked resolve identity set without adding or
-          upgrading packages, removing the unreachable `rsa` record. The temporary audit exception
-          was then deleted.
-
-          ## Verification
-
-          ```bash
           node scripts/verify/verify-dependency-feature-hygiene.mjs
-          node scripts/verify/verify-advisory-exceptions.mjs
-          cargo tree --locked -i rsa --workspace --all-features --target all
-          cargo metadata --locked --format-version 1
-          ```
-
-          The inverse tree must be empty and `Cargo.lock` must not contain a package named `rsa`.
-          ''')
-          PY
-      - name: Verify retired-waiver contract
+          test -z "$(cargo tree --locked -i atomic-polyfill --workspace --all-features --target all 2>/dev/null)"
+          test -z "$(cargo tree --locked -i rsa --workspace --all-features --target all 2>/dev/null)"
+      - name: Prune disconnected lock packages and close waivers
         run: |
+          cargo metadata --locked --all-features --format-version 1 \
+            > /tmp/cargo-metadata-all-features.json
+          python3 scripts/maintenance/retire-dependency-waivers.py
+      - name: Verify retired-waiver contract
+        shell: bash
+        run: |
+          set -euo pipefail
           node scripts/verify/verify-dependency-feature-hygiene.mjs
           node scripts/verify/verify-advisory-exceptions.mjs
           ! grep -qE 'RUSTSEC-2023-0071|RUSTSEC-2023-0089' .cargo/audit.toml
           ! grep -qE '^name = "(atomic-polyfill|rsa)"$' Cargo.lock
-          cargo metadata --locked --format-version 1 >/dev/null
+          cargo metadata --locked --all-features --format-version 1 >/dev/null
       - name: Verify bounded source diff
         shell: bash
         run: |
@@ -263,7 +84,7 @@ jobs:
               node scripts/verify/verify-dependency-feature-hygiene.mjs
               node scripts/verify/verify-advisory-exceptions.mjs
               ! grep -qE '^name = "(atomic-polyfill|rsa)"$' Cargo.lock
-              cargo metadata --locked --format-version 1 >/dev/null
+              cargo metadata --locked --all-features --format-version 1 >/dev/null
             fi
             if git push origin HEAD:main; then
               exit 0
