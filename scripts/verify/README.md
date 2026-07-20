@@ -25,6 +25,7 @@ node scripts/verify/verify-flex-standalone-contract.mjs
 node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
 node scripts/verify/verify-module-control-plane-write-path.mjs
 node scripts/verify/verify-module-build-worker-isolation.mjs
+node scripts/verify/verify-cache-clock-contract.mjs
 node scripts/verify/verify-api-surface-contract.mjs
 node scripts/verify/verify-axum-runtime.mjs
 node scripts/verify/export-reference-artifacts.mjs artifacts/reference
@@ -58,6 +59,7 @@ node scripts/verify/verify-ecommerce-fba-registries.mjs
 | Flex multilingual contract drift check | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
 | No-compile guardrails check for standalone Flex Phase 5 | `node scripts/verify/verify-flex-standalone-contract.mjs` |
 | Runtime-context/cache-key invariants check | `node scripts/verify/verify-runtime-context-invariants.mjs` |
+| Cache freshness/system-clock fail-closed contract | `node scripts/verify/verify-cache-clock-contract.mjs` |
 | Large FFA UI migration gate | `npm run verify:ffa:ui:migration` |
 | Sweep all `core_transport_ui` rows in readiness board | `node scripts/verify/verify-ffa-ui-boundary-sweep.mjs` |
 | Sweep transport profiles for FFA surfaces | `node scripts/verify/verify-ffa-ui-transport-profile-sweep.mjs` |
@@ -179,6 +181,24 @@ node scripts/verify/verify-api-surface-contract.mjs
 
 ---
 
+
+### `verify-cache-clock-contract.mjs`
+**Cache clock guardrail** — verifies that cache freshness decisions fail closed when system time is before the Unix epoch.
+
+What it checks:
+- `rustok-cache` owns one fallible Unix-millisecond clock helper;
+- negative, typed and stale-while-revalidate paths propagate clock failures instead of using timestamp zero;
+- request-time and refresh-completion freshness checks use the canonical helper;
+- pre-epoch and post-epoch behavior has Rust regression coverage.
+
+Example:
+
+```bash
+node scripts/verify/verify-cache-clock-contract.mjs
+./scripts/verify/verify-all.sh cache-clock-contract
+```
+
+---
 
 ### `verify-runtime-context-invariants.mjs`
 **Wave 6 runtime-context guardrail** — fast source-level gate for already fixed P0/P1 invariants without full Rust compilation.

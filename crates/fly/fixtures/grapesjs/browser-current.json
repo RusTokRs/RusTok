@@ -1,0 +1,86 @@
+{
+  "dataSources": [],
+  "assets": [
+    {
+      "type": "image",
+      "src": "/assets/hero.webp",
+      "unitDim": "px",
+      "height": 0,
+      "width": 0,
+      "name": "Hero"
+    }
+  ],
+  "styles": [
+    {
+      "selectors": [
+        "rtk-hero"
+      ],
+      "style": {
+        "padding": "4rem 1.5rem"
+      }
+    }
+  ],
+  "pages": [
+    {
+      "frames": [
+        {
+          "component": {
+            "type": "wrapper",
+            "stylable": [
+              "background",
+              "background-color",
+              "background-image",
+              "background-repeat",
+              "background-attachment",
+              "background-position",
+              "background-size"
+            ],
+            "head": {
+              "type": "head"
+            },
+            "docEl": {
+              "tagName": "html"
+            }
+          },
+          "id": "frame-home"
+        }
+      ],
+      "id": "home",
+      "component": {
+        "id": "root",
+        "type": "wrapper",
+        "components": [
+          {
+            "id": "hero",
+            "type": "section",
+            "tagName": "section",
+            "attributes": {
+              "class": "rtk-hero",
+              "aria-labelledby": "hero-title"
+            },
+            "components": [
+              {
+                "id": "hero-title",
+                "type": "heading",
+                "tagName": "h1",
+                "components": [
+                  "Build on RusTok"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "content",
+            "type": "section",
+            "tagName": "section",
+            "components": []
+          }
+        ]
+      },
+      "customPageMetadata": {
+        "locale": "en"
+      }
+    }
+  ],
+  "symbols": []
+}

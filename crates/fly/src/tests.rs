@@ -23,6 +23,16 @@ fn grapesjs_round_trip_preserves_unknown_fields() {
 }
 
 #[test]
+fn grapesjs_browser_capture_round_trip_is_exact() {
+    let input: Value =
+        serde_json::from_str(include_str!("../fixtures/grapesjs/browser-current.json"))
+            .expect("browser capture json");
+    let document = GrapesJsCodec::decode_value(input.clone()).expect("decode browser capture");
+    let output = GrapesJsCodec::encode_value(&document).expect("encode browser capture");
+    assert_eq!(output, input);
+}
+
+#[test]
 fn commands_and_history_are_transactional() {
     let mut editor = FlyEditor::new(baseline(), RegistrySet::with_builtins());
     let original_hash = editor.document().hash();

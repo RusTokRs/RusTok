@@ -78,11 +78,34 @@ fn canonical_project(document: &ProjectDocument) -> FlyResult<GrapesProject> {
         let Some(component) = page.component.as_ref() else {
             continue;
         };
+        if first_frame_has_runtime_scaffold(page.frames.as_ref()) {
+            continue;
+        }
         let component =
             serde_json::to_value(component).map_err(|error| FlyError::Encode(error.to_string()))?;
         synchronize_first_frame(&mut page.frames, component);
     }
     Ok(project)
+}
+
+fn first_frame_has_runtime_scaffold(frames: Option<&Value>) -> bool {
+    let Some(component) = frames
+        .and_then(Value::as_array)
+        .and_then(|frames| frames.first())
+        .and_then(Value::as_object)
+        .and_then(|frame| frame.get("component"))
+        .and_then(Value::as_object)
+    else {
+        return false;
+    };
+
+    component.contains_key("docEl")
+        || component
+            .get("head")
+            .and_then(Value::as_object)
+            .and_then(|head| head.get("type"))
+            .and_then(Value::as_str)
+            == Some("head")
 }
 
 fn synchronize_first_frame(frames: &mut Option<Value>, component: Value) {
@@ -166,6 +189,54 @@ mod tests {
             "current"
         );
         assert_eq!(encoded["pages"][0]["frames"][0]["id"], "frame-home");
+    }
+
+    #[test]
+    fn encode_preserves_grapesjs_runtime_frame_scaffold() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "current", "type": "section" }]
+                },
+                "frames": [{
+                    "id": "frame-home",
+                    "component": {
+                        "type": "wrapper",
+                        "stylable": ["background", "background-color"],
+                        "head": { "type": "head" },
+                        "docEl": { "tagName": "html" }
+                    }
+                }]
+            }]
+        }))
+        .expect("decode");
+        let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+        editor
+            .apply(EditorCommand::Patch {
+                component_id: "current".to_string(),
+                patch: ComponentPatch {
+                    attributes: Map::from_iter([("data-state".to_string(), json!("edited"))]),
+                    ..ComponentPatch::default()
+                },
+            })
+            .expect("patch");
+
+        let encoded = GrapesJsCodec::encode_value(editor.document()).expect("encode");
+        assert_eq!(
+            encoded["pages"][0]["component"]["components"][0]["attributes"]["data-state"],
+            "edited"
+        );
+        assert_eq!(
+            encoded["pages"][0]["frames"][0]["component"],
+            json!({
+                "type": "wrapper",
+                "stylable": ["background", "background-color"],
+                "head": { "type": "head" },
+                "docEl": { "tagName": "html" }
+            })
+        );
     }
 
     #[test]

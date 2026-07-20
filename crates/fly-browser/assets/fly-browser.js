@@ -233,6 +233,14 @@ export class FlyBrowserAdapter {
   stop() {
     this.abortController.abort();
     this.root.dataset.flyBrowserMounted = "false";
+    this.root.dataset.flyCanvasConnected = "false";
+    this.lastSequence = null;
+    this.geometry.clear();
+    this.selectedId = null;
+    this.hoveredId = null;
+    this.zoom = 1;
+    this.cancelDrag();
+    this.drawSelection();
     for (const overlay of Object.values(this.overlays || {})) overlay.remove();
     if (this.root[ADAPTER_KEY] === this) delete this.root[ADAPTER_KEY];
   }

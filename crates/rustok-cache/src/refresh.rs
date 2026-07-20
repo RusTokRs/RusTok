@@ -1,18 +1,17 @@
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::collections::HashSet;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use rustok_core::{CacheBackend, CacheCompareAndSetOutcome};
 
 use crate::{
-    CacheEnvelope, CacheEnvelopeFreshness, CacheLoadPolicy, CacheLoadSource, CacheService,
-    TypedCacheLoadOptions, TypedCacheLoadResult, DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+    clock::unix_time_millis, CacheEnvelope, CacheEnvelopeFreshness, CacheLoadPolicy,
+    CacheLoadSource, CacheService, TypedCacheLoadOptions, TypedCacheLoadResult,
+    DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
 };
 
 pub const MAX_CACHE_REFRESH_KEY_BYTES: usize = crate::service::MAX_CACHE_LOAD_KEY_BYTES;
@@ -311,7 +310,8 @@ impl CacheService {
             let loader = loader.clone();
             async move {
                 let envelope = loader().await?;
-                if envelope.is_hard_expired(current_unix_ms()) {
+                let completed_at_unix_ms = unix_time_millis()?;
+                if envelope.is_hard_expired(completed_at_unix_ms) {
                     return Err(rustok_core::Error::Cache(
                         "cache loader produced an already hard-expired envelope at completion"
                             .to_string(),
@@ -321,6 +321,7 @@ impl CacheService {
             }
         };
 
+        let now_unix_ms = unix_time_millis()?;
         self.load_enveloped_stale_while_revalidate_with_limit_at(
             coordinator,
             backend,
@@ -329,7 +330,7 @@ impl CacheService {
                 expected_schema_version,
                 policy,
                 max_encoded_bytes: DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
-                now_unix_ms: current_unix_ms(),
+                now_unix_ms,
             },
             loader,
         )
@@ -557,14 +558,6 @@ fn validate_refresh_key(key: &str) -> rustok_core::Result<()> {
         )));
     }
     Ok(())
-}
-
-fn current_unix_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .min(u128::from(u64::MAX)) as u64
 }
 
 #[cfg(test)]
@@ -921,7 +914,7 @@ mod tests {
             .backend_shared_client("refresh-system-clock-expiry", Duration::from_secs(60), 16)
             .await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
-        let now = current_unix_ms();
+        let now = unix_time_millis().unwrap();
         let stale = CacheEnvelope::new(1, now.saturating_sub(1_000), "stale".to_string())
             .unwrap()
             .with_expirations(
@@ -935,7 +928,7 @@ mod tests {
             .set("document".to_string(), stale.clone())
             .await
             .unwrap();
-        let refresh_expires_at = current_unix_ms().saturating_add(20);
+        let refresh_expires_at = unix_time_millis().unwrap().saturating_add(20);
 
         let result = service
             .load_enveloped_stale_while_revalidate(
@@ -1006,7 +999,7 @@ mod tests {
                     let loader_calls = Arc::clone(&loader_calls);
                     async move {
                         loader_calls.fetch_add(1, Ordering::SeqCst);
-                        CacheEnvelope::new(1, current_unix_ms(), "fresh".to_string())
+                        CacheEnvelope::new(1, unix_time_millis().unwrap(), "fresh".to_string())
                             .map_err(|error| rustok_core::Error::Cache(error.to_string()))
                     }
                 },
@@ -1071,7 +1064,7 @@ mod tests {
                     async move {
                         loader_started.notify_one();
                         loader_release.notified().await;
-                        CacheEnvelope::new(1, current_unix_ms(), "refresh".to_string())
+                        CacheEnvelope::new(1, unix_time_millis().unwrap(), "refresh".to_string())
                             .map_err(|error| rustok_core::Error::Cache(error.to_string()))
                     }
                 },
@@ -1084,12 +1077,13 @@ mod tests {
             .await
             .expect("refresh loader did not start");
 
-        let replacement = CacheEnvelope::new(1, current_unix_ms(), "replacement".to_string())
-            .unwrap()
-            .with_source_revision("external-2")
-            .unwrap()
-            .encode()
-            .unwrap();
+        let replacement =
+            CacheEnvelope::new(1, unix_time_millis().unwrap(), "replacement".to_string())
+                .unwrap()
+                .with_source_revision("external-2")
+                .unwrap()
+                .encode()
+                .unwrap();
         backend
             .set("document".to_string(), replacement)
             .await

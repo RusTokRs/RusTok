@@ -51,6 +51,9 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium
       - name: Run Playwright smoke tests
         run: npm run test:e2e
+      - name: Verify Fly GrapesJS browser captures
+        if: matrix.app == 'apps/next-admin'
+        run: node ../../scripts/verify/verify-fly-grapesjs-roundtrip.mjs
       - name: Upload Playwright diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

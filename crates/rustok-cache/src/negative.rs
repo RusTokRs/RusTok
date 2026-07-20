@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use rustok_core::CacheBackend;
 
 use crate::{
-    CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CachePolicyError, CacheService,
-    CacheTtlPolicy,
+    clock::unix_time_millis, CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness,
+    CachePolicyError, CacheService, CacheTtlPolicy,
 };
 
 pub const DEFAULT_MAX_NEGATIVE_CACHE_BYTES: usize = 64 * 1024;
@@ -145,7 +145,8 @@ impl CacheService {
     where
         R: DeserializeOwned,
     {
-        self.get_negative_at(backend, key, policy, current_unix_ms())
+        let now_unix_ms = unix_time_millis()?;
+        self.get_negative_at(backend, key, policy, now_unix_ms)
             .await
     }
 
@@ -286,14 +287,6 @@ fn duration_millis_ceil(duration: Duration) -> u64 {
         .saturating_add(999_999)
         .checked_div(1_000_000)
         .unwrap_or(u128::MAX)
-        .min(u128::from(u64::MAX)) as u64
-}
-
-fn current_unix_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
         .min(u128::from(u64::MAX)) as u64
 }
 
