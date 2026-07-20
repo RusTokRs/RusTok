@@ -5,13 +5,36 @@
       "file": "baseline.json",
       "source": "repository-structural-baseline",
       "real_browser_capture": false,
+      "browser_roundtrip": true,
+      "allowed_browser_normalizations": [
+        "drop_empty_frame_head"
+      ],
       "purpose": "Known GrapesJS project shape, hierarchy, frames, assets, styles and opaque fields"
     },
     {
       "file": "unknown-provider.json",
       "source": "repository-structural-baseline",
       "real_browser_capture": false,
-      "purpose": "Unknown provider, widget schema and future-field preservation"
+      "browser_roundtrip": false,
+      "browser_skip_reason": "GrapesJS 0.23.2 drops unknown top-level and extension fields; Fly exact codec tests own this preservation contract",
+      "purpose": "Fly codec preservation for unknown providers, plugin metadata and future fields"
+    },
+    {
+      "file": "browser-current.json",
+      "seed": "baseline.json",
+      "source": "playwright-chromium-getProjectData",
+      "real_browser_capture": true,
+      "browser_roundtrip": true,
+      "current_runtime": true,
+      "purpose": "Real GrapesJS browser normalization and bidirectional reload baseline",
+      "grapesjs_version": "0.23.2",
+      "grapesjs_preset_webpage_version": "1.0.3",
+      "browser": "chromium 149.0.7827.55",
+      "capture_commit": "31b1c27a0ce5f2650341cfee742dd4986216881f",
+      "plugins": [
+        "grapesjs-preset-webpage@1.0.3"
+      ],
+      "captured_at": "2026-07-20T07:45:32.930Z"
     }
   ],
   "required_real_capture_metadata": [

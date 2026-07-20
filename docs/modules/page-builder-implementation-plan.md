@@ -55,10 +55,10 @@ capability and is explicitly outside Fly scope.
   `PageBuilderAdminHostContext`.
 - [x] Pages performs optimistic `updated_at` conflict checks and persists through its existing
   module-owned transport facade.
-- [x] Pages keeps its old CRUD/JSON editor and a synchronized `frames[0].component` compatibility
-  snapshot while Fly treats `pages[].component` as canonical.
+- [x] Pages treats `pages[].component` as canonical, synchronizes legacy mirrored frame
+  roots, and preserves real GrapesJS frame scaffold metadata losslessly.
 - [x] Source-level dependency, browser-boundary and Pages-consumer guards exist.
-- [ ] Real GrapesJS browser captures and a compatibility matrix are committed.
+- [x] Real GrapesJS browser captures and a compatibility matrix are committed.
 - [ ] Rust/WASM/browser suites have been run for the current integration slice.
 - [ ] Page Builder storefront UI and real-DOM inline editing exist.
 - [ ] Generated admin/storefront contribution registries exist.
@@ -169,16 +169,18 @@ GrapesJS getProjectData()
   -> GrapesJS loadProjectData()
 ```
 
-The round trip must preserve pages, frames, hierarchy, attributes, styles, selectors, assets,
-traits, plugin metadata, custom fields and unknown future fields. Structural fixtures currently
-exercise codec behavior, but they are not substitutes for real browser captures.
+Fly codec round trips preserve pages, frames, hierarchy, attributes, styles, selectors,
+assets, traits, plugin metadata, custom fields and unknown future fields. Browser round trips are
+evaluated separately against fields GrapesJS itself retains. The manifest contains a real
+current-runtime capture and records structural normalization explicitly; real captures cannot
+declare normalization exceptions.
 
 For the Pages pilot:
 
 - `pages[].component` is the canonical Fly component root;
-- legacy `frames[0].component` is a temporary synchronized Pages compatibility snapshot;
-- canonical data wins when both forms exist;
-- frame metadata and existing Page blocks are preserved;
+- legacy mirrored `frames[0].component` trees remain synchronized;
+- real GrapesJS frame scaffold objects remain opaque and are not overwritten by the canonical tree;
+- canonical data wins for editor traversal while frame metadata and existing Page blocks are preserved;
 - the compatibility mirror must be removed only through an explicit migration plan.
 
 ## Fly ecosystem responsibilities
@@ -302,7 +304,7 @@ RusTok-owned and authoritative.
 - [x] Add RAII event listeners, resize observers and pointer capture.
 - [x] Add source/origin validated iframe subscriptions and teardown ownership.
 - [x] Connect iframe viewport, geometry, hover and selection to Fly UI overlays.
-- [ ] Implement palette, DnD, resize, auto-scroll and keyboard interaction.
+- [x] Implement palette, DnD, resize, auto-scroll and keyboard interaction.
 - [ ] Implement the real-DOM storefront overlay adapter.
 - [ ] Add standalone examples, accessibility and browser interaction suites.
 
@@ -373,7 +375,7 @@ RusTok-owned and authoritative.
 - [ ] Add Pages storefront renderers and optional inline editing.
 - [ ] Integrate the existing rich-text capability where a text editor is activated.
 - [ ] Test no-builder, admin-only, storefront-only and full profiles.
-- [ ] Add real GrapesJS/Fly cross-editor round trips.
+- [x] Add real GrapesJS/Fly cross-editor round trips.
 
 **Gate:** open pending Rust/WASM/browser execution and both-surface data-loss tests.
 
@@ -408,17 +410,15 @@ RusTok-owned and authoritative.
 
 ## Immediate next implementation order
 
-1. Add a real Fly block palette backed by `RegistrySet` and emit `EditorCommand::Insert`.
-2. Generate before/inside/after hit-test candidates from iframe geometry and wire pointer-driven
-   drag/drop through `fly-ui`.
-3. Add remove/move controls, keyboard navigation and accessible announcements.
-4. Add generic traits/styles property editors that emit `EditorCommand::Patch`.
-5. Capture real GrapesJS browser fixtures and run bidirectional reload tests.
-6. Add browser tests for handshake, source/origin rejection, geometry, teardown, stale saves and
+1. Run the full Rust, WASM and browser suites against the current real GrapesJS capture and
+   retain reproducible evidence.
+2. Add browser tests for handshake, source/origin rejection, geometry, teardown, stale saves and
    revision conflicts.
-7. Integrate authoritative backend Fly traversal/sanitization before treating iframe output as
+3. Complete capability/degraded-state policy, asset authoring and accessibility coverage.
+4. Integrate authoritative backend Fly traversal/sanitization before treating iframe output as
    publish-ready rendering.
-8. Implement the separate storefront real-DOM editing package.
+5. Implement the separate storefront real-DOM editing package.
+6. Add `fly-dioxus` only after the public `fly-ui` adapter contract stabilizes.
 
 ## Verification programme
 
