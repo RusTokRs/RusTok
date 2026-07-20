@@ -1,9 +1,9 @@
 name: One-off Integrate Moderation Owner
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/moderation-owner-core
+      - main
 
 permissions:
   contents: write
@@ -20,7 +20,7 @@ env:
 
 jobs:
   integrate:
-    if: github.repository == 'RusTokRs/RusTok'
+    if: github.repository == 'RusTokRs/RusTok' && github.head_ref == 'agent/moderation-owner-core'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -134,11 +134,10 @@ jobs:
           grep -Fq 'rustok_moderation::migrations::migrations()' crates/rustok-migrations/src/lib.rs
           grep -Fq 'name = "rustok-moderation"' Cargo.lock
 
-      - name: Commit verified integration and remove one-off workflow
+      - name: Commit verified integration
         shell: bash
         run: |
           set -euo pipefail
-          rm .github/workflows/one-off-integrate-moderation-owner.yml
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -146,7 +145,9 @@ jobs:
             crates/rustok-migrations/Cargo.toml \
             crates/rustok-migrations/src/lib.rs \
             crates/rustok-moderation \
-            docs/modules/implementation-plans-registry.md \
-            .github/workflows/one-off-integrate-moderation-owner.yml
+            docs/modules/implementation-plans-registry.md
+          if git diff --cached --quiet; then
+            exit 0
+          fi
           git commit -m "feat(moderation): integrate owner runtime schema"
           git push origin HEAD:agent/moderation-owner-core
