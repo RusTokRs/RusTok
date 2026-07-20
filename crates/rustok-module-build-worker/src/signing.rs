@@ -79,16 +79,16 @@ impl CosignArtifactSigner {
         let result = async {
             let mut command = Command::new(&self.program);
             command
+                // Do not inherit process-wide Cosign configuration, proxy
+                // credentials, or alternate registry settings.
+                .env_clear()
                 .args(["sign", "--yes", "--key", &self.key_reference])
                 .arg(artifact.canonical())
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .kill_on_drop(true)
-                .env("DOCKER_CONFIG", &docker_config)
-                // Signature placement is fixed to the artifact repository. Do
-                // not accept an environment-selected alternate repository.
-                .env_remove("COSIGN_REPOSITORY");
+                .env("DOCKER_CONFIG", &docker_config);
             let status = timeout(execution_timeout, command.status())
                 .await
                 .map_err(|_| CosignSigningError::TimedOut)?

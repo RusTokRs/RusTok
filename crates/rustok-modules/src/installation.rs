@@ -1189,11 +1189,14 @@ impl SeaOrmArtifactInstallationStore {
         &self,
         request: ArtifactDeactivationRequest,
     ) -> Result<ArtifactDeactivationResult, ModuleInstallationError> {
-        if request.expected_revision == 0 || request.reason.trim().is_empty() {
-            return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                "deactivation requires a positive revision and non-empty reason".into(),
-            ));
-        }
+        validate_lifecycle_command(
+            request.installation_id,
+            &request.scope,
+            request.expected_revision,
+            request.actor_id,
+            &request.reason,
+            request.idempotency_key,
+        )?;
         let transaction = self
             .db
             .begin()
@@ -1418,23 +1421,23 @@ impl SeaOrmArtifactInstallationStore {
         &self,
         request: ArtifactTenantLifecycleCommand,
     ) -> Result<u64, ModuleInstallationError> {
-        if request.expected_revision == 0 || request.reason.trim().is_empty() {
-            return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                "tenant lifecycle change requires a positive revision and non-empty reason".into(),
-            ));
-        }
+        let scope = ModuleInstallationScope::Tenant {
+            tenant_id: request.tenant_id,
+        };
+        validate_lifecycle_command(
+            request.installation_id,
+            &scope,
+            request.expected_revision,
+            request.actor_id,
+            &request.reason,
+            request.idempotency_key,
+        )?;
         let transaction = self
             .db
             .begin()
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-        configure_rls_scope(
-            &transaction,
-            &ModuleInstallationScope::Tenant {
-                tenant_id: request.tenant_id,
-            },
-        )
-        .await?;
+        configure_rls_scope(&transaction, &scope).await?;
         let backend = transaction.get_database_backend();
         let installation_placeholder = if backend == DbBackend::Postgres {
             "$1"
@@ -1687,11 +1690,14 @@ impl SeaOrmArtifactInstallationStore {
         &self,
         request: ArtifactUninstallRequest,
     ) -> Result<ArtifactUninstallResult, ModuleInstallationError> {
-        if request.expected_revision == 0 || request.reason.trim().is_empty() {
-            return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                "uninstall requires a positive revision and non-empty reason".into(),
-            ));
-        }
+        validate_lifecycle_command(
+            request.installation_id,
+            &request.scope,
+            request.expected_revision,
+            request.actor_id,
+            &request.reason,
+            request.idempotency_key,
+        )?;
         let transaction = self
             .db
             .begin()
@@ -3550,6 +3556,30 @@ fn validate_migration_checkpoint_request(
     Ok(())
 }
 
+fn validate_lifecycle_command(
+    installation_id: Uuid,
+    scope: &ModuleInstallationScope,
+    expected_revision: u64,
+    actor_id: Uuid,
+    reason: &str,
+    idempotency_key: Uuid,
+) -> Result<(), ModuleInstallationError> {
+    let valid_scope = matches!(scope, ModuleInstallationScope::Platform)
+        || matches!(scope, ModuleInstallationScope::Tenant { tenant_id } if !tenant_id.is_nil());
+    if installation_id.is_nil()
+        || !valid_scope
+        || expected_revision == 0
+        || actor_id.is_nil()
+        || reason.trim().is_empty()
+        || idempotency_key.is_nil()
+    {
+        return Err(ModuleInstallationError::AdmissionRevisionConflict(
+            "lifecycle command requires non-nil identities, a valid scope, a positive revision, and a non-empty reason".into(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
@@ -3578,6 +3608,64 @@ mod tests {
             validate_migration_checkpoint_request(&request),
             Err(ModuleInstallationError::AdmissionRevisionConflict(_))
         ));
+    }
+
+    #[test]
+    fn lifecycle_command_requires_non_nil_identities_and_tenant_scope() {
+        let installation_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let idempotency_key = Uuid::new_v4();
+        let valid = || {
+            validate_lifecycle_command(
+                installation_id,
+                &ModuleInstallationScope::Tenant {
+                    tenant_id: Uuid::new_v4(),
+                },
+                1,
+                actor_id,
+                "operator request",
+                idempotency_key,
+            )
+        };
+        assert!(valid().is_ok());
+        assert!(validate_lifecycle_command(
+            Uuid::nil(),
+            &ModuleInstallationScope::Platform,
+            1,
+            actor_id,
+            "operator request",
+            idempotency_key,
+        )
+        .is_err());
+        assert!(validate_lifecycle_command(
+            installation_id,
+            &ModuleInstallationScope::Tenant {
+                tenant_id: Uuid::nil(),
+            },
+            1,
+            actor_id,
+            "operator request",
+            idempotency_key,
+        )
+        .is_err());
+        assert!(validate_lifecycle_command(
+            installation_id,
+            &ModuleInstallationScope::Platform,
+            1,
+            Uuid::nil(),
+            "operator request",
+            idempotency_key,
+        )
+        .is_err());
+        assert!(validate_lifecycle_command(
+            installation_id,
+            &ModuleInstallationScope::Platform,
+            1,
+            actor_id,
+            "operator request",
+            Uuid::nil(),
+        )
+        .is_err());
     }
 
     struct FixtureRegistry(ModuleArtifactPackage);

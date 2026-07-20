@@ -555,7 +555,11 @@ fn cosign_signature_tag(digest: &str) -> Result<String, OciArtifactPublicationEr
             "Cosign signature subject must use a sha256 digest".to_string(),
         )
     })?;
-    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if hex.len() != 64
+        || !hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
         return Err(OciArtifactPublicationError::InvalidBundle(
             "Cosign signature subject must use a valid sha256 digest".to_string(),
         ));
@@ -892,5 +896,6 @@ mod tests {
             format!("sha256-{}.sig", "a".repeat(64))
         );
         assert!(cosign_signature_tag("sha512:abc").is_err());
+        assert!(cosign_signature_tag(&format!("sha256:{}", "A".repeat(64))).is_err());
     }
 }

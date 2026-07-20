@@ -34,6 +34,9 @@ use crate::{
     WitContractInspector,
 };
 
+const MAX_PUBLICATION_WINDOW: Duration = Duration::from_secs(14 * 60);
+const CREDENTIAL_LEASE_SAFETY_MARGIN: Duration = Duration::from_secs(30);
+
 /// Deployment-owned OCI job runtime required for untrusted build execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OciJobRuntime {
@@ -167,8 +170,14 @@ impl OciJobBuildWorker {
             || !workdir.is_absolute()
             || !is_sha256_digest(&job_image_digest)
         {
-            return Err("module build job launcher path and workdir must be absolute".to_string());
+            return Err(
+                "module build job launcher and workdir must be absolute and the job image must be digest-pinned"
+                    .to_string(),
+            );
         }
+        publication_target
+            .validate()
+            .map_err(|error| format!("module build publication target is invalid: {error}"))?;
         let metadata = std::fs::symlink_metadata(&job_launcher_path).map_err(|error| {
             format!(
                 "module build job launcher {} cannot be inspected: {error}",
@@ -555,7 +564,7 @@ impl ModuleBuildWorker for OciJobBuildWorker {
                     }
                 };
             let Some(publication_timeout) = remaining_timeout(execution_deadline)
-                .map(|timeout| timeout.min(Duration::from_secs(15 * 60)))
+                .map(|timeout| timeout.min(MAX_PUBLICATION_WINDOW))
             else {
                 return Ok(failed_result(
                     &request,
@@ -579,8 +588,10 @@ impl ModuleBuildWorker for OciJobBuildWorker {
             };
             let credentials = match timeout(
                 publication_timeout,
-                self.registry_credentials
-                    .acquire(&self.publication_target, publication_timeout),
+                self.registry_credentials.acquire(
+                    &self.publication_target,
+                    publication_timeout + CREDENTIAL_LEASE_SAFETY_MARGIN,
+                ),
             )
             .await
             {
@@ -602,6 +613,12 @@ impl ModuleBuildWorker for OciJobBuildWorker {
                     )));
                 }
             };
+            if credentials.ensure_valid().is_err() {
+                return Ok(failed_result(
+                    &request,
+                    ModuleBuildFailureCode::PublicationFailed,
+                ));
+            }
             let publisher =
                 OciDistributionArtifactPublisher::strict(credentials.registry_auth())
                     .map_err(|error| ModuleBuildProtocolError::Transport(error.to_string()))?;
@@ -849,7 +866,7 @@ fn is_sha256_digest(value: &str) -> bool {
         && value.starts_with("sha256:")
         && value["sha256:".len()..]
             .bytes()
-            .all(|byte| byte.is_ascii_hexdigit())
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn is_valid_oci_job_id(value: &str) -> bool {
@@ -957,4 +974,15 @@ async fn collect_job_output(
     task.await.map_err(|error| {
         ModuleBuildProtocolError::Transport(format!("module build output reader failed: {error}"))
     })?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_sha256_digest;
+
+    #[test]
+    fn sha256_digest_requires_canonical_lowercase_hex() {
+        assert!(is_sha256_digest(&format!("sha256:{}", "a".repeat(64))));
+        assert!(!is_sha256_digest(&format!("sha256:{}", "A".repeat(64))));
+    }
 }

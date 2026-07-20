@@ -4,7 +4,7 @@ use cron::Schedule;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::str::FromStr;
+use std::{collections::HashSet, str::FromStr};
 use thiserror::Error;
 
 use rustok_api::{
@@ -179,6 +179,30 @@ pub struct ArtifactUiContribution {
 pub struct ArtifactPersistenceContract {
     pub revision: u64,
     pub schema_digest: String,
+    /// Bounded logical indexes that the platform may materialize in its
+    /// private namespace. They never carry physical table, column, or SQL
+    /// identity from an artifact.
+    #[serde(default)]
+    pub indexes: Vec<ArtifactDataIndexField>,
+}
+
+/// One host-materialized scalar projection from brokered JSON data. The JSON
+/// pointer grammar is intentionally narrow so it cannot become a database JSON
+/// path, SQL fragment, or query expression.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactDataIndexField {
+    pub name: String,
+    pub json_pointer: String,
+    pub value_type: ArtifactDataIndexValueType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactDataIndexValueType {
+    String,
+    Number,
+    Boolean,
 }
 
 /// Declarative runtime binding admitted with an immutable artifact descriptor.
@@ -522,8 +546,18 @@ impl ModuleArtifactDescriptor {
             if contract.revision == 0
                 || !valid_digest(&contract.schema_digest)
                 || !schema_digests.contains(&contract.schema_digest)
+                || contract.indexes.len() > 16
             {
                 return Err(ModuleArtifactError::InvalidPersistenceContract);
+            }
+            let mut index_names = HashSet::with_capacity(contract.indexes.len());
+            for index in &contract.indexes {
+                if !valid_data_index_name(&index.name)
+                    || !valid_data_index_pointer(&index.json_pointer)
+                    || !index_names.insert(&index.name)
+                {
+                    return Err(ModuleArtifactError::InvalidPersistenceContract);
+                }
             }
         }
         Ok(())
@@ -604,6 +638,25 @@ impl ModuleArtifactDescriptor {
         }
         Ok(digests)
     }
+}
+
+fn valid_data_index_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+fn valid_data_index_pointer(value: &str) -> bool {
+    value.len() <= 128
+        && value.starts_with('/')
+        && value.split('/').skip(1).all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1202,6 +1255,7 @@ mod tests {
         descriptor.persistence_contract = Some(ArtifactPersistenceContract {
             revision: 0,
             schema_digest: digest('b'),
+            indexes: Vec::new(),
         });
 
         assert!(matches!(
@@ -1228,6 +1282,7 @@ mod tests {
         descriptor.persistence_contract = Some(ArtifactPersistenceContract {
             revision: 1,
             schema_digest: digest('b'),
+            indexes: Vec::new(),
         });
         let mut persistence_value =
             serde_json::to_value(descriptor).expect("descriptor serializes");

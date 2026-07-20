@@ -24,6 +24,11 @@ mod m20260717_000023_artifact_binding_operations;
 mod m20260718_000024_artifact_rollback_idempotency_fingerprint;
 mod m20260718_000025_artifact_data_objects;
 mod m20260718_000026_artifact_data_object_operations;
+mod m20260718_000027_artifact_data_object_gc_candidates;
+mod m20260718_000028_artifact_data_object_upload_sessions;
+mod m20260718_000029_artifact_data_indexes;
+mod m20260718_000030_artifact_data_index_contracts;
+mod m20260718_000031_artifact_data_exports;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -55,5 +60,10 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260718_000024_artifact_rollback_idempotency_fingerprint::Migration),
         Box::new(m20260718_000025_artifact_data_objects::Migration),
         Box::new(m20260718_000026_artifact_data_object_operations::Migration),
+        Box::new(m20260718_000027_artifact_data_object_gc_candidates::Migration),
+        Box::new(m20260718_000028_artifact_data_object_upload_sessions::Migration),
+        Box::new(m20260718_000029_artifact_data_indexes::Migration),
+        Box::new(m20260718_000030_artifact_data_index_contracts::Migration),
+        Box::new(m20260718_000031_artifact_data_exports::Migration),
     ]
 }

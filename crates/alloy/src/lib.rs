@@ -44,11 +44,15 @@ pub use graphql::{AlloyMutation, AlloyQuery};
 pub use integration::{BeforeHookResult, HookExecutor, ScriptableEntity};
 pub use migration::ScriptsMigration;
 pub use model::{
-    register_entity_proxy, EntityProxy, EventType, HttpMethod, Script, ScriptId, ScriptStatus,
-    ScriptTrigger,
+    register_entity_proxy, AlloyReleaseError, AlloyReleaseStageCommand, AlloyWorkspace,
+    EntityProxy, EventType, HttpMethod, ReviewCommand, ReviewDecision, ReviewError, ReviewStatus,
+    Script, ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand, TestRun,
+    TestRunClaim, TestRunCompletion, TestRunError, TestRunLease, TestRunStatus, WorkspaceError,
+    WorkspaceFile, WorkspaceFileKind,
 };
 pub use runner::{
-    ExecutionOutcome, ExecutionResult, HookOutcome, ScriptExecutor, ScriptOrchestrator,
+    AlloyReleaseGovernance, ExecutionOutcome, ExecutionResult, HookOutcome,
+    RevisionedReleaseStager, RevisionedTestRunner, ScriptExecutor, ScriptOrchestrator,
 };
 pub use runtime::{build_alloy_runtime, AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime};
 pub use sandbox_request::{
@@ -479,12 +483,14 @@ mod tests {
 
         let mut script = Script::new(
             "test_validation",
-            r#"
+            AlloyWorkspace::single_source(
+                r#"
                 if entity["value"] < 0 {
                     abort("Value must be positive");
                 }
                 entity["processed"] = true;
             "#,
+            ),
             ScriptTrigger::Event {
                 entity_type: "test".into(),
                 event: EventType::BeforeCreate,
@@ -521,7 +527,7 @@ mod tests {
 
         let mut script = Script::new(
             "manual_audit_smoke",
-            r#"params["value"] + 1"#,
+            AlloyWorkspace::single_source(r#"params["value"] + 1"#),
             ScriptTrigger::Manual,
         );
         script.tenant_id = uuid::Uuid::new_v4();
@@ -564,7 +570,7 @@ mod tests {
 
         let mut script = Script::new(
             "before_audit_smoke",
-            r#"entity["status"] = "approved";"#,
+            AlloyWorkspace::single_source(r#"entity["status"] = "approved";"#),
             ScriptTrigger::Event {
                 entity_type: "order".into(),
                 event: EventType::BeforeUpdate,
@@ -630,7 +636,7 @@ mod tests {
         for script_name in ["on_commit_audit_one", "on_commit_audit_two"] {
             let mut script = Script::new(
                 script_name,
-                "1",
+                AlloyWorkspace::single_source("1"),
                 ScriptTrigger::Event {
                     entity_type: "invoice".into(),
                     event: EventType::OnCommit,

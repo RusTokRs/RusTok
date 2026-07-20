@@ -11,6 +11,7 @@ const jobLauncherPath = path.join(workerRoot, 'src/runner.rs');
 const serverRoot = path.join(root, 'apps/server');
 const dispatcherRoot = path.join(root, 'crates/rustok-module-build-dispatcher');
 const transportServerPath = path.join(root, 'crates/rustok-module-build-transport/src/server.rs');
+const signingPath = path.join(workerRoot, 'src/signing.rs');
 const forbiddenDependencies = [
   'sea-orm',
   'sea-orm-migration',
@@ -113,6 +114,13 @@ try {
   ) {
     fail('module build dispatcher must use the mTLS remote worker with readiness verification');
   }
+  const dispatcherDelivery = fs.readFileSync(path.join(dispatcherRoot, 'src/lib.rs'), 'utf8');
+  if (!dispatcherDelivery.includes('validate_delivery_envelope(&consumed.envelope)?')) {
+    fail('module build dispatcher must validate broker envelope and queued-event identity before owner delivery');
+  }
+  if (!dispatcherHost.includes('required_true("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_ENABLED")')) {
+    fail('module build dispatcher must require TLS for its credential-bearing external broker connection');
+  }
   const dispatcherBuildViolations = rustFiles(path.join(dispatcherRoot, 'src'))
     .filter((filePath) => {
       const source = fs.readFileSync(filePath, 'utf8');
@@ -154,6 +162,12 @@ try {
   if (!jobLauncher.includes('.env_clear()') || !jobLauncher.includes('.kill_on_drop(true)')) {
     fail('untrusted OCI job launcher must clear its environment and be killed on drop');
   }
+  if (
+    !jobLauncher.includes('publication_target\n            .validate()') ||
+    !jobLauncher.includes('credentials.ensure_valid()')
+  ) {
+    fail('worker must validate its fixed publication target and credential lease before OCI publication');
+  }
   const spawnStart = jobLauncher.indexOf('let mut child = Command::new(&self.job_launcher_path)');
   const spawnEnd = jobLauncher.indexOf('.spawn()', spawnStart);
   if (spawnStart < 0 || spawnEnd < 0) {
@@ -168,6 +182,15 @@ try {
   }
   if (runnerSecretPatterns.some((pattern) => pattern.test(jobLauncherEnvironment))) {
     fail('untrusted OCI job launcher receives a tenant, credential, or signing environment value');
+  }
+
+  const signing = fs.readFileSync(signingPath, 'utf8');
+  if (
+    !signing.includes('CosignArtifactSigner') ||
+    !signing.includes('.env_clear()') ||
+    !signing.includes('.env("DOCKER_CONFIG", &docker_config)')
+  ) {
+    fail('Cosign signing must clear its environment and use only the private Docker configuration');
   }
 
   console.log('[verify-module-build-worker-isolation] worker isolation boundaries verified');

@@ -13,8 +13,7 @@ use rustok_modules::{
     ArtifactBindingExecutionContext, ArtifactBindingIdempotencyClaim,
     ArtifactBindingIdempotencyError, ArtifactBindingIdempotencyRequest, ArtifactInstallationTarget,
     InstalledModuleArtifact, ModuleBindingIdempotency, ModuleControlPlane, ModuleDispatchError,
-    ModuleHttpMethod, ModuleRuntimeBinding, SeaOrmArtifactBindingIdempotencyStore,
-    SharedArtifactBindingExecutor,
+    ModuleHttpMethod, ModuleRuntimeBinding, SharedArtifactBindingExecutor,
 };
 use rustok_rbac::SeaOrmArtifactPermissionAuthorizer;
 use rustok_web::json_response;
@@ -156,7 +155,7 @@ async fn dispatch_operation(
     };
     let output = match request {
         Some(request) => {
-            let store = SeaOrmArtifactBindingIdempotencyStore::new(ctx.db_clone());
+            let store = ModuleControlPlane::new(ctx.db_clone()).artifact_binding_idempotency();
             match store.claim(&request).await.map_err(map_idempotency_error)? {
                 ArtifactBindingIdempotencyClaim::Replay { response } => response,
                 ArtifactBindingIdempotencyClaim::InProgress => {

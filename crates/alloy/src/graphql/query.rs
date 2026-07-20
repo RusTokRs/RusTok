@@ -7,7 +7,7 @@ use crate::{storage::ScriptQuery, ScriptRegistry};
 
 use super::{
     require_admin, runtime_from_graphql_ctx, GqlEventType, GqlExecutionLogConnection,
-    GqlExecutionLogEntry, GqlScript, GqlScriptConnection, GqlScriptStatus,
+    GqlExecutionLogEntry, GqlReviewDecision, GqlScript, GqlScriptConnection, GqlScriptStatus,
 };
 
 pub const EXECUTION_HISTORY_GRAPHQL_FIELDS: &[&str] = &[
@@ -21,6 +21,22 @@ pub struct AlloyQuery;
 
 #[Object]
 impl AlloyQuery {
+    async fn script_reviews(
+        &self,
+        ctx: &Context<'_>,
+        script_id: Uuid,
+        revision: u32,
+    ) -> Result<Vec<GqlReviewDecision>> {
+        require_admin(ctx).await?;
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        runtime
+            .storage
+            .list_reviews(script_id, revision)
+            .await
+            .map(|decisions| decisions.into_iter().map(Into::into).collect())
+            .map_err(|error| async_graphql::Error::new(error.to_string()))
+    }
+
     async fn scripts(
         &self,
         ctx: &Context<'_>,

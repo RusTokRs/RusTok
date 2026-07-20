@@ -23,6 +23,9 @@ pub enum ScriptError {
     #[error("Script not found: {name}")]
     NotFound { name: String },
 
+    #[error("Script revision conflict: expected version {expected}")]
+    RevisionConflict { expected: u32 },
+
     #[error("Max call depth exceeded: {depth}")]
     MaxDepthExceeded { depth: usize },
 
@@ -34,6 +37,24 @@ pub enum ScriptError {
 
     #[error("Invalid status: {0}")]
     InvalidStatus(String),
+
+    #[error("Invalid Alloy workspace: {0}")]
+    InvalidWorkspace(String),
+
+    #[error(transparent)]
+    Review(#[from] crate::model::ReviewError),
+
+    #[error(transparent)]
+    TestRun(#[from] crate::model::TestRunError),
+
+    #[error(transparent)]
+    Release(#[from] crate::model::AlloyReleaseError),
+}
+
+impl From<crate::model::WorkspaceError> for ScriptError {
+    fn from(error: crate::model::WorkspaceError) -> Self {
+        Self::InvalidWorkspace(error.to_string())
+    }
 }
 
 pub type ScriptResult<T> = Result<T, ScriptError>;

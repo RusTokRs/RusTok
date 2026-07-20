@@ -219,10 +219,7 @@ impl<R: ScriptRegistry> ScriptOrchestrator<R> {
             ctx = ctx.with_user(uid);
         }
 
-        Ok(self
-            .executor
-            .execute(&script, &self.context_for_script(&ctx, &script), None)
-            .await)
+        Ok(self.execute_manual_snapshot(&script, ctx, None).await)
     }
 
     pub async fn run_manual_with_entity(
@@ -241,10 +238,29 @@ impl<R: ScriptRegistry> ScriptOrchestrator<R> {
             ctx = ctx.with_user(uid);
         }
 
-        Ok(self
-            .executor
-            .execute(&script, &self.context_for_script(&ctx, &script), entity)
-            .await)
+        Ok(self.execute_manual_snapshot(&script, ctx, entity).await)
+    }
+
+    /// Executes the exact script snapshot selected by the caller. Transport
+    /// handlers use this after checking the caller's expected revision so a
+    /// second registry lookup cannot replace the admitted source revision.
+    pub async fn run_manual_snapshot(
+        &self,
+        script: &Script,
+        params: HashMap<String, Dynamic>,
+        entity: Option<EntityProxy>,
+        user_id: Option<String>,
+    ) -> ExecutionResult {
+        let mut context = ExecutionContext::new(ExecutionPhase::Manual).with_params(
+            params
+                .into_iter()
+                .map(|(key, value)| (key.into(), value))
+                .collect(),
+        );
+        if let Some(user_id) = user_id {
+            context = context.with_user(user_id);
+        }
+        self.execute_manual_snapshot(script, context, entity).await
     }
 
     pub async fn run_api(
@@ -283,6 +299,17 @@ impl<R: ScriptRegistry> ScriptOrchestrator<R> {
             Some(_) => ctx.clone(),
             None => ctx.clone().with_tenant(script.tenant_id.to_string()),
         }
+    }
+
+    async fn execute_manual_snapshot(
+        &self,
+        script: &Script,
+        context: ExecutionContext,
+        entity: Option<EntityProxy>,
+    ) -> ExecutionResult {
+        self.executor
+            .execute(script, &self.context_for_script(&context, script), entity)
+            .await
     }
 
     async fn find_scripts(&self, entity_type: &str, event: EventType) -> ScriptResult<Vec<Script>> {

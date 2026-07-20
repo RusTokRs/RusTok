@@ -1,0 +1,119 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(AlloyScriptReviews::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(AlloyScriptReviews::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptReviews::ScriptId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptReviews::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptReviews::Revision)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptReviews::SourceDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptReviews::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptReviews::PolicyRevision)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptReviews::ActorId)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(AlloyScriptReviews::Reason).text())
+                    .col(
+                        ColumnDef::new(AlloyScriptReviews::IdempotencyKey)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptReviews::RequestDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptReviews::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .index(
+                        Index::create()
+                            .unique()
+                            .name("uidx_alloy_script_reviews_idempotency")
+                            .col(AlloyScriptReviews::ScriptId)
+                            .col(AlloyScriptReviews::Revision)
+                            .col(AlloyScriptReviews::IdempotencyKey),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_alloy_script_reviews_tenant_revision_created")
+                    .table(AlloyScriptReviews::Table)
+                    .col(AlloyScriptReviews::TenantId)
+                    .col(AlloyScriptReviews::ScriptId)
+                    .col(AlloyScriptReviews::Revision)
+                    .col(AlloyScriptReviews::CreatedAt)
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(AlloyScriptReviews::Table).to_owned())
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum AlloyScriptReviews {
+    Table,
+    Id,
+    ScriptId,
+    TenantId,
+    Revision,
+    SourceDigest,
+    Status,
+    PolicyRevision,
+    ActorId,
+    Reason,
+    IdempotencyKey,
+    RequestDigest,
+    CreatedAt,
+}

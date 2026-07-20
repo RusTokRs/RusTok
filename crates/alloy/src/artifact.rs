@@ -1,4 +1,3 @@
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use rustok_modules::{
@@ -37,7 +36,14 @@ pub fn stage_rhai_module_release(
     capabilities: Vec<CapabilityName>,
 ) -> Result<ArtifactReleaseDraft, AlloyArtifactError> {
     let module_slug = module_slug.into();
-    let source_digest = sha256_digest(script.code.as_bytes());
+    let source_digest =
+        script
+            .workspace
+            .digest()
+            .map_err(|error| AlloyArtifactError::InvalidRelease {
+                slug: module_slug.clone(),
+                message: error.to_string(),
+            })?;
     let descriptor = ModuleArtifactDescriptor {
         schema_version: MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
         slug: module_slug.clone(),
@@ -48,7 +54,7 @@ pub fn stage_rhai_module_release(
         platform_compatibility: "^0.1".to_string(),
         required_features: Vec::new(),
         artifact_digest: source_digest.clone(),
-        entrypoint: "main".to_string(),
+        entrypoint: script.workspace.entrypoint.clone(),
         capabilities,
         bindings: Vec::new(),
         dependencies: Vec::new(),
@@ -118,18 +124,19 @@ pub async fn package_rhai_module_release(
     let package = ModuleArtifactPackage {
         reference,
         descriptor: draft.descriptor.clone(),
-        media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
-        payload: rustok_modules::ArtifactPayloadSource::Bytes(script.code.as_bytes().to_vec()),
+        media_type: crate::ALLOY_DRAFT_RHAI_MEDIA_TYPE.to_string(),
+        payload: rustok_modules::ArtifactPayloadSource::Bytes(
+            script
+                .workspace
+                .canonical_bytes()
+                .map_err(|error| AlloyArtifactError::InvalidPackage(error.to_string()))?,
+        ),
     };
     package
         .verify(ArtifactAdmissionLimits::default())
         .await
         .map_err(|error| AlloyArtifactError::InvalidPackage(error.to_string()))?;
     Ok(package)
-}
-
-fn sha256_digest(bytes: &[u8]) -> String {
-    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 #[cfg(test)]
@@ -139,10 +146,14 @@ mod tests {
     use rustok_sandbox::CapabilityName;
 
     use super::{fork_rhai_module_release, package_rhai_module_release, stage_rhai_module_release};
-    use crate::{Script, ScriptTrigger};
+    use crate::{AlloyWorkspace, Script, ScriptTrigger};
 
     fn script(code: &str) -> Script {
-        Script::new("tax_adjustment", code, ScriptTrigger::Manual)
+        Script::new(
+            "tax_adjustment",
+            AlloyWorkspace::single_source(code),
+            ScriptTrigger::Manual,
+        )
     }
 
     #[test]
@@ -216,7 +227,7 @@ mod tests {
         assert!(matches!(
             package.payload,
             rustok_modules::ArtifactPayloadSource::Bytes(payload)
-                if payload == source.code.as_bytes()
+                if payload == source.workspace.canonical_bytes().expect("workspace bytes")
         ));
     }
 }

@@ -4,6 +4,7 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use super::trigger::ScriptTrigger;
+use super::workspace::AlloyWorkspace;
 
 pub type ScriptId = Uuid;
 
@@ -24,7 +25,7 @@ pub struct Script {
     pub tenant_id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub code: String,
+    pub workspace: AlloyWorkspace,
     pub trigger: ScriptTrigger,
     pub status: ScriptStatus,
     pub version: u32,
@@ -37,15 +38,28 @@ pub struct Script {
     pub last_error_at: Option<DateTime<Utc>>,
 }
 
+/// Immutable source evidence for one durable Alloy script revision.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ScriptSourceRevision {
+    pub script_id: ScriptId,
+    pub tenant_id: Uuid,
+    pub revision: u32,
+    pub parent_revision: Option<u32>,
+    pub source_digest: String,
+    pub workspace: AlloyWorkspace,
+    pub author_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
 impl Script {
-    pub fn new(name: impl Into<String>, code: impl Into<String>, trigger: ScriptTrigger) -> Self {
+    pub fn new(name: impl Into<String>, workspace: AlloyWorkspace, trigger: ScriptTrigger) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
             tenant_id: Uuid::nil(),
             name: name.into(),
             description: None,
-            code: code.into(),
+            workspace,
             trigger,
             status: ScriptStatus::Draft,
             version: 1,

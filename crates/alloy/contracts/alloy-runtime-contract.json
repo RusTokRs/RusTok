@@ -113,25 +113,107 @@
     "rest_create": [
       "reject_duplicate_name",
       "validate_cron_trigger",
-      "compile_before_save",
+      "validate_workspace_and_compile_entrypoint_before_save",
       "persist_optional_tenant_id"
     ],
     "rest_update": [
       "invalidate_old_name_on_rename",
-      "compile_new_code_before_save",
+      "validate_new_workspace_and_compile_entrypoint_before_save",
       "validate_cron_trigger_before_save",
-      "invalidate_cache_on_code_change"
+      "invalidate_cache_on_workspace_change",
+      "require_expected_version"
     ],
     "graphql_create_update": [
       "require_admin",
       "validate_cron_trigger",
-      "compile_before_save",
-      "tenant_from_context_on_create"
+      "validate_workspace_and_compile_entrypoint_before_save",
+      "tenant_from_context_on_create",
+      "require_expected_version"
     ],
     "error_mapping": {
       "compilation": "validation",
       "invalid_cron": "validation",
       "duplicate_name": "conflict"
+    }
+  },
+  "execution_command_contract": {
+    "manual_run": [
+      "require_expected_version",
+      "execute_loaded_snapshot"
+    ]
+  },
+  "source_revision_ledger_contract": {
+    "persistence": "durable_immutable_source_snapshots",
+    "lookup": "owner_scoped_by_script_id_and_revision",
+    "listing": "owner_tenant_scoped_revision_ascending",
+    "snapshot_fields": [
+      "source_digest",
+      "workspace",
+      "author_id",
+      "parent_revision"
+    ]
+  },
+  "review_contract": {
+    "persistence": "durable_immutable_revision_decisions",
+    "subject": "tenant_scoped_script_source_revision",
+    "precondition": "expected_current_revision",
+    "idempotency": "script_revision_idempotency_key_and_request_digest",
+    "transports": "graphql_and_host_http_require_scripts_manage_and_verified_actor",
+    "evidence_fields": [
+      "source_digest",
+      "policy_revision",
+      "actor_id",
+      "reason"
+    ]
+  },
+  "test_command_contract": {
+    "persistence": "durable_revision_pinned_test_run_ledger",
+    "precondition": "expected_current_revision",
+    "idempotency": "script_revision_idempotency_key_and_request_digest",
+    "recovery": "bounded_pending_lease_reclaim_without_replacing_source_revision",
+    "execution": "sandbox_outside_transaction_with_capability_free_test_entrypoint",
+    "transports": "graphql_and_host_http_require_scripts_manage_and_verified_actor",
+    "evidence_fields": [
+      "source_digest",
+      "test_path",
+      "actor_id",
+      "terminal_boolean_result"
+    ]
+  },
+  "release_stage_contract": {
+    "persistence": "owner_owned_alloy_authored_staging",
+    "precondition": "expected_current_revision_and_latest_approved_review",
+    "idempotency": "publish_request_idempotency_key_bound_to_source_revision_and_review",
+    "ownership": "rustok_modules_is_sole_marketplace_writer",
+    "evidence_fields": [
+      "source_digest",
+      "source_revision",
+      "alloy_tenant_id",
+      "alloy_script_id",
+      "review_reference",
+      "review_digest",
+      "review_policy_revision",
+      "platform_admission"
+    ]
+  },
+  "workspace_contract": {
+    "persistence": "bounded_revisioned_json_workspace",
+    "payload_media_type": "application/vnd.rustok.rhai.workspace.v1",
+    "sandbox_source_resolution": "alloy_extension_static_in_memory_resolver_from_canonical_workspace_bytes",
+    "guest_filesystem": "forbidden",
+    "test_execution": {
+      "entrypoints": "declared_tests_rhai_only",
+      "source_identity": "same_canonical_workspace_digest_and_revision",
+      "imports": "exact_in_memory_src_rhai_only",
+      "capabilities": "always_default_deny",
+      "result": "boolean_without_entity_mutations"
+    },
+    "limits": {
+      "max_files": 64,
+      "max_file_bytes": 131072,
+      "max_workspace_bytes": 1048576,
+      "max_path_bytes": 160,
+      "max_import_depth": 8
     }
   }
 }

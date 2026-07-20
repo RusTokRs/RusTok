@@ -14,7 +14,7 @@ mod tests {
 
     use crate::create_default_alloy_draft_runtime;
     use crate::integration::ScriptableEntity;
-    use crate::model::{EventType, Script, ScriptTrigger};
+    use crate::model::{AlloyWorkspace, EventType, Script, ScriptTrigger};
     use crate::runner::{ExecutionOutcome, ScriptOrchestrator};
     use crate::storage::{InMemoryStorage, ScriptRegistry};
     use crate::EntityProxy;
@@ -170,7 +170,8 @@ mod tests {
 
         let mut validation_script = Script::new(
             "validate_deal",
-            r#"
+            AlloyWorkspace::single_source(
+                r#"
                 if entity["amount"] < 100 {
                     abort("Minimum deal amount is 100");
                 }
@@ -179,6 +180,7 @@ mod tests {
                     entity["assigned_to"] = "senior_manager";
                 }
             "#,
+            ),
             ScriptTrigger::Event {
                 entity_type: "deal".into(),
                 event: EventType::BeforeCreate,
@@ -189,9 +191,11 @@ mod tests {
 
         let mut commit_script = Script::new(
             "notify_commit",
-            r#"
+            AlloyWorkspace::single_source(
+                r#"
                 log("commit hook ran");
             "#,
+            ),
             ScriptTrigger::Event {
                 entity_type: "deal".into(),
                 event: EventType::OnCommit,

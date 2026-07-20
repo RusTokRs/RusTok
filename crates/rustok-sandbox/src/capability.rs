@@ -458,13 +458,15 @@ impl DataCapabilityConstraints {
         }
         let mut operations = std::collections::BTreeSet::new();
         if constraints.operations.iter().any(|operation| {
-            !matches!(operation.as_str(), "get" | "put" | "put_batch" | "list")
-                || !operations.insert(operation)
+            !matches!(
+                operation.as_str(),
+                "get" | "put" | "put_batch" | "list" | "query_index"
+            ) || !operations.insert(operation)
         }) {
             return Err(SandboxError::CapabilityConstraintDenied {
                 capability: grant.name.clone(),
                 reason:
-                    "data operations must be unique and limited to get, put, put_batch, or list"
+                    "data operations must be unique and limited to get, put, put_batch, list, or query_index"
                         .to_string(),
             });
         }
@@ -542,6 +544,49 @@ impl DataCapabilityConstraints {
                     return Err(data_constraint_error(
                         call,
                         "data list limit must be between 1 and 100",
+                    ));
+                }
+                Ok(())
+            }
+            "query_index" => {
+                reject_unexpected_data_fields(
+                    call,
+                    input,
+                    &["index", "value", "prefix", "after_key", "limit"],
+                )?;
+                let index = required_data_string(call, input, "index")?;
+                if !valid_data_index_name(index) {
+                    return Err(data_constraint_error(call, "data index is invalid"));
+                }
+                if !matches!(
+                    input.get("value"),
+                    Some(Value::String(_) | Value::Number(_) | Value::Bool(_))
+                ) {
+                    return Err(data_constraint_error(
+                        call,
+                        "data index query value must be a scalar",
+                    ));
+                }
+                let prefix = required_data_string(call, input, "prefix")?;
+                if !self.key_prefixes.iter().any(|allowed| allowed == prefix) {
+                    return Err(data_constraint_error(call, "data prefix is not allowed"));
+                }
+                if let Some(after_key) = input.get("after_key") {
+                    let after_key = after_key.as_str().ok_or_else(|| {
+                        data_constraint_error(call, "data after_key must be a string")
+                    })?;
+                    if !valid_data_key(after_key) || !after_key.starts_with(prefix) {
+                        return Err(data_constraint_error(
+                            call,
+                            "data after_key is outside the allowed prefix",
+                        ));
+                    }
+                }
+                let limit = input.get("limit").and_then(Value::as_u64);
+                if limit.filter(|limit| (1..=100).contains(limit)).is_none() {
+                    return Err(data_constraint_error(
+                        call,
+                        "data query limit must be between 1 and 100",
                     ));
                 }
                 Ok(())
@@ -636,12 +681,20 @@ impl ObjectCapabilityConstraints {
         }
         let mut operations = std::collections::BTreeSet::new();
         if constraints.operations.iter().any(|operation| {
-            !matches!(operation.as_str(), "get_metadata" | "read" | "put" | "list")
-                || !operations.insert(operation)
+            !matches!(
+                operation.as_str(),
+                "get_metadata"
+                    | "read"
+                    | "put"
+                    | "list"
+                    | "begin_upload"
+                    | "append_chunk"
+                    | "complete_upload"
+            ) || !operations.insert(operation)
         }) {
             return Err(SandboxError::CapabilityConstraintDenied {
                 capability: grant.name.clone(),
-                reason: "object-data operations must be unique and limited to get_metadata, read, put, or list".to_string(),
+                reason: "object-data operations must be unique and limited to get_metadata, read, put, list, begin_upload, append_chunk, or complete_upload".to_string(),
             });
         }
         Ok(constraints)
@@ -708,6 +761,80 @@ impl ObjectCapabilityConstraints {
                             "object-data expected_revision must be a positive integer",
                         ));
                     }
+                }
+                Ok(())
+            }
+            "begin_upload" => {
+                reject_unexpected_data_fields(
+                    call,
+                    input,
+                    &[
+                        "name",
+                        "content_type",
+                        "expected_revision",
+                        "idempotency_key",
+                    ],
+                )?;
+                self.validate_name(call, required_data_string(call, input, "name")?)?;
+                if input
+                    .get("content_type")
+                    .and_then(Value::as_str)
+                    .is_none_or(str::is_empty)
+                {
+                    return Err(data_constraint_error(
+                        call,
+                        "object-data begin_upload requires a non-empty content_type",
+                    ));
+                }
+                if Uuid::parse_str(required_data_string(call, input, "idempotency_key")?).is_err() {
+                    return Err(data_constraint_error(
+                        call,
+                        "object-data idempotency_key must be a UUID",
+                    ));
+                }
+                Ok(())
+            }
+            "append_chunk" => {
+                reject_unexpected_data_fields(
+                    call,
+                    input,
+                    &["session_id", "sequence", "data_base64"],
+                )?;
+                if Uuid::parse_str(required_data_string(call, input, "session_id")?).is_err()
+                    || input.get("sequence").and_then(Value::as_u64).is_none()
+                    || input
+                        .get("data_base64")
+                        .and_then(Value::as_str)
+                        .is_none_or(str::is_empty)
+                {
+                    return Err(data_constraint_error(
+                        call,
+                        "object-data append_chunk requires a UUID session_id, sequence, and data_base64",
+                    ));
+                }
+                Ok(())
+            }
+            "complete_upload" => {
+                reject_unexpected_data_fields(
+                    call,
+                    input,
+                    &["session_id", "size_bytes", "digest_sha256"],
+                )?;
+                if Uuid::parse_str(required_data_string(call, input, "session_id")?).is_err()
+                    || input
+                        .get("size_bytes")
+                        .and_then(Value::as_u64)
+                        .filter(|size| *size > 0)
+                        .is_none()
+                    || input
+                        .get("digest_sha256")
+                        .and_then(Value::as_str)
+                        .is_none_or(str::is_empty)
+                {
+                    return Err(data_constraint_error(
+                        call,
+                        "object-data complete_upload requires a UUID session_id, size_bytes, and digest_sha256",
+                    ));
                 }
                 Ok(())
             }
@@ -803,6 +930,14 @@ fn valid_data_prefix(value: &str) -> bool {
     value
         .strip_suffix('/')
         .is_some_and(|key| !key.ends_with('/') && valid_data_key(key))
+}
+
+fn valid_data_index_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+        })
 }
 
 fn valid_data_key(value: &str) -> bool {
@@ -1415,7 +1550,7 @@ mod tests {
             name: CapabilityName::new("platform.data").expect("capability name"),
             constraints: json!({
                 "key_prefixes": ["state/"],
-                "operations": ["get", "put", "put_batch", "list"]
+                "operations": ["get", "put", "put_batch", "list", "query_index"]
             }),
         };
         let constraints =
@@ -1436,6 +1571,18 @@ mod tests {
         assert!(constraints.validate(&data_call).is_err());
         data_call.input = json!({ "prefix": "state/", "table": "module_artifact_data" });
         data_call.operation = "list".to_string();
+        assert!(constraints.validate(&data_call).is_err());
+
+        data_call.operation = "query_index".to_string();
+        data_call.input = json!({
+            "index": "status",
+            "value": "active",
+            "prefix": "state/",
+            "after_key": "state/one",
+            "limit": 10,
+        });
+        assert!(constraints.validate(&data_call).is_ok());
+        data_call.input["value"] = json!({ "not": "a scalar" });
         assert!(constraints.validate(&data_call).is_err());
 
         data_call.operation = "put_batch".to_string();
@@ -1471,7 +1618,7 @@ mod tests {
             name: CapabilityName::new("platform.data.objects").expect("capability name"),
             constraints: json!({
                 "object_prefixes": ["exports/"],
-                "operations": ["get_metadata", "read", "put", "list"]
+                "operations": ["get_metadata", "read", "put", "list", "begin_upload", "append_chunk", "complete_upload"]
             }),
         };
         let constraints =
@@ -1487,6 +1634,21 @@ mod tests {
         );
         object_call.capability =
             CapabilityName::new("platform.data.objects").expect("capability name");
+        assert!(constraints.validate(&object_call).is_ok());
+
+        object_call.operation = "begin_upload".to_string();
+        object_call.input = json!({
+            "name": "exports/report.json",
+            "content_type": "application/json",
+            "idempotency_key": Uuid::new_v4().to_string(),
+        });
+        assert!(constraints.validate(&object_call).is_ok());
+        object_call.operation = "append_chunk".to_string();
+        object_call.input = json!({
+            "session_id": Uuid::new_v4().to_string(),
+            "sequence": 0,
+            "data_base64": "e30=",
+        });
         assert!(constraints.validate(&object_call).is_ok());
 
         object_call.input = json!({ "name": "other/report.json" });

@@ -34,11 +34,17 @@ The worker never reads registry usernames or passwords from environment. Before
 publication it invokes the fixed credential broker with exactly one bounded JSON
 request containing `protocol_version: 1`, configured `registry`, `repository`,
 and `minimum_ttl_seconds`. The broker returns one bounded JSON lease for that
-same repository with username, password, and expiry. The lease must remain
-valid for the complete publication/signing window, is capped at 15 minutes, and
-is kept only in worker memory. Broker stdout is limited to 16 KiB; stderr is
-discarded. The broker runs with a cleared environment and must use its own
-deployment-managed workload identity or local provider channel.
+same repository with username, password, and expiry. Publication/signing uses a
+14-minute maximum window and requests a further 30-second lease margin, while
+the lease itself remains capped at 15 minutes and is kept only in worker memory.
+Broker stdout is limited to 16 KiB; stderr is discarded. The broker runs with a
+cleared environment and must use its own deployment-managed workload identity
+or local provider channel.
+
+The worker validates the configured publication target at construction even
+when it is instantiated without environment loading. It rechecks the acquired
+lease immediately before creating the OCI publisher; an expired lease is a
+terminal publication failure and is never passed to the registry client.
 
 `scripts/verify/verify-module-build-worker-isolation.mjs` guards this boundary
 in source: the worker cannot add tenant-database, platform-storage, or general
@@ -47,19 +53,22 @@ environment-cleared without database or credential forwarding. It also prevents 
 adding a module-build worker or delivery path and requires the separate
 dispatcher to use the mTLS remote worker after readiness verification. The
 transport readiness response must use the worker-owned hardened OCI-job probe,
-not an unconditional success.
+not an unconditional success. The same verifier requires the fixed Cosign
+command to clear its environment and receive only the temporary private Docker
+configuration.
 
 Cosign receives the verified, digest-pinned artifact reference only after OCI
 publication. Its KMS-provider identity is deployment-owned and must be scoped
 to the configured publication repository; neither a private key nor a signing
 credential enters a build request, runner environment, descriptor, or log.
-The worker removes `COSIGN_REPOSITORY` for the signing command so Cosign cannot
-redirect a signature to another repository. It then resolves Cosign's standard
-`sha256-<subject>.sig` OCI manifest tag to a digest-pinned receipt. The tag is
-only a registry lookup mechanism, never an identity exposed to the control
-plane. The same in-memory lease is written only to a private temporary Docker
-configuration for the fixed Cosign process and is removed immediately after it
-exits.
+The worker clears the Cosign process environment and supplies only the private
+Docker configuration, so process-wide proxy credentials or `COSIGN_REPOSITORY`
+cannot redirect a signature to another repository. It then resolves Cosign's
+standard `sha256-<subject>.sig` OCI manifest tag to a digest-pinned receipt. The
+tag is only a registry lookup mechanism, never an identity exposed to the
+control plane. The same in-memory lease is written only to a private temporary
+Docker configuration for the fixed Cosign process and is removed immediately
+after it exits.
 
 `RUSTOK_MODULE_BUILD_DEPENDENCY_MATERIALIZER` is optional for deployments that
 accept only `network_policy: denied`. When configured, it must be an absolute,
@@ -209,5 +218,5 @@ runtime, no host mounts or container socket, request-scoped source/target/cache
 volumes, and the resource/network controls specified in the module
 control-plane plan. It also provides the deployment-owned
 `RUSTOK_MODULE_BUILD_CARGO` and `RUSTOK_MODULE_BUILD_CARGO_HOME` paths. The
-job pipeline still needs evidence generation tools, signature publication, and
-admission trust stages.
+job pipeline still needs deployment evidence for hardened-job isolation and the
+later admission trust stage.

@@ -47,6 +47,10 @@ impl From<ScriptError> for ApiError {
                 error: format!("Script not found: {name}"),
                 code: "not_found".to_string(),
             },
+            ScriptError::RevisionConflict { expected } => ApiError {
+                error: format!("Script revision conflict: expected version {expected}"),
+                code: "conflict".to_string(),
+            },
             ScriptError::Compilation(msg) => ApiError {
                 error: format!("Compilation error: {msg}"),
                 code: "validation".to_string(),
@@ -57,6 +61,10 @@ impl From<ScriptError> for ApiError {
             },
             ScriptError::InvalidStatus(msg) => ApiError {
                 error: format!("Invalid status: {msg}"),
+                code: "validation".to_string(),
+            },
+            ScriptError::InvalidWorkspace(msg) => ApiError {
+                error: format!("Invalid Alloy workspace: {msg}"),
                 code: "validation".to_string(),
             },
             _ => ApiError {
@@ -124,10 +132,17 @@ pub async fn create_script<S: ScriptRegistry>(
     }
 
     validate_trigger(&req.trigger)?;
+    req.workspace
+        .validate_rhai_workspace()
+        .map_err(ScriptError::from)?;
+    let source = req
+        .workspace
+        .entrypoint_source()
+        .map_err(ScriptError::from)?;
     let mut scope = rhai::Scope::new();
-    state.engine.compile(&req.name, &req.code, &mut scope)?;
+    state.engine.compile(&req.name, source, &mut scope)?;
 
-    let mut script = crate::model::Script::new(req.name, req.code, req.trigger);
+    let mut script = crate::model::Script::new(req.name, req.workspace, req.trigger);
     if let Some(tenant_id) = req.tenant_id {
         script.tenant_id = tenant_id;
     }
@@ -149,6 +164,11 @@ pub async fn update_script<S: ScriptRegistry>(
     Json(req): Json<UpdateScriptRequest>,
 ) -> ApiResult<Json<ScriptResponse>> {
     let mut script = state.registry.get(id).await.map_err(ApiError::from)?;
+    if script.version != req.expected_version {
+        return Err(ApiError::from(ScriptError::RevisionConflict {
+            expected: req.expected_version,
+        }));
+    }
 
     if let Some(name) = req.name {
         state.engine.invalidate(&script.name);
@@ -157,11 +177,15 @@ pub async fn update_script<S: ScriptRegistry>(
     if let Some(desc) = req.description {
         script.description = Some(desc);
     }
-    if let Some(code) = req.code {
+    if let Some(workspace) = req.workspace {
         state.engine.invalidate(&script.name);
+        workspace
+            .validate_rhai_workspace()
+            .map_err(ScriptError::from)?;
+        let source = workspace.entrypoint_source().map_err(ScriptError::from)?;
         let mut scope = rhai::Scope::new();
-        state.engine.compile(&script.name, &code, &mut scope)?;
-        script.code = code;
+        state.engine.compile(&script.name, source, &mut scope)?;
+        script.workspace = workspace;
     }
     if let Some(trigger) = req.trigger {
         validate_trigger(&trigger)?;
@@ -204,6 +228,11 @@ pub async fn run_script<S: ScriptRegistry>(
     Json(req): Json<RunScriptRequest>,
 ) -> ApiResult<Json<RunScriptResponse>> {
     let script = state.registry.get(id).await.map_err(ApiError::from)?;
+    if script.version != req.expected_version {
+        return Err(ApiError::from(ScriptError::RevisionConflict {
+            expected: req.expected_version,
+        }));
+    }
 
     let params = req
         .params
@@ -223,9 +252,8 @@ pub async fn run_script<S: ScriptRegistry>(
 
     let result = state
         .orchestrator
-        .run_manual_with_entity(&script.name, params, entity, None)
-        .await
-        .map_err(ApiError::from)?;
+        .run_manual_snapshot(&script, params, entity, None)
+        .await;
 
     let (success, error, changes, return_value) = match &result.outcome {
         crate::runner::ExecutionOutcome::Success {
@@ -282,6 +310,11 @@ pub async fn run_script_by_name<S: ScriptRegistry>(
         .get_by_name(&name)
         .await
         .map_err(ApiError::from)?;
+    if script.version != req.expected_version {
+        return Err(ApiError::from(ScriptError::RevisionConflict {
+            expected: req.expected_version,
+        }));
+    }
 
     let params = req
         .params
@@ -301,9 +334,8 @@ pub async fn run_script_by_name<S: ScriptRegistry>(
 
     let result = state
         .orchestrator
-        .run_manual_with_entity(&script.name, params, entity, None)
-        .await
-        .map_err(ApiError::from)?;
+        .run_manual_snapshot(&script, params, entity, None)
+        .await;
 
     let (success, error, changes, return_value) = match &result.outcome {
         crate::runner::ExecutionOutcome::Success {
@@ -408,11 +440,17 @@ pub async fn validate_script<S: ScriptRegistry>(
     State(state): State<Arc<AppState<S>>>,
     Json(req): Json<CreateScriptRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    req.workspace
+        .validate_rhai_workspace()
+        .map_err(ScriptError::from)?;
     let mut scope = rhai::Scope::new();
-    match state
-        .engine
-        .compile("__validation__", &req.code, &mut scope)
-    {
+    match state.engine.compile(
+        "__validation__",
+        req.workspace
+            .entrypoint_source()
+            .map_err(ScriptError::from)?,
+        &mut scope,
+    ) {
         Ok(_) => Ok(Json(serde_json::json!({
             "valid": true,
             "message": "Script compiles successfully"

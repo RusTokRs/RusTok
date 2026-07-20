@@ -15,7 +15,7 @@ impl MigrationTrait for ScriptsMigration {
                     .col(ColumnDef::new(Scripts::TenantId).uuid().not_null())
                     .col(ColumnDef::new(Scripts::Name).string_len(255).not_null())
                     .col(ColumnDef::new(Scripts::Description).text())
-                    .col(ColumnDef::new(Scripts::Code).text().not_null())
+                    .col(ColumnDef::new(Scripts::Workspace).json_binary().not_null())
                     .col(
                         ColumnDef::new(Scripts::TriggerType)
                             .string_len(32)
@@ -105,7 +105,7 @@ enum Scripts {
     TenantId,
     Name,
     Description,
-    Code,
+    Workspace,
     TriggerType,
     TriggerConfig,
     Status,

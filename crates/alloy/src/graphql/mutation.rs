@@ -5,15 +5,16 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::{
-    model::{Script, ScriptStatus},
+    model::{ReviewCommand, Script, ScriptStatus},
     runner::ExecutionOutcome,
     utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
-    ScriptRegistry,
+    RevisionedTestRunner, ScriptRegistry, TestCommand,
 };
 
 use super::{
-    require_admin, runtime_from_graphql_ctx, CreateScriptInput, GqlExecutionResult, GqlScript,
-    RunScriptInput, ScriptTriggerInput, UpdateScriptInput,
+    require_admin, runtime_from_graphql_ctx, CreateScriptInput, GqlExecutionResult,
+    GqlReviewDecision, GqlScript, GqlTestRun, ReviewScriptInput, RunScriptInput,
+    RunWorkspaceTestInput, ScriptTriggerInput, UpdateScriptInput,
 };
 
 fn validate_cron_trigger(trigger: &ScriptTriggerInput) -> Result<()> {
@@ -39,10 +40,17 @@ impl AlloyMutation {
         require_admin(ctx).await?;
         validate_cron_trigger(&input.trigger)?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
+        let workspace = input.workspace.0;
+        workspace
+            .validate_rhai_workspace()
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        let source = workspace
+            .entrypoint_source()
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         let mut scope = rhai::Scope::new();
         runtime
             .engine
-            .compile(&input.name, &input.code, &mut scope)
+            .compile(&input.name, source, &mut scope)
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
         let tenant_id = ctx
@@ -50,7 +58,7 @@ impl AlloyMutation {
             .map(|tenant| tenant.id)
             .unwrap_or_default();
 
-        let mut script = Script::new(input.name, input.code, input.trigger.into());
+        let mut script = Script::new(input.name, workspace, input.trigger.into());
         script.tenant_id = tenant_id;
         script.description = input.description;
         script.run_as_system = input.run_as_system;
@@ -82,6 +90,14 @@ impl AlloyMutation {
             .get(id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        if script.version != input.expected_version {
+            return Err(async_graphql::Error::new(
+                crate::ScriptError::RevisionConflict {
+                    expected: input.expected_version,
+                }
+                .to_string(),
+            ));
+        }
 
         if let Some(name) = input.name {
             runtime.engine.invalidate(&script.name);
@@ -90,14 +106,21 @@ impl AlloyMutation {
         if let Some(description) = input.description {
             script.description = Some(description);
         }
-        if let Some(code) = input.code {
+        if let Some(workspace) = input.workspace {
             runtime.engine.invalidate(&script.name);
+            let workspace = workspace.0;
+            workspace
+                .validate_rhai_workspace()
+                .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+            let source = workspace
+                .entrypoint_source()
+                .map_err(|error| async_graphql::Error::new(error.to_string()))?;
             let mut scope = rhai::Scope::new();
             runtime
                 .engine
-                .compile(&script.name, &code, &mut scope)
+                .compile(&script.name, source, &mut scope)
                 .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-            script.code = code;
+            script.workspace = workspace;
         }
         if let Some(ref trigger) = input.trigger {
             validate_cron_trigger(trigger)?;
@@ -165,11 +188,23 @@ impl AlloyMutation {
             .transpose()?
             .unwrap_or_default();
 
-        let result = runtime
-            .orchestrator
-            .run_manual(&input.script_name, params, user_id.clone())
+        let script = runtime
+            .storage
+            .get_by_name(&input.script_name)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        if script.version != input.expected_version {
+            return Err(async_graphql::Error::new(
+                crate::ScriptError::RevisionConflict {
+                    expected: input.expected_version,
+                }
+                .to_string(),
+            ));
+        }
+        let result = runtime
+            .orchestrator
+            .run_manual_snapshot(&script, params, None, user_id)
+            .await;
 
         let (success, error, return_value, changes) = match result.outcome {
             ExecutionOutcome::Success {
@@ -198,6 +233,51 @@ impl AlloyMutation {
             return_value: return_value.map(Json),
             changes: changes.map(Json),
         })
+    }
+
+    async fn review_script(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: ReviewScriptInput,
+    ) -> Result<GqlReviewDecision> {
+        let auth = require_admin(ctx).await?;
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        let decision = runtime
+            .storage
+            .review(ReviewCommand {
+                script_id: id,
+                expected_revision: input.expected_version,
+                status: input.status.into(),
+                policy_revision: input.policy_revision,
+                actor_id: auth.user_id.to_string(),
+                reason: input.reason,
+                idempotency_key: input.idempotency_key,
+            })
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        Ok(decision.into())
+    }
+
+    async fn run_workspace_test(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: RunWorkspaceTestInput,
+    ) -> Result<GqlTestRun> {
+        let auth = require_admin(ctx).await?;
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        let run = RevisionedTestRunner::new(runtime.sandbox.clone(), runtime.storage.clone())
+            .execute(TestCommand {
+                script_id: id,
+                expected_revision: input.expected_version,
+                test_path: input.test_path,
+                actor_id: auth.user_id.to_string(),
+                idempotency_key: input.idempotency_key,
+            })
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        Ok(run.into())
     }
 
     async fn activate_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {

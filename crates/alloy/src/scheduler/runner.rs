@@ -200,7 +200,7 @@ mod tests {
     use crate::create_default_alloy_draft_runtime;
     use crate::error::ScriptResult;
     use crate::execution_log::ExecutionLogSink;
-    use crate::model::ScriptStatus;
+    use crate::model::{AlloyWorkspace, ScriptStatus};
     use crate::runner::ExecutionResult;
     use crate::storage::InMemoryStorage;
 
@@ -235,7 +235,7 @@ mod tests {
 
         let mut script = Script::new(
             "scheduled_audit_smoke",
-            "40 + 2",
+            AlloyWorkspace::single_source("40 + 2"),
             ScriptTrigger::Cron {
                 expression: "0 0 0 1 1 * 2099".to_string(),
             },

@@ -192,7 +192,11 @@ these contracts as their write paths are moved. `ModuleControlPlane` is the
 owner composition root for currently extracted database-backed services; it is
 not a server/admin compatibility facade or a parallel execution path. Server
 lifecycle, composition, artifact runtime/HTTP, and registry-governance adapters
-obtain their corresponding owner services through this root.
+obtain their corresponding owner services through this root. Artifact runtime
+also receives its exact data/object capability resolvers and redacted execution
+audit observer through the root; outbox projection receives the durable artifact
+event projector, and routed artifact HTTP receives its binding-idempotency
+store. RBAC permission evaluation remains an RBAC-owner adapter.
 `EffectivePolicyService` now exposes the same owner-owned catalog/default/tenant
 override resolution used by lifecycle commands, so server guards, GraphQL, and
 installer adapters do not query `tenant_modules` to reconstruct policy. The
@@ -479,10 +483,12 @@ declarations before returning it; a missing row or revision mismatch denies
 execution. The server composes the shared CAS-backed executor before worker
 registration, with the Rhai `capability_call` bridge, Wasm component executor,
 durable execution audit, and exact policy resolver. It registers structured
-`platform.data` plus bounded `platform.data.objects`: the latter accepts only
-logical object names and explicit prefix/operation grants, transfers at most
-44 KiB of decoded bytes in its base64 envelope, and never exposes physical
-storage identity. Secret, MCP, and every other capability remain default-deny
+`platform.data` plus `platform.data.objects`: the latter accepts only logical
+object names and explicit prefix/operation grants. Small reads and writes use
+at most 44 KiB decoded base64; large writes use durable owner-owned upload
+sessions with ordered 44 KiB chunks, final size/SHA-256 verification, expiry
+reaping, and retention-GC hand-off before private-object publication. It never exposes
+physical storage identity. Secret, MCP, and every other capability remain default-deny
 until their deployment adapters are available.
 
 `resolve_granted_artifact_capability` is the shared gate for every dynamic
@@ -749,9 +755,11 @@ service after tenant/subject checks; batch entries must have distinct keys and
 idempotency keys under declared prefixes, while list queries use an escaped
 logical-prefix filter and continuation validation.
 An authorized namespace purge removes structured records and private-object
-metadata in its transaction; it intentionally leaves the corresponding
-unreferenced storage bytes for the retention/GC policy rather than issuing a
-guest-driven physical delete.
+metadata in its transaction and queues every unreachable private key. The
+tenant-scoped `SeaOrmArtifactDataObjectGcService` deletes a queued key only
+after a supplied retention snapshot explicitly approves it; missing rules and
+legal/audit/rollback holds fail closed rather than issuing a guest-driven
+physical delete.
 `CapabilityBrokerRouter` composes this data adapter with the durable secret
 handle adapter and future owner-owned capability adapters using exact capability
 names, rejecting duplicate or unregistered routes instead of adding a global
@@ -761,9 +769,33 @@ and forwards scoped execution identity to `ArtifactMcpInvoker`. It has no MCP
 endpoint, token, credential, or discovery input; deployment composition must
 still bind the owner port to the existing MCP access-policy, audit, and
 configured server-alias implementation.
-The sandbox object capability supports only bounded base64 transfer; streaming
-object I/O, indexed-query, export, and full retention policy remain separate
-unfinished work. `put_batch` accepts at most 32 distinct logical keys and
+The sandbox object capability limits each base64 call to 44 KiB. Larger objects
+use durable owner-owned upload sessions with ordered bounded chunks, final
+owner-side size/digest verification, expiry reaping, and retention-GC hand-off;
+true streaming object I/O, indexed-query, and export remain separate unfinished
+work. Object metadata and all durable digest columns require canonical lowercase
+`sha256:` values, and upload idempotency is isolated by immutable policy scope.
+The owner enforces the 32 MiB object quota across the full durable chunk set,
+not merely at completion.
+Completion claims a durable `completing` state before publication; expiry reaping
+atomically transitions only expired open/completing sessions before queuing
+chunks, so completion and collection cannot race the same session.
+
+The immutable persistence contract now reserves bounded logical scalar indexes:
+each declaration has a host-validated name, a narrow logical JSON pointer, and
+a scalar value type. It exposes no physical index identity or query expression.
+The owner computes the canonical scalar projection in Rust and stores it in a
+separate tenant-RLS table in the same write/purge transaction. The
+first indexed write binds that namespace to the exact immutable index
+declaration digest, while indexed reads only validate it. A changed declaration
+requires a new data-contract revision and owner-mediated upgrade; a legacy
+namespace with data but no binding fails closed rather than returning incomplete
+index results. The
+`platform.data.query_index` capability requires its own typed grant operation
+and an exact granted logical-key prefix. It permits only equality against one
+declared index plus keyset pagination; ranges, sorting, joins, offsets, and
+query plans are unavailable.
+`put_batch` accepts at most 32 distinct logical keys and
 idempotency keys. It validates every schema and host authorization decision
 before opening one tenant-RLS transaction, then commits all structured writes
 and their idempotency facts together. The durable secret-reference slice now stores a
@@ -777,14 +809,25 @@ fact. The returned artifact handle contains only logical name and revision.
 at the sandbox boundary; resolver aliases, resolver keys, and secret values
 remain host-only. Its owner-provided `acquire_handle` broker additionally
 checks the injected artifact scope and host authorization before returning only
-the logical reference and revision. A value-consuming secret-use broker remains
-unfinished. The structured-value namespace now has a separate
+the logical reference and revision. `ModuleControlPlane` is the only
+production composition root for both the binding service and the dynamic
+secret-capability resolver; the control-plane verifier rejects their direct
+SeaORM construction outside the owner crate. A value-consuming secret-use
+broker remains unfinished. The structured-value namespace now has a separate
 SeaOrmArtifactDataPurgeService:
 it serializes writes and purge through namespace state, permanently tombstones a
 purged revision, stores actor/reason/idempotency audit data, and emits an
 outbox fact. The service requires a host-provided ArtifactDataPurgeAuthorizer
 for lifecycle, legal-hold, retention, and policy decisions; no guest capability
 can mark itself authorized.
+
+`SeaOrmArtifactDataExportService` provides the first owner-only export slice.
+Each bounded keyset page requires a host `ArtifactDataExportAuthorizer`, an
+expected active namespace revision, and actor/reason metadata. It holds the
+namespace lifecycle lock while it reads the page and records a redacted durable
+audit row plus `module.artifact.data_exported` outbox fact. Export is not a
+sandbox capability and is deliberately not described as a full backup snapshot;
+snapshot/restore remains a separate pending data-plane operation.
 
 Structured values also expose an authorized keyset list operation. It accepts
 only a validated logical-key continuation and a bounded page size of 100, never
@@ -824,7 +867,9 @@ tenant data, evidence, and rollback history for the retention/reconciler path.
 Artifact deactivation is a separate scoped lifecycle operation: it moves only
 an active admission to `inactive`, checks active direct dependents, and writes
 the audit/outbox fact while preserving the admitted release, data, CAS, and
-rollback evidence. Artifact disable remains a tenant-lifecycle concern and is
+rollback evidence. Deactivate, tenant disable/enable, and uninstall reject nil
+installation, actor, idempotency, and tenant-scope identities before opening a
+transaction. Artifact disable remains a tenant-lifecycle concern and is
 intentionally deferred to the owner-service/dispatcher cutover: the current
 tenant toggle is still compiled-registry based and cannot be reused for an
 artifact-only module. The dispatcher now has an explicit artifact-only

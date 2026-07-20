@@ -4,24 +4,28 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
-    Json,
+    Extension, Json,
 };
 use chrono::Utc;
-use rustok_api::{HostRuntimeContext, TenantContext};
+use rustok_api::{
+    has_any_effective_permission, Action, AuthContextExtension, HostRuntimeContext, Permission,
+    Resource, TenantContext,
+};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
     api::{
         CreateScriptRequest, EntityInput, ExecutionLogResponse, ListExecutionLogQuery,
-        ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, RunScriptRequest,
-        RunScriptResponse, ScriptResponse, UpdateScriptRequest,
+        ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, ReviewDecisionResponse,
+        ReviewScriptRequest, RunScriptRequest, RunScriptResponse, RunWorkspaceTestRequest,
+        ScriptResponse, TestRunResponse, UpdateScriptRequest,
     },
-    model::{EntityProxy, Script, ScriptStatus},
+    model::{EntityProxy, ReviewCommand, Script, ScriptStatus, ScriptTrigger},
     runner::ExecutionOutcome,
     storage::ScriptRegistry,
-    utils::{dynamic_to_json, json_to_dynamic},
-    ScopedAlloyRuntime, ScriptError, SharedAlloyRuntime,
+    utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
+    RevisionedTestRunner, ScopedAlloyRuntime, ScriptError, SharedAlloyRuntime, TestCommand,
 };
 
 pub use crate::api::AXUM_EXECUTION_HISTORY_ROUTES as EXECUTION_HISTORY_ROUTES;
@@ -51,13 +55,86 @@ fn script_error(error: ScriptError) -> HttpError {
         ScriptError::NotFound { .. } => {
             HttpError::not_found("alloy_script_not_found", "Script not found")
         }
+        ScriptError::RevisionConflict { expected } => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_script_revision_conflict",
+            format!("Script revision conflict: expected version {expected}"),
+        ),
         ScriptError::Compilation(message)
         | ScriptError::InvalidTrigger(message)
-        | ScriptError::InvalidStatus(message) => {
+        | ScriptError::InvalidStatus(message)
+        | ScriptError::InvalidWorkspace(message) => {
             HttpError::bad_request("invalid_alloy_script", message)
         }
+        ScriptError::Review(crate::ReviewError::IdempotencyConflict) => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_review_idempotency_conflict",
+            "Review idempotency key was reused for a different command",
+        ),
+        review_error @ ScriptError::Review(
+            crate::ReviewError::InvalidCommand | crate::ReviewError::InvalidTransition { .. },
+        ) => HttpError::bad_request("invalid_alloy_review", review_error.to_string()),
+        ScriptError::TestRun(crate::TestRunError::IdempotencyConflict) => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_test_idempotency_conflict",
+            "Test idempotency key was reused for a different command",
+        ),
+        ScriptError::TestRun(crate::TestRunError::LeaseLost) => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_test_lease_lost",
+            "Test execution lease was lost; retry with the same idempotency key",
+        ),
+        test_error @ ScriptError::TestRun(
+            crate::TestRunError::InvalidCommand | crate::TestRunError::InvalidCompletion,
+        ) => HttpError::bad_request("invalid_alloy_test", test_error.to_string()),
         other => HttpError::internal(other.to_string()),
     }
+}
+
+fn review_actor(
+    auth: Option<Extension<AuthContextExtension>>,
+    tenant: &TenantContext,
+) -> HttpResult<String> {
+    let auth = auth
+        .map(|Extension(auth)| auth)
+        .ok_or_else(|| HttpError::unauthorized("unauthenticated", "Authentication is required"))?;
+    if auth.0.tenant_id != tenant.id {
+        return Err(HttpError::forbidden(
+            "forbidden",
+            "Review tenant context does not match the authenticated principal",
+        ));
+    }
+    let required = Permission::new(Resource::Scripts, Action::Manage);
+    if !has_any_effective_permission(&auth.0.permissions, &[required]) {
+        return Err(HttpError::forbidden(
+            "forbidden",
+            "Script review requires scripts.manage permission",
+        ));
+    }
+    Ok(auth.0.user_id.to_string())
+}
+
+fn test_actor(
+    auth: Option<Extension<AuthContextExtension>>,
+    tenant: &TenantContext,
+) -> HttpResult<String> {
+    let auth = auth
+        .map(|Extension(auth)| auth)
+        .ok_or_else(|| HttpError::unauthorized("unauthenticated", "Authentication is required"))?;
+    if auth.0.tenant_id != tenant.id {
+        return Err(HttpError::forbidden(
+            "forbidden",
+            "Test tenant context does not match the authenticated principal",
+        ));
+    }
+    let required = Permission::new(Resource::Scripts, Action::Manage);
+    if !has_any_effective_permission(&auth.0.permissions, &[required]) {
+        return Err(HttpError::forbidden(
+            "forbidden",
+            "Script test requires scripts.manage permission",
+        ));
+    }
+    Ok(auth.0.user_id.to_string())
 }
 
 fn entity_to_proxy(entity: EntityInput) -> EntityProxy {
@@ -68,6 +145,18 @@ fn entity_to_proxy(entity: EntityInput) -> EntityProxy {
         .collect();
 
     EntityProxy::new(entity.id, entity.entity_type, data)
+}
+
+fn validate_trigger(trigger: &ScriptTrigger) -> HttpResult<()> {
+    if let ScriptTrigger::Cron { expression } = trigger {
+        validate_cron_expression(expression).map_err(|error| {
+            HttpError::bad_request(
+                "invalid_alloy_script",
+                format!("Invalid cron expression: {error}"),
+            )
+        })?;
+    }
+    Ok(())
 }
 
 pub async fn list_scripts(
@@ -123,8 +212,23 @@ pub async fn create_script(
             format!("Script with name '{}' already exists", req.name),
         ));
     }
+    validate_trigger(&req.trigger)?;
+    req.workspace
+        .validate_rhai_workspace()
+        .map_err(ScriptError::from)
+        .map_err(script_error)?;
+    let source = req
+        .workspace
+        .entrypoint_source()
+        .map_err(ScriptError::from)
+        .map_err(script_error)?;
+    let mut scope = rhai::Scope::new();
+    runtime
+        .engine
+        .compile(&req.name, source, &mut scope)
+        .map_err(script_error)?;
 
-    let mut script = Script::new(req.name, req.code, req.trigger);
+    let mut script = Script::new(req.name, req.workspace, req.trigger);
     script.tenant_id = req.tenant_id.unwrap_or(tenant.id);
     script.description = req.description;
     script.permissions = req.permissions;
@@ -142,6 +246,11 @@ pub async fn update_script(
 ) -> HttpResult<Json<ScriptResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
     let mut script = runtime.storage.get(id).await.map_err(script_error)?;
+    if script.version != req.expected_version {
+        return Err(script_error(ScriptError::RevisionConflict {
+            expected: req.expected_version,
+        }));
+    }
 
     if let Some(name) = req.name {
         runtime.engine.invalidate(&script.name);
@@ -150,9 +259,25 @@ pub async fn update_script(
     if let Some(description) = req.description {
         script.description = Some(description);
     }
-    if let Some(code) = req.code {
+    if let Some(workspace) = req.workspace {
         runtime.engine.invalidate(&script.name);
-        script.code = code;
+        workspace
+            .validate_rhai_workspace()
+            .map_err(ScriptError::from)
+            .map_err(script_error)?;
+        let source = workspace
+            .entrypoint_source()
+            .map_err(ScriptError::from)
+            .map_err(script_error)?;
+        let mut scope = rhai::Scope::new();
+        runtime
+            .engine
+            .compile(&script.name, source, &mut scope)
+            .map_err(script_error)?;
+        script.workspace = workspace;
+    }
+    if let Some(ref trigger) = req.trigger {
+        validate_trigger(trigger)?;
     }
     if let Some(trigger) = req.trigger {
         script.trigger = trigger;
@@ -188,6 +313,11 @@ pub async fn run_script(
 ) -> HttpResult<Json<RunScriptResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
     let script = runtime.storage.get(id).await.map_err(script_error)?;
+    if script.version != req.expected_version {
+        return Err(script_error(ScriptError::RevisionConflict {
+            expected: req.expected_version,
+        }));
+    }
 
     let params = req
         .params
@@ -198,9 +328,8 @@ pub async fn run_script(
 
     let result = runtime
         .orchestrator
-        .run_manual_with_entity(&script.name, params, entity, None)
-        .await
-        .map_err(script_error)?;
+        .run_manual_snapshot(&script, params, entity, None)
+        .await;
 
     Ok(Json(run_response(result)))
 }
@@ -217,6 +346,11 @@ pub async fn run_script_by_name(
         .get_by_name(&name)
         .await
         .map_err(script_error)?;
+    if script.version != req.expected_version {
+        return Err(script_error(ScriptError::RevisionConflict {
+            expected: req.expected_version,
+        }));
+    }
 
     let params = req
         .params
@@ -227,9 +361,8 @@ pub async fn run_script_by_name(
 
     let result = runtime
         .orchestrator
-        .run_manual_with_entity(&script.name, params, entity, None)
-        .await
-        .map_err(script_error)?;
+        .run_manual_snapshot(&script, params, entity, None)
+        .await;
 
     Ok(Json(run_response(result)))
 }
@@ -303,12 +436,20 @@ pub async fn validate_script(
     Json(req): Json<CreateScriptRequest>,
 ) -> HttpResult<Json<serde_json::Value>> {
     let runtime = runtime.scoped(tenant.id)?;
+    req.workspace
+        .validate_rhai_workspace()
+        .map_err(ScriptError::from)
+        .map_err(script_error)?;
     let mut scope = rhai::Scope::new();
 
-    match runtime
-        .engine
-        .compile("__validation__", &req.code, &mut scope)
-    {
+    match runtime.engine.compile(
+        "__validation__",
+        req.workspace
+            .entrypoint_source()
+            .map_err(ScriptError::from)
+            .map_err(script_error)?,
+        &mut scope,
+    ) {
         Ok(_) => Ok(Json(serde_json::json!({
             "valid": true,
             "message": "Script compiles successfully",
@@ -318,6 +459,72 @@ pub async fn validate_script(
             "message": error.to_string(),
         }))),
     }
+}
+
+pub async fn review_script(
+    State(runtime): State<AlloyHttpRuntime>,
+    tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
+    Path(id): Path<Uuid>,
+    Json(request): Json<ReviewScriptRequest>,
+) -> HttpResult<Json<ReviewDecisionResponse>> {
+    let actor_id = review_actor(auth, &tenant)?;
+    let runtime = runtime.scoped(tenant.id)?;
+    let decision = runtime
+        .storage
+        .review(ReviewCommand {
+            script_id: id,
+            expected_revision: request.expected_version,
+            status: request.status,
+            policy_revision: request.policy_revision,
+            actor_id,
+            reason: request.reason,
+            idempotency_key: request.idempotency_key,
+        })
+        .await
+        .map_err(script_error)?;
+    Ok(Json(decision.into()))
+}
+
+pub async fn list_reviews(
+    State(runtime): State<AlloyHttpRuntime>,
+    tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
+    Path((id, revision)): Path<(Uuid, u32)>,
+) -> HttpResult<Json<Vec<ReviewDecisionResponse>>> {
+    review_actor(auth, &tenant)?;
+    let runtime = runtime.scoped(tenant.id)?;
+    let decisions = runtime
+        .storage
+        .list_reviews(id, revision)
+        .await
+        .map_err(script_error)?
+        .into_iter()
+        .map(ReviewDecisionResponse::from)
+        .collect();
+    Ok(Json(decisions))
+}
+
+pub async fn run_workspace_test(
+    State(runtime): State<AlloyHttpRuntime>,
+    tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
+    Path(id): Path<Uuid>,
+    Json(request): Json<RunWorkspaceTestRequest>,
+) -> HttpResult<Json<TestRunResponse>> {
+    let actor_id = test_actor(auth, &tenant)?;
+    let runtime = runtime.scoped(tenant.id)?;
+    let run = RevisionedTestRunner::new(runtime.sandbox.clone(), runtime.storage.clone())
+        .execute(TestCommand {
+            script_id: id,
+            expected_revision: request.expected_version,
+            test_path: request.test_path,
+            actor_id,
+            idempotency_key: request.idempotency_key,
+        })
+        .await
+        .map_err(script_error)?;
+    Ok(Json(run.into()))
 }
 
 fn run_response(result: crate::ExecutionResult) -> RunScriptResponse {
@@ -396,6 +603,15 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
             get(get_script).put(update_script).delete(delete_script),
         )
         .route("/api/alloy/scripts/{id}/run", post(run_script))
+        .route(
+            "/api/alloy/scripts/{id}/tests/run",
+            post(run_workspace_test),
+        )
+        .route("/api/alloy/scripts/{id}/reviews", post(review_script))
+        .route(
+            "/api/alloy/scripts/{id}/revisions/{revision}/reviews",
+            get(list_reviews),
+        )
         .route(
             "/api/alloy/scripts/{id}/executions",
             get(list_script_executions),

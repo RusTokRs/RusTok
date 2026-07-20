@@ -73,10 +73,7 @@ impl ModuleBuildDispatcherConfig {
                     protocol: optional_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_PROTOCOL", "tcp"),
                     username: required_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_USERNAME")?,
                     password: required_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_PASSWORD")?,
-                    tls_enabled: optional_bool(
-                        "RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_ENABLED",
-                        false,
-                    )?,
+                    tls_enabled: required_true("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_ENABLED")?,
                 },
                 ..IggyConfig::default()
             },
@@ -166,12 +163,12 @@ fn optional_u64(name: &str, default: u64) -> Result<u64, String> {
     })
 }
 
-fn optional_bool(name: &str, default: bool) -> Result<bool, String> {
-    env::var(name).map_or(Ok(default), |value| {
-        value
-            .parse()
-            .map_err(|error| format!("{name} is invalid: {error}"))
-    })
+fn required_true(name: &str) -> Result<bool, String> {
+    match required_env(name)?.parse::<bool>() {
+        Ok(true) => Ok(true),
+        Ok(false) => Err(format!("{name} must be true for the external broker")),
+        Err(error) => Err(format!("{name} is invalid: {error}")),
+    }
 }
 
 fn required_https_endpoint(name: &str, endpoint: String) -> Result<String, String> {

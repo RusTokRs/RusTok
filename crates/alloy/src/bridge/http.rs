@@ -4,7 +4,7 @@ use rhai::{Dynamic, Engine, Map};
 use rustok_sandbox::rhai::RhaiHostExtension;
 use rustok_sandbox::{
     CapabilityCall, CapabilityCallContext, CapabilityName, RhaiBindingInput, RhaiBindingOutput,
-    SandboxError, SandboxHost, SandboxRequest, SandboxSubject,
+    SandboxError, SandboxHost, SandboxRequest, SandboxResult, SandboxSubject,
 };
 use serde_json::{json, Value};
 
@@ -22,9 +22,15 @@ const HTTP_CAPABILITY: &str = "platform.http";
 pub struct HttpCapabilityBridge;
 
 impl RhaiHostExtension for HttpCapabilityBridge {
-    fn register(&self, engine: &mut Engine, request: &SandboxRequest, host: SandboxHost) {
+    fn register(
+        &self,
+        engine: &mut Engine,
+        request: &SandboxRequest,
+        host: SandboxHost,
+    ) -> SandboxResult<()> {
         let context = CapabilityContext::from_request(request);
         register_http(engine, host, context);
+        Ok(())
     }
 }
 

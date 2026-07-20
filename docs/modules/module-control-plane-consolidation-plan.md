@@ -461,9 +461,12 @@ and installed artifacts.
   bounded-`list` operations; its input cannot name a table, bucket, path, or
   namespace, and its owner adapter uses escaped prefix queries plus a checked
   continuation. `platform.data.objects` separately requires declared logical
-  object prefixes and `get_metadata`/`read`/`put`/`list` operations; its strict
-  JSON/base64 bridge caps decoded data at 44 KiB and rejects physical storage
-  identity. `platform.mcp` now requires an exact server/tool pair and its
+  object prefixes and `get_metadata`/`read`/`put`/`list` operations. For
+  larger writes it also has owner-owned `begin_upload`/`append_chunk`/
+  `complete_upload` operations: every base64 chunk is capped at 44 KiB, while
+  durable private session metadata, ordered chunk verification, final size and
+  SHA-256 verification, expiry reaping, and retention-GC hand-off keep the
+  artifact away from physical storage identity. `platform.mcp` now requires an exact server/tool pair and its
   `call` operation; endpoint, transport, credential, and tool-discovery fields
   are rejected before broker invocation. `CapabilityBrokerRouter` composes
   owner adapters by exact capability name, rejects duplicate ownership, and
@@ -646,7 +649,7 @@ adapter and must not be used as artifact identity or durable policy state.
   server composes a real CAS-backed Rhai/WASM executor with the neutral
   `capability_call` bridge, exact policy resolver, and durable execution audit;
   it registers the event/schedule work entries before the native scheduler
-  starts. `platform.data` and bounded `platform.data.objects` are composed
+  starts. `platform.data` and owner-owned resumable `platform.data.objects` are composed
   sandbox capability routes; secret, MCP, and every other unregistered
   capability remain default-deny until their deployment adapters exist. Artifact HTTP is separately composed as a
   platform-owned authenticated transport and does not register a sandbox
@@ -725,6 +728,9 @@ adapter and must not be used as artifact identity or durable policy state.
   handle. Admission, rollback, deactivate, uninstall, tenant lifecycle, data
   purge, and migration checkpoints likewise complete their owner transaction
   before any downstream outbox consumer can execute an artifact.
+  Deactivation, tenant disable/enable, and uninstall reject nil installation,
+  actor, idempotency, and tenant-scope identities before opening that
+  transaction, keeping lifecycle audit and idempotency records attributable.
 
 ### 2.4 Facade Shape
 
@@ -744,7 +750,15 @@ adapter and must not be used as artifact identity or durable policy state.
   publication services. Server lifecycle, composition, artifact runtime/HTTP,
   registry release/publication/validation adapters, the independent validation
   worker, module-build dispatcher, and installer persistence adapter now consume
-  those services through the facade. `EffectivePolicyService` likewise owns the
+  those services through the facade. The facade also supplies the exact artifact
+  data/object capability resolvers, redacted execution-audit observer, durable
+  event-subscription projector, and binding idempotency store; server runtime,
+  outbox projection, and routed artifact HTTP no longer construct those owner
+  adapters directly. It also owns construction of the logical secret-binding
+  service and dynamic `platform.secrets` capability resolver, so callers cannot
+  bypass their host authorization ports or create a sandbox-visible secret
+  broker directly. RBAC permission evaluation remains a separate RBAC-owner
+  authorization adapter. `EffectivePolicyService` likewise owns the
   tenant override read and Core/default composition shared by server guards,
   GraphQL, and installer adapters. The static write-path verifier rejects direct
   construction of these extracted SeaORM services outside the owner crate.
@@ -1184,9 +1198,31 @@ migrations or arbitrary SQL.
   revision after per-execution host authorization. `platform.data.objects` now
   admits owner-scoped `get_metadata`, `read`, `put`, and `list` calls only under
   separately declared object-prefix/operation grants. Its JSON/base64 bridge is
-  deliberately capped at 44 KiB of decoded bytes per call; large-object transfer
-  needs a later streaming WIT protocol. Indexed-query and value-consuming
-  secret-use capability kinds are still pending.
+  deliberately capped at 44 KiB of decoded bytes per call. Larger objects use
+  durable owner-owned upload sessions with ordered chunks, final owner-side
+  size/digest verification, expiry reaping, and retention-GC hand-off; a true
+  streaming WIT protocol remains future work. The audit enforces canonical
+  lowercase `sha256:` digests at the API and DDL boundaries, rejects
+  non-canonical content types, and keys upload idempotency by immutable policy
+  scope. The owner enforces the 32 MiB object quota across the entire durable
+  chunk set before storing each chunk. Completion explicitly claims the upload before publication and the
+  reaper atomically abandons only expired open/completing sessions before it
+  queues chunks, so the two paths cannot publish or collect the same session
+  concurrently. The immutable persistence contract now admits at most sixteen
+  named scalar indexes with a narrow logical JSON pointer and declared scalar
+  type; it never admits a physical index, database JSON path, or query
+  expression. The owner computes canonical scalar projections in Rust and
+  persists them in a separate tenant-RLS table within the same write/purge
+  transaction. The first indexed write binds a namespace to the exact
+  declaration digest; indexed reads validate that binding without mutating the
+  namespace. Changing that declaration requires a new data-contract
+  revision and owner-mediated upgrade. A legacy namespace that contains data
+  but has no index-contract binding fails closed rather than returning a
+  partial indexed result. `platform.data.query_index` requires its own typed grant
+  operation and an exact granted logical-key prefix; it accepts only one
+  declared index, scalar equality, and bounded keyset pagination. It cannot
+  express sorting, ranges, joins, offsets, or query plans.
+  Value-consuming secret-use remains pending.
 - [ ] Scope every operation by tenant, module slug, data-contract revision, and
   policy; the guest cannot choose a physical schema/table/bucket path. The
   structured-data validator is host-constructed with the immutable installation
@@ -1196,8 +1232,11 @@ migrations or arbitrary SQL.
   authorizer for every logical read/write and a separate destructive-purge
   authorizer. The object adapter applies the same immutable scope and per-object
   authorization while hiding storage keys. Authorized namespace purge removes
-  object metadata but leaves now-unreferenced private bytes for the retention/GC
-  policy; the remaining broker capability kinds still need the same boundary.
+  object metadata and transactionally queues now-unreferenced private bytes for
+  retention/GC. The tenant-scoped GC owner deletes only queued keys approved by
+  an explicit snapshot rule after legal-hold, audit-hold, rollback-hold, and
+  expiry checks; a missing rule fails closed. The remaining broker capability
+  kinds still need the same boundary.
 - [ ] Validate data/settings/action payloads with bundled JSON Schema using the
   maintained `jsonschema` validator and bounded regular-expression settings.
   Structured-value writes now require a host-owned schema-validation port before
@@ -1216,8 +1255,14 @@ migrations or arbitrary SQL.
   only a logical-key continuation. `put_batch` accepts at most 32 distinct
   logical keys and idempotency keys, validates every schema and authorization
   decision before opening its transaction, and commits all writes and their
-  durable idempotency facts atomically. Backup/export and the remaining
-  capability types are still pending.
+  durable idempotency facts atomically. Object overwrite and authorized purge
+  queue replaced/unreachable private keys for retention-guarded collection.
+  The owner now also provides an audited bounded export page: a separate host
+  authorizer, active namespace revision CAS, lifecycle lock, audit row, and
+  redacted outbox fact protect each export. It never appears as a sandbox
+  capability or returns physical storage identity. This is intentionally a
+  keyset page rather than a cross-page backup snapshot; durable snapshot/restore
+  export and the remaining capability types are still pending.
 - [ ] Keep secret values outside settings and module data; store only brokered
   secret references. The secret-binding store persists only a host-authorized
   resolver reference in its separate owner table; structured data, sandbox
@@ -1347,8 +1392,8 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   The owner also exposes `load_queued`/`dispatch_queued` for a dedicated
   outbox-consumer host: it releases tenant-scoped database state before the
   remote call and persists only an immutable validated result. The external
-  production event-consumer host wiring, worker deployment, and publication
-  orchestration remain unfinished.
+  production event-consumer host wiring, worker deployment, and later
+  release-governance completion remain unfinished.
 - [x] Define the worker protocol before creating another crate or service.
   `ModuleBuildRequest` and `ModuleBuildResult` bind source/dependency/toolchain/
   WIT evidence, bounded resources, network policy, validation profiles, and
@@ -1380,9 +1425,14 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   `rustok-module-build-dispatcher` owns the broker-neutral process-and-ack
   contract and its Iggy adapter. The adapter uses a dedicated `module-build`
   topic and one persistent remote consumer-group cursor; it commits the exact
-  Iggy offset only after owner-side result persistence. Its separately
+  Iggy offset only after owner-side result persistence. Before dispatch it
+  validates the broker envelope identities, event type/schema metadata,
+  queued-event payload, and tenant equality; malformed or cross-tenant
+  messages fail closed without an acknowledgement. Its separately
   deployable binary owns only the database owner adapter, Iggy credentials, and
-  mTLS worker client; it validates worker readiness before consuming. Broker
+  mTLS worker client; the external Iggy transport requires an explicit TLS=true
+  deployment setting and has no plaintext downgrade. It validates worker
+  readiness before consuming. Broker
   topology provisioning and deployment configuration remain explicit
   operational prerequisites; neither has a server-local fallback. A processing,
   acknowledgement, or broker-receive failure terminates the dispatcher without
@@ -1391,8 +1441,13 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   pending message stuck in process memory. The worker
   now implements source materialization, policy/metadata checks, verified
   Component/WIT/evidence inspection, scoped dependency materialization, and
-  scoped OCI publication. Image job isolation, signing, and release governance
-  remain to be implemented.
+  scoped OCI publication. The publication path uses a short-lived
+  repository-scoped lease with a bounded publication/signing window, clears the
+  Cosign environment, validates its deployment-owned target at worker
+  construction, rechecks the lease before OCI publication, and records a
+  digest-pinned signature-manifest receipt.
+  Deployment evidence that the launcher creates the hardened job, and later
+  release-governance admission, remain unfinished.
   `rustok-build` remains a reviewed static platform-release composition service
   used only by installer/CLI operations; its server background executor has
   been removed. It has no path from `module.build.queued` and is not an
@@ -1401,7 +1456,9 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   or dual module-build path is permitted. The static worker-isolation verifier
   also rejects module-build worker/transport dependencies and direct delivery
   symbols in `apps/server`; it requires the dedicated dispatcher to use the
-  mTLS remote worker and readiness check without a worker-crate dependency.
+  mTLS remote worker and readiness check without a worker-crate dependency, and
+  requires fixed Cosign execution to clear its environment and receive only the
+  private Docker configuration.
 - [ ] Run builds as isolated OCI jobs. Production untrusted builds use a
   hardened runtime such as gVisor or Kata where available. The worker now
   requires an explicit fixed OCI job launcher and `gvisor` or `kata` runtime,
@@ -1765,25 +1822,65 @@ evolution while sharing the production sandbox and module release contracts.
 ### 6.1 Draft Runtime
 
 - [ ] Represent every execution with draft ID and monotonic revision.
+  `AlloyDraftRequestBuilder` already carries draft ID and source revision into
+  `SandboxSubject::AlloyDraft`; tenant-scoped Alloy storage now also prevents
+  cross-tenant single-script reads and mutations. Single-script persistence now
+  uses the stored version as a durable CAS predicate, advances it for every
+  storage mutation, and rejects stale saves with `RevisionConflict`. Durable
+  source-revision rows record a bounded canonical workspace, digest, author,
+  and parent lineage in the
+  same transaction, including a baseline row when a pre-ledger draft first
+  changes. Owner storage exposes the immutable evidence through tenant-scoped
+  `(script_id, revision)` lookup and revision-ascending history, rather than
+  direct ledger queries. REST and GraphQL draft updates require the caller's
+  expected revision before mutation. REST and GraphQL manual runs also require
+  that revision and execute the selected snapshot without a second lookup. The
+  canonical JSON workspace now replaces the single `code: String` model. It
+  is persisted and revisioned with bounded file/path/content limits, carried as
+  immutable sandbox payload bytes, and decoded only by an Alloy extension to
+  select the entry source; no guest filesystem is mounted. Rhai imports resolve
+  only from exact in-memory `src/*.rhai` workspace paths, through a
+  request-private static resolver assembled in dependency order with cycle and
+  depth rejection. Durable owner review decisions now bind the exact source
+  digest, expected revision, policy revision, actor, reason, and idempotency
+  fingerprint. GraphQL and host HTTP review/history transports require the
+  verified `scripts.manage` actor. Workspace tests now select only a declared
+  immutable `tests/*.rhai` entrypoint from the same canonical workspace digest
+  and revision, resolve imports through the bounded in-memory source resolver,
+  run without capability grants, reject entity changes, and return a boolean
+  result. Test commands now reserve a durable revision-pinned source digest,
+  test path, verified actor, and request fingerprint before sandbox execution;
+  exact replays return terminal evidence, concurrent callers see a bounded
+  pending lease, and only an expired lease can be reclaimed against the same
+  immutable source snapshot. Host HTTP and GraphQL derive `scripts.manage`
+  authority from authentication. Build-command idempotency remains pending.
+  Alloy release staging now selects the current immutable source revision and
+  latest approved review, then delegates an idempotent `alloy_authored` stage
+  to `rustok-modules`. The owner records source/review evidence together with
+  the Alloy tenant/script identity and remains the only marketplace writer.
+  Final promotion also requires matching platform admission for the attached
+  artifact; artifact upload and final promotion are still pending.
 - [ ] Reject execution/publish commands for stale revisions.
 - [ ] Execute validation, tests, manual runs, hooks, schedules, and preview
   scenarios through `SandboxRuntime`.
 - [ ] Convert Alloy entity/parameter behavior into explicit request-scoped
   bindings without adding generic Alloy concepts to `rustok-sandbox`.
 - [ ] Persist execution evidence linked to revision and policy revision.
-- [ ] Evolve the current single `code: String` model into a revisioned workspace
+- [x] Replace the former single `code: String` model with a revisioned workspace
   contract for sources, imports/modules, tests, fixtures, schemas, policy, and
   generated artifacts. DB/object storage remains the source of truth; guests do
   not receive direct filesystem access.
-- [ ] Resolve Rhai imports through an Alloy-owned bounded module resolver keyed
-  by workspace/revision, with cycle, depth, size, and path validation.
+- [x] Resolve Rhai imports through an Alloy-owned bounded static in-memory
+  resolver keyed by the request workspace/revision, with cycle, depth, size,
+  and path validation.
 
 ### 6.2 Release Creation
 
 - [x] Stage and package immutable Rhai descriptors with source digest/lineage.
 - [ ] Validate declared capabilities from observed/declared tool use.
-- [ ] Submit release source and descriptor to `rustok-modules` publication;
-  Alloy does not write marketplace tables.
+- [ ] Complete release source/descriptor publication through `rustok-modules`;
+  Alloy does not write marketplace tables. The revision-pinned reviewed-source
+  staging gate is complete; owner artifact upload and final promotion remain.
 - [ ] Preserve author, prompt/tool provenance, tests, and review evidence under
   explicit retention/redaction rules.
 

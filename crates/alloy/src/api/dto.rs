@@ -5,7 +5,10 @@ use uuid::Uuid;
 use crate::{
     context::ExecutionPhase,
     execution_log::ExecutionLogEntry,
-    model::{Script, ScriptId, ScriptStatus, ScriptTrigger},
+    model::{
+        AlloyWorkspace, ReviewDecision, ReviewStatus, Script, ScriptId, ScriptStatus,
+        ScriptTrigger, TestRun, TestRunStatus,
+    },
 };
 
 // ============ Requests ============
@@ -14,7 +17,7 @@ use crate::{
 pub struct CreateScriptRequest {
     pub name: String,
     pub description: Option<String>,
-    pub code: String,
+    pub workspace: AlloyWorkspace,
     pub trigger: ScriptTrigger,
     #[serde(default)]
     pub permissions: Vec<String>,
@@ -25,9 +28,10 @@ pub struct CreateScriptRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateScriptRequest {
+    pub expected_version: u32,
     pub name: Option<String>,
     pub description: Option<String>,
-    pub code: Option<String>,
+    pub workspace: Option<AlloyWorkspace>,
     pub trigger: Option<ScriptTrigger>,
     pub status: Option<ScriptStatus>,
     pub permissions: Option<Vec<String>>,
@@ -35,9 +39,26 @@ pub struct UpdateScriptRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct RunScriptRequest {
+    pub expected_version: u32,
     #[serde(default)]
     pub params: HashMap<String, serde_json::Value>,
     pub entity: Option<EntityInput>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReviewScriptRequest {
+    pub expected_version: u32,
+    pub status: ReviewStatus,
+    pub policy_revision: String,
+    pub reason: Option<String>,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RunWorkspaceTestRequest {
+    pub expected_version: u32,
+    pub test_path: String,
+    pub idempotency_key: Uuid,
 }
 
 #[derive(Debug, Deserialize)]
@@ -130,7 +151,7 @@ pub struct ScriptResponse {
     pub id: ScriptId,
     pub name: String,
     pub description: Option<String>,
-    pub code: String,
+    pub workspace: AlloyWorkspace,
     pub trigger: ScriptTrigger,
     pub status: ScriptStatus,
     pub version: u32,
@@ -145,7 +166,7 @@ impl From<Script> for ScriptResponse {
             id: s.id,
             name: s.name,
             description: s.description,
-            code: s.code,
+            workspace: s.workspace,
             trigger: s.trigger,
             status: s.status,
             version: s.version,
@@ -153,6 +174,93 @@ impl From<Script> for ScriptResponse {
             created_at: s.created_at.to_rfc3339(),
             updated_at: s.updated_at.to_rfc3339(),
         }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReviewDecisionResponse {
+    pub id: Uuid,
+    pub script_id: ScriptId,
+    pub revision: u32,
+    pub source_digest: String,
+    pub status: ReviewStatus,
+    pub policy_revision: String,
+    pub actor_id: String,
+    pub reason: Option<String>,
+    pub idempotency_key: Uuid,
+    pub created_at: String,
+}
+
+impl From<ReviewDecision> for ReviewDecisionResponse {
+    fn from(decision: ReviewDecision) -> Self {
+        Self {
+            id: decision.id,
+            script_id: decision.script_id,
+            revision: decision.revision,
+            source_digest: decision.source_digest,
+            status: decision.status,
+            policy_revision: decision.policy_revision,
+            actor_id: decision.actor_id,
+            reason: decision.reason,
+            idempotency_key: decision.idempotency_key,
+            created_at: decision.created_at.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct TestRunResponse {
+    pub id: Uuid,
+    pub script_id: ScriptId,
+    pub revision: u32,
+    pub source_digest: String,
+    pub test_path: String,
+    pub actor_id: String,
+    pub idempotency_key: Uuid,
+    pub status: TestRunStatus,
+    pub passed: Option<bool>,
+    pub error: Option<String>,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+impl From<TestRun> for TestRunResponse {
+    fn from(run: TestRun) -> Self {
+        Self {
+            id: run.id,
+            script_id: run.script_id,
+            revision: run.revision,
+            source_digest: run.source_digest,
+            test_path: run.test_path,
+            actor_id: run.actor_id,
+            idempotency_key: run.idempotency_key,
+            status: run.status,
+            passed: run.passed,
+            error: run.error,
+            created_at: run.created_at.to_rfc3339(),
+            completed_at: run.completed_at.map(|time| time.to_rfc3339()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RunScriptRequest, UpdateScriptRequest};
+
+    #[test]
+    fn update_request_requires_an_expected_version() {
+        assert!(serde_json::from_str::<UpdateScriptRequest>(r#"{}"#).is_err());
+        let request = serde_json::from_str::<UpdateScriptRequest>(r#"{"expected_version": 3}"#)
+            .expect("expected version should deserialize");
+        assert_eq!(request.expected_version, 3);
+    }
+
+    #[test]
+    fn run_request_requires_an_expected_version() {
+        assert!(serde_json::from_str::<RunScriptRequest>(r#"{}"#).is_err());
+        let request = serde_json::from_str::<RunScriptRequest>(r#"{"expected_version": 3}"#)
+            .expect("expected version should deserialize");
+        assert_eq!(request.expected_version, 3);
     }
 }
 

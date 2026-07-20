@@ -138,7 +138,7 @@ fn materialize_archive(
     if digest_hex.len() != 64
         || !digest_hex
             .chars()
-            .all(|character| character.is_ascii_hexdigit())
+            .all(|character| character.is_ascii_digit() || matches!(character, 'a'..='f'))
     {
         return Err(ModuleBuildProtocolError::InvalidDigest);
     }

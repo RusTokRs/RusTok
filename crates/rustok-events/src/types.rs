@@ -552,6 +552,14 @@ pub enum DomainEvent {
         namespace_revision: u64,
         purged_records: u64,
     },
+    ModuleArtifactDataExported {
+        export_id: Uuid,
+        tenant_id: Uuid,
+        module_slug: String,
+        data_contract_revision: u64,
+        namespace_revision: u64,
+        exported_records: u64,
+    },
     ModuleArtifactSecretBound {
         tenant_id: Uuid,
         module_slug: String,
@@ -763,6 +771,7 @@ impl DomainEvent {
             Self::ModuleArtifactTenantDisabled { .. } => "module.artifact.tenant_disabled",
             Self::ModuleArtifactTenantEnabled { .. } => "module.artifact.tenant_enabled",
             Self::ModuleArtifactDataPurged { .. } => "module.artifact.data_purged",
+            Self::ModuleArtifactDataExported { .. } => "module.artifact.data_exported",
             Self::ModuleArtifactSecretBound { .. } => "module.artifact.secret_bound",
             Self::ModuleBuildQueued { .. } => "module.build.queued",
             Self::ModuleBuildCompleted { .. } => "module.build.completed",
@@ -912,6 +921,7 @@ impl DomainEvent {
             Self::ModuleArtifactTenantDisabled { .. } => 1,
             Self::ModuleArtifactTenantEnabled { .. } => 1,
             Self::ModuleArtifactDataPurged { .. } => 1,
+            Self::ModuleArtifactDataExported { .. } => 1,
             Self::ModuleArtifactSecretBound { .. } => 1,
             Self::ModuleBuildQueued { .. } => 1,
             Self::ModuleBuildCompleted { .. } => 1,
@@ -1915,6 +1925,26 @@ impl ValidateEvent for DomainEvent {
                 namespace_revision,
                 purged_records: _,
             } => {
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 48)?;
+                if *data_contract_revision == 0 || *namespace_revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "data or namespace revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactDataExported {
+                export_id,
+                tenant_id,
+                module_slug,
+                data_contract_revision,
+                namespace_revision,
+                exported_records: _,
+            } => {
+                validators::validate_not_nil_uuid("export_id", export_id)?;
                 validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
                 validators::validate_not_empty("module_slug", module_slug)?;
                 validators::validate_max_length("module_slug", module_slug, 48)?;

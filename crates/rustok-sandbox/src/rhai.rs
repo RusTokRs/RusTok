@@ -42,7 +42,20 @@ pub struct RhaiExecutor {
 /// `SandboxHost` and typed subject rather than opening direct infrastructure
 /// access from script code.
 pub trait RhaiHostExtension: Send + Sync {
-    fn register(&self, engine: &mut Engine, request: &SandboxRequest, host: SandboxHost);
+    fn register(
+        &self,
+        engine: &mut Engine,
+        request: &SandboxRequest,
+        host: SandboxHost,
+    ) -> SandboxResult<()>;
+
+    /// Optionally resolves executable Rhai source from an owner-defined,
+    /// immutable payload representation. The sandbox never materializes this
+    /// representation on a guest filesystem. At most one extension may supply
+    /// replacement source for a request.
+    fn source_bytes(&self, _request: &SandboxRequest) -> SandboxResult<Option<Vec<u8>>> {
+        Ok(None)
+    }
 
     /// Adds request-scoped data to the Rhai scope after the neutral baseline
     /// context has been populated. Extensions must not keep data in a shared
@@ -76,7 +89,12 @@ pub trait RhaiHostExtension: Send + Sync {
 pub struct RhaiCapabilityBridge;
 
 impl RhaiHostExtension for RhaiCapabilityBridge {
-    fn register(&self, engine: &mut Engine, request: &SandboxRequest, host: SandboxHost) {
+    fn register(
+        &self,
+        engine: &mut Engine,
+        request: &SandboxRequest,
+        host: SandboxHost,
+    ) -> SandboxResult<()> {
         let context = RhaiCapabilityContext::from_request(request);
         engine.register_fn(
             "capability_call",
@@ -84,6 +102,7 @@ impl RhaiHostExtension for RhaiCapabilityBridge {
                 invoke_capability(&host, &context, name, operation, dynamic_to_json(input))
             },
         );
+        Ok(())
     }
 }
 
@@ -255,20 +274,32 @@ impl SandboxExecutor for RhaiExecutor {
     ) -> SandboxResult<SandboxOutcome> {
         let binding = RhaiBindingInput::decode(request.input.clone())
             .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
-        let source = std::str::from_utf8(&request.payload.bytes)
-            .map_err(|error| SandboxError::Compilation(error.to_string()))?;
         let operations = Arc::new(AtomicU64::new(0));
         let mut engine = Self::build_engine(request, Arc::clone(&operations), host.clone());
         for extension in &self.extensions {
-            extension.register(&mut engine, request, host.clone());
+            extension.register(&mut engine, request, host.clone())?;
         }
+        let mut resolved_source = None;
+        for extension in &self.extensions {
+            if let Some(source) = extension.source_bytes(request)? {
+                if resolved_source.replace(source).is_some() {
+                    return Err(SandboxError::InvalidRequest(
+                        "multiple Rhai extensions supplied request source".to_string(),
+                    ));
+                }
+            }
+        }
+        let source = resolved_source.unwrap_or_else(|| request.payload.bytes.clone());
+        let source = std::str::from_utf8(&source)
+            .map_err(|error| SandboxError::Compilation(error.to_string()))?;
         let mut scope = Self::build_scope(request, &binding.input);
         for extension in &self.extensions {
             extension.populate_scope(&mut scope, request)?;
         }
-        let ast = engine
+        let mut ast = engine
             .compile_with_scope(&scope, source)
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
+        ast.set_source(&request.payload.entrypoint);
         let output = engine
             .eval_ast_with_scope::<Dynamic>(&mut scope, &ast)
             .map_err(|error| Self::map_error(*error, request))?;

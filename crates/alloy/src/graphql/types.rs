@@ -6,7 +6,10 @@ use uuid::Uuid;
 use crate::{
     context::ExecutionPhase,
     execution_log::ExecutionLogEntry,
-    model::{EventType, HttpMethod, Script, ScriptStatus, ScriptTrigger},
+    model::{
+        AlloyWorkspace, EventType, HttpMethod, ReviewDecision, ReviewStatus, Script, ScriptStatus,
+        ScriptTrigger, TestRun, TestRunStatus,
+    },
 };
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
@@ -17,6 +20,55 @@ pub enum GqlScriptStatus {
     Paused,
     Disabled,
     Archived,
+}
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlReviewStatus {
+    ChangesRequested,
+    Approved,
+    Rejected,
+    Archived,
+}
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlTestRunStatus {
+    Pending,
+    Passed,
+    Failed,
+}
+
+impl From<TestRunStatus> for GqlTestRunStatus {
+    fn from(status: TestRunStatus) -> Self {
+        match status {
+            TestRunStatus::Pending => Self::Pending,
+            TestRunStatus::Passed => Self::Passed,
+            TestRunStatus::Failed => Self::Failed,
+        }
+    }
+}
+
+impl From<GqlReviewStatus> for ReviewStatus {
+    fn from(status: GqlReviewStatus) -> Self {
+        match status {
+            GqlReviewStatus::ChangesRequested => Self::ChangesRequested,
+            GqlReviewStatus::Approved => Self::Approved,
+            GqlReviewStatus::Rejected => Self::Rejected,
+            GqlReviewStatus::Archived => Self::Archived,
+        }
+    }
+}
+
+impl From<ReviewStatus> for GqlReviewStatus {
+    fn from(status: ReviewStatus) -> Self {
+        match status {
+            ReviewStatus::ChangesRequested => Self::ChangesRequested,
+            ReviewStatus::Approved => Self::Approved,
+            ReviewStatus::Rejected => Self::Rejected,
+            ReviewStatus::Archived => Self::Archived,
+        }
+    }
 }
 
 impl From<ScriptStatus> for GqlScriptStatus {
@@ -167,7 +219,7 @@ pub struct GqlScript {
     pub tenant_id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub code: String,
+    pub workspace: async_graphql::Json<AlloyWorkspace>,
     pub trigger: GqlScriptTrigger,
     pub status: GqlScriptStatus,
     pub version: u32,
@@ -187,7 +239,7 @@ impl From<Script> for GqlScript {
             tenant_id: script.tenant_id,
             name: script.name,
             description: script.description,
-            code: script.code,
+            workspace: async_graphql::Json(script.workspace),
             trigger: script.trigger.into(),
             status: script.status.into(),
             version: script.version,
@@ -210,6 +262,72 @@ pub struct GqlExecutionResult {
     pub error: Option<String>,
     pub return_value: Option<async_graphql::Json<serde_json::Value>>,
     pub changes: Option<async_graphql::Json<serde_json::Value>>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlReviewDecision {
+    pub id: Uuid,
+    pub script_id: Uuid,
+    pub revision: u32,
+    pub source_digest: String,
+    pub status: GqlReviewStatus,
+    pub policy_revision: String,
+    pub actor_id: String,
+    pub reason: Option<String>,
+    pub idempotency_key: Uuid,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<ReviewDecision> for GqlReviewDecision {
+    fn from(decision: ReviewDecision) -> Self {
+        Self {
+            id: decision.id,
+            script_id: decision.script_id,
+            revision: decision.revision,
+            source_digest: decision.source_digest,
+            status: decision.status.into(),
+            policy_revision: decision.policy_revision,
+            actor_id: decision.actor_id,
+            reason: decision.reason,
+            idempotency_key: decision.idempotency_key,
+            created_at: decision.created_at,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct GqlTestRun {
+    pub id: Uuid,
+    pub script_id: Uuid,
+    pub revision: u32,
+    pub source_digest: String,
+    pub test_path: String,
+    pub actor_id: String,
+    pub idempotency_key: Uuid,
+    pub status: GqlTestRunStatus,
+    pub passed: Option<bool>,
+    pub error: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+impl From<TestRun> for GqlTestRun {
+    fn from(run: TestRun) -> Self {
+        Self {
+            id: run.id,
+            script_id: run.script_id,
+            revision: run.revision,
+            source_digest: run.source_digest,
+            test_path: run.test_path,
+            actor_id: run.actor_id,
+            idempotency_key: run.idempotency_key,
+            status: run.status.into(),
+            passed: run.passed,
+            error: run.error,
+            created_at: run.created_at,
+            completed_at: run.completed_at,
+        }
+    }
 }
 
 #[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
@@ -325,7 +443,7 @@ impl From<ScriptTriggerInput> for ScriptTrigger {
 pub struct CreateScriptInput {
     pub name: String,
     pub description: Option<String>,
-    pub code: String,
+    pub workspace: async_graphql::Json<AlloyWorkspace>,
     pub trigger: ScriptTriggerInput,
     pub status: Option<GqlScriptStatus>,
     #[graphql(default)]
@@ -337,9 +455,10 @@ pub struct CreateScriptInput {
 
 #[derive(InputObject)]
 pub struct UpdateScriptInput {
+    pub expected_version: u32,
     pub name: Option<String>,
     pub description: Option<String>,
-    pub code: Option<String>,
+    pub workspace: Option<async_graphql::Json<AlloyWorkspace>>,
     pub trigger: Option<ScriptTriggerInput>,
     pub status: Option<GqlScriptStatus>,
     pub run_as_system: Option<bool>,
@@ -352,7 +471,24 @@ pub struct UpdateScriptInput {
 #[derive(InputObject)]
 pub struct RunScriptInput {
     pub script_name: String,
+    pub expected_version: u32,
     pub params: Option<async_graphql::Json<serde_json::Value>>,
+}
+
+#[derive(InputObject)]
+pub struct ReviewScriptInput {
+    pub expected_version: u32,
+    pub status: GqlReviewStatus,
+    pub policy_revision: String,
+    pub reason: Option<String>,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(InputObject)]
+pub struct RunWorkspaceTestInput {
+    pub expected_version: u32,
+    pub test_path: String,
+    pub idempotency_key: Uuid,
 }
 
 #[cfg(test)]

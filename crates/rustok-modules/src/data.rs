@@ -9,7 +9,10 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -23,20 +26,22 @@ use rustok_storage::StorageService;
 
 use crate::{
     resolve_granted_artifact_capability, ArtifactBindingDispatch, ArtifactBindingExecutor,
-    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactInstallationTarget,
-    ArtifactMigrationCheckpointRequest, ArtifactReleaseRef, InstalledModuleArtifact,
-    ModuleArtifactDescriptor, ModuleInstallationScope, ModuleRuntimeBinding,
-    ModuleRuntimeBindingKind,
+    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactDataIndexField,
+    ArtifactDataIndexValueType, ArtifactInstallationTarget, ArtifactMigrationCheckpointRequest,
+    ArtifactReleaseRef, InstalledModuleArtifact, ModuleArtifactDescriptor, ModuleInstallationScope,
+    ModuleRuntimeBinding, ModuleRuntimeBindingKind,
 };
 
 const MAX_ARTIFACT_DATA_KEY_BYTES: usize = 256;
 const MAX_ARTIFACT_DATA_VALUE_BYTES: usize = 64 * 1024;
 const MAX_ARTIFACT_DATA_PAGE_SIZE: u32 = 100;
 const MAX_ARTIFACT_DATA_BATCH_SIZE: usize = 32;
+const MAX_ARTIFACT_DATA_INDEX_VALUE_BYTES: usize = 256;
 const MAX_DATA_SCHEMA_REGEX_BYTES: usize = 64 * 1024;
 const MAX_ARTIFACT_OBJECT_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_ARTIFACT_OBJECT_CONTENT_TYPE_BYTES: usize = 128;
 const MAX_SANDBOX_ARTIFACT_OBJECT_BYTES: usize = 44 * 1024;
+const MAX_ARTIFACT_OBJECT_GC_BATCH_SIZE: u32 = 100;
 
 /// Host-owned namespace for untrusted artifact data. Guests never supply a
 /// physical table, bucket, database schema, or secret-store location.
@@ -98,6 +103,42 @@ pub struct ArtifactDataObjectUpload {
     pub idempotency_key: Uuid,
 }
 
+/// A durable, resumable owner upload. It contains no physical storage identity
+/// and is safe to return to an admitted artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataObjectUploadSession {
+    pub session_id: Uuid,
+    pub name: String,
+    pub content_type: String,
+    pub expected_revision: Option<u64>,
+    /// Owner-generated timestamp rendered as a portable string so the
+    /// capability does not expose a database-specific temporal value.
+    pub expires_at: String,
+    pub completed_object: Option<ArtifactDataObject>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataObjectUploadSessionRequest {
+    pub name: String,
+    pub content_type: String,
+    pub expected_revision: Option<u64>,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArtifactDataObjectUploadChunk {
+    pub session_id: Uuid,
+    pub sequence: u64,
+    pub data: Bytes,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataObjectUploadCompleteRequest {
+    pub session_id: Uuid,
+    pub size_bytes: u64,
+    pub digest_sha256: String,
+}
+
 /// A verified private object returned only after the owner re-hashes bytes
 /// read from its private storage key.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -112,10 +153,77 @@ pub struct ArtifactDataObjectPage {
     pub next_after_name: Option<String>,
 }
 
+/// Durable retention facts for a no-longer-referenced private object. Missing
+/// rules are deliberately retained: physical deletion is never age-only.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataObjectRetentionRule {
+    pub delete_after: chrono::DateTime<chrono::Utc>,
+    pub legal_hold: bool,
+    pub audit_hold: bool,
+    pub rollback_hold: bool,
+}
+
+#[async_trait]
+pub trait ArtifactDataObjectRetentionPolicy: Send + Sync {
+    async fn may_delete(
+        &self,
+        scope: &ArtifactDataScope,
+        storage_key: &str,
+    ) -> Result<bool, ArtifactDataError>;
+}
+
+/// Snapshot-backed policy for a bounded GC pass. A production caller supplies
+/// this from its legal-hold, audit, rollback, and expiry projections.
+pub struct SnapshotArtifactDataObjectRetentionPolicy {
+    now: chrono::DateTime<chrono::Utc>,
+    rules: HashMap<String, ArtifactDataObjectRetentionRule>,
+}
+
+impl SnapshotArtifactDataObjectRetentionPolicy {
+    pub fn new(
+        now: chrono::DateTime<chrono::Utc>,
+        rules: HashMap<String, ArtifactDataObjectRetentionRule>,
+    ) -> Self {
+        Self { now, rules }
+    }
+}
+
+#[async_trait]
+impl ArtifactDataObjectRetentionPolicy for SnapshotArtifactDataObjectRetentionPolicy {
+    async fn may_delete(
+        &self,
+        _scope: &ArtifactDataScope,
+        storage_key: &str,
+    ) -> Result<bool, ArtifactDataError> {
+        Ok(self.rules.get(storage_key).is_some_and(|rule| {
+            !rule.legal_hold
+                && !rule.audit_hold
+                && !rule.rollback_hold
+                && rule.delete_after <= self.now
+        }))
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataObjectGcResult {
+    pub deleted: u64,
+    pub retained: u64,
+}
+
+/// Result of retiring expired resumable upload sessions. The reaper only
+/// queues private chunk bytes for retention-aware GC; it never deletes them
+/// directly.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataObjectUploadReapResult {
+    pub abandoned_sessions: u64,
+    pub queued_chunks: u64,
+}
+
 impl ArtifactDataObject {
     pub fn validate(&self) -> Result<(), ArtifactDataError> {
         if validate_artifact_data_key(&self.name).is_err()
             || self.content_type.trim().is_empty()
+            || self.content_type.trim() != self.content_type
             || self.content_type.len() > MAX_ARTIFACT_OBJECT_CONTENT_TYPE_BYTES
             || self.content_type.chars().any(char::is_control)
             || self.size_bytes == 0
@@ -142,6 +250,16 @@ pub struct ArtifactDataPageRequest {
 pub struct ArtifactDataPage {
     pub records: Vec<ArtifactDataRecord>,
     pub next_after_key: Option<String>,
+}
+
+/// A bounded equality lookup over one descriptor-declared logical index. The
+/// request contains no physical database identity, expression, sort order, or
+/// offset; pagination remains keyset-only on the logical data key.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactDataIndexQuery {
+    pub index: String,
+    pub value: Value,
+    pub page: ArtifactDataPageRequest,
 }
 
 /// A read/transform-only request for advancing one bounded page of structured
@@ -219,6 +337,7 @@ pub enum ArtifactDataAccess {
     Read { key: String },
     Write { key: String },
     List,
+    Query { index: String },
     ObjectRead { name: String },
     ObjectWrite { name: String },
     ObjectList,
@@ -240,6 +359,27 @@ pub struct ArtifactDataPurgeRequest {
 pub struct ArtifactDataPurgeResult {
     pub namespace_revision: u64,
     pub purged_records: u64,
+}
+
+/// Owner-only, bounded export of structured artifact data. This is an audited
+/// keyset page, not a durable backup snapshot: callers that need a complete
+/// consistent backup must compose one through a separate snapshot/export job.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataExportRequest {
+    pub scope: ArtifactDataScope,
+    /// Prevents an export that was authorized against a namespace state that
+    /// has since been purged or otherwise lifecycle-revised.
+    pub expected_namespace_revision: u64,
+    pub page: ArtifactDataPageRequest,
+    pub actor_id: Uuid,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactDataExportResult {
+    pub export_id: Uuid,
+    pub namespace_revision: u64,
+    pub page: ArtifactDataPage,
 }
 
 impl ArtifactDataScope {
@@ -356,6 +496,31 @@ fn validate_page_request(page: &ArtifactDataPageRequest) -> Result<(), ArtifactD
     Ok(())
 }
 
+fn validate_artifact_data_index_query(
+    query: &ArtifactDataIndexQuery,
+) -> Result<String, ArtifactDataError> {
+    if query.index.is_empty()
+        || query.index.len() > 64
+        || !query
+            .index
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        || !matches!(
+            &query.value,
+            Value::String(_) | Value::Number(_) | Value::Bool(_)
+        )
+    {
+        return Err(ArtifactDataError::InvalidIndexQuery);
+    }
+    validate_page_request(&query.page)?;
+    let value = serde_json::to_string(&query.value)
+        .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+    if value.len() > MAX_ARTIFACT_DATA_INDEX_VALUE_BYTES {
+        return Err(ArtifactDataError::InvalidIndexQuery);
+    }
+    Ok(value)
+}
+
 fn valid_module_slug(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 48
@@ -378,7 +543,10 @@ fn valid_upgrade_hook_binding_id(value: &str) -> bool {
 
 fn prefixed_sha256_digest(value: &str) -> bool {
     value.strip_prefix("sha256:").is_some_and(|digest| {
-        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     })
 }
 
@@ -432,6 +600,14 @@ pub trait ArtifactDataBroker: Send + Sync {
         scope: &ArtifactDataScope,
         page: ArtifactDataPageRequest,
     ) -> Result<ArtifactDataPage, ArtifactDataError>;
+
+    async fn query_index(
+        &self,
+        _scope: &ArtifactDataScope,
+        _query: ArtifactDataIndexQuery,
+    ) -> Result<ArtifactDataPage, ArtifactDataError> {
+        Err(ArtifactDataError::IndexQueryUnavailable)
+    }
 }
 
 /// Owner-owned broker for bounded binary artifact data. Its public contract
@@ -681,6 +857,16 @@ pub trait ArtifactDataPurgeAuthorizer: Send + Sync {
     ) -> Result<(), ArtifactDataError>;
 }
 
+/// Host-owned authorization for an operator data export. The sandbox has no
+/// export capability: this port receives only a bounded owner request.
+#[async_trait]
+pub trait ArtifactDataExportAuthorizer: Send + Sync {
+    async fn authorize_export(
+        &self,
+        request: &ArtifactDataExportRequest,
+    ) -> Result<(), ArtifactDataError>;
+}
+
 /// Produces non-durable data-contract upgrade plans. The data broker call is
 /// complete before any sandbox hook begins, so an untrusted transformation can
 /// never run while a control-plane or storage transaction is held open.
@@ -920,6 +1106,8 @@ pub struct SeaOrmArtifactDataBroker<A, V> {
     db: DatabaseConnection,
     authorizer: A,
     schema_validator: V,
+    indexes: Vec<ArtifactDataIndexField>,
+    index_contract_digest: Option<String>,
 }
 
 impl<A, V> SeaOrmArtifactDataBroker<A, V>
@@ -932,6 +1120,24 @@ where
             db,
             authorizer,
             schema_validator,
+            indexes: Vec::new(),
+            index_contract_digest: None,
+        }
+    }
+
+    pub fn with_indexes(
+        db: DatabaseConnection,
+        authorizer: A,
+        schema_validator: V,
+        indexes: Vec<ArtifactDataIndexField>,
+    ) -> Self {
+        let index_contract_digest = index_contract_digest(&indexes);
+        Self {
+            db,
+            authorizer,
+            schema_validator,
+            indexes,
+            index_contract_digest,
         }
     }
 }
@@ -1003,7 +1209,14 @@ where
             .await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let record = persist_artifact_data_write(&transaction, scope, write).await?;
+        let record = persist_artifact_data_write(
+            &transaction,
+            scope,
+            write,
+            &self.indexes,
+            self.index_contract_digest.as_deref(),
+        )
+        .await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(record)
     }
@@ -1032,7 +1245,16 @@ where
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let mut records = Vec::with_capacity(batch.writes.len());
         for write in batch.writes {
-            records.push(persist_artifact_data_write(&transaction, scope, write).await?);
+            records.push(
+                persist_artifact_data_write(
+                    &transaction,
+                    scope,
+                    write,
+                    &self.indexes,
+                    self.index_contract_digest.as_deref(),
+                )
+                .await?,
+            );
         }
         transaction.commit().await.map_err(storage_error)?;
         Ok(records)
@@ -1116,6 +1338,130 @@ where
             next_after_key,
         })
     }
+
+    async fn query_index(
+        &self,
+        scope: &ArtifactDataScope,
+        query: ArtifactDataIndexQuery,
+    ) -> Result<ArtifactDataPage, ArtifactDataError> {
+        scope.validate()?;
+        let index_value = validate_artifact_data_index_query(&query)?;
+        let index = self
+            .indexes
+            .iter()
+            .find(|index| index.name == query.index)
+            .ok_or(ArtifactDataError::IndexQueryUnavailable)?;
+        if !artifact_data_index_value_matches(&query.value, index.value_type) {
+            return Err(ArtifactDataError::InvalidIndexQuery);
+        }
+        self.authorizer
+            .authorize_data(
+                scope,
+                ArtifactDataAccess::Query {
+                    index: query.index.clone(),
+                },
+            )
+            .await?;
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        validate_artifact_data_index_contract(
+            &transaction,
+            scope,
+            backend,
+            self.index_contract_digest
+                .as_deref()
+                .ok_or(ArtifactDataError::IndexQueryUnavailable)?,
+            false,
+        )
+        .await?;
+        let query_limit = i64::from(query.page.limit) + 1;
+        let prefix_pattern = format!("{}%", escape_like_prefix(&query.page.prefix));
+        let (statement, values) = match query.page.after_key {
+            Some(after_key) => (
+                format!(
+                    "SELECT data.data_key, data.value, data.revision
+                     FROM module_artifact_data_indexes indexed
+                     INNER JOIN module_artifact_data data
+                       ON data.tenant_id = indexed.tenant_id
+                      AND data.module_slug = indexed.module_slug
+                      AND data.data_contract_revision = indexed.data_contract_revision
+                      AND data.data_key = indexed.data_key
+                     WHERE indexed.tenant_id = {} AND indexed.module_slug = {}
+                       AND indexed.data_contract_revision = {} AND indexed.index_name = {}
+                       AND indexed.index_value = {} AND data.data_key LIKE {} ESCAPE '\\'
+                       AND data.data_key > {} ORDER BY data.data_key ASC LIMIT {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    placeholder(backend, 6),
+                    placeholder(backend, 7),
+                    placeholder(backend, 8),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    query.index.into(),
+                    index_value.clone().into(),
+                    prefix_pattern.clone().into(),
+                    after_key.into(),
+                    query_limit.into(),
+                ],
+            ),
+            None => (
+                format!(
+                    "SELECT data.data_key, data.value, data.revision
+                     FROM module_artifact_data_indexes indexed
+                     INNER JOIN module_artifact_data data
+                       ON data.tenant_id = indexed.tenant_id
+                      AND data.module_slug = indexed.module_slug
+                      AND data.data_contract_revision = indexed.data_contract_revision
+                      AND data.data_key = indexed.data_key
+                     WHERE indexed.tenant_id = {} AND indexed.module_slug = {}
+                       AND indexed.data_contract_revision = {} AND indexed.index_name = {}
+                       AND indexed.index_value = {} AND data.data_key LIKE {} ESCAPE '\\'
+                     ORDER BY data.data_key ASC LIMIT {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    placeholder(backend, 6),
+                    placeholder(backend, 7),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    query.index.into(),
+                    index_value.into(),
+                    prefix_pattern.into(),
+                    query_limit.into(),
+                ],
+            ),
+        };
+        let mut records = transaction
+            .query_all(Statement::from_sql_and_values(backend, statement, values))
+            .await
+            .map_err(storage_error)?
+            .into_iter()
+            .map(record_from_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        transaction.commit().await.map_err(storage_error)?;
+        let next_after_key = if records.len() > query.page.limit as usize {
+            records.truncate(query.page.limit as usize);
+            records.last().map(|record| record.key.clone())
+        } else {
+            None
+        };
+        Ok(ArtifactDataPage {
+            records,
+            next_after_key,
+        })
+    }
 }
 
 /// SeaORM and storage implementation of the private artifact object broker.
@@ -1139,6 +1485,781 @@ where
             authorizer,
         }
     }
+}
+
+/// Owner service for large-object transfers. Each sandbox invocation carries
+/// one bounded chunk, while session and chunk ordering are durable so a retry
+/// can resume without granting the artifact storage access.
+#[derive(Clone)]
+pub struct SeaOrmArtifactDataObjectUploadService<A> {
+    db: DatabaseConnection,
+    storage: StorageService,
+    objects: SeaOrmArtifactDataObjectBroker<A>,
+    authorizer: A,
+}
+
+impl<A> SeaOrmArtifactDataObjectUploadService<A>
+where
+    A: ArtifactDataAuthorizer + Clone,
+{
+    pub fn new(db: DatabaseConnection, storage: StorageService, authorizer: A) -> Self {
+        Self {
+            objects: SeaOrmArtifactDataObjectBroker::new(
+                db.clone(),
+                storage.clone(),
+                authorizer.clone(),
+            ),
+            db,
+            storage,
+            authorizer,
+        }
+    }
+
+    pub async fn begin(
+        &self,
+        scope: &ArtifactDataScope,
+        request: ArtifactDataObjectUploadSessionRequest,
+    ) -> Result<ArtifactDataObjectUploadSession, ArtifactDataError> {
+        scope.validate()?;
+        validate_upload_session_request(&request)?;
+        self.authorizer
+            .authorize_data(
+                scope,
+                ArtifactDataAccess::ObjectWrite {
+                    name: request.name.clone(),
+                },
+            )
+            .await?;
+        let request_digest = upload_session_request_digest(&request)?;
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        if let Some(row) = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT session_id, object_name, content_type, expected_revision, request_digest, CAST(expires_at AS TEXT) AS expires_at
+                     FROM module_artifact_data_object_upload_sessions
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND policy_revision = {} AND idempotency_key = {}",
+                    placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4), placeholder(backend, 5),
+                ),
+                vec![uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?, uuid_value(request.idempotency_key, backend)],
+            )).await.map_err(storage_error)? {
+            let stored_digest: String = row.try_get("", "request_digest").map_err(storage_error)?;
+            if stored_digest != request_digest {
+                return Err(ArtifactDataError::IdempotencyConflict);
+            }
+            let expected_revision: Option<i64> = row.try_get("", "expected_revision").map_err(storage_error)?;
+            let session = ArtifactDataObjectUploadSession {
+                session_id: uuid_from_row(&row, "session_id", backend)?,
+                name: row.try_get("", "object_name").map_err(storage_error)?,
+                content_type: row.try_get("", "content_type").map_err(storage_error)?,
+                expected_revision: expected_revision.map(|value| u64::try_from(value).map_err(|_| ArtifactDataError::RevisionConflict)).transpose()?,
+                expires_at: row.try_get("", "expires_at").map_err(storage_error)?,
+                completed_object: None,
+            };
+            transaction.commit().await.map_err(storage_error)?;
+            return Ok(session);
+        }
+        let session_id = Uuid::new_v4();
+        transaction.execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO module_artifact_data_object_upload_sessions
+                 (session_id, tenant_id, module_slug, data_contract_revision, policy_revision, object_name, content_type, expected_revision, idempotency_key, request_digest, status, expires_at, created_at, updated_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'open', {}, {}, {})",
+                placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8), placeholder(backend, 9), placeholder(backend, 10), upload_expiry_expression(backend), now_expression(backend), now_expression(backend),
+            ),
+            vec![uuid_value(session_id, backend), uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?, request.name.clone().into(), request.content_type.clone().into(), optional_revision_value(request.expected_revision)?, uuid_value(request.idempotency_key, backend), request_digest.into()],
+        )).await.map_err(storage_error)?;
+        let row = transaction.query_one(Statement::from_sql_and_values(
+            backend,
+            format!("SELECT CAST(expires_at AS TEXT) AS expires_at FROM module_artifact_data_object_upload_sessions WHERE session_id = {}", placeholder(backend, 1)),
+            vec![uuid_value(session_id, backend)],
+        )).await.map_err(storage_error)?.ok_or_else(|| ArtifactDataError::Storage("upload session was not persisted".to_string()))?;
+        let expires_at: String = row.try_get("", "expires_at").map_err(storage_error)?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(ArtifactDataObjectUploadSession {
+            session_id,
+            name: request.name,
+            content_type: request.content_type,
+            expected_revision: request.expected_revision,
+            expires_at,
+            completed_object: None,
+        })
+    }
+
+    pub async fn append_chunk(
+        &self,
+        scope: &ArtifactDataScope,
+        chunk: ArtifactDataObjectUploadChunk,
+    ) -> Result<(), ArtifactDataError> {
+        scope.validate()?;
+        if chunk.session_id.is_nil()
+            || chunk.data.is_empty()
+            || chunk.data.len() > MAX_SANDBOX_ARTIFACT_OBJECT_BYTES
+        {
+            return Err(ArtifactDataError::InvalidObject);
+        }
+        let _ = revision_value(chunk.sequence)?;
+        let session = self.find_open_session(scope, chunk.session_id).await?;
+        self.authorizer
+            .authorize_data(
+                scope,
+                ArtifactDataAccess::ObjectWrite { name: session.name },
+            )
+            .await?;
+        let digest_sha256 = format!("sha256:{}", hex::encode(Sha256::digest(&chunk.data)));
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        if let Some(row) = transaction.query_one(Statement::from_sql_and_values(
+            backend,
+            format!("SELECT size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} AND sequence = {}", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3)),
+            vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend), revision_value(chunk.sequence)?],
+        )).await.map_err(storage_error)? {
+            let size: i64 = row.try_get("", "size_bytes").map_err(storage_error)?;
+            let digest: String = row.try_get("", "digest_sha256").map_err(storage_error)?;
+            transaction.commit().await.map_err(storage_error)?;
+            if u64::try_from(size).ok() == Some(chunk.data.len() as u64) && digest == digest_sha256 { return Ok(()); }
+            return Err(ArtifactDataError::IdempotencyConflict);
+        }
+        transaction.commit().await.map_err(storage_error)?;
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        let active = transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE module_artifact_data_object_upload_sessions
+                     SET updated_at = updated_at
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND policy_revision = {} AND session_id = {} AND status = 'open'
+                     AND expires_at > {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    now_expression(backend),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    revision_value(scope.policy_revision)?,
+                    uuid_value(chunk.session_id, backend),
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
+        if active.rows_affected() != 1 {
+            let _ = transaction.rollback().await;
+            return Err(ArtifactDataError::NamespacePurged);
+        }
+        if let Some(row) = transaction.query_one(Statement::from_sql_and_values(
+            backend,
+            format!("SELECT size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} AND sequence = {}", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3)),
+            vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend), revision_value(chunk.sequence)?],
+        )).await.map_err(storage_error)? {
+            let size: i64 = row.try_get("", "size_bytes").map_err(storage_error)?;
+            let digest: String = row.try_get("", "digest_sha256").map_err(storage_error)?;
+            transaction.commit().await.map_err(storage_error)?;
+            if u64::try_from(size).ok() == Some(chunk.data.len() as u64) && digest == digest_sha256 {
+                return Ok(());
+            }
+            return Err(ArtifactDataError::IdempotencyConflict);
+        }
+        let row = transaction.query_one(Statement::from_sql_and_values(
+            backend,
+            format!("SELECT COALESCE(SUM(size_bytes), 0) AS total_size FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend, 1), placeholder(backend, 2)),
+            vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend)],
+        )).await.map_err(storage_error)?.ok_or_else(|| ArtifactDataError::Storage("chunk total was not computed".to_string()))?;
+        let total_size: i64 = row.try_get("", "total_size").map_err(storage_error)?;
+        let total_size =
+            u64::try_from(total_size).map_err(|_| ArtifactDataError::ObjectIntegrity)?;
+        if total_size
+            .checked_add(chunk.data.len() as u64)
+            .filter(|size| *size <= MAX_ARTIFACT_OBJECT_BYTES)
+            .is_none()
+        {
+            let _ = transaction.rollback().await;
+            return Err(ArtifactDataError::InvalidObject);
+        }
+        let key = private_artifact_data_upload_chunk_key(scope, chunk.session_id, chunk.sequence);
+        let stored = self
+            .storage
+            .store(&key, chunk.data, "application/octet-stream")
+            .await
+            .map_err(storage_error)?;
+        let inserted = transaction.execute(Statement::from_sql_and_values(
+            backend,
+            format!("INSERT INTO module_artifact_data_object_upload_chunks (tenant_id, session_id, sequence, storage_key, size_bytes, digest_sha256, created_at) VALUES ({}, {}, {}, {}, {}, {}, {})", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), placeholder(backend,6), now_expression(backend)),
+            vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend), revision_value(chunk.sequence)?, stored.path.clone().into(), i64::try_from(stored.size).map_err(|_| ArtifactDataError::InvalidObject)?.into(), digest_sha256.into()],
+        )).await;
+        if let Err(error) = inserted {
+            let _ = transaction.rollback().await;
+            let _ = self.storage.delete(&stored.path).await;
+            return Err(storage_error(error));
+        }
+        if let Err(error) = transaction.commit().await.map_err(storage_error) {
+            // The database outcome is unknown, so retain this owner-generated
+            // chunk for the session reaper instead of deleting a committed row.
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    pub async fn complete(
+        &self,
+        scope: &ArtifactDataScope,
+        request: ArtifactDataObjectUploadCompleteRequest,
+    ) -> Result<ArtifactDataObject, ArtifactDataError> {
+        scope.validate()?;
+        if request.session_id.is_nil()
+            || request.size_bytes == 0
+            || request.size_bytes > MAX_ARTIFACT_OBJECT_BYTES
+            || !prefixed_sha256_digest(&request.digest_sha256)
+        {
+            return Err(ArtifactDataError::InvalidObject);
+        }
+        let session = match self
+            .claim_upload_completion(scope, request.session_id)
+            .await?
+        {
+            ArtifactDataObjectUploadCompletion::Active(session) => session,
+            ArtifactDataObjectUploadCompletion::Completed { name } => {
+                self.authorizer
+                    .authorize_data(scope, ArtifactDataAccess::ObjectWrite { name })
+                    .await?;
+                let object = self
+                    .completed_upload_object(scope, request.session_id)
+                    .await?;
+                if object.size_bytes != request.size_bytes
+                    || object.digest_sha256 != request.digest_sha256
+                {
+                    return Err(ArtifactDataError::IdempotencyConflict);
+                }
+                return Ok(object);
+            }
+        };
+        self.authorizer
+            .authorize_data(
+                scope,
+                ArtifactDataAccess::ObjectWrite {
+                    name: session.name.clone(),
+                },
+            )
+            .await?;
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        let rows = transaction.query_all(Statement::from_sql_and_values(
+            backend,
+            format!("SELECT sequence, storage_key, size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} ORDER BY sequence ASC", placeholder(backend,1), placeholder(backend,2)),
+            vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)],
+        )).await.map_err(storage_error)?;
+        transaction.commit().await.map_err(storage_error)?;
+        let mut payload = Vec::with_capacity(
+            usize::try_from(request.size_bytes).map_err(|_| ArtifactDataError::InvalidObject)?,
+        );
+        for (index, row) in rows.into_iter().enumerate() {
+            let sequence: i64 = row.try_get("", "sequence").map_err(storage_error)?;
+            if u64::try_from(sequence).ok() != Some(index as u64) {
+                return Err(ArtifactDataError::RevisionConflict);
+            }
+            let key: String = row.try_get("", "storage_key").map_err(storage_error)?;
+            let size: i64 = row.try_get("", "size_bytes").map_err(storage_error)?;
+            let digest: String = row.try_get("", "digest_sha256").map_err(storage_error)?;
+            let bytes = self.storage.read(&key).await.map_err(storage_error)?;
+            if u64::try_from(size).ok() != Some(bytes.len() as u64)
+                || format!("sha256:{}", hex::encode(Sha256::digest(&bytes))) != digest
+            {
+                return Err(ArtifactDataError::ObjectIntegrity);
+            }
+            let remaining = request.size_bytes.saturating_sub(payload.len() as u64);
+            if u64::try_from(bytes.len())
+                .ok()
+                .filter(|size| *size <= remaining)
+                .is_none()
+            {
+                return Err(ArtifactDataError::ObjectIntegrity);
+            }
+            payload.extend_from_slice(&bytes);
+        }
+        if payload.len() as u64 != request.size_bytes
+            || format!("sha256:{}", hex::encode(Sha256::digest(&payload))) != request.digest_sha256
+        {
+            return Err(ArtifactDataError::ObjectIntegrity);
+        }
+        let object = self
+            .objects
+            .put_object(
+                scope,
+                ArtifactDataObjectUpload {
+                    name: session.name,
+                    content_type: session.content_type,
+                    data: Bytes::from(payload),
+                    expected_revision: session.expected_revision,
+                    idempotency_key: session.idempotency_key,
+                },
+            )
+            .await?;
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        let completed = transaction.execute(Statement::from_sql_and_values(backend, format!("UPDATE module_artifact_data_object_upload_sessions SET status = 'completed', completed_revision = {}, completed_at = {}, updated_at = {} WHERE tenant_id = {} AND session_id = {} AND status = 'completing' AND expires_at > {}", placeholder(backend,1), now_expression(backend), now_expression(backend), placeholder(backend,2), placeholder(backend,3), now_expression(backend)), vec![revision_value(object.revision)?, uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
+        if completed.rows_affected() != 1 {
+            return Err(ArtifactDataError::NamespacePurged);
+        }
+        let rows = transaction.query_all(Statement::from_sql_and_values(backend, format!("SELECT storage_key FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend,1), placeholder(backend,2)), vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
+        for row in rows {
+            let key: String = row.try_get("", "storage_key").map_err(storage_error)?;
+            queue_artifact_data_object_gc_candidate(&transaction, scope, &key).await?;
+        }
+        transaction.execute(Statement::from_sql_and_values(backend, format!("DELETE FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend,1), placeholder(backend,2)), vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(object)
+    }
+
+    /// Retires expired sessions for one tenant. A deployment scheduler invokes
+    /// this owner operation; deletion remains delegated to the retention-aware
+    /// object GC service after the chunk keys have been recorded durably.
+    pub async fn reap_expired_tenant(
+        &self,
+        tenant_id: Uuid,
+        limit: u32,
+    ) -> Result<ArtifactDataObjectUploadReapResult, ArtifactDataError> {
+        if tenant_id.is_nil() || limit == 0 || limit > MAX_ARTIFACT_OBJECT_GC_BATCH_SIZE {
+            return Err(ArtifactDataError::InvalidObject);
+        }
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        let sessions = transaction
+            .query_all(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT session_id, module_slug, data_contract_revision, policy_revision
+                     FROM module_artifact_data_object_upload_sessions
+                     WHERE tenant_id = {} AND status IN ('open', 'completing') AND expires_at <= {}
+                     ORDER BY expires_at ASC, session_id ASC LIMIT {}",
+                    placeholder(backend, 1),
+                    now_expression(backend),
+                    placeholder(backend, 2),
+                ),
+                vec![uuid_value(tenant_id, backend), i64::from(limit).into()],
+            ))
+            .await
+            .map_err(storage_error)?;
+        transaction.commit().await.map_err(storage_error)?;
+        let mut result = ArtifactDataObjectUploadReapResult::default();
+        for row in sessions {
+            let session_id = uuid_from_row(&row, "session_id", backend)?;
+            let data_contract_revision: i64 = row
+                .try_get("", "data_contract_revision")
+                .map_err(storage_error)?;
+            let policy_revision: i64 = row.try_get("", "policy_revision").map_err(storage_error)?;
+            let scope = ArtifactDataScope {
+                tenant_id,
+                module_slug: row.try_get("", "module_slug").map_err(storage_error)?,
+                data_contract_revision: u64::try_from(data_contract_revision)
+                    .map_err(|_| ArtifactDataError::RevisionConflict)?,
+                policy_revision: u64::try_from(policy_revision)
+                    .map_err(|_| ArtifactDataError::RevisionConflict)?,
+            };
+            let transaction = self.db.begin().await.map_err(storage_error)?;
+            configure_tenant_scope(&transaction, tenant_id).await?;
+            let tx_backend = transaction.get_database_backend();
+            let abandoned = transaction
+                .execute(Statement::from_sql_and_values(
+                    tx_backend,
+                    format!(
+                        "UPDATE module_artifact_data_object_upload_sessions
+                         SET status = 'abandoned', updated_at = {}
+                         WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                         AND policy_revision = {} AND session_id = {}
+                         AND status IN ('open', 'completing') AND expires_at <= {}",
+                        now_expression(tx_backend),
+                        placeholder(tx_backend, 1),
+                        placeholder(tx_backend, 2),
+                        placeholder(tx_backend, 3),
+                        placeholder(tx_backend, 4),
+                        placeholder(tx_backend, 5),
+                        now_expression(tx_backend),
+                    ),
+                    vec![
+                        uuid_value(tenant_id, tx_backend),
+                        scope.module_slug.clone().into(),
+                        revision_value(scope.data_contract_revision)?,
+                        revision_value(scope.policy_revision)?,
+                        uuid_value(session_id, tx_backend),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?;
+            if abandoned.rows_affected() != 1 {
+                transaction.commit().await.map_err(storage_error)?;
+                continue;
+            }
+            let chunks = transaction
+                .query_all(Statement::from_sql_and_values(
+                    tx_backend,
+                    format!(
+                        "SELECT storage_key FROM module_artifact_data_object_upload_chunks
+                         WHERE tenant_id = {} AND session_id = {}",
+                        placeholder(tx_backend, 1),
+                        placeholder(tx_backend, 2),
+                    ),
+                    vec![
+                        uuid_value(tenant_id, tx_backend),
+                        uuid_value(session_id, tx_backend),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?;
+            let mut queued_chunks = 0_u64;
+            for chunk in chunks {
+                let storage_key: String =
+                    chunk.try_get("", "storage_key").map_err(storage_error)?;
+                queue_artifact_data_object_gc_candidate(&transaction, &scope, &storage_key).await?;
+                queued_chunks = queued_chunks.checked_add(1).ok_or_else(|| {
+                    ArtifactDataError::Storage("upload reaper overflow".to_string())
+                })?;
+            }
+            transaction
+                .execute(Statement::from_sql_and_values(
+                    tx_backend,
+                    format!(
+                        "DELETE FROM module_artifact_data_object_upload_chunks
+                         WHERE tenant_id = {} AND session_id = {}",
+                        placeholder(tx_backend, 1),
+                        placeholder(tx_backend, 2),
+                    ),
+                    vec![
+                        uuid_value(tenant_id, tx_backend),
+                        uuid_value(session_id, tx_backend),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?;
+            transaction.commit().await.map_err(storage_error)?;
+            result.queued_chunks = result
+                .queued_chunks
+                .checked_add(queued_chunks)
+                .ok_or_else(|| ArtifactDataError::Storage("upload reaper overflow".to_string()))?;
+            result.abandoned_sessions = result
+                .abandoned_sessions
+                .checked_add(1)
+                .ok_or_else(|| ArtifactDataError::Storage("upload reaper overflow".to_string()))?;
+        }
+        Ok(result)
+    }
+
+    async fn find_open_session(
+        &self,
+        scope: &ArtifactDataScope,
+        session_id: Uuid,
+    ) -> Result<StoredArtifactDataObjectUploadSession, ArtifactDataError> {
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        let row = transaction.query_one(Statement::from_sql_and_values(backend, format!("SELECT object_name, content_type, expected_revision, idempotency_key FROM module_artifact_data_object_upload_sessions WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND policy_revision = {} AND session_id = {} AND status = 'open' AND expires_at > {}", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), now_expression(backend)), vec![uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?, uuid_value(session_id, backend)])).await.map_err(storage_error)?;
+        transaction.commit().await.map_err(storage_error)?;
+        let row = row.ok_or(ArtifactDataError::NamespacePurged)?;
+        let expected_revision: Option<i64> = row
+            .try_get("", "expected_revision")
+            .map_err(storage_error)?;
+        Ok(StoredArtifactDataObjectUploadSession {
+            name: row.try_get("", "object_name").map_err(storage_error)?,
+            content_type: row.try_get("", "content_type").map_err(storage_error)?,
+            expected_revision: expected_revision
+                .map(|value| u64::try_from(value).map_err(|_| ArtifactDataError::RevisionConflict))
+                .transpose()?,
+            idempotency_key: uuid_from_row(&row, "idempotency_key", backend)?,
+        })
+    }
+
+    async fn claim_upload_completion(
+        &self,
+        scope: &ArtifactDataScope,
+        session_id: Uuid,
+    ) -> Result<ArtifactDataObjectUploadCompletion, ArtifactDataError> {
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT object_name, content_type, expected_revision, idempotency_key, status
+                     FROM module_artifact_data_object_upload_sessions
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND policy_revision = {} AND session_id = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    revision_value(scope.policy_revision)?,
+                    uuid_value(session_id, backend),
+                ],
+            ))
+            .await
+            .map_err(storage_error)?
+            .ok_or(ArtifactDataError::NamespacePurged)?;
+        let name: String = row.try_get("", "object_name").map_err(storage_error)?;
+        let status: String = row.try_get("", "status").map_err(storage_error)?;
+        if status == "completed" {
+            transaction.commit().await.map_err(storage_error)?;
+            return Ok(ArtifactDataObjectUploadCompletion::Completed { name });
+        }
+        if status != "open" && status != "completing" {
+            return Err(ArtifactDataError::NamespacePurged);
+        }
+        let claimed = transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE module_artifact_data_object_upload_sessions
+                     SET status = 'completing', expires_at = {}, updated_at = {}
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND policy_revision = {} AND session_id = {}
+                     AND status IN ('open', 'completing') AND expires_at > {}",
+                    upload_expiry_expression(backend),
+                    now_expression(backend),
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    now_expression(backend),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    revision_value(scope.policy_revision)?,
+                    uuid_value(session_id, backend),
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
+        if claimed.rows_affected() != 1 {
+            return Err(ArtifactDataError::NamespacePurged);
+        }
+        let expected_revision: Option<i64> = row
+            .try_get("", "expected_revision")
+            .map_err(storage_error)?;
+        let session = StoredArtifactDataObjectUploadSession {
+            name,
+            content_type: row.try_get("", "content_type").map_err(storage_error)?,
+            expected_revision: expected_revision
+                .map(|value| u64::try_from(value).map_err(|_| ArtifactDataError::RevisionConflict))
+                .transpose()?,
+            idempotency_key: uuid_from_row(&row, "idempotency_key", backend)?,
+        };
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(ArtifactDataObjectUploadCompletion::Active(session))
+    }
+
+    async fn completed_upload_object(
+        &self,
+        scope: &ArtifactDataScope,
+        session_id: Uuid,
+    ) -> Result<ArtifactDataObject, ArtifactDataError> {
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, scope.tenant_id).await?;
+        let operation =
+            find_artifact_data_object_operation(&transaction, scope, session_id).await?;
+        transaction.commit().await.map_err(storage_error)?;
+        operation.map(|(stored, _)| stored.object).ok_or_else(|| {
+            ArtifactDataError::Storage("completed upload result is unavailable".to_string())
+        })
+    }
+}
+
+struct StoredArtifactDataObjectUploadSession {
+    name: String,
+    content_type: String,
+    expected_revision: Option<u64>,
+    idempotency_key: Uuid,
+}
+
+enum ArtifactDataObjectUploadCompletion {
+    Active(StoredArtifactDataObjectUploadSession),
+    Completed { name: String },
+}
+
+fn validate_upload_session_request(
+    request: &ArtifactDataObjectUploadSessionRequest,
+) -> Result<(), ArtifactDataError> {
+    if request.idempotency_key.is_nil() || request.expected_revision == Some(0) {
+        return Err(ArtifactDataError::InvalidIdempotencyKey);
+    }
+    ArtifactDataObject {
+        name: request.name.clone(),
+        content_type: request.content_type.clone(),
+        size_bytes: 1,
+        digest_sha256: format!("sha256:{}", "0".repeat(64)),
+        revision: 1,
+    }
+    .validate()
+}
+
+fn upload_session_request_digest(
+    request: &ArtifactDataObjectUploadSessionRequest,
+) -> Result<String, ArtifactDataError> {
+    let bytes = serde_json::to_vec(request)
+        .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+    Ok(format!("sha256:{}", hex::encode(Sha256::digest(bytes))))
+}
+
+fn private_artifact_data_upload_chunk_key(
+    scope: &ArtifactDataScope,
+    session_id: Uuid,
+    sequence: u64,
+) -> String {
+    format!(
+        "module-artifact-data-staging/{}/{}/{}/{session_id}/{sequence}/{}",
+        scope.tenant_id,
+        scope.module_slug,
+        scope.data_contract_revision,
+        Uuid::new_v4(),
+    )
+}
+
+fn upload_expiry_expression(backend: DbBackend) -> &'static str {
+    match backend {
+        DbBackend::Postgres => "NOW() + INTERVAL '3600 seconds'",
+        _ => "datetime('now', '+3600 seconds')",
+    }
+}
+
+/// Deletes only object bytes that an owner transaction has explicitly marked
+/// unreferenced and an external retention snapshot permits. It is tenant-scoped
+/// so PostgreSQL RLS remains active during candidate discovery and completion.
+#[derive(Clone)]
+pub struct SeaOrmArtifactDataObjectGcService {
+    db: DatabaseConnection,
+    storage: StorageService,
+}
+
+impl SeaOrmArtifactDataObjectGcService {
+    pub fn new(db: DatabaseConnection, storage: StorageService) -> Self {
+        Self { db, storage }
+    }
+
+    pub async fn sweep_tenant(
+        &self,
+        tenant_id: Uuid,
+        limit: u32,
+        retention: &dyn ArtifactDataObjectRetentionPolicy,
+    ) -> Result<ArtifactDataObjectGcResult, ArtifactDataError> {
+        if tenant_id.is_nil() || limit == 0 || limit > MAX_ARTIFACT_OBJECT_GC_BATCH_SIZE {
+            return Err(ArtifactDataError::InvalidObject);
+        }
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        let candidates = transaction
+            .query_all(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT candidate_id, module_slug, data_contract_revision, policy_revision, storage_key
+                     FROM module_artifact_data_object_gc_candidates
+                     WHERE tenant_id = {} ORDER BY queued_at ASC, candidate_id ASC LIMIT {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                ),
+                vec![uuid_value(tenant_id, backend), i64::from(limit).into()],
+            ))
+            .await
+            .map_err(storage_error)?;
+        transaction.commit().await.map_err(storage_error)?;
+
+        let mut result = ArtifactDataObjectGcResult::default();
+        for row in candidates {
+            let candidate = artifact_data_object_gc_candidate_from_row(row, backend)?;
+            if !retention
+                .may_delete(&candidate.scope, &candidate.storage_key)
+                .await?
+            {
+                result.retained = result
+                    .retained
+                    .checked_add(1)
+                    .ok_or(ArtifactDataError::Storage("GC result overflow".to_string()))?;
+                continue;
+            }
+            self.storage
+                .delete(&candidate.storage_key)
+                .await
+                .map_err(storage_error)?;
+            let transaction = self.db.begin().await.map_err(storage_error)?;
+            configure_tenant_scope(&transaction, tenant_id).await?;
+            let backend = transaction.get_database_backend();
+            transaction
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "DELETE FROM module_artifact_data_object_gc_candidates
+                         WHERE tenant_id = {} AND candidate_id = {} AND storage_key = {}",
+                        placeholder(backend, 1),
+                        placeholder(backend, 2),
+                        placeholder(backend, 3),
+                    ),
+                    vec![
+                        uuid_value(tenant_id, backend),
+                        uuid_value(candidate.candidate_id, backend),
+                        candidate.storage_key.into(),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?;
+            transaction.commit().await.map_err(storage_error)?;
+            result.deleted = result
+                .deleted
+                .checked_add(1)
+                .ok_or(ArtifactDataError::Storage("GC result overflow".to_string()))?;
+        }
+        Ok(result)
+    }
+}
+
+struct ArtifactDataObjectGcCandidate {
+    candidate_id: Uuid,
+    scope: ArtifactDataScope,
+    storage_key: String,
+}
+
+fn artifact_data_object_gc_candidate_from_row(
+    row: sea_orm::QueryResult,
+    backend: DbBackend,
+) -> Result<ArtifactDataObjectGcCandidate, ArtifactDataError> {
+    let data_contract_revision: i64 = row
+        .try_get("", "data_contract_revision")
+        .map_err(storage_error)?;
+    let policy_revision: i64 = row.try_get("", "policy_revision").map_err(storage_error)?;
+    let scope = ArtifactDataScope {
+        tenant_id: uuid_from_row(&row, "tenant_id", backend)?,
+        module_slug: row.try_get("", "module_slug").map_err(storage_error)?,
+        data_contract_revision: u64::try_from(data_contract_revision)
+            .map_err(|_| ArtifactDataError::InvalidObject)?,
+        policy_revision: u64::try_from(policy_revision)
+            .map_err(|_| ArtifactDataError::InvalidObject)?,
+    };
+    scope.validate()?;
+    Ok(ArtifactDataObjectGcCandidate {
+        candidate_id: uuid_from_row(&row, "candidate_id", backend)?,
+        scope,
+        storage_key: row.try_get("", "storage_key").map_err(storage_error)?,
+    })
 }
 
 #[async_trait]
@@ -1419,6 +2540,41 @@ async fn find_artifact_data_object<C: ConnectionTrait>(
         .transpose()
 }
 
+async fn queue_artifact_data_object_gc_candidate<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    storage_key: &str,
+) -> Result<(), ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    connection
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO module_artifact_data_object_gc_candidates
+                 (candidate_id, tenant_id, module_slug, data_contract_revision, policy_revision, storage_key, queued_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}) ON CONFLICT (storage_key) DO NOTHING",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+                placeholder(backend, 5),
+                placeholder(backend, 6),
+                now_expression(backend),
+            ),
+            vec![
+                uuid_value(Uuid::new_v4(), backend),
+                uuid_value(scope.tenant_id, backend),
+                scope.module_slug.clone().into(),
+                revision_value(scope.data_contract_revision)?,
+                revision_value(scope.policy_revision)?,
+                storage_key.to_owned().into(),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    Ok(())
+}
+
 async fn persist_artifact_data_object(
     transaction: &DatabaseTransaction,
     scope: &ArtifactDataScope,
@@ -1469,6 +2625,10 @@ async fn persist_artifact_data_object(
                 .map_err(storage_error)?;
             if result.rows_affected() != 1 {
                 return Err(ArtifactDataError::RevisionConflict);
+            }
+            if current.storage_key != storage_key {
+                queue_artifact_data_object_gc_candidate(transaction, scope, &current.storage_key)
+                    .await?;
             }
             revision
         }
@@ -1622,9 +2782,21 @@ async fn persist_artifact_data_write(
     transaction: &DatabaseTransaction,
     scope: &ArtifactDataScope,
     write: ArtifactDataWrite,
+    indexes: &[ArtifactDataIndexField],
+    index_contract_digest: Option<&str>,
 ) -> Result<ArtifactDataRecord, ArtifactDataError> {
     let backend = transaction.get_database_backend();
     ensure_active_namespace(transaction, scope, backend).await?;
+    if let Some(index_contract_digest) = index_contract_digest {
+        validate_artifact_data_index_contract(
+            transaction,
+            scope,
+            backend,
+            index_contract_digest,
+            true,
+        )
+        .await?;
+    }
     if let Some(row) = transaction
         .query_one(Statement::from_sql_and_values(
             backend,
@@ -1757,6 +2929,7 @@ async fn persist_artifact_data_write(
         value: write.value,
         revision,
     };
+    synchronize_artifact_data_indexes(transaction, scope, &record, indexes).await?;
     transaction
         .execute(Statement::from_sql_and_values(
             backend,
@@ -1790,6 +2963,90 @@ async fn persist_artifact_data_write(
     Ok(record)
 }
 
+async fn synchronize_artifact_data_indexes(
+    transaction: &DatabaseTransaction,
+    scope: &ArtifactDataScope,
+    record: &ArtifactDataRecord,
+    indexes: &[ArtifactDataIndexField],
+) -> Result<(), ArtifactDataError> {
+    let backend = transaction.get_database_backend();
+    transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "DELETE FROM module_artifact_data_indexes
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                   AND data_key = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+            ),
+            scope_values(scope, backend, &record.key)?,
+        ))
+        .await
+        .map_err(storage_error)?;
+    for index in indexes {
+        let Some(value) = record.value.pointer(&index.json_pointer) else {
+            continue;
+        };
+        if !artifact_data_index_value_matches(value, index.value_type) {
+            return Err(ArtifactDataError::InvalidIndexQuery);
+        }
+        let index_value = serde_json::to_string(value)
+            .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+        if index_value.len() > MAX_ARTIFACT_DATA_INDEX_VALUE_BYTES {
+            return Err(ArtifactDataError::InvalidIndexQuery);
+        }
+        transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO module_artifact_data_indexes
+                     (tenant_id, module_slug, data_contract_revision, index_name, index_value, data_key)
+                     VALUES ({}, {}, {}, {}, {}, {})",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    placeholder(backend, 6),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    index.name.clone().into(),
+                    index_value.into(),
+                    record.key.clone().into(),
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
+    }
+    Ok(())
+}
+
+fn index_contract_digest(indexes: &[ArtifactDataIndexField]) -> Option<String> {
+    (!indexes.is_empty()).then(|| {
+        let encoded = serde_json::to_vec(indexes)
+            .expect("artifact data index declarations are always serializable");
+        format!("sha256:{}", hex::encode(Sha256::digest(encoded)))
+    })
+}
+
+fn artifact_data_index_value_matches(
+    value: &Value,
+    value_type: ArtifactDataIndexValueType,
+) -> bool {
+    matches!(
+        (value, value_type),
+        (Value::String(_), ArtifactDataIndexValueType::String)
+            | (Value::Number(_), ArtifactDataIndexValueType::Number)
+            | (Value::Bool(_), ArtifactDataIndexValueType::Boolean)
+    )
+}
+
 /// The `platform.data` adapter for one admitted artifact namespace. It is
 /// injected into the neutral sandbox runtime and delegates all persistence,
 /// policy, schema, and RLS enforcement to the owner data broker.
@@ -1809,9 +3066,10 @@ where
         authorizer: A,
         schema_validator: V,
         scope: ArtifactDataScope,
+        indexes: Vec<ArtifactDataIndexField>,
     ) -> Self {
         Self {
-            data: SeaOrmArtifactDataBroker::new(db, authorizer, schema_validator),
+            data: SeaOrmArtifactDataBroker::with_indexes(db, authorizer, schema_validator, indexes),
             scope,
         }
     }
@@ -1881,6 +3139,19 @@ where
                     }),
                 })
             }
+            DataCapabilityCall::QueryIndex { query } => {
+                let page = self
+                    .data
+                    .query_index(&self.scope, query)
+                    .await
+                    .map_err(|error| data_capability_error(&call.capability, error))?;
+                Ok(CapabilityResponse {
+                    output: json!({
+                        "records": page.records,
+                        "next_after_key": page.next_after_key,
+                    }),
+                })
+            }
         }
     }
 }
@@ -1932,6 +3203,12 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerReso
         let installation =
             resolve_granted_artifact_capability(&self.db, execution, capability).await?;
         let scope = artifact_data_scope_for_execution(&installation, execution, capability)?;
+        let indexes = installation
+            .descriptor
+            .persistence_contract
+            .as_ref()
+            .map(|contract| contract.indexes.clone())
+            .ok_or_else(|| SandboxError::CapabilityDenied(capability.clone()))?;
         let authorizer = ExactArtifactDataAuthorizer {
             scope: scope.clone(),
         };
@@ -1942,6 +3219,7 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerReso
             authorizer,
             schema_validator,
             scope,
+            indexes,
         )))
     }
 }
@@ -1953,12 +3231,13 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerReso
 #[derive(Clone)]
 pub struct SeaOrmArtifactDataObjectCapabilityBroker<A> {
     objects: SeaOrmArtifactDataObjectBroker<A>,
+    uploads: SeaOrmArtifactDataObjectUploadService<A>,
     scope: ArtifactDataScope,
 }
 
 impl<A> SeaOrmArtifactDataObjectCapabilityBroker<A>
 where
-    A: ArtifactDataAuthorizer,
+    A: ArtifactDataAuthorizer + Clone,
 {
     pub fn new(
         db: DatabaseConnection,
@@ -1967,7 +3246,12 @@ where
         scope: ArtifactDataScope,
     ) -> Self {
         Self {
-            objects: SeaOrmArtifactDataObjectBroker::new(db, storage, authorizer),
+            objects: SeaOrmArtifactDataObjectBroker::new(
+                db.clone(),
+                storage.clone(),
+                authorizer.clone(),
+            ),
+            uploads: SeaOrmArtifactDataObjectUploadService::new(db, storage, authorizer),
             scope,
         }
     }
@@ -1976,7 +3260,7 @@ where
 #[async_trait]
 impl<A> CapabilityBroker for SeaOrmArtifactDataObjectCapabilityBroker<A>
 where
-    A: ArtifactDataAuthorizer,
+    A: ArtifactDataAuthorizer + Clone,
 {
     async fn invoke(
         &self,
@@ -2030,6 +3314,33 @@ where
                 let object = self
                     .objects
                     .put_object(&self.scope, upload)
+                    .await
+                    .map_err(|error| data_capability_error(&call.capability, error))?;
+                Ok(CapabilityResponse {
+                    output: json!({ "object": object }),
+                })
+            }
+            ObjectDataCapabilityCall::BeginUpload { request } => {
+                let session = self
+                    .uploads
+                    .begin(&self.scope, request)
+                    .await
+                    .map_err(|error| data_capability_error(&call.capability, error))?;
+                Ok(CapabilityResponse {
+                    output: json!({ "session": session }),
+                })
+            }
+            ObjectDataCapabilityCall::AppendChunk { chunk } => {
+                self.uploads
+                    .append_chunk(&self.scope, chunk)
+                    .await
+                    .map_err(|error| data_capability_error(&call.capability, error))?;
+                Ok(CapabilityResponse { output: json!({}) })
+            }
+            ObjectDataCapabilityCall::CompleteUpload { request } => {
+                let object = self
+                    .uploads
+                    .complete(&self.scope, request)
                     .await
                     .map_err(|error| data_capability_error(&call.capability, error))?;
                 Ok(CapabilityResponse {
@@ -2094,10 +3405,27 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataObjectCapabilityBrok
 }
 
 enum ObjectDataCapabilityCall {
-    GetMetadata { name: String },
-    Read { name: String },
-    Put { upload: ArtifactDataObjectUpload },
-    List { page: ArtifactDataPageRequest },
+    GetMetadata {
+        name: String,
+    },
+    Read {
+        name: String,
+    },
+    Put {
+        upload: ArtifactDataObjectUpload,
+    },
+    BeginUpload {
+        request: ArtifactDataObjectUploadSessionRequest,
+    },
+    AppendChunk {
+        chunk: ArtifactDataObjectUploadChunk,
+    },
+    CompleteUpload {
+        request: ArtifactDataObjectUploadCompleteRequest,
+    },
+    List {
+        page: ArtifactDataPageRequest,
+    },
 }
 
 fn decode_object_data_capability_call(
@@ -2174,6 +3502,107 @@ fn decode_object_data_capability_call(
                 },
             })
         }
+        "begin_upload" => {
+            reject_data_capability_fields(
+                call,
+                input,
+                &[
+                    "name",
+                    "content_type",
+                    "expected_revision",
+                    "idempotency_key",
+                ],
+            )?;
+            let expected_revision = input
+                .get("expected_revision")
+                .map(|value| {
+                    value
+                        .as_u64()
+                        .filter(|revision| *revision > 0)
+                        .ok_or_else(|| {
+                            data_capability_constraint(
+                                call,
+                                "object expected_revision must be a positive integer",
+                            )
+                        })
+                })
+                .transpose()?;
+            let idempotency_key = Uuid::parse_str(required_data_capability_string(
+                call,
+                input,
+                "idempotency_key",
+            )?)
+            .map_err(|_| {
+                data_capability_constraint(call, "object idempotency_key must be a UUID")
+            })?;
+            Ok(ObjectDataCapabilityCall::BeginUpload {
+                request: ArtifactDataObjectUploadSessionRequest {
+                    name: required_data_capability_string(call, input, "name")?.to_owned(),
+                    content_type: required_data_capability_string(call, input, "content_type")?
+                        .to_owned(),
+                    expected_revision,
+                    idempotency_key,
+                },
+            })
+        }
+        "append_chunk" => {
+            reject_data_capability_fields(call, input, &["session_id", "sequence", "data_base64"])?;
+            let data = BASE64_STANDARD
+                .decode(required_data_capability_string(call, input, "data_base64")?)
+                .map_err(|_| {
+                    data_capability_constraint(call, "object chunk data_base64 is invalid")
+                })?;
+            if data.is_empty() || data.len() > MAX_SANDBOX_ARTIFACT_OBJECT_BYTES {
+                return Err(data_capability_constraint(
+                    call,
+                    "object chunk exceeds the sandbox transfer limit",
+                ));
+            }
+            let session_id =
+                Uuid::parse_str(required_data_capability_string(call, input, "session_id")?)
+                    .map_err(|_| {
+                        data_capability_constraint(call, "object session_id must be a UUID")
+                    })?;
+            let sequence = input
+                .get("sequence")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| {
+                    data_capability_constraint(call, "object sequence must be an integer")
+                })?;
+            Ok(ObjectDataCapabilityCall::AppendChunk {
+                chunk: ArtifactDataObjectUploadChunk {
+                    session_id,
+                    sequence,
+                    data: Bytes::from(data),
+                },
+            })
+        }
+        "complete_upload" => {
+            reject_data_capability_fields(
+                call,
+                input,
+                &["session_id", "size_bytes", "digest_sha256"],
+            )?;
+            let session_id =
+                Uuid::parse_str(required_data_capability_string(call, input, "session_id")?)
+                    .map_err(|_| {
+                        data_capability_constraint(call, "object session_id must be a UUID")
+                    })?;
+            let size_bytes = input
+                .get("size_bytes")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| {
+                    data_capability_constraint(call, "object size_bytes must be an integer")
+                })?;
+            Ok(ObjectDataCapabilityCall::CompleteUpload {
+                request: ArtifactDataObjectUploadCompleteRequest {
+                    session_id,
+                    size_bytes,
+                    digest_sha256: required_data_capability_string(call, input, "digest_sha256")?
+                        .to_owned(),
+                },
+            })
+        }
         "list" => {
             reject_data_capability_fields(call, input, &["prefix", "after_name", "limit"])?;
             let after_key = input
@@ -2213,6 +3642,7 @@ enum DataCapabilityCall {
     Put { write: ArtifactDataWrite },
     PutBatch { batch: ArtifactDataBatchWrite },
     List { page: ArtifactDataPageRequest },
+    QueryIndex { query: ArtifactDataIndexQuery },
 }
 
 fn decode_data_capability_call(call: &CapabilityCall) -> SandboxResult<DataCapabilityCall> {
@@ -2278,6 +3708,45 @@ fn decode_data_capability_call(call: &CapabilityCall) -> SandboxResult<DataCapab
                     })?,
                 },
             })
+        }
+        "query_index" => {
+            reject_data_capability_fields(
+                call,
+                input,
+                &["index", "value", "prefix", "after_key", "limit"],
+            )?;
+            let after_key = input
+                .get("after_key")
+                .map(|value| {
+                    value.as_str().map(str::to_string).ok_or_else(|| {
+                        data_capability_constraint(call, "data after_key must be a string")
+                    })
+                })
+                .transpose()?;
+            let limit = input
+                .get("limit")
+                .and_then(Value::as_u64)
+                .filter(|limit| (1..=100).contains(limit))
+                .ok_or_else(|| {
+                    data_capability_constraint(call, "data query limit must be between 1 and 100")
+                })?;
+            let query = ArtifactDataIndexQuery {
+                index: required_data_capability_string(call, input, "index")?.to_string(),
+                value: input
+                    .get("value")
+                    .cloned()
+                    .ok_or_else(|| data_capability_constraint(call, "data query requires value"))?,
+                page: ArtifactDataPageRequest {
+                    prefix: required_data_capability_string(call, input, "prefix")?.to_string(),
+                    after_key,
+                    limit: u32::try_from(limit).map_err(|_| {
+                        data_capability_constraint(call, "data query limit must fit u32")
+                    })?,
+                },
+            };
+            validate_artifact_data_index_query(&query)
+                .map_err(|_| data_capability_constraint(call, "data index query is invalid"))?;
+            Ok(DataCapabilityCall::QueryIndex { query })
         }
         _ => Err(data_capability_constraint(
             call,
@@ -2376,10 +3845,13 @@ fn data_capability_error(
         | ArtifactDataError::InvalidKey
         | ArtifactDataError::InvalidObject
         | ArtifactDataError::InvalidPage
+        | ArtifactDataError::InvalidIndexQuery
+        | ArtifactDataError::IndexQueryUnavailable
         | ArtifactDataError::InvalidBatch
         | ArtifactDataError::RevisionConflict
         | ArtifactDataError::NamespacePurged
         | ArtifactDataError::PurgePrecondition
+        | ArtifactDataError::ExportPrecondition
         | ArtifactDataError::InvalidIdempotencyKey
         | ArtifactDataError::IdempotencyConflict
         | ArtifactDataError::ValueTooLarge { .. }
@@ -2396,6 +3868,174 @@ fn data_capability_error(
             capability: capability.clone(),
             message: "artifact data capability is unavailable".to_string(),
         },
+    }
+}
+
+/// Owner service for a bounded, audited structured-data export page. It is not
+/// registered as a sandbox capability and it holds the namespace lifecycle
+/// lock only for the page query plus the matching audit/outbox transaction.
+#[derive(Clone)]
+pub struct SeaOrmArtifactDataExportService<A> {
+    db: DatabaseConnection,
+    authorizer: A,
+}
+
+impl<A> SeaOrmArtifactDataExportService<A>
+where
+    A: ArtifactDataExportAuthorizer,
+{
+    pub fn new(db: DatabaseConnection, authorizer: A) -> Self {
+        Self { db, authorizer }
+    }
+
+    pub async fn export(
+        &self,
+        request: ArtifactDataExportRequest,
+    ) -> Result<ArtifactDataExportResult, ArtifactDataError> {
+        validate_export_request(&request)?;
+        self.authorizer.authorize_export(&request).await?;
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, request.scope.tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        let namespace_revision = require_active_namespace(
+            &transaction,
+            &request.scope,
+            request.expected_namespace_revision,
+            backend,
+        )
+        .await?;
+        let query_limit = i64::from(request.page.limit) + 1;
+        let prefix_pattern = format!("{}%", escape_like_prefix(&request.page.prefix));
+        let (query, values) = match request.page.after_key.as_deref() {
+            Some(after_key) => (
+                format!(
+                    "SELECT data_key, value, revision FROM module_artifact_data
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND data_key LIKE {} ESCAPE '\\' AND data_key > {}
+                     ORDER BY data_key ASC LIMIT {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    placeholder(backend, 6),
+                ),
+                vec![
+                    uuid_value(request.scope.tenant_id, backend),
+                    request.scope.module_slug.clone().into(),
+                    revision_value(request.scope.data_contract_revision)?,
+                    prefix_pattern.clone().into(),
+                    after_key.to_owned().into(),
+                    query_limit.into(),
+                ],
+            ),
+            None => (
+                format!(
+                    "SELECT data_key, value, revision FROM module_artifact_data
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND data_key LIKE {} ESCAPE '\\'
+                     ORDER BY data_key ASC LIMIT {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                ),
+                vec![
+                    uuid_value(request.scope.tenant_id, backend),
+                    request.scope.module_slug.clone().into(),
+                    revision_value(request.scope.data_contract_revision)?,
+                    prefix_pattern.into(),
+                    query_limit.into(),
+                ],
+            ),
+        };
+        let mut records = transaction
+            .query_all(Statement::from_sql_and_values(backend, query, values))
+            .await
+            .map_err(storage_error)?
+            .into_iter()
+            .map(record_from_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        let next_after_key = if records.len() > request.page.limit as usize {
+            records.truncate(request.page.limit as usize);
+            records.last().map(|record| record.key.clone())
+        } else {
+            None
+        };
+        let page = ArtifactDataPage {
+            records,
+            next_after_key,
+        };
+        let export_id = Uuid::new_v4();
+        let exported_records =
+            i64::try_from(page.records.len()).map_err(|_| ArtifactDataError::ExportPrecondition)?;
+        transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO module_artifact_data_exports
+                     (export_id, tenant_id, module_slug, data_contract_revision, namespace_revision,
+                      actor_id, prefix, after_key, page_limit, reason, exported_records, completed_at)
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    placeholder(backend, 6),
+                    placeholder(backend, 7),
+                    placeholder(backend, 8),
+                    placeholder(backend, 9),
+                    placeholder(backend, 10),
+                    placeholder(backend, 11),
+                    now_expression(backend),
+                ),
+                vec![
+                    uuid_value(export_id, backend),
+                    uuid_value(request.scope.tenant_id, backend),
+                    request.scope.module_slug.clone().into(),
+                    revision_value(request.scope.data_contract_revision)?,
+                    revision_value(namespace_revision)?,
+                    uuid_value(request.actor_id, backend),
+                    request.page.prefix.clone().into(),
+                    request
+                        .page
+                        .after_key
+                        .clone()
+                        .map_or(SqlValue::String(None), Into::into),
+                    i64::from(request.page.limit).into(),
+                    request.reason.clone().into(),
+                    exported_records.into(),
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
+        OutboxTransport::new(self.db.clone())
+            .write_to_outbox(
+                &transaction,
+                EventEnvelope::new(
+                    Uuid::new_v4(),
+                    Some(request.scope.tenant_id),
+                    DomainEvent::ModuleArtifactDataExported {
+                        export_id,
+                        tenant_id: request.scope.tenant_id,
+                        module_slug: request.scope.module_slug.clone(),
+                        data_contract_revision: request.scope.data_contract_revision,
+                        namespace_revision,
+                        exported_records: u64::try_from(exported_records)
+                            .map_err(|_| ArtifactDataError::ExportPrecondition)?,
+                    },
+                ),
+            )
+            .await
+            .map_err(storage_error)?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(ArtifactDataExportResult {
+            export_id,
+            namespace_revision,
+            page,
+        })
     }
 }
 
@@ -2503,6 +4143,34 @@ where
         {
             return Err(ArtifactDataError::PurgePrecondition);
         }
+        transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "DELETE FROM module_artifact_data_index_contracts
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                ),
+                namespace_values(&request.scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+        transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "DELETE FROM module_artifact_data_indexes
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                ),
+                namespace_values(&request.scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
         let structured_records = transaction
             .execute(Statement::from_sql_and_values(
                 backend,
@@ -2532,6 +4200,25 @@ where
             ))
             .await
             .map_err(storage_error)?;
+        let object_storage_keys = transaction
+            .query_all(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT storage_key FROM module_artifact_data_objects
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                ),
+                namespace_values(&request.scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+        for row in object_storage_keys {
+            let storage_key: String = row.try_get("", "storage_key").map_err(storage_error)?;
+            queue_artifact_data_object_gc_candidate(&transaction, &request.scope, &storage_key)
+                .await?;
+        }
         let object_records = transaction
             .execute(Statement::from_sql_and_values(
                 backend,
@@ -2719,6 +4406,142 @@ async fn ensure_active_namespace<C: ConnectionTrait>(
     Ok(())
 }
 
+/// Loads and locks an existing active namespace without creating one. Owner
+/// exports must never resurrect a purged namespace or create state merely by
+/// reading it.
+async fn require_active_namespace<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    expected_namespace_revision: u64,
+    backend: DbBackend,
+) -> Result<u64, ArtifactDataError> {
+    let row = connection
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT namespace_revision FROM module_artifact_data_namespaces
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 AND purged_at IS NULL{}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                namespace_lock_clause(backend),
+            ),
+            namespace_values(scope, backend)?,
+        ))
+        .await
+        .map_err(storage_error)?
+        .ok_or(ArtifactDataError::ExportPrecondition)?;
+    let namespace_revision: i64 = row
+        .try_get("", "namespace_revision")
+        .map_err(storage_error)?;
+    let namespace_revision =
+        u64::try_from(namespace_revision).map_err(|_| ArtifactDataError::ExportPrecondition)?;
+    if namespace_revision != expected_namespace_revision {
+        return Err(ArtifactDataError::ExportPrecondition);
+    }
+    Ok(namespace_revision)
+}
+
+/// Validates the exact immutable index declaration for a namespace. The first
+/// indexed write binds the declaration before it persists data. A legacy
+/// namespace with structured values but no binding is intentionally unavailable
+/// for indexed queries: returning a partial result would be less safe than
+/// requiring an owner-mediated data-contract upgrade.
+async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    backend: DbBackend,
+    contract_digest: &str,
+    bind_if_empty: bool,
+) -> Result<(), ArtifactDataError> {
+    let values = namespace_values(scope, backend)?;
+    let existing = connection
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT contract_digest FROM module_artifact_data_index_contracts
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+            ),
+            values.clone(),
+        ))
+        .await
+        .map_err(storage_error)?;
+    if let Some(row) = existing {
+        let stored: String = row.try_get("", "contract_digest").map_err(storage_error)?;
+        return (stored == contract_digest)
+            .then_some(())
+            .ok_or(ArtifactDataError::IndexQueryUnavailable);
+    }
+    let has_records = connection
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT 1 FROM module_artifact_data
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 LIMIT 1",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+            ),
+            values.clone(),
+        ))
+        .await
+        .map_err(storage_error)?;
+    if has_records.is_some() {
+        return Err(ArtifactDataError::IndexQueryUnavailable);
+    }
+    if !bind_if_empty {
+        return Ok(());
+    }
+    connection
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO module_artifact_data_index_contracts
+                 (tenant_id, module_slug, data_contract_revision, contract_digest, bound_at)
+                 VALUES ({}, {}, {}, {}, {}) ON CONFLICT DO NOTHING",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+                now_expression(backend),
+            ),
+            vec![
+                values[0].clone(),
+                values[1].clone(),
+                values[2].clone(),
+                contract_digest.to_owned().into(),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    let row = connection
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT contract_digest FROM module_artifact_data_index_contracts
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+            ),
+            values,
+        ))
+        .await
+        .map_err(storage_error)?
+        .ok_or_else(|| {
+            ArtifactDataError::Storage("index contract binding was not persisted".to_string())
+        })?;
+    let stored: String = row.try_get("", "contract_digest").map_err(storage_error)?;
+    (stored == contract_digest)
+        .then_some(())
+        .ok_or(ArtifactDataError::IndexQueryUnavailable)
+}
+
 fn validate_purge_request(request: &ArtifactDataPurgeRequest) -> Result<(), ArtifactDataError> {
     request.scope.validate()?;
     if request.expected_namespace_revision == 0
@@ -2728,6 +4551,20 @@ fn validate_purge_request(request: &ArtifactDataPurgeRequest) -> Result<(), Arti
         || request.reason.len() > 2_000
     {
         return Err(ArtifactDataError::PurgePrecondition);
+    }
+    Ok(())
+}
+
+fn validate_export_request(request: &ArtifactDataExportRequest) -> Result<(), ArtifactDataError> {
+    request.scope.validate()?;
+    validate_page_request(&request.page)?;
+    if request.expected_namespace_revision == 0
+        || request.actor_id.is_nil()
+        || request.reason.trim().is_empty()
+        || request.reason.trim() != request.reason
+        || request.reason.len() > 2_000
+    {
+        return Err(ArtifactDataError::ExportPrecondition);
     }
     Ok(())
 }
@@ -2840,6 +4677,10 @@ pub enum ArtifactDataError {
     ObjectIntegrity,
     #[error("artifact data page is invalid")]
     InvalidPage,
+    #[error("artifact data index query is invalid")]
+    InvalidIndexQuery,
+    #[error("artifact data index query is unavailable")]
+    IndexQueryUnavailable,
     #[error("artifact data batch is invalid")]
     InvalidBatch,
     #[error("artifact data upgrade request is invalid")]
@@ -2862,6 +4703,8 @@ pub enum ArtifactDataError {
     NamespacePurged,
     #[error("artifact data purge precondition failed")]
     PurgePrecondition,
+    #[error("artifact data export precondition failed")]
+    ExportPrecondition,
     #[error("artifact data idempotency key is invalid")]
     InvalidIdempotencyKey,
     #[error("artifact data idempotency key was reused for a different key")]
@@ -3127,6 +4970,46 @@ mod tests {
     }
 
     #[test]
+    fn owner_export_requires_active_revision_actor_reason_and_bounded_page() {
+        let scope = ArtifactDataScope {
+            tenant_id: Uuid::new_v4(),
+            module_slug: "sample_module".to_string(),
+            data_contract_revision: 1,
+            policy_revision: 1,
+        };
+        let mut request = ArtifactDataExportRequest {
+            scope,
+            expected_namespace_revision: 1,
+            page: ArtifactDataPageRequest {
+                prefix: "state/".to_string(),
+                after_key: None,
+                limit: 100,
+            },
+            actor_id: Uuid::new_v4(),
+            reason: "operator backup review".to_string(),
+        };
+        assert!(validate_export_request(&request).is_ok());
+
+        request.expected_namespace_revision = 0;
+        assert!(matches!(
+            validate_export_request(&request),
+            Err(ArtifactDataError::ExportPrecondition)
+        ));
+        request.expected_namespace_revision = 1;
+        request.reason = " ".to_string();
+        assert!(matches!(
+            validate_export_request(&request),
+            Err(ArtifactDataError::ExportPrecondition)
+        ));
+        request.reason = "operator backup review".to_string();
+        request.page.limit = 101;
+        assert!(matches!(
+            validate_export_request(&request),
+            Err(ArtifactDataError::InvalidPage)
+        ));
+    }
+
+    #[test]
     fn sandbox_data_adapter_keeps_list_continuations_inside_the_prefix() {
         let mut call = CapabilityCall {
             execution_id: Uuid::new_v4(),
@@ -3151,6 +5034,44 @@ mod tests {
             Ok(DataCapabilityCall::List { .. })
         ));
         call.input = json!({ "prefix": "state/", "after_key": "other/one", "limit": 10 });
+        assert!(decode_data_capability_call(&call).is_err());
+    }
+
+    #[test]
+    fn sandbox_data_adapter_decodes_only_bounded_scalar_index_queries() {
+        let mut call = CapabilityCall {
+            execution_id: Uuid::new_v4(),
+            subject: SandboxSubject::ModuleArtifact {
+                installation_id: Uuid::new_v4(),
+                slug: "sample_module".to_string(),
+                version: "1.0.0".to_string(),
+                digest: "sha256:sample".to_string(),
+            },
+            context: CapabilityCallContext {
+                phase: ExecutionPhase::Lifecycle,
+                tenant_id: Some(Uuid::new_v4()),
+                actor_id: None,
+                trace_id: None,
+            },
+            capability: CapabilityName::new("platform.data").expect("capability name"),
+            operation: "query_index".to_string(),
+            input: json!({
+                "index": "status",
+                "value": "active",
+                "prefix": "state/",
+                "after_key": "state/one",
+                "limit": 10,
+            }),
+        };
+        assert!(matches!(
+            decode_data_capability_call(&call),
+            Ok(DataCapabilityCall::QueryIndex { .. })
+        ));
+
+        call.input["value"] = json!(["active"]);
+        assert!(decode_data_capability_call(&call).is_err());
+        call.input["value"] = json!("active");
+        call.input["after_key"] = json!("other/one");
         assert!(decode_data_capability_call(&call).is_err());
     }
 
@@ -3433,6 +5354,11 @@ mod tests {
         invalid.name = "exports/report.json".to_string();
         invalid.digest_sha256 = "sha256:not-a-digest".to_string();
         assert_eq!(invalid.validate(), Err(ArtifactDataError::InvalidObject));
+        invalid.digest_sha256 = format!("sha256:{}", "A".repeat(64));
+        assert_eq!(invalid.validate(), Err(ArtifactDataError::InvalidObject));
+        invalid.digest_sha256 = format!("sha256:{}", "a".repeat(64));
+        invalid.content_type = " application/json".to_string();
+        assert_eq!(invalid.validate(), Err(ArtifactDataError::InvalidObject));
     }
 
     #[test]
@@ -3458,5 +5384,39 @@ mod tests {
             object_for_upload(&invalid),
             Err(ArtifactDataError::InvalidIdempotencyKey)
         );
+    }
+
+    #[tokio::test]
+    async fn object_retention_snapshot_requires_explicit_eligible_rule() {
+        let now = chrono::Utc::now();
+        let scope = ArtifactDataScope {
+            tenant_id: Uuid::new_v4(),
+            module_slug: "sample_module".to_string(),
+            data_contract_revision: 1,
+            policy_revision: 1,
+        };
+        let storage_key = "module-artifact-data/retained";
+        let policy = SnapshotArtifactDataObjectRetentionPolicy::new(now, HashMap::new());
+        assert!(!policy
+            .may_delete(&scope, storage_key)
+            .await
+            .expect("missing rule fails closed"));
+
+        let policy = SnapshotArtifactDataObjectRetentionPolicy::new(
+            now,
+            HashMap::from([(
+                storage_key.to_string(),
+                ArtifactDataObjectRetentionRule {
+                    delete_after: now,
+                    legal_hold: false,
+                    audit_hold: false,
+                    rollback_hold: false,
+                },
+            )]),
+        );
+        assert!(policy
+            .may_delete(&scope, storage_key)
+            .await
+            .expect("eligible rule"));
     }
 }

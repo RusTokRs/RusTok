@@ -41,13 +41,34 @@ Remaining:
   `AlloyDraftRuntime` over `SandboxRuntime`; `ScriptEngine` remains only for
   compile-time CRUD validation and internal unit tests, never production code
   execution;
+- tenant-scoped `SeaOrmStorage` now applies the tenant predicate to every
+  single-script read, save, delete, status, and error path, and rejects a
+  cross-tenant save as `NotFound`;
+- `ScriptRegistry::save` now treats the stored script version as the expected
+  revision and uses a durable revision predicate for SeaORM updates. Every
+  storage mutation advances that revision, and stale saves fail as
+  `RevisionConflict` instead of overwriting current state;
+- `alloy_script_revisions` now records immutable workspace, digest, author, and
+  parent-revision lineage in the same transaction as every admitted SeaORM
+  mutation. A pre-ledger script receives a baseline snapshot before its first
+  new revision commits. Owner storage exposes tenant-scoped lookup by
+  `(script_id, revision)` and revision-ascending history without SQL bypass;
 - entity/parameter semantics must become request-scoped Alloy extensions;
-- draft revision/CAS, review, and publication orchestration need owner contracts;
+- REST and GraphQL update commands now require the caller's expected revision;
+  manual-run commands use the same requirement and execute the loaded snapshot
+  without a second registry lookup. Idempotency, workspace-level command
+  revisions, review, and publication orchestration still need owner contracts;
 - marketplace release import/fork needs a complete persisted workflow;
 - AI-assisted Rust/WIT authoring must use the isolated build worker;
 - operator draft-review surfaces need canonical transport and audit evidence.
-- the current single-source `code: String` model needs a revisioned workspace
-  for modules/imports, tests, fixtures, schemas, policy, and generated artifacts;
+- persisted workspaces now use bounded canonical JSON with sources, tests,
+  fixtures, schemas, policy, and generated-file kinds; their path, per-file,
+  total-size, and file-count limits are enforced before storage and execution.
+  The sandbox receives canonical workspace bytes and Alloy resolves only its
+  entry source through a request extension, never a guest filesystem. Bounded
+  Rhai imports resolve only through a request-private static in-memory resolver
+  assembled in dependency order: exact `src/*.rhai` paths, no host filesystem,
+  bounded depth, and cycle rejection;
 - untrusted marketplace/source/log/MCP content needs explicit prompt-injection
   and tool-policy isolation.
 
@@ -84,7 +105,44 @@ Remaining:
 
 - Persist draft workspace, monotonic revision, source digest, parent lineage,
   author, review status, and policy revision.
-- Require revision/CAS and idempotency for save, test, review, build, and publish.
+- [x] Guard single-script persistence with a durable version predicate and
+  `RevisionConflict`; every storage mutation advances the version.
+- [x] Persist immutable single-source revision lineage with digest, author, and
+  parent revision in the same transaction as the current draft mutation.
+- [x] Expose immutable source-revision lookup and ordered history through the
+  tenant-scoped owner storage contract.
+- [x] Replace single-source draft persistence with a bounded canonical workspace
+  stored and hashed as one immutable revision snapshot; resolve its entry source
+  through the Alloy sandbox extension without guest filesystem access.
+- [x] Resolve workspace Rhai imports only from exact in-memory `src/*.rhai`
+  files, rejecting non-workspace paths, cycles, and depth overflow.
+- [x] Require an explicit expected revision for REST and GraphQL draft updates.
+- [x] Require the same revision for REST and GraphQL manual execution and run
+  the loaded source snapshot rather than a second name lookup.
+- Durable review decisions now bind an exact source digest, expected current
+  revision, policy revision, reviewer identity, reason, and request fingerprint.
+  The owner storage replays only an identical idempotency key/fingerprint pair
+  and rejects invalid per-revision transitions. GraphQL and host HTTP transports
+  require a verified `scripts.manage` actor and never accept an actor identity
+  from client JSON.
+- Require workspace revision/CAS and idempotency for test, build, and
+  publish. Test commands now durably reserve a revision-pinned source digest,
+  declared test path, actor, and request fingerprint before sandbox execution.
+  The owner replays terminal evidence only for an identical command, returns an
+  in-progress pending lease without duplicate work, and may reclaim only an
+  expired lease against the same immutable source snapshot. Host HTTP and
+  GraphQL derive a `scripts.manage` actor from authentication; build-command
+  idempotency remains pending. Release staging now requires the current Alloy
+  revision and its latest approved review, then uses an owner-owned
+  `rustok-modules` Alloy-authored stage with an idempotency key bound to the
+  immutable source and review evidence. Final publication transport, artifact
+  upload, and release promotion remain pending.
+- Workspace test execution now selects only a declared immutable `tests/*.rhai`
+  entrypoint from the revision-pinned canonical workspace. It uses the same
+  digest and in-memory `src/*.rhai` resolver as production source, receives no
+  capability grants, rejects entity mutations, and requires a boolean result.
+  Durable test-command CAS/idempotency evidence is recorded separately from
+  sandbox work and terminal test evidence is linked to that exact revision.
 - Link execution/test evidence to the exact revision.
 - Define review, changes-requested, approved, rejected, archived, and superseded
   transitions with typed owner errors.
@@ -97,7 +155,11 @@ review decision references immutable evidence.
 ### A3 - Rhai Release Publication and Forking
 
 - Stage canonical Rhai descriptor and declared capabilities.
-- Submit publication through `rustok-modules`; do not write marketplace state.
+- Stage approved source through `rustok-modules`; do not write marketplace
+  state. The owner records a distinct `alloy_authored` origin with the source
+  digest/revision, Alloy tenant/script identity, and review evidence under
+  durable idempotency. Artifact upload, matching platform admission, and final
+  release promotion remain owner workflows.
 - Import an eligible marketplace Rhai release into a new workspace.
 - Preserve parent release/source digest and require a newer semantic version.
 - Publish a fork as a new immutable release without changing installed parents.

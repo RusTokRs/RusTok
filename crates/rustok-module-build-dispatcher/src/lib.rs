@@ -3,7 +3,7 @@
 pub mod host;
 
 use async_trait::async_trait;
-use rustok_events::DomainEvent;
+use rustok_events::{DomainEvent, EventEnvelope, ValidateEvent};
 use rustok_iggy::{ConsumedEvent, IggyTransport, PersistentConsumerGroup, MODULE_BUILD_TOPIC};
 use rustok_modules::{
     ModuleBuildProtocolError, ModuleBuildResultRecord, ModuleBuildWorker, SeaOrmModuleBuildService,
@@ -83,6 +83,7 @@ impl IggyModuleBuildDeliverySource {
         else {
             return Ok(None);
         };
+        validate_delivery_envelope(&consumed.envelope)?;
 
         let DomainEvent::ModuleBuildQueued {
             request_id,
@@ -110,6 +111,28 @@ impl IggyModuleBuildDeliverySource {
         *pending = Some((delivery.delivery_id, consumed));
         Ok(Some(delivery))
     }
+}
+
+fn validate_delivery_envelope(envelope: &EventEnvelope) -> Result<(), String> {
+    if envelope.id.is_nil()
+        || envelope.correlation_id.is_nil()
+        || envelope.tenant_id.is_nil()
+        || envelope.actor_id.is_some_and(|actor_id| actor_id.is_nil())
+        || envelope
+            .causation_id
+            .is_some_and(|causation_id| causation_id.is_nil())
+    {
+        return Err("module-build delivery envelope contains a nil identity".to_string());
+    }
+    if envelope.event_type != envelope.event.event_type()
+        || envelope.schema_version != envelope.event.schema_version()
+    {
+        return Err("module-build delivery envelope metadata does not match its event".to_string());
+    }
+    envelope
+        .event
+        .validate()
+        .map_err(|error| format!("module-build delivery event is invalid: {error}"))
 }
 
 #[async_trait]
@@ -190,5 +213,49 @@ where
             .await
             .map_err(ModuleBuildProtocolError::Transport)?;
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustok_events::{DomainEvent, EventEnvelope};
+    use uuid::Uuid;
+
+    use super::validate_delivery_envelope;
+
+    fn queued_envelope() -> EventEnvelope {
+        let tenant_id = Uuid::new_v4();
+        EventEnvelope::new(
+            tenant_id,
+            Some(Uuid::new_v4()),
+            DomainEvent::ModuleBuildQueued {
+                request_id: Uuid::new_v4(),
+                tenant_id,
+                project_id: "module-build-test".to_string(),
+                attempt: 1,
+            },
+        )
+    }
+
+    #[test]
+    fn build_delivery_envelope_requires_valid_matching_metadata() {
+        assert!(validate_delivery_envelope(&queued_envelope()).is_ok());
+
+        let mut nil_tenant = queued_envelope();
+        nil_tenant.tenant_id = Uuid::nil();
+        assert!(validate_delivery_envelope(&nil_tenant).is_err());
+
+        let mut wrong_type = queued_envelope();
+        wrong_type.event_type = "module.build.completed".to_string();
+        assert!(validate_delivery_envelope(&wrong_type).is_err());
+
+        let mut invalid_payload = queued_envelope();
+        invalid_payload.event = DomainEvent::ModuleBuildQueued {
+            request_id: Uuid::nil(),
+            tenant_id: invalid_payload.tenant_id,
+            project_id: "module-build-test".to_string(),
+            attempt: 1,
+        };
+        assert!(validate_delivery_envelope(&invalid_payload).is_err());
     }
 }

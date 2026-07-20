@@ -408,6 +408,7 @@ pub struct ModulePublishRequestCreateCommand {
 pub enum ModulePublicationArtifactOrigin {
     PlatformBuilt,
     ExternalPrebuilt,
+    AlloyAuthored,
 }
 
 impl ModulePublicationArtifactOrigin {
@@ -415,6 +416,7 @@ impl ModulePublicationArtifactOrigin {
         match self {
             Self::PlatformBuilt => "platform_built",
             Self::ExternalPrebuilt => "external_prebuilt",
+            Self::AlloyAuthored => "alloy_authored",
         }
     }
 
@@ -422,6 +424,7 @@ impl ModulePublicationArtifactOrigin {
         match value {
             "platform_built" => Some(Self::PlatformBuilt),
             "external_prebuilt" => Some(Self::ExternalPrebuilt),
+            "alloy_authored" => Some(Self::AlloyAuthored),
             _ => None,
         }
     }
@@ -456,6 +459,31 @@ pub struct ModuleExternalPrebuiltStageCommand {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleExternalPrebuiltStageResult {
+    pub staging_id: String,
+    pub created: bool,
+}
+
+/// Owner-authenticated immutable staging of a reviewed Alloy source revision.
+/// Alloy supplies source and review facts; the registry owner persists the
+/// publication gate and remains the sole marketplace state writer.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleAlloyAuthoredStageCommand {
+    pub request_id: String,
+    pub alloy_tenant_id: Uuid,
+    pub alloy_script_id: Uuid,
+    pub artifact_digest: String,
+    pub source_digest: String,
+    pub source_revision: u32,
+    pub review_reference: String,
+    pub review_digest: String,
+    pub review_policy_revision: String,
+    pub reviewed_by_principal: serde_json::Value,
+    pub idempotency_key: Uuid,
+    pub actor_principal: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleAlloyAuthoredStageResult {
     pub staging_id: String,
     pub created: bool,
 }
@@ -945,6 +973,34 @@ impl ModuleExternalPrebuiltStageCommand {
     }
 }
 
+impl ModuleAlloyAuthoredStageCommand {
+    pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        if self.request_id.trim().is_empty()
+            || self.alloy_tenant_id.is_nil()
+            || self.alloy_script_id.is_nil()
+            || receipt_digest_sha256(&self.artifact_digest).is_err()
+            || receipt_digest_sha256(&self.source_digest).is_err()
+            || receipt_digest_sha256(&self.review_digest).is_err()
+            || self.source_revision == 0
+            || self.idempotency_key.is_nil()
+            || !self.reviewed_by_principal.is_object()
+            || !self.actor_principal.is_object()
+        {
+            return Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand);
+        }
+        if self.review_reference.trim().is_empty()
+            || self.review_reference.len() > MAX_PUBLICATION_EVIDENCE_REFERENCE_BYTES
+            || self.review_reference.contains(char::is_whitespace)
+            || self.review_policy_revision.trim().is_empty()
+            || self.review_policy_revision.len() > MAX_PUBLICATION_EVIDENCE_POLICY_REVISION_BYTES
+            || self.review_policy_revision.contains(char::is_whitespace)
+        {
+            return Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand);
+        }
+        Ok(())
+    }
+}
+
 impl ModulePublishArtifactAttachCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
@@ -1069,7 +1125,8 @@ impl ModulePlatformAdmissionCommand {
             ModulePublicationArtifactOrigin::PlatformBuilt => {
                 receipt_digest_sha256(&self.reference.digest)
             }
-            ModulePublicationArtifactOrigin::ExternalPrebuilt => {
+            ModulePublicationArtifactOrigin::ExternalPrebuilt
+            | ModulePublicationArtifactOrigin::AlloyAuthored => {
                 receipt_digest_sha256(&self.evidence.payload_digest)
             }
         }
@@ -1688,6 +1745,213 @@ impl SeaOrmModuleGovernanceService {
         .map_err(store_error)?;
         tx.commit().await.map_err(store_error)?;
         Ok(ModuleExternalPrebuiltStageResult {
+            staging_id,
+            created: true,
+        })
+    }
+
+    /// Stages one reviewed immutable Alloy source revision for an already
+    /// submitted registry artifact. This path is deliberately neither a
+    /// platform build nor an external prebuilt: it records the exact Alloy
+    /// source/review pair without manufacturing build provenance.
+    pub async fn stage_alloy_authored(
+        &self,
+        command: ModuleAlloyAuthoredStageCommand,
+    ) -> Result<ModuleAlloyAuthoredStageResult, ModuleGovernanceError> {
+        command.validate()?;
+        let tx = self.db.begin().await.map_err(store_error)?;
+        let backend = tx.get_database_backend();
+        let mark = |n| placeholder(backend, n);
+        let now = database_now(backend);
+        let request_lock = if backend == sea_orm::DbBackend::Postgres {
+            " FOR UPDATE"
+        } else {
+            ""
+        };
+        let request = tx
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT slug, status, artifact_origin, artifact_checksum_sha256 \\
+                     FROM registry_publish_requests WHERE id = {}{request_lock}",
+                    mark(1),
+                ),
+                vec![command.request_id.clone().into()],
+            ))
+            .await
+            .map_err(store_error)?
+            .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        let slug: String = request.try_get("", "slug").map_err(store_error)?;
+        let status: String = request.try_get("", "status").map_err(store_error)?;
+        let artifact_origin: String = request
+            .try_get("", "artifact_origin")
+            .map_err(store_error)?;
+        let checksum: Option<String> = request
+            .try_get("", "artifact_checksum_sha256")
+            .map_err(store_error)?;
+        if artifact_origin != ModulePublicationArtifactOrigin::AlloyAuthored.as_str()
+            || !matches!(status.as_str(), "submitted" | "validating" | "approved")
+            || checksum.as_deref() != receipt_digest_sha256(&command.artifact_digest).ok()
+        {
+            return Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand);
+        }
+
+        let staging_id = format!("rpas_{}", Uuid::new_v4().simple());
+        let inserted = tx
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO registry_publish_alloy_staging \\
+                     (id, request_id, alloy_tenant_id, alloy_script_id, artifact_digest, source_digest, source_revision, \\
+                      review_reference, review_digest, review_policy_revision, \\
+                      reviewed_by_principal, staged_by_principal, idempotency_key, staged_at) \\
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \\
+                     ON CONFLICT (request_id, idempotency_key) DO NOTHING",
+                    mark(1),
+                    mark(2),
+                    mark(3),
+                    mark(4),
+                    mark(5),
+                    mark(6),
+                    mark(7),
+                    mark(8),
+                    mark(9),
+                    mark(10),
+                    mark(11),
+                    mark(12),
+                    mark(13),
+                ),
+                vec![
+                    staging_id.clone().into(),
+                    command.request_id.clone().into(),
+                    registry_uuid_value(command.alloy_tenant_id, backend),
+                    registry_uuid_value(command.alloy_script_id, backend),
+                    command.artifact_digest.clone().into(),
+                    command.source_digest.clone().into(),
+                    i64::from(command.source_revision).into(),
+                    command.review_reference.clone().into(),
+                    command.review_digest.clone().into(),
+                    command.review_policy_revision.clone().into(),
+                    Value::Json(Some(Box::new(command.reviewed_by_principal.clone()))),
+                    Value::Json(Some(Box::new(command.actor_principal.clone()))),
+                    registry_uuid_value(command.idempotency_key, backend),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
+        if inserted.rows_affected() == 0 {
+            let existing = tx
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT id, CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \\
+                         CAST(alloy_script_id AS TEXT) AS alloy_script_id, \\
+                         artifact_digest, source_digest, source_revision, review_reference, \\
+                         review_digest, review_policy_revision, \\
+                         CAST(reviewed_by_principal AS TEXT) AS reviewed_by_principal, \\
+                         CAST(staged_by_principal AS TEXT) AS staged_by_principal \\
+                         FROM registry_publish_alloy_staging \\
+                         WHERE request_id = {} AND idempotency_key = {}",
+                        mark(1),
+                        mark(2),
+                    ),
+                    vec![
+                        command.request_id.clone().into(),
+                        registry_uuid_value(command.idempotency_key, backend),
+                    ],
+                ))
+                .await
+                .map_err(store_error)?
+                .ok_or_else(|| {
+                    ModuleGovernanceError::Store("Alloy stage conflict lost its row".to_string())
+                })?;
+            let existing_id: String = existing.try_get("", "id").map_err(store_error)?;
+            let existing_tenant_id: String = existing
+                .try_get("", "alloy_tenant_id")
+                .map_err(store_error)?;
+            let existing_script_id: String = existing
+                .try_get("", "alloy_script_id")
+                .map_err(store_error)?;
+            let existing_artifact_digest: String = existing
+                .try_get("", "artifact_digest")
+                .map_err(store_error)?;
+            let existing_source_digest: String =
+                existing.try_get("", "source_digest").map_err(store_error)?;
+            let existing_source_revision: i64 = existing
+                .try_get("", "source_revision")
+                .map_err(store_error)?;
+            let existing_review_reference: String = existing
+                .try_get("", "review_reference")
+                .map_err(store_error)?;
+            let existing_review_digest: String =
+                existing.try_get("", "review_digest").map_err(store_error)?;
+            let existing_policy_revision: String = existing
+                .try_get("", "review_policy_revision")
+                .map_err(store_error)?;
+            let existing_reviewer: serde_json::Value = serde_json::from_str(
+                &existing
+                    .try_get::<String>("", "reviewed_by_principal")
+                    .map_err(store_error)?,
+            )
+            .map_err(store_error)?;
+            let existing_actor: serde_json::Value = serde_json::from_str(
+                &existing
+                    .try_get::<String>("", "staged_by_principal")
+                    .map_err(store_error)?,
+            )
+            .map_err(store_error)?;
+            if existing_tenant_id != command.alloy_tenant_id.to_string()
+                || existing_script_id != command.alloy_script_id.to_string()
+                || existing_artifact_digest != command.artifact_digest
+                || existing_source_digest != command.source_digest
+                || existing_source_revision != i64::from(command.source_revision)
+                || existing_review_reference != command.review_reference
+                || existing_review_digest != command.review_digest
+                || existing_policy_revision != command.review_policy_revision
+                || existing_reviewer != command.reviewed_by_principal
+                || existing_actor != command.actor_principal
+            {
+                return Err(ModuleGovernanceError::AlloyAuthoredStageIdempotencyConflict);
+            }
+            tx.rollback().await.map_err(store_error)?;
+            return Ok(ModuleAlloyAuthoredStageResult {
+                staging_id: existing_id,
+                created: false,
+            });
+        }
+        tx.execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "INSERT INTO registry_governance_events \\
+                 (id, slug, request_id, release_id, event_type, actor_principal, \\
+                  publisher_principal, details, created_at) \\
+                 VALUES ({}, {}, {}, NULL, 'alloy_authored_staged', {}, NULL, {}, {now})",
+                mark(1),
+                mark(2),
+                mark(3),
+                mark(4),
+                mark(5),
+            ),
+            vec![
+                format!("rge_{}", Uuid::new_v4().simple()).into(),
+                slug.into(),
+                command.request_id.into(),
+                Value::Json(Some(Box::new(command.actor_principal))),
+                Value::Json(Some(Box::new(serde_json::json!({
+                    "artifact_digest": command.artifact_digest,
+                    "alloy_tenant_id": command.alloy_tenant_id,
+                    "alloy_script_id": command.alloy_script_id,
+                    "source_digest": command.source_digest,
+                    "source_revision": command.source_revision,
+                    "review_digest": command.review_digest,
+                    "review_policy_revision": command.review_policy_revision,
+                })))),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+        tx.commit().await.map_err(store_error)?;
+        Ok(ModuleAlloyAuthoredStageResult {
             staging_id,
             created: true,
         })
@@ -4573,6 +4837,34 @@ impl SeaOrmModuleGovernanceService {
                     return Err(ModuleGovernanceError::PublishRequestMissingExternalPrebuiltStage);
                 }
             }
+            ModulePublicationArtifactOrigin::AlloyAuthored => {
+                let alloy_authored_staged = tx
+                    .query_one(Statement::from_sql_and_values(
+                        backend,
+                        format!(
+                            "SELECT 1 FROM registry_publish_alloy_staging AS stage \\
+                             WHERE stage.request_id = {} \\
+                               AND stage.artifact_digest = {} \\
+                               AND stage.staged_at >= ( \\
+                                   SELECT request.submitted_at FROM registry_publish_requests AS request \\
+                                   WHERE request.id = stage.request_id \\
+                               ) \\
+                             LIMIT 1",
+                            mark(1),
+                            mark(2),
+                        ),
+                        vec![
+                            command.request_id.clone().into(),
+                            format!("sha256:{checksum_sha256}").into(),
+                        ],
+                    ))
+                    .await
+                    .map_err(store_error)?
+                    .is_some();
+                if !alloy_authored_staged {
+                    return Err(ModuleGovernanceError::PublishRequestMissingAlloyAuthoredStage);
+                }
+            }
         }
 
         let author_signature_recorded = tx
@@ -4603,7 +4895,8 @@ impl SeaOrmModuleGovernanceService {
         }
         match artifact_origin {
             ModulePublicationArtifactOrigin::PlatformBuilt => {}
-            ModulePublicationArtifactOrigin::ExternalPrebuilt => {
+            ModulePublicationArtifactOrigin::ExternalPrebuilt
+            | ModulePublicationArtifactOrigin::AlloyAuthored => {
                 let platform_admission_recorded = tx
                     .query_one(Statement::from_sql_and_values(
                         backend,
@@ -4626,9 +4919,17 @@ impl SeaOrmModuleGovernanceService {
                     .map_err(store_error)?
                     .is_some();
                 if !platform_admission_recorded {
-                    return Err(
-                        ModuleGovernanceError::PublishRequestMissingExternalPlatformAdmission,
-                    );
+                    return Err(match artifact_origin {
+                        ModulePublicationArtifactOrigin::ExternalPrebuilt => {
+                            ModuleGovernanceError::PublishRequestMissingExternalPlatformAdmission
+                        }
+                        ModulePublicationArtifactOrigin::AlloyAuthored => {
+                            ModuleGovernanceError::PublishRequestMissingAlloyPlatformAdmission
+                        }
+                        ModulePublicationArtifactOrigin::PlatformBuilt => unreachable!(
+                            "platform-built releases do not use the external admission branch"
+                        ),
+                    });
                 }
             }
         }
@@ -5615,6 +5916,12 @@ pub enum ModuleGovernanceError {
     InvalidExternalPrebuiltStageCommand,
     #[error("external prebuilt stage idempotency key was reused for different immutable input")]
     ExternalPrebuiltStageIdempotencyConflict,
+    #[error(
+        "Alloy-authored staging requires an immutable source revision and approved review evidence"
+    )]
+    InvalidAlloyAuthoredStageCommand,
+    #[error("Alloy-authored stage idempotency key was reused for different immutable input")]
+    AlloyAuthoredStageIdempotencyConflict,
     #[error("unsupported remote validation claim stage `{0}`")]
     InvalidRemoteValidationClaimStage(String),
     #[error("unsupported owner-transfer reason code `{0}`")]
@@ -5685,6 +5992,8 @@ pub enum ModuleGovernanceError {
     PublishRequestMissingPlatformBuildStage,
     #[error("registry publish request is missing a current external prebuilt stage")]
     PublishRequestMissingExternalPrebuiltStage,
+    #[error("registry publish request is missing a current reviewed Alloy-authored stage")]
+    PublishRequestMissingAlloyAuthoredStage,
     #[error("registry publish request artifact origin is unclassified")]
     PublishRequestArtifactOriginUnclassified,
     #[error(
@@ -5699,6 +6008,10 @@ pub enum ModuleGovernanceError {
         "registry publish request is missing matching platform-admission evidence for its external prebuilt artifact"
     )]
     PublishRequestMissingExternalPlatformAdmission,
+    #[error(
+        "registry publish request is missing matching platform-admission evidence for its Alloy-authored artifact"
+    )]
+    PublishRequestMissingAlloyPlatformAdmission,
     #[error("registry publish request has no localized metadata")]
     PublishRequestMissingTranslations,
     #[error("registry validation stage was not found")]
