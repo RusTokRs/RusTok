@@ -33,37 +33,60 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
 
-      - name: Rebase, remove one-off workflows, and verify
+      - name: Run retained prerequisite verification
+        id: verify
         shell: bash
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/artifact-export-prerequisite
         run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          set +e
+          (
+            set -euo pipefail
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git fetch origin main
-          git rebase origin/main
+            git fetch origin main
+            git rebase origin/main
 
-          git rm -f --ignore-unmatch \
-            .github/workflows/one-off-verify-prerequisite-and-rebase-moderation.yml \
-            .github/workflows/one-off-repair-artifact-export-prerequisite.yml
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(migrations): remove completed prerequisite workflows"
-          fi
+            git rm -f --ignore-unmatch \
+              .github/workflows/one-off-verify-prerequisite-and-rebase-moderation.yml \
+              .github/workflows/one-off-repair-artifact-export-prerequisite.yml
+            if ! git diff --cached --quiet; then
+              git commit -m "chore(migrations): remove completed prerequisite workflows"
+            fi
 
-          cargo metadata --format-version 1 > /tmp/artifact-export-prerequisite-metadata.json
-          rustfmt --edition 2021 --check \
-            crates/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs
-          cargo check --locked -p rustok-modules -p rustok-migrations
-          cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
-            --output /tmp/artifact-export-prerequisite-plan.json
-          test -s /tmp/artifact-export-prerequisite-plan.json
-          git diff --check
+            cargo metadata --format-version 1 > /tmp/artifact-export-prerequisite-metadata.json
+            rustfmt --edition 2021 --check \
+              crates/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs
+            cargo check --locked -p rustok-modules -p rustok-migrations
+            cargo run --locked -p rustok-migrations --bin export_migration_plan -- \
+              --output /tmp/artifact-export-prerequisite-plan.json
+            test -s /tmp/artifact-export-prerequisite-plan.json
+            git diff --check
 
-          git add Cargo.lock
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(migrations): reconcile prerequisite lock"
-          fi
+            git add Cargo.lock
+            if ! git diff --cached --quiet; then
+              git commit -m "chore(migrations): reconcile prerequisite lock"
+            fi
+          ) > artifact-export-prerequisite.log 2>&1
+          exit_code=$?
+          set -e
+          tail -n 320 artifact-export-prerequisite.log
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
 
-          git push --force-with-lease origin HEAD:agent/fix-artifact-data-exports-down
+      - name: Upload prerequisite diagnostic
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: artifact-export-prerequisite-${{ github.run_id }}
+          path: artifact-export-prerequisite.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Enforce prerequisite verification
+        if: steps.verify.outputs.exit_code != '0'
+        run: exit 1
+
+      - name: Publish verified prerequisite
+        if: steps.verify.outputs.exit_code == '0'
+        run: git push --force-with-lease origin HEAD:agent/fix-artifact-data-exports-down
