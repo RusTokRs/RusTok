@@ -1,6 +1,10 @@
 name: One-off Harden Cache Clock
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-off-harden-cache-clock.yml
   issue_comment:
     types: [created]
 
@@ -17,14 +21,18 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_TEST_DEBUG: 0
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CACHE_CLOCK_ISSUE: 1841
 
 jobs:
   harden:
     if: >-
-      github.event.issue.title == '[automation] harden cache system clock' &&
-      github.event.issue.user.login == 'loid345' &&
-      github.event.comment.user.login == 'loid345' &&
-      github.event.comment.body == '/harden-cache-system-clock'
+      (github.event_name == 'push' &&
+       github.event.head_commit.message == 'test(ci): run cache clock diagnostics') ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.title == '[automation] harden cache system clock' &&
+       github.event.issue.user.login == 'loid345' &&
+       github.event.comment.user.login == 'loid345' &&
+       github.event.comment.body == '/harden-cache-system-clock')
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -34,6 +42,13 @@ jobs:
           fetch-depth: 0
       - name: Rebase onto current main
         run: git pull --rebase origin main
+      - name: Report guarded run id
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh issue comment "$CACHE_CLOCK_ISSUE"
+          --repo "$GITHUB_REPOSITORY"
+          --body "Cache clock guarded run started: \`$GITHUB_RUN_ID\` on \`$GITHUB_SHA\`."
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
@@ -86,7 +101,6 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/cache-clock-hardening
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
         shell: bash
         run: |
           set +e
@@ -101,7 +115,7 @@ jobs:
               cat /tmp/cache-clock-test-tail.txt
               printf '\n```\n'
             } > /tmp/cache-clock-test-comment.md
-            gh issue comment "$ISSUE_NUMBER" \
+            gh issue comment "$CACHE_CLOCK_ISSUE" \
               --repo "$GITHUB_REPOSITORY" \
               --body-file /tmp/cache-clock-test-comment.md
             exit "$status"
@@ -164,5 +178,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
-          gh issue close "${{ github.event.issue.number }}"
+          gh issue close "$CACHE_CLOCK_ISSUE"
+          --repo "$GITHUB_REPOSITORY"
           --comment "Cache freshness now uses one fallible Unix clock; pre-epoch time fails closed, negative/typed/SWR paths propagate the error, and locked no-Redis cache tests plus structural gates passed."
