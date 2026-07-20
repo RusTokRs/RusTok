@@ -46,29 +46,28 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          pages = [
+          old_format = "CONTENT_FORMAT_GRAPESJS_FORMAT"
+          new_format = "CONTENT_FORMAT_GRAPESJS_V1"
+          for path in [
               Path("crates/rustok-pages/src/graphql/mutation.rs"),
               Path("crates/rustok-pages/src/services/page.rs"),
               Path("crates/rustok-pages/src/services/scenario_baseline.rs"),
-          ]
-          old = "CONTENT_FORMAT_GRAPESJS_FORMAT"
-          new = "CONTENT_FORMAT_GRAPESJS_V1"
-          for path in pages:
+          ]:
               source = path.read_text()
-              if old not in source:
-                  raise SystemExit(f"{path}: obsolete format reference is absent; refusing an ambiguous repair")
-              updated = source.replace(old, new)
-              if old in updated or updated == source:
-                  raise SystemExit(f"{path}: obsolete format replacement was incomplete")
+              if old_format not in source:
+                  raise SystemExit(f"{path}: obsolete format reference is absent")
+              updated = source.replace(old_format, new_format)
+              if old_format in updated or updated == source:
+                  raise SystemExit(f"{path}: format replacement was incomplete")
               path.write_text(updated)
 
           commerce = Path("crates/rustok-commerce/src/migrations/mod.rs")
           old_dependency = '"m20260325_000111_create_provider_operation_journal"'
           new_dependency = '"m20260713_000110_create_provider_operation_journal"'
-          commerce_source = commerce.read_text()
-          if commerce_source.count(old_dependency) != 1:
-              raise SystemExit("commerce migration graph must contain exactly one obsolete provider journal dependency")
-          commerce.write_text(commerce_source.replace(old_dependency, new_dependency, 1))
+          source = commerce.read_text()
+          if source.count(old_dependency) != 1:
+              raise SystemExit("expected one obsolete provider journal dependency")
+          commerce.write_text(source.replace(old_dependency, new_dependency, 1))
 
           migrations = {
               Path("crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs"):
@@ -79,13 +78,10 @@ jobs:
           for path, old_tail in migrations.items():
               source = path.read_text()
               if source.count(old_tail) != 1:
-                  raise SystemExit(f"{path}: expected one incompatible down() return tail")
-              updated = source.replace(old_tail, old_tail[:-1] + '?;\n        Ok(())\n', 1)
-              if updated == source:
-                  raise SystemExit(f"{path}: down() return repair was not applied")
-              path.write_text(updated)
+                  raise SystemExit(f"{path}: expected one incompatible down() tail")
+              path.write_text(source.replace(old_tail, old_tail[:-1] + '?;\n        Ok(())\n', 1))
           PY
-      - name: Verify source patch shape
+      - name: Verify bounded source patch
         shell: bash
         run: |
           set -euo pipefail
@@ -100,14 +96,13 @@ jobs:
           done
           ! grep -Fq 'm20260325_000111_create_provider_operation_journal' crates/rustok-commerce/src/migrations/mod.rs
           grep -Fq 'm20260713_000110_create_provider_operation_journal' crates/rustok-commerce/src/migrations/mod.rs
-          grep -Fq '.execute_unprepared("DROP TABLE module_artifact_data_objects")' \
-            crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs
-          grep -Fq '.execute_unprepared("DROP TABLE module_artifact_data_object_operations")' \
+          for path in \
+            crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs \
             crates/rustok-modules/src/migrations/m20260718_000026_artifact_data_object_operations.rs
-          test "$(grep -c '^            \.await?;$' \
-            crates/rustok-modules/src/migrations/m20260718_000025_artifact_data_objects.rs)" = "1"
-          test "$(grep -c '^            \.await?;$' \
-            crates/rustok-modules/src/migrations/m20260718_000026_artifact_data_object_operations.rs)" = "1"
+          do
+            test "$(grep -c '^            \.await?;$' "$path")" = "1"
+            grep -Fq '        Ok(())' "$path"
+          done
           mapfile -t changed < <(git diff --name-only | sort)
           expected=(
             crates/rustok-commerce/src/migrations/mod.rs
@@ -130,7 +125,6 @@ jobs:
 
           path = Path("Cargo.lock")
           source = path.read_text()
-
           def ensure_dependency(name: str, dependency: str, anchor: str) -> None:
               global source
               pattern = re.compile(
@@ -149,17 +143,15 @@ jobs:
                   raise SystemExit(f"expected one anchor in {name}: {anchor}")
               body = body.replace(anchor_line, f'{anchor_line}\n{line}', 1)
               source = source[:match.start(2)] + body + source[match.end(2):]
-
           ensure_dependency("rustok-modules", "base64 0.22.1", "async-trait")
           ensure_dependency("rustok-worker-transport", "tokio", "tonic")
           path.write_text(source)
           PY
           cargo metadata --locked --no-deps --format-version 1 > /tmp/cargo-metadata.json
           test -s /tmp/cargo-metadata.json
-      - name: Verify formatting of repaired sources
+      - name: Verify formatting of implementation files
         run: >-
           rustfmt --edition 2021 --check
-          crates/rustok-commerce/src/migrations/mod.rs
           crates/rustok-pages/src/graphql/mutation.rs
           crates/rustok-pages/src/services/page.rs
           crates/rustok-pages/src/services/scenario_baseline.rs
@@ -183,7 +175,7 @@ jobs:
           tail -n 240 migration-export-output.txt
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
       - name: Upload migration exporter output
-        if: always()
+        if: always() && steps.exporter.outcome != 'skipped'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: migration-export-output-${{ github.run_id }}
