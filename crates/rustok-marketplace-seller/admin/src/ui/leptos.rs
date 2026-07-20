@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -107,7 +107,7 @@ pub fn MarketplaceSellerAdmin() -> impl IntoView {
         },
     );
 
-    let run_command: Rc<dyn Fn(MarketplaceSellerAdminCommand)> = Rc::new({
+    let run_command: Arc<dyn Fn(MarketplaceSellerAdminCommand) + Send + Sync> = Arc::new({
         let transport = transport.clone();
         move |command: MarketplaceSellerAdminCommand| {
             if busy.get_untracked() {
@@ -338,7 +338,7 @@ fn render_create_form(
     display_name: RwSignal<String>,
     legal_name: RwSignal<String>,
     owner_user_id: RwSignal<String>,
-    run_command: Rc<dyn Fn(MarketplaceSellerAdminCommand)>,
+    run_command: Arc<dyn Fn(MarketplaceSellerAdminCommand) + Send + Sync>,
 ) -> impl IntoView {
     view! {
         <section class="marketplace-seller-admin__create">
@@ -393,7 +393,7 @@ fn render_detail(
     suspension_reason: RwSignal<String>,
     member_user_id: RwSignal<String>,
     member_role: RwSignal<String>,
-    run_command: Rc<dyn Fn(MarketplaceSellerAdminCommand)>,
+    run_command: Arc<dyn Fn(MarketplaceSellerAdminCommand) + Send + Sync>,
 ) -> impl IntoView {
     let seller = detail.seller;
     let seller_id = seller.id.clone();

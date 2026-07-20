@@ -801,10 +801,11 @@ async fn admin_graphql_refund_query_hides_foreign_tenant_refund() {
     )
     .await;
 
-    let refund = PaymentService::new(db.clone())
-        .create_refund(
+    let refund = PaymentRefundCreationService::new(db.clone())
+        .create_or_replay(
             tenant_id,
             payment_collection.id,
+            "test-refund-foreign",
             CreateRefundInput {
                 amount: Decimal::from_str("5.00").expect("valid decimal"),
                 reason: Some("test".to_string()),
@@ -904,10 +905,11 @@ async fn admin_graphql_refunds_list_ignores_foreign_tenant_payment_collection_fi
     )
     .await;
 
-    PaymentService::new(db.clone())
-        .create_refund(
+    PaymentRefundCreationService::new(db.clone())
+        .create_or_replay(
             tenant_id,
             payment_collection.id,
+            "test-refund-foreign-list",
             CreateRefundInput {
                 amount: Decimal::from_str("5.00").expect("valid decimal"),
                 reason: Some("test".to_string()),
@@ -1087,10 +1089,11 @@ async fn admin_graphql_complete_refund_hides_foreign_tenant_refund() {
     )
     .await;
 
-    let refund = PaymentService::new(db.clone())
-        .create_refund(
+    let refund = PaymentRefundCreationService::new(db.clone())
+        .create_or_replay(
             tenant_id,
             payment_collection.id,
+            "test-refund-foreign-complete",
             CreateRefundInput {
                 amount: Decimal::from_str("5.00").expect("valid decimal"),
                 reason: Some("test".to_string()),
@@ -1185,10 +1188,11 @@ async fn admin_graphql_refunds_filter_normalizes_status_and_rejects_unknown_valu
     )
     .await;
 
-    PaymentService::new(db.clone())
-        .create_refund(
+    PaymentRefundCreationService::new(db.clone())
+        .create_or_replay(
             tenant_id,
             payment_collection.id,
+            "test-refund-status-filter",
             CreateRefundInput {
                 amount: Decimal::from_str("5.00").expect("valid decimal"),
                 reason: Some("test".to_string()),
@@ -1350,10 +1354,11 @@ async fn admin_graphql_refunds_filter_supports_order_id() {
     )
     .await;
 
-    PaymentService::new(db.clone())
-        .create_refund(
+    PaymentRefundCreationService::new(db.clone())
+        .create_or_replay(
             tenant_id,
             first_collection.id,
+            "test-refund-order-filter-first",
             CreateRefundInput {
                 amount: Decimal::from_str("4.00").expect("valid decimal"),
                 reason: Some("test".to_string()),
@@ -1362,10 +1367,11 @@ async fn admin_graphql_refunds_filter_supports_order_id() {
         )
         .await
         .expect("first refund should be created");
-    PaymentService::new(db.clone())
-        .create_refund(
+    PaymentRefundCreationService::new(db.clone())
+        .create_or_replay(
             tenant_id,
             second_collection.id,
+            "test-refund-order-filter-second",
             CreateRefundInput {
                 amount: Decimal::from_str("6.00").expect("valid decimal"),
                 reason: Some("test".to_string()),
@@ -2828,10 +2834,11 @@ async fn storefront_graphql_refunds_query_returns_customer_order_refunds_only() 
 
     capture_payment_collection_for_refund(&db, tenant_id, payment.id, order.total_amount).await;
 
-    let created_refund = PaymentService::new(db.clone())
-        .create_refund(
+    let created_refund = PaymentRefundCreationService::new(db.clone())
+        .create_or_replay(
             tenant_id,
             payment.id,
+            "test-storefront-graphql-refunds",
             CreateRefundInput {
                 amount: Decimal::from_str("10.00").expect("valid decimal"),
                 reason: Some("customer-request".to_string()),
@@ -3114,10 +3121,11 @@ async fn storefront_graphql_refunds_query_normalizes_status_and_rejects_unknown_
 
     capture_payment_collection_for_refund(&db, tenant_id, payment.id, order.total_amount).await;
 
-    PaymentService::new(db.clone())
-        .create_refund(
+    PaymentRefundCreationService::new(db.clone())
+        .create_or_replay(
             tenant_id,
             payment.id,
+            "test-storefront-graphql-refunds-status",
             CreateRefundInput {
                 amount: Decimal::from_str("5.00").expect("valid decimal"),
                 reason: Some("status-normalization".to_string()),
