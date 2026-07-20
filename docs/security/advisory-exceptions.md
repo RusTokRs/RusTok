@@ -34,17 +34,17 @@ waiver must also fail the gate.
 | Field | Value |
 |---|---|
 | Severity | MEDIUM, CVSS 5.9 |
-| Risk | Network-observable RSA private-key operations may leak timing information and enable key recovery |
-| Patched version | No patched release is currently available |
+| Risk | Network-observable RSA private-key operations may leak timing information and enable key recovery if an affected private-key implementation becomes runtime reachable |
+| Patched version | No patched `rsa 0.9.x` release is currently available |
 | Repository policy location | `.cargo/audit.toml` |
 | Accountable owner | Platform security / dependency maintainers |
-| Dependency path | Workspace SeaORM consumers → `sea-orm 1.1.20` / `sea-orm-migration 1.1.20` → `sqlx 0.8.6` → `sqlx-mysql 0.8.6` → `rsa 0.9.10`; MySQL is not a declared RusToK database backend and is pulled by migration/SQLx default features |
-| Reachability | The supported runtime database features are PostgreSQL and SQLite. No RusToK RSA private-key operation or MySQL connection path has been identified; the package remains in the resolved graph through unused default features until the lockfile is regenerated |
-| Compensating controls | Do not enable the MySQL backend or introduce application RSA private-key operations; keep production database configuration restricted to PostgreSQL and SQLite |
-| Remediation | Disable unused SeaORM migration CLI/SQLx MySQL defaults, regenerate `Cargo.lock`, confirm `cargo tree -i rsa` is empty, then remove this waiver |
+| Dependency path | `Cargo.lock` retains the optional SQLx MySQL package path `sqlx-mysql 0.8.6` → `rsa 0.9.10`; the root `sea-orm` and `sea-orm-migration` specifications disable defaults and select only PostgreSQL, SQLite and Tokio/Rustls while explicitly preserving the prior data-type integrations |
+| Reachability | `cargo tree --locked --workspace --all-features --target all -i rsa` has empty stdout, so no workspace package or supported target selects the RSA path; `cargo audit` still reports the package because it is present in the lockfile |
+| Compensating controls | The permanent feature-hygiene verifier forbids SeaORM/SQLx MySQL, `sqlx-all`, migration CLI and native-TLS drift; supported database backends remain PostgreSQL and SQLite; application JWT verification uses `jsonwebtoken/aws_lc_rs` |
+| Remediation | Remove the waiver only when an upstream SeaORM/SQLx update, a bounded fork or lockfile/tooling behavior removes the lock-only optional MySQL/RSA package, or when a patched RSA release resolves the advisory; never delete lockfile package blocks manually |
 | Approved | 2026-07-17, temporary dependency stabilization exception |
 | Expires | 2026-07-24 |
-| Evidence required | Root feature-policy diff, regenerated lockfile, empty `cargo tree -i rsa --workspace --all-features`, and `cargo audit` |
+| Evidence required | Explicit-parity SeaORM feature policy, empty locked all-feature/all-target inverse tree, permanent dependency reachability workflow, and `cargo audit` output |
 | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2023-0071.html> |
 
 ### RUSTSEC-2023-0089 — `atomic-polyfill` is unmaintained
@@ -52,17 +52,17 @@ waiver must also fail the gate.
 | Field | Value |
 |---|---|
 | Severity | INFO, unmaintained dependency |
-| Risk | Archived dependency receives no maintenance or security fixes and creates avoidable supply-chain exposure |
+| Risk | Archived dependency receives no maintenance or security fixes and creates avoidable supply-chain exposure on embedded target graphs |
 | Patched version | No patched release; recommended replacement is `portable-atomic` |
 | Repository policy location | `.cargo/audit.toml` |
-| Accountable owner | Platform security / dependency maintainers |
-| Dependency path | `rustok-cache` / `rustok-iggy` → `postcard 1.1.3` default `heapless-cas` feature → `heapless 0.7.17` → `atomic-polyfill 1.0.3` |
-| Reachability | RusToK uses Postcard standard-library and I/O APIs (`to_stdvec`, `to_io`, `from_bytes`, size flavor), not heapless serialization; the embedded-support dependency remains solely because Postcard defaults are enabled |
-| Compensating controls | Do not add heapless Postcard APIs or embedded targets to production profiles; keep serialization on bounded std/I/O paths |
-| Remediation | Disable Postcard default features while retaining `use-std`, regenerate `Cargo.lock`, confirm `cargo tree -i atomic-polyfill` is empty, then remove this waiver |
+| Accountable owner | Platform security / Athanor integration maintainers |
+| Dependency path | `rustok-ai-athanor` feature `athanor-surreal` → `athanor-runtime-defaults/store-surreal` → `athanor-store-surrealdb` → `surrealdb 2.6.5` embedded engines → `geo 0.28.0` → `geo-types 0.7.19` → `rstar 0.9.3` → `heapless 0.7.17` → `atomic-polyfill 1.0.3` |
+| Reachability | Locked metadata retains a target-conditioned optional path for AVR, RISC-V, Thumb v6-M and Xtensa, but locked inverse trees are empty for `--target all` and each representative target triple; no workspace build currently selects `atomic-polyfill`, while `cargo audit` still reports its lockfile presence |
+| Compensating controls | The permanent reachability workflow requires empty inverse trees for the all-target graph and representative embedded targets; production profiles target supported server operating systems; keep `athanor-surreal` optional and disabled by default |
+| Remediation | Remove the waiver only when an Athanor/SurrealDB dependency update, bounded fork or lockfile/tooling change removes the lock-only package, or when the parent chain adopts `portable-atomic`; never delete lockfile package blocks manually |
 | Approved | 2026-07-17, temporary dependency stabilization exception |
 | Expires | 2026-07-24 |
-| Evidence required | Root feature-policy diff, regenerated lockfile, empty `cargo tree -i atomic-polyfill --workspace --all-features`, and serialization tests |
+| Evidence required | Empty locked inverse trees for `--target all` and representative embedded triples, locked metadata for the target-conditioned optional path, Athanor upstream remediation, and capability-specific integration tests |
 | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2023-0089.html> |
 
 ## Closed Exceptions
@@ -141,8 +141,8 @@ waiver must also fail the gate.
 
 ```bash
 node scripts/verify/verify-advisory-exceptions.mjs
-cargo tree -i rsa --workspace --all-features
-cargo tree -i atomic-polyfill --workspace --all-features
+cargo tree --locked -i rsa --workspace --all-features --target all
+cargo tree --locked -i atomic-polyfill --workspace --all-features --target all
 cargo deny check advisories --all-features
 cargo audit
 ```
