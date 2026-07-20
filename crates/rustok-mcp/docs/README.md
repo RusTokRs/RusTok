@@ -35,6 +35,10 @@ spec or turning into a provider/model host.
 - HTTP handlers in `apps/server` import MCP DTOs and actor parsing from `rustok-mcp`
   instead of defining package-local REST contracts;
 - Alloy connects as a capability via runtime state, not as a separate MCP transport stack.
+- Alloy script tools use the owner-defined canonical workspace representation.
+  Update, delete, and manual-run commands carry `expected_version`;
+  execution is pinned to the loaded immutable revision and deletion delegates
+  to owner storage CAS.
 - `rustok-ai` does not own the UI review of MCP/Alloy drafts; the cross-module admin workflow separately
   mounts the MCP-module-owned package.
 

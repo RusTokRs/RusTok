@@ -9,7 +9,7 @@ pub use crate::alloy_scaffold::{
     ReviewModuleScaffoldRequest, ReviewModuleScaffoldResponse, ScaffoldModulePreview,
     ScaffoldModuleRequest, StageModuleScaffoldResponse, StagedModuleScaffold,
 };
-use alloy::model::{Script, ScriptStatus, ScriptTrigger};
+use alloy::model::{AlloyWorkspace, Script, ScriptStatus, ScriptTrigger};
 use alloy::runner::ExecutionOutcome;
 use alloy::storage::{ScriptQuery, ScriptRegistry};
 use alloy::utils::{dynamic_to_json, json_to_dynamic};
@@ -101,7 +101,8 @@ pub struct AlloyScriptInfo {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
-    pub code: String,
+    #[schemars(with = "serde_json::Value")]
+    pub workspace: AlloyWorkspace,
     pub trigger_type: String,
     pub status: String,
     pub version: u32,
@@ -124,7 +125,7 @@ impl From<Script> for AlloyScriptInfo {
             id: s.id.to_string(),
             name: s.name,
             description: s.description,
-            code: s.code,
+            workspace: s.workspace,
             trigger_type,
             status: s.status.as_str().to_string(),
             version: s.version,
@@ -158,7 +159,8 @@ pub struct GetScriptRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CreateScriptRequest {
     pub name: String,
-    pub code: String,
+    #[schemars(with = "serde_json::Value")]
+    pub workspace: AlloyWorkspace,
     pub description: Option<String>,
     /// JSON-encoded trigger object. Examples:
     /// `{"type":"manual"}`,
@@ -173,7 +175,9 @@ pub struct CreateScriptRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UpdateScriptRequest {
     pub id: String,
-    pub code: Option<String>,
+    pub expected_version: u32,
+    #[schemars(with = "Option<serde_json::Value>")]
+    pub workspace: Option<AlloyWorkspace>,
     pub description: Option<String>,
     /// New status: draft, active, paused, disabled, archived
     pub status: Option<String>,
@@ -182,6 +186,7 @@ pub struct UpdateScriptRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DeleteScriptRequest {
     pub id: String,
+    pub expected_version: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -198,6 +203,7 @@ pub struct ValidateScriptResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RunScriptRequest {
     pub name: String,
+    pub expected_version: u32,
     /// Optional JSON object with script parameters
     pub params: Option<serde_json::Value>,
     /// Optional entity context for scripts working with entities
@@ -416,13 +422,12 @@ pub async fn alloy_create_script<R: ScriptRegistry>(
         alloy::utils::validate_cron_expression(expression)?;
     }
 
-    let mut scope = rhai::Scope::new();
-    state
-        .engine
-        .compile(&request.name, &request.code, &mut scope)
+    request
+        .workspace
+        .validate_rhai_workspace()
         .map_err(|e| e.to_string())?;
 
-    let mut script = Script::new(request.name, request.code, trigger);
+    let mut script = Script::new(request.name, request.workspace, trigger);
     script.description = request.description;
 
     if let Some(status_str) = request.status {
@@ -447,15 +452,19 @@ pub async fn alloy_update_script<R: ScriptRegistry>(
         .parse::<uuid::Uuid>()
         .map_err(|e| e.to_string())?;
     let mut script = state.registry.get(id).await.map_err(|e| e.to_string())?;
+    if script.version != request.expected_version {
+        return Err(format!(
+            "Script revision conflict: expected version {}",
+            request.expected_version
+        ));
+    }
 
-    if let Some(code) = request.code {
-        let mut scope = rhai::Scope::new();
-        state
-            .engine
-            .compile(&script.name, &code, &mut scope)
+    if let Some(workspace) = request.workspace {
+        workspace
+            .validate_rhai_workspace()
             .map_err(|e| e.to_string())?;
         state.engine.invalidate(&script.name);
-        script.code = code;
+        script.workspace = workspace;
     }
 
     if let Some(desc) = request.description {
@@ -484,8 +493,18 @@ pub async fn alloy_delete_script<R: ScriptRegistry>(
         .parse::<uuid::Uuid>()
         .map_err(|e| e.to_string())?;
     let script = state.registry.get(id).await.map_err(|e| e.to_string())?;
+    if script.version != request.expected_version {
+        return Err(format!(
+            "Script revision conflict: expected version {}",
+            request.expected_version
+        ));
+    }
+    state
+        .registry
+        .delete(id, request.expected_version)
+        .await
+        .map_err(|e| e.to_string())?;
     state.engine.invalidate(&script.name);
-    state.registry.delete(id).await.map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -745,6 +764,18 @@ pub async fn alloy_run_script<R: ScriptRegistry>(
     state: &AlloyMcpState<R>,
     request: RunScriptRequest,
 ) -> Result<RunScriptResponse, String> {
+    let script = state
+        .registry
+        .get_by_name(&request.name)
+        .await
+        .map_err(|e| e.to_string())?;
+    if script.version != request.expected_version {
+        return Err(format!(
+            "Script revision conflict: expected version {}",
+            request.expected_version
+        ));
+    }
+
     let params = match request.params {
         Some(serde_json::Value::Object(map)) => map
             .into_iter()
@@ -766,9 +797,8 @@ pub async fn alloy_run_script<R: ScriptRegistry>(
 
     let result = state
         .orchestrator
-        .run_manual_with_entity(&request.name, params, entity, None)
-        .await
-        .map_err(|e| e.to_string())?;
+        .run_manual_snapshot(&script, params, entity, None)
+        .await;
 
     let (success, error, return_value, changes) = match &result.outcome {
         ExecutionOutcome::Success {

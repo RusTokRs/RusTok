@@ -1248,20 +1248,38 @@ impl ScriptRegistry for SeaOrmStorage {
         self.get(script.id).await
     }
 
-    async fn delete(&self, id: ScriptId) -> ScriptResult<()> {
+    async fn delete(&self, id: ScriptId, expected_version: u32) -> ScriptResult<()> {
+        let current = self.get(id).await?;
+        if current.version != expected_version {
+            return Err(ScriptError::RevisionConflict {
+                expected: expected_version,
+            });
+        }
+
         let mut delete = Entity::delete_many().filter(Column::Id.eq(id));
         if let Some(tenant_id) = self.tenant_id {
             delete = delete.filter(Column::TenantId.eq(tenant_id));
         }
+        delete = delete.filter(Column::Version.eq(i32::try_from(expected_version).map_err(
+            |_| ScriptError::RevisionConflict {
+                expected: expected_version,
+            },
+        )?));
         let result = delete
             .exec(&self.db)
             .await
             .map_err(|err| ScriptError::Storage(err.to_string()))?;
 
         if result.rows_affected == 0 {
-            return Err(ScriptError::NotFound {
-                name: id.to_string(),
-            });
+            return match self.get(id).await {
+                Ok(_current) => Err(ScriptError::RevisionConflict {
+                    expected: expected_version,
+                }),
+                Err(ScriptError::NotFound { .. }) => Err(ScriptError::NotFound {
+                    name: id.to_string(),
+                }),
+                Err(error) => Err(error),
+            };
         }
 
         Ok(())
@@ -1340,7 +1358,7 @@ mod tests {
             Err(ScriptError::NotFound { .. })
         ));
         assert!(matches!(
-            other.delete(script.id).await,
+            other.delete(script.id, script.version).await,
             Err(ScriptError::NotFound { .. })
         ));
         assert!(matches!(

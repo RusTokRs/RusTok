@@ -29,6 +29,15 @@ fn validate_cron_trigger(trigger: &ScriptTriggerInput) -> Result<()> {
     Ok(())
 }
 
+fn ensure_expected_revision(script: &Script, expected_version: u32) -> Result<()> {
+    if script.version != expected_version {
+        return Err(async_graphql::Error::new(format!(
+            "Script revision conflict: expected version {expected_version}"
+        )));
+    }
+    Ok(())
+}
+
 #[derive(Default)]
 pub struct AlloyMutation;
 
@@ -154,12 +163,23 @@ impl AlloyMutation {
         Ok(saved.into())
     }
 
-    async fn delete_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
+    async fn delete_script(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        expected_version: u32,
+    ) -> Result<bool> {
         require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
+        let script = runtime
+            .storage
+            .get(id)
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        ensure_expected_revision(&script, expected_version)?;
         runtime
             .storage
-            .delete(id)
+            .delete(id, expected_version)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
@@ -308,7 +328,12 @@ impl AlloyMutation {
         })
     }
 
-    async fn activate_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
+    async fn activate_script(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        expected_version: u32,
+    ) -> Result<GqlScript> {
         require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let mut script = runtime
@@ -316,6 +341,7 @@ impl AlloyMutation {
             .get(id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        ensure_expected_revision(&script, expected_version)?;
 
         script.activate();
         let saved = runtime
@@ -327,7 +353,12 @@ impl AlloyMutation {
         Ok(saved.into())
     }
 
-    async fn pause_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
+    async fn pause_script(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        expected_version: u32,
+    ) -> Result<GqlScript> {
         require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let mut script = runtime
@@ -335,6 +366,7 @@ impl AlloyMutation {
             .get(id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        ensure_expected_revision(&script, expected_version)?;
 
         script.status = ScriptStatus::Paused;
         script.updated_at = Utc::now();
@@ -348,7 +380,12 @@ impl AlloyMutation {
         Ok(saved.into())
     }
 
-    async fn disable_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
+    async fn disable_script(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        expected_version: u32,
+    ) -> Result<GqlScript> {
         require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let mut script = runtime
@@ -356,6 +393,7 @@ impl AlloyMutation {
             .get(id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        ensure_expected_revision(&script, expected_version)?;
 
         script.disable();
         let saved = runtime
@@ -367,7 +405,12 @@ impl AlloyMutation {
         Ok(saved.into())
     }
 
-    async fn archive_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
+    async fn archive_script(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        expected_version: u32,
+    ) -> Result<GqlScript> {
         require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let mut script = runtime
@@ -375,6 +418,7 @@ impl AlloyMutation {
             .get(id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        ensure_expected_revision(&script, expected_version)?;
 
         script.archive();
         let saved = runtime
@@ -386,7 +430,12 @@ impl AlloyMutation {
         Ok(saved.into())
     }
 
-    async fn reset_script_errors(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
+    async fn reset_script_errors(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        expected_version: u32,
+    ) -> Result<GqlScript> {
         require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let mut script = runtime
@@ -394,6 +443,7 @@ impl AlloyMutation {
             .get(id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        ensure_expected_revision(&script, expected_version)?;
 
         script.reset_errors();
         script.updated_at = Utc::now();

@@ -209,10 +209,20 @@ pub async fn update_script<S: ScriptRegistry>(
 pub async fn delete_script<S: ScriptRegistry>(
     State(state): State<Arc<AppState<S>>>,
     Path(id): Path<Uuid>,
+    Json(request): Json<ScriptRevisionRequest>,
 ) -> ApiResult<StatusCode> {
     let script = state.registry.get(id).await.map_err(ApiError::from)?;
+    if script.version != request.expected_version {
+        return Err(ApiError::from(ScriptError::RevisionConflict {
+            expected: request.expected_version,
+        }));
+    }
+    state
+        .registry
+        .delete(id, request.expected_version)
+        .await
+        .map_err(ApiError::from)?;
     state.engine.invalidate(&script.name);
-    state.registry.delete(id).await.map_err(ApiError::from)?;
 
     info!(script_id = %id, "Script deleted");
 

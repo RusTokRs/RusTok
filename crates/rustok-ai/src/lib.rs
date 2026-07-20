@@ -74,10 +74,14 @@ pub use model::{
     TaskProfile, ToolCall, ToolDefinition, ToolTrace,
 };
 pub use policy::ToolExecutionPolicy;
+#[cfg(feature = "server")]
+pub use rag::RigRagEmbeddingProvider;
 pub use rag::{
     chunk_document, RagAtom, RagCandidate, RagChunk, RagChunkingPolicy, RagCitation, RagContext,
-    RagCoordinator, RagDocument, RagError, RagExpandRequest, RagIngestRequest, RagIngestResult,
-    RagResult, RagRetrievalPort, RagRetrievalStrategy, RagSearchRequest, RagSourceRef,
+    RagCoordinator, RagDocument, RagEmbedding, RagEmbeddingCoordinator, RagEmbeddingPort,
+    RagEmbeddingRequest, RagError, RagExpandRequest, RagIngestRequest, RagIngestResult,
+    RagIngestionCoordinator, RagIngestionPort, RagResult, RagRetrievalPort, RagRetrievalStrategy,
+    RagSearchRequest, RagSourceRef,
 };
 pub use router::{AiRouter, ResolvedExecutionPlan, RouterProviderProfile};
 #[cfg(feature = "server")]

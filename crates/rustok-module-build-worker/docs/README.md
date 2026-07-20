@@ -13,6 +13,9 @@ The worker requires a mutually authenticated listener configured with the
   runtime is accepted).
 - `RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST` (the exact `sha256:<hex>` OCI image
   identity permitted for every launched build job).
+- `RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION` (an absolute regular deployment
+  evidence file proving the selected runtime/image job has no host mounts,
+  container socket, host PID/network, or privileged mode).
 - `RUSTOK_MODULE_BUILD_WORKDIR` (an existing absolute image-owned directory).
 - `RUSTOK_MODULE_BUILD_SOURCE_ROOT` (an existing absolute read-only CAS archive mount).
 - `RUSTOK_MODULE_BUILD_CARGO` (an absolute non-symlink Cargo executable owned by the image).
@@ -91,7 +94,10 @@ Optional listener limits are `RUSTOK_MODULE_BUILD_REQUEST_TIMEOUT_MS`,
 `RUSTOK_MODULE_BUILD_MAX_MESSAGE_SIZE` (at most 1 MiB). Startup fails if the
 mounted OCI job launcher, Cargo executable/cache, or `wasm-tools` executable is
 absent or invalid, if the hardened OCI runtime is not explicitly selected, or
-if the mTLS configuration is incomplete. There is no plaintext,
+if the isolation attestation is missing, malformed, or does not match the
+configured runtime and image, or if the mTLS configuration is incomplete. The
+worker remains not ready until deployment-owned isolation evidence is loaded
+and still matches the fixed hardened-job contract. There is no plaintext,
 permissive-runtime, or server-local fallback.
 
 The fixed OCI job launcher receives canonical request JSON on standard input
@@ -219,4 +225,7 @@ volumes, and the resource/network controls specified in the module
 control-plane plan. It also provides the deployment-owned
 `RUSTOK_MODULE_BUILD_CARGO` and `RUSTOK_MODULE_BUILD_CARGO_HOME` paths. The
 job pipeline still needs deployment evidence for hardened-job isolation and the
-later admission trust stage.
+later admission trust stage. The bounded isolation attestation is
+configuration-review evidence for the selected runtime/image contract; it does
+not replace deployment evidence that the launcher actually creates the
+corresponding unprivileged, ephemeral job with those controls.

@@ -52,7 +52,7 @@ pub trait ScriptRegistry: Send + Sync {
     ) -> ScriptResult<TestRun>;
     async fn get_by_name(&self, name: &str) -> ScriptResult<Script>;
     async fn save(&self, script: Script) -> ScriptResult<Script>;
-    async fn delete(&self, id: ScriptId) -> ScriptResult<()>;
+    async fn delete(&self, id: ScriptId, expected_version: u32) -> ScriptResult<()>;
     async fn set_status(&self, id: ScriptId, status: ScriptStatus) -> ScriptResult<()>;
     async fn record_error(&self, id: ScriptId) -> ScriptResult<bool>;
     async fn reset_errors(&self, id: ScriptId) -> ScriptResult<()>;

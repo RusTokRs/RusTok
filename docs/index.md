@@ -59,7 +59,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Module Documentation Index](./modules/_index.md)
 - [Auth Module and Owner-owned Auth/OAuth GraphQL Boundary Documentation](../crates/rustok-auth/docs/README.md)
 - [MCP and Owner-owned Management GraphQL Documentation](../crates/rustok-mcp/docs/README.md)
-- [AI Capability and Owner-owned GraphQL Documentation](../crates/rustok-ai/docs/README.md)
+- [AI Capability and Owner-owned GraphQL Documentation](../crates/rustok-ai/docs/README.md) - includes provider-neutral RAG ingestion and the Athanor-owned data-plane boundary.
 - [Content and Owner-owned Dashboard Analytics Documentation](../crates/rustok-content/docs/README.md)
 - [Media and Owner-owned GraphQL Documentation](../crates/rustok-media/docs/README.md)
 - [Order and Owner-owned Dashboard Analytics Documentation](../crates/rustok-order/docs/README.md)

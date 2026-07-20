@@ -97,3 +97,11 @@ fn marketplace_registry_response_streaming_is_enabled() {
         "reqwest stream support is required to reject oversized chunked bodies before full allocation"
     );
 }
+
+#[test]
+fn marketplace_registry_client_fails_closed_and_disables_redirects() {
+    let provider = source("apps/server/src/services/marketplace_catalog_cache_base.rs");
+    assert!(provider.contains(".redirect(reqwest::redirect::Policy::none())"));
+    assert!(provider.contains("failed to construct bounded marketplace registry client"));
+    assert!(!provider.contains("using reqwest defaults"));
+}

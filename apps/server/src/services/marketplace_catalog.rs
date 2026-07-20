@@ -3,12 +3,9 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, SecondsFormat, Utc};
-use moka::future::Cache;
-use reqwest::Client;
 use rustok_core::ModuleRegistry;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -129,108 +126,6 @@ impl MarketplaceCatalogProvider for LocalManifestMarketplaceProvider {
     ) -> anyhow::Result<Vec<CatalogManifestModule>> {
         let modules = ManifestManager::catalog_modules(manifest).map_err(anyhow::Error::from)?;
         Ok(filter_catalog_modules(modules, query))
-    }
-}
-
-pub struct RegistryMarketplaceProvider {
-    registry_url: Option<String>,
-    client: Client,
-    catalog_cache: Cache<String, Arc<Vec<CatalogManifestModule>>>,
-}
-
-impl RegistryMarketplaceProvider {
-    pub fn from_env() -> Self {
-        let registry_url = std::env::var("RUSTOK_MARKETPLACE_REGISTRY_URL")
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
-        let timeout_ms = std::env::var("RUSTOK_MARKETPLACE_REGISTRY_TIMEOUT_MS")
-            .ok()
-            .and_then(|value| value.parse::<u64>().ok())
-            .filter(|value| *value > 0)
-            .unwrap_or(3_000);
-        let cache_ttl_secs = std::env::var("RUSTOK_MARKETPLACE_REGISTRY_CACHE_TTL_SECS")
-            .ok()
-            .and_then(|value| value.parse::<u64>().ok())
-            .filter(|value| *value > 0)
-            .unwrap_or(60);
-        let client = Client::builder()
-            .timeout(Duration::from_millis(timeout_ms))
-            .build()
-            .unwrap_or_else(|_| Client::new());
-        let catalog_cache = Cache::builder()
-            .max_capacity(32)
-            .time_to_live(Duration::from_secs(cache_ttl_secs))
-            .build();
-
-        Self {
-            registry_url,
-            client,
-            catalog_cache,
-        }
-    }
-
-    async fn fetch_catalog(
-        &self,
-        registry_url: &str,
-        query: &MarketplaceCatalogQuery,
-    ) -> anyhow::Result<Vec<CatalogManifestModule>> {
-        self.fetch_catalog_from_path(registry_url, REGISTRY_CATALOG_PATH, query)
-            .await
-    }
-
-    async fn fetch_catalog_from_path(
-        &self,
-        registry_url: &str,
-        path: &str,
-        query: &MarketplaceCatalogQuery,
-    ) -> anyhow::Result<Vec<CatalogManifestModule>> {
-        let endpoint = format!("{}{}", registry_url.trim_end_matches('/'), path);
-        let mut request = self.client.get(&endpoint);
-        if let Some(search) = query.normalized_search() {
-            request = request.query(&[("search", search)]);
-        }
-        if let Some(category) = query.normalized_category() {
-            request = request.query(&[("category", category)]);
-        }
-        if let Some(tag) = query.normalized_tag() {
-            request = request.query(&[("tag", tag)]);
-        }
-        let response = request.send().await?;
-        let response = response.error_for_status()?;
-        let payload = response.json::<RegistryCatalogResponse>().await?;
-        validate_registry_schema_version(payload.schema_version)?;
-
-        Ok(payload
-            .modules
-            .into_iter()
-            .map(RegistryCatalogModule::into_catalog_module)
-            .collect())
-    }
-
-    async fn fetch_module(
-        &self,
-        registry_url: &str,
-        slug: &str,
-    ) -> anyhow::Result<Option<CatalogManifestModule>> {
-        self.fetch_module_from_path(registry_url, REGISTRY_CATALOG_MODULE_PATH, slug)
-            .await
-            .map(Some)
-    }
-
-    async fn fetch_module_from_path(
-        &self,
-        registry_url: &str,
-        path: &str,
-        slug: &str,
-    ) -> anyhow::Result<CatalogManifestModule> {
-        let path = path.replace("{slug}", slug);
-        let endpoint = format!("{}{}", registry_url.trim_end_matches('/'), path);
-        let response = self.client.get(&endpoint).send().await?;
-        let response = response.error_for_status()?;
-        let payload = response.json::<RegistryCatalogModule>().await?;
-
-        Ok(payload.into_catalog_module())
     }
 }
 
@@ -830,73 +725,6 @@ pub struct RegistryYankRequest {
 }
 
 #[async_trait]
-impl MarketplaceCatalogProvider for RegistryMarketplaceProvider {
-    fn provider_key(&self) -> &'static str {
-        "registry"
-    }
-
-    async fn list_modules(
-        &self,
-        _manifest: &ModulesManifest,
-        _registry: &ModuleRegistry,
-        query: &MarketplaceCatalogQuery,
-    ) -> anyhow::Result<Vec<CatalogManifestModule>> {
-        let Some(registry_url) = &self.registry_url else {
-            return Ok(Vec::new());
-        };
-
-        let cache_key = format!("{}#{}", registry_url, query.cache_fragment());
-
-        if let Some(modules) = self.catalog_cache.get(&cache_key).await {
-            return Ok(modules.as_ref().clone());
-        }
-
-        match self.fetch_catalog(registry_url, query).await {
-            Ok(modules) => {
-                let modules = Arc::new(modules);
-                self.catalog_cache.insert(cache_key, modules.clone()).await;
-                Ok(modules.as_ref().clone())
-            }
-            Err(err) => {
-                tracing::warn!(
-                    registry_url,
-                    search = query.normalized_search(),
-                    category = query.normalized_category(),
-                    tag = query.normalized_tag(),
-                    error = %err,
-                    "Registry marketplace provider fetch failed; falling back to local catalog only"
-                );
-                Ok(Vec::new())
-            }
-        }
-    }
-
-    async fn get_module(
-        &self,
-        _manifest: &ModulesManifest,
-        _registry: &ModuleRegistry,
-        _query: &MarketplaceCatalogQuery,
-        slug: &str,
-    ) -> anyhow::Result<Option<CatalogManifestModule>> {
-        let Some(registry_url) = &self.registry_url else {
-            return Ok(None);
-        };
-
-        match self.fetch_module(registry_url, slug).await {
-            Ok(module) => Ok(module),
-            Err(err) => {
-                tracing::warn!(
-                    registry_url,
-                    slug,
-                    error = %err,
-                    "Registry marketplace provider detail fetch failed; falling back to local catalog only"
-                );
-                Ok(None)
-            }
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct SharedMarketplaceCatalogService(pub Arc<MarketplaceCatalogService>);
 
@@ -911,13 +739,6 @@ impl MarketplaceCatalogService {
 
     pub fn local_only() -> Self {
         Self::new(vec![Arc::new(LocalManifestMarketplaceProvider)])
-    }
-
-    pub fn evolutionary_defaults() -> Self {
-        Self::new(vec![
-            Arc::new(LocalManifestMarketplaceProvider),
-            Arc::new(RegistryMarketplaceProvider::from_env()),
-        ])
     }
 
     pub async fn list_modules(
@@ -971,7 +792,7 @@ pub fn marketplace_catalog_from_context(
         return shared.0.clone();
     }
 
-    let service = Arc::new(MarketplaceCatalogService::evolutionary_defaults());
+    let service = Arc::new(MarketplaceCatalogService::local_only());
     ctx.shared_insert(SharedMarketplaceCatalogService(service.clone()));
     service
 }
@@ -1235,13 +1056,6 @@ mod tests {
 
         assert_eq!(module.source, "path");
         assert_eq!(module.crate_name, "rustok-blog");
-    }
-
-    #[test]
-    fn evolutionary_defaults_include_local_manifest_and_registry_skeleton() {
-        let service = MarketplaceCatalogService::evolutionary_defaults();
-
-        assert_eq!(service.provider_keys(), vec!["local-manifest", "registry"]);
     }
 
     #[tokio::test]

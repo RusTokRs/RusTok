@@ -159,6 +159,11 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - Marketplace catalog transport is versioned only at `GET /v1/catalog` and
   `GET /v1/catalog/{slug}`. The server router and both outbound registry clients
   do not probe or serve the removed unversioned `/catalog` compatibility paths.
+  Catalog generation fails closed when the active platform composition is
+  invalid; it never substitutes a builtin manifest as a legacy fallback. The
+  bounded registry client disables redirects and fails startup if its bounded
+  client cannot be constructed; it never falls back to an unbounded default
+  client.
 - The repo-side surface for the current `module-system` is considered closed for the purpose of Admin-driven install/uninstall/upgrade/deploy with progress feedback; ongoing work is limited to targeted verification and docs/audit, while rollout of `modules.rustok.dev` remains an external infra task.
 - GraphQL control-plane surface publishes a read/write contract for lifecycle recovery: `moduleOperationRecoveryPlan` and `failedModuleOperationRecoveryPlans` return tenant-scoped retryability/action metadata from `module_operations`, and `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` perform recovery only via `ModuleLifecycleService` and `modules:manage`, without raw SQL/bypass rollback.
 - GraphQL auth surface `me.permissions` returns a request-scoped RBAC snapshot for headless/mobile UI gating; this does not replace server-side permission enforcement on mutations/queries.

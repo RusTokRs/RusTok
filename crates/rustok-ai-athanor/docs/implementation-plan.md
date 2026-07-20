@@ -12,6 +12,15 @@ and rejects requests for another tenant before touching the Athanor store. The
 adapter is pinned to the Athanor library revision
 declared in the workspace dependency table.
 
+Document chunking and publication preparation are provider-neutral in
+`rustok-ai`: `chunk_document` produces stable source/revision/ordinal ids and
+bounded UTF-8 offsets, while `RagIngestionCoordinator` calls the provider-owned
+`RagIngestionPort`. `AthanorRagAdapter` now publishes chunks as Athanor-owned
+canonical entities through the atomic snapshot boundary, preserves existing
+canonical objects, replaces the prior revision for the same tenant/source
+document, and restores source metadata and byte ranges during expansion.
+Embeddings and vector indexes remain Athanor-owned follow-up work.
+
 ## FFA/FBA readiness
 
 - FFA status: `not_started` — this support adapter owns no UI surface.
@@ -21,10 +30,10 @@ declared in the workspace dependency table.
 
 ## Next results
 
-1. Verify the adapter against the user's updated Athanor revision and update
-   the workspace pin when that revision is committed.
-2. Add source/revision filtering evidence and a composed tenant policy before
-   exposing the provider to runtime composition.
+1. Add embedding batch handoff once Athanor exposes a concrete embedding
+   provider and vector-index composition.
+2. Extend source/revision replacement evidence to the future embedding/index
+   side effects without weakening tenant isolation.
 3. Implement semantic retrieval only after Athanor's Phase 9 vector adapter
    is available; keep the `Vector` strategy fail-closed until then.
 

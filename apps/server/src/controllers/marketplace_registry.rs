@@ -27,7 +27,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::{http_error, Error};
-use crate::modules::{CatalogManifestModule, ManifestManager, ModulesManifest};
+use crate::modules::{CatalogManifestModule, ManifestManager};
 use crate::services::marketplace_catalog::{
     registry_catalog_from_modules, registry_catalog_module_path, registry_catalog_path,
     registry_owner_transfer_path, registry_publish_approve_path, registry_publish_artifact_path,
@@ -2082,7 +2082,7 @@ async fn first_party_catalog_modules(
                 "Failed to load platform composition for catalog: {error}"
             ))
         })?;
-    let modules = catalog_modules_with_builtin_fallback(&manifest)
+    let modules = ManifestManager::catalog_modules(&manifest)
         .map_err(|error| Error::Message(format!("Failed to build marketplace catalog: {error}")))?;
 
     let first_party_modules = modules
@@ -2156,21 +2156,6 @@ fn filter_catalog_modules(
             })
         })
         .collect()
-}
-
-fn catalog_modules_with_builtin_fallback(
-    manifest: &ModulesManifest,
-) -> Result<Vec<CatalogManifestModule>, crate::modules::ManifestError> {
-    match ManifestManager::catalog_modules(manifest) {
-        Ok(modules) => Ok(modules),
-        Err(error) => {
-            tracing::warn!(
-                error = %error,
-                "Registry catalog generation fell back to builtin first-party module catalog"
-            );
-            ManifestManager::catalog_modules(&ModulesManifest::default())
-        }
-    }
 }
 
 fn sort_catalog_modules(mut modules: Vec<CatalogManifestModule>) -> Vec<CatalogManifestModule> {

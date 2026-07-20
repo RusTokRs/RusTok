@@ -65,7 +65,20 @@
       "name": "execution_command_revision_contract",
       "assertions": [
         "manual_run_requires_expected_revision",
-        "manual_run_executes_loaded_snapshot"
+        "manual_run_executes_loaded_snapshot",
+        "mcp_manual_run_requires_expected_revision",
+        "mcp_manual_run_executes_loaded_snapshot"
+      ]
+    },
+    {
+      "name": "lifecycle_command_revision_contract",
+      "assertions": [
+        "rest_activate_pause_require_expected_revision",
+        "rest_delete_requires_expected_revision",
+        "graphql_status_mutations_require_expected_revision",
+        "graphql_delete_requires_expected_revision",
+        "mcp_delete_requires_expected_revision",
+        "mcp_update_requires_expected_revision"
       ]
     },
     {

@@ -19,8 +19,8 @@ use crate::{
         CreateScriptRequest, EntityInput, ExecutionLogResponse, ListExecutionLogQuery,
         ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, ReviewDecisionResponse,
         ReviewScriptRequest, RunScriptRequest, RunScriptResponse, RunWorkspaceTestRequest,
-        ScriptResponse, StageReleaseRequest, StageReleaseResponse, TestRunResponse,
-        UpdateScriptRequest,
+        ScriptResponse, ScriptRevisionRequest, StageReleaseRequest, StageReleaseResponse,
+        TestRunResponse, UpdateScriptRequest,
     },
     model::{EntityProxy, ReviewCommand, Script, ScriptStatus, ScriptTrigger},
     runner::ExecutionOutcome,
@@ -365,11 +365,21 @@ pub async fn delete_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
+    Json(request): Json<ScriptRevisionRequest>,
 ) -> HttpResult<StatusCode> {
     let runtime = runtime.scoped(tenant.id)?;
     let script = runtime.storage.get(id).await.map_err(script_error)?;
+    if script.version != request.expected_version {
+        return Err(script_error(crate::ScriptError::RevisionConflict {
+            expected: request.expected_version,
+        }));
+    }
+    runtime
+        .storage
+        .delete(id, request.expected_version)
+        .await
+        .map_err(script_error)?;
     runtime.engine.invalidate(&script.name);
-    runtime.storage.delete(id).await.map_err(script_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -667,9 +677,15 @@ pub async fn activate_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
+    Json(request): Json<ScriptRevisionRequest>,
 ) -> HttpResult<Json<ScriptResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
     let mut script = runtime.storage.get(id).await.map_err(script_error)?;
+    if script.version != request.expected_version {
+        return Err(script_error(crate::ScriptError::RevisionConflict {
+            expected: request.expected_version,
+        }));
+    }
     script.activate();
     let saved = runtime.storage.save(script).await.map_err(script_error)?;
     Ok(Json(saved.into()))
@@ -679,9 +695,15 @@ pub async fn pause_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
+    Json(request): Json<ScriptRevisionRequest>,
 ) -> HttpResult<Json<ScriptResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
     let mut script = runtime.storage.get(id).await.map_err(script_error)?;
+    if script.version != request.expected_version {
+        return Err(script_error(crate::ScriptError::RevisionConflict {
+            expected: request.expected_version,
+        }));
+    }
     script.status = ScriptStatus::Paused;
     script.updated_at = Utc::now();
     let saved = runtime.storage.save(script).await.map_err(script_error)?;

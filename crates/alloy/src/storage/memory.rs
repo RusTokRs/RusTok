@@ -410,11 +410,17 @@ impl ScriptRegistry for InMemoryStorage {
         Ok(script)
     }
 
-    async fn delete(&self, id: ScriptId) -> ScriptResult<()> {
+    async fn delete(&self, id: ScriptId, expected_version: u32) -> ScriptResult<()> {
         let mut guard = self.scripts.write().await;
-        guard.remove(&id).ok_or(ScriptError::NotFound {
+        let script = guard.get(&id).ok_or(ScriptError::NotFound {
             name: id.to_string(),
         })?;
+        if script.version != expected_version {
+            return Err(ScriptError::RevisionConflict {
+                expected: expected_version,
+            });
+        }
+        guard.remove(&id);
         Ok(())
     }
 
@@ -547,6 +553,34 @@ mod tests {
                 .expect("workspace source"),
             "43"
         );
+    }
+
+    #[tokio::test]
+    async fn delete_rejects_a_stale_script_revision() {
+        let storage = InMemoryStorage::new();
+        let saved = storage
+            .save(named_script("deletable", ScriptStatus::Draft))
+            .await
+            .expect("initial script should save");
+        let mut current = saved.clone();
+        current.workspace = AlloyWorkspace::single_source("43");
+        let updated = storage
+            .save(current)
+            .await
+            .expect("current revision should save");
+
+        assert!(matches!(
+            storage.delete(saved.id, saved.version).await,
+            Err(ScriptError::RevisionConflict { expected: 1 })
+        ));
+        storage
+            .delete(updated.id, updated.version)
+            .await
+            .expect("current revision should delete");
+        assert!(matches!(
+            storage.get(updated.id).await,
+            Err(ScriptError::NotFound { .. })
+        ));
     }
 
     #[tokio::test]

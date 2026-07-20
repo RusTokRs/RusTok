@@ -88,10 +88,10 @@ impl HardenedRegistryMarketplaceProvider {
         );
         let client = Client::builder()
             .timeout(Duration::from_millis(timeout_ms))
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .unwrap_or_else(|error| {
-                tracing::warn!(%error, "Failed to build bounded marketplace registry client; using reqwest defaults");
-                Client::new()
+                panic!("failed to construct bounded marketplace registry client: {error}")
             });
 
         Self::new(

@@ -193,10 +193,12 @@ pub use mcp::{
 };
 #[cfg(feature = "oci-distribution")]
 pub use oci::{
-    strict_oci_distribution_client, OciArtifactEvidence, OciArtifactEvidenceKind,
+    strict_oci_distribution_client, strict_oci_distribution_client_with_policy,
+    OciArtifactEvidence, OciArtifactEvidenceKind,
     OciArtifactPublicationBundle, OciArtifactPublicationError, OciArtifactPublicationReceipt,
     OciArtifactPublicationTarget, OciArtifactPublisher, OciDistributionArtifactPublisher,
-    OciDistributionArtifactRegistry, MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE,
+    OciDistributionArtifactRegistry, OciRegistryProxyMode, OciRegistryTransportPolicy,
+    MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE,
     MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE, MODULE_ARTIFACT_RELEASE_LINEAGE_MEDIA_TYPE,
     MODULE_ARTIFACT_SBOM_MEDIA_TYPE, MODULE_ARTIFACT_TEST_EVIDENCE_MEDIA_TYPE,
     OCI_EMPTY_CONFIG_MEDIA_TYPE,

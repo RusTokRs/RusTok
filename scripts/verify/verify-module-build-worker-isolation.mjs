@@ -145,6 +145,11 @@ try {
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_JOB_LAUNCHER') ||
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_JOB_RUNTIME') ||
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST') ||
+    !jobLauncher.includes('RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION') ||
+    !jobLauncher.includes('load_isolation_attestation') ||
+    !jobLauncher.includes('MAX_ISOLATION_ATTESTATION_BYTES') ||
+    !jobLauncher.includes('isolation_attestation') ||
+    !jobLauncher.includes('network_mode') ||
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_REQUEST_DIGEST') ||
     !jobLauncher.includes('OciJobRuntime') ||
     !jobLauncher.includes('verify_oci_job_receipt') ||

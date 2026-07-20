@@ -32,6 +32,7 @@ are being moved here from the server incrementally.
 - `ModuleInstaller`
 - `ArtifactRuntime`
 - `OciArtifactReference`
+- `OciRegistryTransportPolicy`
 - `OciDistributionArtifactRegistry`
 - `SeaOrmArtifactInstallationStore`
 

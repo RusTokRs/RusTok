@@ -89,6 +89,25 @@ pub struct RagIngestResult {
     pub chunks: Vec<RagChunk>,
 }
 
+/// One embedding produced for a deterministic RAG chunk.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RagEmbedding {
+    pub chunk_id: String,
+    pub source: RagSourceRef,
+    pub model: String,
+    pub dimensions: usize,
+    pub vector: Vec<f32>,
+}
+
+/// A bounded embedding request for one tenant-scoped chunk batch.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RagEmbeddingRequest {
+    pub tenant_id: Uuid,
+    pub model: String,
+    pub dimensions: Option<usize>,
+    pub chunks: Vec<RagChunk>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RagSearchRequest {
     pub tenant_id: Uuid,
@@ -187,6 +206,12 @@ pub enum RagError {
     InvalidLimit { max: usize },
     #[error("RAG chunking policy requires max_chars > 0 and overlap_chars < max_chars")]
     InvalidChunkingPolicy,
+    #[error("RAG embedding model must not be empty")]
+    EmptyEmbeddingModel,
+    #[error("RAG embedding dimensions must be greater than zero")]
+    InvalidEmbeddingDimensions,
+    #[error("RAG embedding batch must contain at least one chunk")]
+    EmptyEmbeddingBatch,
     #[error("Athanor RAG provider failed: {0}")]
     Provider(String),
     #[error("Athanor returned no atom for candidate `{0}`")]
@@ -194,6 +219,152 @@ pub enum RagError {
 }
 
 pub type RagResult<T> = Result<T, RagError>;
+
+/// Provider-owned publication seam for prepared RAG chunks.
+///
+/// The provider owns durable document/chunk storage and any embedding or vector-index side
+/// effects. RusToK only supplies the tenant-scoped source document and deterministic chunks.
+#[async_trait]
+pub trait RagIngestionPort: Send + Sync {
+    async fn publish(
+        &self,
+        request: RagIngestRequest,
+        chunks: Vec<RagChunk>,
+    ) -> RagResult<RagIngestResult>;
+}
+
+pub struct RagIngestionCoordinator<P: ?Sized> {
+    provider: Arc<P>,
+}
+
+impl<P: ?Sized> RagIngestionCoordinator<P>
+where
+    P: RagIngestionPort + 'static,
+{
+    pub fn new(provider: Arc<P>) -> Self {
+        Self { provider }
+    }
+
+    pub async fn ingest(&self, request: RagIngestRequest) -> RagResult<RagIngestResult> {
+        let chunks = chunk_document(&request.document, request.chunking)?;
+        self.provider.publish(request, chunks).await
+    }
+}
+
+/// Provider-neutral embedding boundary owned by the AI infrastructure layer.
+#[async_trait]
+pub trait RagEmbeddingPort: Send + Sync {
+    async fn embed(&self, request: RagEmbeddingRequest) -> RagResult<Vec<RagEmbedding>>;
+}
+
+/// Validates and bounds a batch before delegating to an embedding provider.
+pub struct RagEmbeddingCoordinator<P: ?Sized> {
+    provider: Arc<P>,
+    max_chunks: usize,
+}
+
+impl<P: ?Sized> RagEmbeddingCoordinator<P>
+where
+    P: RagEmbeddingPort + 'static,
+{
+    pub fn new(provider: Arc<P>, max_chunks: usize) -> RagResult<Self> {
+        if max_chunks == 0 {
+            return Err(RagError::InvalidLimit { max: 0 });
+        }
+        Ok(Self {
+            provider,
+            max_chunks,
+        })
+    }
+
+    pub async fn embed(&self, mut request: RagEmbeddingRequest) -> RagResult<Vec<RagEmbedding>> {
+        validate_embedding_request(&request, self.max_chunks)?;
+        request.chunks.truncate(self.max_chunks);
+        let embeddings = self.provider.embed(request.clone()).await?;
+        validate_embeddings(&request, &embeddings)?;
+        Ok(embeddings)
+    }
+}
+
+#[cfg(feature = "server")]
+/// Rig-backed embedding provider for the AI host.
+pub struct RigRagEmbeddingProvider {
+    config: crate::AiProviderConfig,
+    secrets: rustok_secrets::SecretResolverRegistry,
+}
+
+#[cfg(feature = "server")]
+impl RigRagEmbeddingProvider {
+    pub fn new(
+        config: crate::AiProviderConfig,
+        secrets: rustok_secrets::SecretResolverRegistry,
+    ) -> Self {
+        Self { config, secrets }
+    }
+}
+
+#[cfg(feature = "server")]
+#[async_trait]
+impl RagEmbeddingPort for RigRagEmbeddingProvider {
+    async fn embed(&self, request: RagEmbeddingRequest) -> RagResult<Vec<RagEmbedding>> {
+        if request.tenant_id != self.config.tenant_id {
+            return Err(RagError::Provider(
+                "embedding tenant does not match the configured Rig provider".to_string(),
+            ));
+        }
+        let response = crate::embed(
+            &self.config,
+            &self.secrets,
+            crate::EmbeddingRequest {
+                model: request.model.clone(),
+                documents: request
+                    .chunks
+                    .iter()
+                    .map(|chunk| chunk.text.clone())
+                    .collect(),
+                dimensions: request.dimensions,
+            },
+        )
+        .await
+        .map_err(|error| RagError::Provider(error.to_string()))?;
+        if response.vectors.len() != request.chunks.len() {
+            return Err(RagError::Provider(format!(
+                "embedding provider returned {} vectors for {} chunks",
+                response.vectors.len(),
+                request.chunks.len()
+            )));
+        }
+        let dimensions = request
+            .dimensions
+            .or_else(|| response.vectors.first().map(Vec::len))
+            .ok_or(RagError::EmptyEmbeddingBatch)?;
+        let mut embeddings = Vec::with_capacity(request.chunks.len());
+        for (chunk, vector) in request.chunks.iter().zip(response.vectors) {
+            if vector.len() != dimensions {
+                return Err(RagError::Provider(
+                    "embedding provider returned inconsistent vector dimensions".to_string(),
+                ));
+            }
+            let vector = vector
+                .into_iter()
+                .map(|value| value as f32)
+                .collect::<Vec<_>>();
+            if vector.iter().any(|value| !value.is_finite()) {
+                return Err(RagError::Provider(
+                    "embedding provider returned a non-finite vector value".to_string(),
+                ));
+            }
+            embeddings.push(RagEmbedding {
+                chunk_id: chunk.chunk_id.clone(),
+                source: chunk.source.clone(),
+                model: request.model.clone(),
+                dimensions,
+                vector,
+            });
+        }
+        Ok(embeddings)
+    }
+}
 
 /// Split a document into bounded, source-addressable chunks.
 ///
@@ -211,7 +382,11 @@ pub fn chunk_document(
     }
 
     let chars: Vec<char> = document.text.chars().collect();
-    let byte_offsets: Vec<usize> = document.text.char_indices().map(|(offset, _)| offset).collect();
+    let byte_offsets: Vec<usize> = document
+        .text
+        .char_indices()
+        .map(|(offset, _)| offset)
+        .collect();
     let mut chunks = Vec::new();
     let mut start = 0usize;
 
@@ -231,9 +406,19 @@ pub fn chunk_document(
             end = hard_end;
         }
 
-        let start_byte = byte_offsets.get(start).copied().unwrap_or(document.text.len());
-        let end_byte = byte_offsets.get(end).copied().unwrap_or(document.text.len());
-        let text = chars[start..end].iter().collect::<String>().trim().to_string();
+        let start_byte = byte_offsets
+            .get(start)
+            .copied()
+            .unwrap_or(document.text.len());
+        let end_byte = byte_offsets
+            .get(end)
+            .copied()
+            .unwrap_or(document.text.len());
+        let text = chars[start..end]
+            .iter()
+            .collect::<String>()
+            .trim()
+            .to_string();
         if !text.is_empty() {
             let ordinal = chunks.len();
             chunks.push(RagChunk {
@@ -261,6 +446,57 @@ pub fn chunk_document(
     }
 
     Ok(chunks)
+}
+
+fn validate_embedding_request(request: &RagEmbeddingRequest, max_chunks: usize) -> RagResult<()> {
+    if request.model.trim().is_empty() {
+        return Err(RagError::EmptyEmbeddingModel);
+    }
+    if request.dimensions.is_some_and(|dimensions| dimensions == 0) {
+        return Err(RagError::InvalidEmbeddingDimensions);
+    }
+    if request.chunks.is_empty() {
+        return Err(RagError::EmptyEmbeddingBatch);
+    }
+    if request.chunks.len() > max_chunks {
+        return Err(RagError::InvalidLimit { max: max_chunks });
+    }
+    Ok(())
+}
+
+fn validate_embeddings(
+    request: &RagEmbeddingRequest,
+    embeddings: &[RagEmbedding],
+) -> RagResult<()> {
+    if embeddings.len() != request.chunks.len() {
+        return Err(RagError::Provider(format!(
+            "embedding provider returned {} vectors for {} chunks",
+            embeddings.len(),
+            request.chunks.len()
+        )));
+    }
+    for (chunk, embedding) in request.chunks.iter().zip(embeddings) {
+        if embedding.chunk_id != chunk.chunk_id || embedding.source != chunk.source {
+            return Err(RagError::Provider(
+                "embedding provider changed chunk identity or source".to_string(),
+            ));
+        }
+        if embedding.dimensions == 0 || embedding.vector.len() != embedding.dimensions {
+            return Err(RagError::Provider(
+                "embedding provider returned an invalid vector dimension".to_string(),
+            ));
+        }
+        if request
+            .dimensions
+            .is_some_and(|dimensions| dimensions != embedding.dimensions)
+            || embedding.vector.iter().any(|value| !value.is_finite())
+        {
+            return Err(RagError::Provider(
+                "embedding provider returned an incompatible vector".to_string(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Provider-neutral seam implemented by the embedded Athanor module.
@@ -376,6 +612,43 @@ mod tests {
         }
     }
 
+    struct StubIngestProvider {
+        published: std::sync::Mutex<Option<(RagIngestRequest, Vec<RagChunk>)>>,
+    }
+
+    #[async_trait]
+    impl RagIngestionPort for StubIngestProvider {
+        async fn publish(
+            &self,
+            request: RagIngestRequest,
+            chunks: Vec<RagChunk>,
+        ) -> RagResult<RagIngestResult> {
+            let source = request.document.source.clone();
+            *self.published.lock().expect("ingest lock") = Some((request, chunks.clone()));
+            Ok(RagIngestResult { source, chunks })
+        }
+    }
+
+    struct StubEmbeddingProvider;
+
+    #[async_trait]
+    impl RagEmbeddingPort for StubEmbeddingProvider {
+        async fn embed(&self, request: RagEmbeddingRequest) -> RagResult<Vec<RagEmbedding>> {
+            Ok(request
+                .chunks
+                .iter()
+                .enumerate()
+                .map(|(ordinal, chunk)| RagEmbedding {
+                    chunk_id: chunk.chunk_id.clone(),
+                    source: chunk.source.clone(),
+                    model: request.model.clone(),
+                    dimensions: 3,
+                    vector: vec![ordinal as f32, 1.0, 2.0],
+                })
+                .collect())
+        }
+    }
+
     fn source() -> RagSourceRef {
         RagSourceRef {
             source_id: "athanor-doc".to_string(),
@@ -427,7 +700,7 @@ mod tests {
         assert_eq!(first, second);
         assert!(first.len() > 1);
         assert!(first.iter().all(|chunk| chunk.text.chars().count() <= 18));
-        assert_eq!(first[0].chunk_id, "athanor:doc-1:rev-1:0");
+        assert_eq!(first[0].chunk_id, "athanor-doc:doc-1:rev-1:0");
         assert!(first
             .iter()
             .all(|chunk| input.text[chunk.start_byte..chunk.end_byte].contains(&chunk.text)));
@@ -470,6 +743,92 @@ mod tests {
         assert!(matches!(
             chunk_document(&document("  "), RagChunkingPolicy::default()),
             Err(RagError::EmptyDocument)
+        ));
+    }
+
+    #[tokio::test]
+    async fn ingestion_coordinator_chunks_before_provider_publication() {
+        let provider = Arc::new(StubIngestProvider {
+            published: std::sync::Mutex::new(None),
+        });
+        let coordinator = RagIngestionCoordinator::new(provider.clone());
+        let request = RagIngestRequest {
+            tenant_id: Uuid::nil(),
+            document: document("alpha beta gamma delta epsilon"),
+            chunking: RagChunkingPolicy {
+                max_chars: 12,
+                overlap_chars: 2,
+            },
+        };
+
+        let result = coordinator
+            .ingest(request)
+            .await
+            .expect("ingestion succeeds");
+        assert!(result.chunks.len() > 1);
+        assert_eq!(result.source, source());
+        let published = provider
+            .published
+            .lock()
+            .expect("ingest lock")
+            .clone()
+            .expect("provider received publication");
+        assert_eq!(published.0.tenant_id, Uuid::nil());
+        assert_eq!(published.1, result.chunks);
+    }
+
+    #[tokio::test]
+    async fn embedding_coordinator_validates_and_preserves_chunk_identity() {
+        let chunks = chunk_document(
+            &document("alpha beta gamma delta"),
+            RagChunkingPolicy {
+                max_chars: 12,
+                overlap_chars: 2,
+            },
+        )
+        .expect("chunking succeeds");
+        let coordinator = RagEmbeddingCoordinator::new(Arc::new(StubEmbeddingProvider), 4)
+            .expect("embedding limit is valid");
+        let embeddings = coordinator
+            .embed(RagEmbeddingRequest {
+                tenant_id: Uuid::nil(),
+                model: "test-embedding".to_string(),
+                dimensions: Some(3),
+                chunks: chunks.clone(),
+            })
+            .await
+            .expect("embedding succeeds");
+
+        assert_eq!(embeddings.len(), chunks.len());
+        assert!(embeddings.iter().all(|embedding| {
+            embedding.model == "test-embedding"
+                && embedding.dimensions == 3
+                && embedding.vector.len() == 3
+        }));
+        assert_eq!(
+            embeddings
+                .iter()
+                .map(|embedding| embedding.chunk_id.clone())
+                .collect::<Vec<_>>(),
+            chunks
+                .iter()
+                .map(|chunk| chunk.chunk_id.clone())
+                .collect::<Vec<_>>()
+        );
+        assert!(matches!(
+            RagEmbeddingCoordinator::new(Arc::new(StubEmbeddingProvider), 0),
+            Err(RagError::InvalidLimit { max: 0 })
+        ));
+        assert!(matches!(
+            coordinator
+                .embed(RagEmbeddingRequest {
+                    tenant_id: Uuid::nil(),
+                    model: String::new(),
+                    dimensions: Some(3),
+                    chunks,
+                })
+                .await,
+            Err(RagError::EmptyEmbeddingModel)
         ));
     }
 

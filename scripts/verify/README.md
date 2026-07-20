@@ -677,6 +677,15 @@ also rejects direct construction of extracted owner SeaORM services outside
 `ModuleControlPlane`.
 
 ---
+### `verify-oci-registry-transport-policy.mjs`
+Guardrail for the digest-pinned OCI registry transport boundary. It requires a
+typed fail-closed policy covering redirects, cross-host authentication, TLS,
+proxy mode, request/retry/transfer/decompression bounds, and concurrency, and
+checks that the strict client applies every control exposed by the upstream
+OCI library. Deployment egress enforcement remains a separately verified
+operational boundary.
+
+---
 ### `verify-module-build-worker-isolation.mjs`
 Guardrail for the isolated untrusted module build worker. It rejects direct
 tenant-database, platform-storage, and general-secret dependencies or APIs in
@@ -685,7 +694,10 @@ environment, be killed on drop, and receive no database or credential values.
 It additionally rejects server-local module build worker/delivery paths and
 requires the independent dispatcher to use the mTLS remote worker after a
 readiness check. The worker must require and validate OCI job receipt evidence
-bound to the immutable build request and configured hardened runtime.
+bound to the immutable build request and configured hardened runtime. It also
+requires a bounded deployment isolation attestation matching the pinned
+runtime/image and the required unprivileged, host-isolated, resource-limited,
+ephemeral-job controls.
 
 ---
 ### `verify-module-lifecycle-bypass-usage.mjs`

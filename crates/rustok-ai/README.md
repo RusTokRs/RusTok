@@ -29,6 +29,10 @@ Current implementation includes:
   `aiRecentRunStreamEvents` query
 - bounded recent run history for diagnostics through `AiManagementService::list_recent_runs(...)`
   and the owner-owned `aiRecentRuns` query
+- provider-neutral RAG contracts for source-addressable documents, deterministic bounded
+  chunking, provider-owned ingestion publication, bounded embedding batches through the
+  existing Rig entrypoint, lexical/structural retrieval, citations, and data-only context
+  injection
 - owner-owned GraphQL query, mutation, subscription, and DTO surfaces under `graphql`, with
   host-specific role lookup supplied through `AiGraphqlRoleSlugProviderHandle`
 - host-neutral `AiHostRuntime` for GraphQL mutations, direct execution, and in-process MCP

@@ -49,6 +49,12 @@ sameArray(contract.script_crud_validation_contract?.rest_create, ['reject_duplic
 sameArray(contract.script_crud_validation_contract?.rest_update, ['invalidate_old_name_on_rename', 'validate_new_workspace_and_compile_entrypoint_before_save', 'validate_cron_trigger_before_save', 'invalidate_cache_on_workspace_change', 'require_expected_version'], 'REST update validation');
 sameArray(contract.script_crud_validation_contract?.graphql_create_update, ['require_admin', 'validate_cron_trigger', 'validate_workspace_and_compile_entrypoint_before_save', 'tenant_from_context_on_create', 'require_expected_version'], 'GraphQL create/update validation');
 sameArray(contract.execution_command_contract?.manual_run, ['require_expected_version', 'execute_loaded_snapshot'], 'manual execution revision contract');
+sameArray(contract.execution_command_contract?.mcp_manual_run, ['require_expected_version', 'execute_loaded_snapshot'], 'MCP manual execution revision contract');
+sameArray(contract.lifecycle_command_contract?.rest_activate_pause, ['require_expected_version'], 'REST lifecycle revision contract');
+sameArray(contract.lifecycle_command_contract?.rest_delete, ['require_expected_version'], 'REST delete revision contract');
+sameArray(contract.lifecycle_command_contract?.graphql_status_mutations, ['require_expected_version'], 'GraphQL lifecycle revision contract');
+sameArray(contract.lifecycle_command_contract?.graphql_delete, ['require_expected_version'], 'GraphQL delete revision contract');
+sameArray(contract.lifecycle_command_contract?.mcp_delete, ['require_expected_version'], 'MCP delete revision contract');
 if (contract.source_revision_ledger_contract?.persistence !== 'durable_immutable_source_snapshots') fail('source revision ledger persistence contract drift');
 if (contract.source_revision_ledger_contract?.lookup !== 'owner_scoped_by_script_id_and_revision') fail('source revision ledger lookup contract drift');
 if (contract.source_revision_ledger_contract?.listing !== 'owner_tenant_scoped_revision_ascending') fail('source revision ledger listing contract drift');
@@ -90,7 +96,7 @@ sameArray(contract.scheduler_hook_contract?.hook_phases, ['Before', 'After', 'On
 sameArray(contract.scheduler_hook_contract?.before_outcomes, ['Continue', 'Rejected', 'Error'], 'before hook outcomes');
 
 if (evidence.generated_from !== contractPath || evidence.status !== contract.status) fail('evidence header drift');
-sameArray(evidence.cases.map(c => c.name), ['script_list_pagination_status_contract', 'execution_history_transport_contract', 'documentation_sync_contract', 'sandbox_limits_timeout_contract', 'scheduler_hook_runtime_contract', 'script_crud_validation_contract', 'execution_command_revision_contract', 'source_revision_ledger_read_contract', 'workspace_payload_contract', 'review_revision_contract', 'test_command_revision_contract', 'release_stage_revision_contract'], 'evidence cases');
+sameArray(evidence.cases.map(c => c.name), ['script_list_pagination_status_contract', 'execution_history_transport_contract', 'documentation_sync_contract', 'sandbox_limits_timeout_contract', 'scheduler_hook_runtime_contract', 'script_crud_validation_contract', 'execution_command_revision_contract', 'lifecycle_command_revision_contract', 'source_revision_ledger_read_contract', 'workspace_payload_contract', 'review_revision_contract', 'test_command_revision_contract', 'release_stage_revision_contract'], 'evidence cases');
 
 const dto = read('crates/alloy/src/api/dto.rs');
 hasAll(dto, [
@@ -392,6 +398,21 @@ hasAll(controllers, [
   'validate_trigger(trigger)?',
   '.compile(&script.name, source, &mut scope)'
 ], 'host-composed REST CRUD validation');
+hasAll(dto, [
+  'pub struct ScriptRevisionRequest',
+  'pub expected_version: u32'
+], 'REST lifecycle revision request');
+hasAll(controllers, [
+  'Json(request): Json<ScriptRevisionRequest>',
+  'script.version != request.expected_version',
+  'ScriptError::RevisionConflict'
+], 'REST lifecycle revision validation');
+const apiHandlers = read('crates/alloy/src/api/handlers.rs');
+hasAll(apiHandlers, [
+  'Json(request): Json<ScriptRevisionRequest>',
+  'state.registry.delete(id, request.expected_version)',
+  'script.version != request.expected_version'
+], 'direct REST delete revision validation');
 
 const workspace = read('crates/alloy/src/model/workspace.rs');
 hasAll(workspace, [
@@ -448,6 +469,56 @@ hasAll(gqlMutation, [
   'input.expected_version',
   '.run_manual_snapshot(&script, params, None, user_id)'
 ], 'GraphQL manual execution revision validation');
+hasAll(gqlMutation, [
+  'fn ensure_expected_revision(script: &Script, expected_version: u32)',
+  'Script revision conflict: expected version',
+  'async fn activate_script',
+  'async fn pause_script',
+  'async fn disable_script',
+  'async fn archive_script',
+  'async fn reset_script_errors',
+  'expected_version: u32',
+  'ensure_expected_revision(&script, expected_version)?'
+], 'GraphQL lifecycle revision validation');
+hasAll(gqlMutation, [
+  'async fn delete_script',
+  'expected_version: u32',
+  '.delete(id, expected_version)'
+], 'GraphQL delete revision validation');
+const storageTraits = read('crates/alloy/src/storage/traits.rs');
+hasAll(storageTraits, [
+  'async fn delete(&self, id: ScriptId, expected_version: u32)'
+], 'owner delete CAS contract');
+const memoryStorage = read('crates/alloy/src/storage/memory.rs');
+hasAll(memoryStorage, [
+  'async fn delete(&self, id: ScriptId, expected_version: u32)',
+  'script.version != expected_version',
+  'ScriptError::RevisionConflict'
+], 'memory delete CAS');
+const seaOrmStorage = read('crates/alloy/src/storage/sea_orm.rs');
+hasAll(seaOrmStorage, [
+  'async fn delete(&self, id: ScriptId, expected_version: u32)',
+  'Column::Version.eq',
+  'ScriptError::RevisionConflict'
+], 'SeaORM delete CAS');
+const mcpAlloyTools = read('crates/rustok-mcp/src/alloy_tools.rs');
+hasAll(mcpAlloyTools, [
+  'pub struct DeleteScriptRequest',
+  'pub expected_version: u32',
+  'if script.version != request.expected_version',
+  '.delete(id, request.expected_version)'
+], 'MCP delete revision validation');
+hasAll(mcpAlloyTools, [
+  'pub workspace: AlloyWorkspace',
+  'pub expected_version: u32',
+  'validate_rhai_workspace()',
+  'run_manual_snapshot(&script, params, entity, None)'
+], 'MCP workspace and execution revision validation');
+hasAll(mcpAlloyTools, [
+  'pub struct UpdateScriptRequest',
+  'if script.version != request.expected_version',
+  'script.workspace = workspace'
+], 'MCP update revision validation');
 const orchestrator = read('crates/alloy/src/runner/orchestrator.rs');
 hasAll(orchestrator, [
   'pub async fn run_manual_snapshot',

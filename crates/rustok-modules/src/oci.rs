@@ -45,6 +45,66 @@ const OCI_REGISTRY_ADMISSION_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// its deployment-owned fifteen-minute credential lease.
 const OCI_REGISTRY_PUBLICATION_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
+/// Proxy handling mode for the registry egress boundary. The OCI client does
+/// not expose proxy hooks, so production deployments must enforce this mode
+/// at the dedicated egress boundary rather than inheriting process settings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OciRegistryProxyMode {
+    Disabled,
+    DeploymentBoundaryOnly,
+}
+
+/// Explicit registry transport and egress policy. Client-enforced fields are
+/// applied by `strict_oci_distribution_client_with_policy`; fields without
+/// upstream client hooks are deployment obligations and remain validated here
+/// so a weaker policy cannot be constructed accidentally.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OciRegistryTransportPolicy {
+    pub allow_redirects: bool,
+    pub allow_cross_host_auth: bool,
+    pub verify_tls: bool,
+    pub proxy_mode: OciRegistryProxyMode,
+    pub request_timeout_ms: u64,
+    pub max_retries: u8,
+    pub max_transfer_bytes: u64,
+    pub max_decompressed_bytes: u64,
+    pub max_concurrent_requests: usize,
+}
+
+impl OciRegistryTransportPolicy {
+    pub const fn strict() -> Self {
+        Self {
+            allow_redirects: false,
+            allow_cross_host_auth: false,
+            verify_tls: true,
+            proxy_mode: OciRegistryProxyMode::DeploymentBoundaryOnly,
+            request_timeout_ms: 300_000,
+            max_retries: 2,
+            max_transfer_bytes: 64 * 1024 * 1024,
+            max_decompressed_bytes: 64 * 1024 * 1024,
+            max_concurrent_requests: OCI_REGISTRY_MAX_CONCURRENT_REQUESTS,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.allow_redirects
+            || self.allow_cross_host_auth
+            || !self.verify_tls
+            || self.request_timeout_ms == 0
+            || self.request_timeout_ms > 900_000
+            || self.max_retries > 3
+            || self.max_transfer_bytes == 0
+            || self.max_decompressed_bytes == 0
+            || self.max_decompressed_bytes > self.max_transfer_bytes
+            || self.max_concurrent_requests == 0
+            || self.max_concurrent_requests > 4
+        {
+            return Err("OCI registry transport policy is not fail-closed".to_string());
+        }
+        Ok(())
+    }
+}
+
 /// Removes a private OCI staging file if its producer returns an error or is
 /// cancelled, including by the outer admission deadline.
 struct ArtifactStagingFile {
@@ -86,12 +146,23 @@ impl Drop for ArtifactStagingFile {
 /// intentionally left to the deployment egress boundary until the client is
 /// replaced by a transport with explicit hooks for those policies.
 pub fn strict_oci_distribution_client() -> Result<Client, String> {
+    strict_oci_distribution_client_with_policy(OciRegistryTransportPolicy::strict())
+}
+
+/// Constructs the OCI client after validating the complete transport policy.
+/// The upstream client currently exposes only a subset of these controls;
+/// timeout, redirect, proxy, retry, and decompression enforcement remains at
+/// the deployment-owned egress boundary.
+pub fn strict_oci_distribution_client_with_policy(
+    policy: OciRegistryTransportPolicy,
+) -> Result<Client, String> {
+    policy.validate()?;
     let mut config = ClientConfig::default();
     config.protocol = ClientProtocol::Https;
-    config.accept_invalid_certificates = false;
+    config.accept_invalid_certificates = !policy.verify_tls;
     config.platform_resolver = None;
-    config.max_concurrent_upload = OCI_REGISTRY_MAX_CONCURRENT_REQUESTS;
-    config.max_concurrent_download = OCI_REGISTRY_MAX_CONCURRENT_REQUESTS;
+    config.max_concurrent_upload = policy.max_concurrent_requests;
+    config.max_concurrent_download = policy.max_concurrent_requests;
     Client::try_from(config).map_err(|error| error.to_string())
 }
 
@@ -837,7 +908,8 @@ mod tests {
 
     use super::{
         cosign_signature_tag, ArtifactStagingFile, OciArtifactEvidenceKind,
-        OciDistributionArtifactRegistry, MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE,
+        OciDistributionArtifactRegistry, OciRegistryTransportPolicy,
+        MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE,
     };
 
     #[test]
@@ -897,5 +969,18 @@ mod tests {
         );
         assert!(cosign_signature_tag("sha512:abc").is_err());
         assert!(cosign_signature_tag(&format!("sha256:{}", "A".repeat(64))).is_err());
+    }
+
+    #[test]
+    fn strict_registry_transport_policy_rejects_weaker_egress_controls() {
+        let mut policy = OciRegistryTransportPolicy::strict();
+        assert!(policy.validate().is_ok());
+
+        policy.allow_redirects = true;
+        assert!(policy.validate().is_err());
+
+        policy = OciRegistryTransportPolicy::strict();
+        policy.max_decompressed_bytes = policy.max_transfer_bytes + 1;
+        assert!(policy.validate().is_err());
     }
 }

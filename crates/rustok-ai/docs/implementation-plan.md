@@ -177,6 +177,19 @@ The next RAG slice is planned as two deployment profiles behind one
   embedding providers or retrieval strategies; no `pgvector` installation is
   required.
 
+The provider-neutral layer now also exposes `RagDocument`,
+`RagChunkingPolicy`, `RagChunk`, and `chunk_document`. Chunk ids are stable for
+the same source/revision and ordinal, chunks are bounded by Unicode character
+count with overlap, and each chunk retains UTF-8 byte offsets into the source
+document. `RagIngestionCoordinator` validates and prepares those chunks before
+calling the provider-owned `RagIngestionPort`; the provider remains responsible
+for durable publication and vector indexes. `RagEmbeddingCoordinator` now
+validates bounded chunk batches, preserves chunk identity and dimensions, and
+delegates to `RagEmbeddingPort`; `RigRagEmbeddingProvider` adapts the existing
+Rig embedding entrypoint under the `server` feature. Athanor remains responsible
+for durable embedding/index publication, so document storage and vector
+ownership stay out of RusToK.
+
 The base AI schema remains provider-neutral. `rustok-search` keeps ownership
 of its own FTS/trigram read model; RAG does not reuse Search tables. Version
 0.1 uses embedded Athanor as the lexical and structural data plane. Semantic

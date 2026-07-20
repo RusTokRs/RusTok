@@ -63,6 +63,9 @@ errors instead of silently widening the operator query to all scripts. In-memory
 storage uses the same filter-first, name-ordered pagination contract as SeaORM
 so local runtime paths and tests do not depend on `HashMap` iteration order.
 REST and GraphQL create/update flows now share the hardened validation contract: cron triggers are validated before persistence, changed script code is compiled before save, cache invalidation happens on rename/code update, duplicate REST names map to conflict responses, and compilation/cron failures map to validation errors.
+Lifecycle status and deletion mutations also require the caller's
+`expected_version`; owner storage applies the same revision CAS before
+mutating or removing a script.
 
 The machine-readable static contract lives in
 `crates/alloy/contracts/alloy-runtime-contract.json`; its evidence matrix lives in

@@ -25,9 +25,14 @@ persistence, or Cargo execution.
 `rustok-module-build-worker` is the separate process/OCI-job boundary. It
 accepts only the immutable request, invokes a fixed image-owned job runner with
 a cleared environment, enforces the request deadline/output cap, and returns a
-validated terminal result. `rustok-modules` validates and persists that result
-against the queued request. Transport or worker failure has no server-local
-fallback.
+validated terminal result. Before becoming ready, the worker must load a
+bounded deployment-owned isolation attestation that matches the selected
+runtime and digest-pinned image and records the required unprivileged,
+host-isolated, resource-limited, ephemeral-job controls. This attestation is
+configuration-review evidence; deployment still has to demonstrate that the
+launcher enforces the corresponding OCI controls. `rustok-modules` validates
+and persists that result against the queued request. Transport or worker
+failure has no server-local fallback.
 
 The delivery host is a separate broker consumer. It owns broker
 acknowledgement and the database connection required to call the owner delivery
@@ -53,4 +58,6 @@ operational requirements.
 - The legacy server-local `rustok-build` executor cannot be retained as a
   fallback; its removal follows when remote dispatch and the worker deployment
   are wired.
-- Build execution and OCI-job isolation remain worker-owned follow-up work.
+- Build execution and OCI-job isolation remain worker-owned follow-up work;
+  readiness attestation is required before deployment evidence can close that
+  work.

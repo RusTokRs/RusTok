@@ -46,6 +46,11 @@ pub struct RunScriptRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ScriptRevisionRequest {
+    pub expected_version: u32,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ReviewScriptRequest {
     pub expected_version: u32,
     pub status: ReviewStatus,
@@ -259,7 +264,7 @@ pub struct StageReleaseResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::{RunScriptRequest, UpdateScriptRequest};
+    use super::{RunScriptRequest, ScriptRevisionRequest, UpdateScriptRequest};
 
     #[test]
     fn update_request_requires_an_expected_version() {
@@ -273,6 +278,14 @@ mod tests {
     fn run_request_requires_an_expected_version() {
         assert!(serde_json::from_str::<RunScriptRequest>(r#"{}"#).is_err());
         let request = serde_json::from_str::<RunScriptRequest>(r#"{"expected_version": 3}"#)
+            .expect("expected version should deserialize");
+        assert_eq!(request.expected_version, 3);
+    }
+
+    #[test]
+    fn lifecycle_request_requires_an_expected_version() {
+        assert!(serde_json::from_str::<ScriptRevisionRequest>(r#"{}"#).is_err());
+        let request = serde_json::from_str::<ScriptRevisionRequest>(r#"{"expected_version": 3}"#)
             .expect("expected version should deserialize");
         assert_eq!(request.expected_version, 3);
     }

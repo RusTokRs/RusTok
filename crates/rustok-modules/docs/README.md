@@ -42,11 +42,15 @@ never enter module contracts, descriptors, build requests, runner output, or
 artifact persistence.
 
 `strict_oci_distribution_client` configures the enforceable subset of registry
-transport policy: HTTPS only, certificate validation, no image-index fallback,
-and one concurrent upload/download. The current upstream OCI client does not
-expose redirect or proxy hooks, so deployment egress must reject cross-host
-redirects and apply its proxy policy; that remaining transport replacement is
-tracked in the central plan.
+transport policy through `OciRegistryTransportPolicy`: HTTPS only, certificate
+validation, no redirects or cross-host authentication, deployment-boundary-only
+proxy handling, bounded request/retry/transfer/decompression ceilings, no
+image-index fallback, and one concurrent upload/download. The client applies
+the controls exposed by `oci-distribution`; the deployment egress boundary
+must enforce the remaining redirect, proxy, retry, timeout, and decompression
+controls because the upstream client has no corresponding hooks. A weaker
+policy is rejected before client construction, and deployment verification of
+those boundary controls remains tracked in the central plan.
 
 During admission, `ModuleInstaller` verifies the OCI package and places its
 payload in an `ArtifactBlobStore` under the descriptor payload digest.

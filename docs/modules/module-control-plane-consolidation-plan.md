@@ -734,7 +734,7 @@ adapter and must not be used as artifact identity or durable policy state.
 
 ### 2.4 Facade Shape
 
-- [ ] Introduce a single facade with explicit subservices rather than one large
+- [x] Introduce a single facade with explicit subservices rather than one large
   implementation object:
   - `CatalogService`;
   - `ReleaseService`;
@@ -900,20 +900,22 @@ adapter and must not be used as artifact identity or durable policy state.
   compensation, or settings persistence. The server supplies a host-resolved
   settings schema only; the writer derives active identity, Core status, and
   effective enablement before it persists owner-normalized settings.
-- [ ] Replace server error taxonomies with transport mappings of owner errors.
+- [x] Replace server error taxonomies with transport mappings of owner errors.
   The marketplace registry HTTP adapter now maps the complete
   `ModuleGovernanceError` contract at its transport boundary: malformed owner
   commands are `400`, authority-reserved operations are `403`, missing owner
   aggregates are `404`, and state/idempotency/precondition failures are `409`.
   Owner storage faults remain a content-free `500`; server-local governance
   errors remain only for host authorization and storage-adapter concerns.
-- [ ] Delete superseded server models/helpers after each atomic caller cutover.
+- [x] Delete superseded server models/helpers after each atomic caller cutover.
   The registry catalog adapter and router now expose only `/v1/catalog` and
   `/v1/catalog/{slug}`. The former `/catalog` compatibility routes, client
   fallback probes, and helper exports were removed rather than preserving a
-  dual transport path. The superseded server-local publish-request translation
-  upsert was also removed: publication-request translations are now written
-  only by the owner create/publication transactions.
+  dual transport path. Catalog generation now fails closed on an invalid active
+  composition instead of silently substituting the builtin manifest. The
+  superseded server-local publish-request translation upsert was also removed:
+  publication-request translations are now written only by the owner
+  create/publication transactions.
 
 ### 2.6 Write-Path Guardrail
 
@@ -1380,7 +1382,7 @@ untrusted source inside `apps/server` or the runtime sandbox process.
 
 ### 4.1 Ownership and Deployment
 
-- [ ] Keep build request/result/domain orchestration in `rustok-modules`.
+- [x] Keep build request/result/domain orchestration in `rustok-modules`.
   The immutable request/result protocol and a tenant-RLS durable submission
   queue now live there. Submission is tenant/project/idempotent, writes
   `module.build.queued` through the transactional outbox, and cannot invoke a
@@ -1467,14 +1469,22 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   bounded immutable-request-matching OCI receipt, including its opaque job ID,
   fixed image digest, build attempt, dependency-lock digest, toolchain digest,
   WIT digest, and a domain-separated digest of the exact request JSON delivered
-  to the launcher, before the worker accepts its terminal result.
+  to the launcher, before the worker accepts its terminal result. Startup and
+  readiness also require the deployment-owned
+  `RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION` file: a bounded, regular JSON
+  attestation must match the fixed runtime/image and prove unprivileged,
+  host-mount-free, socket-free, host-network/PID-isolated, resource-limited,
+  ephemeral-job settings. This is configuration-review evidence and does not
+  replace deployment evidence that the launcher enforces the corresponding
+  controls.
   Deployment evidence that the launcher actually creates the hardened job
   remains required before this item can close.
 - [ ] The worker has no tenant database access and no general platform secrets.
   `verify-module-build-worker-isolation.mjs` rejects direct tenant-database,
   platform-storage, and general-secret dependencies or APIs in the worker crate
   and verifies that the untrusted runner is environment-cleared without
-  database or credential forwarding. Deployment isolation evidence remains
+  database or credential forwarding. The worker also fails closed without the
+  bounded isolation attestation, while deployment isolation evidence remains
   required before this item can close.
 
 ### 4.2 Build Request Contract
@@ -1662,9 +1672,15 @@ trust policy before admission.
   registry username/password environment variables.
 - [ ] Define registry redirect, cross-host auth, TLS, proxy, timeout, retry,
   maximum-size, and decompression policies explicitly. The enforced client
-  subset now permits HTTPS only, rejects invalid certificates, disables the
-  platform resolver, serializes uploads/downloads, and is the only public
+  subset now uses the typed `OciRegistryTransportPolicy`: HTTPS only, verified
+  TLS, redirects and cross-host authentication disabled, deployment-boundary
+  proxy mode, bounded request/retry/transfer/decompression ceilings, disabled
+  platform resolver, and serialized uploads/downloads. A weaker policy is
+  rejected before client construction and the policy is the only public
   construction path for the distribution reader and publisher. Registry
+  transport source is covered by
+  `verify-oci-registry-transport-policy.mjs`; deployment egress still must
+  provide the corresponding redirect/proxy/retry/decompression enforcement.
   references are host/repository/digest identities rather than URLs, and the
   publisher receives credentials only after the worker has obtained a
   repository-bound lease. The current `oci-distribution` client exposes no
@@ -1871,6 +1887,17 @@ evolution while sharing the production sandbox and module release contracts.
   payload media type is retained by admission and runtime resolution, so a
   multi-file release cannot be reinterpreted as a single-source artifact after
   publication.
+- Alloy lifecycle status mutations now require the expected revision on both
+  REST activate/pause and GraphQL activate/pause/disable/archive/reset-errors
+  transports, so stale status writes fail closed with a revision conflict.
+- Alloy deletion now also requires the expected revision on direct REST,
+  host-composed REST, and GraphQL transports; owner storage applies the same
+  version predicate atomically before removing the script.
+- The owner-owned MCP delete tool carries the same expected revision and uses
+  the owner CAS path, so management transport cannot bypass stale-write guards.
+- MCP Alloy create/update/run tools now use the canonical workspace contract;
+  update and manual execution require expected revisions and pin the loaded
+  workspace snapshot.
 - [ ] Reject execution/publish commands for stale revisions.
 - [ ] Execute validation, tests, manual runs, hooks, schedules, and preview
   scenarios through `SandboxRuntime`.

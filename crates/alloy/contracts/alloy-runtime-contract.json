@@ -140,6 +140,30 @@
     "manual_run": [
       "require_expected_version",
       "execute_loaded_snapshot"
+    ],
+    "mcp_manual_run": [
+      "require_expected_version",
+      "execute_loaded_snapshot"
+    ]
+  },
+  "lifecycle_command_contract": {
+    "rest_activate_pause": [
+      "require_expected_version"
+    ],
+    "rest_delete": [
+      "require_expected_version"
+    ],
+    "graphql_status_mutations": [
+      "require_expected_version"
+    ],
+    "graphql_delete": [
+      "require_expected_version"
+    ],
+    "mcp_delete": [
+      "require_expected_version"
+    ],
+    "mcp_update": [
+      "require_expected_version"
     ]
   },
   "source_revision_ledger_contract": {

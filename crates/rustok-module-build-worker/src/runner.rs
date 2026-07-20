@@ -36,6 +36,7 @@ use crate::{
 
 const MAX_PUBLICATION_WINDOW: Duration = Duration::from_secs(14 * 60);
 const CREDENTIAL_LEASE_SAFETY_MARGIN: Duration = Duration::from_secs(30);
+const MAX_ISOLATION_ATTESTATION_BYTES: u64 = 16 * 1024;
 
 /// Deployment-owned OCI job runtime required for untrusted build execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,6 +83,21 @@ pub struct OciJobBuildWorker {
     registry_credentials: Arc<dyn RegistryCredentialBroker>,
     signer: CosignArtifactSigner,
     request_timeout: Duration,
+    isolation_attestation: Option<OciJobIsolationAttestation>,
+}
+
+#[derive(Debug, Clone)]
+struct OciJobIsolationAttestation {
+    runtime: String,
+    image_digest: String,
+    privileged: bool,
+    host_mounts: bool,
+    container_socket: bool,
+    host_pid: bool,
+    host_network: bool,
+    network_mode: String,
+    resource_limits: bool,
+    ephemeral_job: bool,
 }
 
 impl OciJobBuildWorker {
@@ -134,7 +150,16 @@ impl OciJobBuildWorker {
             .map_err(|error| error.to_string())?;
         let registry_credentials = Arc::new(CommandRegistryCredentialBroker::from_env()?);
         let signer = CosignArtifactSigner::from_env()?;
-        Self::new(
+        let isolation_attestation_path = std::env::var("RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION")
+            .map_err(|_| {
+                "RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION must be configured".to_string()
+            })?;
+        let isolation_attestation = load_isolation_attestation(
+            &isolation_attestation_path,
+            job_runtime,
+            &job_image_digest,
+        )?;
+        Self::new_with_attestation(
             job_launcher_path,
             job_runtime,
             job_image_digest,
@@ -148,6 +173,7 @@ impl OciJobBuildWorker {
             registry_credentials,
             signer,
             request_timeout,
+            Some(isolation_attestation),
         )
     }
 
@@ -165,6 +191,40 @@ impl OciJobBuildWorker {
         registry_credentials: Arc<dyn RegistryCredentialBroker>,
         signer: CosignArtifactSigner,
         request_timeout: Duration,
+    ) -> Result<Self, String> {
+        Self::new_with_attestation(
+            job_launcher_path,
+            job_runtime,
+            job_image_digest,
+            workdir,
+            source_root,
+            cargo_path,
+            cargo_home,
+            dependency_materializer,
+            wasm_tools_path,
+            publication_target,
+            registry_credentials,
+            signer,
+            request_timeout,
+            None,
+        )
+    }
+
+    fn new_with_attestation(
+        job_launcher_path: PathBuf,
+        job_runtime: OciJobRuntime,
+        job_image_digest: String,
+        workdir: PathBuf,
+        source_root: PathBuf,
+        cargo_path: PathBuf,
+        cargo_home: PathBuf,
+        dependency_materializer: Option<OciScopedDependencyMaterializer>,
+        wasm_tools_path: PathBuf,
+        publication_target: OciArtifactPublicationTarget,
+        registry_credentials: Arc<dyn RegistryCredentialBroker>,
+        signer: CosignArtifactSigner,
+        request_timeout: Duration,
+        isolation_attestation: Option<OciJobIsolationAttestation>,
     ) -> Result<Self, String> {
         if !job_launcher_path.is_absolute()
             || !workdir.is_absolute()
@@ -209,6 +269,7 @@ impl OciJobBuildWorker {
             registry_credentials,
             signer,
             request_timeout,
+            isolation_attestation,
         })
     }
 }
@@ -761,8 +822,96 @@ impl ModuleBuildWorkerReadiness for OciJobBuildWorker {
                     OciJobRuntime::Gvisor | OciJobRuntime::Kata
                 )
                 && is_sha256_digest(&self.job_image_digest)
+                && self
+                    .isolation_attestation
+                    .as_ref()
+                    .is_some_and(|attestation| {
+                        attestation.matches(self.job_runtime, &self.job_image_digest)
+                    })
         })
     }
+}
+
+impl OciJobIsolationAttestation {
+    fn matches(&self, runtime: OciJobRuntime, image_digest: &str) -> bool {
+        self.runtime == runtime.as_str()
+            && self.image_digest == image_digest
+            && !self.privileged
+            && !self.host_mounts
+            && !self.container_socket
+            && !self.host_pid
+            && !self.host_network
+            && self.network_mode == "none"
+            && self.resource_limits
+            && self.ephemeral_job
+    }
+}
+
+fn load_isolation_attestation(
+    path: &str,
+    runtime: OciJobRuntime,
+    image_digest: &str,
+) -> Result<OciJobIsolationAttestation, String> {
+    let path = Path::new(path);
+    if !path.is_absolute() {
+        return Err("RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION must be absolute".to_string());
+    }
+    let metadata = std::fs::symlink_metadata(path).map_err(|error| {
+        format!("module build isolation attestation cannot be inspected: {error}")
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("module build isolation attestation must be a regular file".to_string());
+    }
+    if metadata.len() > MAX_ISOLATION_ATTESTATION_BYTES {
+        return Err("module build isolation attestation exceeds its size limit".to_string());
+    }
+    let bytes = std::fs::read(path)
+        .map_err(|error| format!("module build isolation attestation cannot be read: {error}"))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("module build isolation attestation is invalid JSON: {error}"))?;
+    let protocol_version = value
+        .get("protocol_version")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            "module build isolation attestation protocol_version is missing".to_string()
+        })?;
+    let attestation = OciJobIsolationAttestation {
+        runtime: required_string(&value, "runtime")?,
+        image_digest: required_string(&value, "image_digest")?,
+        privileged: required_bool(&value, "privileged")?,
+        host_mounts: required_bool(&value, "host_mounts")?,
+        container_socket: required_bool(&value, "container_socket")?,
+        host_pid: required_bool(&value, "host_pid")?,
+        host_network: required_bool(&value, "host_network")?,
+        network_mode: required_string(&value, "network_mode")?,
+        resource_limits: required_bool(&value, "resource_limits")?,
+        ephemeral_job: required_bool(&value, "ephemeral_job")?,
+    };
+    if protocol_version != 1
+        || !is_sha256_digest(&attestation.image_digest)
+        || !attestation.matches(runtime, image_digest)
+    {
+        return Err(
+            "module build isolation attestation does not match the configured hardened job"
+                .to_string(),
+        );
+    }
+    Ok(attestation)
+}
+
+fn required_string(value: &serde_json::Value, key: &str) -> Result<String, String> {
+    value
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| format!("module build isolation attestation {key} is missing"))
+}
+
+fn required_bool(value: &serde_json::Value, key: &str) -> Result<bool, String> {
+    value
+        .get(key)
+        .and_then(serde_json::Value::as_bool)
+        .ok_or_else(|| format!("module build isolation attestation {key} is missing"))
 }
 
 async fn verify_oci_job_receipt(

@@ -42,8 +42,9 @@ Remaining:
   compile-time CRUD validation and internal unit tests, never production code
   execution;
 - tenant-scoped `SeaOrmStorage` now applies the tenant predicate to every
-  single-script read, save, delete, status, and error path, and rejects a
-  cross-tenant save as `NotFound`;
+  single-script read, save, delete, status, and error path, applies an atomic
+  version predicate to deletion, and rejects a cross-tenant save as
+  `NotFound`;
 - `ScriptRegistry::save` now treats the stored script version as the expected
   revision and uses a durable revision predicate for SeaORM updates. Every
   storage mutation advances that revision, and stale saves fail as
@@ -54,10 +55,11 @@ Remaining:
   new revision commits. Owner storage exposes tenant-scoped lookup by
   `(script_id, revision)` and revision-ascending history without SQL bypass;
 - entity/parameter semantics must become request-scoped Alloy extensions;
-- REST and GraphQL update commands now require the caller's expected revision;
-  manual-run commands use the same requirement and execute the loaded snapshot
-  without a second registry lookup. Idempotency, workspace-level command
-  revisions, review, and publication orchestration still need owner contracts;
+- REST and GraphQL update, lifecycle, and deletion commands now require the
+  caller's expected revision; manual-run commands use the same requirement and
+  execute the loaded snapshot without a second registry lookup. Idempotency,
+  workspace-level command revisions, review, and publication orchestration still
+  need owner contracts;
 - marketplace release import/fork needs a complete persisted workflow;
 - AI-assisted Rust/WIT authoring must use the isolated build worker;
 - operator draft-review surfaces need canonical transport and audit evidence.
@@ -124,6 +126,16 @@ Remaining:
 - [x] Require an explicit expected revision for REST and GraphQL draft updates.
 - [x] Require the same revision for REST and GraphQL manual execution and run
   the loaded source snapshot rather than a second name lookup.
+- [x] Require the expected revision for REST activate/pause commands and all
+  GraphQL status mutations (activate, pause, disable, archive, and reset
+  errors); stale lifecycle writes fail with a revision conflict.
+- [x] Require the expected revision for REST and GraphQL deletion, with the
+  owner storage applying an atomic version predicate before removing a script.
+- [x] Require the same expected revision in the MCP delete tool so management
+  transport cannot bypass owner deletion CAS.
+- [x] Keep MCP Alloy create/update responses on the canonical workspace model;
+  MCP update and manual-run tools require the expected revision and execute the
+  loaded workspace snapshot.
 - Durable review decisions now bind an exact source digest, expected current
   revision, policy revision, reviewer identity, reason, and request fingerprint.
   The owner storage replays only an identical idempotency key/fingerprint pair

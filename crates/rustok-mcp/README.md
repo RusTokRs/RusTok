@@ -62,10 +62,13 @@ Available when `AlloyMcpState` is configured:
 - `alloy_list_scripts`
 - `alloy_get_script`
 - `alloy_create_script`
-- `alloy_update_script`
-- `alloy_delete_script`
+- `alloy_update_script` requires `expected_version` and updates the canonical
+  Alloy workspace.
+- `alloy_delete_script` requires the caller's `expected_version` and rejects
+  stale deletion requests.
 - `alloy_validate_script`
-- `alloy_run_script`
+- `alloy_run_script` requires `expected_version` and executes that immutable
+  workspace revision.
 - `alloy_scaffold_module`
 - `alloy_review_module_scaffold`
 - `alloy_apply_module_scaffold`
