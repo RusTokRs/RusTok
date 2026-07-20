@@ -33,8 +33,9 @@ jobs:
           from pathlib import Path
           patch = Path('scripts/maintenance/pin-migration-actions.py')
           source = patch.read_text()
-          old = 'matchAll(/^\\s*uses:\\s*'
-          new = 'matchAll(/^\\s*(?:-\\s*)?uses:\\s*'
+          double_slash = chr(92) * 2
+          old = f'matchAll(/{double_slash}s*uses:{double_slash}s*'
+          new = f'matchAll(/{double_slash}s*(?:-{double_slash}s*)?uses:{double_slash}s*'
           if source.count(old) != 1:
               raise SystemExit('temporary pin parser marker drifted')
           patch.write_text(source.replace(old, new))
