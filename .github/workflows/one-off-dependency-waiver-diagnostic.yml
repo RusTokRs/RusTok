@@ -1,0 +1,51 @@
+name: One-off Dependency Waiver Diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-off-dependency-waiver-diagnostic.yml
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  DIAGNOSTIC_ISSUE: 1851
+
+jobs:
+  inspect:
+    if: >-
+      github.event.head_commit.message == 'test(ci): inspect temporary dependency waivers'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: main
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+      - name: Capture locked dependency evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            printf 'Locked dependency waiver evidence for `%s`.\n\n' "$GITHUB_SHA"
+            printf '### Cargo.lock package names\n\n```text\n'
+            grep -nE '^name = "(atomic-polyfill|rsa)"$' Cargo.lock || true
+            printf '```\n\n### atomic-polyfill inverse tree\n\n```text\n'
+            cargo tree --locked -i atomic-polyfill --workspace --all-features 2>&1 || true
+            printf '```\n\n### rsa inverse tree\n\n```text\n'
+            cargo tree --locked -i rsa --workspace --all-features 2>&1 || true
+            printf '```\n\n### Locked metadata\n\n```text\n'
+            cargo metadata --locked --no-deps --format-version 1 >/dev/null
+            printf 'cargo metadata --locked: success\n```\n'
+          } > /tmp/dependency-waiver-evidence.md
+          gh issue comment "$DIAGNOSTIC_ISSUE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/dependency-waiver-evidence.md
