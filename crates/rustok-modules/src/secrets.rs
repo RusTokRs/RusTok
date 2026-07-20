@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use async_trait::async_trait;
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_sandbox::{
@@ -959,6 +961,13 @@ mod tests {
         async fn authorize_secret_handle(
             &self,
             _request: &ArtifactSecretHandleRequest,
+        ) -> Result<(), ArtifactSecretError> {
+            Ok(())
+        }
+
+        async fn authorize_secret_use(
+            &self,
+            _request: &ArtifactSecretUseRequest,
         ) -> Result<(), ArtifactSecretError> {
             Ok(())
         }

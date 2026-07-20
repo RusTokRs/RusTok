@@ -8,7 +8,6 @@ use flex::cache_generation::{
 };
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement, TransactionTrait,
-    TryGetable,
 };
 use sea_orm_migration::SchemaManager;
 

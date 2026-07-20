@@ -6707,7 +6707,7 @@ fn validation_stage_transition_allowed(
     })
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum ModuleGovernanceError {
     #[error("release yank requires slug, version, reason, and actor principal")]
     InvalidYankCommand,

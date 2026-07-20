@@ -927,6 +927,8 @@ mod tests {
         ArtifactPayloadKind, OciArtifactReference, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
     };
 
+    use uuid::Uuid;
+
     use super::{
         cosign_signature_tag, ArtifactStagingFile, OciArtifactEvidenceKind,
         OciDistributionArtifactRegistry, OciRegistryTransportPolicy,

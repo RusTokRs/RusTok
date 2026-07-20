@@ -205,7 +205,7 @@ fn validate_identifier(value: &str) -> Result<(), DbErr> {
 mod tests {
     use super::*;
     use sea_orm_migration::sea_orm::{
-        Database, DatabaseConnection, Statement, TransactionTrait, TryGetable,
+        Database, DatabaseConnection, Statement, TransactionTrait,
     };
 
     const OWNERS: [(&str, &str); 4] = [
@@ -232,7 +232,7 @@ mod tests {
         let generation: i64 = row
             .try_get("", "generation")
             .expect("generation should decode");
-        u64::try_from(generation).expect("generation should remain non-negative")
+        std::convert::TryFrom::try_from(generation).expect("generation should remain non-negative")
     }
 
     async fn create_owner_tables(db: &DatabaseConnection) {
