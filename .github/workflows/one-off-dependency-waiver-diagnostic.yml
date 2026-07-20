@@ -17,7 +17,7 @@ env:
 jobs:
   inspect:
     if: >-
-      github.event.head_commit.message == 'test(ci): inspect temporary dependency waivers'
+      github.event.head_commit.message == 'test(ci): capture compact dependency waiver paths'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -28,24 +28,38 @@ jobs:
         run: |
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
-      - name: Capture locked dependency evidence
+      - name: Capture compact locked dependency paths
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          capture_tree() {
+            local package="$1"
+            local output="/tmp/${package}.tree"
+            local error="/tmp/${package}.error"
+            set +e
+            cargo tree --locked -i "$package" --workspace --all-features \
+              >"$output" 2>"$error"
+            local status=$?
+            set -e
+            printf 'exit=%s\n' "$status"
+            if [ -s "$output" ]; then
+              cat "$output"
+            else
+              tail -n 30 "$error"
+            fi
+          }
           {
-            printf 'Locked dependency waiver evidence for `%s`.\n\n' "$GITHUB_SHA"
+            printf 'Compact dependency waiver evidence for `%s`.\n\n' "$GITHUB_SHA"
             printf '### Cargo.lock package names\n\n```text\n'
             grep -nE '^name = "(atomic-polyfill|rsa)"$' Cargo.lock || true
             printf '```\n\n### atomic-polyfill inverse tree\n\n```text\n'
-            cargo tree --locked -i atomic-polyfill --workspace --all-features 2>&1 || true
+            capture_tree atomic-polyfill
             printf '```\n\n### rsa inverse tree\n\n```text\n'
-            cargo tree --locked -i rsa --workspace --all-features 2>&1 || true
-            printf '```\n\n### Locked metadata\n\n```text\n'
-            cargo metadata --locked --no-deps --format-version 1 >/dev/null
-            printf 'cargo metadata --locked: success\n```\n'
-          } > /tmp/dependency-waiver-evidence.md
+            capture_tree rsa
+            printf '```\n'
+          } > /tmp/dependency-waiver-compact.md
           gh issue comment "$DIAGNOSTIC_ISSUE" \
             --repo "$GITHUB_REPOSITORY" \
-            --body-file /tmp/dependency-waiver-evidence.md
+            --body-file /tmp/dependency-waiver-compact.md
