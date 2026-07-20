@@ -23,7 +23,8 @@ env:
 
 jobs:
   harden:
-    if: github.event.head_commit.message == 'fix(ci): validate cache clock test call sites'
+    if: >-
+      github.event.head_commit.message == 'fix(ci): run final cache clock validation'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
