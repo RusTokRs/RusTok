@@ -18,6 +18,7 @@ pub struct CommerceMutation(
     pub pricing::CommercePricingMutation,
     pub provider_operations::CommerceProviderMutation,
     pub reconciliation::CommerceReconciliationMutation,
+    pub super::marketplace_financial::MarketplaceFinancialMutation,
 );
 
 #[cfg(test)]
@@ -30,7 +31,7 @@ mod tests {
     #[test]
     fn provider_operations_remain_in_merged_schema() {
         let schema = Schema::build(
-            CommerceQuery,
+            CommerceQuery::default(),
             CommerceMutation::default(),
             EmptySubscription,
         )
@@ -51,6 +52,9 @@ mod tests {
             "reopenFulfillment",
             "reshipFulfillment",
             "cancelFulfillment",
+            "retryMarketplaceFinancialOperation",
+            "retryMarketplacePaidEvent",
+            "runMarketplaceFinancialRecoverySweep",
         ] {
             assert!(
                 sdl.contains(field),
