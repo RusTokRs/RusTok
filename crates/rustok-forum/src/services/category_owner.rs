@@ -6,11 +6,12 @@ use uuid::Uuid;
 use rustok_core::SecurityContext;
 
 use crate::dto::{
-    bounded_forum_read_limit, CategoryListItem, CategoryTreeQuery, CategoryTreeResponse,
-    MoveCategoryInput, MoveCategoryResponse, ReorderCategorySiblingsInput,
-    ReorderCategorySiblingsResponse, MAX_FORUM_READ_LIMIT,
+    bounded_forum_read_limit, CategoryListItem, CategoryResponse, CategoryTreeQuery,
+    CategoryTreeResponse, MoveCategoryInput, MoveCategoryResponse,
+    ReorderCategorySiblingsInput, ReorderCategorySiblingsResponse, UpdateCategoryInput,
+    MAX_FORUM_READ_LIMIT,
 };
-use crate::error::ForumResult;
+use crate::error::{ForumError, ForumResult};
 
 use super::{category, category_command, category_tree};
 
@@ -58,6 +59,24 @@ impl CategoryService {
     ) -> ForumResult<ReorderCategorySiblingsResponse> {
         self.commands
             .reorder_siblings(tenant_id, security, input)
+            .await
+    }
+
+    /// Update category metadata without bypassing the atomic placement commands.
+    pub async fn update(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        security: SecurityContext,
+        input: UpdateCategoryInput,
+    ) -> ForumResult<CategoryResponse> {
+        if input.position.is_some() {
+            return Err(ForumError::Validation(
+                "Category position must be changed through move/reorder commands".to_string(),
+            ));
+        }
+        self.inner
+            .update(tenant_id, category_id, security, input)
             .await
     }
 
