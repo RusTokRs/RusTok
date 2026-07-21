@@ -4,7 +4,9 @@ use uuid::Uuid;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::{CreateTopicInput, ListTopicsFilter, TopicListItem, TopicResponse, UpdateTopicInput};
+use crate::dto::{
+    CreateTopicInput, ListTopicsFilter, TopicListItem, TopicResponse, UpdateTopicInput,
+};
 use crate::entities::forum_topic;
 use crate::error::ForumResult;
 use crate::state_machine::TopicStatus;
