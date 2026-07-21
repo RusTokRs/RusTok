@@ -12,10 +12,12 @@ The host-level path limiter protects every `/api/*` HTTP request, including Blog
 REST routes and `/api/graphql`. Blog adds a field-aware GraphQL policy through a
 Blog-owned rate-limit port backed by the host `SharedApiRateLimiter`. Anonymous
 actor keys consume only the host-resolved trusted client IP; raw forwarded
-headers are not interpreted inside the Blog module. An executable async-graphql
-integration harness exercises the module policy and structured errors without
-claiming mounted Redis or HTTP `Retry-After` evidence. The real host memory
-adapter also has executable mapping tests for exceeded and disabled modes.
+headers are not interpreted inside the Blog module. The policy now puts the same
+retry value into the GraphQL `retryAfter` extension and HTTP `Retry-After`
+header. The host GraphQL controller preserves async-graphql response headers
+while retaining JSON content type, so the header is no longer lost at the Axum
+boundary. Executable module-policy, host-memory-adapter, and controller-handoff
+test code is present; mounted Redis execution remains user-owned.
 
 The search lifecycle is implemented in `rustok-search`: Blog events upsert or
 delete `blog_post` search documents, and `ReindexRequested` supports both one
@@ -26,13 +28,14 @@ missing-post cleanup, module disable/enable cleanup, and cross-tenant rebuild
 isolation. Table discovery follows the same active PostgreSQL `search_path` as
 the projector SQL rather than hard-coding `public`.
 
-Canonical Blog-result navigation is now Search-owned.
+Canonical Blog-result navigation is Search-owned.
 `canonical_search_result_url` requires `source_module=blog` and
 `entity_type=blog_post`, reads the owner-projected slug, validates it with a
-bounded fail-closed policy, and emits `/modules/blog?slug=...` before GraphQL
-serialization. The Rust Search storefront still provides the same derivation
-only as an idempotent compatibility fallback for older native payloads and never
-overwrites a backend URL.
+bounded fail-closed policy, and emits `/modules/blog?slug=...` before GraphQL or
+storefront-native serialization. The Rust Search storefront still provides the
+same derivation only as an idempotent compatibility fallback and never
+overwrites a backend URL. The admin native Search mapper is the final
+transport-local URL switch and is forbidden from defining another Blog route.
 
 Public comment listing uses a Comments-owned approved-only projection. Pending,
 spam, trash, and deleted comments cannot leave the owner boundary. The selected
@@ -50,20 +53,25 @@ selected post changes.
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
 - Structural shape: `core_transport_ui`.
-- Load-protection status: `implementation_ready`, mounted runtime evidence pending.
+- Load-protection status: `implementation_ready`, mounted Redis evidence pending.
 - Rate-limit harness status: `executable_no_compile`; the user owns execution.
+- HTTP handoff status: implemented in source; `async_graphql::Response` headers
+  are propagated into the Axum response and covered by executable test code.
 - Search Blog projection harness status: `executable_no_run`; PostgreSQL execution
   remains user-owned.
-- Search canonical URL status: `source_verified_no_compile`; core and GraphQL
-  ownership are implemented, native compatibility cleanup remains pending.
+- Search canonical URL status: `source_verified_no_compile`; core, GraphQL, and
+  storefront-native ownership are implemented. Admin-native cutover and final
+  compatibility-fallback removal remain.
 - REST protection is host-owned; Blog does not instantiate a second limiter or
   duplicate the `/api/*` middleware counter.
 - GraphQL protection is split into a Blog-owned policy/port and a host adapter
   over the configured memory/Redis API limiter.
 - The integration harness covers allowed reads, exceeded reads, backend failure,
   authenticated write identity, unauthorized-write bypass, trusted client IP,
-  structured GraphQL extensions, document-wide fail-closed accounting, and the
-  `moderate_comment` manage surface.
+  structured GraphQL extensions, matching `Retry-After`, document-wide
+  fail-closed accounting, and the `moderate_comment` manage surface.
+- Backend-unavailable and unauthorized-write responses do not advertise
+  `Retry-After`; only a concrete exceeded outcome does.
 - Mutation gates are aligned: update uses `blog_posts:update`; publish,
   unpublish, and archive use `blog_posts:publish`; comment moderation uses
   `blog_posts:manage`.
@@ -83,8 +91,9 @@ selected post changes.
 - Search Blog-result navigation is owned by the normalized Search result policy,
   requires the Blog source/entity pair, validates the projected slug, and fails
   closed for malformed or spoofed data.
-- GraphQL Search projection delegates to the shared URL policy. Storefront
-  post-processing is compatibility-only and preserves backend URLs.
+- GraphQL and storefront-native Search projections delegate to the shared URL
+  policy. Storefront post-processing is compatibility-only and preserves backend
+  URLs.
 - Search projection table discovery, source reads, and destination writes share
   one connection `search_path`; a focused verifier rejects a return to
   `public.blog_*` table probes.
@@ -103,6 +112,7 @@ selected post changes.
   `crates/rustok-blog/tests/graphql_rate_limit_policy_test.rs`,
   `crates/rustok-search/tests/blog_ingestion_contract_test.rs`,
   `crates/rustok-search/tests/blog_projection_postgres_test.rs`,
+  `scripts/verify/verify-blog-graphql-rate-limit.mjs`,
   `scripts/verify/verify-blog-fba.mjs`,
   `scripts/verify/verify-blog-admin-boundary.mjs`,
   `scripts/verify/verify-blog-storefront-boundary.mjs`,
@@ -154,19 +164,25 @@ selected post changes.
 16. Added Search-owned canonical result URL derivation with Blog ownership,
     bounded slug validation, content-kind injection protection, and product /
     content compatibility behavior.
-17. Migrated GraphQL Search result projection to the shared URL policy and added
-    machine-readable evidence plus negative guardrail fixtures.
+17. Migrated GraphQL and storefront-native Search result projection to the
+    shared URL policy and added machine-readable evidence plus negative
+    guardrail fixtures.
+18. Added `Retry-After` to Blog GraphQL exceeded responses, preserved GraphQL
+    response headers through the Axum controller, and added policy/controller
+    test code plus focused source guardrails.
 
 ## Next results
 
-1. **Close mounted rate-limit runtime evidence.** Execute the integration
-   harnesses, then exercise Redis-backed host composition, GraphQL extensions,
-   HTTP `Retry-After`, and publication/channel/RBAC non-regression.
-2. **Close canonical URL runtime evidence.** Execute Search URL-policy tests,
-   GraphQL Blog results, native compatibility behavior, and click-href analytics.
-3. **Finish native URL cutover.** Migrate Search storefront/admin native mappers
-   to the shared policy, then remove the compatibility fallback after every
-   consumer proves backend URL adoption.
+1. **Execute mounted rate-limit evidence.** Run the policy, host-memory-adapter,
+   controller-handoff, and focused verifier targets, then exercise Redis-backed
+   host composition and retain a real HTTP `Retry-After` response with matching
+   GraphQL `retryAfter`.
+2. **Finish admin native URL cutover.** Migrate the final Search admin mapper to
+   the shared policy; afterward all backend Search result surfaces share one URL
+   owner.
+3. **Close canonical URL runtime evidence.** Execute Search URL-policy tests,
+   GraphQL Blog results, native backend URL behavior, compatibility idempotence,
+   and click-href analytics.
 4. **Close search runtime evidence.** Execute the routing/PostgreSQL/verifier
    targets and retain targeted missing-post, module-toggle, and tenant-isolation
    evidence.
@@ -180,6 +196,8 @@ selected post changes.
 
 - `cargo test -p rustok-blog --test graphql_rate_limit_policy_test`
 - `cargo test -p rustok-blog graphql::rate_limit`
+- `cargo test -p rustok-server graphql_http_response_preserves_extension_headers`
+- `node scripts/verify/verify-blog-graphql-rate-limit.mjs`
 - `cargo test -p rustok-search engine::tests::canonical_url`
 - `cargo test -p rustok-search --test blog_ingestion_contract_test`
 - `RUSTOK_SEARCH_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-search --test blog_projection_postgres_test`
@@ -196,7 +214,7 @@ selected post changes.
 - `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
 - `cargo xtask module validate blog`
 - Targeted PostgreSQL lifecycle, channel visibility, comments, indexing,
-  navigation, pagination, and rate-limit integration tests.
+  navigation, pagination, Redis, and rate-limit integration tests.
 
 ## References
 
