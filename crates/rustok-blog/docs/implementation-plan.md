@@ -18,18 +18,20 @@ The search lifecycle is implemented in `rustok-search`: Blog events upsert or
 delete `blog_post` search documents, and `ReindexRequested` supports both one
 post and the complete Blog scope. Search owns the SQL projection and does not
 depend on the Blog crate. The projector stores the post slug in payload. The
-Rust Search storefront now applies one post-transport navigation policy after
-native or GraphQL selection, preserving backend URLs and deriving
+Rust Search storefront applies one post-transport navigation policy after native
+or GraphQL selection, preserving backend URLs and deriving
 `/modules/blog?slug=...` only from a bounded safe Blog slug.
 
 Public comment listing uses a Comments-owned approved-only projection. Pending,
 spam, trash, and deleted comments cannot leave the owner boundary. The selected
-storefront post renders the same public payload through native `#[server]` and
-GraphQL transports. Admin moderation is a separate GraphQL slice: a current-
-tenant actor with `blog_posts:manage` can inspect the non-deleted owner queue and
-apply approve/spam/trash transitions without coupling the CRUD editor to that
-permission. The admin queue is paginated through bounded GraphQL variables and
-resets page state when the selected post changes.
+storefront post renders and paginates the same public payload through native
+`#[server]` and GraphQL transports. `commentsPage` is route-owned, bounded before
+GraphQL serialization, and canonically removed for page one. Admin moderation is
+a separate GraphQL slice: a current-tenant actor with `blog_posts:manage` can
+inspect the non-deleted owner queue and apply approve/spam/trash transitions
+without coupling the CRUD editor to that permission. The admin queue is also
+paginated through bounded GraphQL variables and resets page state when the
+selected post changes.
 
 ## FFA/FBA status
 
@@ -48,16 +50,15 @@ resets page state when the selected post changes.
   `comments.thread.v1`. Public list reads use
   `list_public_comments_for_target`; writes carry operation-scoped idempotency
   keys, deadline, locale, actor claims, and typed port-error mapping.
-- `GqlPost.publicComments` and native `BlogPostDetail.publicComments` both consume
-  the owner-approved projection, use bounded pagination, and share the same
-  storefront DTO and localized presentation.
+- `GqlPost.publicComments` and native `BlogPostDetail.publicComments` consume the
+  same owner-approved projection and fixed page size. The storefront route query
+  controls the requested page for both transport paths.
 - `GqlPost.moderationComments` is tenant-bound and permission-gated. After the
   Blog manage decision, it performs the trusted owner read used by the existing
   REST moderation adapter; `moderateComment` uses the same domain service and is
   represented as a dedicated field-aware rate-limit surface.
-- The admin moderation transport passes explicit `page/perPage`, clamps the page
-  size, exposes previous/next controls, and keeps moderation contract failures
-  isolated from post CRUD.
+- Admin and storefront comment pagination share bounded inputs, total-page
+  calculation, disabled invalid navigation, and isolated transport failures.
 - Search Blog-result navigation runs after Rust storefront transport selection,
   requires `source_module=blog` and `entity_type=blog_post`, validates the
   projected slug, preserves backend URLs, and fails closed for malformed data.
@@ -107,6 +108,9 @@ resets page state when the selected post changes.
 12. Added Rust Search storefront Blog navigation: transport-neutral payload
     enrichment, canonical module route, backend-URL precedence, strict slug
     validation, unit tests, and focused verifier fixtures.
+13. Added storefront comment pagination: framework-free `commentsPage` policy,
+    bounded route parsing, shared native/GraphQL page arguments, canonical page
+    one URL behavior, localized controls, and pagination boundary fixtures.
 
 ## Next results
 
@@ -118,13 +122,11 @@ resets page state when the selected post changes.
    delete event-to-document behavior, targeted recovery, full Blog recovery, and
    module-disabled cleanup against PostgreSQL.
 3. **Close comments owner/projection runtime evidence.** Exercise approved-only
-   public reads, moderation queue/status changes and pagination, independent
-   create commands on one post, duplicate delivery, concurrent count updates,
-   missing-post retry, delivery-ledger rollback, and outbox publication.
-4. **Add storefront comment pagination.** Preserve native `#[server]` plus
-   GraphQL transport paths while moving the current fixed first-page public
-   comments payload to route-owned page state.
-5. **Promote canonical Search URL ownership.** Move the Blog route fallback from
+   public reads, public/admin pagination, moderation queue/status changes,
+   independent create commands on one post, duplicate delivery, concurrent
+   count updates, missing-post retry, delivery-ledger rollback, and outbox
+   publication.
+4. **Promote canonical Search URL ownership.** Move the Blog route fallback from
    Rust storefront post-processing into the shared Search result contract when
    the large GraphQL projection can be changed atomically; keep compatibility
    post-processing until all consumers use the backend URL.
@@ -141,7 +143,7 @@ resets page state when the selected post changes.
 - `node scripts/verify/verify-search-blog-navigation.mjs`
 - `cargo xtask module validate blog`
 - Targeted PostgreSQL lifecycle, channel visibility, comments, indexing,
-  navigation, and rate-limit integration tests.
+  navigation, pagination, and rate-limit integration tests.
 
 ## References
 
