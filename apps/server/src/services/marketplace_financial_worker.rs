@@ -32,13 +32,7 @@ pub fn spawn_marketplace_financial_worker(
     let instance_id = MARKETPLACE_FINANCIAL_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     let financial_runtime = runtime_ctx
         .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
-        .unwrap_or_else(|| {
-            let runtime = rustok_commerce::MarketplaceFinancialRuntime::in_process(
-                runtime_ctx.db_clone(),
-            );
-            runtime_ctx.shared_insert(runtime.clone());
-            runtime
-        });
+        .expect("MarketplaceFinancialRuntime must be initialized before financial recovery worker");
     let event_bus = runtime_ctx
         .shared_get::<rustok_outbox::TransactionalEventBus>()
         .expect("TransactionalEventBus must be initialized before marketplace financial worker");
