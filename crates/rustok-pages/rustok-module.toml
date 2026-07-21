@@ -31,7 +31,7 @@ query = "graphql::PagesQuery"
 mutation = "graphql::PagesMutation"
 
 [provides.http]
-axum_router = "controllers::axum_router"
+axum_router = "http::axum_router"
 
 [provides.admin_ui]
 leptos_crate = "rustok-pages-admin"
