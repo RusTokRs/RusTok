@@ -3,10 +3,12 @@ use rustok_api::{PortContext, PortError};
 use std::sync::Arc;
 
 use crate::dto::{
-    CreateGroupInput, GroupAccessDecision, GroupAccessRequest, GroupConnection, GroupDetails,
-    GroupFeatureBinding, GroupMembership, GroupMembershipConnection, JoinGroupRequest,
-    LeaveGroupRequest, ListGroupMembershipsRequest, ListGroupsRequest,
-    ReadGroupMembershipRequest, ReadGroupRequest, SetGroupFeatureRequest,
+    CreateGroupInput, DeleteGroupTranslationRequest, DeleteGroupTranslationResult,
+    GroupAccessDecision, GroupAccessRequest, GroupConnection, GroupDetails, GroupFeatureBinding,
+    GroupMembership, GroupMembershipConnection, GroupTranslation, GroupTranslationMutationResult,
+    JoinGroupRequest, LeaveGroupRequest, ListGroupMembershipsRequest, ListGroupTranslationsRequest,
+    ListGroupsRequest, ReadGroupMembershipRequest, ReadGroupRequest, SetGroupFeatureRequest,
+    UpsertGroupTranslationRequest,
 };
 
 #[async_trait]
@@ -55,6 +57,15 @@ pub trait GroupAccessReadPort: Send + Sync {
 }
 
 #[async_trait]
+pub trait GroupLocalizationReadPort: Send + Sync {
+    async fn list_group_translations(
+        &self,
+        context: PortContext,
+        request: ListGroupTranslationsRequest,
+    ) -> Result<Vec<GroupTranslation>, PortError>;
+}
+
+#[async_trait]
 pub trait GroupCommandPort: Send + Sync {
     async fn create_group(
         &self,
@@ -81,10 +92,27 @@ pub trait GroupCommandPort: Send + Sync {
     ) -> Result<GroupFeatureBinding, PortError>;
 }
 
+#[async_trait]
+pub trait GroupLocalizationCommandPort: Send + Sync {
+    async fn upsert_group_translation(
+        &self,
+        context: PortContext,
+        request: UpsertGroupTranslationRequest,
+    ) -> Result<GroupTranslationMutationResult, PortError>;
+
+    async fn delete_group_translation(
+        &self,
+        context: PortContext,
+        request: DeleteGroupTranslationRequest,
+    ) -> Result<DeleteGroupTranslationResult, PortError>;
+}
+
 pub type SharedGroupSummaryReadPort = Arc<dyn GroupSummaryReadPort>;
 pub type SharedGroupMembershipReadPort = Arc<dyn GroupMembershipReadPort>;
 pub type SharedGroupAccessReadPort = Arc<dyn GroupAccessReadPort>;
+pub type SharedGroupLocalizationReadPort = Arc<dyn GroupLocalizationReadPort>;
 pub type SharedGroupCommandPort = Arc<dyn GroupCommandPort>;
+pub type SharedGroupLocalizationCommandPort = Arc<dyn GroupLocalizationCommandPort>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GroupCapabilityDescriptor {
@@ -104,7 +132,9 @@ impl Default for GroupCapabilityDescriptor {
                 "GroupSummaryReadPort",
                 "GroupMembershipReadPort",
                 "GroupAccessReadPort",
+                "GroupLocalizationReadPort",
                 "GroupCommandPort",
+                "GroupLocalizationCommandPort",
                 "GroupGovernanceCommandPort",
             ],
             private_content_fallback: "deny",
