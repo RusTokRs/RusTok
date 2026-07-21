@@ -164,7 +164,13 @@ impl NotificationTargetRoute {
             && value.starts_with('/')
             && !value.starts_with("//")
             && !value.contains("://")
-            && !value.chars().any(char::is_control);
+            && !value.contains('\\')
+            && !value.contains('?')
+            && !value.contains('#')
+            && !value.chars().any(char::is_whitespace)
+            && value
+                .split('/')
+                .all(|segment| segment != "." && segment != "..");
         if !valid {
             return Err(NotificationKeyError::InvalidRoute);
         }
