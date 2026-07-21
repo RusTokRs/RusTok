@@ -84,6 +84,25 @@
         "transport::save_page_document(",
         "ensure_page_is_editable("
       ],
+      "preview_server_entrypoint": "execute_preview",
+      "preview_client_entrypoint_marker": "#[cfg(not(feature = \"ssr\"))]\nasync fn execute_preview",
+      "preview_transport_marker": "pages_page_builder_preview(",
+      "preview_required_server_order": [
+        "leptos_auth::api::fetch_current_user",
+        "PageBuilderRequestAuth::new",
+        "PortContext::new",
+        ".with_deadline(PAGE_BUILDER_PORT_DEADLINE)",
+        "PagesPageBuilderRenderer {",
+        "PagesPageBuilderProjectStore {",
+        "compose_fly_page_builder_handlers",
+        ".handle("
+      ],
+      "preview_dispatch_marker": ".handle(",
+      "preview_forbidden_before_dispatch": [
+        "transport::fetch_page(",
+        "transport::save_page_document("
+      ],
+      "preview_renderer_context_guard": "ensure_port_context(context, &self.tenant_slug, &self.actor_id, \"renderer\")?",
       "tenant_context_guards": [
         "fn ensure_context(&self, context: &PortContext)",
         "context.tenant_id.as_str()",
@@ -95,7 +114,25 @@
         "Arc<Mutex<Option<PublishPageBuilderResult>>>",
         "persisted_result: Arc<Mutex",
         "Pages save state lock was poisoned"
-      ]
+      ],
+      "admin_preview": {
+        "runtime_source": "crates/rustok-page-builder/admin/src/editor/runtime.rs",
+        "surface_source": "crates/rustok-page-builder/admin/src/editor/server_preview.rs",
+        "host_source": "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
+        "runtime_markers": [
+          "PreviewPageBuilderInput::new",
+          "PageBuilderCapabilityResponse::Preview(response)",
+          "server_preview_html.set(Some(response.html))",
+          "preview_in_progress.set(true)"
+        ],
+        "surface_markers": [
+          "request_server_preview()",
+          "server_preview_html.get()",
+          "data-page-builder-server-preview-frame",
+          "srcdoc=html"
+        ],
+        "host_marker": "<ServerPreviewPanel runtime=server_preview_runtime />"
+      }
     }
   },
   "transport_entrypoints": [
