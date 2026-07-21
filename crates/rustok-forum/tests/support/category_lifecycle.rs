@@ -65,11 +65,7 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
     )?;
 
     match service
-        .archive_subtree(
-            tenant_id,
-            foreign_root_id,
-            security.clone(),
-        )
+        .archive_subtree(tenant_id, foreign_root_id, security.clone())
         .await
     {
         Err(ForumError::CategoryNotFound(id)) if id == foreign_root_id => {}
@@ -109,12 +105,11 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
         .await;
     assert_error_contains(partial_restore.map(|_| ()), "archived parent")?;
 
-    let tenant_mismatch_id = Uuid::new_v4();
     let tenant_mismatch = db
         .execute_unprepared(&format!(
             "INSERT INTO forum_category_lifecycle \
              (category_id, tenant_id, archived_at, updated_at) \
-             VALUES ('{tenant_mismatch_id}', '{foreign_tenant_id}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);"
+             VALUES ('{root_id}', '{foreign_tenant_id}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);"
         ))
         .await;
     assert_error_contains(tenant_mismatch.map(|_| ()), "lifecycle")?;
@@ -180,7 +175,10 @@ async fn topic_count(db: &DatabaseConnection, topic_id: Uuid) -> TestResult<i64>
     Ok(row.try_get("", "count")?)
 }
 
-fn assert_error_contains<T>(result: Result<T, impl std::fmt::Display>, expected: &str) -> TestResult<()> {
+fn assert_error_contains<T, E>(result: Result<T, E>, expected: &str) -> TestResult<()>
+where
+    E: std::fmt::Display,
+{
     match result {
         Err(error) if error.to_string().contains(expected) => Ok(()),
         Err(error) => Err(test_error(format!(
