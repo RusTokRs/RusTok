@@ -1,5 +1,6 @@
 pub mod category;
 pub mod category_command;
+pub mod category_lifecycle;
 pub mod category_policy;
 pub mod category_tree;
 pub mod event;
@@ -13,6 +14,7 @@ pub mod widget;
 
 pub use category::*;
 pub use category_command::*;
+pub use category_lifecycle::*;
 pub use category_policy::*;
 pub use category_tree::*;
 pub use event::*;
