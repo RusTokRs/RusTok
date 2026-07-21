@@ -1,6 +1,7 @@
 mod bounded_compat;
 mod category;
 mod category_command;
+mod category_lifecycle;
 mod category_owner;
 mod category_policy;
 mod category_tree;
