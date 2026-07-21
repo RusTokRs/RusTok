@@ -3,8 +3,8 @@
   "module": "marketplace",
   "role": "consumer",
   "status": "in_progress",
-  "source_status": "financial_reversal_orchestration_source_ready_unvalidated",
-  "contract_version": "marketplace.family.v2",
+  "source_status": "financial_reversal_and_balance_transfer_source_ready_unvalidated",
+  "contract_version": "marketplace.family.v3",
   "dependencies": [
     {
       "provider": "marketplace_seller",
@@ -70,6 +70,7 @@
         "read_seller_balance",
         "post_order_commissions",
         "post_financial_reversal",
+        "post_seller_balance_transfer",
         "rebuild_seller_balance"
       ],
       "context": "rustok_api::ports::PortContext",
@@ -104,6 +105,9 @@
       "marketplace_ledger_entries",
       "marketplace_ledger_reversals",
       "marketplace_ledger_reversal_lines",
+      "marketplace_ledger_entry_balance_buckets",
+      "marketplace_seller_balance_transfers",
+      "marketplace_seller_balance_transfer_lines",
       "marketplace_seller_balance_projections",
       "marketplace_payouts",
       "marketplace_payout_items"
@@ -131,12 +135,28 @@
     "root_receipt": false,
     "owner_receipts_are_authoritative": true
   },
+  "seller_balance_transfer_owner_contract": {
+    "operation": "marketplace_ledger.post_seller_balance_transfer",
+    "kinds": [
+      "pending_release",
+      "reserve_hold",
+      "reserve_release",
+      "payout_settlement",
+      "payout_reversal"
+    ],
+    "per_order_owner_transaction": true,
+    "multi_order_payout_requires_root_or_payout_orchestration": true,
+    "root_persistence": false,
+    "typed_reference_entry_lineage": true,
+    "receipt_replay": true
+  },
   "evidence": {
     "local_plan": "crates/rustok-marketplace/docs/implementation-plan.md",
     "central_plan": "crates/rustok-commerce/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs",
     "financial_orchestration_contract": "crates/rustok-marketplace/contracts/financial-orchestration-v2.json",
+    "ledger_contract": "crates/rustok-marketplace-ledger/contracts/marketplace-ledger-fba-registry.json",
     "financial_orchestration_tests": [
       "crates/rustok-marketplace/src/financial_orchestration_tests.rs",
       "crates/rustok-marketplace/tests/financial_reversal_orchestration_test.rs"
@@ -160,14 +180,15 @@
       "stable financial reversal child key",
       "financial reversal skips commission reassessment",
       "financial reversal result identity validation",
-      "financial reversal balanced total validation"
+      "financial reversal balanced total validation",
+      "seller balance transfer port advertised",
+      "seller balance transfer root owns no persistence"
     ]
   },
   "known_gaps": [
-    "normalized payment refund and chargeback event adapter",
-    "durable financial reversal inbox and scheduled recovery",
-    "available, reserved, and paid seller balance transfer transactions",
-    "payout settlement and payout reversal orchestration",
+    "payout provider operation journal and verified webhook inbox",
+    "multi-order payout settlement orchestration over per-order owner transfers",
+    "seller balance transfer admin and vendor transport surfaces",
     "live remote FBA evidence",
     "production validation evidence"
   ]
