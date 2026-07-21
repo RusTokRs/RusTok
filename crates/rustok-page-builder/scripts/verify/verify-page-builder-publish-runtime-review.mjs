@@ -90,6 +90,14 @@ if (
 ) {
   fail("atomic reviewed publish must require an ordered Page Builder source set");
 }
+const gateReads = contract.pages_consumer.transactional_gate_reads;
+if (
+  gateReads?.feature_settings !== "shared_lock_when_supported" ||
+  gateReads?.scenario_baseline !== "shared_lock_when_present" ||
+  gateReads?.sqlite !== "transaction_serialization"
+) {
+  fail("transactional feature/scenario gate read policy is invalid");
+}
 if (contract.pages_consumer.atomic_pipeline !== "service_integrated") {
   fail("Pages atomic reviewed publish service is not integrated");
 }
@@ -195,6 +203,18 @@ for (const marker of [
   "compile_builder_sources_with_reviewed_runtime(builder_sources",
 ]) {
   requireMarker(pages, marker, "shared Page Builder source set");
+}
+
+const sharedLockReads = pages.split(".lock_shared().one(txn)").length - 1;
+if (sharedLockReads < 2) {
+  fail("feature settings and existing scenario baseline must use shared-lock reads");
+}
+for (const marker of [
+  "DbBackend::Sqlite => query().one(txn).await?",
+  "tenant_module::Entity::find()",
+  "page_builder_scenario_baseline::Entity::find()",
+]) {
+  requireMarker(pages, marker, "transactional publish gate reads");
 }
 
 for (const marker of [
