@@ -7,7 +7,8 @@ pub use menu::{
     MenuResponse, MenuTranslationInput,
 };
 pub use page::{
-    CreatePageInput, ListPagesFilter, PageBodyInput, PageBodyResponse, PageListItem, PageResponse,
-    PageTranslationInput, PageTranslationResponse, PatchPageMetadataInput, PublishPageInput,
-    PublishPageResult, ReviewedPagePublishRuntimeInput, SavePageDocumentInput,
+    CreatePageInput, ListPagesFilter, PageBodyInput, PageBodyResponse, PageBodyRevisionInput,
+    PageListItem, PageResponse, PageTranslationInput, PageTranslationResponse,
+    PatchPageMetadataInput, PublishPageInput, PublishPageResult, ReviewedPagePublishRuntimeInput,
+    SavePageDocumentInput,
 };
