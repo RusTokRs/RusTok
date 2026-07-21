@@ -274,6 +274,13 @@ impl From<BuilderRolloutError> for PageBuilderServiceError {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageBuilderProjectSaveResult {
+    pub page_id: String,
+    pub revision_id: String,
+    pub published: bool,
+}
+
 /// Persistence port used by the current Fly-backed Page Builder service.
 /// Implementations own storage and must preserve tenant isolation from [`PortContext`].
 #[async_trait]
@@ -290,7 +297,7 @@ pub trait PageBuilderProjectStore: Send + Sync {
         page_id: &str,
         revision_id: &str,
         project_data: serde_json::Value,
-    ) -> PageBuilderServiceResult<()>;
+    ) -> PageBuilderServiceResult<PageBuilderProjectSaveResult>;
 }
 
 /// Preview rendering port used after Fly decode and validation.
