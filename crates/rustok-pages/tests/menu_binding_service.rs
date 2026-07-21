@@ -187,7 +187,7 @@ async fn active_header_binding_is_unique_and_replaced_atomically() {
 }
 
 #[tokio::test]
-async fn active_binding_rejects_cross_tenant_channel() {
+async fn active_binding_rejects_cross_tenant_channel_and_menu_rows() {
     let (db, tenant_id, _, other_channel_id) = setup().await;
     let event_bus = mock_transactional_event_bus();
     let created = MenuService::new(db.clone(), event_bus.clone())
@@ -200,7 +200,7 @@ async fn active_binding_rejects_cross_tenant_channel() {
         .await
         .expect("menu should be created");
 
-    let error = MenuBindingService::new(db, event_bus)
+    let error = MenuBindingService::new(db.clone(), event_bus)
         .bind(
             tenant_id,
             admin_context(),
@@ -211,4 +211,22 @@ async fn active_binding_rejects_cross_tenant_channel() {
         .await
         .expect_err("cross-tenant channel binding must fail closed");
     assert!(error.to_string().contains("does not belong to tenant"));
+
+    let raw_cross_tenant_insert = db
+        .execute(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "INSERT INTO menu_bindings (id, tenant_id, channel_id, location, menu_id) VALUES (?, ?, ?, ?, ?)",
+            [
+                Uuid::new_v4().into(),
+                Uuid::new_v4().into(),
+                other_channel_id.into(),
+                "header".to_string().into(),
+                created.id.into(),
+            ],
+        ))
+        .await;
+    assert!(
+        raw_cross_tenant_insert.is_err(),
+        "composite tenant/menu foreign key must reject raw cross-tenant rows"
+    );
 }
