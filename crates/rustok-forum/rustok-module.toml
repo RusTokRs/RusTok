@@ -20,7 +20,7 @@ taxonomy = { version_req = ">=0.1.0" }
 version_req = ">=0.1.0"
 module = "page-builder"
 contract = "grapesjs_v1"
-contract_version = "1.0"
+contract_version = "1.1"
 
 [crate]
 entry_type = "ForumModule"
@@ -66,8 +66,8 @@ nav_label = "Categories"
 [fba.builder_consumer]
 provider_module = "page-builder"
 contract = "grapesjs_v1"
-contract_version = "1.0"
-builder_contract_version = "1.0"
+contract_version = "1.1"
+builder_contract_version = "1.1"
 consumer_min_version = "1.0"
 catalog_version = "v1"
 capabilities = ["preview", "tree", "properties", "publish"]
@@ -79,7 +79,7 @@ rbac = "forum.widget.rbac"
 runtime = "forum.widget.runtime"
 
 [[fba.builder_consumer.compatibility_matrix]]
-provider_contract_version = "1.0"
+provider_contract_version = "1.1"
 consumer_min_version = "1.0"
 
 [fba.builder_consumer.widgets.topic_list]
@@ -90,7 +90,7 @@ fallback_mode = "readonly"
 
 [fba.builder_consumer.widgets.topic_detail]
 data_contract_version = "1.0"
-props_schema = "forum.topic_detail.v1"
+props_schema = "forum.topic_list.v1"
 capability_requirements = ["preview", "moderation_view"]
 fallback_mode = "degraded"
 
