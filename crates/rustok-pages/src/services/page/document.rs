@@ -11,7 +11,7 @@ use rustok_core::{CONTENT_FORMAT_GRAPESJS, SecurityContext, error::ErrorKind, er
 use rustok_events::DomainEvent;
 
 use crate::dto::{PageResponse, SavePageDocumentInput};
-use crate::entities::{page, page_body};
+use crate::entities::{page, page_body, page_translation};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::enforce_owned_scope;
 
@@ -61,8 +61,23 @@ impl PageService {
         )?;
         ensure_document_is_mutable(&locked_page)?;
 
+        let translation_exists = page_translation::Entity::find()
+            .filter(page_translation::Column::TenantId.eq(tenant_id))
+            .filter(page_translation::Column::PageId.eq(page_id))
+            .filter(page_translation::Column::Locale.eq(&body.locale))
+            .one(&txn)
+            .await?
+            .is_some();
+        if !translation_exists {
+            return Err(PagesError::validation(format!(
+                "Page document locale `{}` requires a matching page translation",
+                body.locale
+            )));
+        }
+
         let body_query = || {
             page_body::Entity::find()
+                .filter(page_body::Column::TenantId.eq(tenant_id))
                 .filter(page_body::Column::PageId.eq(page_id))
                 .filter(page_body::Column::Locale.eq(&body.locale))
         };
@@ -92,6 +107,7 @@ impl PageService {
             None => {
                 page_body::ActiveModel {
                     id: Set(Uuid::new_v4()),
+                    tenant_id: Set(tenant_id),
                     page_id: Set(page_id),
                     locale: Set(body.locale),
                     content: Set(body.content),

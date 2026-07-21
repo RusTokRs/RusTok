@@ -56,6 +56,21 @@ fn publish_binds_only_the_locked_document_revision() {
 }
 
 #[test]
+fn multilingual_storage_remains_language_agnostic() {
+    let width =
+        include_str!("../src/migrations/m20260721_000003_expand_pages_locale_storage_columns.rs");
+    let integrity =
+        include_str!("../src/migrations/m20260721_000004_enforce_language_agnostic_pages.rs");
+    let helpers = include_str!("../src/services/page/helpers.rs");
+
+    assert!(width.contains("ALTER COLUMN locale TYPE VARCHAR(32)"));
+    assert!(integrity.contains("fk_page_bodies_translation_locale"));
+    assert!(integrity.contains("published artifact locale binding mismatch"));
+    assert!(helpers.contains("object.remove(\"seo\")"));
+    assert!(!helpers.contains("metadata[\"seo\"]"));
+}
+
+#[test]
 fn current_fly_tree_remains_the_only_document_authority() {
     let builder = include_str!("../admin/src/builder.rs");
     assert!(builder.contains("save_page_document"));

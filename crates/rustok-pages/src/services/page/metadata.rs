@@ -54,11 +54,7 @@ impl PageService {
             .template
             .clone()
             .unwrap_or_else(|| observed.template.clone());
-        let metadata = build_page_metadata(
-            &template,
-            input.translations.as_deref().unwrap_or(&[]),
-            Some(&observed.metadata),
-        );
+        let metadata = build_page_metadata(&template, Some(&observed.metadata));
         let channel_slugs = input
             .channel_slugs
             .as_ref()
@@ -80,7 +76,7 @@ impl PageService {
                     .slug
                     .as_deref()
                     .unwrap_or(translation.title.as_str()),
-            );
+            )?;
             self.ensure_slug_unique_in_tx(
                 &txn,
                 tenant_id,

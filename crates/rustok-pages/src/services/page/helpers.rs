@@ -1,48 +1,56 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::Utc;
 use sea_orm::{
-    sea_query::{Expr, Query, SelectStatement},
     ActiveValue::Set,
     Condition, QueryFilter, Select,
+    sea_query::{Expr, Query, SelectStatement},
 };
 use uuid::Uuid;
 
+use rustok_api::{
+    PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match, normalize_locale_tag,
+};
 use rustok_content::{
     available_locales_from, entities::node::ContentStatus, normalize_locale_code,
-    resolve_by_locale_with_fallback,
 };
 use rustok_core::{
-    normalize_content_format, prepare_content_payload, CONTENT_FORMAT_GRAPESJS,
-    CONTENT_FORMAT_RT_JSON_V1,
+    CONTENT_FORMAT_GRAPESJS, CONTENT_FORMAT_RT_JSON_V1, normalize_content_format,
+    prepare_content_payload,
 };
 use rustok_events::DomainEvent;
 
-use crate::dto::{
-    PageBodyInput, PageBodyResponse, PageTranslationInput, PageTranslationResponse,
-};
+use crate::dto::{PageBodyInput, PageBodyResponse, PageTranslationInput, PageTranslationResponse};
 use crate::entities::{page, page_body, page_channel_visibility, page_translation};
 use crate::error::{PagesError, PagesResult};
-use crate::services::page_builder_artifact::CompiledLandingArtifact;
 use crate::services::PageBuilderArtifactService;
+use crate::services::page_builder_artifact::CompiledLandingArtifact;
 
-use super::{PageTransition, PreparedPageBody, ResolvedBodyRecord, ResolvedTranslationRecord};
+use super::{PageTransition, PreparedPageBody, ResolvedTranslationRecord};
 
-pub(super) fn validate_page_translations(
-    translations: &[PageTranslationInput],
-) -> PagesResult<()> {
+pub(super) fn validate_page_translations(translations: &[PageTranslationInput]) -> PagesResult<()> {
     if translations.is_empty() {
         return Err(PagesError::validation(
             "At least one page translation is required",
         ));
     }
+    let mut locales = BTreeSet::new();
     for translation in translations {
-        if translation.locale.trim().is_empty() {
-            return Err(PagesError::validation("Translation locale cannot be empty"));
+        let locale = normalize_locale(&translation.locale)?;
+        if !locales.insert(locale.clone()) {
+            return Err(PagesError::validation(format!(
+                "Duplicate normalized page locale: {locale}"
+            )));
         }
         if translation.title.trim().is_empty() {
             return Err(PagesError::validation("Page title cannot be empty"));
         }
+        normalize_slug(
+            translation
+                .slug
+                .as_deref()
+                .unwrap_or(translation.title.as_str()),
+        )?;
     }
     Ok(())
 }
@@ -88,19 +96,30 @@ pub(super) fn normalize_locale(locale: &str) -> PagesResult<String> {
     normalize_locale_code(locale).ok_or_else(|| PagesError::validation("Invalid locale"))
 }
 
-pub(super) fn normalize_slug(value: &str) -> String {
+pub(super) fn normalize_slug(value: &str) -> PagesResult<String> {
     let mut normalized = String::with_capacity(value.len());
     let mut previous_dash = false;
-    for ch in value.chars().flat_map(|ch| ch.to_lowercase()) {
-        if ch.is_ascii_alphanumeric() {
+    for ch in value.trim().chars().flat_map(|ch| ch.to_lowercase()) {
+        if ch.is_alphanumeric() {
             normalized.push(ch);
             previous_dash = false;
-        } else if !previous_dash {
+        } else if !previous_dash && !normalized.is_empty() {
             normalized.push('-');
             previous_dash = true;
         }
     }
-    normalized.trim_matches('-').to_string()
+    let normalized = normalized.trim_matches('-').to_string();
+    if normalized.is_empty() {
+        return Err(PagesError::validation(
+            "Localized page slug cannot be empty after normalization",
+        ));
+    }
+    if normalized.chars().count() > 255 {
+        return Err(PagesError::validation(
+            "Localized page slug cannot exceed 255 characters",
+        ));
+    }
+    Ok(normalized)
 }
 
 pub(super) fn is_builder_publish_enabled(settings: &serde_json::Value) -> bool {
@@ -147,28 +166,39 @@ pub(super) fn resolve_translation_record<'a>(
     requested: &str,
     fallback_locale: Option<&str>,
 ) -> ResolvedTranslationRecord<'a> {
-    let resolved =
-        resolve_by_locale_with_fallback(translations, requested, fallback_locale, |item| {
-            item.locale.as_str()
-        });
+    let candidates = build_locale_candidates(
+        [
+            Some(requested),
+            fallback_locale,
+            Some(PLATFORM_FALLBACK_LOCALE),
+        ],
+        true,
+    );
+    for candidate in candidates {
+        if let Some(translation) = translations
+            .iter()
+            .find(|item| locale_tags_match(item.locale.as_str(), candidate.as_str()))
+        {
+            return ResolvedTranslationRecord {
+                translation: Some(translation),
+                effective_locale: normalize_locale_tag(translation.locale.as_str())
+                    .unwrap_or_else(|| translation.locale.clone()),
+            };
+        }
+    }
     ResolvedTranslationRecord {
-        translation: resolved.item,
-        effective_locale: resolved.effective_locale,
+        translation: None,
+        effective_locale: normalize_locale_tag(requested).unwrap_or_else(|| requested.to_string()),
     }
 }
 
-pub(super) fn resolve_body_record<'a>(
+pub(super) fn body_for_locale<'a>(
     bodies: &'a [page_body::Model],
-    requested: &str,
-    fallback_locale: Option<&str>,
-) -> ResolvedBodyRecord<'a> {
-    let resolved = resolve_by_locale_with_fallback(bodies, requested, fallback_locale, |item| {
-        item.locale.as_str()
-    });
-    ResolvedBodyRecord {
-        body: resolved.item,
-        effective_locale: resolved.effective_locale,
-    }
+    locale: &str,
+) -> Option<&'a page_body::Model> {
+    bodies
+        .iter()
+        .find(|body| locale_tags_match(body.locale.as_str(), locale))
 }
 
 pub(super) fn collect_builder_project_values(
@@ -284,7 +314,7 @@ pub(super) fn storage_to_status(status: &str) -> PagesResult<ContentStatus> {
         other => {
             return Err(PagesError::validation(format!(
                 "Unknown page status: {other}"
-            )))
+            )));
         }
     })
 }
@@ -299,33 +329,17 @@ pub(super) fn status_to_storage(status: &ContentStatus) -> &'static str {
 
 pub(super) fn build_page_metadata(
     template: &str,
-    translations: &[PageTranslationInput],
     existing: Option<&serde_json::Value>,
 ) -> serde_json::Value {
     let mut metadata = existing
         .cloned()
         .filter(|value| value.is_object())
         .unwrap_or_else(|| serde_json::json!({}));
-    metadata["template"] = serde_json::json!(template);
-
-    let mut seo = serde_json::Map::new();
-    for translation in translations {
-        if translation.meta_title.is_some() || translation.meta_description.is_some() {
-            seo.insert(
-                translation.locale.clone(),
-                serde_json::json!({
-                    "meta_title": translation.meta_title,
-                    "meta_description": translation.meta_description,
-                }),
-            );
-        }
-    }
-    if !seo.is_empty() {
-        metadata["seo"] = serde_json::Value::Object(seo);
-    } else if let Some(existing) = existing.and_then(|value| value.get("seo")) {
-        metadata["seo"] = existing.clone();
-    }
-
+    let object = metadata
+        .as_object_mut()
+        .expect("page metadata is normalized to an object");
+    object.remove("seo");
+    object.insert("template".to_string(), serde_json::json!(template));
     metadata
 }
 
@@ -498,6 +512,13 @@ mod tests {
         assert!(is_builder_publish_enabled(&settings));
         assert!(is_builder_preview_enabled(&settings));
         assert!(is_builder_properties_enabled(&settings));
+    }
+
+    #[test]
+    fn localized_slug_preserves_unicode_and_rejects_empty_output() {
+        assert_eq!(normalize_slug(" Дом ").expect("unicode slug"), "дом");
+        assert_eq!(normalize_slug("首页").expect("CJK slug"), "首页");
+        assert!(normalize_slug("---").is_err());
     }
 
     #[test]

@@ -10,7 +10,7 @@ use rustok_content::entities::node::ContentStatus;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
-use crate::entities::{page_body, page_translation};
+use crate::entities::page_translation;
 
 pub use document::{PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE};
 pub(crate) use helpers::is_page_visible_for_channel;
@@ -59,10 +59,5 @@ impl PageTransition {
 
 pub(super) struct ResolvedTranslationRecord<'a> {
     pub(super) translation: Option<&'a page_translation::Model>,
-    pub(super) effective_locale: String,
-}
-
-pub(super) struct ResolvedBodyRecord<'a> {
-    pub(super) body: Option<&'a page_body::Model>,
     pub(super) effective_locale: String,
 }

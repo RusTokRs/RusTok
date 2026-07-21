@@ -1,12 +1,13 @@
 use chrono::Utc;
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, build_locale_candidates};
 use rustok_page_builder::{
-    static_landing::StaticLandingCompiler, ComponentRegistryManifest, LandingSectionSnapshot,
-    PageHead, StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingPage,
+    ComponentRegistryManifest, LandingSectionSnapshot, PageHead, StaticLandingArtifact,
+    StaticLandingBuildIdentity, StaticLandingPage, static_landing::StaticLandingCompiler,
 };
 use sea_orm::{
-    sea_query::OnConflict, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
-    DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait, QueryFilter, QuerySelect,
-    TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, DbBackend, EntityTrait, QueryFilter, QuerySelect, TransactionTrait,
+    sea_query::OnConflict,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -174,6 +175,7 @@ impl PageBuilderArtifactService {
         artifact_id: Uuid,
     ) -> PagesResult<()> {
         let body = page_body::Entity::find()
+            .filter(page_body::Column::TenantId.eq(tenant_id))
             .filter(page_body::Column::PageId.eq(page_id))
             .filter(page_body::Column::Locale.eq(locale))
             .one(txn)
@@ -203,6 +205,9 @@ impl PageBuilderArtifactService {
         {
             Some(existing) => {
                 let mut active: page_published_landing_artifact::ActiveModel = existing.into();
+                active.tenant_id = Set(tenant_id);
+                active.page_id = Set(page_id);
+                active.locale = Set(locale.to_string());
                 active.artifact_id = Set(artifact_id);
                 active.published_at = Set(now);
                 active.update(txn).await?;
@@ -210,6 +215,9 @@ impl PageBuilderArtifactService {
             None => {
                 page_published_landing_artifact::ActiveModel {
                     page_body_id: Set(body.id),
+                    tenant_id: Set(tenant_id),
+                    page_id: Set(page_id),
+                    locale: Set(locale.to_string()),
                     artifact_id: Set(artifact_id),
                     published_at: Set(now),
                 }
@@ -263,17 +271,24 @@ impl PageBuilderArtifactService {
         let is_visible = is_published
             && page_is_visible_for_channel_in_tx(&txn, tenant_id, page_id, channel_slug).await?;
         let result = if is_visible {
-            if let Some(artifact) =
-                load_bound_artifact_in_tx(&txn, tenant_id, page_id, locale).await?
-            {
-                Some(artifact)
-            } else if let Some(fallback_locale) =
-                fallback_locale.filter(|fallback| *fallback != locale)
-            {
-                load_bound_artifact_in_tx(&txn, tenant_id, page_id, fallback_locale).await?
-            } else {
-                None
+            let candidates = build_locale_candidates(
+                [
+                    Some(locale),
+                    fallback_locale,
+                    Some(PLATFORM_FALLBACK_LOCALE),
+                ],
+                true,
+            );
+            let mut resolved = None;
+            for candidate in candidates {
+                if let Some(artifact) =
+                    load_bound_artifact_in_tx(&txn, tenant_id, page_id, &candidate).await?
+                {
+                    resolved = Some(artifact);
+                    break;
+                }
             }
+            resolved
         } else {
             None
         };
@@ -321,6 +336,7 @@ async fn load_bound_artifact_in_tx(
     locale: &str,
 ) -> PagesResult<Option<PublishedLandingArtifact>> {
     let Some(body) = page_body::Entity::find()
+        .filter(page_body::Column::TenantId.eq(tenant_id))
         .filter(page_body::Column::PageId.eq(page_id))
         .filter(page_body::Column::Locale.eq(locale))
         .filter(page_body::Column::Format.eq(rustok_core::CONTENT_FORMAT_GRAPESJS))
@@ -330,6 +346,9 @@ async fn load_bound_artifact_in_tx(
         return Ok(None);
     };
     let Some(binding) = page_published_landing_artifact::Entity::find_by_id(body.id)
+        .filter(page_published_landing_artifact::Column::TenantId.eq(tenant_id))
+        .filter(page_published_landing_artifact::Column::PageId.eq(page_id))
+        .filter(page_published_landing_artifact::Column::Locale.eq(locale))
         .one(txn)
         .await?
     else {

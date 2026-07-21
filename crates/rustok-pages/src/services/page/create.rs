@@ -5,20 +5,20 @@ use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_content::entities::node::ContentStatus;
-use rustok_core::{SecurityContext, CONTENT_FORMAT_GRAPESJS};
+use rustok_core::{CONTENT_FORMAT_GRAPESJS, SecurityContext};
 use rustok_events::DomainEvent;
 
 use crate::dto::{CreatePageInput, PageResponse};
 use crate::entities::page;
-use crate::error::PagesResult;
-use crate::services::rbac::enforce_scope;
+use crate::error::{PagesError, PagesResult};
 use crate::services::PageBuilderArtifactService;
+use crate::services::rbac::enforce_scope;
 
 use super::helpers::{
-    body_uses_builder_capability, build_page_metadata, normalize_channel_slugs,
+    body_uses_builder_capability, build_page_metadata, normalize_channel_slugs, normalize_locale,
     normalize_page_body_input, normalize_slug, status_to_storage, validate_page_translations,
 };
-use super::{PageService, PAGE_KIND};
+use super::{PAGE_KIND, PageService};
 
 impl PageService {
     #[instrument(skip(self, input))]
@@ -33,13 +33,32 @@ impl PageService {
             enforce_scope(&security, Resource::Pages, Action::Publish)?;
         }
         validate_page_translations(&input.translations)?;
+        let response_locale = normalize_locale(
+            &input
+                .translations
+                .first()
+                .expect("validated translations are non-empty")
+                .locale,
+        )?;
         let template = input
             .template
             .clone()
             .unwrap_or_else(|| "default".to_string());
-        let metadata = build_page_metadata(&template, &input.translations, None);
+        let metadata = build_page_metadata(&template, None);
         let channel_slugs = normalize_channel_slugs(input.channel_slugs.as_deref().unwrap_or(&[]));
         let body = normalize_page_body_input(input.body)?;
+        if let Some(body) = body.as_ref() {
+            let has_translation = input.translations.iter().any(|translation| {
+                normalize_locale(&translation.locale)
+                    .is_ok_and(|locale| locale == body.locale)
+            });
+            if !has_translation {
+                return Err(PagesError::validation(format!(
+                    "Page document locale `{}` requires a matching page translation",
+                    body.locale
+                )));
+            }
+        }
         let builder_body = body_uses_builder_capability(body.as_ref());
         if builder_body {
             self.ensure_builder_enabled(tenant_id).await?;
@@ -65,7 +84,7 @@ impl PageService {
                     .slug
                     .as_deref()
                     .unwrap_or(translation.title.as_str()),
-            );
+            )?;
             self.ensure_slug_unique_in_tx(&txn, tenant_id, &translation.locale, &slug, None)
                 .await?;
         }
@@ -95,7 +114,8 @@ impl PageService {
             .await?;
         self.replace_channel_visibility_in_tx(&txn, tenant_id, page_id, &channel_slugs)
             .await?;
-        self.upsert_body_in_tx(&txn, page_id, body, now).await?;
+        self.upsert_body_in_tx(&txn, tenant_id, page_id, body, now)
+            .await?;
         if let Some(compiled) = compiled.as_ref() {
             let artifact_id = PageBuilderArtifactService::stage_compiled_in_tx(
                 &txn, tenant_id, page_id, compiled,
@@ -138,6 +158,7 @@ impl PageService {
         }
 
         txn.commit().await?;
-        self.get(tenant_id, security, page_id).await
+        self.get_with_locale_fallback(tenant_id, security, page_id, &response_locale, None)
+            .await
     }
 }
