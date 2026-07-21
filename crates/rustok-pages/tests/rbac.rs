@@ -1,11 +1,11 @@
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_pages::dto::{
-    BlockType, CreateBlockInput, CreateMenuInput, CreatePageInput, ListPagesFilter, MenuLocation,
-    PageTranslationInput, UpdatePageInput,
+    CreateMenuInput, CreatePageInput, ListPagesFilter, MenuLocation, PageTranslationInput,
+    UpdatePageInput,
 };
 use rustok_pages::error::PagesError;
-use rustok_pages::services::{BlockService, MenuService, PageService};
+use rustok_pages::services::{MenuService, PageService};
 use rustok_pages::PagesModule;
 use rustok_test_utils::{
     db::setup_test_db,
@@ -15,7 +15,7 @@ use sea_orm_migration::{MigrationTrait, SchemaManager};
 use std::sync::Arc;
 use uuid::Uuid;
 
-async fn setup() -> (PageService, BlockService, MenuService, Uuid) {
+async fn setup() -> (PageService, MenuService, Uuid) {
     let db = setup_test_db().await;
     let module = PagesModule;
     let schema = SchemaManager::new(&db);
@@ -33,7 +33,6 @@ async fn setup() -> (PageService, BlockService, MenuService, Uuid) {
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     (
         PageService::new(db.clone(), event_bus.clone()),
-        BlockService::new(db.clone(), event_bus.clone()),
         MenuService::new(db, event_bus),
         Uuid::new_v4(),
     )
@@ -60,7 +59,6 @@ async fn create_page(
                 }],
                 template: Some("default".to_string()),
                 body: None,
-                blocks: None,
                 channel_slugs: None,
                 publish,
             },
@@ -71,7 +69,7 @@ async fn create_page(
 
 #[tokio::test]
 async fn manager_cannot_publish_via_create_or_update() {
-    let (page_service, _, _, tenant_id) = setup().await;
+    let (page_service, _, tenant_id) = setup().await;
     let manager = manager_context();
 
     let denied_create = page_service
@@ -88,7 +86,6 @@ async fn manager_cannot_publish_via_create_or_update() {
                 }],
                 template: Some("default".to_string()),
                 body: None,
-                blocks: None,
                 channel_slugs: None,
                 publish: true,
             },
@@ -116,7 +113,7 @@ async fn manager_cannot_publish_via_create_or_update() {
 
 #[tokio::test]
 async fn customer_cannot_read_drafts_and_list_only_returns_published_pages() {
-    let (page_service, _, _, tenant_id) = setup().await;
+    let (page_service, _, tenant_id) = setup().await;
     let admin = admin_context();
     let customer = customer_context();
 
@@ -162,29 +159,12 @@ async fn customer_cannot_read_drafts_and_list_only_returns_published_pages() {
 }
 
 #[tokio::test]
-async fn customer_cannot_mutate_blocks_or_menus() {
-    let (page_service, block_service, menu_service, tenant_id) = setup().await;
+async fn customer_cannot_mutate_menus() {
+    let (page_service, menu_service, tenant_id) = setup().await;
     let admin = admin_context();
     let customer = customer_context();
 
-    let page = create_page(&page_service, tenant_id, admin, "page", false).await;
-
-    let denied_block = block_service
-        .create(
-            tenant_id,
-            customer.clone(),
-            page.id,
-            CreateBlockInput {
-                block_type: BlockType::Text,
-                position: 0,
-                data: serde_json::json!({ "text": "nope" }),
-                translations: None,
-            },
-        )
-        .await
-        .expect_err("customer should not create blocks");
-    assert!(matches!(denied_block, PagesError::Forbidden(_)));
-
+    let _page = create_page(&page_service, tenant_id, admin, "page", false).await;
     let denied_menu = menu_service
         .create(
             tenant_id,
@@ -221,7 +201,6 @@ async fn create_published_page_with_channels(
                 }],
                 template: Some("default".to_string()),
                 body: None,
-                blocks: None,
                 channel_slugs: Some(channel_slugs),
                 publish: true,
             },
@@ -232,7 +211,7 @@ async fn create_published_page_with_channels(
 
 #[tokio::test]
 async fn admin_bypasses_draft_status_filter_while_customer_is_restricted_to_published() {
-    let (page_service, _, _, tenant_id) = setup().await;
+    let (page_service, _, tenant_id) = setup().await;
     let admin = admin_context();
     let customer = customer_context();
 
@@ -291,7 +270,7 @@ async fn admin_bypasses_draft_status_filter_while_customer_is_restricted_to_publ
 
 #[tokio::test]
 async fn public_channel_visibility_filters_pages_but_admin_list_bypasses_allowlist() {
-    let (page_service, _, _, tenant_id) = setup().await;
+    let (page_service, _, tenant_id) = setup().await;
     let admin = admin_context();
 
     let web_page = create_published_page_with_channels(
