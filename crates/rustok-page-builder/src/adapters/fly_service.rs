@@ -18,9 +18,6 @@ use fly::{
 use rustok_api::PortContext;
 use serde_json::Value;
 
-const MAX_PREVIEW_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024;
-const MAX_PREVIEW_SCENARIO_ID_BYTES: usize = 128;
-
 /// Fly-backed current provider that keeps the existing storage/rendering ports while making Fly
 /// authoritative for project decode, structural validation, layers traversal, component lookup,
 /// and optional runtime-scenario release gating.
@@ -105,39 +102,6 @@ impl<S, R, T, B> FlyAdapterBackedPageBuilderService<S, R, T, B> {
     }
 }
 
-fn validate_preview_runtime(
-    runtime: &crate::dto::PageBuilderPreviewRuntime,
-) -> PageBuilderServiceResult<()> {
-    if !runtime.context.is_object() {
-        return Err(PageBuilderServiceError::Validation(
-            "preview runtime context must be a JSON object".to_string(),
-        ));
-    }
-    let context_bytes = serde_json::to_vec(&runtime.context).map_err(|error| {
-        PageBuilderServiceError::Validation(format!(
-            "preview runtime context could not be serialized: {error}"
-        ))
-    })?;
-    if context_bytes.len() > MAX_PREVIEW_RUNTIME_CONTEXT_BYTES {
-        return Err(PageBuilderServiceError::Validation(format!(
-            "preview runtime context exceeds {MAX_PREVIEW_RUNTIME_CONTEXT_BYTES} bytes"
-        )));
-    }
-    if let Some(scenario_id) = runtime.scenario_id.as_deref() {
-        if scenario_id.is_empty() || scenario_id.trim() != scenario_id {
-            return Err(PageBuilderServiceError::Validation(
-                "preview runtime scenario_id must be a non-empty normalized string".to_string(),
-            ));
-        }
-        if scenario_id.len() > MAX_PREVIEW_SCENARIO_ID_BYTES {
-            return Err(PageBuilderServiceError::Validation(format!(
-                "preview runtime scenario_id exceeds {MAX_PREVIEW_SCENARIO_ID_BYTES} bytes"
-            )));
-        }
-    }
-    Ok(())
-}
-
 #[async_trait]
 impl<S, R, T, B> PageBuilderCapabilityService for FlyAdapterBackedPageBuilderService<S, R, T, B>
 where
@@ -152,7 +116,10 @@ where
         input: crate::dto::PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<crate::dto::PreviewPageBuilderResult> {
         self.inspect(&input.project_data)?;
-        validate_preview_runtime(&input.runtime)?;
+        input
+            .runtime
+            .validate()
+            .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
         let evidence = PageBuilderRuntimeCallEvidence::render_preview(context, &input.page_id);
         self.telemetry.record_runtime_call(&evidence);
         let html = match self.renderer.render_preview(context, &input).await {
