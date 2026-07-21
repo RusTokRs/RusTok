@@ -7,7 +7,7 @@ Last reviewed: 2026-07-21
 - Family source status: `in_progress`.
 - FBA status: `in_progress`.
 - FFA status: `in_progress`.
-- Runtime integration status: `refund_chargeback_reversal_event_inbox_worker_rest_graphql_source_ready_unvalidated`.
+- Runtime integration status: `refund_chargeback_observer_reversal_inbox_worker_rest_graphql_source_ready_unvalidated`.
 - Migration composition status: `source_wired_unvalidated`.
 - Retained validation evidence: `not_current`.
 - Production promotion gate: `closed`.
@@ -42,8 +42,8 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
   REST and GraphQL operator transports, and OpenAPI source.
 - [x] Append-only refund/chargeback ledger reversals with exact original-entry links,
   cumulative reversal capacity, rebuildable seller balances, and root reversal orchestration.
-- [x] Processed payment refund/chargeback normalization, durable reversal-event inbox,
-  scheduled adaptation/recovery, and authenticated REST/GraphQL operator transports.
+- [x] Host-observed payment refund/chargeback normalization, durable reversal-event inbox,
+  scheduled backfill/recovery, and authenticated REST/GraphQL operator transports.
 
 ## Architecture contract
 
@@ -276,8 +276,13 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
   root child-key propagation, and result invariants.
 - [x] Extend payment normalized events with validated `chargeback.completed` facts and publish
   a host-composable processed-event observer contract.
-- [x] Consume only payment-owner-processed, signature-verified refund/chargeback facts; ordinary
-  non-marketplace events remain no-ops and marketplace code never parses raw provider payloads.
+- [x] Mount `PaymentObservedDomainEventApplier` in webhook ingress, manual recovery, and the
+  scheduled payment recovery worker; payment events become processed only after observers
+  succeed.
+- [x] Compose `PaymentProviderEventObservers` before worker startup and through HTTP/runtime
+  host values without adding a payment-to-commerce dependency.
+- [x] Consume only signature-verified refund/chargeback facts after the payment owner stage;
+  ordinary non-marketplace events remain no-ops and marketplace code never parses raw payloads.
 - [x] Require the optional `marketplace_reversal` extension to carry exact allocation,
   assessment, order-line, seller, commission, seller amount, currency exponent, and event time.
 - [x] Derive refund payment collection identity from the authoritative refund owner and require
@@ -289,8 +294,8 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
   and resulting reversal/ledger evidence.
 - [x] Invoke the marketplace root through stable
   `marketplace-reversal-event:{inbox_id}:v1` identity and service actor causation.
-- [x] Mount bounded processed-event adaptation and reversal recovery in the existing financial
-  worker before the paid-event sweep, retaining delayed missed ticks and shared shutdown.
+- [x] Keep bounded processed-event polling as historical backfill/fallback, then recover
+  reversal inbox rows before the existing paid-event sweep.
 - [x] Add tenant-scoped REST and GraphQL reversal list/show/retry/sweep surfaces with
   `payments:read` / `payments:manage` authorization and OpenAPI registration.
 - [x] Exclude reversal lines, provider metadata, hashes, lease details, raw payloads, and
@@ -299,16 +304,14 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
 
 ### Remaining critical path
 
-- [ ] Mount the published `PaymentProviderProcessedEventObserver` directly in payment webhook
-  ingress/recovery host composition; the current operational path uses scheduled polling of
-  processed normalized events.
 - [ ] Add durable adaptation-failure tracking for malformed marketplace extensions discovered
   during historical processed-event polling.
 - [ ] Add append-only adjustment, payout settlement, payout reversal, reserve hold, reserve
   release, and seller balance bucket-transfer transactions.
-- [ ] Retain clean/upgraded migrations, normalized-event no-op/conflict, reversal inbox replay,
-  duplicate source, exact conversion, lease expiry, worker lifecycle, authorization,
-  REST/GraphQL/OpenAPI mounting, PostgreSQL contention, and balance rebuild evidence.
+- [ ] Retain clean/upgraded migrations, observer failure/replay, normalized-event no-op/conflict,
+  reversal inbox replay, duplicate source, exact conversion, lease expiry, worker lifecycle,
+  authorization, REST/GraphQL/OpenAPI mounting, PostgreSQL contention, and balance rebuild
+  evidence.
 
 ## Payout
 
@@ -421,7 +424,8 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
   reversal adapter, inbox, worker, and operator services from the host runtime.
 - [x] Mount bounded processed-event adaptation, reversal recovery, REST/GraphQL transports,
   and OpenAPI source in the existing server/commerce composition.
-- [ ] Mount the processed-event observer directly in payment ingress and recovery composition.
+- [x] Mount the processed-event observer registry in payment ingress, manual recovery,
+  scheduled payment recovery, host runtime values, and pre-worker startup composition.
 - [ ] Reconcile the workspace lock after all owner crates are registered.
 - [ ] Register request-scoped runtime providers for payout and moderation; compile-time
   module registration is not sufficient.
@@ -432,7 +436,7 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
 No new tests were run for the 2026-07-21 source composition, typed-checkout, checkpoint,
 post-capture financial-operation, paid-event recovery, scheduled worker, operator transport,
 append-only reversal, seller balance projection, root reversal orchestration, normalized
-refund/chargeback adaptation, reversal inbox recovery, or reversal operator transport batches.
+refund/chargeback observation, reversal inbox recovery, or reversal operator transport batches.
 
 - [ ] Reconcile `Cargo.lock`.
 - [ ] Run formatting for changed cart, commerce, marketplace, payment, moderation,
@@ -451,6 +455,8 @@ refund/chargeback adaptation, reversal inbox recovery, or reversal operator tran
   ledger receipt replay, operator-review, and fulfillment-gate scenarios.
 - [ ] Run paid-event duplicate replay, same-key/different-facts conflict, paid-order listener
   replay, verified-provider adapter, expired inbox lease, sweep, and operator retry scenarios.
+- [ ] Run direct observer success/failure, owner-committed-observer-failed replay, dead-letter
+  replay, empty observer registry, and startup-before-payment-worker scenarios.
 - [ ] Run refund/chargeback marketplace extension absence as no-op, malformed extension,
   authoritative refund/payment mismatch, exact conversion, and line-total conflict scenarios.
 - [ ] Run reversal inbox provider-event, source-event, and reversal-source deduplication,
@@ -487,9 +493,9 @@ refund/chargeback adaptation, reversal inbox recovery, or reversal operator tran
    and operator recovery service source.
 7. [x] Mount scheduled sweep and authenticated REST/GraphQL operator transports.
 8. [x] Add refund/chargeback ledger reversals and seller balance projections.
-9. [x] Normalize refund/chargeback owner events and add durable reversal recovery.
-10. [ ] Mount the direct payment observer and add durable historical adaptation-failure
-    tracking.
+9. [x] Normalize refund/chargeback owner events, mount post-owner observers, and add durable
+   reversal recovery.
+10. [ ] Add durable historical adaptation-failure tracking.
 11. [ ] Add balance bucket transfers, payout provider journal, webhook inbox, transfer
     execution, and settlement.
 12. [ ] Add seller/listing moderation adapters and decision-application recovery.
@@ -518,6 +524,8 @@ refund/chargeback adaptation, reversal inbox recovery, or reversal operator tran
 - `crates/rustok-cart/src/marketplace_snapshot.rs`
 - `crates/rustok-payment/src/services/provider_event_chargeback.rs`
 - `crates/rustok-payment/src/services/provider_event_observer.rs`
+- `crates/rustok-payment/src/controllers.rs`
+- `crates/rustok-payment/src/provider_event_recovery_controller.rs`
 - `crates/rustok-payment/contracts/payment-provider-webhook-v1.json`
 - `crates/rustok-payment/docs/provider-webhooks.md`
 - `crates/rustok-commerce/src/entities/checkout_marketplace_economics_checkpoint.rs`
@@ -547,7 +555,9 @@ refund/chargeback adaptation, reversal inbox recovery, or reversal operator tran
 - `crates/rustok-commerce/src/graphql/marketplace_financial.rs`
 - `crates/rustok-commerce/contracts/marketplace-reversal-recovery-v1.json`
 - `crates/rustok-commerce/tests/marketplace_reversal_recovery_source.rs`
+- `apps/server/src/services/payment_provider_event_worker.rs`
 - `apps/server/src/services/marketplace_financial_worker.rs`
+- `apps/server/src/services/commerce_provider_runtime.rs`
 - `apps/server/src/services/module_event_dispatcher.rs`
 - `crates/rustok-commerce/src/services/checkout_stage_pipeline.rs`
 - `crates/rustok-moderation/`
