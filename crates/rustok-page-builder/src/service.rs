@@ -300,16 +300,6 @@ pub trait PageBuilderProjectStore: Send + Sync {
     ) -> PageBuilderServiceResult<PageBuilderProjectSaveResult>;
 }
 
-/// Preview rendering port used after Fly decode and validation.
-#[async_trait]
-pub trait PageBuilderRenderingAdapter: Send + Sync {
-    async fn render_preview(
-        &self,
-        context: &PortContext,
-        project_data: &serde_json::Value,
-    ) -> PageBuilderServiceResult<String>;
-}
-
 pub struct CapabilityGuardedService<S> {
     inner: S,
     flags: BuilderCapabilityFlags,
@@ -509,6 +499,7 @@ mod tests {
             Ok(PreviewPageBuilderResult {
                 page_id: input.page_id,
                 html: "<div/>".to_string(),
+                runtime_scenario_id: input.runtime.scenario_id,
             })
         }
 
@@ -569,10 +560,7 @@ mod tests {
     }
 
     fn preview_input() -> PreviewPageBuilderInput {
-        PreviewPageBuilderInput {
-            page_id: "home".to_string(),
-            project_data: serde_json::json!({}),
-        }
+        PreviewPageBuilderInput::new("home", serde_json::json!({}))
     }
 
     fn tree_input() -> BuilderTreeInput {
