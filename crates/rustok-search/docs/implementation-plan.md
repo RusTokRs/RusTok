@@ -16,14 +16,15 @@ GraphQL transport: existing backend URLs remain authoritative, while a Blog
 result without a URL receives `/modules/blog?slug=...` only for a bounded safe
 slug. Invalid or missing slugs stay non-navigable.
 
-Blog ingestion now has two executable, unrun harness layers. A routing target
-locks all Blog lifecycle and targeted/full reindex events. An env-gated
+Blog ingestion has two executable, unrun harness layers. A routing target locks
+all Blog lifecycle, module-toggle, and targeted/full reindex events. An env-gated
 PostgreSQL target creates an isolated schema, runs Search migrations, projects
 real Blog source rows through `SearchIngestionHandler`, verifies lifecycle and
-payload replacement, and checks tenant-scoped full rebuild behavior. Source-table
-availability now resolves through the active PostgreSQL `search_path` instead of
+payload replacement, checks tenant-scoped full rebuild, targeted missing-post
+cleanup, and module-disabled cleanup followed by enable-time rebuild. Source-table
+availability resolves through the active PostgreSQL `search_path` instead of
 hard-coding `public`, matching the projector's unqualified SQL. A focused source
-guardrail and negative fixtures lock this schema contract and both harnesses.
+guardrail and negative fixtures lock this schema and lifecycle contract.
 
 ## FFA/FBA status
 
@@ -53,6 +54,10 @@ guardrail and negative fixtures lock this schema contract and both harnesses.
   schema.
 - The PostgreSQL fixture places its unique schema before `public`, keeping test
   tables isolated while retaining access to shared extensions such as `pg_trgm`.
+- `TenantModuleToggled(blog, false)` deletes only the current tenant Blog search
+  scope; `TenantModuleToggled(blog, true)` rebuilds it from retained owner rows.
+- Targeted Blog reindex deletes a stale document before source lookup, so a
+  missing owner post remains absent instead of preserving obsolete search data.
 
 ## Deployment and connector boundary
 
@@ -90,7 +95,7 @@ only normalized Search ports are exposed remotely.
 2. Added strict source/entity checks, bounded ASCII slug validation, malformed
    payload fail-closed behavior, unit coverage, and a focused source guardrail.
 3. Added a Blog ingestion routing contract for all lifecycle events, targeted
-   reindex, full-scope reindex, and unrelated-target rejection.
+   reindex, full-scope reindex, module toggles, and unrelated-target rejection.
 4. Added an isolated-schema PostgreSQL Blog projection harness covering create,
    publish, archive, delete, projected payload, stale-document replacement, and
    cross-tenant rebuild isolation.
@@ -98,12 +103,16 @@ only normalized Search ports are exposed remotely.
    follows the same active `search_path` as its source and destination SQL.
 6. Added a focused Blog projection verifier with canonical, hard-coded-public,
    and missing-PostgreSQL-harness fixtures.
+7. Added production module-toggle handling: disable deletes the tenant Blog
+   scope, enable rebuilds it, and both use dedicated operation labels/metrics.
+8. Added PostgreSQL targeted missing-post cleanup and module disable/enable
+   lifecycle cases, then locked them in evidence and verifier fixtures.
 
 ## Next results
 
-1. **Execute live Blog projection evidence.** Run the new routing, PostgreSQL,
-   and source-verifier targets; retain migration/`pg_trgm` capability evidence;
-   then add targeted reindex missing-post plus module-disabled cleanup cases.
+1. **Execute live Blog projection evidence.** Run the routing, PostgreSQL, and
+   source-verifier targets and retain migration/`pg_trgm`, event-delivery,
+   targeted missing-post cleanup, and module-disabled cleanup evidence.
 2. **Execute live provider contract evidence.** Run queries and suggestions
    against a real PostgreSQL provider under deadline, fallback, error, locale,
    tenant, channel, and catalog-filter conditions. Done when invocation traces
