@@ -26,6 +26,7 @@ rustok-graphql.workspace = true
 rustok-groups = { path = "..", optional = true }
 rustok-ui-core.workspace = true
 rustok-ui-i18n-leptos.workspace = true
+rustok-ui-routing.workspace = true
 rustok-ui-transport.workspace = true
 serde.workspace = true
 uuid.workspace = true
