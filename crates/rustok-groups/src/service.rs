@@ -607,6 +607,7 @@ impl GroupsService {
             .then(|| selected.body.clone())
             .flatten();
         let summary = self.map_summary(
+            context,
             model,
             &translations,
             requested_locale,
@@ -644,6 +645,7 @@ impl GroupsService {
 
     fn map_summary(
         &self,
+        _context: &PortContext,
         model: group::Model,
         translations: &HashMap<Uuid, Vec<translation::Model>>,
         requested_locale: &str,
