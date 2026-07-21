@@ -172,6 +172,15 @@
             "mod m20260721_000005_expand_blog_locale_storage_columns;",
             "Box::new(m20260721_000005_expand_blog_locale_storage_columns::Migration)"
           ]
+        },
+        {
+          "path": "crates/rustok-blog/docs/README.md",
+          "required_markers": [
+            "`blog_posts.slug` is an explicitly locale-neutral canonical route identifier",
+            "localized post title, excerpt, body, and SEO copy belong to",
+            "`blog_post_translations`",
+            "tenant default/effective locale controls resolution only"
+          ]
         }
       ]
     },
@@ -376,15 +385,6 @@
         "ColumnDef::new(ProfileTranslations::DisplayName)"
       ],
       "next_action": "define identity-vs-localized display-name ownership, backfill translations, and remove the duplicated localized copy"
-    },
-    {
-      "id": "blog-slug-semantics",
-      "owner": "rustok-blog",
-      "kind": "locale_neutral_identifier_decision",
-      "status": "open",
-      "path": "crates/rustok-blog/src/migrations/m20260328_000001_create_blog_post_tables.rs",
-      "evidence_markers": ["ColumnDef::new(BlogPosts::Slug)"],
-      "next_action": "document the base slug as a locale-neutral canonical route key or move localized slug ownership into blog_post_translations"
     },
     {
       "id": "marketplace-seller-prose-copy",
