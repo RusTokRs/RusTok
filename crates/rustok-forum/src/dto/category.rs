@@ -23,6 +23,8 @@ pub struct UpdateCategoryInput {
     pub description: Option<String>,
     pub icon: Option<String>,
     pub color: Option<String>,
+    /// Compatibility field retained for decoding only. The owner service rejects it;
+    /// use `MoveCategoryInput` or `ReorderCategorySiblingsInput` instead.
     pub position: Option<i32>,
     pub moderated: Option<bool>,
 }

@@ -1,6 +1,7 @@
 use rustok_core::{SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryService, ForumError, MoveCategoryInput, ReorderCategorySiblingsInput,
+    CategoryService, CreateCategoryInput, ForumError, MoveCategoryInput,
+    ReorderCategorySiblingsInput, UpdateCategoryInput,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use uuid::Uuid;
@@ -88,7 +89,7 @@ pub async fn exercise_category_commands(db: &DatabaseConnection) -> TestResult<(
         service
             .reorder_siblings(
                 tenant_id,
-                security,
+                security.clone(),
                 ReorderCategorySiblingsInput {
                     parent_id: Some(root_a),
                     ordered_category_ids: vec![root_b],
@@ -98,8 +99,65 @@ pub async fn exercise_category_commands(db: &DatabaseConnection) -> TestResult<(
         "every direct child exactly once",
     )?;
 
+    assert_validation_contains(
+        service
+            .update(
+                tenant_id,
+                root_a,
+                security.clone(),
+                UpdateCategoryInput {
+                    locale: "en".to_string(),
+                    position: Some(99),
+                    ..Default::default()
+                },
+            )
+            .await,
+        "move/reorder",
+    )?;
+    assert_placement(db, tenant_id, root_a, None, 1).await?;
+
+    assert_error_contains(
+        service
+            .create(
+                tenant_id,
+                security.clone(),
+                create_category_input("foreign-parent", Some(foreign_root)),
+            )
+            .await,
+        "parent",
+    )?;
+
+    let mut deepest_parent = child;
+    for depth in 2..=16 {
+        deepest_parent = seed_category(db, tenant_id, Some(deepest_parent), depth).await?;
+    }
+    assert_error_contains(
+        service
+            .create(
+                tenant_id,
+                security,
+                create_category_input("too-deep", Some(deepest_parent)),
+            )
+            .await,
+        "depth 16",
+    )?;
+
     assert_placement(db, foreign_tenant_id, foreign_root, None, 0).await?;
     Ok(())
+}
+
+fn create_category_input(slug: &str, parent_id: Option<Uuid>) -> CreateCategoryInput {
+    CreateCategoryInput {
+        locale: "en".to_string(),
+        name: slug.replace('-', " "),
+        slug: slug.to_string(),
+        description: None,
+        icon: None,
+        color: None,
+        parent_id,
+        position: Some(0),
+        moderated: false,
+    }
 }
 
 async fn seed_category(
@@ -153,6 +211,18 @@ fn assert_validation_contains<T>(result: Result<T, ForumError>, expected: &str) 
         ))),
         Ok(_) => Err(test_error(format!(
             "expected validation containing {expected:?}, got success"
+        ))),
+    }
+}
+
+fn assert_error_contains<T>(result: Result<T, ForumError>, expected: &str) -> TestResult<()> {
+    match result {
+        Err(error) if error.to_string().contains(expected) => Ok(()),
+        Err(error) => Err(test_error(format!(
+            "expected error containing {expected:?}, got {error}"
+        ))),
+        Ok(_) => Err(test_error(format!(
+            "expected error containing {expected:?}, got success"
         ))),
     }
 }
