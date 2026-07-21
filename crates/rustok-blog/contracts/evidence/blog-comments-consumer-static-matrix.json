@@ -19,6 +19,12 @@
       "runtime_evidence": "pending"
     },
     {
+      "operation": "list_public_comments_for_target",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "approved_only_projection", "degraded_cached_thread_snapshot_on_unavailable"],
+      "runtime_evidence": "pending"
+    },
+    {
       "operation": "update_comment",
       "profiles": ["in_process", "remote_adapter_placeholder"],
       "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
