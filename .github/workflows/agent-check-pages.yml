@@ -23,17 +23,37 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.93.1
         with:
           components: rustfmt, clippy
-      - name: Apply safe workspace cleanup
+      - name: Fix current Pages workspace
         run: |
           python - <<'PY'
           from pathlib import Path
           path = Path('crates/rustok-pages/admin/src/composition.rs')
           source = path.read_text()
-          needle = '    let page_id = page.id.clone();\n    let title = page\n'
-          if needle in source:
-              if source.count(needle) != 1:
-                  raise SystemExit(f'expected at most one PageWorkspace binding, found {source.count(needle)}')
-              path.write_text(source.replace(needle, '    let title = page\n', 1))
+          old = '''                let status = page.status.clone();
+                let select = on_select;
+                view! {
+'''
+          new = '''                let status_label = page.status.clone();
+                let status_class = core::status_badge_class(&status_label);
+                let select = on_select;
+                view! {
+'''
+          if source.count(old) != 1:
+              raise SystemExit(f'expected one navigator status binding, found {source.count(old)}')
+          source = source.replace(old, new, 1)
+          old = '''                            <span class=format!(
+                                "rounded-full px-2 py-1 text-[10px] font-semibold uppercase {}",
+                                core::status_badge_class(&status)
+                            )>{status}</span>
+'''
+          new = '''                            <span class=format!(
+                                "rounded-full px-2 py-1 text-[10px] font-semibold uppercase {}",
+                                status_class
+                            )>{status_label}</span>
+'''
+          if source.count(old) != 1:
+              raise SystemExit(f'expected one navigator status render, found {source.count(old)}')
+          path.write_text(source.replace(old, new, 1))
           PY
           cargo fmt -p rustok-pages-admin
       - name: Capture Pages admin diagnostics
@@ -61,10 +81,10 @@ jobs:
             tail -n 240 /tmp/pages-clippy.log
           } > .agent/pages-check-report.txt
           exit 0
-      - name: Commit diagnostics and safe fix
+      - name: Commit diagnostics and fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add crates/rustok-pages/admin .agent/pages-check-report.txt
-          git commit -m "test(pages): capture builder workspace diagnostics"
+          git commit -m "fix(pages): make builder workspace compile"
           git push origin HEAD:agent/pages-current-only
