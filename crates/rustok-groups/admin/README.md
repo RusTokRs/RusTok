@@ -8,75 +8,79 @@ Module-owned Leptos admin FFA package for Groups.
   preparation, and transport profile;
 - `application_core.rs`: framework-neutral policy/review validation and fresh
   idempotency-key preparation;
-- `model.rs`: serializable directory, governance, localization, and invitation
-  command/result models;
-- `application_model.rs`: application policy, snapshot, review, and membership
-  command/result models;
-- `transport.rs`: selected directory, governance, localization, invitation, and
-  application facade;
-- `transport/native_server_adapter.rs`: SSR/hydrate directory, role-delegation,
-  and ownership-transfer paths;
-- `transport/native_localization_adapter.rs`: SSR/hydrate exact-locale list,
-  upsert, and delete paths;
-- `transport/native_invitations_adapter.rs`: SSR/hydrate invitation list, create,
-  and revoke paths;
-- `transport/native_applications_adapter.rs`: SSR/hydrate application-policy read/
-  upsert, pending-list, and review paths;
-- `transport/graphql_adapter.rs`: CSR/headless GraphQL directory, governance, and
-  localization paths;
-- `transport/graphql_invitations_adapter.rs`: CSR/headless invitation list, create,
-  and revoke paths;
-- `transport/graphql_applications_adapter.rs`: CSR/headless application policy,
-  listing, and review paths;
-- `ui/leptos.rs`: thin Leptos directory and governance form binding;
-- `ui/localization.rs`: exact-locale translation workspace using only the core and
-  transport facade;
+- `model.rs`: directory, governance, localization, and invitation models;
+- `application_model.rs`: application policy, revision history, snapshot, review, and
+  membership models;
+- `transport.rs`: the only selected transport facade consumed by UI;
+- `transport/native_server_adapter.rs`: native directory/governance server functions;
+- `transport/native_localization_adapter.rs`: exact-locale localization server
+  functions;
+- `transport/native_invitations_adapter.rs`: invitation management server functions;
+- `transport/native_applications_adapter.rs`: policy/list/review server functions;
+- `transport/native_policy_history_adapter.rs`: manager-only revision-history server
+  function;
+- `transport/graphql_adapter.rs`: directory/governance/localization GraphQL paths;
+- `transport/graphql_invitations_adapter.rs`: invitation GraphQL paths;
+- `transport/graphql_applications_adapter.rs`: policy/list/review GraphQL paths;
+- `transport/graphql_policy_history_adapter.rs`: policy-history GraphQL path;
+- `ui/leptos.rs`: directory and governance binding;
+- `ui/localization.rs`: exact-locale group presentation workspace;
+- `ui/policy_editor.rs`: visual membership policy editor and revision history;
 - `ui/applications.rs`: pending application snapshot/review workspace;
-- `ui/invitations.rs`: targeted/shareable invitation management with one-time token
-  display;
+- `ui/invitations.rs`: targeted/shareable invitation management;
 - `ui/root.rs`: module-owned composition root;
 - `locales/`: English and Russian copy.
 
-The application facade exposes policy read/upsert, pending application listing, and
-approve/reject commands. Policy copy is stored per exact normalized locale; fallback
-remains a host responsibility. Every submitted application carries the policy
-revision, locale, question/rule snapshot, answers, and acknowledgements used by the
-candidate. Review calls the same owner service from native and GraphQL paths and
-never falls back implicitly. Approval/rejection, membership state, group version,
-audit, and idempotency receipt commit together.
+## Membership policy editor
 
-The governance facade exposes `change_group_admin_role` and
-`transfer_group_admin_ownership`. Both choose exactly one configured transport and
-call the same `GroupGovernanceCommandPort`; an owner error never triggers an
-implicit retry through the other transport. Governance state, idempotency receipt,
-and immutable audit entry remain owned by `rustok-groups`.
+The visual editor supports:
 
-The localization facade exposes `load_group_admin_translations`,
-`upsert_group_admin_translation`, and `delete_group_admin_translation`. Native and
-GraphQL paths call `GroupLocalizationReadPort` or
-`GroupLocalizationCommandPort`; neither path selects a fallback locale. The core
-normalizes the exact locale tag and applies Unicode title/summary limits, while the
-owner service re-checks active owner/admin or platform-manage authority inside the
-write transaction. Translation mutations increment the group version atomically,
-and deletion of the last translation row is rejected.
+- loading the current owner policy for the host-resolved effective locale;
+- enabling/disabling applications;
+- adding, removing, and reordering up to 20 questions and 20 rules;
+- editing stable keys, prompt/help copy, required flags, answer limits, titles, and
+  bodies;
+- saving through the existing idempotent owner command;
+- listing append-only policy revisions through native or GraphQL transport;
+- displaying revision, locale, actor, timestamp, enabled state, and item counts;
+- blocking the UI save when a reread observes a different revision.
 
-The invitation facade exposes `load_group_admin_invitations`,
-`create_group_admin_invitation`, and `revoke_group_admin_invitation`. The core
-validates UUIDs, 300-second-to-30-day expiry, 1-to-100 use limits, and the targeted
-single-use rule. Native and GraphQL paths call the same invitation owner ports and
-never retry through the other transport. The UI displays plaintext only when the
-first create response supplies a token; reload and idempotent replay cannot recover
-that token because Groups stores only its SHA-256 digest.
+The locale field is read-only because the owner read contract consumes
+`PortContext.locale`. A multi-locale picker must be added only with an explicit
+selected-locale read contract; the UI must not pretend that changing a text field
+changes owner selection policy.
 
-The current UI provides localized role-delegation, ownership-transfer,
-translation-management, pending-application review, and invitation-management
-forms. Manual group/member/application/invitation UUID entry remains an intermediate
-operator surface. It intentionally does not reimplement local-role, ownership,
-locale-fallback, question/rule, review, token, expiry, revocation, or redemption
-policy.
+The revision reread is a **non-atomic stale preflight**. It reduces accidental
+operator overwrites but does not close the race between reread and write. Atomic
+expected-revision enforcement inside the owner transaction remains planned.
 
-The package receives tenant, auth, locale, and route context from the host. It
-never reads another module's tables or embeds another module's UI. Policy visual
-editing, member/group pickers, explicit confirmation, audit/receipt history, bulk
-review, accessibility evidence, and executed native/GraphQL parity remain later
-slices; source presence alone does not promote FFA readiness.
+Every successful policy translation INSERT/UPDATE is captured into
+`group_membership_policy_revisions` in the same database transaction. Revision rows
+are append-only, and history listing reuses the application-review authorization
+boundary.
+
+## Other admin surfaces
+
+The application review facade lists policy snapshots, candidate answers, and rule
+acknowledgements, then calls the same approve/reject owner service from native and
+GraphQL paths. Approval/rejection, membership state, group version, audit, and
+idempotency receipt remain owner-transactional.
+
+The localization facade never selects fallback locale rows. The invitation facade
+never stores or recovers invitation plaintext after the first create response. The
+governance facade never copies local-role or ownership rules into UI.
+
+All facades choose exactly one transport through `execute_selected_transport`; an
+owner denial, timeout, conflict, or unavailable result never triggers implicit retry
+through another path.
+
+## Open gates
+
+Manual group/member/application/invitation UUID entry remains an intermediate
+operator surface. Multi-locale policy selection, atomic expected-revision, pickers,
+explicit destructive confirmation, bulk review, audit/receipt history,
+accessibility execution, and native/GraphQL parity remain open.
+
+No source artifact in this package promotes FFA readiness without executed build,
+runtime, migration, replay, concurrency, security, accessibility, and recovery
+evidence.
