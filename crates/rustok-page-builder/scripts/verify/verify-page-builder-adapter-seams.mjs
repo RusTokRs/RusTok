@@ -41,6 +41,14 @@ const implementationPlan = fs.readFileSync(
   path.join(moduleRoot, "docs", "implementation-plan.md"),
   "utf8",
 );
+const pagesBuilder = fs.readFileSync(
+  path.join(repoRoot, "crates", "rustok-pages", "admin", "src", "builder.rs"),
+  "utf8",
+);
+const pagesAdminManifest = fs.readFileSync(
+  path.join(repoRoot, "crates", "rustok-pages", "admin", "Cargo.toml"),
+  "utf8",
+);
 
 function fail(message) {
   console.error(`[verify-page-builder-adapter-seams] ${message}`);
@@ -134,6 +142,33 @@ for (const marker of [
 ]) {
   requireMarker(flyService, marker, "Fly-backed service lifecycle");
 }
+
+for (const marker of [
+  "compose_fly_page_builder_handlers",
+  "PagesPageBuilderProjectStore",
+  "PagesPageBuilderRenderer",
+  "PageBuilderRequestAuth::new",
+  ".with_deadline(PAGE_BUILDER_PORT_DEADLINE)",
+  ".with_idempotency_key",
+  ".handle(",
+]) {
+  requireMarker(pagesBuilder, marker, "Pages production consumer");
+}
+requireMarker(
+  pagesBuilder,
+  '#[cfg(feature = "ssr")]\nasync fn execute_publish',
+  "Pages SSR composition path",
+);
+requireMarker(
+  pagesBuilder,
+  '#[cfg(not(feature = "ssr"))]\nasync fn execute_publish',
+  "Pages client transport path",
+);
+requireMarker(
+  pagesAdminManifest,
+  '"rustok-page-builder/server"',
+  "Pages SSR feature composition",
+);
 
 requireMarker(readme, "src/adapters/fly_service.rs", "local documentation");
 requireMarker(
