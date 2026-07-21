@@ -16,7 +16,15 @@
         "save_project"
       ],
       "tenant_context_source": "PortContext",
-      "save_result": "PageBuilderProjectSaveResult"
+      "save_result": "PageBuilderProjectSaveResult",
+      "save_result_order": [
+        "let saved = match self",
+        "if saved.page_id != input.page_id",
+        "if saved.revision_id.trim().is_empty()",
+        "record_runtime_call(&evidence.succeeded())",
+        "revision_id: saved.revision_id",
+        "published: saved.published"
+      ]
     },
     "preview_rendering": {
       "trait": "PageBuilderRenderingAdapter",
