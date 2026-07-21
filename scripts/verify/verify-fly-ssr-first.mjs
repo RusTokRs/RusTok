@@ -10,6 +10,8 @@ const paths = {
   flyLeptosCargo: 'crates/fly-leptos/Cargo.toml',
   flyLeptosRoot: 'crates/fly-leptos/src/root.rs',
   runtimePipeline: 'crates/fly/src/runtime_pipeline.rs',
+  pageBuilderLib: 'crates/rustok-page-builder/src/lib.rs',
+  pageBuilderBrowserHost: 'crates/rustok-page-builder/src/browser_host.rs',
   adminCargo: 'crates/rustok-page-builder/admin/Cargo.toml',
   adminAdapter: 'crates/rustok-page-builder/admin/src/ui/browser_adapter.rs',
   adminCanvas: 'crates/rustok-page-builder/admin/src/editor/modular_canvas.rs',
@@ -138,16 +140,16 @@ rejectMarker(
   'fly-leptos browser modules must require the explicit wasm-client feature',
 );
 
-requireMarkers('adminCargo', [
-  'default = ["ssr", "browser-js"]',
-  'browser-js = ["dep:wasm-bindgen", "dep:web-sys"]',
-  'wasm-client = ["fly-leptos/wasm-client", "browser-js"]',
-  'fly-browser = { path = "../../fly-browser" }',
-  'fly-leptos = { path = "../../fly-leptos", default-features = false }',
-], 'Page Builder admin feature boundary');
-requireMarkers('adminAdapter', [
-  'FLY_BROWSER_ADAPTER_JS',
-  'data-fly-browser-adapter="fly_browser"',
+requireMarker(
+  'pageBuilderLib',
+  'pub mod browser_host;',
+  'Page Builder core must export the browser host contract',
+);
+requireMarkers('pageBuilderBrowserHost', [
+  'PAGE_BUILDER_BROWSER_ADAPTER',
+  'PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS',
+  'page_builder_browser_module_source',
+  'escape_browser_config_for_inline_script',
   'FlyBrowser?.bootstrap?.(__flyBrowserConfig)',
   'Symbol.for("fly.browser.ssr.controls")',
   'adapters: new WeakSet()',
@@ -157,12 +159,43 @@ requireMarkers('adminAdapter', [
   '__flyFormPayload',
   'delete payload[number.name]',
   'history.replaceState',
-], 'SSR browser adapter component');
+], 'framework-neutral Page Builder browser host');
 for (const forbidden of [
   'autoMount === false',
   'FlyBrowser?.mountAll(__flyBrowserConfig)',
+  'use leptos',
+  'use dioxus',
 ]) {
-  rejectMarker('adminAdapter', forbidden, `SSR browser adapter must not own ${forbidden}`);
+  rejectMarker(
+    'pageBuilderBrowserHost',
+    forbidden,
+    `Page Builder browser host must not own ${forbidden}`,
+  );
+}
+
+requireMarkers('adminCargo', [
+  'default = ["ssr", "browser-js"]',
+  'browser-js = ["dep:wasm-bindgen", "dep:web-sys"]',
+  'wasm-client = ["fly-leptos/wasm-client", "browser-js"]',
+  'fly-browser = { path = "../../fly-browser" }',
+  'fly-leptos = { path = "../../fly-leptos", default-features = false }',
+], 'Page Builder admin feature boundary');
+requireMarkers('adminAdapter', [
+  'FLY_BROWSER_ADAPTER_JS',
+  'page_builder_browser_module_source',
+  'PAGE_BUILDER_BROWSER_ADAPTER',
+  'data-fly-browser-adapter=PAGE_BUILDER_BROWSER_ADAPTER',
+], 'thin Leptos browser adapter component');
+for (const forbidden of [
+  '__flyFormPayload',
+  'fly:browser-ready',
+  'adapter.abortController?.signal',
+  'Symbol.for("fly.browser.ssr.controls")',
+  'history.replaceState',
+  'autoMount === false',
+  'FlyBrowser?.mountAll(__flyBrowserConfig)',
+]) {
+  rejectMarker('adminAdapter', forbidden, `Leptos browser adapter must not own ${forbidden}`);
 }
 requireMarkers('adminCanvas', [
   'data-fly-browser-root="true"',
