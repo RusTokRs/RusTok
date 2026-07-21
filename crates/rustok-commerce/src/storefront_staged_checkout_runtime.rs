@@ -120,6 +120,12 @@ pub async fn complete_storefront_checkout(
             marketplace_allocation_service.clone(),
         ),
     );
+    let marketplace_ledger_service = Arc::new(
+        rustok_marketplace_ledger::MarketplaceLedgerService::new(
+            runtime.db_clone(),
+            marketplace_commission_service.clone(),
+        ),
+    );
     let pipeline = crate::CheckoutStagePipeline::new(
         runtime.db_clone(),
         event_bus.clone(),
@@ -128,6 +134,7 @@ pub async fn complete_storefront_checkout(
     )
     .with_marketplace_allocation_port(marketplace_allocation_service)
     .with_marketplace_commission_port(marketplace_commission_service)
+    .with_marketplace_ledger_port(marketplace_ledger_service)
     .with_payment_provider_registry(payment_provider_registry.clone());
     let staged = crate::StagedCheckoutService::new(
         plan_builder,
