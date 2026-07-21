@@ -2,7 +2,7 @@ name: Apply guarded FORUM-13A plan patch
 
 on:
   pull_request_target:
-    types: [synchronize]
+    types: [opened, synchronize, reopened]
     branches: [main]
 
 permissions:
