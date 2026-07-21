@@ -19,10 +19,11 @@ delete `blog_post` search documents, and `ReindexRequested` supports both one
 post and the complete Blog scope. Search owns the SQL projection and does not
 depend on the Blog crate.
 
-Public comment listing now uses a Comments-owned approved-only projection.
-Pending, spam, trash, and deleted comments cannot leave the owner boundary on
-the storefront path. Authenticated management reads continue through the normal
-RBAC-aware Comments service path.
+Public comment listing uses a Comments-owned approved-only projection. Pending,
+spam, trash, and deleted comments cannot leave the owner boundary. The selected
+storefront post now renders the same public comments payload through native
+`#[server]` and GraphQL transports; authenticated management reads continue
+through the normal RBAC-aware Comments service path.
 
 ## FFA/FBA status
 
@@ -40,6 +41,9 @@ RBAC-aware Comments service path.
   `comments.thread.v1`. Public list reads use
   `list_public_comments_for_target`; writes carry operation-scoped idempotency
   keys, deadline, locale, actor claims, and typed port-error mapping.
+- `GqlPost.publicComments` and native `BlogPostDetail.publicComments` both consume
+  the owner-approved projection, use bounded pagination, and share the same
+  storefront DTO and localized presentation.
 - `BlogCommentProjectionHandler` consumes `comment.created` and
   `comment.deleted`, records a durable event-id delivery ledger, updates the
   Blog-owned reply count with optimistic version locking, and publishes
@@ -72,6 +76,9 @@ RBAC-aware Comments service path.
 8. Added a Comments-owned approved-only public thread projection, bounded public
    pagination, a fail-closed remote-adapter default, and matching provider /
    consumer FBA registry evidence.
+9. Added selected-post public comments parity: a nested GraphQL complex field,
+   native owner read, shared storefront DTO, Leptos rendering, English/Russian
+   copy, and a guardrail that requires approved-only parity in both transports.
 
 ## Next results
 
@@ -86,7 +93,7 @@ RBAC-aware Comments service path.
    concurrent count updates, missing-post retry, delivery-ledger rollback, and
    outbox publication.
 4. **Continue admin/storefront parity.** Preserve native `#[server]` and GraphQL
-   paths while aligning comment moderation, public thread rendering, and search
+   paths while aligning moderation queues/actions, comment pagination, and search
    result navigation across hosts.
 
 ## Verification
