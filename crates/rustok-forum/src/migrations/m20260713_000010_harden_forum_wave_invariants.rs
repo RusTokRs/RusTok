@@ -211,21 +211,8 @@ ALTER TABLE forum_topics
 ALTER TABLE forum_topics
     DROP COLUMN IF EXISTS next_reply_position;
 
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM forum_topic_revisions WHERE char_length(locale) > 16
-    ) OR EXISTS (
-        SELECT 1 FROM forum_reply_revisions WHERE char_length(locale) > 16
-    ) THEN
-        RAISE EXCEPTION 'cannot narrow forum revision locale columns while long locale tags exist';
-    END IF;
-END $$;
-
-ALTER TABLE forum_topic_revisions
-    ALTER COLUMN locale TYPE VARCHAR(16);
-ALTER TABLE forum_reply_revisions
-    ALTER COLUMN locale TYPE VARCHAR(16);
+-- Locale widths are intentionally not reduced during rollback. Narrowing
+-- forum revision locale columns can truncate valid normalized tags.
 "#,
         )
         .await?;
