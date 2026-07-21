@@ -124,11 +124,18 @@ if (fs.existsSync(path.join(root, "crates/rustok-groups/src/migrations/m20260721
     "ck_group_translations_locale_normalized",
     "ck_group_translations_presentation_shape",
     "ck_groups_metadata_language_agnostic",
+    "ck_group_memberships_metadata_language_agnostic",
+    "ck_group_feature_bindings_configuration_language_agnostic",
     "group_translations_language_agnostic_insert",
     "group_translations_language_agnostic_update",
     "groups_language_agnostic_metadata_insert",
     "groups_language_agnostic_metadata_update",
+    "group_memberships_language_agnostic_metadata_insert",
+    "group_memberships_language_agnostic_metadata_update",
+    "group_feature_bindings_language_agnostic_configuration_insert",
+    "group_feature_bindings_language_agnostic_configuration_update",
     "sqlite_locale_violation",
+    "sqlite_language_agnostic_json_violation",
     "Irreversible by design",
   ]) {
     if (!migration.includes(marker)) {
@@ -144,7 +151,10 @@ if (fs.existsSync(path.join(root, "crates/rustok-groups/docs/README.md"))) {
     "never injects an English or arbitrary first-row fallback",
     "Catalog and search queries are scoped to that effective locale",
     "Unicode scalar values rather than UTF-8 bytes",
-    "must not contain localized presentation copies",
+    "group_memberships.metadata",
+    "group_feature_bindings.configuration",
+    "reserved top-level presentation fields",
+    "Nested provider-schema fields",
   ]) {
     if (!contract.includes(marker)) {
       failures.push(`Groups multilingual documentation is missing marker: ${marker}`);
