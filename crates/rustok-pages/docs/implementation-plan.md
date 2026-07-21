@@ -20,28 +20,31 @@ The visual document authority is `pages[].component` stored in the Pages body.
 ## Mission
 
 `rustok-pages` owns page identity, localized metadata and bodies, slugs, channels,
-menus, draft/published lifecycle, immutable landing artifacts, routes and
-storefront reads. Fly/Page Builder owns visual document primitives and capability
-contracts, not Pages persistence or tenant policy.
+menus, draft/published lifecycle, immutable landing artifacts, publish receipts,
+routes and storefront reads. Fly/Page Builder owns visual document primitives and
+capability contracts, not Pages persistence or tenant policy.
 
 ## Current implementation
 
 ### Domain and persistence
 
 - [x] Pages has independent entities for pages, translations, bodies, channel
-  visibility, scenario baselines and immutable landing artifacts.
+  visibility, scenario baselines, immutable landing artifacts and publish receipts.
 - [x] `PageBlock`, `BlockService`, block DTOs, relations, GraphQL/REST/OpenAPI
   surfaces and storefront block models are deleted.
 - [x] The initial development migration never creates `page_blocks`; no drop or
   compatibility migration is retained.
-- [x] `PageService` is split into `create`, `read`, `update`, `persistence` and
-  `helpers` modules instead of one block-aware monolith.
+- [x] `PageService` is split into focused current-only modules instead of one
+  block-aware monolith.
 - [x] New/current documents use only `pages[].component`.
 - [x] Unknown current provider/plugin fields are preserved by the Fly codec.
 - [x] Page writes use optimistic page versions and body revisions.
 - [x] Builder feature flags and scenario-baseline gates fail with typed errors.
 - [x] Static landing records persist Page Builder materialization hash, identity
   and runtime snapshot evidence without storing raw runtime context.
+- [x] `page_publish_operations` stores one durable result per
+  `(tenant_id, page_id, idempotency_key)` with request, sanitization and artifact
+  set hashes; it never stores the reviewed runtime context.
 
 ### Admin FFA
 
@@ -49,9 +52,8 @@ contracts, not Pages persistence or tenant policy.
 - [x] Fly saves reload current page metadata and reject stale body revisions.
 - [x] Pages contributes current Fly landing blocks through provider/capability
   policy.
-- [ ] The separate builder-first admin workspace is delivered by the companion
-  current-only admin change.
-- [ ] Metadata editing still needs a typed metadata-only patch/property contract.
+- [ ] Public admin publish transport still needs atomic reviewed-runtime cutover.
+- [ ] Metadata editing still needs a typed metadata-only property contribution.
 
 ### Storefront FFA
 
@@ -76,29 +78,38 @@ contracts, not Pages persistence or tenant policy.
   uniqueness key that includes `materialization_hash`; partial evidence is
   rejected and raw runtime context is forbidden.
 - [x] The provider exposes an explicit reviewed publish-runtime contract. Pages
-  has a domain publish path that verifies its scenario/context hash against the
-  resulting materialization identity before staging.
-- [ ] Public publish transports must be cut over from the legacy default runtime
-  to the reviewed domain path.
-- [ ] Publish must become one idempotent atomic workflow from validation through
-  artifact binding and outbox/cache invalidation.
-- [ ] Authoritative sanitization is not complete for every publish path.
+  verifies its scenario/context hash against materialization identity.
+- [x] Page Builder exposes authoritative static publish sanitization through
+  `sanitize_static_landing_project`, including stable ids, structural validation
+  and secure public-resource policy before materialization.
+- [x] `PageService::publish_reviewed` is one idempotent transaction covering page
+  and body locks, feature/baseline gates, sanitization, materialization, immutable
+  persistence, binding, page transition, transactional outbox events and receipt.
+- [x] A replay with the same request hash returns the stored receipt without
+  rebuilding artifacts or emitting duplicate events; key reuse with another
+  request fails with a typed conflict.
+- [ ] GraphQL, HTTP and admin publish transports must be cut over from the legacy
+  default-runtime path to `PublishPageInput`.
+- [ ] Dedicated cache-consumer invalidation evidence remains open even though the
+  publish transaction emits its durable `NodePublished` outbox signal.
 - [ ] Observed tenant Wave 0/Wave 1 evidence remains open.
 
 ## FFA/FBA status
 
 - **FFA:** `in_progress` — current-only runtime/storefront boundaries are ready;
-  typed metadata properties and inline edit mode remain open.
-- **FBA:** `in_progress` — deterministic artifact persistence and the reviewed
-  publish-runtime domain contract exist; transport cutover, idempotent atomic
-  publication, rollback, sanitization and observed rollout evidence remain open.
+  atomic publish transport cutover, typed metadata properties and inline edit mode
+  remain open.
+- **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
+  materialization evidence and idempotent atomic Pages service are integrated;
+  public transport cutover, rollback, cache-consumer proof and observed rollout
+  evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
 
 - **Pages domain/backend:** identity, translations, slugs, channels, templates,
-  menus, revisions, publish transaction, artifact selection, redirects, deletion
-  and audit.
+  menus, revisions, publish transaction, receipts, artifact selection, redirects,
+  deletion and audit.
 - **Pages admin FFA:** list/create/select workspace, metadata property
   contributions, Pages persistence facade and permissions.
 - **Pages storefront FFA:** published reads, routing, renderer composition, cache
@@ -113,15 +124,20 @@ contracts, not Pages persistence or tenant policy.
 ## Current document/publication model
 
 ```text
-Page metadata revision
-  + Fly document/body revision
+Page metadata version
+  + exact localized body revisions
+  + idempotency key
   + reviewed runtime scenario/context hash
-  -> validation and provider readiness
+  -> page/body locks
+  -> feature and promoted-scenario gates
   -> authoritative sanitization
   -> canonical runtime materialization
   -> deterministic renderer
-  -> immutable landing artifact + materialization evidence
-  -> atomic published artifact pointer
+  -> immutable landing artifacts + materialization evidence
+  -> published artifact bindings
+  -> published page state
+  -> transactional NodeUpdated/NodePublished outbox
+  -> durable publish receipt
   -> verified route/cache/storefront read
 ```
 
@@ -130,54 +146,56 @@ Invariants:
 1. `pages[].component` is the sole component-tree authority.
 2. Metadata and document writes never overwrite one another implicitly.
 3. Draft saves do not mutate the selected published artifact.
-4. Publish validates and builds before making output visible.
+4. Publish rejects stale metadata or any stale localized body revision.
 5. Artifact identity includes source, renderer release, registry and policy hashes.
 6. Materialization evidence includes context hash, scenario identity and runtime
    snapshot hash; raw context is never stored.
-7. Reviewed publish runtime is valid only when its SHA-256 binds format, explicit
-   scenario and transient context, and the materialized identity matches both.
-8. Missing providers fail visibly and never cause silent deletion.
-9. Dynamic widgets persist versioned configuration, not privileged snapshots.
-10. Anonymous storefront bundles contain no editor code.
-11. No block or shadow-editor fallback exists.
+7. Reviewed runtime is valid only when SHA-256 binds format, explicit scenario and
+   transient context, and promoted baseline evidence matches that scenario/context.
+8. Authoritative sanitization happens before runtime materialization and is bound
+   into the operation through `sanitized_set_hash`.
+9. A committed idempotency key is immutable: exact replay returns its receipt;
+   different input fails closed.
+10. Page state, artifact bindings, outbox events and publish receipt commit or roll
+    back together.
+11. Missing providers fail visibly and never cause silent deletion.
+12. Dynamic widgets persist versioned configuration, not privileged snapshots.
+13. Anonymous storefront bundles contain no editor code.
+14. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
 
-- Removed the entire block entity/DTO/service/GraphQL/REST/OpenAPI contract.
-- Removed block lifecycle from Page create/read/update/delete operations.
-- Split `PageService` into focused current-only modules.
-- Removed block fields from storefront GraphQL/native adapters, models and UI.
-- Deleted the separate Next/GrapesJS editor route, component, API and navigation.
-- Rewrote current round-trip tests around `pages[].component`.
-- Added a no-block/no-shadow-editor source guardrail.
-- Extended Fly/Page Builder CI to test, lint and format Pages domain/storefront.
-- Rewrote the development schema so `page_blocks` is never created.
-- Added backward-compatible materialization evidence columns to immutable landing
-  artifacts and replaced build-only uniqueness with a materialization-aware key.
-- Routed create/publish compilation through
-  `compile_materialized_static_landing(PageBuilderPreviewRuntime::default())`.
-- Added full materialization verification on staging, binding and storefront reads;
-  all-`NULL` legacy evidence remains readable, partial evidence fails closed.
-- Added `PageBuilderReviewedPublishRuntime`, binding format, scenario and transient
-  context through a SHA-256 review hash.
-- Added `PageService::publish_reviewed*`, which rechecks authorization and body
-  revisions, compiles with the selected runtime, verifies materialization evidence,
-  and stages/binds artifacts with page state and outbox events in one transaction.
-- Added a machine-readable reviewed-runtime contract and source guardrail; raw
-  runtime context remains forbidden in Pages persistence.
+- Removed the block entity/DTO/service/GraphQL/REST/OpenAPI contract and all
+  storefront block fallback rendering.
+- Split `PageService` into focused current-only modules and retained
+  `pages[].component` as the sole visual authority.
+- Added immutable static landing artifacts, materialization evidence and strict
+  storefront verification with fail-closed partial evidence.
+- Added `PageBuilderReviewedPublishRuntime`, binding format, explicit scenario and
+  transient context through a SHA-256 review hash.
+- Added `sanitize_static_landing_project`, which produces a verified deterministic
+  project and SHA-256 sanitization identity before materialization.
+- Added `PublishPageInput` with page version, exact locale/body revisions,
+  idempotency key and reviewed runtime.
+- Added `page_publish_operations` and its unique tenant/page/key receipt boundary.
+- Replaced the provisional reviewed domain path with one atomic
+  `PageService::publish_reviewed` service. It locks page and bodies, validates
+  promoted runtime scenario/context, sanitizes, materializes, persists and binds
+  immutable artifacts, updates page state, writes outbox events and inserts the
+  receipt in one transaction.
+- Added typed errors for review, sanitization, materialization mismatch,
+  idempotency collision and receipt integrity.
+- Expanded the machine-readable contract and source guardrail. Raw runtime context
+  remains forbidden in both artifacts and publish receipts.
 
 ## Next implementation order
 
 ### P0 — separate metadata and document writes
 
-- [ ] Add a typed metadata patch for title, slug, locale, channels, template and
-  SEO fields that cannot carry body/project data.
-- [ ] Add a typed document save command carrying page id, body revision and Fly
-  project only.
-- [ ] Track metadata and document revisions independently.
-- [ ] Add conflict tests proving metadata saves cannot replace a dirty/current
-  Fly document and Fly saves cannot revert metadata.
-- [ ] Move metadata editing into Pages-owned Page Builder property contributions.
+- [ ] Finish Pages-owned typed metadata property contributions.
+- [ ] Track metadata and document revisions independently in every transport.
+- [ ] Add conflict tests proving metadata saves cannot replace a dirty/current Fly
+  document and Fly saves cannot revert metadata.
 
 ### P0 — atomic artifact publication
 
@@ -185,20 +203,20 @@ Invariants:
 - [x] Immutable artifact persistence and body bindings.
 - [x] Runtime materialization identity/snapshot persistence and storefront
   verification.
-- [x] Add an explicit reviewed publish-runtime/scenario contract and Pages domain
-  publication path instead of compiling that path with the canonical default.
-- [ ] Cut GraphQL, HTTP and admin publish transports over to the reviewed runtime
-  DTO and remove default-runtime publication for builder documents.
-- [ ] Make publish idempotent: validate -> sanitize -> materialize -> compile ->
-  persist -> bind -> switch published state -> outbox/cache invalidation.
+- [x] Explicit reviewed publish-runtime/scenario contract.
+- [x] Authoritative sanitizer before materialization.
+- [x] Idempotent atomic reviewed service: lock -> validate -> sanitize -> materialize
+  -> compile -> persist -> bind -> state -> outbox -> receipt.
+- [ ] Cut GraphQL, HTTP and admin transports over to `PublishPageInput`; remove
+  builder publication through the default runtime and disable create-and-publish.
 - [ ] Add rollback to a previous immutable artifact.
-- [ ] Correlate editor save, page revision, runtime review, materialization,
-  artifact and storefront read.
+- [ ] Correlate receipt, editor save, page/body revisions, runtime review,
+  materialization, artifact and storefront read in operational telemetry.
 - [ ] Add integrity audit and repair/rebuild commands.
+- [ ] Prove the `NodePublished` outbox consumer invalidates every affected cache key.
 
 ### P1 — complete Page Builder authoring
 
-- [ ] Add typed Pages metadata property editors.
 - [ ] Add Media asset contributions without transferring Media ownership.
 - [ ] Integrate rich text only through the dedicated opaque payload/editor seam.
 - [ ] Generate admin/storefront contribution registries from module metadata.
@@ -217,11 +235,12 @@ Invariants:
 
 ### P2 — operations and rollout
 
-- [ ] Audit metadata save, document save, publish, unpublish, rollback and delete.
+- [ ] Audit metadata save, document save, publish, replay, unpublish, rollback and
+  delete.
 - [ ] Metrics for save/publish latency, conflicts, sanitizer rejection, renderer
-  failure, artifact integrity, missing providers and cache hit rate.
+  failure, artifact/receipt integrity, missing providers and cache hit rate.
 - [ ] Run observed internal-tenant Wave 0.
-- [ ] Run Wave 1 only after publication/rollback gates pass.
+- [ ] Run Wave 1 only after transport publication/rollback gates pass.
 - [ ] Prove rollback for provider, sanitizer, renderer and contribution failures.
 
 ## Verification
