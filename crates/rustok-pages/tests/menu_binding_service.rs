@@ -97,12 +97,7 @@ async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
     .expect("tenant should be inserted");
 }
 
-async fn seed_channel(
-    db: &DatabaseConnection,
-    channel_id: Uuid,
-    tenant_id: Uuid,
-    slug: &str,
-) {
+async fn seed_channel(db: &DatabaseConnection, channel_id: Uuid, tenant_id: Uuid, slug: &str) {
     db.execute(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, status, settings, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
