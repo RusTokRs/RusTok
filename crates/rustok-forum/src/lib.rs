@@ -13,6 +13,7 @@ pub mod entities;
 pub mod error;
 pub mod graphql;
 pub mod locale;
+pub mod mentions;
 pub mod migrations;
 mod notification_source;
 pub mod openapi;
@@ -26,6 +27,7 @@ pub use dto::*;
 pub use entities::*;
 pub use error::{ForumError, ForumResult};
 pub use graphql::{ForumMutation, ForumQuery};
+pub use mentions::*;
 pub use services::{
     CategoryService, ForumEventService, ForumReadModelService, ForumWidgetContractService,
     ModerationService, ReplyService, RevisionService, SubscriptionService, TopicService,
