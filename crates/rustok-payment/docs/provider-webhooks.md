@@ -8,10 +8,13 @@ bounded recovery, safe operator reads, and dead-letter replay. `rustok-commerce`
 orchestrates the ecommerce family but must not parse provider payloads or persist
 payment state.
 
-Implementation tasks, completion marks, verification state, execution order, and
-promotion gates are tracked only in:
+Payment workstream completion and verification state is tracked in:
 
 `crates/rustok-commerce/docs/implementation-plan.md#payment-workstream`
+
+Marketplace financial/reversal completion and verification state is tracked in:
+
+`crates/rustok-marketplace/docs/implementation-plan.md`
 
 This document is an operational runbook, not a roadmap.
 
@@ -54,13 +57,21 @@ Reading requires `payments:read` or `payments:manage`. Recovery and replay requi
    external reference, and bounded normalized metadata. Raw body and signature are
    discarded.
 7. Claim a bounded processing lease.
-8. `PaymentDomainEventApplier` routes payment/refund lifecycle events and validates
-   completed chargeback facts against the authoritative payment collection.
-9. Mark the payment inbox event `processed` only after the owner command succeeds.
-10. Classify retryable failures as `failed`; permanent failures or exhausted retry
+8. `PaymentObservedDomainEventApplier` routes payment/refund lifecycle events and
+   validates completed chargeback facts against the authoritative payment collection.
+9. After the payment owner stage succeeds, each host-composed
+   `PaymentProviderProcessedEventObserver` receives the same immutable normalized event.
+10. The marketplace observer ignores ordinary non-marketplace events. For events with a
+    `marketplace_reversal` extension, it writes/processes the commerce reversal inbox and
+    waits for append-only ledger evidence.
+11. Mark the payment inbox event `processed` only after both the payment owner stage and
+    every processed-event observer succeed.
+12. Classify retryable failures as `failed`; permanent failures or exhausted retry
     budgets become `dead_letter`.
-11. The commerce marketplace worker consumes only processed normalized events with a
-    `marketplace_reversal` extension and writes its own durable reversal inbox.
+
+The same observed applier is mounted in webhook ingress, manual payment recovery, and
+the scheduled payment recovery worker. Scheduled polling of already-processed events
+remains as a bounded backfill/fallback for events committed before observer composition.
 
 Writing verified identity and normalized facts with the first receipt removes the
 crash window between signature verification and durable replay data. Database
@@ -202,7 +213,7 @@ Payment provider inbox:
 - `received`: verified facts stored, not claimed.
 - `processing`: owned by one non-expired lease.
 - `failed`: retryable failure without an active lease.
-- `processed`: owner mutation committed.
+- `processed`: owner mutation and every observed post-owner effect committed.
 - `dead_letter`: permanent failure or exhausted retry budget.
 
 Marketplace reversal inbox:
@@ -214,11 +225,14 @@ Marketplace reversal inbox:
 - `processed`.
 
 Automatic payment recovery selects only `received`, `failed`, and expired
-`processing` rows. It never claims `dead_letter`.
+`processing` rows. It never claims `dead_letter`. Recovery replays the payment owner
+stage and the same host-composed observers.
 
 The marketplace financial worker runs every 10 seconds with delayed missed ticks and
-bounded batches. It adapts processed provider events containing marketplace facts,
-recovers reversal inbox rows, and then runs the existing paid-event recovery sweep.
+bounded batches. It adapts historical processed provider events containing marketplace
+facts, recovers reversal inbox rows, and then runs the existing paid-event recovery
+sweep. Existing reversal inbox deduplication makes this fallback safe alongside direct
+observer delivery.
 
 Manual terminal replay is limited to:
 
@@ -253,12 +267,14 @@ return `lines_json` or provider metadata.
 - Keep marketplace reversal lines in minor units and require exact amount conversion.
 - Retry an operator-review reversal row only while no reversal or ledger transaction
   evidence has been stored.
+- Compose processed-event observers through host runtime values; payment owner code must
+  not depend on commerce implementations.
 
 ## Operator workflow
 
 For payment `received`, `failed`, or expired `processing`:
 
-1. Resolve the temporary owner/storage dependency.
+1. Resolve the temporary owner/storage/observer dependency.
 2. Allow the scheduled worker to recover the event, or call
    `POST /api/payment/provider-events/recovery/run?limit=N`.
 3. Review stable error codes only.
@@ -267,7 +283,8 @@ For payment `dead_letter`:
 
 1. Inspect the safe event projection.
 2. Verify the provider-owned delivery reference in the provider dashboard.
-3. Resolve identity, currency, amount, provider, or lifecycle conflicts.
+3. Resolve identity, currency, amount, provider, lifecycle, or marketplace attribution
+   conflicts.
 4. Call `POST /api/payment/provider-events/{event_id}/replay`.
 5. Never edit the inbox row manually.
 
@@ -278,6 +295,3 @@ For marketplace reversal `operator_review`:
 3. Retry only through the authenticated marketplace reversal operator mutation or REST
    route.
 4. Never reset rows with stored reversal or ledger transaction evidence.
-
-Current completion and verification status is maintained only in the main commerce
-implementation plan.
