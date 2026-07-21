@@ -83,6 +83,13 @@ if (
 if (contract.provider.scenario.required !== true) {
   fail("reviewed publish runtime must require an explicit scenario");
 }
+if (
+  contract.pages_consumer.builder_sources.required !== true ||
+  contract.pages_consumer.builder_sources.ordering !==
+    "normalized_locale_ascending"
+) {
+  fail("atomic reviewed publish must require an ordered Page Builder source set");
+}
 if (contract.pages_consumer.atomic_pipeline !== "service_integrated") {
   fail("Pages atomic reviewed publish service is not integrated");
 }
@@ -161,7 +168,7 @@ if (pages.includes("pub async fn publish_reviewed_if_current")) {
 const publishMethod = sliceBetween(
   pages,
   "pub async fn publish_reviewed",
-  "fn compile_builder_sources_with_reviewed_runtime",
+  "fn require_builder_sources",
   "Pages atomic reviewed publish",
 );
 for (const marker of [
@@ -181,6 +188,16 @@ requireOrderedMarkers(
 requireMarker(publishMethod, "txn.commit().await?", "Pages atomic commit");
 
 for (const marker of [
+  "type BuilderSourceSet = BTreeMap<String, String>",
+  "fn require_builder_sources",
+  "atomic reviewed publish requires at least one Page Builder body",
+  "fn parse_builder_project_values",
+  "compile_builder_sources_with_reviewed_runtime(builder_sources",
+]) {
+  requireMarker(pages, marker, "shared Page Builder source set");
+}
+
+for (const marker of [
   "sanitize_static_landing_project(&project_data)",
   "sanitization_integrity_error",
   "sanitized.project_data()",
@@ -197,7 +214,7 @@ if (pages.includes("PageBuilderPreviewRuntime::default()")) {
 for (const marker of [
   "RuntimeScenarioReleaseBaseline",
   "baseline.scenarios",
-  "selected.context != reviewed.context",
+  "&selected.context != &reviewed.context",
   "evaluate_page_builder_runtime_scenario_release",
 ]) {
   requireMarker(pages, marker, "transactional scenario review gate");
