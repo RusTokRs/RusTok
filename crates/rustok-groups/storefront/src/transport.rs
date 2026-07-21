@@ -7,8 +7,8 @@ use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTranspo
 
 use crate::core::GroupsStorefrontTransportProfile;
 use crate::model::{
-    AcceptGroupInvitationCommand, GroupsStorefrontAcceptInvitationResult,
-    GroupsStorefrontDirectory, GroupsStorefrontFilters,
+    AcceptGroupInvitationCommand, AcceptTargetedGroupInvitationCommand,
+    GroupsStorefrontAcceptInvitationResult, GroupsStorefrontDirectory, GroupsStorefrontFilters,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -77,6 +77,22 @@ pub async fn accept_groups_storefront_invitation(
         context.path(),
         move || native_server_adapter::accept_invitation(native_command),
         move || graphql_adapter::accept_invitation(token, tenant, command),
+    )
+    .await
+}
+
+pub async fn accept_groups_storefront_targeted_invitation(
+    context: GroupsStorefrontTransportContext,
+    command: AcceptTargetedGroupInvitationCommand,
+) -> UiTransportResult<GroupsStorefrontAcceptInvitationResult> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_command = command.clone();
+    execute_selected_transport(
+        "groups.storefront.targeted_invitation.accept",
+        context.path(),
+        move || native_server_adapter::accept_targeted_invitation(native_command),
+        move || graphql_adapter::accept_targeted_invitation(token, tenant, command),
     )
     .await
 }
