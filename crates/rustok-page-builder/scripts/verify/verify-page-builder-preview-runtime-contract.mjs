@@ -11,6 +11,15 @@ const read = (...segments) => fs.readFileSync(path.join(repoRoot, ...segments), 
 const registry = JSON.parse(
   read("crates", "rustok-page-builder", "contracts", "page-builder-fba-registry.json"),
 );
+const wavePacket = JSON.parse(
+  read(
+    "crates",
+    "rustok-page-builder",
+    "contracts",
+    "evidence",
+    "pages-wave0-dry-run-evidence.json",
+  ),
+);
 const dto = read("crates", "rustok-page-builder", "src", "dto.rs");
 const previewPort = read("crates", "rustok-page-builder", "src", "preview_port.rs");
 const flyService = read(
@@ -41,8 +50,12 @@ function requireMarker(source, marker, label) {
 }
 
 const providerVersion = registry.provider?.builder_contract_version;
+const consumerMinVersion = registry.provider?.consumer_min_version;
 if (typeof providerVersion !== "string" || providerVersion.length === 0) {
   fail("provider.builder_contract_version is missing");
+}
+if (typeof consumerMinVersion !== "string" || consumerMinVersion.length === 0) {
+  fail("provider.consumer_min_version is missing");
 }
 const contract = registry.provider?.preview_runtime_contract;
 if (!contract) fail("provider.preview_runtime_contract is missing");
@@ -54,6 +67,13 @@ if (!Number.isInteger(contract.context_max_bytes) || contract.context_max_bytes 
 }
 if (!Number.isInteger(contract.scenario_id_max_bytes) || contract.scenario_id_max_bytes <= 0) {
   fail("scenario_id_max_bytes must be a positive integer");
+}
+
+if (wavePacket.metadata?.provider?.builder_contract_version !== providerVersion) {
+  fail("Pages wave evidence builder_contract_version does not match registry provider");
+}
+if (wavePacket.metadata?.provider?.consumer_min_version !== consumerMinVersion) {
+  fail("Pages wave evidence consumer_min_version does not match registry provider");
 }
 
 requireMarker(dto, `pub struct ${contract.input}`, "preview runtime DTO");
