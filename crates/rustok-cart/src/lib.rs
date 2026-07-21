@@ -10,6 +10,7 @@ pub mod error;
 mod guarded_ports;
 pub mod guest_access;
 pub mod guest_access_http;
+pub mod marketplace_snapshot;
 pub mod migrations;
 pub mod ports;
 pub mod services;
@@ -24,6 +25,7 @@ pub use guarded_ports::{
     guarded_cart_storefront_port as in_process_cart_storefront_port,
 };
 pub use guest_access::*;
+pub use marketplace_snapshot::*;
 pub use ports::{
     CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
     CartCheckoutSnapshotRequest, CartPromotionKindRequest, CartPromotionPort, CartPromotionRequest,
@@ -33,7 +35,7 @@ pub use ports::{
     CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
     CartStorefrontRepriceRequest, in_process_cart_promotion_port,
 };
-pub use services::CartService;
+pub use services::{CartMarketplaceSnapshotService, CartService};
 pub use services::cart::{
     CartLineItemPricingUpdate, CartPricingAdjustmentUpdate, CartPromotionPreview,
 };
