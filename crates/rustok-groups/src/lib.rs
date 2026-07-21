@@ -20,6 +20,8 @@ pub mod graphql_governance;
 pub mod graphql_invitations;
 #[cfg(feature = "graphql")]
 pub mod graphql_localization;
+#[cfg(feature = "graphql")]
+pub mod graphql_policy_history;
 pub mod governance;
 pub mod governance_entities;
 pub mod group_event_entities;
@@ -28,6 +30,7 @@ pub mod invitations;
 pub mod localization;
 pub mod migrations;
 mod notification_source;
+pub mod policy_history;
 pub mod ports;
 pub mod service;
 pub mod targeted_invitations;
@@ -39,6 +42,7 @@ pub use error::{GroupsError, GroupsResult};
 pub use governance::*;
 pub use invitations::*;
 pub use localization::GroupLocalizationService;
+pub use policy_history::*;
 pub use ports::*;
 pub use service::GroupsService;
 pub use targeted_invitations::*;
@@ -110,7 +114,7 @@ mod tests {
         assert_eq!(module.slug(), "groups");
         assert_eq!(module.name(), "Groups");
         assert!(module.dependencies().is_empty());
-        assert_eq!(module.migrations().len(), 6);
+        assert_eq!(module.migrations().len(), 7);
         assert_eq!(module.permissions().len(), 7);
     }
 
