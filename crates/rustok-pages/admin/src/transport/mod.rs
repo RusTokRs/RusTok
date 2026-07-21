@@ -131,9 +131,11 @@ pub async fn publish_page(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<PagePublicationResult, TransportError> {
-    graphql_adapter::publish_page(token, tenant_slug, id)
+    let expected_page_id = id.clone();
+    let result = graphql_adapter::publish_page(token, tenant_slug, id)
         .await
-        .map(PagePublicationResult::Published)
+        .map(PagePublicationResult::Published)?;
+    validate_publication_result(&expected_page_id, result)
 }
 
 pub async fn unpublish_page(
@@ -141,9 +143,30 @@ pub async fn unpublish_page(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<PagePublicationResult, TransportError> {
-    graphql_adapter::unpublish_page(token, tenant_slug, id)
+    let expected_page_id = id.clone();
+    let result = graphql_adapter::unpublish_page(token, tenant_slug, id)
         .await
-        .map(PagePublicationResult::Unpublished)
+        .map(PagePublicationResult::Unpublished)?;
+    validate_publication_result(&expected_page_id, result)
+}
+
+fn validate_publication_result(
+    expected_page_id: &str,
+    result: PagePublicationResult,
+) -> Result<PagePublicationResult, TransportError> {
+    if result.page_id() != expected_page_id {
+        return Err(TransportError::Graphql(format!(
+            "Pages publication returned page `{}` for `{expected_page_id}`",
+            result.page_id()
+        )));
+    }
+    if result.version() <= 0 {
+        return Err(TransportError::Graphql(format!(
+            "Pages publication returned invalid version {} for `{expected_page_id}`",
+            result.version()
+        )));
+    }
+    Ok(result)
 }
 
 pub async fn delete_page(
