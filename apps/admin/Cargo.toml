@@ -50,6 +50,7 @@ hydrate = [
   "rustok-marketplace-listing-admin/hydrate",
   "rustok-media-admin/hydrate",
   "rustok-mcp-admin/hydrate",
+  "rustok-notifications-admin/hydrate",
   "rustok-outbox-admin/hydrate",
   "rustok-page-builder-admin/hydrate",
   "rustok-pages-admin/hydrate",
@@ -99,6 +100,7 @@ ssr = [
   "rustok-marketplace-listing-admin/ssr",
   "rustok-media-admin/ssr",
   "rustok-mcp-admin/ssr",
+  "rustok-notifications-admin/ssr",
   "rustok-outbox-admin/ssr",
   "rustok-page-builder-admin/ssr",
   "rustok-pages-admin/ssr",
@@ -182,6 +184,7 @@ rustok-marketplace-seller-admin = { path = "../../crates/rustok-marketplace-sell
 rustok-marketplace-listing-admin = { path = "../../crates/rustok-marketplace-listing/admin", default-features = false }
 rustok-media-admin = { path = "../../crates/rustok-media/admin", default-features = false }
 rustok-mcp-admin = { path = "../../crates/rustok-mcp/admin", default-features = false }
+rustok-notifications-admin = { path = "../../crates/rustok-notifications/admin", default-features = false }
 rustok-order-admin = { path = "../../crates/rustok-order/admin", default-features = false }
 rustok-outbox-admin = { path = "../../crates/rustok-outbox/admin", default-features = false }
 rustok-page-builder-admin = { path = "../../crates/rustok-page-builder/admin", default-features = false }
@@ -254,6 +257,7 @@ normal = [
   "rustok-media",
   "rustok-media-admin",
   "rustok-mcp-admin",
+  "rustok-notifications-admin",
   "rustok-page-builder-admin",
   "rustok-pages-admin",
   "rustok-seo",
