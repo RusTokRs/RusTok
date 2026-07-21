@@ -23,8 +23,8 @@ impl MarketplaceFinancialQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
             ctx,
-            &[Permission::PAYMENTS_READ, Permission::ORDERS_READ],
-            "Permission denied: payments:read or orders:read required",
+            &[Permission::PAYMENTS_READ],
+            "Permission denied: payments:read required",
         )?;
         let (tenant_id, service) = operator_service(ctx)?;
         service
@@ -42,8 +42,8 @@ impl MarketplaceFinancialQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
             ctx,
-            &[Permission::PAYMENTS_READ, Permission::ORDERS_READ],
-            "Permission denied: payments:read or orders:read required",
+            &[Permission::PAYMENTS_READ],
+            "Permission denied: payments:read required",
         )?;
         let (tenant_id, service) = operator_service(ctx)?;
         service
@@ -61,8 +61,8 @@ impl MarketplaceFinancialQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
             ctx,
-            &[Permission::PAYMENTS_READ, Permission::ORDERS_READ],
-            "Permission denied: payments:read or orders:read required",
+            &[Permission::PAYMENTS_READ],
+            "Permission denied: payments:read required",
         )?;
         let (tenant_id, service) = operator_service(ctx)?;
         service
@@ -80,8 +80,8 @@ impl MarketplaceFinancialQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
             ctx,
-            &[Permission::PAYMENTS_READ, Permission::ORDERS_READ],
-            "Permission denied: payments:read or orders:read required",
+            &[Permission::PAYMENTS_READ],
+            "Permission denied: payments:read required",
         )?;
         let (tenant_id, service) = operator_service(ctx)?;
         service
@@ -105,8 +105,8 @@ impl MarketplaceFinancialMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
             ctx,
-            &[Permission::PAYMENTS_MANAGE, Permission::ORDERS_MANAGE],
-            "Permission denied: payments:manage or orders:manage required",
+            &[Permission::PAYMENTS_MANAGE],
+            "Permission denied: payments:manage required",
         )?;
         let (tenant_id, service) = operator_service(ctx)?;
         service
@@ -124,8 +124,8 @@ impl MarketplaceFinancialMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
             ctx,
-            &[Permission::PAYMENTS_MANAGE, Permission::ORDERS_MANAGE],
-            "Permission denied: payments:manage or orders:manage required",
+            &[Permission::PAYMENTS_MANAGE],
+            "Permission denied: payments:manage required",
         )?;
         let (tenant_id, service) = operator_service(ctx)?;
         service
@@ -143,8 +143,8 @@ impl MarketplaceFinancialMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
             ctx,
-            &[Permission::PAYMENTS_MANAGE, Permission::ORDERS_MANAGE],
-            "Permission denied: payments:manage or orders:manage required",
+            &[Permission::PAYMENTS_MANAGE],
+            "Permission denied: payments:manage required",
         )?;
         let (tenant_id, service) = operator_service(ctx)?;
         service
