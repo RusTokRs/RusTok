@@ -23,15 +23,19 @@ This additive-then-major-cleanup cycle is the permanent evolution model.
 
 - `fly` owns the current project model, editor commands, validation, registries and deterministic
   rendering;
-- `rustok-page-builder` owns capability, service, authorization, transport and rollout boundaries;
+- `rustok-page-builder` owns capability, service, authorization, transport, rollout and the
+  framework-neutral browser host contract;
 - consumer modules own persistence and lifecycle;
-- UI adapters translate framework events to the same Fly intents and commands.
+- UI adapters only render the shared browser module source and translate framework events to the
+  same Fly intents and commands.
 
 GrapesJS is an external compatibility format and behavioural reference. It is not a version of the
 RusTok Page Builder domain model.
 
 ## Current entrypoints
 
+- `src/browser_host.rs` — framework-neutral browser module composition, safe inline config escaping
+  and lifecycle-bound SSR controls reusable by Leptos and future Dioxus hosts;
 - `src/dto.rs` — versionless `PageBuilderModuleMetadata`, capability DTOs and typed error catalog;
 - `src/adapters.rs` — `FlyProjectInspection::decode_current` and framework-neutral endpoint seams;
 - `src/adapters/fly_service.rs` — current Fly-backed service implementation;
@@ -46,31 +50,35 @@ RusTok Page Builder domain model.
 ## Current runtime flow
 
 ```text
-browser / Leptos / Dioxus / transport adapter
-                    |
-                    v
-         PageBuilderCapabilityRequest
-                    |
-                    v
-          FlyProjectInspection
-                    |
-          +---------+---------+
-          |                   |
-          v                   v
-     validation          registry check
-          |                   |
-          +---------+---------+
-                    |
-                    v
-           Fly domain document
-                    |
-          +---------+---------+
-          |                   |
-          v                   v
-       preview          static publish gate
+fly-browser asset + rustok-page-builder::browser_host
+                         |
+                         v
+            Leptos / future Dioxus renderer
+                         |
+                         v
+browser / transport adapter -> PageBuilderCapabilityRequest
+                         |
+                         v
+               FlyProjectInspection
+                         |
+               +---------+---------+
+               |                   |
+               v                   v
+          validation          registry check
+               |                   |
+               +---------+---------+
+                         |
+                         v
+                Fly domain document
+                         |
+               +---------+---------+
+               |                   |
+               v                   v
+            preview          static publish gate
 ```
 
-No current step branches on a document version.
+No current step branches on a document version. Browser host policy is composed once in the core
+crate; framework adapters do not duplicate auto-mount, form binding or lifecycle cleanup logic.
 
 ## Compatibility surface
 
@@ -124,6 +132,7 @@ module-major cleanup.
 - `cargo test -p fly landing_contract`;
 - `cargo test -p rustok-page-builder --lib`;
 - `cargo xtask module validate page_builder`;
+- `node scripts/verify/verify-fly-ssr-first.mjs`;
 - Page Builder verification scripts under `crates/rustok-page-builder/scripts/verify`.
 
 Verification and registry scripts must treat module semver as the version boundary and must not
