@@ -50,5 +50,17 @@
   "blog.error.runtimeBadge": "Runtime",
   "blog.seo.title": "Post SEO",
   "blog.seo.subtitle": "Explicit metadata, social tags and diagnostics for the selected blog post.",
-  "blog.seo.empty": "Create or open a post first. SEO stays inside the blog editor rather than a global SEO hub."
+  "blog.seo.empty": "Create or open a post first. SEO stays inside the blog editor rather than a global SEO hub.",
+  "blog.moderation.title": "Comment moderation",
+  "blog.moderation.subtitle": "Review the selected post's non-deleted comment queue through the Comments owner boundary.",
+  "blog.moderation.graphql": "GraphQL managed",
+  "blog.moderation.selectPost": "Open a post to review its comments.",
+  "blog.moderation.unavailable": "Comment moderation is unavailable in this reduced server build.",
+  "blog.moderation.loadError": "Failed to load comment moderation queue",
+  "blog.moderation.empty": "This post has no comments to moderate.",
+  "blog.moderation.total": "Total",
+  "blog.moderation.reply": "reply",
+  "blog.moderation.approve": "Approve",
+  "blog.moderation.spam": "Mark spam",
+  "blog.moderation.trash": "Move to trash"
 }
