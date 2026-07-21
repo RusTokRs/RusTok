@@ -4,14 +4,13 @@ use std::str::FromStr;
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{
-    build_locale_candidates, normalize_locale_tag, PortActorKind, PortCallPolicy, PortContext,
-    PortError, PLATFORM_FALLBACK_LOCALE,
+    normalize_locale_tag, PortActorKind, PortCallPolicy, PortContext, PortError,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, Set, TransactionTrait,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::domain::{
@@ -91,16 +90,22 @@ impl GroupsService {
         let locale = normalize_locale_tag(&input.locale)
             .ok_or_else(|| GroupsError::Validation("invalid group locale".to_string()))?;
         let title = input.title.trim();
-        if title.is_empty() || title.len() > 240 {
+        if title.is_empty() || title.chars().count() > 240 {
             return Err(GroupsError::Validation(
                 "group title must contain between 1 and 240 characters".to_string(),
             ));
         }
-        if input.summary.as_deref().is_some_and(|value| value.len() > 500) {
+        let summary = normalize_optional_text(input.summary);
+        if summary
+            .as_deref()
+            .is_some_and(|value| value.chars().count() > 500)
+        {
             return Err(GroupsError::Validation(
                 "group summary must not exceed 500 characters".to_string(),
             ));
         }
+        let body = normalize_optional_text(input.body);
+        let metadata = normalize_language_agnostic_metadata(input.metadata)?;
 
         let transaction = self.db.begin().await?;
         let duplicate = group::Entity::find()
@@ -127,7 +132,7 @@ impl GroupsService {
             cover_media_id: Set(input.cover_media_id),
             member_count: Set(1),
             version: Set(1),
-            metadata: Set(input.metadata),
+            metadata: Set(metadata),
             created_at: Set(now),
             updated_at: Set(now),
             archived_at: Set(None),
@@ -139,10 +144,10 @@ impl GroupsService {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
             group_id: Set(group_id),
-            locale: Set(locale),
+            locale: Set(locale.clone()),
             title: Set(title.to_string()),
-            summary: Set(normalize_optional_text(input.summary)),
-            body: Set(normalize_optional_text(input.body)),
+            summary: Set(summary),
+            body: Set(body),
             created_at: Set(now),
             updated_at: Set(now),
         }
@@ -167,12 +172,13 @@ impl GroupsService {
         .await?;
 
         transaction.commit().await?;
-        self.read_group_owned(
+        self.read_group_for_locale_owned(
             context,
             ReadGroupRequest {
                 group_id: Some(group_id),
                 handle: None,
             },
+            &locale,
         )
         .await
     }
@@ -183,7 +189,18 @@ impl GroupsService {
         request: ReadGroupRequest,
     ) -> GroupsResult<GroupDetails> {
         require_read(context)?;
+        self.read_group_for_locale_owned(context, request, &context.locale)
+            .await
+    }
+
+    async fn read_group_for_locale_owned(
+        &self,
+        context: &PortContext,
+        request: ReadGroupRequest,
+        requested_locale: &str,
+    ) -> GroupsResult<GroupDetails> {
         let tenant_id = context_tenant_id(context)?;
+        let effective_locale = normalize_effective_locale(requested_locale)?;
         let mut query = group::Entity::find().filter(group::Column::TenantId.eq(tenant_id));
         query = match (request.group_id, request.handle) {
             (Some(group_id), _) => query.filter(group::Column::Id.eq(group_id)),
@@ -209,7 +226,14 @@ impl GroupsService {
         let content_decision = self
             .decide_access_owned(context, model.id, GroupAction::View)
             .await?;
-        self.map_details(context, model, content_decision.allowed).await
+        self.map_details(
+            context,
+            model,
+            content_decision.allowed,
+            requested_locale,
+            &effective_locale,
+        )
+        .await
     }
 
     async fn list_groups_owned(
@@ -219,38 +243,41 @@ impl GroupsService {
     ) -> GroupsResult<GroupConnection> {
         require_read(context)?;
         let tenant_id = context_tenant_id(context)?;
+        let effective_locale = normalize_effective_locale(&context.locale)?;
         let page = request.page.max(1);
         let per_page = request.per_page.clamp(1, 100);
         let include_non_public = request.include_non_public && has_platform_manage(context);
 
+        let mut localized_query = translation::Entity::find()
+            .filter(translation::Column::TenantId.eq(tenant_id))
+            .filter(translation::Column::Locale.eq(effective_locale.clone()));
+        if let Some(search) = normalize_optional_text(request.search) {
+            localized_query = localized_query.filter(translation::Column::Title.contains(&search));
+        }
+        let localized_group_ids = localized_query
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|row| row.group_id)
+            .collect::<Vec<_>>();
+        if localized_group_ids.is_empty() {
+            return Ok(GroupConnection {
+                items: Vec::new(),
+                total: 0,
+                page,
+                per_page,
+            });
+        }
+
         let mut query = group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
-            .filter(group::Column::Status.eq(GroupStatus::Active.as_str()));
+            .filter(group::Column::Status.eq(GroupStatus::Active.as_str()))
+            .filter(group::Column::Id.is_in(localized_group_ids));
         if !include_non_public {
             query = query.filter(group::Column::Visibility.is_in([
                 GroupVisibility::Public.as_str(),
                 GroupVisibility::Closed.as_str(),
             ]));
-        }
-
-        if let Some(search) = normalize_optional_text(request.search) {
-            let group_ids = translation::Entity::find()
-                .filter(translation::Column::TenantId.eq(tenant_id))
-                .filter(translation::Column::Title.contains(&search))
-                .all(&self.db)
-                .await?
-                .into_iter()
-                .map(|row| row.group_id)
-                .collect::<Vec<_>>();
-            if group_ids.is_empty() {
-                return Ok(GroupConnection {
-                    items: Vec::new(),
-                    total: 0,
-                    page,
-                    per_page,
-                });
-            }
-            query = query.filter(group::Column::Id.is_in(group_ids));
         }
 
         let paginator = query
@@ -266,7 +293,9 @@ impl GroupsService {
             .await?;
         let items = models
             .into_iter()
-            .map(|model| self.map_summary(context, model, &translations))
+            .map(|model| {
+                self.map_summary(context, model, &translations, &context.locale, &effective_locale)
+            })
             .collect::<GroupsResult<Vec<_>>>()?;
 
         Ok(GroupConnection {
@@ -573,15 +602,23 @@ impl GroupsService {
         context: &PortContext,
         model: group::Model,
         include_private_content: bool,
+        requested_locale: &str,
+        effective_locale: &str,
     ) -> GroupsResult<GroupDetails> {
         let group_id = model.id;
         let tenant_id = model.tenant_id;
         let translations = self.load_translations(tenant_id, vec![group_id]).await?;
-        let selected = select_translation(&translations, group_id, &context.locale)?;
+        let selected = select_translation(&translations, group_id, effective_locale)?;
         let body = include_private_content
             .then(|| selected.body.clone())
             .flatten();
-        let summary = self.map_summary(context, model, &translations)?;
+        let summary = self.map_summary(
+            context,
+            model,
+            &translations,
+            requested_locale,
+            effective_locale,
+        )?;
         let viewer_membership = match optional_actor_user_id(context) {
             Some(user_id) => self
                 .membership_model(tenant_id, group_id, user_id)
@@ -614,11 +651,13 @@ impl GroupsService {
 
     fn map_summary(
         &self,
-        context: &PortContext,
+        _context: &PortContext,
         model: group::Model,
         translations: &HashMap<Uuid, Vec<translation::Model>>,
+        requested_locale: &str,
+        effective_locale: &str,
     ) -> GroupsResult<GroupSummary> {
-        let selected = select_translation(translations, model.id, &context.locale)?;
+        let selected = select_translation(translations, model.id, effective_locale)?;
         let mut available_locales = translations
             .get(&model.id)
             .into_iter()
@@ -641,7 +680,7 @@ impl GroupsService {
             avatar_media_id: model.avatar_media_id,
             cover_media_id: model.cover_media_id,
             member_count: model.member_count.max(0) as u64,
-            requested_locale: context.locale.clone(),
+            requested_locale: requested_locale.to_string(),
             effective_locale: selected.locale.clone(),
             available_locales,
         })
@@ -864,6 +903,40 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
     })
 }
 
+fn normalize_effective_locale(value: &str) -> GroupsResult<String> {
+    normalize_locale_tag(value).ok_or_else(|| {
+        GroupsError::Validation("host effective locale is invalid".to_string())
+    })
+}
+
+fn normalize_language_agnostic_metadata(value: Value) -> GroupsResult<Value> {
+    const LOCALIZED_COPY_KEYS: &[&str] = &[
+        "title",
+        "summary",
+        "body",
+        "name",
+        "description",
+        "translations",
+        "localized",
+        "locales",
+        "i18n",
+        "seo",
+    ];
+
+    let object = value.as_object().ok_or_else(|| {
+        GroupsError::Validation("group metadata must be a JSON object".to_string())
+    })?;
+    if let Some(key) = LOCALIZED_COPY_KEYS
+        .iter()
+        .find(|key| object.contains_key(**key))
+    {
+        return Err(GroupsError::Validation(format!(
+            "group metadata must remain language-agnostic; localized presentation key `{key}` belongs in group_translations"
+        )));
+    }
+    Ok(value)
+}
+
 fn has_platform_manage(context: &PortContext) -> bool {
     context
         .claims
@@ -874,22 +947,13 @@ fn has_platform_manage(context: &PortContext) -> bool {
 fn select_translation<'a>(
     translations: &'a HashMap<Uuid, Vec<translation::Model>>,
     group_id: Uuid,
-    requested_locale: &str,
+    effective_locale: &str,
 ) -> GroupsResult<&'a translation::Model> {
-    let rows = translations.get(&group_id).ok_or_else(|| {
-        GroupsError::Invariant("group has no localized presentation".to_string())
-    })?;
-    for candidate in build_locale_candidates(
-        [Some(requested_locale), Some(PLATFORM_FALLBACK_LOCALE)],
-        true,
-    ) {
-        if let Some(row) = rows.iter().find(|row| row.locale == candidate) {
-            return Ok(row);
-        }
-    }
-    rows.first().ok_or_else(|| {
-        GroupsError::Invariant("group has no localized presentation".to_string())
-    })
+    let effective_locale = normalize_effective_locale(effective_locale)?;
+    translations
+        .get(&group_id)
+        .and_then(|rows| rows.iter().find(|row| row.locale == effective_locale))
+        .ok_or(GroupsError::NotFound)
 }
 
 fn map_membership(model: membership::Model) -> GroupsResult<GroupMembership> {
@@ -914,4 +978,16 @@ fn map_feature(model: feature_binding::Model) -> GroupsResult<GroupFeatureBindin
         sort_order: model.sort_order,
         configuration: model.configuration,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_metadata_rejects_localized_presentation_copy() {
+        assert!(normalize_language_agnostic_metadata(json!({"flags": ["featured"]})).is_ok());
+        assert!(normalize_language_agnostic_metadata(json!({"title": "Localized copy"})).is_err());
+        assert!(normalize_language_agnostic_metadata(json!({"translations": {"ru": {}}})).is_err());
+    }
 }
