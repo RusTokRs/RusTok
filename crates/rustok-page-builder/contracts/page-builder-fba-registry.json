@@ -28,7 +28,9 @@
       "context_evidence": "runtime_context_hash",
       "scenario_evidence": "runtime_scenario_id",
       "snapshot_evidence": "runtime_snapshot_hash",
-      "preview_static_parity": "document_hash",
+      "evidence_hash_algorithm": "sha256",
+      "snapshot_document_hash_algorithm": "fly_project_hash_fnv1a64",
+      "preview_static_parity": "document_html",
       "raw_context_persisted": false
     },
     "permission_map": {
