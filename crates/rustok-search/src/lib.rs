@@ -6,6 +6,7 @@ use rustok_core::{
 use sea_orm_migration::MigrationTrait;
 
 pub mod analytics;
+mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
