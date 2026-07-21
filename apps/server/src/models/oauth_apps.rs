@@ -3,8 +3,9 @@
 use rustok_api::{normalize_locale_tag, Permission};
 use sea_orm::sea_query::{Alias, OnConflict, Query};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, Condition, ConnectionTrait, DatabaseConnection, DbErr,
-    EntityTrait, QueryFilter, Set, TransactionTrait, entity::prelude::*,
+    ActiveModelTrait, ActiveValue, Condition, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, DbErr, EntityTrait, QueryFilter, Set, TransactionTrait,
+    entity::prelude::*,
 };
 use std::{future::Future, str::FromStr};
 use uuid::Uuid;
@@ -43,6 +44,28 @@ pub struct ActiveModel {
     pub metadata: ActiveValue<Json>,
     pub created_at: ActiveValue<DateTimeWithTimeZone>,
     pub updated_at: ActiveValue<DateTimeWithTimeZone>,
+}
+
+#[async_trait::async_trait]
+pub(crate) trait OAuthAppUpdateConnection: ConnectionTrait {
+    async fn update_oauth_app_model(&self, model: ActiveModel) -> Result<Model, DbErr>;
+}
+
+#[async_trait::async_trait]
+impl OAuthAppUpdateConnection for DatabaseConnection {
+    async fn update_oauth_app_model(&self, model: ActiveModel) -> Result<Model, DbErr> {
+        let transaction = self.begin().await?;
+        let model = model.update_in_transaction(&transaction).await?;
+        transaction.commit().await?;
+        Ok(model)
+    }
+}
+
+#[async_trait::async_trait]
+impl OAuthAppUpdateConnection for DatabaseTransaction {
+    async fn update_oauth_app_model(&self, model: ActiveModel) -> Result<Model, DbErr> {
+        model.update_in_transaction(self).await
+    }
 }
 
 impl From<Model> for ActiveModel {
@@ -102,14 +125,14 @@ impl ActiveModel {
         Ok(model)
     }
 
-    pub async fn update(self, db: &DatabaseConnection) -> Result<Model, DbErr> {
-        let transaction = db.begin().await?;
-        let model = self.update_in_transaction(&transaction).await?;
-        transaction.commit().await?;
-        Ok(model)
+    pub async fn update<C>(self, db: &C) -> Result<Model, DbErr>
+    where
+        C: OAuthAppUpdateConnection,
+    {
+        db.update_oauth_app_model(self).await
     }
 
-    pub async fn update_in_transaction<C>(self, db: &C) -> Result<Model, DbErr>
+    async fn update_in_transaction<C>(self, db: &C) -> Result<Model, DbErr>
     where
         C: ConnectionTrait,
     {
