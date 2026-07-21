@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rustok_marketplace_payout::entities::{operation, operation_transfer, payout};
 use sea_orm::{
-    ActiveModelTrait, ConnectOptions, Database, DatabaseConnection, DbErr, Set,
+    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbErr, Set,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
@@ -205,9 +205,8 @@ async fn payout_operation_schema_enforces_identity_capacity_and_tenant_links() {
     .await;
     assert!(is_constraint_error(&invalid_amount.unwrap_err()));
 
-    let payout_id = Uuid::new_v4();
     payout::ActiveModel {
-        id: Set(payout_id),
+        id: Set(Uuid::new_v4()),
         tenant_id: Set(tenant_id),
         seller_id: Set(seller_id),
         currency_code: Set("USD".to_string()),
@@ -238,7 +237,9 @@ async fn setup_database() -> DatabaseConnection {
         .min_connections(1)
         .sqlx_logging(false);
     let db = Database::connect(options).await.unwrap();
-    db.execute_unprepared("PRAGMA foreign_keys = ON").await.unwrap();
+    db.execute_unprepared("PRAGMA foreign_keys = ON")
+        .await
+        .unwrap();
     db
 }
 
@@ -259,5 +260,5 @@ async fn rollback_all(db: &DatabaseConnection) {
 }
 
 fn is_constraint_error(error: &DbErr) -> bool {
-    error.sql_err().is_some() || matches!(error, DbErr::Exec(_) | DbErr::Query(_))
+    error.sql_err().is_some()
 }
