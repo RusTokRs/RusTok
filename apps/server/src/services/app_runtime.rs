@@ -8,9 +8,8 @@ use crate::common::settings::{RuntimeHostMode, RustokSettings, SharedRustokSetti
 use crate::graphql::AppSchema;
 use crate::middleware;
 use crate::middleware::rate_limit::{
-    PathRateLimitMiddlewareState, PathRateLimitPolicy, RateLimitConfig, RateLimiter,
+    cleanup_task, PathRateLimitMiddlewareState, PathRateLimitPolicy, RateLimitConfig, RateLimiter,
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter,
-    cleanup_task,
 };
 use crate::modules;
 use crate::modules::{DeploymentSurfaceContract, ManifestManager};
@@ -117,7 +116,7 @@ pub async fn bootstrap_app_runtime(
         settings,
         runtime_ctx.clone(),
         auth_config.clone(),
-    );
+    )?;
     runtime_ctx.shared_insert(runtime_extensions.clone());
     runtime_ctx.shared_insert(registry.clone());
     ManifestManager::validate(&manifest)

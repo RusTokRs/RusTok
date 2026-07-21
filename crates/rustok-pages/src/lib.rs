@@ -61,9 +61,7 @@ pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{
     MenuService, PageBuilderArtifactService, PageBuilderScenarioBaselineService, PageService,
     PublishedLandingArtifact, SaveIfCurrentScenarioBaselineRequest,
-    PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
-    PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_DOCUMENT_REVISION_CONFLICT,
-    PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
+    PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
 };
 
 use async_trait::async_trait;
@@ -109,14 +107,52 @@ impl RusToKModule for PagesModule {
         ]
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
-        register_seo_target_provider(extensions, seo_targets::PagesSeoTargetProvider)
-            .expect("pages SEO target registration should remain unique");
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        register_seo_target_provider(extensions, seo_targets::PagesSeoTargetProvider).map_err(
+            |error| {
+                rustok_core::Error::Validation(format!(
+                    "pages SEO target registration failed: {error}"
+                ))
+            },
+        )
     }
 }
 
 impl MigrationSource for PagesModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn module_metadata() {
+        let module = PagesModule;
+        assert_eq!(module.slug(), "pages");
+        assert_eq!(module.name(), "Pages");
+        assert_eq!(
+            module.description(),
+            "Pages, visual documents, published artifacts and menus"
+        );
+        assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn module_permissions() {
+        let module = PagesModule;
+        let permissions = module.permissions();
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Create)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Read)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Update)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Delete)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::List)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Publish)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Manage)));
     }
 }

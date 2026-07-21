@@ -239,10 +239,18 @@ fn parse_persisted_settings(value: serde_json::Value) -> SeoResult<SeoModuleSett
 #[cfg(test)]
 fn built_in_target_registry() -> Arc<SeoTargetRegistry> {
     let mut extensions = ModuleRuntimeExtensions::default();
-    rustok_pages::PagesModule.register_runtime_extensions(&mut extensions);
-    rustok_product::ProductModule.register_runtime_extensions(&mut extensions);
-    rustok_blog::BlogModule.register_runtime_extensions(&mut extensions);
-    rustok_forum::ForumModule.register_runtime_extensions(&mut extensions);
+    rustok_pages::PagesModule
+        .register_runtime_extensions(&mut extensions)
+        .expect("Pages SEO target provider should register");
+    rustok_product::ProductModule
+        .register_runtime_extensions(&mut extensions)
+        .expect("Product SEO target provider should register");
+    rustok_blog::BlogModule
+        .register_runtime_extensions(&mut extensions)
+        .expect("Blog SEO target provider should register");
+    rustok_forum::ForumModule
+        .register_runtime_extensions(&mut extensions)
+        .expect("Forum runtime providers should register");
     seo_target_registry_from_extensions(&extensions)
         .unwrap_or_else(|| Arc::new(SeoTargetRegistry::default()))
 }
