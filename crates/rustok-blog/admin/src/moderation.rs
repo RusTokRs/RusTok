@@ -8,6 +8,8 @@ use crate::i18n::t;
 use crate::model::{BlogModerationComment, BlogModerationCommentList, BlogModerationStatus};
 use crate::transport;
 
+const MODERATION_PAGE_SIZE: u64 = 20;
+
 #[component]
 pub(crate) fn BlogModerationPanel() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -19,14 +21,21 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
+    let (page, set_page) = signal(1_u64);
     let (busy_comment_id, set_busy_comment_id) = signal(Option::<String>::None);
     let (action_error, set_action_error) = signal(Option::<String>::None);
+
+    Effect::new(move |_| {
+        let _ = selected_post_query.get();
+        set_page.set(1);
+    });
 
     let comments_resource = LocalResource::new(move || {
         let post_id = selected_post_query.get();
         let token = token.get();
         let tenant = tenant.get();
         let locale = resource_locale.clone();
+        let page = page.get().max(1);
         let _ = refresh_nonce.get();
 
         async move {
@@ -37,9 +46,16 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
                 return Ok::<Option<BlogModerationCommentList>, transport::ApiError>(None);
             };
 
-            transport::fetch_moderation_comments(token, tenant, post_id, locale)
-                .await
-                .map(Some)
+            transport::fetch_moderation_comments(
+                token,
+                tenant,
+                post_id,
+                locale,
+                page,
+                MODERATION_PAGE_SIZE,
+            )
+            .await
+            .map(Some)
         }
     });
 
@@ -71,6 +87,12 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
             });
         },
     );
+    let previous_page = Callback::new(move |_| {
+        set_page.update(|value| *value = value.saturating_sub(1).max(1));
+    });
+    let next_page = Callback::new(move |_| {
+        set_page.update(|value| *value = value.saturating_add(1));
+    });
 
     view! {
         <section class="mx-auto mt-6 max-w-7xl rounded-3xl border border-border bg-card p-6 shadow-sm">
@@ -120,8 +142,12 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
                                 Ok(Some(comments)) => view! {
                                     <ModerationQueue
                                         comments
+                                        page=page.get()
+                                        per_page=MODERATION_PAGE_SIZE
                                         busy_comment_id=busy_comment_id.get()
                                         on_moderate=moderate_comment
+                                        on_previous=previous_page
+                                        on_next=next_page
                                     />
                                 }.into_any(),
                                 Err(error) if transport::is_moderation_contract_unavailable(&error) => view! {
@@ -158,11 +184,15 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
 #[component]
 fn ModerationQueue(
     comments: BlogModerationCommentList,
+    page: u64,
+    per_page: u64,
     busy_comment_id: Option<String>,
     on_moderate: Callback<(String, BlogModerationStatus)>,
+    on_previous: Callback<()>,
+    on_next: Callback<()>,
 ) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    if comments.items.is_empty() {
+    if comments.items.is_empty() && comments.total == 0 {
         return view! {
             <ModerationEmptyState
                 message=t(
@@ -175,12 +205,26 @@ fn ModerationQueue(
         .into_any();
     }
 
+    let total_pages = comments.total.div_ceil(per_page.max(1)).max(1);
+    let current_page = page.clamp(1, total_pages);
+    let can_previous = current_page > 1;
+    let can_next = current_page < total_pages;
+
     view! {
         <div class="space-y-3">
-            <div class="text-sm text-muted-foreground">
-                {t(locale.as_deref(), "blog.moderation.total", "Total")}
-                {": "}
-                {comments.total}
+            <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+                <span>
+                    {t(locale.as_deref(), "blog.moderation.total", "Total")}
+                    {": "}
+                    {comments.total}
+                </span>
+                <span>
+                    {t(locale.as_deref(), "blog.moderation.page", "Page")}
+                    {" "}
+                    {current_page}
+                    {" / "}
+                    {total_pages}
+                </span>
             </div>
             {comments
                 .items
@@ -192,6 +236,24 @@ fn ModerationQueue(
                     }
                 })
                 .collect_view()}
+            <div class="flex items-center justify-end gap-2 pt-2">
+                <button
+                    type="button"
+                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground disabled:opacity-40"
+                    disabled=!can_previous
+                    on:click=move |_| on_previous.run(())
+                >
+                    {t(locale.as_deref(), "blog.moderation.previous", "Previous")}
+                </button>
+                <button
+                    type="button"
+                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground disabled:opacity-40"
+                    disabled=!can_next
+                    on:click=move |_| on_next.run(())
+                >
+                    {t(locale.as_deref(), "blog.moderation.next", "Next")}
+                </button>
+            </div>
         </div>
     }
     .into_any()
