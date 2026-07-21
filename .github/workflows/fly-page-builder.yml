@@ -58,8 +58,9 @@ jobs:
         with:
           shared-key: pages-current-only-compile-fix
       - name: Apply current-only Pages fixes
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           artifact = Path("crates/rustok-pages/src/services/page_builder_artifact.rs")
@@ -164,6 +165,7 @@ jobs:
           }
 '''
           seo.write_text(text[:start] + replacement + text[end:])
+          PY
       - name: Format and compile Pages
         shell: bash
         run: |
