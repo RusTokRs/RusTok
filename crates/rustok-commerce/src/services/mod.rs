@@ -182,8 +182,9 @@ pub use marketplace_reversal_event_inbox::{
     MarketplaceReversalEventSweepFailure, MarketplaceReversalEventSweepReport,
 };
 pub use marketplace_reversal_operator::{
-    MarketplaceReversalEventOperatorView, MarketplaceReversalOperatorError,
-    MarketplaceReversalOperatorResult, MarketplaceReversalOperatorService,
+    MarketplaceReversalAdaptationFailureOperatorView, MarketplaceReversalEventOperatorView,
+    MarketplaceReversalOperatorError, MarketplaceReversalOperatorResult,
+    MarketplaceReversalOperatorService,
 };
 pub use order_change_orchestration::OrderChangeOrchestrationService;
 pub(crate) use paid_order_create_label::PaidOrderCreateLabelHandler;
