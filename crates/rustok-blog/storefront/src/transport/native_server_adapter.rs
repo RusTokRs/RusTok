@@ -1,3 +1,4 @@
+use crate::comments_pagination::COMMENTS_PAGE_SIZE;
 use crate::core::BlogStorefrontFetchRequest;
 #[cfg(feature = "ssr")]
 use crate::model::{BlogCommentList, BlogCommentListItem, BlogPostDetail, BlogPostList};
@@ -15,16 +16,24 @@ use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
 pub async fn fetch_blog(
     request: BlogStorefrontFetchRequest,
+    comments_page: u64,
 ) -> Result<StorefrontBlogData, ApiError> {
-    fetch_storefront_blog_server(configured_tenant_slug(), request.post_slug, request.locale).await
+    fetch_storefront_blog_server(
+        configured_tenant_slug(),
+        request.post_slug,
+        request.locale,
+        comments_page,
+    )
+    .await
 }
 
 async fn fetch_storefront_blog_server(
     tenant_slug: Option<String>,
     post_slug: String,
     locale: Option<String>,
+    comments_page: u64,
 ) -> Result<StorefrontBlogData, ApiError> {
-    storefront_blog_native(tenant_slug, post_slug, locale)
+    storefront_blog_native(tenant_slug, post_slug, locale, comments_page)
         .await
         .map_err(ApiError::from)
 }
@@ -34,6 +43,7 @@ async fn storefront_blog_native(
     tenant_slug: Option<String>,
     post_slug: String,
     locale: Option<String>,
+    comments_page: u64,
 ) -> Result<StorefrontBlogData, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -136,8 +146,8 @@ async fn storefront_blog_native(
                     post.id,
                     ListCommentsFilter {
                         locale: Some(requested_locale.clone()),
-                        page: 1,
-                        per_page: 20,
+                        page: comments_page.max(1),
+                        per_page: COMMENTS_PAGE_SIZE,
                     },
                     Some(fallback_locale.as_str()),
                 )
@@ -183,7 +193,7 @@ async fn storefront_blog_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_slug, post_slug, locale);
+        let _ = (tenant_slug, post_slug, locale, comments_page);
         Err(ServerFnError::new(
             "blog/storefront-data requires the `ssr` feature",
         ))
