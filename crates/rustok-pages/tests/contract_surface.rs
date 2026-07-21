@@ -41,7 +41,7 @@ fn module_manifest_declares_fba_builder_consumer_contract() {
             .get("contract_version")
             .and_then(toml::Value::as_str)
             .expect("dependencies.page_builder.contract_version is required"),
-        "1.0",
+        "1.1",
         "pages contract version drifted"
     );
 
@@ -54,7 +54,7 @@ fn module_manifest_declares_fba_builder_consumer_contract() {
             .get("builder_contract_version")
             .and_then(toml::Value::as_str)
             .expect("fba.builder_consumer.builder_contract_version is required"),
-        "1.0",
+        "1.1",
         "pages builder contract version drifted"
     );
 
