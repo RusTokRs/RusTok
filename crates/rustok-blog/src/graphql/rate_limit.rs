@@ -91,12 +91,11 @@ impl BlogGraphqlSurface {
     fn actor_is_authorized(self, auth: &AuthContext) -> bool {
         let permission = match self {
             Self::CreatePost => Permission::BLOG_POSTS_CREATE,
-            // Keep the limiter aligned with the current resolver policy. The resolver
-            // permission mismatch is tracked separately and must not be widened here.
-            Self::UpdatePost => Permission::BLOG_POSTS_PUBLISH,
+            Self::UpdatePost => Permission::BLOG_POSTS_UPDATE,
             Self::DeletePost => Permission::BLOG_POSTS_DELETE,
-            Self::PublishPost | Self::UnpublishPost => Permission::BLOG_POSTS_PUBLISH,
-            Self::ArchivePost => Permission::BLOG_POSTS_UPDATE,
+            Self::PublishPost | Self::UnpublishPost | Self::ArchivePost => {
+                Permission::BLOG_POSTS_PUBLISH
+            }
             Self::Post | Self::PostBySlug | Self::Posts => return true,
         };
         has_any_effective_permission(&auth.permissions, &[permission])
@@ -422,8 +421,13 @@ mod tests {
         assert!(BlogGraphqlSurface::CreatePost.actor_is_authorized(&create));
         assert!(!BlogGraphqlSurface::DeletePost.actor_is_authorized(&create));
 
+        let update = auth(tenant_id, vec![Permission::BLOG_POSTS_UPDATE]);
+        assert!(BlogGraphqlSurface::UpdatePost.actor_is_authorized(&update));
+        assert!(!BlogGraphqlSurface::ArchivePost.actor_is_authorized(&update));
+
         let publish = auth(tenant_id, vec![Permission::BLOG_POSTS_PUBLISH]);
-        assert!(BlogGraphqlSurface::UpdatePost.actor_is_authorized(&publish));
+        assert!(!BlogGraphqlSurface::UpdatePost.actor_is_authorized(&publish));
         assert!(BlogGraphqlSurface::UnpublishPost.actor_is_authorized(&publish));
+        assert!(BlogGraphqlSurface::ArchivePost.actor_is_authorized(&publish));
     }
 }
